@@ -1,0 +1,37 @@
+# Build outputs
+build/
+cmake-build-*/
+
+# CMake artifacts
+CMakeFiles/
+CMakeCache.txt
+cmake_install.cmake
+Makefile
+compile_commands.json
+
+# Compiled objects & libraries
+*.o
+*.obj
+*.lo
+*.la
+*.a
+*.so
+*.so.*
+*.dylib
+*.dll
+*.exe
+
+# Logs & temp files
+*.log
+*.tmp
+*.cache
+
+# IDE / editor metadata
+.vscode/
+.idea/
+*.code-workspace
+
+# OS artifacts
+.DS_Store
+Thumbs.db
+
