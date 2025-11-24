@@ -176,6 +176,7 @@ set(SOURCES
     src/api/version_handler.cpp
     src/api/watchdog_handler.cpp
     src/api/endpoints_handler.cpp
+    src/api/swagger_handler.cpp
     src/core/watchdog.cpp
     src/core/health_monitor.cpp
     src/core/endpoint_monitor.cpp

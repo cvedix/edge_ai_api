@@ -2,6 +2,7 @@
 #include "api/health_handler.h"
 #include "api/version_handler.h"
 #include "api/watchdog_handler.h"
+#include "api/swagger_handler.h"
 #include "core/watchdog.h"
 #include "core/health_monitor.h"
 #include <iostream>
@@ -107,6 +108,12 @@ int main()
         std::cout << "Available endpoints:" << std::endl;
         std::cout << "  GET /v1/core/health  - Health check" << std::endl;
         std::cout << "  GET /v1/core/version - Version information" << std::endl;
+        std::cout << "  GET /swagger         - Swagger UI (all versions)" << std::endl;
+        std::cout << "  GET /v1/swagger      - Swagger UI for API v1" << std::endl;
+        std::cout << "  GET /v2/swagger      - Swagger UI for API v2" << std::endl;
+        std::cout << "  GET /openapi.yaml    - OpenAPI spec (all versions)" << std::endl;
+        std::cout << "  GET /v1/openapi.yaml - OpenAPI spec for v1" << std::endl;
+        std::cout << "  GET /v2/openapi.yaml - OpenAPI spec for v2" << std::endl;
         std::cout << std::endl;
 
         // Controllers are auto-registered via Drogon's HttpController system
@@ -115,6 +122,7 @@ int main()
         static HealthHandler healthHandler;
         static VersionHandler versionHandler;
         static WatchdogHandler watchdogHandler;
+        static SwaggerHandler swaggerHandler;
         
         // Note: Infrastructure components (rate limiter, cache, resource manager, etc.)
         // are available but not initialized here since AI processing endpoints are not needed yet.
