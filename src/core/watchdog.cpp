@@ -6,8 +6,8 @@ Watchdog::Watchdog(uint32_t check_interval_ms, uint32_t timeout_ms)
     : check_interval_ms_(check_interval_ms)
     , timeout_ms_(timeout_ms)
     , running_(false)
-    , heartbeat_received_(false)
     , last_heartbeat_(std::chrono::steady_clock::now())
+    , heartbeat_received_(false)
 {
     stats_.total_heartbeats = 0;
     stats_.missed_heartbeats = 0;

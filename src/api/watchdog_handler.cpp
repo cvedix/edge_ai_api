@@ -8,7 +8,7 @@
 Watchdog* WatchdogHandler::g_watchdog = nullptr;
 HealthMonitor* WatchdogHandler::g_health_monitor = nullptr;
 
-void WatchdogHandler::getWatchdogStatus(const HttpRequestPtr &req,
+void WatchdogHandler::getWatchdogStatus(const HttpRequestPtr & /*req*/,
                                        std::function<void(const HttpResponsePtr &)> &&callback)
 {
     try {

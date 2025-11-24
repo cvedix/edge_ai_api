@@ -4,6 +4,9 @@
 #include <drogon/HttpRequest.h>
 #include <drogon/HttpResponse.h>
 #include <string>
+#include <mutex>
+#include <unordered_map>
+#include <chrono>
 
 using namespace drogon;
 
@@ -43,6 +46,22 @@ public:
     void getOpenAPISpec(const HttpRequestPtr &req,
                        std::function<void(const HttpResponsePtr &)> &&callback);
 
+    /**
+     * @brief Validate version format (e.g., "v1", "v2")
+     * @param version Version string to validate
+     * @return true if valid, false otherwise
+     * @note Public for testing
+     */
+    bool validateVersionFormat(const std::string& version) const;
+
+    /**
+     * @brief Sanitize file path to prevent path traversal
+     * @param path Path to sanitize
+     * @return Sanitized path or empty if invalid
+     * @note Public for testing
+     */
+    std::string sanitizePath(const std::string& path) const;
+
 private:
     /**
      * @brief Extract API version from request path
@@ -69,5 +88,16 @@ private:
      * @return Filtered YAML content
      */
     std::string filterOpenAPIByVersion(const std::string& yamlContent, const std::string& version) const;
+
+    // Cache for OpenAPI file content
+    struct CacheEntry {
+        std::string content;
+        std::chrono::steady_clock::time_point timestamp;
+        std::chrono::seconds ttl;
+    };
+    
+    static std::unordered_map<std::string, CacheEntry> cache_;
+    static std::mutex cache_mutex_;
+    static const std::chrono::seconds cache_ttl_;
 };
 

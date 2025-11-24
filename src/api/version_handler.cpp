@@ -15,7 +15,7 @@
 #define GIT_COMMIT "unknown"
 #endif
 
-void VersionHandler::getVersion(const HttpRequestPtr &req,
+void VersionHandler::getVersion(const HttpRequestPtr & /*req*/,
                                 std::function<void(const HttpResponsePtr &)> &&callback)
 {
     try {
