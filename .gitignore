@@ -39,3 +39,6 @@ build/tests/
 # OS files
 .DS_Store
 Thumbs.db
+
+# Project specific
+task/
