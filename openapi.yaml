@@ -1,0 +1,138 @@
+openapi: 3.0.3
+info:
+  title: Edge AI API
+  description: REST API for Edge AI operations and management
+  version: 1.0.0
+  contact:
+    name: Edge AI API Support
+
+servers:
+  - url: http://localhost:8080
+    description: Local development server
+  - url: http://0.0.0.0:8080
+    description: Default server
+
+paths:
+  /v1/core/health:
+    get:
+      summary: Health check endpoint
+      description: Returns the health status of the API service
+      operationId: getHealth
+      tags:
+        - Core
+      responses:
+        '200':
+          description: Service is healthy
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HealthResponse'
+              example:
+                status: "healthy"
+                timestamp: "2024-01-01T00:00:00.000Z"
+                uptime: 3600
+                service: "edge_ai_api"
+                version: "1.0.0"
+        '500':
+          description: Service is unhealthy
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /v1/core/version:
+    get:
+      summary: Get version information
+      description: Returns version information about the API service
+      operationId: getVersion
+      tags:
+        - Core
+      responses:
+        '200':
+          description: Version information
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/VersionResponse'
+              example:
+                version: "1.0.0"
+                build_time: "Jan 01 2024 00:00:00"
+                git_commit: "abc123def456"
+                api_version: "v1"
+                service: "edge_ai_api"
+
+components:
+  schemas:
+    HealthResponse:
+      type: object
+      required:
+        - status
+        - timestamp
+        - uptime
+      properties:
+        status:
+          type: string
+          enum: [healthy, degraded, unhealthy]
+          description: Health status of the service
+          example: "healthy"
+        timestamp:
+          type: string
+          format: date-time
+          description: Current timestamp in ISO 8601 format
+          example: "2024-01-01T00:00:00.000Z"
+        uptime:
+          type: integer
+          format: int64
+          description: Service uptime in seconds
+          example: 3600
+        service:
+          type: string
+          description: Service name
+          example: "edge_ai_api"
+        version:
+          type: string
+          description: Service version
+          example: "1.0.0"
+
+    VersionResponse:
+      type: object
+      required:
+        - version
+        - api_version
+        - service
+      properties:
+        version:
+          type: string
+          description: Application version
+          example: "1.0.0"
+        build_time:
+          type: string
+          description: Build timestamp
+          example: "Jan 01 2024 00:00:00"
+        git_commit:
+          type: string
+          description: Git commit hash
+          example: "abc123def456"
+        api_version:
+          type: string
+          description: API version
+          example: "v1"
+        service:
+          type: string
+          description: Service name
+          example: "edge_ai_api"
+
+    ErrorResponse:
+      type: object
+      properties:
+        error:
+          type: string
+          description: Error message
+        code:
+          type: integer
+          description: Error code
+
+tags:
+  - name: Core
+    description: Core API endpoints for health and version information
+

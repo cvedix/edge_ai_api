@@ -1,38 +1,259 @@
-cmake_minimum_required(VERSION 3.10)
-project(example_using_sdk)
+cmake_minimum_required(VERSION 3.14)
+project(edge_ai_api VERSION 1.0.0)
 
 set(CMAKE_CXX_STANDARD 17)
+set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wall -Wextra")
 
 # ============================================
-# Cách 1: Sử dụng find_package (Khuyến nghị)
+# Check System Dependencies
 # ============================================
-# Nếu SDK được cài đặt hệ thống hoặc trong CMAKE_PREFIX_PATH
-find_package(cvedix REQUIRED)
-
-# Hoặc chỉ định đường dẫn trực tiếp
-# set(CMAKE_PREFIX_PATH "/path/to/cvedix/sdk/install" ${CMAKE_PREFIX_PATH})
-# find_package(cvedix REQUIRED)
+# Modern approach: Check dependencies in CMake, not shell scripts
+include(${CMAKE_SOURCE_DIR}/cmake/CheckDependencies.cmake)
 
 # ============================================
-# Cách 2: Sử dụng trực tiếp (Manual)
+# Drogon HTTP Framework Dependencies
 # ============================================
-# Uncomment các dòng sau nếu không dùng find_package
-# set(CVEDIX_SDK_ROOT "/path/to/cvedix/sdk/install")
-# include_directories(${CVEDIX_SDK_ROOT}/include)
-# link_directories(${CVEDIX_SDK_ROOT}/lib)
+# Option: Auto-download missing dependencies using FetchContent
+option(AUTO_DOWNLOAD_DEPENDENCIES "Automatically download missing dependencies" ON)
 
-# Tạo executable
-add_executable(example_using_sdk main.cpp)
+# Check for OpenSSL (required)
+find_package(OpenSSL QUIET)
+if(NOT OpenSSL_FOUND)
+    message(FATAL_ERROR 
+        "OpenSSL not found. Drogon requires OpenSSL.\n"
+        "To install: sudo apt-get install libssl-dev")
+endif()
 
-# Liên kết với SDK
-# Cách 1: Sử dụng CMake target (khuyến nghị)
-target_link_libraries(example_using_sdk PRIVATE cvedix::cvedix_instance_sdk)
+# Check for UUID (required by Drogon)
+find_library(UUID_LIBRARY uuid)
+if(NOT UUID_LIBRARY)
+    if(AUTO_DOWNLOAD_DEPENDENCIES)
+        message(STATUS "UUID library not found. Drogon can work without it, but some features may be limited.")
+        message(STATUS "To install: sudo apt-get install uuid-dev")
+        # UUID is usually small, we can continue without it
+        set(UUID_LIBRARY "")
+    else()
+        message(WARNING 
+            "UUID library not found. Some Drogon features may not work.\n"
+            "To install: sudo apt-get install uuid-dev")
+    endif()
+else()
+    message(STATUS "✓ Found UUID library")
+endif()
 
-# Cách 2: Sử dụng trực tiếp (nếu không dùng find_package)
-# target_link_libraries(example_using_sdk PRIVATE cvedix_instance_sdk)
+# Check for jsoncpp - try to download if not found
+find_package(Jsoncpp QUIET)
+if(NOT Jsoncpp_FOUND)
+    if(AUTO_DOWNLOAD_DEPENDENCIES)
+        message(STATUS "Jsoncpp not found. Attempting to download using FetchContent...")
+        include(FetchContent)
+        
+        FetchContent_Declare(
+            jsoncpp
+            GIT_REPOSITORY https://github.com/open-source-parsers/jsoncpp.git
+            GIT_TAG        1.9.5
+            GIT_SHALLOW    TRUE
+        )
+        
+        # Set jsoncpp build options
+        set(JSONCPP_WITH_TESTS OFF CACHE BOOL "" FORCE)
+        set(JSONCPP_WITH_POST_BUILD_UNITTEST OFF CACHE BOOL "" FORCE)
+        set(JSONCPP_WITH_WARNING_AS_ERROR OFF CACHE BOOL "" FORCE)
+        set(JSONCPP_WITH_CMAKE_PACKAGE OFF CACHE BOOL "" FORCE)  # Disable to avoid path issues
+        set(JSONCPP_INCLUDE_DIR "${CMAKE_BINARY_DIR}/_deps/jsoncpp-src/include" CACHE PATH "" FORCE)
+        
+        FetchContent_MakeAvailable(jsoncpp)
+        
+        # After FetchContent_MakeAvailable, jsoncpp should be available
+        # Use source include directory (always exists)
+        set(JSONCPP_INCLUDE_DIRS "${CMAKE_BINARY_DIR}/_deps/jsoncpp-src/include" CACHE PATH "Jsoncpp include directories" FORCE)
+        
+        # For library, jsoncpp_lib target should be available
+        # The actual library file is built in build/lib/ directory, not _deps/jsoncpp-build/
+        # Find the actual library file location
+        find_library(JSONCPP_LIBRARIES
+            NAMES jsoncpp
+            PATHS 
+                ${CMAKE_BINARY_DIR}/lib
+                ${CMAKE_BINARY_DIR}/_deps/jsoncpp-build
+                ${CMAKE_BINARY_DIR}/_deps/jsoncpp-build/lib
+            NO_DEFAULT_PATH
+        )
+        
+        # If not found yet (not built), use expected path in build/lib/
+        if(NOT JSONCPP_LIBRARIES)
+            set(JSONCPP_LIBRARIES "${CMAKE_BINARY_DIR}/lib/libjsoncpp.a")
+        endif()
+        
+        # Verify include directory exists
+        if(NOT EXISTS "${JSONCPP_INCLUDE_DIRS}/json/json.h")
+            message(FATAL_ERROR 
+                "Jsoncpp include directory not found: ${JSONCPP_INCLUDE_DIRS}/json/json.h")
+        endif()
+        
+        # Set variables that Drogon's FindJsoncpp.cmake expects
+        set(JSONCPP_LIBRARIES ${JSONCPP_LIBRARIES} CACHE FILEPATH "Jsoncpp library" FORCE)
+        set(Jsoncpp_FOUND TRUE CACHE BOOL "Jsoncpp found" FORCE)
+        
+        message(STATUS "✓ Jsoncpp downloaded and configured successfully")
+        message(STATUS "  Include: ${JSONCPP_INCLUDE_DIRS}")
+        message(STATUS "  Library target: jsoncpp_lib (will be built automatically)")
+        message(STATUS "  Library path: ${JSONCPP_LIBRARIES}")
+    else()
+        message(FATAL_ERROR 
+            "Jsoncpp not found. Drogon requires jsoncpp.\n"
+            "To install: sudo apt-get install libjsoncpp-dev\n"
+            "Or enable auto-download: cmake .. -DAUTO_DOWNLOAD_DEPENDENCIES=ON")
+    endif()
+else()
+    message(STATUS "✓ Found system Jsoncpp")
+endif()
 
-# Thêm các dependencies khác nếu cần
-# find_package(OpenCV REQUIRED)
-# target_link_libraries(example_using_sdk PRIVATE ${OpenCV_LIBS})
+# ============================================
+# Drogon HTTP Framework
+# ============================================
+# Option: Use FetchContent to automatically download and build Drogon
+# Set DROGON_USE_FETCHCONTENT=OFF to use system-installed Drogon instead
+option(DROGON_USE_FETCHCONTENT "Use FetchContent to download Drogon automatically" ON)
 
+if(DROGON_USE_FETCHCONTENT)
+    message(STATUS "Using FetchContent to download Drogon automatically...")
+    
+    # Ensure FetchContent is included (may have been included for jsoncpp)
+    if(NOT DEFINED FetchContent_MakeAvailable)
+        include(FetchContent)
+    endif()
+    
+    # Configure Drogon version (use latest stable release)
+    set(DROGON_VERSION "v1.9.0" CACHE STRING "Drogon version to fetch")
+    
+    FetchContent_Declare(
+        drogon
+        GIT_REPOSITORY https://github.com/drogonframework/drogon.git
+        GIT_TAG        ${DROGON_VERSION}
+        GIT_SHALLOW   TRUE
+    )
+    
+    # Set Drogon build options
+    set(BUILD_TESTING OFF CACHE BOOL "" FORCE)
+    set(BUILD_EXAMPLES OFF CACHE BOOL "" FORCE)
+    set(BUILD_ORM OFF CACHE BOOL "" FORCE)  # Disable ORM if not needed
+    
+    # UUID is optional for Drogon, but FindUUID.cmake may fail if not found
+    # We'll let Drogon handle it - it should work without UUID
+    
+    # Make Drogon available (dependencies should be ready now)
+    FetchContent_MakeAvailable(drogon)
+    
+    message(STATUS "✓ Drogon fetched and built successfully")
+else()
+    message(STATUS "Looking for system-installed Drogon...")
+    find_package(Drogon REQUIRED)
+    
+    if(NOT Drogon_FOUND)
+        message(FATAL_ERROR 
+            "Drogon not found. Please install Drogon or set DROGON_USE_FETCHCONTENT=ON")
+    endif()
+endif()
+
+# ============================================
+# Include directories
+# ============================================
+include_directories(${CMAKE_SOURCE_DIR}/include)
+
+# ============================================
+# OpenSSL for SHA256 (used in cache - optional for now)
+# ============================================
+# find_package(OpenSSL REQUIRED)  # Uncomment when using cache
+
+# ============================================
+# Source files
+# ============================================
+set(SOURCES
+    src/main.cpp
+    src/api/health_handler.cpp
+    src/api/version_handler.cpp
+    src/api/watchdog_handler.cpp
+    src/api/endpoints_handler.cpp
+    src/core/watchdog.cpp
+    src/core/health_monitor.cpp
+    src/core/endpoint_monitor.cpp
+    src/core/request_middleware.cpp
+    src/core/ai_processor.cpp
+    src/core/ai_watchdog.cpp
+    # Infrastructure components (available but not used in main yet)
+    # src/core/resource_manager.cpp
+    # src/core/rate_limiter.cpp
+    # src/core/ai_cache.cpp
+    # src/core/priority_queue.cpp
+    # src/core/circuit_breaker.cpp
+    # src/core/performance_monitor.cpp
+    # AI handlers (not needed for base code)
+    # src/api/ai_handler.cpp
+    # src/api/ai_websocket.cpp
+    # src/api/metrics_handler.cpp
+)
+
+# ============================================
+# Create executable
+# ============================================
+add_executable(edge_ai_api ${SOURCES})
+
+# ============================================
+# Link libraries
+# ============================================
+# Link Drogon - try Drogon::Drogon first, fallback to drogon
+if(TARGET Drogon::Drogon)
+    target_link_libraries(edge_ai_api PRIVATE Drogon::Drogon)
+elseif(TARGET drogon)
+    target_link_libraries(edge_ai_api PRIVATE drogon)
+else()
+    message(FATAL_ERROR "Drogon target not found. Cannot link.")
+endif()
+
+# Additional libraries (if needed)
+# target_link_libraries(edge_ai_api PRIVATE 
+#     OpenSSL::SSL      # Uncomment when using cache
+#     OpenSSL::Crypto   # Uncomment when using cache
+# )
+
+# ============================================
+# Git commit information
+# ============================================
+find_package(Git QUIET)
+if(GIT_FOUND AND EXISTS "${CMAKE_SOURCE_DIR}/.git")
+    execute_process(
+        COMMAND ${GIT_EXECUTABLE} rev-parse --short HEAD
+        WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
+        OUTPUT_VARIABLE GIT_COMMIT
+        OUTPUT_STRIP_TRAILING_WHITESPACE
+        ERROR_QUIET
+    )
+    if(NOT GIT_COMMIT)
+        set(GIT_COMMIT "unknown")
+    endif()
+else()
+    set(GIT_COMMIT "unknown")
+endif()
+
+# ============================================
+# Build time
+# ============================================
+string(TIMESTAMP BUILD_TIME "%Y-%m-%d %H:%M:%S" UTC)
+
+# ============================================
+# Compile definitions
+# ============================================
+target_compile_definitions(edge_ai_api PRIVATE
+    PROJECT_VERSION="${PROJECT_VERSION}"
+    BUILD_TIME="${BUILD_TIME}"
+    GIT_COMMIT="${GIT_COMMIT}"
+)
+
+# ============================================
+# Install target (optional)
+# ============================================
+install(TARGETS edge_ai_api
+    RUNTIME DESTINATION bin
+)

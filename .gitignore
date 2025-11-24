@@ -1,37 +1,37 @@
-# Build outputs
+# Build directories
 build/
+_build/
 cmake-build-*/
 
-# CMake artifacts
-CMakeFiles/
+# CMake generated files
 CMakeCache.txt
+CMakeFiles/
 cmake_install.cmake
 Makefile
-compile_commands.json
+*.cmake
+!CMakeLists.txt
 
-# Compiled objects & libraries
+# Compiled binaries
 *.o
-*.obj
-*.lo
-*.la
 *.a
 *.so
-*.so.*
 *.dylib
-*.dll
 *.exe
+edge_ai_api
 
-# Logs & temp files
-*.log
-*.tmp
-*.cache
-
-# IDE / editor metadata
+# IDE files
 .vscode/
 .idea/
-*.code-workspace
+*.swp
+*.swo
+*~
 
-# OS artifacts
+# Dependencies (if using FetchContent)
+_deps/
+
+# Logs
+*.log
+
+# OS files
 .DS_Store
 Thumbs.db
-

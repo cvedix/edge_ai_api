@@ -1,0 +1,11 @@
+Thư viện sử dụng Dragon
+triển khai rest api Code sử dụng C++
+Yêu cầu:
+Tạo basecode structure về vận hành và tài liệu mẫu hướng dẫn xây dựng Build & Run 
+API /v1/core/health
+API /v1/core/version
+
+Lưu ý các API phải đảm bảo các prefix là /v1/core/.... 
+
+Diagram mermaid
+
