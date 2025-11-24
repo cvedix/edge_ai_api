@@ -168,7 +168,22 @@ Server sẽ khởi động và hiển thị thông tin endpoints. Nhấn `Ctrl+C
 
 ### Environment Variables
 
-Project hỗ trợ các biến môi trường sau:
+Project hỗ trợ cấu hình qua biến môi trường. Có 2 cách:
+
+**Cách 1: Sử dụng File .env (Khuyến nghị)**
+
+```bash
+# 1. Copy template
+cp .env.example .env
+
+# 2. Chỉnh sửa .env
+nano .env
+
+# 3. Chạy server với script tự động load
+./scripts/load_env.sh
+```
+
+**Cách 2: Export thủ công**
 
 ```bash
 # Cấu hình host và port
@@ -176,8 +191,20 @@ export API_HOST=0.0.0.0
 export API_PORT=8080
 
 # Chạy server
-./build/edge_ai_api
+cd build/bin
+./edge_ai_api
 ```
+
+**Các biến môi trường hỗ trợ:**
+
+Xem `docs/ENVIRONMENT_VARIABLES.md` để biết đầy đủ. Các biến chính:
+- `API_HOST` - Host address
+- `API_PORT` - Port number
+- `WATCHDOG_CHECK_INTERVAL_MS` - Watchdog interval
+- `HEALTH_MONITOR_INTERVAL_MS` - Health monitor interval
+- `CLIENT_MAX_BODY_SIZE` - Max request body size
+- `THREAD_NUM` - Worker threads (0 = auto)
+- `LOG_LEVEL` - Log level (TRACE/DEBUG/INFO/WARN/ERROR)
 
 ### IDE Setup (Optional)
 
@@ -267,6 +294,69 @@ cmake .. --debug-output
 - Lần đầu build sẽ chậm vì phải download và build Drogon (~5-10 phút)
 - Các lần build sau sẽ nhanh hơn nhiều
 - Sử dụng `-j$(nproc)` để build song song
+
+## 📊 Performance Tuning
+
+### Tăng số thread
+
+Mặc định server sử dụng `std::thread::hardware_concurrency()` threads.
+Có thể cấu hình qua biến môi trường `THREAD_NUM` trong file `.env`:
+
+```bash
+THREAD_NUM=8  # Số thread cụ thể
+THREAD_NUM=0  # Auto-detect (mặc định)
+```
+
+### Tăng body size limit
+
+Cấu hình qua biến môi trường `CLIENT_MAX_BODY_SIZE` trong file `.env`:
+
+```bash
+CLIENT_MAX_BODY_SIZE=10485760  # 10MB (mặc định: 1MB)
+```
+
+Xem `docs/ENVIRONMENT_VARIABLES.md` để biết thêm các biến cấu hình.
+
+## 🐳 Docker (Optional)
+
+Nếu muốn chạy trong Docker, có thể tạo Dockerfile:
+
+```dockerfile
+# Dockerfile example
+FROM ubuntu:20.04
+
+# Install dependencies
+RUN apt-get update && apt-get install -y \
+    build-essential \
+    cmake \
+    git \
+    libssl-dev \
+    zlib1g-dev \
+    libjsoncpp-dev \
+    uuid-dev \
+    pkg-config
+
+# Copy project
+WORKDIR /app
+COPY . .
+
+# Build
+RUN mkdir build && cd build && \
+    cmake .. && \
+    make -j$(nproc)
+
+# Expose port
+EXPOSE 8080
+
+# Run
+CMD ["./build/bin/edge_ai_api"]
+```
+
+Build và run:
+```bash
+docker build -t edge-ai-api .
+docker run -p 8080:8080 edge-ai-api
+```
 
 ## ✅ Xác Minh Setup Thành Công
 
