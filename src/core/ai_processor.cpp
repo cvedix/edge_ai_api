@@ -165,7 +165,7 @@ void AIProcessor::processFrame()
     // }
 }
 
-bool AIProcessor::initializeSDK(const std::string& config)
+bool AIProcessor::initializeSDK(const std::string& /*config*/)
 {
     // Override this in derived class
     // Initialize your AI SDK here

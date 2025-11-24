@@ -10,7 +10,7 @@
 // Static start time for uptime calculation
 static std::chrono::steady_clock::time_point g_start_time = std::chrono::steady_clock::now();
 
-void HealthHandler::getHealth(const HttpRequestPtr &req,
+void HealthHandler::getHealth(const HttpRequestPtr & /*req*/,
                               std::function<void(const HttpResponsePtr &)> &&callback)
 {
     try {

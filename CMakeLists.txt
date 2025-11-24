@@ -258,3 +258,13 @@ target_compile_definitions(edge_ai_api PRIVATE
 install(TARGETS edge_ai_api
     RUNTIME DESTINATION bin
 )
+
+# ============================================
+# Unit Tests
+# ============================================
+option(BUILD_TESTS "Build unit tests" ON)
+
+if(BUILD_TESTS)
+    enable_testing()
+    add_subdirectory(tests)
+endif()

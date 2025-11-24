@@ -3,7 +3,7 @@
 #include <drogon/HttpResponse.h>
 #include <json/json.h>
 
-void EndpointsHandler::getEndpointsStats(const HttpRequestPtr &req,
+void EndpointsHandler::getEndpointsStats(const HttpRequestPtr & /*req*/,
                                         std::function<void(const HttpResponsePtr &)> &&callback)
 {
     try {

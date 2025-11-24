@@ -29,6 +29,10 @@ edge_ai_api
 # Dependencies (if using FetchContent)
 _deps/
 
+# Test executables
+tests/edge_ai_api_tests
+build/tests/
+
 # Logs
 *.log
 
