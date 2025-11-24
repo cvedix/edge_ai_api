@@ -31,7 +31,34 @@ Available endpoints:
   GET /v2/openapi.yaml - OpenAPI spec for v2
 ```
 
-### Cách 2: Chạy với Environment Variables
+### Cách 2: Chạy với File .env (Khuyến nghị)
+
+```bash
+# Từ thư mục project root
+# 1. Copy template nếu chưa có
+cp .env.example .env
+
+# 2. Chỉnh sửa .env với các giá trị của bạn
+nano .env  # hoặc vim .env
+
+# 3. Chạy server với script tự động load .env
+./scripts/load_env.sh
+```
+
+Script sẽ tự động:
+- Load các biến từ file `.env`
+- Tìm executable ở đúng vị trí
+- Chạy server với cấu hình đã load
+
+**Ví dụ file `.env`:**
+```bash
+API_HOST=0.0.0.0
+API_PORT=8082
+WATCHDOG_CHECK_INTERVAL_MS=5000
+LOG_LEVEL=INFO
+```
+
+### Cách 2b: Chạy với Environment Variables (Thủ công)
 
 ```bash
 # Cấu hình host và port
@@ -39,7 +66,7 @@ export API_HOST=127.0.0.1
 export API_PORT=9000
 
 # Chạy server
-cd build
+cd build/bin
 ./edge_ai_api
 ```
 
@@ -68,28 +95,56 @@ echo $! > server.pid
 
 ### Thay Đổi Host và Port
 
-**Cách 1: Environment Variables (Khuyến nghị)**
+**Cách 1: Sử dụng File .env (Khuyến nghị nhất)**
+
+1. Tạo/cập nhật file `.env`:
+```bash
+cp .env.example .env
+nano .env
+```
+
+2. Chỉnh sửa các giá trị:
+```bash
+API_HOST=0.0.0.0
+API_PORT=8082
+```
+
+3. Chạy với script:
+```bash
+./scripts/load_env.sh
+```
+
+**Cách 2: Environment Variables (Thủ công)**
 ```bash
 export API_HOST=0.0.0.0
 export API_PORT=8080
+cd build/bin
 ./edge_ai_api
 ```
 
-**Cách 2: Sửa trong code** (không khuyến nghị cho production)
-Sửa trong `src/main.cpp`:
-```cpp
-std::string host = "0.0.0.0";
-uint16_t port = 8080;
+**Cách 3: Export trực tiếp khi chạy**
+```bash
+API_PORT=8082 ./build/bin/edge_ai_api
 ```
+
+### Các Biến Môi Trường Khác
+
+Xem file `docs/ENVIRONMENT_VARIABLES.md` để biết đầy đủ các biến có thể cấu hình:
+
+- `WATCHDOG_CHECK_INTERVAL_MS` - Khoảng thời gian kiểm tra watchdog (mặc định: 5000ms)
+- `WATCHDOG_TIMEOUT_MS` - Timeout của watchdog (mặc định: 30000ms)
+- `HEALTH_MONITOR_INTERVAL_MS` - Khoảng thời gian monitor health (mặc định: 1000ms)
+- `CLIENT_MAX_BODY_SIZE` - Kích thước body tối đa (mặc định: 1MB)
+- `THREAD_NUM` - Số lượng worker threads (0 = auto-detect)
+- `LOG_LEVEL` - Mức độ logging (TRACE/DEBUG/INFO/WARN/ERROR)
 
 ### Cấu Hình Threads
 
-Server tự động sử dụng số lượng CPU cores có sẵn:
-```cpp
-.setThreadNum(std::thread::hardware_concurrency())
+Server tự động sử dụng số lượng CPU cores có sẵn (mặc định). Có thể override bằng biến `THREAD_NUM` trong `.env`:
+```bash
+THREAD_NUM=8  # Số thread cụ thể
+THREAD_NUM=0  # Auto-detect (mặc định)
 ```
-
-Có thể thay đổi trong `src/main.cpp` nếu cần.
 
 ## 📡 API Endpoints
 

@@ -5,11 +5,13 @@
 #include "api/swagger_handler.h"
 #include "core/watchdog.h"
 #include "core/health_monitor.h"
+#include "core/env_config.h"
 #include <iostream>
 #include <csignal>
 #include <cstdlib>
 #include <stdexcept>
 #include <memory>
+#include <thread>
 
 /**
  * @brief Edge AI API Server
@@ -96,13 +98,9 @@ int main()
         std::signal(SIGINT, signalHandler);
         std::signal(SIGTERM, signalHandler);
 
-        // Set server configuration
-        // Default: listen on 0.0.0.0:8080
-        const char *env_port = std::getenv("API_PORT");
-        const char *env_host = std::getenv("API_HOST");
-        
-        std::string host = env_host ? env_host : "0.0.0.0";
-        uint16_t port = parsePort(env_port, 8080);
+        // Set server configuration from environment variables
+        std::string host = EnvConfig::getString("API_HOST", "0.0.0.0");
+        uint16_t port = static_cast<uint16_t>(EnvConfig::getInt("API_PORT", 8080, 1, 65535));
 
         std::cout << "Server will listen on: " << host << ":" << port << std::endl;
         std::cout << "Available endpoints:" << std::endl;
@@ -128,13 +126,15 @@ int main()
         // are available but not initialized here since AI processing endpoints are not needed yet.
         // They can be enabled later when needed.
 
-        // Initialize watchdog and health monitor
-        // Watchdog checks every 5 seconds, timeout after 30 seconds
-        g_watchdog = std::make_unique<Watchdog>(5000, 30000);
+        // Initialize watchdog and health monitor from environment variables
+        uint32_t watchdog_check_interval = EnvConfig::getUInt32("WATCHDOG_CHECK_INTERVAL_MS", 5000);
+        uint32_t watchdog_timeout = EnvConfig::getUInt32("WATCHDOG_TIMEOUT_MS", 30000);
+        uint32_t health_monitor_interval = EnvConfig::getUInt32("HEALTH_MONITOR_INTERVAL_MS", 1000);
+        
+        g_watchdog = std::make_unique<Watchdog>(watchdog_check_interval, watchdog_timeout);
         g_watchdog->start(recoveryAction);
 
-        // Health monitor checks every 1 second and sends heartbeats
-        g_health_monitor = std::make_unique<HealthMonitor>(1000);
+        g_health_monitor = std::make_unique<HealthMonitor>(health_monitor_interval);
         g_health_monitor->start(*g_watchdog);
 
         // Register watchdog and health monitor with handler
@@ -145,13 +145,31 @@ int main()
         std::cout << "  GET /v1/core/watchdog - Watchdog status" << std::endl;
         std::cout << std::endl;
 
-        // Set HTTP server configuration
+        // Set HTTP server configuration from environment variables
+        size_t max_body_size = EnvConfig::getSizeT("CLIENT_MAX_BODY_SIZE", 1024 * 1024); // Default: 1MB
+        size_t max_memory_body_size = EnvConfig::getSizeT("CLIENT_MAX_MEMORY_BODY_SIZE", 1024 * 1024); // Default: 1MB
+        int thread_num = EnvConfig::getInt("THREAD_NUM", 0, 0, 256); // 0 = auto-detect
+        std::string log_level_str = EnvConfig::getString("LOG_LEVEL", "INFO");
+        
+        // Parse log level
+        trantor::Logger::LogLevel log_level = trantor::Logger::kInfo;
+        std::string log_upper = log_level_str;
+        std::transform(log_upper.begin(), log_upper.end(), log_upper.begin(), ::toupper);
+        if (log_upper == "TRACE") log_level = trantor::Logger::kTrace;
+        else if (log_upper == "DEBUG") log_level = trantor::Logger::kDebug;
+        else if (log_upper == "INFO") log_level = trantor::Logger::kInfo;
+        else if (log_upper == "WARN") log_level = trantor::Logger::kWarn;
+        else if (log_upper == "ERROR") log_level = trantor::Logger::kError;
+        
+        // Use hardware_concurrency if thread_num is 0
+        unsigned int actual_thread_num = (thread_num == 0) ? std::thread::hardware_concurrency() : thread_num;
+        
         drogon::app()
-            .setClientMaxBodySize(1024 * 1024) // 1MB
-            .setClientMaxMemoryBodySize(1024 * 1024) // 1MB
-            .setLogLevel(trantor::Logger::kInfo)
+            .setClientMaxBodySize(max_body_size)
+            .setClientMaxMemoryBodySize(max_memory_body_size)
+            .setLogLevel(log_level)
             .addListener(host, port)
-            .setThreadNum(std::thread::hardware_concurrency())
+            .setThreadNum(actual_thread_num)
             .run();
 
         // Cleanup

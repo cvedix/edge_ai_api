@@ -42,3 +42,8 @@ Thumbs.db
 
 # Project specific
 task/
+
+# Environment files
+.env
+.env.local
+.env.*.local

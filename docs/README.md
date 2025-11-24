@@ -39,6 +39,13 @@ Tài liệu hướng dẫn đầy đủ cho Edge AI API project.
    - Component structure
    - API endpoints diagram
 
+6. **[FLOW_DIAGRAM.md](FLOW_DIAGRAM.md)** - Flow Diagram Tổng Quan
+   - Flow tổng quan hệ thống
+   - Flow xử lý request chi tiết
+   - Flow khởi động server
+   - Background services flow
+   - Mô tả các component
+
 ## 🎯 Quick Start
 
 ### Cho Người Mới

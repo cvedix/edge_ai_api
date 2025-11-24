@@ -1,5 +1,9 @@
 # Quick Start Guide
 
+> **Lưu ý:** Đây là hướng dẫn nhanh. Để biết chi tiết, xem:
+> - [docs/DEVELOPMENT_SETUP.md](docs/DEVELOPMENT_SETUP.md) - Hướng dẫn setup và build chi tiết
+> - [docs/GETTING_STARTED.md](docs/GETTING_STARTED.md) - Hướng dẫn sử dụng chi tiết
+
 ## 🚀 Build nhanh (3 bước)
 
 ### Bước 1: Cài đặt dependencies
@@ -23,11 +27,24 @@ make -j$(nproc)
 
 ### Bước 3: Chạy server
 
+**Cách 1: Sử dụng file .env (Khuyến nghị)**
+
 ```bash
-./edge_ai_api
+# Từ thư mục project root (không phải build/)
+cd ..
+cp .env.example .env
+# Chỉnh sửa .env nếu cần (ví dụ: API_PORT=8082)
+./scripts/load_env.sh
 ```
 
-Server sẽ chạy trên `http://0.0.0.0:8080`
+**Cách 2: Chạy trực tiếp với default**
+
+```bash
+cd build
+./bin/edge_ai_api
+```
+
+Server sẽ chạy trên `http://0.0.0.0:8080` (mặc định) hoặc port đã cấu hình trong `.env`
 
 ## ✅ Test
 
@@ -66,4 +83,10 @@ Lần đầu build sẽ mất ~5-10 phút để download và build Drogon. Các 
 - Drogon sẽ tự động được download và build (không cần cài thủ công)
 - Cần có kết nối internet lần đầu tiên
 - CMake 3.14+ được yêu cầu
+
+## 📚 Tài Liệu Chi Tiết
+
+- **[docs/DEVELOPMENT_SETUP.md](docs/DEVELOPMENT_SETUP.md)** - Hướng dẫn setup và build đầy đủ với troubleshooting
+- **[docs/GETTING_STARTED.md](docs/GETTING_STARTED.md)** - Hướng dẫn sử dụng API và cấu hình
+- **[docs/ENVIRONMENT_VARIABLES.md](docs/ENVIRONMENT_VARIABLES.md)** - Danh sách đầy đủ biến môi trường
 
