@@ -1,0 +1,39 @@
+[Unit]
+Description=Edge AI API Server
+Documentation=https://github.com/your-org/edge_ai_api
+After=network.target
+
+[Service]
+Type=simple
+User=edgeai
+Group=edgeai
+WorkingDirectory=/opt/edge_ai_api
+ExecStart=/usr/local/bin/edge_ai_api
+Restart=always
+RestartSec=10
+StandardOutput=journal
+StandardError=journal
+
+# Resource limits
+LimitNOFILE=65536
+MemoryMax=2G
+CPUQuota=200%
+
+# Security settings
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/opt/edge_ai_api/logs /opt/edge_ai_api/data
+
+# Watchdog settings (systemd built-in watchdog)
+WatchdogSec=30
+NotifyAccess=all
+
+# Environment variables
+Environment="API_HOST=0.0.0.0"
+Environment="API_PORT=8080"
+
+[Install]
+WantedBy=multi-user.target
+
