@@ -150,6 +150,33 @@ inline double getDouble(const char* name, double default_value, double min_value
 }
 
 /**
+ * @brief Get boolean environment variable
+ * @param name Variable name
+ * @param default_value Default value if not set
+ * @return Boolean value or default
+ */
+inline bool getBool(const char* name, bool default_value) {
+    const char* value = std::getenv(name);
+    if (!value) {
+        return default_value;
+    }
+    
+    std::string str_value = value;
+    std::transform(str_value.begin(), str_value.end(), str_value.begin(), ::tolower);
+    
+    if (str_value == "1" || str_value == "true" || str_value == "yes" || str_value == "on") {
+        return true;
+    } else if (str_value == "0" || str_value == "false" || str_value == "no" || str_value == "off") {
+        return false;
+    }
+    
+    std::cerr << "Warning: Invalid " << name << "='" << value 
+             << "'. Expected boolean (true/false, 1/0, yes/no, on/off). Using default: " 
+             << (default_value ? "true" : "false") << std::endl;
+    return default_value;
+}
+
+/**
  * @brief Parse log level from string
  * Note: This function requires drogon headers to be included
  * @param level_str Log level string (TRACE, DEBUG, INFO, WARN, ERROR)
