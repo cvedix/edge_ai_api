@@ -305,6 +305,13 @@ fi
 cd "$PROJECT_ROOT"
 
 # Copy configuration files
+# Create .env from .env.example if .env doesn't exist
+if [ ! -f "$PROJECT_ROOT/.env" ] && [ -f "$PROJECT_ROOT/.env.example" ]; then
+    echo "Tạo .env từ .env.example..."
+    cp "$PROJECT_ROOT/.env.example" "$PROJECT_ROOT/.env"
+    echo -e "${GREEN}✓${NC} Đã tạo .env từ .env.example"
+fi
+
 if [ -f "$PROJECT_ROOT/.env" ]; then
     cp "$PROJECT_ROOT/.env" "$INSTALL_DIR/config/.env"
     chown "$SERVICE_USER:$SERVICE_GROUP" "$INSTALL_DIR/config/.env"
