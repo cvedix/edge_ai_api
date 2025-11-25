@@ -22,15 +22,22 @@ CPUQuota=200%
 # Security settings
 NoNewPrivileges=true
 PrivateTmp=true
-ProtectSystem=strict
+# Use 'true' instead of 'strict' to allow network binding
+ProtectSystem=true
 ProtectHome=true
-ReadWritePaths=/opt/edge_ai_api/logs /opt/edge_ai_api/data
+# Allow network access (required for binding ports)
+PrivateNetwork=false
+ReadWritePaths=/opt/edge_ai_api/logs /opt/edge_ai_api/data /opt/edge_ai_api/uploads
 
 # Watchdog settings (systemd built-in watchdog)
-WatchdogSec=30
-NotifyAccess=all
+# NOTE: Disabled because application has its own watchdog implementation
+# If you want to use systemd watchdog, implement sd_notify() in the application
+# WatchdogSec=30
+# NotifyAccess=all
 
 # Environment variables
+# Load from .env file if exists, otherwise use defaults
+EnvironmentFile=-/opt/edge_ai_api/config/.env
 Environment="API_HOST=0.0.0.0"
 Environment="API_PORT=8080"
 

@@ -58,6 +58,11 @@ Environment="API_PORT=8080"
 | `THREAD_NUM` | Số lượng worker threads (0 = auto) | `0` | `src/main.cpp` |
 | `LOG_LEVEL` | Mức độ logging (TRACE/DEBUG/INFO/WARN/ERROR) | `INFO` | `src/main.cpp` |
 
+**Lưu ý về Swagger UI:**
+- Swagger UI tự động sử dụng `API_HOST` và `API_PORT` để cấu hình server URL
+- Nếu `API_HOST=0.0.0.0`, Swagger UI sẽ tự động thay thế bằng `localhost` hoặc host từ request header để đảm bảo browser có thể truy cập
+- Server URLs trong OpenAPI spec được cập nhật động khi serve, không cần restart server khi thay đổi port
+
 #### Watchdog Configuration
 | Biến | Mô tả | Mặc định | File sử dụng |
 |------|-------|----------|--------------|

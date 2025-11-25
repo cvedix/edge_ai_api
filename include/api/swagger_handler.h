@@ -72,14 +72,16 @@ private:
     /**
      * @brief Generate Swagger UI HTML content
      * @param version API version (e.g., "v1", "v2") or empty for all versions
+     * @param baseUrl Base URL for the API server (e.g., "http://localhost:8080")
      */
-    std::string generateSwaggerUIHTML(const std::string& version = "") const;
+    std::string generateSwaggerUIHTML(const std::string& version = "", const std::string& baseUrl = "") const;
 
     /**
      * @brief Read OpenAPI YAML file
      * @param version API version to filter (e.g., "v1", "v2") or empty for all versions
+     * @param requestHost Host from request header (for browser-accessible URL)
      */
-    std::string readOpenAPIFile(const std::string& version = "") const;
+    std::string readOpenAPIFile(const std::string& version = "", const std::string& requestHost = "") const;
 
     /**
      * @brief Filter OpenAPI YAML to only include paths for specified version
@@ -88,6 +90,14 @@ private:
      * @return Filtered YAML content
      */
     std::string filterOpenAPIByVersion(const std::string& yamlContent, const std::string& version) const;
+
+    /**
+     * @brief Update server URLs in OpenAPI spec from environment variables
+     * @param yamlContent Original YAML content
+     * @param requestHost Host from request header (for browser-accessible URL, overrides env vars)
+     * @return YAML content with updated server URLs
+     */
+    std::string updateOpenAPIServerURLs(const std::string& yamlContent, const std::string& requestHost = "") const;
 
     // Cache for OpenAPI file content
     struct CacheEntry {
