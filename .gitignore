@@ -47,3 +47,6 @@ task/
 .env
 .env.local
 .env.*.local
+
+# Development documentation (internal use only)
+develop_doc/
