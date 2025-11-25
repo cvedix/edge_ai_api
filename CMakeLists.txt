@@ -9,7 +9,7 @@ set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wall -Wextra")
 # Check System Dependencies
 # ============================================
 # Modern approach: Check dependencies in CMake, not shell scripts
-include(${CMAKE_SOURCE_DIR}/cmake/CheckDependencies.cmake)
+# include(${CMAKE_SOURCE_DIR}/cmake/CheckDependencies.cmake) //wrong here
 
 # ============================================
 # Drogon HTTP Framework Dependencies
@@ -49,6 +49,10 @@ if(NOT Jsoncpp_FOUND)
         message(STATUS "Jsoncpp not found. Attempting to download using FetchContent...")
         include(FetchContent)
         
+        # Enable position-independent code for jsoncpp (required for shared libraries)
+        # This must be set before FetchContent_MakeAvailable
+        set(CMAKE_POSITION_INDEPENDENT_CODE ON)
+        
         FetchContent_Declare(
             jsoncpp
             GIT_REPOSITORY https://github.com/open-source-parsers/jsoncpp.git
@@ -64,6 +68,14 @@ if(NOT Jsoncpp_FOUND)
         set(JSONCPP_INCLUDE_DIR "${CMAKE_BINARY_DIR}/_deps/jsoncpp-src/include" CACHE PATH "" FORCE)
         
         FetchContent_MakeAvailable(jsoncpp)
+        
+        # Ensure jsoncpp targets are built with -fPIC (backup in case CMAKE_POSITION_INDEPENDENT_CODE didn't propagate)
+        if(TARGET jsoncpp_lib)
+            set_target_properties(jsoncpp_lib PROPERTIES POSITION_INDEPENDENT_CODE ON)
+        endif()
+        if(TARGET jsoncpp_static)
+            set_target_properties(jsoncpp_static PROPERTIES POSITION_INDEPENDENT_CODE ON)
+        endif()
         
         # After FetchContent_MakeAvailable, jsoncpp should be available
         # Use source include directory (always exists)
