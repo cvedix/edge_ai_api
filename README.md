@@ -67,3 +67,78 @@ các instance thị giác máy tính thời gian thực trên thiết bị biên
 header dưới `/usr/include/cvedix`. Bạn có thể mở rộng ví dụ này với đồ thị node riêng, dashboard,
 hoặc script tự động triển khai.
 
+---
+
+## 🚀 Triển Khai Lên Thiết Bị Thật (Production)
+
+### Tự Động Chạy Khi Khởi Động Thiết Bị
+
+Để cấu hình project tự động chạy khi mở thiết bị, sử dụng script triển khai:
+
+```bash
+cd /home/ubuntu/project/edge_ai_api
+sudo ./scripts/deploy_production.sh
+```
+
+Script này sẽ:
+- ✅ Build project (nếu chưa build)
+- ✅ Tạo user và thư mục cần thiết
+- ✅ Cài đặt executable vào hệ thống
+- ✅ Cài đặt systemd service
+- ✅ Kích hoạt tự động chạy khi khởi động
+- ✅ Khởi động service ngay lập tức
+
+### Kiểm Tra Service
+
+```bash
+# Xem trạng thái
+sudo systemctl status edge-ai-api
+
+# Xem log
+sudo journalctl -u edge-ai-api -f
+
+# Test API
+curl http://localhost:8080/v1/core/health
+```
+
+### Quản Lý Service
+
+```bash
+# Khởi động lại
+sudo systemctl restart edge-ai-api
+
+# Dừng
+sudo systemctl stop edge-ai-api
+
+# Bắt đầu
+sudo systemctl start edge-ai-api
+
+# Tắt tự động chạy khi khởi động
+sudo systemctl disable edge-ai-api
+
+# Bật tự động chạy khi khởi động
+sudo systemctl enable edge-ai-api
+```
+
+### Cấu Hình
+
+Tạo file `.env` tại `/opt/edge_ai_api/config/.env` để cấu hình:
+
+```bash
+sudo nano /opt/edge_ai_api/config/.env
+```
+
+Ví dụ:
+```bash
+API_HOST=0.0.0.0
+API_PORT=8080
+LOG_LEVEL=INFO
+```
+
+Sau đó restart service:
+```bash
+sudo systemctl restart edge-ai-api
+```
+
+📚 **Xem chi tiết:** [deploy/README.md](deploy/README.md) - Hướng dẫn triển khai đầy đủ
+
