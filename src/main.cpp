@@ -3,9 +3,16 @@
 #include "api/version_handler.h"
 #include "api/watchdog_handler.h"
 #include "api/swagger_handler.h"
+#include "api/create_instance_handler.h"
+#include "api/instance_handler.h"
+#include "models/model_upload_handler.h"
 #include "core/watchdog.h"
 #include "core/health_monitor.h"
 #include "core/env_config.h"
+#include "instances/instance_registry.h"
+#include "core/solution_registry.h"
+#include "core/pipeline_builder.h"
+#include "instances/instance_storage.h"
 #include <iostream>
 #include <csignal>
 #include <cstdlib>
@@ -107,6 +114,15 @@ int main()
         std::cout << "Available endpoints:" << std::endl;
         std::cout << "  GET /v1/core/health  - Health check" << std::endl;
         std::cout << "  GET /v1/core/version - Version information" << std::endl;
+        std::cout << "  POST /v1/core/instance - Create new instance" << std::endl;
+        std::cout << "  GET /v1/core/instances - List all instances" << std::endl;
+        std::cout << "  GET /v1/core/instances/{id} - Get instance details" << std::endl;
+        std::cout << "  POST /v1/core/instances/{id}/start - Start instance" << std::endl;
+        std::cout << "  POST /v1/core/instances/{id}/stop - Stop instance" << std::endl;
+        std::cout << "  DELETE /v1/core/instances/{id} - Delete instance" << std::endl;
+        std::cout << "  POST /v1/core/models/upload - Upload model file" << std::endl;
+        std::cout << "  GET /v1/core/models/list - List uploaded models" << std::endl;
+        std::cout << "  DELETE /v1/core/models/{modelName} - Delete model file" << std::endl;
         std::cout << "  GET /swagger         - Swagger UI (all versions)" << std::endl;
         std::cout << "  GET /v1/swagger      - Swagger UI for API v1" << std::endl;
         std::cout << "  GET /v2/swagger      - Swagger UI for API v2" << std::endl;
@@ -122,6 +138,49 @@ int main()
         static VersionHandler versionHandler;
         static WatchdogHandler watchdogHandler;
         static SwaggerHandler swaggerHandler;
+        
+        // Initialize instance management components
+        static SolutionRegistry& solutionRegistry = SolutionRegistry::getInstance();
+        static PipelineBuilder pipelineBuilder;
+        
+        // Initialize instance storage with configurable directory
+        std::string instancesDir = EnvConfig::getString("INSTANCES_DIR", "./instances");
+        static InstanceStorage instanceStorage(instancesDir);
+        static InstanceRegistry instanceRegistry(solutionRegistry, pipelineBuilder, instanceStorage);
+        
+        // Initialize default solutions (face_detection, etc.)
+        solutionRegistry.initializeDefaultSolutions();
+        
+        // Load persistent instances
+        instanceRegistry.loadPersistentInstances();
+        
+        // Register instance registry with handlers
+        CreateInstanceHandler::setInstanceRegistry(&instanceRegistry);
+        InstanceHandler::setInstanceRegistry(&instanceRegistry);
+        
+        // Create handler instances to register endpoints
+        static CreateInstanceHandler createInstanceHandler;
+        static InstanceHandler instanceHandler;
+        
+        // Initialize model upload handler with configurable directory
+        std::string modelsDir = EnvConfig::getString("MODELS_DIR", "./models");
+        ModelUploadHandler::setModelsDirectory(modelsDir);
+        static ModelUploadHandler modelUploadHandler;
+        
+        std::cout << "[Main] Instance management initialized" << std::endl;
+        std::cout << "  POST /v1/core/instance - Create new instance" << std::endl;
+        std::cout << "  GET /v1/core/instances - List all instances" << std::endl;
+        std::cout << "  GET /v1/core/instances/{instanceId} - Get instance details" << std::endl;
+        std::cout << "  POST /v1/core/instances/{instanceId}/start - Start instance" << std::endl;
+        std::cout << "  POST /v1/core/instances/{instanceId}/stop - Stop instance" << std::endl;
+        std::cout << "  DELETE /v1/core/instances/{instanceId} - Delete instance" << std::endl;
+        std::cout << "  Instances directory: " << instancesDir << std::endl;
+        std::cout << "[Main] Model upload handler initialized" << std::endl;
+        std::cout << "  POST /v1/core/models/upload - Upload model file" << std::endl;
+        std::cout << "  GET /v1/core/models/list - List uploaded models" << std::endl;
+        std::cout << "  DELETE /v1/core/models/{modelName} - Delete model file" << std::endl;
+        std::cout << "  Models directory: " << modelsDir << std::endl;
+        std::cout << std::endl;
         
         // Note: Infrastructure components (rate limiter, cache, resource manager, etc.)
         // are available but not initialized here since AI processing endpoints are not needed yet.
