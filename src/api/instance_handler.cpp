@@ -92,6 +92,21 @@ void InstanceHandler::getInstance(
         
         // Get instance ID from path parameter
         std::string instanceId = req->getParameter("instanceId");
+        
+        // Fallback: extract from path if getParameter doesn't work
+        if (instanceId.empty()) {
+            std::string path = req->getPath();
+            size_t instancesPos = path.find("/instances/");
+            if (instancesPos != std::string::npos) {
+                size_t start = instancesPos + 11; // length of "/instances/"
+                size_t end = path.find("/", start);
+                if (end == std::string::npos) {
+                    end = path.length();
+                }
+                instanceId = path.substr(start, end - start);
+            }
+        }
+        
         if (instanceId.empty()) {
             callback(createErrorResponse(400, "Invalid request", "Instance ID is required"));
             return;
@@ -137,6 +152,21 @@ void InstanceHandler::startInstance(
         
         // Get instance ID from path parameter
         std::string instanceId = req->getParameter("instanceId");
+        
+        // Fallback: extract from path if getParameter doesn't work
+        if (instanceId.empty()) {
+            std::string path = req->getPath();
+            size_t instancesPos = path.find("/instances/");
+            if (instancesPos != std::string::npos) {
+                size_t start = instancesPos + 11; // length of "/instances/"
+                size_t end = path.find("/", start);
+                if (end == std::string::npos) {
+                    end = path.length();
+                }
+                instanceId = path.substr(start, end - start);
+            }
+        }
+        
         if (instanceId.empty()) {
             callback(createErrorResponse(400, "Invalid request", "Instance ID is required"));
             return;
@@ -185,7 +215,34 @@ void InstanceHandler::stopInstance(
         }
         
         // Get instance ID from path parameter
+        // Try multiple ways to get path parameter
         std::string instanceId = req->getParameter("instanceId");
+        
+        // Debug: log all parameters
+        std::cerr << "[InstanceHandler] stopInstance - All parameters:" << std::endl;
+        auto params = req->getParameters();
+        for (const auto& param : params) {
+            std::cerr << "[InstanceHandler]   " << param.first << " = " << param.second << std::endl;
+        }
+        std::cerr << "[InstanceHandler] Path: " << req->getPath() << std::endl;
+        std::cerr << "[InstanceHandler] instanceId from getParameter: '" << instanceId << "'" << std::endl;
+        
+        // Try alternative: get from path directly
+        if (instanceId.empty()) {
+            // Extract from path: /v1/core/instances/{instanceId}/stop
+            std::string path = req->getPath();
+            size_t instancesPos = path.find("/instances/");
+            if (instancesPos != std::string::npos) {
+                size_t start = instancesPos + 11; // length of "/instances/"
+                size_t end = path.find("/", start);
+                if (end == std::string::npos) {
+                    end = path.length();
+                }
+                instanceId = path.substr(start, end - start);
+                std::cerr << "[InstanceHandler] Extracted instanceId from path: '" << instanceId << "'" << std::endl;
+            }
+        }
+        
         if (instanceId.empty()) {
             callback(createErrorResponse(400, "Invalid request", "Instance ID is required"));
             return;
@@ -235,6 +292,21 @@ void InstanceHandler::deleteInstance(
         
         // Get instance ID from path parameter
         std::string instanceId = req->getParameter("instanceId");
+        
+        // Fallback: extract from path if getParameter doesn't work
+        if (instanceId.empty()) {
+            std::string path = req->getPath();
+            size_t instancesPos = path.find("/instances/");
+            if (instancesPos != std::string::npos) {
+                size_t start = instancesPos + 11; // length of "/instances/"
+                size_t end = path.find("/", start);
+                if (end == std::string::npos) {
+                    end = path.length();
+                }
+                instanceId = path.substr(start, end - start);
+            }
+        }
+        
         if (instanceId.empty()) {
             callback(createErrorResponse(400, "Invalid request", "Instance ID is required"));
             return;
