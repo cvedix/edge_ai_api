@@ -32,6 +32,12 @@ public:
         ADD_METHOD_TO(SwaggerHandler::getOpenAPISpec, "/v1/openapi.yaml", Get);
         ADD_METHOD_TO(SwaggerHandler::getOpenAPISpec, "/v2/openapi.yaml", Get);
         ADD_METHOD_TO(SwaggerHandler::getOpenAPISpec, "/api-docs", Get);
+        ADD_METHOD_TO(SwaggerHandler::handleOptions, "/swagger", Options);
+        ADD_METHOD_TO(SwaggerHandler::handleOptions, "/v1/swagger", Options);
+        ADD_METHOD_TO(SwaggerHandler::handleOptions, "/v2/swagger", Options);
+        ADD_METHOD_TO(SwaggerHandler::handleOptions, "/openapi.yaml", Options);
+        ADD_METHOD_TO(SwaggerHandler::handleOptions, "/v1/openapi.yaml", Options);
+        ADD_METHOD_TO(SwaggerHandler::handleOptions, "/v2/openapi.yaml", Options);
     METHOD_LIST_END
 
     /**
@@ -45,6 +51,12 @@ public:
      */
     void getOpenAPISpec(const HttpRequestPtr &req,
                        std::function<void(const HttpResponsePtr &)> &&callback);
+    
+    /**
+     * @brief Handle OPTIONS request for CORS preflight
+     */
+    void handleOptions(const HttpRequestPtr &req,
+                     std::function<void(const HttpResponsePtr &)> &&callback);
 
     /**
      * @brief Validate version format (e.g., "v1", "v2")

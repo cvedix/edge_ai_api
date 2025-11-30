@@ -564,3 +564,15 @@ std::string SwaggerHandler::updateOpenAPIServerURLs(const std::string& yamlConte
     return result;
 }
 
+void SwaggerHandler::handleOptions(const HttpRequestPtr &req,
+                                   std::function<void(const HttpResponsePtr &)> &&callback)
+{
+    auto resp = HttpResponse::newHttpResponse();
+    resp->setStatusCode(k200OK);
+    resp->addHeader("Access-Control-Allow-Origin", "*");
+    resp->addHeader("Access-Control-Allow-Methods", "GET, OPTIONS");
+    resp->addHeader("Access-Control-Allow-Headers", "Content-Type");
+    resp->addHeader("Access-Control-Max-Age", "3600");
+    callback(resp);
+}
+
