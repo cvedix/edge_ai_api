@@ -154,14 +154,24 @@ std::optional<InstanceInfo> InstanceRegistry::getInstance(const std::string& ins
 bool InstanceRegistry::startInstance(const std::string& instanceId) {
     std::lock_guard<std::mutex> lock(mutex_);
     
-    auto pipelineIt = pipelines_.find(instanceId);
-    if (pipelineIt == pipelines_.end()) {
-        return false;
-    }
-    
     auto instanceIt = instances_.find(instanceId);
     if (instanceIt == instances_.end()) {
         return false;
+    }
+    
+    // Check if pipeline exists, if not, try to rebuild it
+    auto pipelineIt = pipelines_.find(instanceId);
+    if (pipelineIt == pipelines_.end()) {
+        std::cerr << "[InstanceRegistry] Pipeline not found for instance " << instanceId 
+                  << ", attempting to rebuild from instance info..." << std::endl;
+        if (!rebuildPipelineFromInstanceInfo(instanceId)) {
+            std::cerr << "[InstanceRegistry] Failed to rebuild pipeline for instance " << instanceId << std::endl;
+            return false;
+        }
+        pipelineIt = pipelines_.find(instanceId);
+        if (pipelineIt == pipelines_.end()) {
+            return false;
+        }
     }
     
     if (startPipeline(pipelineIt->second)) {
@@ -343,6 +353,78 @@ void InstanceRegistry::stopPipeline(const std::vector<std::shared_ptr<cvedix_nod
         std::cerr << "[InstanceRegistry] Pipeline stopped and detached" << std::endl;
     } catch (const std::exception& e) {
         std::cerr << "[InstanceRegistry] Exception in stopPipeline: " << e.what() << std::endl;
+    }
+}
+
+bool InstanceRegistry::rebuildPipelineFromInstanceInfo(const std::string& instanceId) {
+    auto instanceIt = instances_.find(instanceId);
+    if (instanceIt == instances_.end()) {
+        return false;
+    }
+    
+    const InstanceInfo& info = instanceIt->second;
+    
+    // Check if instance has a solution ID
+    if (info.solutionId.empty()) {
+        std::cerr << "[InstanceRegistry] Cannot rebuild pipeline: instance " << instanceId 
+                  << " has no solution ID" << std::endl;
+        return false;
+    }
+    
+    // Get solution config
+    auto optSolution = solution_registry_.getSolution(info.solutionId);
+    if (!optSolution.has_value()) {
+        std::cerr << "[InstanceRegistry] Cannot rebuild pipeline: solution '" << info.solutionId 
+                  << "' not found" << std::endl;
+        return false;
+    }
+    
+    SolutionConfig solution = optSolution.value();
+    
+    // Create CreateInstanceRequest from InstanceInfo
+    CreateInstanceRequest req;
+    req.name = info.displayName;
+    req.group = info.group;
+    req.solution = info.solutionId;
+    req.persistent = info.persistent;
+    req.frameRateLimit = info.frameRateLimit;
+    req.metadataMode = info.metadataMode;
+    req.statisticsMode = info.statisticsMode;
+    req.diagnosticsMode = info.diagnosticsMode;
+    req.debugMode = info.debugMode;
+    req.detectorMode = info.detectorMode;
+    req.detectionSensitivity = info.detectionSensitivity;
+    req.movementSensitivity = info.movementSensitivity;
+    req.sensorModality = info.sensorModality;
+    req.autoStart = info.autoStart;
+    req.autoRestart = info.autoRestart;
+    req.inputOrientation = info.inputOrientation;
+    req.inputPixelLimit = info.inputPixelLimit;
+    
+    // Use originator.address as RTSP URL if available
+    if (!info.originator.address.empty()) {
+        req.additionalParams["RTSP_URL"] = info.originator.address;
+    }
+    
+    // Build pipeline
+    std::vector<std::shared_ptr<cvedix_nodes::cvedix_node>> pipeline;
+    try {
+        pipeline = pipeline_builder_.buildPipeline(solution, req, instanceId);
+        if (!pipeline.empty()) {
+            pipelines_[instanceId] = pipeline;
+            std::cerr << "[InstanceRegistry] Successfully rebuilt pipeline for instance " << instanceId << std::endl;
+            return true;
+        } else {
+            std::cerr << "[InstanceRegistry] Pipeline build returned empty pipeline for instance " << instanceId << std::endl;
+            return false;
+        }
+    } catch (const std::exception& e) {
+        std::cerr << "[InstanceRegistry] Exception rebuilding pipeline for instance " << instanceId 
+                  << ": " << e.what() << std::endl;
+        return false;
+    } catch (...) {
+        std::cerr << "[InstanceRegistry] Unknown error rebuilding pipeline for instance " << instanceId << std::endl;
+        return false;
     }
 }
 

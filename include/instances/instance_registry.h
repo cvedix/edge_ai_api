@@ -117,5 +117,12 @@ private:
      * @brief Stop and cleanup pipeline nodes
      */
     void stopPipeline(const std::vector<std::shared_ptr<cvedix_nodes::cvedix_node>>& nodes);
+    
+    /**
+     * @brief Rebuild pipeline from instance info (for instances loaded from storage)
+     * @param instanceId Instance ID
+     * @return true if pipeline was rebuilt successfully
+     */
+    bool rebuildPipelineFromInstanceInfo(const std::string& instanceId);
 };
 
