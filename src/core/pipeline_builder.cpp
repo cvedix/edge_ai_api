@@ -44,6 +44,18 @@ std::vector<std::shared_ptr<cvedix_nodes::cvedix_node>> PipelineBuilder::buildPi
     // Ensure CVEDIX SDK is initialized before creating nodes
     ensureCVEDIXInitialized();
     
+    std::cerr << "[PipelineBuilder] ========================================" << std::endl;
+    std::cerr << "[PipelineBuilder] Building pipeline for solution: " << solution.solutionId << std::endl;
+    std::cerr << "[PipelineBuilder] Solution name: " << solution.solutionName << std::endl;
+    std::cerr << "[PipelineBuilder] Instance ID: " << instanceId << std::endl;
+    std::cerr << "[PipelineBuilder] Pipeline will contain " << solution.pipeline.size() << " nodes:" << std::endl;
+    for (size_t i = 0; i < solution.pipeline.size(); ++i) {
+        const auto& nodeConfig = solution.pipeline[i];
+        std::cerr << "[PipelineBuilder]   " << (i + 1) << ". " << nodeConfig.nodeType 
+                  << " (" << nodeConfig.nodeName << ")" << std::endl;
+    }
+    std::cerr << "[PipelineBuilder] ========================================" << std::endl;
+    
     std::vector<std::shared_ptr<cvedix_nodes::cvedix_node>> nodes;
     
     // Build nodes in pipeline order

@@ -64,5 +64,10 @@ private:
      * @brief Register face detection solution
      */
     void registerFaceDetectionSolution();
+    
+    /**
+     * @brief Register object detection solution (YOLO)
+     */
+    void registerObjectDetectionSolution();
 };
 

@@ -32,6 +32,7 @@ bool SolutionRegistry::hasSolution(const std::string& solutionId) const {
 
 void SolutionRegistry::initializeDefaultSolutions() {
     registerFaceDetectionSolution();
+    registerObjectDetectionSolution();  // Add YOLO-based solution
 }
 
 void SolutionRegistry::registerFaceDetectionSolution() {
@@ -67,6 +68,53 @@ void SolutionRegistry::registerFaceDetectionSolution() {
     fileDes.nodeName = "file_des_{instanceId}";
     fileDes.parameters["save_dir"] = "./output/{instanceId}";
     fileDes.parameters["name_prefix"] = "face_detection";
+    fileDes.parameters["osd"] = "true";
+    config.pipeline.push_back(fileDes);
+    
+    // Default configurations
+    config.defaults["detectorMode"] = "SmartDetection";
+    config.defaults["detectionSensitivity"] = "0.7";
+    config.defaults["sensorModality"] = "RGB";
+    
+    registerSolution(config);
+}
+
+void SolutionRegistry::registerObjectDetectionSolution() {
+    SolutionConfig config;
+    config.solutionId = "object_detection";
+    config.solutionName = "Object Detection (YOLO)";
+    config.solutionType = "object_detection";
+    
+    // RTSP Source Node
+    SolutionConfig::NodeConfig rtspSrc;
+    rtspSrc.nodeType = "rtsp_src";
+    rtspSrc.nodeName = "rtsp_src_{instanceId}";
+    rtspSrc.parameters["rtsp_url"] = "${RTSP_URL}";
+    rtspSrc.parameters["channel"] = "0";
+    rtspSrc.parameters["resize_ratio"] = "1.0";
+    config.pipeline.push_back(rtspSrc);
+    
+    // YOLO Detector Node (commented out - need to implement createYOLODetectorNode)
+    // To use YOLO, you need to:
+    // 1. Add "yolo_detector" case in PipelineBuilder::createNode()
+    // 2. Implement createYOLODetectorNode() in PipelineBuilder
+    // 3. Uncomment the code below
+    /*
+    SolutionConfig::NodeConfig yoloDetector;
+    yoloDetector.nodeType = "yolo_detector";
+    yoloDetector.nodeName = "yolo_detector_{instanceId}";
+    yoloDetector.parameters["weights_path"] = "${MODEL_PATH}";
+    yoloDetector.parameters["config_path"] = "${CONFIG_PATH}";
+    yoloDetector.parameters["labels_path"] = "${LABELS_PATH}";
+    config.pipeline.push_back(yoloDetector);
+    */
+    
+    // File Destination Node
+    SolutionConfig::NodeConfig fileDes;
+    fileDes.nodeType = "file_des";
+    fileDes.nodeName = "file_des_{instanceId}";
+    fileDes.parameters["save_dir"] = "./output/{instanceId}";
+    fileDes.parameters["name_prefix"] = "object_detection";
     fileDes.parameters["osd"] = "true";
     config.pipeline.push_back(fileDes);
     
