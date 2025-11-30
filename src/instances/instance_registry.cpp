@@ -311,14 +311,38 @@ void InstanceRegistry::stopPipeline(const std::vector<std::shared_ptr<cvedix_nod
     }
     
     try {
-        // Stop and detach all nodes
-        for (auto& node : nodes) {
-            if (node) {
-                node->detach_recursively();
+        // First, stop the RTSP source node if it exists (typically the first node)
+        // This is important to stop the connection retry loop
+        if (!nodes.empty()) {
+            auto rtspNode = std::dynamic_pointer_cast<cvedix_nodes::cvedix_rtsp_src_node>(nodes[0]);
+            if (rtspNode) {
+                std::cerr << "[InstanceRegistry] Stopping RTSP source node..." << std::endl;
+                try {
+                    rtspNode->stop();
+                    std::cerr << "[InstanceRegistry] RTSP source node stopped" << std::endl;
+                    // Give it a moment to fully stop
+                    std::this_thread::sleep_for(std::chrono::milliseconds(100));
+                } catch (const std::exception& e) {
+                    std::cerr << "[InstanceRegistry] Exception stopping RTSP node: " << e.what() << std::endl;
+                } catch (...) {
+                    std::cerr << "[InstanceRegistry] Unknown error stopping RTSP node" << std::endl;
+                }
             }
         }
+        
+        // Then detach all nodes
+        for (auto& node : nodes) {
+            if (node) {
+                try {
+                    node->detach_recursively();
+                } catch (const std::exception& e) {
+                    // Ignore errors during detach
+                }
+            }
+        }
+        std::cerr << "[InstanceRegistry] Pipeline stopped and detached" << std::endl;
     } catch (const std::exception& e) {
-        // Ignore errors during cleanup
+        std::cerr << "[InstanceRegistry] Exception in stopPipeline: " << e.what() << std::endl;
     }
 }
 
