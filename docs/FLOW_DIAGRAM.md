@@ -25,7 +25,6 @@ flowchart TD
     ExecuteHandler --> ProcessLogic[Xử Lý Logic<br/>Validate input,<br/>Xử lý dữ liệu,<br/>Tạo response]
     ProcessLogic --> BuildResponse[Tạo JSON Response<br/>Status code, Headers, Body]
     BuildResponse --> SendResponse[Gửi Response Về Client]
-    SendResponse --> Running
     
     Running -->|Signal Shutdown| ShutdownSignal[Nhận Signal<br/>SIGINT/SIGTERM]
     ShutdownSignal --> StopHealthMonitor[Dừng Health Monitor]
@@ -40,8 +39,7 @@ flowchart TD
     HeartbeatOK -->|Có| UpdateStats[Cập Nhật Stats<br/>Đếm heartbeat]
     HeartbeatOK -->|Không| CheckTimeout{Kiểm Tra Timeout<br/>Quá 30s?}
     CheckTimeout -->|Có| TriggerRecovery[Kích Hoạt Recovery Action<br/>Log lỗi, xử lý recovery]
-    CheckTimeout -->|Không| UpdateStats
-    TriggerRecovery --> UpdateStats
+    CheckTimeout -->|Không| TriggerRecovery
     UpdateStats --> WatchdogLoop
     
     InitHealthMonitor --> HealthMonitorLoop[Health Monitor Loop<br/>Thread riêng]

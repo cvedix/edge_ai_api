@@ -273,6 +273,16 @@ http://localhost:8080/v1/swagger
 http://localhost:8080/v2/swagger
 ```
 
+**Lưu ý:**
+- Swagger UI tự động lấy server URL từ biến môi trường (`API_HOST` và `API_PORT`)
+- Server URL trong OpenAPI spec được cập nhật động dựa trên request host để đảm bảo browser có thể truy cập
+- Nếu `API_HOST=0.0.0.0`, Swagger UI sẽ tự động sử dụng `localhost` hoặc host từ request header
+- CORS đã được cấu hình để cho phép cross-origin requests
+
+**Ví dụ:**
+- Nếu server chạy trên port 8082: `http://localhost:8082/v1/swagger`
+- Swagger UI sẽ tự động sử dụng `http://localhost:8082` làm server URL để test API
+
 ### 6. OpenAPI Specification
 
 **Endpoints:**
@@ -286,6 +296,10 @@ curl http://localhost:8080/openapi.yaml
 curl http://localhost:8080/v1/openapi.yaml
 curl http://localhost:8080/v2/openapi.yaml
 ```
+
+**Lưu ý:**
+- Server URLs trong OpenAPI spec được cập nhật động từ biến môi trường
+- URLs sẽ tự động thay đổi theo `API_HOST` và `API_PORT` được cấu hình
 
 ## 🧪 Testing APIs
 

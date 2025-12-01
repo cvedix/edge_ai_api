@@ -55,8 +55,20 @@ Environment="API_PORT=8080"
 | `API_PORT` | Port của HTTP server | `8080` | `src/main.cpp` |
 | `CLIENT_MAX_BODY_SIZE` | Kích thước body tối đa (bytes) | `1048576` (1MB) | `src/main.cpp` |
 | `CLIENT_MAX_MEMORY_BODY_SIZE` | Kích thước memory body tối đa (bytes) | `1048576` (1MB) | `src/main.cpp` |
-| `THREAD_NUM` | Số lượng worker threads (0 = auto) | `0` | `src/main.cpp` |
+| `THREAD_NUM` | Số lượng worker threads (0 = auto, minimum 8 for AI) | `0` | `src/main.cpp` |
 | `LOG_LEVEL` | Mức độ logging (TRACE/DEBUG/INFO/WARN/ERROR) | `INFO` | `src/main.cpp` |
+
+#### Performance Optimization Settings
+| Biến | Mô tả | Mặc định | File sử dụng |
+|------|-------|----------|--------------|
+| `KEEPALIVE_REQUESTS` | Số requests giữ connection alive | `100` | `src/main.cpp` |
+| `KEEPALIVE_TIMEOUT` | Timeout cho keep-alive (seconds) | `60` | `src/main.cpp` |
+| `ENABLE_REUSE_PORT` | Enable port reuse cho load distribution | `true` | `src/main.cpp` |
+
+**Lưu ý về Swagger UI:**
+- Swagger UI tự động sử dụng `API_HOST` và `API_PORT` để cấu hình server URL
+- Nếu `API_HOST=0.0.0.0`, Swagger UI sẽ tự động thay thế bằng `localhost` hoặc host từ request header để đảm bảo browser có thể truy cập
+- Server URLs trong OpenAPI spec được cập nhật động khi serve, không cần restart server khi thay đổi port
 
 #### Watchdog Configuration
 | Biến | Mô tả | Mặc định | File sử dụng |

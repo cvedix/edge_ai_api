@@ -61,6 +61,515 @@ paths:
                 api_version: "v1"
                 service: "edge_ai_api"
 
+  /v1/core/models/upload:
+    post:
+      summary: Upload a model file
+      description: Uploads a model file (ONNX, weights, etc.) to the server. The file will be saved in the models directory.
+      operationId: uploadModel
+      tags:
+        - Models
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              properties:
+                file:
+                  type: string
+                  format: binary
+                  description: Model file to upload (.onnx, .weights, .cfg, .pt, .pth, .pb, .tflite)
+          application/octet-stream:
+            schema:
+              type: string
+              format: binary
+              description: Model file as binary data
+      responses:
+        '201':
+          description: Model file uploaded successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  message:
+                    type: string
+                  filename:
+                    type: string
+                  originalFilename:
+                    type: string
+                  path:
+                    type: string
+                  size:
+                    type: integer
+                  url:
+                    type: string
+        '400':
+          description: Invalid request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '409':
+          description: File already exists
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+    options:
+      summary: CORS preflight for model upload
+      operationId: uploadModelOptions
+      tags:
+        - Models
+      responses:
+        '200':
+          description: CORS preflight response
+
+  /v1/core/models/list:
+    get:
+      summary: List uploaded model files
+      description: Returns a list of all model files that have been uploaded to the server.
+      operationId: listModels
+      tags:
+        - Models
+      responses:
+        '200':
+          description: List of model files
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  models:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        filename:
+                          type: string
+                        path:
+                          type: string
+                        size:
+                          type: integer
+                        modified:
+                          type: string
+                  count:
+                    type: integer
+                  directory:
+                    type: string
+        '500':
+          description: Server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /v1/core/models/{modelName}:
+    delete:
+      summary: Delete a model file
+      description: Deletes a model file from the server.
+      operationId: deleteModel
+      tags:
+        - Models
+      parameters:
+        - name: modelName
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Name of the model file to delete
+      responses:
+        '200':
+          description: Model file deleted successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  message:
+                    type: string
+                  filename:
+                    type: string
+        '400':
+          description: Invalid request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: Model file not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /v1/core/instances:
+    get:
+      summary: List all instances
+      description: Returns a list of all AI instances with summary information including running status.
+      operationId: listInstances
+      tags:
+        - Instances
+      responses:
+        '200':
+          description: List of instances
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  instances:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/InstanceSummary'
+                  total:
+                    type: integer
+                    description: Total number of instances
+                  running:
+                    type: integer
+                    description: Number of running instances
+                  stopped:
+                    type: integer
+                    description: Number of stopped instances
+              example:
+                total: 3
+                running: 1
+                stopped: 2
+                instances:
+                  - instanceId: "550e8400-e29b-41d4-a716-446655440000"
+                    displayName: "Face Detection Camera 1"
+                    running: true
+                    solutionId: "face_detection"
+        '500':
+          description: Server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+    options:
+      summary: CORS preflight for list instances
+      operationId: listInstancesOptions
+      tags:
+        - Instances
+      responses:
+        '200':
+          description: CORS preflight response
+
+  /v1/core/instances/{instanceId}:
+    get:
+      summary: Get instance details
+      description: Returns detailed information about a specific instance.
+      operationId: getInstance
+      tags:
+        - Instances
+      parameters:
+        - name: instanceId
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Instance ID (UUID)
+      responses:
+        '200':
+          description: Instance details
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/InstanceInfo'
+        '404':
+          description: Instance not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+    delete:
+      summary: Delete an instance
+      description: Deletes an instance and stops its pipeline if running.
+      operationId: deleteInstance
+      tags:
+        - Instances
+      parameters:
+        - name: instanceId
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Instance ID (UUID)
+      responses:
+        '200':
+          description: Instance deleted successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  message:
+                    type: string
+                  instanceId:
+                    type: string
+        '404':
+          description: Instance not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /v1/core/instances/{instanceId}/start:
+    post:
+      summary: Start an instance
+      description: Starts the pipeline for an instance. The instance must have a pipeline configured.
+      operationId: startInstance
+      tags:
+        - Instances
+      parameters:
+        - name: instanceId
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Instance ID (UUID)
+      responses:
+        '200':
+          description: Instance started successfully
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/InstanceInfo'
+                  - type: object
+                    properties:
+                      message:
+                        type: string
+        '400':
+          description: Failed to start instance
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: Instance not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /v1/core/instances/{instanceId}/stop:
+    post:
+      summary: Stop an instance
+      description: Stops the pipeline for an instance.
+      operationId: stopInstance
+      tags:
+        - Instances
+      parameters:
+        - name: instanceId
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Instance ID (UUID)
+      responses:
+        '200':
+          description: Instance stopped successfully
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/InstanceInfo'
+                  - type: object
+                    properties:
+                      message:
+                        type: string
+        '400':
+          description: Failed to stop instance
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: Instance not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /v1/core/instances/{instanceId}/restart:
+    post:
+      summary: Restart an instance
+      description: Restarts an instance by stopping it (if running) and then starting it again. This is useful for applying configuration changes or recovering from errors.
+      operationId: restartInstance
+      tags:
+        - Instances
+      parameters:
+        - name: instanceId
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Instance ID (UUID)
+      responses:
+        '200':
+          description: Instance restarted successfully
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/InstanceInfo'
+                  - type: object
+                    properties:
+                      message:
+                        type: string
+        '400':
+          description: Failed to restart instance
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: Instance not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+    options:
+      summary: CORS preflight for restart instance
+      operationId: restartInstanceOptions
+      tags:
+        - Instances
+      responses:
+        '200':
+          description: CORS preflight response
+
+  /v1/core/instance:
+    post:
+      summary: Create a new AI instance
+      description: Creates and registers a new AI instance with the specified configuration. Returns the instance ID (UUID).
+      operationId: createInstance
+      tags:
+        - Instances
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateInstanceRequest'
+            example:
+              name: "Face Detection Camera 1"
+              group: "cameras"
+              solution: "face_detection"
+              persistent: true
+              frameRateLimit: 30
+              metadataMode: true
+              statisticsMode: true
+              diagnosticsMode: false
+              debugMode: false
+              detectorMode: "SmartDetection"
+              detectionSensitivity: "Medium"
+              movementSensitivity: "Low"
+              sensorModality: "RGB"
+              autoStart: true
+              autoRestart: false
+              blockingReadaheadQueue: false
+              inputOrientation: 0
+              inputPixelLimit: 1920
+              RTSP_URL: "rtsp://localhost:8554/stream"
+      responses:
+        '201':
+          description: Instance created successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/InstanceInfo'
+              example:
+                instanceId: "550e8400-e29b-41d4-a716-446655440000"
+                displayName: "Face Detection Camera 1"
+                group: "cameras"
+                solutionId: "face_detection"
+                solutionName: "Face Detection"
+                persistent: true
+                loaded: true
+                running: true
+                fps: 0.0
+                version: "2025.0.1.2"
+                frameRateLimit: 30
+                metadataMode: true
+                statisticsMode: true
+                diagnosticsMode: false
+                debugMode: false
+                readOnly: false
+                autoStart: true
+                autoRestart: false
+                systemInstance: false
+                inputPixelLimit: 1920
+                inputOrientation: 0
+                detectorMode: "SmartDetection"
+                detectionSensitivity: "Medium"
+                movementSensitivity: "Low"
+                sensorModality: "RGB"
+                originator:
+                  address: ""
+        '400':
+          description: Bad request (validation failed)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
 components:
   schemas:
     HealthResponse:
@@ -131,8 +640,241 @@ components:
         code:
           type: integer
           description: Error code
+        message:
+          type: string
+          description: Detailed error message
+
+    CreateInstanceRequest:
+      type: object
+      required:
+        - name
+      properties:
+        name:
+          type: string
+          description: "Instance name (required, pattern: ^[A-Za-z0-9 -_]+$)"
+          example: "Face Detection Camera 1"
+        group:
+          type: string
+          description: "Group name (optional, pattern: ^[A-Za-z0-9 -_]+$)"
+          example: "cameras"
+        solution:
+          type: string
+          description: Solution ID (optional, must match existing solution)
+          example: "face_detection"
+        persistent:
+          type: boolean
+          description: Save instance to JSON file
+          default: false
+        frameRateLimit:
+          type: integer
+          description: Frame rate limit (FPS)
+          default: 0
+          minimum: 0
+        metadataMode:
+          type: boolean
+          description: Enable metadata mode
+          default: false
+        statisticsMode:
+          type: boolean
+          description: Enable statistics mode
+          default: false
+        diagnosticsMode:
+          type: boolean
+          description: Enable diagnostics mode
+          default: false
+        debugMode:
+          type: boolean
+          description: Enable debug mode
+          default: false
+        detectorMode:
+          type: string
+          description: Detector mode
+          enum: [SmartDetection]
+          default: "SmartDetection"
+        detectionSensitivity:
+          type: string
+          description: Detection sensitivity level
+          enum: [Low, Medium, High]
+          default: "Low"
+        movementSensitivity:
+          type: string
+          description: Movement sensitivity level
+          enum: [Low, Medium, High]
+          default: "Low"
+        sensorModality:
+          type: string
+          description: Sensor modality
+          enum: [RGB, Thermal]
+          default: "RGB"
+        autoStart:
+          type: boolean
+          description: Automatically start instance when created
+          default: false
+        autoRestart:
+          type: boolean
+          description: Automatically restart instance on error
+          default: false
+        blockingReadaheadQueue:
+          type: boolean
+          description: Use blocking readahead queue
+          default: false
+        inputOrientation:
+          type: integer
+          description: Input orientation (0-3)
+          default: 0
+          minimum: 0
+          maximum: 3
+        inputPixelLimit:
+          type: integer
+          description: Input pixel limit
+          default: 0
+          minimum: 0
+        RTSP_URL:
+          type: string
+          description: RTSP URL for source (required for face_detection solution)
+          example: "rtsp://localhost:8554/stream"
+        additionalParams:
+          type: object
+          description: Additional solution-specific parameters
+          additionalProperties:
+            type: string
+
+    InstanceSummary:
+      type: object
+      properties:
+        instanceId:
+          type: string
+          description: Unique instance identifier (UUID)
+          example: "550e8400-e29b-41d4-a716-446655440000"
+        displayName:
+          type: string
+          description: Display name of the instance
+          example: "Face Detection Camera 1"
+        group:
+          type: string
+          description: Group name
+          example: "cameras"
+        solutionId:
+          type: string
+          description: Solution ID
+          example: "face_detection"
+        solutionName:
+          type: string
+          description: Solution name
+          example: "Face Detection"
+        running:
+          type: boolean
+          description: Whether instance pipeline is running
+        loaded:
+          type: boolean
+          description: Whether instance is loaded
+        persistent:
+          type: boolean
+          description: Whether instance is persisted to storage
+        fps:
+          type: number
+          format: double
+          description: Current frames per second
+
+    InstanceInfo:
+      type: object
+      required:
+        - instanceId
+        - displayName
+      properties:
+        instanceId:
+          type: string
+          description: Unique instance identifier (UUID)
+          example: "550e8400-e29b-41d4-a716-446655440000"
+        displayName:
+          type: string
+          description: Display name of the instance
+          example: "Face Detection Camera 1"
+        group:
+          type: string
+          description: Group name
+          example: "cameras"
+        solutionId:
+          type: string
+          description: Solution ID
+          example: "face_detection"
+        solutionName:
+          type: string
+          description: Solution name
+          example: "Face Detection"
+        persistent:
+          type: boolean
+          description: Whether instance is persisted to storage
+        loaded:
+          type: boolean
+          description: Whether instance is loaded
+        running:
+          type: boolean
+          description: Whether instance pipeline is running
+        fps:
+          type: number
+          format: double
+          description: Current frames per second
+        version:
+          type: string
+          description: CVEDIX SDK version
+        frameRateLimit:
+          type: integer
+          description: Frame rate limit
+        metadataMode:
+          type: boolean
+          description: Metadata mode enabled
+        statisticsMode:
+          type: boolean
+          description: Statistics mode enabled
+        diagnosticsMode:
+          type: boolean
+          description: Diagnostics mode enabled
+        debugMode:
+          type: boolean
+          description: Debug mode enabled
+        readOnly:
+          type: boolean
+          description: Read-only flag
+        autoStart:
+          type: boolean
+          description: Auto-start enabled
+        autoRestart:
+          type: boolean
+          description: Auto-restart enabled
+        systemInstance:
+          type: boolean
+          description: System instance flag
+        inputPixelLimit:
+          type: integer
+          description: Input pixel limit
+        inputOrientation:
+          type: integer
+          description: Input orientation
+        detectorMode:
+          type: string
+          description: Detector mode
+        detectionSensitivity:
+          type: string
+          description: Detection sensitivity
+        movementSensitivity:
+          type: string
+          description: Movement sensitivity
+        sensorModality:
+          type: string
+          description: Sensor modality
+        originator:
+          type: object
+          properties:
+            address:
+              type: string
+              description: Originator address
 
 tags:
   - name: Core
     description: Core API endpoints for health and version information
+  - name: Instances
+    description: AI instance management endpoints (create, list, start, stop, delete)
+  - name: Models
+    description: Model file management endpoints
 

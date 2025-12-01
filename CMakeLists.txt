@@ -8,8 +8,7 @@ set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wall -Wextra")
 # ============================================
 # Check System Dependencies
 # ============================================
-# Modern approach: Check dependencies in CMake, not shell scripts
-# include(${CMAKE_SOURCE_DIR}/cmake/CheckDependencies.cmake) //wrong here
+# Dependencies are checked directly below
 
 # ============================================
 # Drogon HTTP Framework Dependencies
@@ -67,14 +66,21 @@ if(NOT Jsoncpp_FOUND)
         set(JSONCPP_WITH_CMAKE_PACKAGE OFF CACHE BOOL "" FORCE)  # Disable to avoid path issues
         set(JSONCPP_INCLUDE_DIR "${CMAKE_BINARY_DIR}/_deps/jsoncpp-src/include" CACHE PATH "" FORCE)
         
+        # Build jsoncpp as shared library with -fPIC for linking into shared libraries
+        set(BUILD_SHARED_LIBS ON CACHE BOOL "" FORCE)
+        
         FetchContent_MakeAvailable(jsoncpp)
         
-        # Ensure jsoncpp targets are built with -fPIC (backup in case CMAKE_POSITION_INDEPENDENT_CODE didn't propagate)
+        # Ensure jsoncpp is built with -fPIC
         if(TARGET jsoncpp_lib)
-            set_target_properties(jsoncpp_lib PROPERTIES POSITION_INDEPENDENT_CODE ON)
+            set_target_properties(jsoncpp_lib PROPERTIES
+                POSITION_INDEPENDENT_CODE ON
+            )
         endif()
         if(TARGET jsoncpp_static)
-            set_target_properties(jsoncpp_static PROPERTIES POSITION_INDEPENDENT_CODE ON)
+            set_target_properties(jsoncpp_static PROPERTIES
+                POSITION_INDEPENDENT_CODE ON
+            )
         endif()
         
         # After FetchContent_MakeAvailable, jsoncpp should be available
@@ -170,9 +176,39 @@ else()
 endif()
 
 # ============================================
+# OpenCV (required for CVEDIX SDK)
+# ============================================
+find_package(OpenCV QUIET)
+if(NOT OpenCV_FOUND)
+    # Try to find using pkg-config
+    find_package(PkgConfig QUIET)
+    if(PkgConfig_FOUND)
+        pkg_check_modules(OpenCV QUIET opencv4)
+        if(OpenCV_FOUND)
+            message(STATUS "✓ Found OpenCV via pkg-config")
+            set(OpenCV_INCLUDE_DIRS ${OpenCV_INCLUDE_DIRS})
+            set(OpenCV_LIBRARIES ${OpenCV_LIBRARIES})
+        endif()
+    endif()
+endif()
+
+if(NOT OpenCV_FOUND)
+    message(WARNING 
+        "OpenCV not found. CVEDIX SDK features may not work.\n"
+        "To install: sudo apt-get install libopencv-dev")
+else()
+    message(STATUS "✓ Found OpenCV")
+    message(STATUS "  Version: ${OpenCV_VERSION}")
+    message(STATUS "  Include dirs: ${OpenCV_INCLUDE_DIRS}")
+endif()
+
+# ============================================
 # Include directories
 # ============================================
 include_directories(${CMAKE_SOURCE_DIR}/include)
+if(OpenCV_FOUND)
+    include_directories(${OpenCV_INCLUDE_DIRS})
+endif()
 
 # ============================================
 # OpenSSL for SHA256 (used in cache - optional for now)
@@ -189,12 +225,22 @@ set(SOURCES
     src/api/watchdog_handler.cpp
     src/api/endpoints_handler.cpp
     src/api/swagger_handler.cpp
+    src/api/create_instance_handler.cpp
+    src/api/instance_handler.cpp
+    src/models/model_upload_handler.cpp
     src/core/watchdog.cpp
     src/core/health_monitor.cpp
     src/core/endpoint_monitor.cpp
     src/core/request_middleware.cpp
     src/core/ai_processor.cpp
     src/core/ai_watchdog.cpp
+    src/instances/instance_registry.cpp
+    src/core/solution_registry.cpp
+    src/core/pipeline_builder.cpp
+    src/instances/instance_storage.cpp
+    src/core/uuid_generator.cpp
+    src/models/create_instance_request.cpp
+    src/models/solution_config.cpp
     # Infrastructure components (available but not used in main yet)
     # src/core/resource_manager.cpp
     # src/core/rate_limiter.cpp
@@ -223,6 +269,29 @@ elseif(TARGET drogon)
     target_link_libraries(edge_ai_api PRIVATE drogon)
 else()
     message(FATAL_ERROR "Drogon target not found. Cannot link.")
+endif()
+
+# Link CVEDIX SDK
+find_package(cvedix REQUIRED)
+target_link_libraries(edge_ai_api PRIVATE cvedix::cvedix_instance_sdk)
+message(STATUS "✓ CVEDIX SDK linked: cvedix::cvedix_instance_sdk")
+
+# Link OpenCV (for CVEDIX SDK)
+if(OpenCV_FOUND)
+    if(TARGET opencv_core)
+        # Modern CMake way
+        target_link_libraries(edge_ai_api PRIVATE 
+            opencv_core
+            opencv_imgproc
+            opencv_imgcodecs
+            opencv_videoio
+            opencv_highgui
+        )
+    else()
+        # Fallback to pkg-config libraries
+        target_link_libraries(edge_ai_api PRIVATE ${OpenCV_LIBRARIES})
+    endif()
+    message(STATUS "✓ OpenCV linked to edge_ai_api")
 endif()
 
 # Additional libraries (if needed)
