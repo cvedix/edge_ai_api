@@ -227,6 +227,7 @@ set(SOURCES
     src/api/swagger_handler.cpp
     src/api/create_instance_handler.cpp
     src/api/instance_handler.cpp
+    src/api/system_info_handler.cpp
     src/models/model_upload_handler.cpp
     src/core/watchdog.cpp
     src/core/health_monitor.cpp
@@ -317,6 +318,19 @@ if(OpenCV_FOUND)
         target_link_libraries(edge_ai_api PRIVATE ${OpenCV_LIBRARIES})
     endif()
     message(STATUS "✓ OpenCV linked to edge_ai_api")
+endif()
+
+# ============================================
+# hwinfo - Hardware Information Library
+# ============================================
+if(EXISTS "${CMAKE_SOURCE_DIR}/third_party/hwinfo/CMakeLists.txt")
+    message(STATUS "Adding hwinfo submodule...")
+    add_subdirectory(third_party/hwinfo)
+    target_link_libraries(edge_ai_api PRIVATE lfreist-hwinfo::hwinfo)
+    message(STATUS "✓ hwinfo linked to edge_ai_api")
+else()
+    message(WARNING "hwinfo submodule not found. System info endpoints will not work.")
+    message(WARNING "Run: git submodule update --init --recursive")
 endif()
 
 # Additional libraries (if needed)
