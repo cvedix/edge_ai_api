@@ -13,6 +13,9 @@
 #include <mutex>
 #include <iomanip>
 #include <cmath>
+#include <set>
+#include <algorithm>
+#include <cctype>
 // CVEDIX SDK uses experimental::filesystem, so we need to use it too for compatibility
 #include <experimental/filesystem>
 namespace fs = std::experimental::filesystem;
@@ -141,21 +144,76 @@ std::shared_ptr<cvedix_nodes::cvedix_node> PipelineBuilder::createNode(
         } else if (value == "${RTSP_URL}") {
             value = getRTSPUrl(req);
         } else if (param.first == "model_path" && value == "${MODEL_PATH}") {
-            // Allow override model_path from additionalParams
-            auto it = req.additionalParams.find("MODEL_PATH");
-            if (it != req.additionalParams.end() && !it->second.empty()) {
-                value = it->second;
+            // Priority: MODEL_NAME > MODEL_PATH > default
+            std::string modelPath;
+            
+            // 1. Check MODEL_NAME first (allows user to select model by name)
+            auto modelNameIt = req.additionalParams.find("MODEL_NAME");
+            if (modelNameIt != req.additionalParams.end() && !modelNameIt->second.empty()) {
+                std::string modelName = modelNameIt->second;
+                std::string category = "face"; // Default category
+                
+                // Check if category is specified (format: "category:modelname" or just "modelname")
+                size_t colonPos = modelName.find(':');
+                if (colonPos != std::string::npos) {
+                    category = modelName.substr(0, colonPos);
+                    modelName = modelName.substr(colonPos + 1);
+                }
+                
+                modelPath = resolveModelByName(modelName, category);
+                if (!modelPath.empty()) {
+                    std::cerr << "[PipelineBuilder] Using model by name: '" << modelNameIt->second 
+                              << "' -> " << modelPath << std::endl;
+                    value = modelPath;
+                } else {
+                    std::cerr << "[PipelineBuilder] WARNING: Model name '" << modelNameIt->second 
+                              << "' not found, falling back to default" << std::endl;
+                }
+            }
+            
+            // 2. If MODEL_NAME not found or not provided, check MODEL_PATH
+            if (modelPath.empty()) {
+                auto it = req.additionalParams.find("MODEL_PATH");
+                if (it != req.additionalParams.end() && !it->second.empty()) {
+                    value = it->second;
+                } else {
+                    // Default to yunet.onnx - resolve path intelligently
+                    value = resolveModelPath("models/face/yunet.onnx");
+                }
             } else {
-                // Default to yunet.onnx if MODEL_PATH not provided
-                value = "./cvedix_data/models/face/yunet.onnx";
+                value = modelPath;
             }
         }
         
         // Override model_path if provided in additionalParams (even if not using ${MODEL_PATH} placeholder)
         if (param.first == "model_path") {
-            auto it = req.additionalParams.find("MODEL_PATH");
-            if (it != req.additionalParams.end() && !it->second.empty()) {
-                value = it->second;
+            // Priority: MODEL_NAME > MODEL_PATH
+            std::string modelPath;
+            
+            auto modelNameIt = req.additionalParams.find("MODEL_NAME");
+            if (modelNameIt != req.additionalParams.end() && !modelNameIt->second.empty()) {
+                std::string modelName = modelNameIt->second;
+                std::string category = "face";
+                
+                size_t colonPos = modelName.find(':');
+                if (colonPos != std::string::npos) {
+                    category = modelName.substr(0, colonPos);
+                    modelName = modelName.substr(colonPos + 1);
+                }
+                
+                modelPath = resolveModelByName(modelName, category);
+                if (!modelPath.empty()) {
+                    value = modelPath;
+                }
+            }
+            
+            if (modelPath.empty()) {
+                auto it = req.additionalParams.find("MODEL_PATH");
+                if (it != req.additionalParams.end() && !it->second.empty()) {
+                    value = it->second;
+                }
+            } else {
+                value = modelPath;
             }
         }
         
@@ -300,8 +358,10 @@ std::shared_ptr<cvedix_nodes::cvedix_node> PipelineBuilder::createFaceDetectorNo
     const CreateInstanceRequest& req) {
     
     try {
-        // Get parameters with defaults
-        std::string modelPath = params.count("model_path") ? params.at("model_path") : "./cvedix_data/models/face/yunet.onnx";
+        // Get parameters with defaults - resolve path intelligently
+        std::string modelPath = params.count("model_path") ? 
+            params.at("model_path") : 
+            resolveModelPath("models/face/yunet.onnx");
         float scoreThreshold = params.count("score_threshold") ? 
             static_cast<float>(std::stod(params.at("score_threshold"))) : 
             static_cast<float>(mapDetectionSensitivity(req.detectionSensitivity));
@@ -322,12 +382,37 @@ std::shared_ptr<cvedix_nodes::cvedix_node> PipelineBuilder::createFaceDetectorNo
         // Check if model file exists (warning only, SDK will also check)
         fs::path modelFilePath(modelPath);
         if (!fs::exists(modelFilePath)) {
-            std::cerr << "[PipelineBuilder] WARNING: Model file not found at: " << modelPath << std::endl;
-            std::cerr << "[PipelineBuilder] WARNING: Face detection may not work until model is uploaded or path is corrected" << std::endl;
-            std::cerr << "[PipelineBuilder] WARNING: You can upload a model file via POST /v1/core/models/upload" << std::endl;
-            std::cerr << "[PipelineBuilder] WARNING: Then use MODEL_PATH in additionalParams when creating instance" << std::endl;
+            std::cerr << "[PipelineBuilder] ========================================" << std::endl;
+            std::cerr << "[PipelineBuilder] WARNING: Model file not found!" << std::endl;
+            std::cerr << "[PipelineBuilder] Expected path: " << modelPath << std::endl;
+            std::cerr << "[PipelineBuilder] Absolute path: " << fs::absolute(modelFilePath).string() << std::endl;
+            std::cerr << "[PipelineBuilder] ========================================" << std::endl;
+            std::cerr << "[PipelineBuilder] SOLUTION: Copy your yunet.onnx file to one of these locations:" << std::endl;
+            std::cerr << "[PipelineBuilder]   1. System-wide location - RECOMMENDED (FHS standard):" << std::endl;
+            std::cerr << "[PipelineBuilder]      /usr/share/cvedix/cvedix_data/models/face/yunet.onnx" << std::endl;
+            std::cerr << "[PipelineBuilder]      (Create: sudo mkdir -p /usr/share/cvedix/cvedix_data/models/face)" << std::endl;
+            std::cerr << "[PipelineBuilder]      (Copy: sudo cp /path/to/yunet.onnx /usr/share/cvedix/cvedix_data/models/face/)" << std::endl;
+            std::cerr << "[PipelineBuilder]      NOTE: /usr/share/ is for data files (FHS standard)" << std::endl;
+            std::cerr << "[PipelineBuilder]   1b. Alternative (not recommended, but supported):" << std::endl;
+            std::cerr << "[PipelineBuilder]      /usr/include/cvedix/cvedix_data/models/face/yunet.onnx" << std::endl;
+            std::cerr << "[PipelineBuilder]      (Create: sudo mkdir -p /usr/include/cvedix/cvedix_data/models/face)" << std::endl;
+            std::cerr << "[PipelineBuilder]      NOTE: /usr/include/ is for header files, not data files" << std::endl;
+            std::cerr << "[PipelineBuilder]   2. SDK source location:" << std::endl;
+            std::cerr << "[PipelineBuilder]      /home/pnsang/project/edge_ai_sdk/cvedix_data/models/face/yunet.onnx" << std::endl;
+            std::cerr << "[PipelineBuilder]      (Copy: cp /path/to/yunet.onnx /home/pnsang/project/edge_ai_sdk/cvedix_data/models/face/)" << std::endl;
+            std::cerr << "[PipelineBuilder]   3. API working directory: ./cvedix_data/models/face/yunet.onnx" << std::endl;
+            std::cerr << "[PipelineBuilder]      (Create: mkdir -p ./cvedix_data/models/face)" << std::endl;
+            std::cerr << "[PipelineBuilder]   4. Set environment variable CVEDIX_DATA_ROOT=/path/to/cvedix_data" << std::endl;
+            std::cerr << "[PipelineBuilder]   2. Upload via API: POST /v1/core/models/upload" << std::endl;
+            std::cerr << "[PipelineBuilder]      Then use MODEL_PATH in additionalParams when creating instance" << std::endl;
+            std::cerr << "[PipelineBuilder]      Example: additionalParams: {\"MODEL_PATH\": \"./models/yunet.onnx\"}" << std::endl;
+            std::cerr << "[PipelineBuilder] ========================================" << std::endl;
+            std::cerr << "[PipelineBuilder] NOTE: Face detection will NOT work until model file is available" << std::endl;
+            std::cerr << "[PipelineBuilder] NOTE: Pipeline will continue but face detection will fail" << std::endl;
+            std::cerr << "[PipelineBuilder] ========================================" << std::endl;
         } else {
-            std::cerr << "[PipelineBuilder] Model file found: " << fs::canonical(modelFilePath).string() << std::endl;
+            std::cerr << "[PipelineBuilder] ✓ Model file found: " << fs::canonical(modelFilePath).string() << std::endl;
+            std::cerr << "[PipelineBuilder]   File size: " << fs::file_size(modelFilePath) << " bytes" << std::endl;
         }
         
         // Validate thresholds
@@ -365,7 +450,10 @@ std::shared_ptr<cvedix_nodes::cvedix_node> PipelineBuilder::createFaceDetectorNo
                 nmsThreshold,
                 topK
             );
-            std::cerr << "[PipelineBuilder] YuNet face detector node created successfully" << std::endl;
+            std::cerr << "[PipelineBuilder] ✓ YuNet face detector node created successfully" << std::endl;
+            if (!fs::exists(modelFilePath)) {
+                std::cerr << "[PipelineBuilder] ⚠ WARNING: Model file was not found, node created but may fail during inference" << std::endl;
+            }
         } catch (const std::bad_alloc& e) {
             std::cerr << "[PipelineBuilder] Memory allocation failed: " << e.what() << std::endl;
             throw;
@@ -552,5 +640,288 @@ std::string PipelineBuilder::getRTSPUrl(const CreateInstanceRequest& req) const 
     std::cerr << "[PipelineBuilder] WARNING: Using default RTSP URL (rtsp://localhost:8554/stream)" << std::endl;
     std::cerr << "[PipelineBuilder] NOTE: To use custom RTSP URL, provide 'RTSP_URL' in request body or set RTSP_URL environment variable" << std::endl;
     return "rtsp://localhost:8554/stream";
+}
+
+std::string PipelineBuilder::resolveModelPath(const std::string& relativePath) const {
+    // Helper function to resolve model file paths
+    // Priority:
+    // 1. CVEDIX_DATA_ROOT environment variable
+    // 2. CVEDIX_SDK_ROOT environment variable + /cvedix_data
+    // 3. Relative to current working directory (./cvedix_data)
+    // 4. Try to find SDK directory in common locations
+    
+    // 1. Check CVEDIX_DATA_ROOT
+    const char* dataRoot = std::getenv("CVEDIX_DATA_ROOT");
+    if (dataRoot && strlen(dataRoot) > 0) {
+        std::string path = std::string(dataRoot);
+        if (path.back() != '/') path += '/';
+        path += relativePath;
+        if (fs::exists(path)) {
+            std::cerr << "[PipelineBuilder] Using CVEDIX_DATA_ROOT: " << path << std::endl;
+            return path;
+        }
+    }
+    
+    // 2. Check CVEDIX_SDK_ROOT
+    const char* sdkRoot = std::getenv("CVEDIX_SDK_ROOT");
+    if (sdkRoot && strlen(sdkRoot) > 0) {
+        std::string path = std::string(sdkRoot);
+        if (path.back() != '/') path += '/';
+        path += "cvedix_data/" + relativePath;
+        if (fs::exists(path)) {
+            std::cerr << "[PipelineBuilder] Using CVEDIX_SDK_ROOT: " << path << std::endl;
+            return path;
+        }
+    }
+    
+    // 3. Try relative to current working directory
+    std::string relativePathFull = "./cvedix_data/" + relativePath;
+    if (fs::exists(relativePathFull)) {
+        std::cerr << "[PipelineBuilder] Using relative path: " << fs::absolute(relativePathFull).string() << std::endl;
+        return relativePathFull;
+    }
+    
+    // 4. Try system-wide installation paths (when SDK is installed to /usr)
+    // Note: /usr/share/ is preferred (FHS standard for data files)
+    // /usr/include/ is for header files, but we support it as fallback
+    std::vector<std::string> systemPaths = {
+        "/usr/share/cvedix/cvedix_data/" + relativePath,        // Preferred (FHS standard)
+        "/usr/local/share/cvedix/cvedix_data/" + relativePath,   // Local install
+        "/usr/include/cvedix/cvedix_data/" + relativePath,       // Fallback (not recommended)
+        "/usr/local/include/cvedix/cvedix_data/" + relativePath, // Local install fallback
+    };
+    
+    for (const auto& path : systemPaths) {
+        if (fs::exists(path)) {
+            std::cerr << "[PipelineBuilder] Found in system-wide location: " << path << std::endl;
+            return path;
+        }
+        
+        // If exact file not found, try to find alternative yunet files in the same directory
+        // This handles cases where file is named like "face_detection_yunet_2023mar.onnx" instead of "yunet.onnx"
+        if (relativePath.find("yunet.onnx") != std::string::npos) {
+            fs::path dirPath = fs::path(path).parent_path();
+            if (fs::exists(dirPath) && fs::is_directory(dirPath)) {
+                // Look for alternative yunet files (prefer newer versions)
+                std::vector<std::string> alternatives = {
+                    "face_detection_yunet_2023mar.onnx",  // Newer version (preferred)
+                    "face_detection_yunet_2022mar.onnx",  // Older version
+                    "yunet_2023mar.onnx",
+                    "yunet_2022mar.onnx",
+                };
+                
+                for (const auto& alt : alternatives) {
+                    fs::path altPath = dirPath / alt;
+                    if (fs::exists(altPath)) {
+                        std::cerr << "[PipelineBuilder] Found alternative yunet model: " << altPath.string() << std::endl;
+                        return altPath.string();
+                    }
+                }
+            }
+        }
+    }
+    
+    // 5. Try common SDK source locations
+    std::vector<std::string> commonPaths = {
+        "/home/pnsang/project/edge_ai_sdk/cvedix_data/" + relativePath,
+        "../edge_ai_sdk/cvedix_data/" + relativePath,
+        "../../edge_ai_sdk/cvedix_data/" + relativePath,
+    };
+    
+    for (const auto& path : commonPaths) {
+        if (fs::exists(path)) {
+            std::cerr << "[PipelineBuilder] Found in SDK directory: " << fs::absolute(path).string() << std::endl;
+            return path;
+        }
+    }
+    
+    // Return default relative path (will show warning later if not found)
+    std::cerr << "[PipelineBuilder] Using default path (may not exist): ./cvedix_data/" << relativePath << std::endl;
+    return relativePathFull;
+}
+
+std::string PipelineBuilder::resolveModelByName(const std::string& modelName, const std::string& category) const {
+    // Resolve model file by name (e.g., "yunet_2023mar", "yunet_2022mar", "yolov8n_face")
+    // Supports various naming patterns and extensions
+    
+    // List of possible file extensions to try
+    std::vector<std::string> extensions = {".onnx", ".rknn", ".weights", ".pt", ".pth", ".pb", ".tflite"};
+    
+    // List of possible file name patterns to try
+    std::vector<std::string> patterns;
+    
+    // Direct match
+    patterns.push_back(modelName);
+    
+    // Add common prefixes/suffixes
+    if (modelName.find("yunet") != std::string::npos || modelName.find("face") != std::string::npos) {
+        patterns.push_back("face_detection_" + modelName);
+        patterns.push_back(modelName + "_face_detection");
+        if (modelName.find("yunet") == std::string::npos) {
+            patterns.push_back("face_detection_yunet_" + modelName);
+        }
+    }
+    
+    // Try different search locations
+    std::vector<std::string> searchDirs;
+    
+    // 1. Check CVEDIX_DATA_ROOT
+    const char* dataRoot = std::getenv("CVEDIX_DATA_ROOT");
+    if (dataRoot && strlen(dataRoot) > 0) {
+        std::string dir = std::string(dataRoot);
+        if (dir.back() != '/') dir += '/';
+        dir += "models/" + category;
+        searchDirs.push_back(dir);
+    }
+    
+    // 2. Check CVEDIX_SDK_ROOT
+    const char* sdkRoot = std::getenv("CVEDIX_SDK_ROOT");
+    if (sdkRoot && strlen(sdkRoot) > 0) {
+        std::string dir = std::string(sdkRoot);
+        if (dir.back() != '/') dir += '/';
+        dir += "cvedix_data/models/" + category;
+        searchDirs.push_back(dir);
+    }
+    
+    // 3. System-wide locations
+    searchDirs.push_back("/usr/share/cvedix/cvedix_data/models/" + category);
+    searchDirs.push_back("/usr/local/share/cvedix/cvedix_data/models/" + category);
+    searchDirs.push_back("/usr/include/cvedix/cvedix_data/models/" + category);
+    searchDirs.push_back("/usr/local/include/cvedix/cvedix_data/models/" + category);
+    
+    // 4. SDK source locations
+    searchDirs.push_back("/home/pnsang/project/edge_ai_sdk/cvedix_data/models/" + category);
+    searchDirs.push_back("../edge_ai_sdk/cvedix_data/models/" + category);
+    searchDirs.push_back("../../edge_ai_sdk/cvedix_data/models/" + category);
+    
+    // 5. Relative to current working directory
+    searchDirs.push_back("./cvedix_data/models/" + category);
+    searchDirs.push_back("./models"); // Also check API models directory
+    
+    // Search for model file
+    for (const auto& dir : searchDirs) {
+        fs::path dirPath(dir);
+        if (!fs::exists(dirPath) || !fs::is_directory(dirPath)) {
+            continue;
+        }
+        
+        // Try each pattern with each extension
+        for (const auto& pattern : patterns) {
+            for (const auto& ext : extensions) {
+                fs::path filePath = dirPath / (pattern + ext);
+                if (fs::exists(filePath)) {
+                    std::cerr << "[PipelineBuilder] Found model by name '" << modelName 
+                              << "' (pattern: " << pattern << ext << ") at: " 
+                              << fs::canonical(filePath).string() << std::endl;
+                    return fs::canonical(filePath).string();
+                }
+                
+                // Also try case-insensitive search (list directory)
+                try {
+                    for (const auto& entry : fs::directory_iterator(dirPath)) {
+                        if (fs::is_regular_file(entry.path())) {
+                            std::string filename = entry.path().filename().string();
+                            std::string filenameLower = filename;
+                            std::transform(filenameLower.begin(), filenameLower.end(), filenameLower.begin(), ::tolower);
+                            
+                            std::string patternLower = pattern + ext;
+                            std::transform(patternLower.begin(), patternLower.end(), patternLower.begin(), ::tolower);
+                            
+                            if (filenameLower == patternLower || 
+                                filenameLower.find(patternLower) != std::string::npos) {
+                                std::cerr << "[PipelineBuilder] Found model by name '" << modelName 
+                                          << "' (matched: " << filename << ") at: " 
+                                          << fs::canonical(entry.path()).string() << std::endl;
+                                return fs::canonical(entry.path()).string();
+                            }
+                        }
+                    }
+                } catch (const std::exception& e) {
+                    // Ignore directory iteration errors
+                }
+            }
+        }
+    }
+    
+    return ""; // Not found
+}
+
+std::vector<std::string> PipelineBuilder::listAvailableModels(const std::string& category) const {
+    std::vector<std::string> models;
+    std::vector<std::string> extensions = {".onnx", ".rknn", ".weights", ".pt", ".pth", ".pb", ".tflite"};
+    
+    // List of search directories (same as resolveModelByName)
+    std::vector<std::string> searchDirs;
+    
+    const char* dataRoot = std::getenv("CVEDIX_DATA_ROOT");
+    if (dataRoot && strlen(dataRoot) > 0) {
+        std::string dir = std::string(dataRoot);
+        if (dir.back() != '/') dir += '/';
+        if (category.empty()) {
+            searchDirs.push_back(dir + "models");
+        } else {
+            searchDirs.push_back(dir + "models/" + category);
+        }
+    }
+    
+    const char* sdkRoot = std::getenv("CVEDIX_SDK_ROOT");
+    if (sdkRoot && strlen(sdkRoot) > 0) {
+        std::string dir = std::string(sdkRoot);
+        if (dir.back() != '/') dir += '/';
+        if (category.empty()) {
+            searchDirs.push_back(dir + "cvedix_data/models");
+        } else {
+            searchDirs.push_back(dir + "cvedix_data/models/" + category);
+        }
+    }
+    
+    if (category.empty()) {
+        searchDirs.push_back("/usr/share/cvedix/cvedix_data/models");
+        searchDirs.push_back("/usr/local/share/cvedix/cvedix_data/models");
+    } else {
+        searchDirs.push_back("/usr/share/cvedix/cvedix_data/models/" + category);
+        searchDirs.push_back("/usr/local/share/cvedix/cvedix_data/models/" + category);
+    }
+    
+    searchDirs.push_back("./cvedix_data/models/" + (category.empty() ? "" : category));
+    searchDirs.push_back("./models");
+    
+    // Collect all model files
+    std::set<std::string> uniqueModels; // Use set to avoid duplicates
+    
+    for (const auto& dir : searchDirs) {
+        fs::path dirPath(dir);
+        if (!fs::exists(dirPath) || !fs::is_directory(dirPath)) {
+            continue;
+        }
+        
+        try {
+            for (const auto& entry : fs::directory_iterator(dirPath)) {
+                if (fs::is_regular_file(entry.path())) {
+                    std::string filename = entry.path().filename().string();
+                    std::string ext = entry.path().extension().string();
+                    
+                    // Check if it's a model file
+                    bool isModelFile = false;
+                    for (const auto& modelExt : extensions) {
+                        if (ext == modelExt || filename.find(modelExt) != std::string::npos) {
+                            isModelFile = true;
+                            break;
+                        }
+                    }
+                    
+                    if (isModelFile) {
+                        uniqueModels.insert(fs::canonical(entry.path()).string());
+                    }
+                }
+            }
+        } catch (const std::exception& e) {
+            // Ignore directory iteration errors
+        }
+    }
+    
+    // Convert set to vector
+    models.assign(uniqueModels.begin(), uniqueModels.end());
+    return models;
 }
 

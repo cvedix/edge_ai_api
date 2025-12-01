@@ -187,6 +187,16 @@ bool CreateInstanceHandler::parseRequest(
         req.additionalParams["RTSP_URL"] = json["RTSP_URL"].asString();
     }
     
+    // Also check for MODEL_NAME at top level
+    if (json.isMember("MODEL_NAME") && json["MODEL_NAME"].isString()) {
+        req.additionalParams["MODEL_NAME"] = json["MODEL_NAME"].asString();
+    }
+    
+    // Also check for MODEL_PATH at top level
+    if (json.isMember("MODEL_PATH") && json["MODEL_PATH"].isString()) {
+        req.additionalParams["MODEL_PATH"] = json["MODEL_PATH"].asString();
+    }
+    
     return true;
 }
 

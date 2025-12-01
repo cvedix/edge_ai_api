@@ -522,6 +522,7 @@ paths:
               inputOrientation: 0
               inputPixelLimit: 1920
               RTSP_URL: "rtsp://localhost:8554/stream"
+              MODEL_NAME: "yunet_2023mar"
       responses:
         '201':
           description: Instance created successfully
@@ -733,9 +734,27 @@ components:
           type: string
           description: RTSP URL for source (required for face_detection solution)
           example: "rtsp://localhost:8554/stream"
+        MODEL_NAME:
+          type: string
+          description: |
+            Model name to use (e.g., "yunet_2023mar", "yunet_2022mar", "yolov8n_face").
+            Can specify category with format "category:modelname" (e.g., "face:yunet_2023mar").
+            The system will automatically search for matching model files in system directories.
+            Takes priority over MODEL_PATH if both are provided.
+          example: "yunet_2023mar"
+        MODEL_PATH:
+          type: string
+          description: |
+            Direct path to model file (e.g., "./models/yunet.onnx", "/usr/share/cvedix/cvedix_data/models/face/yunet.onnx").
+            Used if MODEL_NAME is not provided or not found.
+          example: "./models/yunet.onnx"
         additionalParams:
           type: object
-          description: Additional solution-specific parameters
+          description: |
+            Additional solution-specific parameters. Supported keys:
+            - RTSP_URL: RTSP stream URL
+            - MODEL_NAME: Model name (e.g., "yunet_2023mar", "face:yunet_2023mar")
+            - MODEL_PATH: Direct path to model file
           additionalProperties:
             type: string
 

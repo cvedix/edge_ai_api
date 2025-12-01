@@ -267,7 +267,32 @@ else()
     message(FATAL_ERROR "Drogon target not found. Cannot link.")
 endif()
 
-# Link CVEDIX SDK
+# ============================================
+# CVEDIX SDK (required for AI processing)
+# ============================================
+# CVEDIX SDK is expected to be installed system-wide (not downloaded via FetchContent)
+# CMake will search for it in standard system paths:
+#   - Config files: /usr/lib/cmake/cvedix/cvedix-config.cmake
+#   - Headers: /usr/include/cvedix/
+#   - Libraries: /usr/lib/ (or /usr/lib64/)
+#
+# If CVEDIX SDK is not found, you need to install it system-wide first.
+# The find_package() command will automatically locate it via CMake package config files.
+#
+# Include CMakePackageConfigHelpers for check_required_components
+include(CMakePackageConfigHelpers)
+# Define check_required_components if not available (for older CMake versions)
+if(NOT COMMAND check_required_components)
+    macro(check_required_components _package)
+        foreach(_comp ${${_package}_FIND_COMPONENTS})
+            if(NOT ${_package}_${_comp}_FOUND)
+                if(${_package}_FIND_REQUIRED_${_comp})
+                    set(${_package}_FOUND FALSE)
+                endif()
+            endif()
+        endforeach()
+    endmacro()
+endif()
 find_package(cvedix REQUIRED)
 target_link_libraries(edge_ai_api PRIVATE cvedix::cvedix_instance_sdk)
 message(STATUS "✓ CVEDIX SDK linked: cvedix::cvedix_instance_sdk")
