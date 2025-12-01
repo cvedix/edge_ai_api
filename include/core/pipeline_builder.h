@@ -84,5 +84,27 @@ private:
      * @brief Get RTSP URL from request
      */
     std::string getRTSPUrl(const CreateInstanceRequest& req) const;
+    
+    /**
+     * @brief Resolve model file path (supports CVEDIX_DATA_ROOT, CVEDIX_SDK_ROOT, or relative paths)
+     * @param relativePath Relative path from cvedix_data/models (e.g., "face/yunet.onnx")
+     * @return Resolved absolute or relative path
+     */
+    std::string resolveModelPath(const std::string& relativePath) const;
+    
+    /**
+     * @brief Resolve model file by name (e.g., "yunet_2023mar", "yunet_2022mar", "yolov8n_face")
+     * @param modelName Model name (without extension)
+     * @param category Model category (e.g., "face", "object") - defaults to "face"
+     * @return Resolved absolute or relative path, or empty string if not found
+     */
+    std::string resolveModelByName(const std::string& modelName, const std::string& category = "face") const;
+    
+    /**
+     * @brief List available models in system directories
+     * @param category Model category (e.g., "face", "object") - empty string for all categories
+     * @return Vector of model file paths
+     */
+    std::vector<std::string> listAvailableModels(const std::string& category = "") const;
 };
 

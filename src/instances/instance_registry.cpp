@@ -86,34 +86,39 @@ std::string InstanceRegistry::createInstance(const CreateInstanceRequest& req) {
         instance_storage_.saveInstance(instanceId, info);
     }
     
-    // Auto start if requested
-    if (req.autoStart && !pipeline.empty()) {
-        std::cerr << "[InstanceRegistry] Auto-starting pipeline for instance " << instanceId << std::endl;
-        try {
-            if (startPipeline(pipeline)) {
-                info.running = true;
-                instances_[instanceId] = info;
-                std::cerr << "[InstanceRegistry] Pipeline started successfully for instance " << instanceId << std::endl;
-                std::cerr << "[InstanceRegistry] NOTE: If RTSP connection fails, the node will retry automatically" << std::endl;
-            } else {
-                std::cerr << "[InstanceRegistry] Failed to start pipeline for instance " 
-                          << instanceId << " (pipeline created but not started)" << std::endl;
-                std::cerr << "[InstanceRegistry] You can manually start it later using startInstance API" << std::endl;
+        // Auto start if requested
+        if (req.autoStart && !pipeline.empty()) {
+            std::cerr << "[InstanceRegistry] ========================================" << std::endl;
+            std::cerr << "[InstanceRegistry] Auto-starting pipeline for instance " << instanceId << std::endl;
+            std::cerr << "[InstanceRegistry] ========================================" << std::endl;
+            try {
+                if (startPipeline(pipeline)) {
+                    info.running = true;
+                    instances_[instanceId] = info;
+                    std::cerr << "[InstanceRegistry] ========================================" << std::endl;
+                    std::cerr << "[InstanceRegistry] ✓ Pipeline started successfully for instance " << instanceId << std::endl;
+                    std::cerr << "[InstanceRegistry] NOTE: If RTSP connection fails, the node will retry automatically" << std::endl;
+                    std::cerr << "[InstanceRegistry] NOTE: Monitor logs above for RTSP connection status" << std::endl;
+                    std::cerr << "[InstanceRegistry] ========================================" << std::endl;
+                } else {
+                    std::cerr << "[InstanceRegistry] ✗ Failed to start pipeline for instance " 
+                              << instanceId << " (pipeline created but not started)" << std::endl;
+                    std::cerr << "[InstanceRegistry] You can manually start it later using startInstance API" << std::endl;
+                }
+            } catch (const std::exception& e) {
+                std::cerr << "[InstanceRegistry] ✗ Exception starting pipeline for instance " 
+                          << instanceId << ": " << e.what() << std::endl;
+                std::cerr << "[InstanceRegistry] Instance created but pipeline not started. You can start it manually later." << std::endl;
+                // Don't crash - instance is created but not running
+            } catch (...) {
+                std::cerr << "[InstanceRegistry] ✗ Unknown error starting pipeline for instance " 
+                          << instanceId << std::endl;
+                std::cerr << "[InstanceRegistry] Instance created but pipeline not started. You can start it manually later." << std::endl;
             }
-        } catch (const std::exception& e) {
-            std::cerr << "[InstanceRegistry] Exception starting pipeline for instance " 
-                      << instanceId << ": " << e.what() << std::endl;
-            std::cerr << "[InstanceRegistry] Instance created but pipeline not started. You can start it manually later." << std::endl;
-            // Don't crash - instance is created but not running
-        } catch (...) {
-            std::cerr << "[InstanceRegistry] Unknown error starting pipeline for instance " 
-                      << instanceId << std::endl;
-            std::cerr << "[InstanceRegistry] Instance created but pipeline not started. You can start it manually later." << std::endl;
+        } else if (!pipeline.empty()) {
+            std::cerr << "[InstanceRegistry] Pipeline created but not started (autoStart=false)" << std::endl;
+            std::cerr << "[InstanceRegistry] Use startInstance API to start the pipeline when ready" << std::endl;
         }
-    } else if (!pipeline.empty()) {
-        std::cerr << "[InstanceRegistry] Pipeline created but not started (autoStart=false)" << std::endl;
-        std::cerr << "[InstanceRegistry] Use startInstance API to start the pipeline when ready" << std::endl;
-    }
     
     return instanceId;
 }
@@ -174,11 +179,23 @@ bool InstanceRegistry::startInstance(const std::string& instanceId) {
         }
     }
     
-    if (startPipeline(pipelineIt->second)) {
-        instanceIt->second.running = true;
+    // Check if already running
+    if (instanceIt->second.running) {
+        std::cerr << "[InstanceRegistry] Instance " << instanceId << " is already running" << std::endl;
         return true;
     }
     
+    std::cerr << "[InstanceRegistry] ========================================" << std::endl;
+    std::cerr << "[InstanceRegistry] Starting instance " << instanceId << "..." << std::endl;
+    std::cerr << "[InstanceRegistry] ========================================" << std::endl;
+    
+    if (startPipeline(pipelineIt->second)) {
+        instanceIt->second.running = true;
+        std::cerr << "[InstanceRegistry] ✓ Instance " << instanceId << " started successfully" << std::endl;
+        return true;
+    }
+    
+    std::cerr << "[InstanceRegistry] ✗ Failed to start instance " << instanceId << std::endl;
     return false;
 }
 
@@ -299,9 +316,29 @@ bool InstanceRegistry::startPipeline(const std::vector<std::shared_ptr<cvedix_no
             // Add small delay to ensure pipeline is ready
             std::this_thread::sleep_for(std::chrono::milliseconds(100));
             
+            std::cerr << "[InstanceRegistry] Calling rtspNode->start()..." << std::endl;
+            auto startTime = std::chrono::steady_clock::now();
             rtspNode->start();
+            auto endTime = std::chrono::steady_clock::now();
+            auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(endTime - startTime).count();
+            
+            std::cerr << "[InstanceRegistry] ✓ RTSP node start() completed in " << duration << "ms" << std::endl;
             std::cerr << "[InstanceRegistry] RTSP pipeline started (connection may take a few seconds)" << std::endl;
             std::cerr << "[InstanceRegistry] The SDK will automatically retry connection - monitor logs for connection status" << std::endl;
+            std::cerr << "[InstanceRegistry] NOTE: Check CVEDIX SDK logs above for RTSP connection status" << std::endl;
+            std::cerr << "[InstanceRegistry] NOTE: Look for messages like 'rtspsrc' or connection errors" << std::endl;
+            std::cerr << "[InstanceRegistry] ========================================" << std::endl;
+            std::cerr << "[InstanceRegistry] HOW TO VERIFY PIPELINE IS WORKING:" << std::endl;
+            std::cerr << "[InstanceRegistry]   1. Check output files (from build directory):" << std::endl;
+            std::cerr << "[InstanceRegistry]      ls -lht ./output/<instanceId>/" << std::endl;
+            std::cerr << "[InstanceRegistry]      Or from project root: ./build/output/<instanceId>/" << std::endl;
+            std::cerr << "[InstanceRegistry]   2. Check CVEDIX SDK logs for 'rtspsrc' connection messages" << std::endl;
+            std::cerr << "[InstanceRegistry]   3. Check instance status: GET /v1/core/instances/<instanceId>" << std::endl;
+            std::cerr << "[InstanceRegistry]   4. Monitor file creation:" << std::endl;
+            std::cerr << "[InstanceRegistry]      watch -n 1 'ls -lht ./output/<instanceId>/ | head -5'" << std::endl;
+            std::cerr << "[InstanceRegistry]   5. If files are being created, pipeline is working!" << std::endl;
+            std::cerr << "[InstanceRegistry]   NOTE: Files are created in working directory (usually build/)" << std::endl;
+            std::cerr << "[InstanceRegistry] ========================================" << std::endl;
             return true;
         }
         // If not rtsp node, try to call start() directly (might work for other source types)
@@ -328,14 +365,17 @@ void InstanceRegistry::stopPipeline(const std::vector<std::shared_ptr<cvedix_nod
             if (rtspNode) {
                 std::cerr << "[InstanceRegistry] Stopping RTSP source node..." << std::endl;
                 try {
+                    auto stopTime = std::chrono::steady_clock::now();
                     rtspNode->stop();
-                    std::cerr << "[InstanceRegistry] RTSP source node stopped" << std::endl;
+                    auto stopEndTime = std::chrono::steady_clock::now();
+                    auto stopDuration = std::chrono::duration_cast<std::chrono::milliseconds>(stopEndTime - stopTime).count();
+                    std::cerr << "[InstanceRegistry] ✓ RTSP source node stopped in " << stopDuration << "ms" << std::endl;
                     // Give it a moment to fully stop
                     std::this_thread::sleep_for(std::chrono::milliseconds(100));
                 } catch (const std::exception& e) {
-                    std::cerr << "[InstanceRegistry] Exception stopping RTSP node: " << e.what() << std::endl;
+                    std::cerr << "[InstanceRegistry] ✗ Exception stopping RTSP node: " << e.what() << std::endl;
                 } catch (...) {
-                    std::cerr << "[InstanceRegistry] Unknown error stopping RTSP node" << std::endl;
+                    std::cerr << "[InstanceRegistry] ✗ Unknown error stopping RTSP node" << std::endl;
                 }
             }
         }
