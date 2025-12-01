@@ -1,0 +1,46 @@
+[Unit]
+Description=Edge AI API Server
+Documentation=https://github.com/your-org/edge_ai_api
+After=network.target
+
+[Service]
+Type=simple
+User=edgeai
+Group=edgeai
+WorkingDirectory=/opt/edge_ai_api
+ExecStart=/usr/local/bin/edge_ai_api
+Restart=always
+RestartSec=10
+StandardOutput=journal
+StandardError=journal
+
+# Resource limits
+LimitNOFILE=65536
+MemoryMax=2G
+CPUQuota=200%
+
+# Security settings
+NoNewPrivileges=true
+PrivateTmp=true
+# Use 'true' instead of 'strict' to allow network binding
+ProtectSystem=true
+ProtectHome=true
+# Allow network access (required for binding ports)
+PrivateNetwork=false
+ReadWritePaths=/opt/edge_ai_api/logs /opt/edge_ai_api/data /opt/edge_ai_api/uploads
+
+# Watchdog settings (systemd built-in watchdog)
+# NOTE: Disabled because application has its own watchdog implementation
+# If you want to use systemd watchdog, implement sd_notify() in the application
+# WatchdogSec=30
+# NotifyAccess=all
+
+# Environment variables
+# Load from .env file if exists, otherwise use defaults
+EnvironmentFile=-/opt/edge_ai_api/config/.env
+Environment="API_HOST=0.0.0.0"
+Environment="API_PORT=8080"
+
+[Install]
+WantedBy=multi-user.target
+
