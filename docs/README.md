@@ -46,6 +46,13 @@ Tài liệu hướng dẫn đầy đủ cho Edge AI API project.
    - Background services flow
    - Mô tả các component
 
+7. **[HARDWARE_INFO_API.md](HARDWARE_INFO_API.md)** - Hardware Information API
+   - Hướng dẫn sử dụng API lấy thông tin phần cứng
+   - Endpoints: `/v1/core/system/info` và `/v1/core/system/status`
+   - Ví dụ sử dụng với curl, Python, JavaScript
+   - Troubleshooting và best practices
+   - Chi tiết các thông số có thể lấy được
+
 ## 🎯 Quick Start
 
 ### Cho Người Mới
