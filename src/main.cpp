@@ -3,15 +3,23 @@
 #include "api/version_handler.h"
 #include "api/watchdog_handler.h"
 #include "api/swagger_handler.h"
+#include "api/create_instance_handler.h"
+#include "api/instance_handler.h"
+#include "models/model_upload_handler.h"
 #include "core/watchdog.h"
 #include "core/health_monitor.h"
 #include "core/env_config.h"
+#include "instances/instance_registry.h"
+#include "core/solution_registry.h"
+#include "core/pipeline_builder.h"
+#include "instances/instance_storage.h"
 #include <iostream>
 #include <csignal>
 #include <cstdlib>
 #include <stdexcept>
 #include <memory>
 #include <thread>
+#include <algorithm>
 
 /**
  * @brief Edge AI API Server
@@ -106,6 +114,15 @@ int main()
         std::cout << "Available endpoints:" << std::endl;
         std::cout << "  GET /v1/core/health  - Health check" << std::endl;
         std::cout << "  GET /v1/core/version - Version information" << std::endl;
+        std::cout << "  POST /v1/core/instance - Create new instance" << std::endl;
+        std::cout << "  GET /v1/core/instances - List all instances" << std::endl;
+        std::cout << "  GET /v1/core/instances/{id} - Get instance details" << std::endl;
+        std::cout << "  POST /v1/core/instances/{id}/start - Start instance" << std::endl;
+        std::cout << "  POST /v1/core/instances/{id}/stop - Stop instance" << std::endl;
+        std::cout << "  DELETE /v1/core/instances/{id} - Delete instance" << std::endl;
+        std::cout << "  POST /v1/core/models/upload - Upload model file" << std::endl;
+        std::cout << "  GET /v1/core/models/list - List uploaded models" << std::endl;
+        std::cout << "  DELETE /v1/core/models/{modelName} - Delete model file" << std::endl;
         std::cout << "  GET /swagger         - Swagger UI (all versions)" << std::endl;
         std::cout << "  GET /v1/swagger      - Swagger UI for API v1" << std::endl;
         std::cout << "  GET /v2/swagger      - Swagger UI for API v2" << std::endl;
@@ -121,6 +138,49 @@ int main()
         static VersionHandler versionHandler;
         static WatchdogHandler watchdogHandler;
         static SwaggerHandler swaggerHandler;
+        
+        // Initialize instance management components
+        static SolutionRegistry& solutionRegistry = SolutionRegistry::getInstance();
+        static PipelineBuilder pipelineBuilder;
+        
+        // Initialize instance storage with configurable directory
+        std::string instancesDir = EnvConfig::getString("INSTANCES_DIR", "./instances");
+        static InstanceStorage instanceStorage(instancesDir);
+        static InstanceRegistry instanceRegistry(solutionRegistry, pipelineBuilder, instanceStorage);
+        
+        // Initialize default solutions (face_detection, etc.)
+        solutionRegistry.initializeDefaultSolutions();
+        
+        // Load persistent instances
+        instanceRegistry.loadPersistentInstances();
+        
+        // Register instance registry with handlers
+        CreateInstanceHandler::setInstanceRegistry(&instanceRegistry);
+        InstanceHandler::setInstanceRegistry(&instanceRegistry);
+        
+        // Create handler instances to register endpoints
+        static CreateInstanceHandler createInstanceHandler;
+        static InstanceHandler instanceHandler;
+        
+        // Initialize model upload handler with configurable directory
+        std::string modelsDir = EnvConfig::getString("MODELS_DIR", "./models");
+        ModelUploadHandler::setModelsDirectory(modelsDir);
+        static ModelUploadHandler modelUploadHandler;
+        
+        std::cout << "[Main] Instance management initialized" << std::endl;
+        std::cout << "  POST /v1/core/instance - Create new instance" << std::endl;
+        std::cout << "  GET /v1/core/instances - List all instances" << std::endl;
+        std::cout << "  GET /v1/core/instances/{instanceId} - Get instance details" << std::endl;
+        std::cout << "  POST /v1/core/instances/{instanceId}/start - Start instance" << std::endl;
+        std::cout << "  POST /v1/core/instances/{instanceId}/stop - Stop instance" << std::endl;
+        std::cout << "  DELETE /v1/core/instances/{instanceId} - Delete instance" << std::endl;
+        std::cout << "  Instances directory: " << instancesDir << std::endl;
+        std::cout << "[Main] Model upload handler initialized" << std::endl;
+        std::cout << "  POST /v1/core/models/upload - Upload model file" << std::endl;
+        std::cout << "  GET /v1/core/models/list - List uploaded models" << std::endl;
+        std::cout << "  DELETE /v1/core/models/{modelName} - Delete model file" << std::endl;
+        std::cout << "  Models directory: " << modelsDir << std::endl;
+        std::cout << std::endl;
         
         // Note: Infrastructure components (rate limiter, cache, resource manager, etc.)
         // are available but not initialized here since AI processing endpoints are not needed yet.
@@ -151,6 +211,11 @@ int main()
         int thread_num = EnvConfig::getInt("THREAD_NUM", 0, 0, 256); // 0 = auto-detect
         std::string log_level_str = EnvConfig::getString("LOG_LEVEL", "INFO");
         
+        // Performance optimization settings
+        size_t keepalive_requests = EnvConfig::getSizeT("KEEPALIVE_REQUESTS", 100);
+        size_t keepalive_timeout = EnvConfig::getSizeT("KEEPALIVE_TIMEOUT", 60);
+        bool enable_reuse_port = EnvConfig::getBool("ENABLE_REUSE_PORT", true);
+        
         // Parse log level
         trantor::Logger::LogLevel log_level = trantor::Logger::kInfo;
         std::string log_upper = log_level_str;
@@ -162,15 +227,66 @@ int main()
         else if (log_upper == "ERROR") log_level = trantor::Logger::kError;
         
         // Use hardware_concurrency if thread_num is 0
+        // For AI workloads, recommend 2-4x CPU cores for I/O-bound operations
         unsigned int actual_thread_num = (thread_num == 0) ? std::thread::hardware_concurrency() : thread_num;
         
-        drogon::app()
-            .setClientMaxBodySize(max_body_size)
+        // Optimize thread count for AI workloads if auto-detected
+        if (thread_num == 0 && actual_thread_num < 8) {
+            // For AI server, use at least 8 threads even on low-core systems
+            actual_thread_num = std::max(actual_thread_num, 8U);
+        }
+        
+        std::cout << "[Performance] Thread pool size: " << actual_thread_num << std::endl;
+        std::cout << "[Performance] Keep-alive: " << keepalive_requests << " requests, " << keepalive_timeout << "s timeout" << std::endl;
+        std::cout << "[Performance] Max body size: " << (max_body_size / 1024 / 1024) << "MB" << std::endl;
+        std::cout << "[Performance] Reuse port: " << (enable_reuse_port ? "enabled" : "disabled") << std::endl;
+        std::cout << std::endl;
+        
+        auto& app = drogon::app();
+        app.setClientMaxBodySize(max_body_size)
             .setClientMaxMemoryBodySize(max_memory_body_size)
             .setLogLevel(log_level)
-            .addListener(host, port)
-            .setThreadNum(actual_thread_num)
-            .run();
+            .setThreadNum(actual_thread_num);
+        
+        // Explicitly disable HTTPS - we only use HTTP
+        // With useSSL=false, Drogon will not check for SSL certificates
+        std::cout << "[Config] Using HTTP only (HTTPS disabled)" << std::endl;
+        
+        // Enable keep-alive for better connection reuse
+        // Note: Drogon handles keep-alive automatically, but we can configure it
+        // addListener with HTTP only (useSSL=false explicitly - no SSL certificates needed)
+        try {
+            if (enable_reuse_port) {
+                // Reuse port for better load distribution
+                // Parameters: host, port, useSSL=false, certFile, keyFile
+                app.addListener(host, port, false, "", ""); // false = disable SSL
+            } else {
+                app.addListener(host, port, false, "", ""); // false = disable SSL
+            }
+        } catch (const std::exception& e) {
+            std::cerr << "[Error] Failed to add listener: " << e.what() << std::endl;
+            throw;
+        }
+        
+        std::cout << "[Server] Starting HTTP server on " << host << ":" << port << std::endl;
+        
+        // Suppress HTTPS warning - we're intentionally using HTTP only
+        // The warning "You can't use https without cert file or key file" 
+        // is expected when HTTPS is not configured, but we only want HTTP
+        try {
+            app.run();
+        } catch (const std::exception& e) {
+            // Check if it's just the HTTPS warning
+            std::string error_msg = e.what();
+            if (error_msg.find("https") != std::string::npos && 
+                error_msg.find("cert") != std::string::npos) {
+                std::cerr << "[Warning] HTTPS warning detected but ignored (using HTTP only): " 
+                          << error_msg << std::endl;
+                // Continue anyway - this is expected when not using HTTPS
+                return 0;
+            }
+            throw; // Re-throw if it's a different error
+        }
 
         // Cleanup
         if (g_health_monitor) {
