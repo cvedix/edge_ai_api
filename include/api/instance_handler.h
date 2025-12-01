@@ -17,6 +17,7 @@ using namespace drogon;
  * - GET /v1/core/instances/{instanceId} - Get instance details
  * - POST /v1/core/instances/{instanceId}/start - Start an instance
  * - POST /v1/core/instances/{instanceId}/stop - Stop an instance
+ * - POST /v1/core/instances/{instanceId}/restart - Restart an instance
  * - DELETE /v1/core/instances/{instanceId} - Delete an instance
  */
 class InstanceHandler : public drogon::HttpController<InstanceHandler> {
@@ -26,11 +27,13 @@ public:
         ADD_METHOD_TO(InstanceHandler::getInstance, "/v1/core/instances/{instanceId}", Get);
         ADD_METHOD_TO(InstanceHandler::startInstance, "/v1/core/instances/{instanceId}/start", Post);
         ADD_METHOD_TO(InstanceHandler::stopInstance, "/v1/core/instances/{instanceId}/stop", Post);
+        ADD_METHOD_TO(InstanceHandler::restartInstance, "/v1/core/instances/{instanceId}/restart", Post);
         ADD_METHOD_TO(InstanceHandler::deleteInstance, "/v1/core/instances/{instanceId}", Delete);
         ADD_METHOD_TO(InstanceHandler::handleOptions, "/v1/core/instances", Options);
         ADD_METHOD_TO(InstanceHandler::handleOptions, "/v1/core/instances/{instanceId}", Options);
         ADD_METHOD_TO(InstanceHandler::handleOptions, "/v1/core/instances/{instanceId}/start", Options);
         ADD_METHOD_TO(InstanceHandler::handleOptions, "/v1/core/instances/{instanceId}/stop", Options);
+        ADD_METHOD_TO(InstanceHandler::handleOptions, "/v1/core/instances/{instanceId}/restart", Options);
     METHOD_LIST_END
     
     /**
@@ -60,6 +63,13 @@ public:
      */
     void stopInstance(const HttpRequestPtr &req,
                      std::function<void(const HttpResponsePtr &)> &&callback);
+    
+    /**
+     * @brief Handle POST /v1/core/instances/{instanceId}/restart
+     * Restarts an instance (stops then starts)
+     */
+    void restartInstance(const HttpRequestPtr &req,
+                        std::function<void(const HttpResponsePtr &)> &&callback);
     
     /**
      * @brief Handle DELETE /v1/core/instances/{instanceId}

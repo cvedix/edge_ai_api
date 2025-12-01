@@ -3,6 +3,8 @@
 #include "instances/instance_info.h"
 #include <drogon/HttpResponse.h>
 #include <sstream>
+#include <thread>
+#include <chrono>
 
 InstanceRegistry* InstanceHandler::instance_registry_ = nullptr;
 
@@ -268,6 +270,86 @@ void InstanceHandler::stopInstance(
             }
         } else {
             callback(createErrorResponse(400, "Failed to stop", "Could not stop instance. Check if instance exists."));
+        }
+        
+    } catch (const std::exception& e) {
+        std::cerr << "[InstanceHandler] Exception: " << e.what() << std::endl;
+        callback(createErrorResponse(500, "Internal server error", e.what()));
+    } catch (...) {
+        std::cerr << "[InstanceHandler] Unknown exception" << std::endl;
+        callback(createErrorResponse(500, "Internal server error", "Unknown error occurred"));
+    }
+}
+
+void InstanceHandler::restartInstance(
+    const HttpRequestPtr &req,
+    std::function<void(const HttpResponsePtr &)> &&callback) {
+    
+    try {
+        // Check if registry is set
+        if (!instance_registry_) {
+            callback(createErrorResponse(500, "Internal server error", "Instance registry not initialized"));
+            return;
+        }
+        
+        // Get instance ID from path parameter
+        std::string instanceId = req->getParameter("instanceId");
+        
+        // Fallback: extract from path if getParameter doesn't work
+        if (instanceId.empty()) {
+            std::string path = req->getPath();
+            size_t instancesPos = path.find("/instances/");
+            if (instancesPos != std::string::npos) {
+                size_t start = instancesPos + 11; // length of "/instances/"
+                size_t end = path.find("/", start);
+                if (end == std::string::npos) {
+                    end = path.length();
+                }
+                instanceId = path.substr(start, end - start);
+            }
+        }
+        
+        if (instanceId.empty()) {
+            callback(createErrorResponse(400, "Invalid request", "Instance ID is required"));
+            return;
+        }
+        
+        std::cerr << "[InstanceHandler] Restarting instance: " << instanceId << std::endl;
+        
+        // First, stop the instance if it's running
+        auto optInfo = instance_registry_->getInstance(instanceId);
+        if (optInfo.has_value() && optInfo.value().running) {
+            std::cerr << "[InstanceHandler] Instance is running, stopping first..." << std::endl;
+            if (!instance_registry_->stopInstance(instanceId)) {
+                std::cerr << "[InstanceHandler] Warning: Failed to stop instance before restart" << std::endl;
+                // Continue anyway - try to start it
+            } else {
+                // Give it a moment to fully stop
+                std::this_thread::sleep_for(std::chrono::milliseconds(200));
+            }
+        }
+        
+        // Now start the instance
+        std::cerr << "[InstanceHandler] Starting instance..." << std::endl;
+        if (instance_registry_->startInstance(instanceId)) {
+            // Get updated instance info
+            optInfo = instance_registry_->getInstance(instanceId);
+            if (optInfo.has_value()) {
+                Json::Value response = instanceInfoToJson(optInfo.value());
+                response["message"] = "Instance restarted successfully";
+                
+                auto resp = HttpResponse::newHttpJsonResponse(response);
+                resp->setStatusCode(k200OK);
+                resp->addHeader("Access-Control-Allow-Origin", "*");
+                resp->addHeader("Access-Control-Allow-Methods", "GET, POST, DELETE, OPTIONS");
+                resp->addHeader("Access-Control-Allow-Headers", "Content-Type, Authorization");
+                
+                callback(resp);
+            } else {
+                callback(createErrorResponse(500, "Internal server error", "Instance restarted but could not retrieve info"));
+            }
+        } else {
+            callback(createErrorResponse(400, "Failed to restart", "Could not restart instance. Check if instance exists and has a pipeline."));
         }
         
     } catch (const std::exception& e) {

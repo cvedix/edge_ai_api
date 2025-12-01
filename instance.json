@@ -1,0 +1,1138 @@
+{
+    "0b2ed637-68ae-69cf-5e32-ef7c83f26af4": {
+        "TensorRT": {
+            "model": {
+                "channel_layout": "NHWC",
+                "comment": "PVA (Person/Vehicle/Animal) detector",
+                "labels": [
+                    "Background",
+                    "Person",
+                    "Bike",
+                    "Vehicle",
+                    "Animal",
+                    "License Plate",
+                    "Face"
+                ],
+                "max_batchsize": 8,
+                "max_height": 512,
+                "max_width": 512,
+                "mean": 0,
+                "meta": {
+                    "cvedia_rt_version": 20230100,
+                    "is_quantized": true,
+                    "model_forge": {
+                        "hash": "c750ee27e9100a51e25cc62824c4419daa42fbc5",
+                        "host": "271b3092e088",
+                        "version": "2022.6.2"
+                    },
+                    "src_io": {
+                        "end_concats": [
+                            "/head_module/Concat_2",
+                            "/head_module/Concat_4",
+                            "/head_module/Concat_4"
+                        ],
+                        "input_names": [
+                            "input"
+                        ],
+                        "inputs": [
+                            {
+                                "dim": [
+                                    "0",
+                                    "512",
+                                    "512",
+                                    "3"
+                                ],
+                                "name": "input"
+                            }
+                        ],
+                        "is_dynamic_input_size": false,
+                        "is_nhwc": true,
+                        "output_names": [
+                            "reg_out1",
+                            "cls_out1",
+                            "reg_out2",
+                            "cls_out2",
+                            "reg_out3",
+                            "cls_out3"
+                        ],
+                        "outputs": [
+                            {
+                                "dim": [
+                                    "0",
+                                    "0",
+                                    "0"
+                                ],
+                                "name": "reg_out1"
+                            },
+                            {
+                                "dim": [
+                                    "0",
+                                    "0",
+                                    "0"
+                                ],
+                                "name": "cls_out1"
+                            },
+                            {
+                                "dim": [
+                                    "0",
+                                    "0",
+                                    "0"
+                                ],
+                                "name": "reg_out2"
+                            },
+                            {
+                                "dim": [
+                                    "0",
+                                    "0",
+                                    "0"
+                                ],
+                                "name": "cls_out2"
+                            },
+                            {
+                                "dim": [
+                                    "0",
+                                    "0",
+                                    "0"
+                                ],
+                                "name": "reg_out3"
+                            },
+                            {
+                                "dim": [
+                                    "0",
+                                    "0",
+                                    "0"
+                                ],
+                                "name": "cls_out3"
+                            }
+                        ]
+                    },
+                    "timestamp": "2025-01-09T15:31:09.935561"
+                },
+                "min_height": 512,
+                "min_width": 512,
+                "normalize_input": false,
+                "output_binding": [
+                    "reg_out1",
+                    "cls_out1",
+                    "reg_out2",
+                    "cls_out2",
+                    "reg_out3",
+                    "cls_out3"
+                ],
+                "postprocess": "yolov6",
+                "preprocess": "default",
+                "softmax": false,
+                "stddev": 0,
+                "transpose_input": false
+            },
+            "num_inference_contexts": 4,
+            "req_batch_size": 4
+        }
+    },
+    "16be86bb-614e-22ee-97df-023b089e400d": {
+        "TensorRT": {
+            "model": {
+                "channel_layout": "NHWC",
+                "comment": "Object Movement Classifier",
+                "labels": [
+                    "not_moving",
+                    "person_moving",
+                    "vehicle_moving",
+                    "animal_moving",
+                    "unknown_moving",
+                    "bicycle_moving",
+                    "accident",
+                    "fighting"
+                ],
+                "max_batchsize": 1,
+                "mean": 0,
+                "meta": {
+                    "cvedia_rt_version": 20230100,
+                    "is_quantized": false,
+                    "model_forge": {
+                        "hash": "bec7661782e9b8da4bc68d8a7cf15e8c3d025224",
+                        "host": "f6881492585c",
+                        "version": "2022.6.2"
+                    },
+                    "src_io": {
+                        "end_concats": [],
+                        "end_convs": [],
+                        "height": 96,
+                        "input_names": [
+                            "input"
+                        ],
+                        "inputs": [
+                            {
+                                "dim": [
+                                    "4",
+                                    "96",
+                                    "96",
+                                    "3"
+                                ],
+                                "name": "input"
+                            }
+                        ],
+                        "is_dynamic_input_size": false,
+                        "is_nhwc": true,
+                        "output_names": [
+                            "output"
+                        ],
+                        "outputs": [
+                            {
+                                "dim": [
+                                    "4",
+                                    "8"
+                                ],
+                                "name": "output"
+                            }
+                        ],
+                        "width": 96
+                    },
+                    "timestamp": "2025-10-01T10:54:54.630554+00:00"
+                },
+                "normalize_input": false,
+                "output_binding": [
+                    "output"
+                ],
+                "postprocess": "classifier",
+                "preprocess": "default",
+                "sigmoid": true,
+                "softmax": false,
+                "stddev": 0,
+                "transpose_input": false
+            },
+            "num_inference_contexts": 1,
+            "req_batch_size": 4
+        }
+    },
+    "41b6a16e-e43d-f787-1de7-f61c3ed8b361": {
+        "TensorRT": {
+            "model": {
+                "channel_layout": "NHWC",
+                "comment": "Face Reidentification",
+                "max_batchsize": 32,
+                "max_height": 112,
+                "max_width": 112,
+                "mean": 0,
+                "meta": {
+                    "cvedia_rt_version": 20230100,
+                    "is_quantized": false,
+                    "model_forge": {
+                        "hash": "c750ee27e9100a51e25cc62824c4419daa42fbc5",
+                        "host": "32abf22345fa",
+                        "version": "2022.6.2"
+                    },
+                    "src_io": {
+                        "end_concats": [],
+                        "input_names": [
+                            "input"
+                        ],
+                        "inputs": [
+                            {
+                                "dim": [
+                                    "0",
+                                    "112",
+                                    "112",
+                                    "3"
+                                ],
+                                "name": "input"
+                            }
+                        ],
+                        "is_dynamic_input_size": false,
+                        "is_nhwc": true,
+                        "output_names": [
+                            "embeddings"
+                        ],
+                        "outputs": [
+                            {
+                                "dim": [
+                                    "0",
+                                    "512"
+                                ],
+                                "name": "embeddings"
+                            }
+                        ]
+                    },
+                    "timestamp": "2024-07-31T20:58:14.329827"
+                },
+                "min_height": 112,
+                "min_width": 112,
+                "normalize_input": false,
+                "output_binding": [
+                    "embeddings"
+                ],
+                "postprocess": "passthru",
+                "preprocess": "default",
+                "softmax": false,
+                "stddev": 0,
+                "transpose_input": false
+            },
+            "num_inference_contexts": 4,
+            "req_batch_size": 4
+        }
+    },
+    "464d2798-6791-bb40-18ef-2ffee9af3132": {
+        "TensorRT": {
+            "model": {
+                "channel_layout": "NHWC",
+                "comment": "Object Movement Classifier",
+                "labels": [
+                    "not_moving",
+                    "person_moving",
+                    "vehicle_moving",
+                    "animal_moving",
+                    "unknown_moving",
+                    "bicycle_moving",
+                    "accident",
+                    "fighting"
+                ],
+                "max_batchsize": 1,
+                "mean": 0,
+                "meta": {
+                    "cvedia_rt_version": 20230100,
+                    "is_quantized": false,
+                    "model_forge": {
+                        "hash": "bec7661782e9b8da4bc68d8a7cf15e8c3d025224",
+                        "host": "e4d0e3ae8797",
+                        "version": "2022.6.2"
+                    },
+                    "src_io": {
+                        "end_concats": [],
+                        "end_convs": [],
+                        "height": 96,
+                        "input_names": [
+                            "input"
+                        ],
+                        "inputs": [
+                            {
+                                "dim": [
+                                    "4",
+                                    "96",
+                                    "96",
+                                    "3"
+                                ],
+                                "name": "input"
+                            }
+                        ],
+                        "is_dynamic_input_size": false,
+                        "is_nhwc": true,
+                        "output_names": [
+                            "output"
+                        ],
+                        "outputs": [
+                            {
+                                "dim": [
+                                    "4",
+                                    "8"
+                                ],
+                                "name": "output"
+                            }
+                        ],
+                        "width": 96
+                    },
+                    "timestamp": "2025-10-30T11:17:00.303689+00:00"
+                },
+                "normalize_input": false,
+                "output_binding": [
+                    "output"
+                ],
+                "postprocess": "classifier",
+                "preprocess": "default",
+                "sigmoid": true,
+                "softmax": false,
+                "stddev": 0,
+                "transpose_input": false
+            },
+            "num_inference_contexts": 1,
+            "req_batch_size": 4
+        }
+    },
+    "AnimalTracker": {
+        "enable_thumbnail_creation": true,
+        "geometric_movement_threshold_max_area": 0.20000000298023224,
+        "geometric_movement_threshold_min_area": 1
+    },
+    "AutoRestart": true,
+    "AutoStart": false,
+    "Detector": {
+        "animal_confidence_threshold": 0.30000001192092896,
+        "conf_threshold": 0.20000000298023224,
+        "current_preset": "FullRegionInference",
+        "current_sensitivity_preset": "High",
+        "face_confidence_threshold": 0.10000000149011612,
+        "license_plate_confidence_threshold": 0.10000000149011612,
+        "model_file": "pva_det_full_frame_512",
+        "person_confidence_threshold": 0.30000001192092896,
+        "preset_values": {
+            "MosaicInference": {
+                "Detector/model_file": "pva_det_mosaic_320"
+            }
+        },
+        "vehicle_confidence_threshold": 0.30000001192092896
+    },
+    "DetectorRegions": {},
+    "DetectorThermal": {
+        "model_file": "pva_det_mosaic_320"
+    },
+    "DisplayName": "CAMERA FACE",
+    "Global": {
+        "Detection": {
+            "inference_strategy": "full_frame"
+        },
+        "reload_detector_required": true
+    },
+    "Input": {
+        "media_format": {
+            "color_format": 0,
+            "default_format": true,
+            "height": 0,
+            "is_software": false,
+            "name": "Same as Source"
+        },
+        "media_type": "IP Camera",
+        "uri": "gstreamer:///urisourcebin uri=rtsp://192.168.1.106:8554/live/vanphong ! decodebin ! videoconvert ! video/x-raw, format=NV12 ! appsink drop=true name=cvdsink"
+    },
+    "InstanceId": "83bbcddd-7ea1-1756-690a-e43eab51424f",
+    "LicensePlateTracker": {
+        "movement_update_delay_sec": 0.20000000298023224
+    },
+    "Movement": {
+        "animal_movement_threshold": 0.10000000149011612,
+        "current_sensitivity_preset": "High",
+        "person_movement_threshold": 0.10000000149011612,
+        "vehicle_movement_threshold": 0.20000000298023224
+    },
+    "ObjectAttributeExtraction": {
+        "Attributes": {
+            "face_features": {
+                "enabled": true
+            }
+        },
+        "Inference": {
+            "ufc": {
+                "Network": {
+                    "model_file": "ufc_light"
+                }
+            }
+        }
+    },
+    "ObjectMovementClassifier": {
+        "animal_movement_threshold": 0.4000000059604645,
+        "bicycle_movement_threshold": 0.30000001192092896,
+        "person_movement_threshold": 0.5,
+        "vehicle_movement_threshold": 0.5
+    },
+    "OriginatorInfo": {
+        "address": "192.168.1.116"
+    },
+    "Output": {
+        "JSONExport": {
+            "enabled": false
+        },
+        "NXWitness": {
+            "enabled": false
+        },
+        "handlers": {
+            "rtsp:--0.0.0.0:8554-stream1": {
+                "config": {
+                    "debug": "4",
+                    "fps": 10,
+                    "pipeline": "( appsrc name=cvedia-rt ! videoconvert ! videoscale ! x264enc ! video/x-h264,profile=high ! rtph264pay name=pay0 pt=96 )"
+                },
+                "enabled": true,
+                "sink": "output-image",
+                "uri": "rtsp://0.0.0.0:8554/stream1"
+            }
+        },
+        "render_preset": "Default"
+    },
+    "PerformanceMode": {
+        "current_preset": "Balanced"
+    },
+    "PersonTracker": {
+        "enable_sub_object_thumbnail_creation": false,
+        "enable_thumbnail_creation": true,
+        "geometric_movement_threshold_max_area": 0.10000000149011612,
+        "geometric_movement_threshold_min_area": 0.800000011920929,
+        "movement_update_delay_sec": 0.20000000298023224
+    },
+    "ReadOnly": false,
+    "Solution": "securt",
+    "SolutionManager": {
+        "enable_debug": false,
+        "frame_rate_limit": 15,
+        "input_pixel_limit": 2000000,
+        "recommended_frame_rate": 5,
+        "run_statistics": true,
+        "send_diagnostics": false,
+        "send_metadata": true
+    },
+    "SystemInstance": false,
+    "Tripwire": {
+        "Tripwires": {}
+    },
+    "VehicleTracker": {
+        "Locking": {
+            "time_window_duration_sec": 0.4000000059604645
+        },
+        "enable_thumbnail_creation": true,
+        "geometric_movement_threshold_max_area": 0.20000000298023224,
+        "geometric_movement_threshold_min_area": 1,
+        "movement_update_delay_sec": 0.20000000298023224
+    },
+    "Zone": {
+        "Zones": {
+            "cbed05cd-7657-4adb-acfe-c5e0397bd364": {
+                "check_anchor_point": "center",
+                "color": [
+                    1,
+                    0,
+                    0,
+                    0.30000001192092896
+                ],
+                "crowding_min_count": 4,
+                "crowding_minimum_duration": 0,
+                "detect_animals": true,
+                "detect_faces": false,
+                "detect_license_plates": false,
+                "detect_people": true,
+                "detect_unknowns": false,
+                "detect_vehicles": true,
+                "estimate_crowds": false,
+                "groupby": "occupancy_areas",
+                "id": "cbed05cd-7657-4adb-acfe-c5e0397bd364",
+                "ignore_stationary_objects": false,
+                "inference_strategy": "full_frame",
+                "name": "Area 2",
+                "restrict_vehicle_type": false,
+                "timestamp": 1763449634816.0,
+                "trigger_crowding": false,
+                "trigger_loitering": false,
+                "trigger_on_enter": true,
+                "trigger_on_exit": true,
+                "vertices": [
+                    {
+                        "x": 0,
+                        "y": 0
+                    },
+                    {
+                        "x": 1,
+                        "y": 0
+                    },
+                    {
+                        "x": 1,
+                        "y": 1
+                    },
+                    {
+                        "x": 0,
+                        "y": 1
+                    }
+                ]
+            }
+        }
+    },
+    "ad788273-e341-0a1f-92f7-8c57f075d69c": {
+        "TensorRT": {
+            "model": {
+                "channel_layout": "NHWC",
+                "comment": "Face Reidentification",
+                "max_batchsize": 32,
+                "max_height": 112,
+                "max_width": 112,
+                "mean": 0,
+                "meta": {
+                    "cvedia_rt_version": 20230100,
+                    "is_quantized": false,
+                    "model_forge": {
+                        "hash": "c750ee27e9100a51e25cc62824c4419daa42fbc5",
+                        "host": "32abf22345fa",
+                        "version": "2022.6.2"
+                    },
+                    "src_io": {
+                        "end_concats": [],
+                        "input_names": [
+                            "input"
+                        ],
+                        "inputs": [
+                            {
+                                "dim": [
+                                    "0",
+                                    "112",
+                                    "112",
+                                    "3"
+                                ],
+                                "name": "input"
+                            }
+                        ],
+                        "is_dynamic_input_size": false,
+                        "is_nhwc": true,
+                        "output_names": [
+                            "embeddings"
+                        ],
+                        "outputs": [
+                            {
+                                "dim": [
+                                    "0",
+                                    "512"
+                                ],
+                                "name": "embeddings"
+                            }
+                        ]
+                    },
+                    "timestamp": "2024-07-31T20:58:14.329827"
+                },
+                "min_height": 112,
+                "min_width": 112,
+                "normalize_input": false,
+                "output_binding": [
+                    "embeddings"
+                ],
+                "postprocess": "passthru",
+                "preprocess": "default",
+                "softmax": false,
+                "stddev": 0,
+                "transpose_input": false
+            },
+            "num_inference_contexts": 4,
+            "req_batch_size": 4
+        }
+    },
+    "af382967-70ea-099a-b8f4-adf4328a69e6": {
+        "TensorRT": {
+            "model": {
+                "channel_layout": "NHWC",
+                "comment": "Object Movement Classifier",
+                "labels": [
+                    "not_moving",
+                    "person_moving",
+                    "vehicle_moving",
+                    "animal_moving",
+                    "unknown_moving",
+                    "bicycle_moving",
+                    "accident",
+                    "fighting"
+                ],
+                "max_batchsize": 1,
+                "mean": 0,
+                "meta": {
+                    "cvedia_rt_version": 20230100,
+                    "is_quantized": false,
+                    "model_forge": {
+                        "hash": "bec7661782e9b8da4bc68d8a7cf15e8c3d025224",
+                        "host": "f6881492585c",
+                        "version": "2022.6.2"
+                    },
+                    "src_io": {
+                        "end_concats": [],
+                        "end_convs": [],
+                        "height": 96,
+                        "input_names": [
+                            "input"
+                        ],
+                        "inputs": [
+                            {
+                                "dim": [
+                                    "4",
+                                    "96",
+                                    "96",
+                                    "3"
+                                ],
+                                "name": "input"
+                            }
+                        ],
+                        "is_dynamic_input_size": false,
+                        "is_nhwc": true,
+                        "output_names": [
+                            "output"
+                        ],
+                        "outputs": [
+                            {
+                                "dim": [
+                                    "4",
+                                    "8"
+                                ],
+                                "name": "output"
+                            }
+                        ],
+                        "width": 96
+                    },
+                    "timestamp": "2025-10-01T10:54:54.630554+00:00"
+                },
+                "normalize_input": false,
+                "output_binding": [
+                    "output"
+                ],
+                "postprocess": "classifier",
+                "preprocess": "default",
+                "sigmoid": true,
+                "softmax": false,
+                "stddev": 0,
+                "transpose_input": false
+            },
+            "num_inference_contexts": 1,
+            "req_batch_size": 4
+        }
+    },
+    "c52652eb-5990-ed81-2d84-c999e4584215": {
+        "TensorRT": {
+            "model": {
+                "channel_layout": "NHWC",
+                "comment": "Face Reidentification",
+                "max_batchsize": 32,
+                "max_height": 112,
+                "max_width": 112,
+                "mean": 0,
+                "meta": {
+                    "cvedia_rt_version": 20230100,
+                    "is_quantized": false,
+                    "model_forge": {
+                        "hash": "c750ee27e9100a51e25cc62824c4419daa42fbc5",
+                        "host": "32abf22345fa",
+                        "version": "2022.6.2"
+                    },
+                    "src_io": {
+                        "end_concats": [],
+                        "input_names": [
+                            "input"
+                        ],
+                        "inputs": [
+                            {
+                                "dim": [
+                                    "0",
+                                    "112",
+                                    "112",
+                                    "3"
+                                ],
+                                "name": "input"
+                            }
+                        ],
+                        "is_dynamic_input_size": false,
+                        "is_nhwc": true,
+                        "output_names": [
+                            "embeddings"
+                        ],
+                        "outputs": [
+                            {
+                                "dim": [
+                                    "0",
+                                    "512"
+                                ],
+                                "name": "embeddings"
+                            }
+                        ]
+                    },
+                    "timestamp": "2024-07-31T20:58:14.329827"
+                },
+                "min_height": 112,
+                "min_width": 112,
+                "normalize_input": false,
+                "output_binding": [
+                    "embeddings"
+                ],
+                "postprocess": "passthru",
+                "preprocess": "default",
+                "softmax": false,
+                "stddev": 0,
+                "transpose_input": false
+            },
+            "num_inference_contexts": 4,
+            "req_batch_size": 4
+        }
+    },
+    "f388e300-b795-160a-8ed0-8ae0fdc008e0": {
+        "TensorRT": {
+            "model": {
+                "channel_layout": "NHWC",
+                "comment": "PVA (Person/Vehicle/Animal) detector",
+                "labels": [
+                    "Background",
+                    "Person",
+                    "Bike",
+                    "Vehicle",
+                    "Animal",
+                    "License Plate",
+                    "Face",
+                    "Unused",
+                    "PBVA",
+                    "Creature"
+                ],
+                "max_batchsize": 8,
+                "max_height": 320,
+                "max_width": 320,
+                "mean": 0,
+                "meta": {
+                    "cvedia_rt_version": 20230100,
+                    "is_quantized": true,
+                    "model_forge": {
+                        "hash": "bec7661782e9b8da4bc68d8a7cf15e8c3d025224",
+                        "host": "95a794a3eb31",
+                        "version": "2022.6.2"
+                    },
+                    "src_io": {
+                        "end_concats": [
+                            "/model/model.23/Concat_3",
+                            "/model/model.23/Concat_4",
+                            "/model/model.23/Concat_5"
+                        ],
+                        "end_convs": [],
+                        "height": 320,
+                        "input_names": [
+                            "input"
+                        ],
+                        "inputs": [
+                            {
+                                "dim": [
+                                    "0",
+                                    "320",
+                                    "320",
+                                    "3"
+                                ],
+                                "name": "input"
+                            }
+                        ],
+                        "is_dynamic_input_size": false,
+                        "is_nhwc": true,
+                        "output_names": [
+                            "reg_out1",
+                            "cls_out1",
+                            "reg_out2",
+                            "cls_out2",
+                            "reg_out3",
+                            "cls_out3"
+                        ],
+                        "outputs": [
+                            {
+                                "dim": [
+                                    "0",
+                                    "0",
+                                    "0"
+                                ],
+                                "name": "reg_out1"
+                            },
+                            {
+                                "dim": [
+                                    "0",
+                                    "0",
+                                    "0"
+                                ],
+                                "name": "cls_out1"
+                            },
+                            {
+                                "dim": [
+                                    "0",
+                                    "0",
+                                    "0"
+                                ],
+                                "name": "reg_out2"
+                            },
+                            {
+                                "dim": [
+                                    "0",
+                                    "0",
+                                    "0"
+                                ],
+                                "name": "cls_out2"
+                            },
+                            {
+                                "dim": [
+                                    "0",
+                                    "0",
+                                    "0"
+                                ],
+                                "name": "reg_out3"
+                            },
+                            {
+                                "dim": [
+                                    "0",
+                                    "0",
+                                    "0"
+                                ],
+                                "name": "cls_out3"
+                            }
+                        ],
+                        "width": 320
+                    },
+                    "timestamp": "2025-11-04T15:39:01.187532+00:00"
+                },
+                "min_height": 320,
+                "min_width": 320,
+                "normalize_input": false,
+                "output_binding": [
+                    "reg_out1",
+                    "cls_out1",
+                    "reg_out2",
+                    "cls_out2",
+                    "reg_out3",
+                    "cls_out3"
+                ],
+                "postprocess": "yolov11",
+                "preprocess": "default",
+                "softmax": false,
+                "stddev": 0,
+                "transpose_input": false
+            },
+            "num_inference_contexts": 4,
+            "req_batch_size": 4
+        }
+    },
+    "f71a2f08-8749-a64a-56ee-34c2e134e822": {
+        "TensorRT": {
+            "model": {
+                "channel_layout": "NHWC",
+                "comment": "PVA (Person/Vehicle/Animal) detector",
+                "labels": [
+                    "Background",
+                    "Person",
+                    "Bike",
+                    "Vehicle",
+                    "Animal",
+                    "License Plate",
+                    "Face"
+                ],
+                "max_batchsize": 8,
+                "max_height": 512,
+                "max_width": 512,
+                "mean": 0,
+                "meta": {
+                    "cvedia_rt_version": 20230100,
+                    "is_quantized": true,
+                    "model_forge": {
+                        "hash": "c750ee27e9100a51e25cc62824c4419daa42fbc5",
+                        "host": "271b3092e088",
+                        "version": "2022.6.2"
+                    },
+                    "src_io": {
+                        "end_concats": [
+                            "/head_module/Concat_2",
+                            "/head_module/Concat_4",
+                            "/head_module/Concat_4"
+                        ],
+                        "input_names": [
+                            "input"
+                        ],
+                        "inputs": [
+                            {
+                                "dim": [
+                                    "0",
+                                    "512",
+                                    "512",
+                                    "3"
+                                ],
+                                "name": "input"
+                            }
+                        ],
+                        "is_dynamic_input_size": false,
+                        "is_nhwc": true,
+                        "output_names": [
+                            "reg_out1",
+                            "cls_out1",
+                            "reg_out2",
+                            "cls_out2",
+                            "reg_out3",
+                            "cls_out3"
+                        ],
+                        "outputs": [
+                            {
+                                "dim": [
+                                    "0",
+                                    "0",
+                                    "0"
+                                ],
+                                "name": "reg_out1"
+                            },
+                            {
+                                "dim": [
+                                    "0",
+                                    "0",
+                                    "0"
+                                ],
+                                "name": "cls_out1"
+                            },
+                            {
+                                "dim": [
+                                    "0",
+                                    "0",
+                                    "0"
+                                ],
+                                "name": "reg_out2"
+                            },
+                            {
+                                "dim": [
+                                    "0",
+                                    "0",
+                                    "0"
+                                ],
+                                "name": "cls_out2"
+                            },
+                            {
+                                "dim": [
+                                    "0",
+                                    "0",
+                                    "0"
+                                ],
+                                "name": "reg_out3"
+                            },
+                            {
+                                "dim": [
+                                    "0",
+                                    "0",
+                                    "0"
+                                ],
+                                "name": "cls_out3"
+                            }
+                        ]
+                    },
+                    "timestamp": "2025-01-09T15:31:09.935561"
+                },
+                "min_height": 512,
+                "min_width": 512,
+                "normalize_input": false,
+                "output_binding": [
+                    "reg_out1",
+                    "cls_out1",
+                    "reg_out2",
+                    "cls_out2",
+                    "reg_out3",
+                    "cls_out3"
+                ],
+                "postprocess": "yolov6",
+                "preprocess": "default",
+                "softmax": false,
+                "stddev": 0,
+                "transpose_input": false
+            },
+            "num_inference_contexts": 4,
+            "req_batch_size": 4
+        }
+    },
+    "faa1f61e-811f-da6b-d96c-fbd181970d72": {
+        "TensorRT": {
+            "model": {
+                "channel_layout": "NHWC",
+                "comment": "PVA (Person/Vehicle/Animal) detector",
+                "labels": [
+                    "Background",
+                    "Person",
+                    "Bike",
+                    "Vehicle",
+                    "Animal",
+                    "License Plate",
+                    "Face"
+                ],
+                "max_batchsize": 8,
+                "max_height": 512,
+                "max_width": 512,
+                "mean": 0,
+                "meta": {
+                    "cvedia_rt_version": 20230100,
+                    "is_quantized": true,
+                    "model_forge": {
+                        "hash": "c750ee27e9100a51e25cc62824c4419daa42fbc5",
+                        "host": "271b3092e088",
+                        "version": "2022.6.2"
+                    },
+                    "src_io": {
+                        "end_concats": [
+                            "/head_module/Concat_2",
+                            "/head_module/Concat_4",
+                            "/head_module/Concat_4"
+                        ],
+                        "input_names": [
+                            "input"
+                        ],
+                        "inputs": [
+                            {
+                                "dim": [
+                                    "0",
+                                    "512",
+                                    "512",
+                                    "3"
+                                ],
+                                "name": "input"
+                            }
+                        ],
+                        "is_dynamic_input_size": false,
+                        "is_nhwc": true,
+                        "output_names": [
+                            "reg_out1",
+                            "cls_out1",
+                            "reg_out2",
+                            "cls_out2",
+                            "reg_out3",
+                            "cls_out3"
+                        ],
+                        "outputs": [
+                            {
+                                "dim": [
+                                    "0",
+                                    "0",
+                                    "0"
+                                ],
+                                "name": "reg_out1"
+                            },
+                            {
+                                "dim": [
+                                    "0",
+                                    "0",
+                                    "0"
+                                ],
+                                "name": "cls_out1"
+                            },
+                            {
+                                "dim": [
+                                    "0",
+                                    "0",
+                                    "0"
+                                ],
+                                "name": "reg_out2"
+                            },
+                            {
+                                "dim": [
+                                    "0",
+                                    "0",
+                                    "0"
+                                ],
+                                "name": "cls_out2"
+                            },
+                            {
+                                "dim": [
+                                    "0",
+                                    "0",
+                                    "0"
+                                ],
+                                "name": "reg_out3"
+                            },
+                            {
+                                "dim": [
+                                    "0",
+                                    "0",
+                                    "0"
+                                ],
+                                "name": "cls_out3"
+                            }
+                        ]
+                    },
+                    "timestamp": "2025-01-09T15:31:09.935561"
+                },
+                "min_height": 512,
+                "min_width": 512,
+                "normalize_input": false,
+                "output_binding": [
+                    "reg_out1",
+                    "cls_out1",
+                    "reg_out2",
+                    "cls_out2",
+                    "reg_out3",
+                    "cls_out3"
+                ],
+                "postprocess": "yolov6",
+                "preprocess": "default",
+                "softmax": false,
+                "stddev": 0,
+                "transpose_input": false
+            },
+            "num_inference_contexts": 4,
+            "req_batch_size": 4
+        }
+    }
+}

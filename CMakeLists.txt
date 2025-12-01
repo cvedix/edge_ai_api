@@ -268,16 +268,9 @@ else()
 endif()
 
 # Link CVEDIX SDK
-# Find library directly (avoiding CMake config file issues)
-find_library(CVEDIX_LIBRARY 
-    NAMES cvedix_instance_sdk
-    PATHS /usr/lib /usr/local/lib
-    REQUIRED
-)
-if(CVEDIX_LIBRARY)
-    target_link_libraries(edge_ai_api PRIVATE ${CVEDIX_LIBRARY})
-    message(STATUS "✓ CVEDIX SDK linked: ${CVEDIX_LIBRARY}")
-endif()
+find_package(cvedix REQUIRED)
+target_link_libraries(edge_ai_api PRIVATE cvedix::cvedix_instance_sdk)
+message(STATUS "✓ CVEDIX SDK linked: cvedix::cvedix_instance_sdk")
 
 # Link OpenCV (for CVEDIX SDK)
 if(OpenCV_FOUND)
