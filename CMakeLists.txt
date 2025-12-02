@@ -208,7 +208,7 @@ if(AUTO_DOWNLOAD_DEPENDENCIES)
     FetchContent_Declare(
         plog
         GIT_REPOSITORY https://github.com/SergiusTheBest/plog.git
-        GIT_TAG        v1.1.9
+        GIT_TAG        1.1.11
         GIT_SHALLOW    TRUE
     )
     
