@@ -90,6 +90,18 @@ Environment="API_PORT=8080"
 | `DISPLAY` | X11 Display (tự động detect) | (auto) | `main.cpp` |
 | `WAYLAND_DISPLAY` | Wayland Display (tự động detect) | (auto) | `main.cpp` |
 
+#### RTSP Transport Protocol Configuration
+| Biến | Mô tả | Mặc định | File sử dụng |
+|------|-------|----------|--------------|
+| `GST_RTSP_PROTOCOLS` | GStreamer RTSP transport protocol (`tcp` hoặc `udp`) | `tcp` | `src/core/pipeline_builder.cpp` |
+| `RTSP_TRANSPORT` | Alternative name cho `GST_RTSP_PROTOCOLS` (`tcp` hoặc `udp`) | (auto-set to `tcp`) | `src/core/pipeline_builder.cpp` |
+
+**Lưu ý về RTSP Transport:**
+- **Mặc định sử dụng TCP**: Để tránh vấn đề firewall chặn UDP, hệ thống mặc định sử dụng TCP
+- **UDP nhanh hơn nhưng dễ bị firewall block**: Chỉ dùng UDP khi trong cùng network và firewall cho phép
+- **Cách set**: `export GST_RTSP_PROTOCOLS=tcp` hoặc `export RTSP_TRANSPORT=tcp`
+- Xem thêm: [RTSP Troubleshooting Guide](../docs/RTSP_TROUBLESHOOTING.md)
+
 ### 📝 Có Thể Implement (Future)
 
 Các biến sau có thể được thêm vào trong tương lai:

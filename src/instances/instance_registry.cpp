@@ -332,7 +332,11 @@ bool InstanceRegistry::startPipeline(const std::vector<std::shared_ptr<cvedix_no
             std::cerr << "[InstanceRegistry]   1. Check output files (from build directory):" << std::endl;
             std::cerr << "[InstanceRegistry]      ls -lht ./output/<instanceId>/" << std::endl;
             std::cerr << "[InstanceRegistry]      Or from project root: ./build/output/<instanceId>/" << std::endl;
-            std::cerr << "[InstanceRegistry]   2. Check CVEDIX SDK logs for 'rtspsrc' connection messages" << std::endl;
+            std::cerr << "[InstanceRegistry]   2. Check CVEDIX SDK logs for 'rtspsrc' connection messages:" << std::endl;
+            std::cerr << "[InstanceRegistry]      - Direct run: ./bin/edge_ai_api 2>&1 | grep -i rtspsrc" << std::endl;
+            std::cerr << "[InstanceRegistry]      - Service: sudo journalctl -u edge-ai-api | grep -i rtspsrc" << std::endl;
+            std::cerr << "[InstanceRegistry]      - Enable GStreamer debug: export GST_DEBUG=rtspsrc:4" << std::endl;
+            std::cerr << "[InstanceRegistry]      - See docs/HOW_TO_CHECK_LOGS.md for details" << std::endl;
             std::cerr << "[InstanceRegistry]   3. Check instance status: GET /v1/core/instances/<instanceId>" << std::endl;
             std::cerr << "[InstanceRegistry]   4. Monitor file creation:" << std::endl;
             std::cerr << "[InstanceRegistry]      watch -n 1 'ls -lht ./output/<instanceId>/ | head -5'" << std::endl;
