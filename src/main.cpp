@@ -9,6 +9,7 @@
 #include "core/watchdog.h"
 #include "core/health_monitor.h"
 #include "core/env_config.h"
+#include "core/logger.h"
 #include "instances/instance_registry.h"
 #include "core/solution_registry.h"
 #include "core/pipeline_builder.h"
@@ -40,7 +41,7 @@ static std::unique_ptr<HealthMonitor> g_health_monitor;
 void signalHandler(int signal)
 {
     if (signal == SIGINT || signal == SIGTERM) {
-        std::cout << "\nReceived signal " << signal << ", shutting down gracefully..." << std::endl;
+        PLOG_INFO << "Received signal " << signal << ", shutting down gracefully...";
         g_shutdown = true;
         
         // Stop watchdog and health monitor
@@ -58,7 +59,7 @@ void signalHandler(int signal)
 // Recovery callback for watchdog
 void recoveryAction()
 {
-    std::cerr << "[Recovery] Application detected as unresponsive. Attempting recovery..." << std::endl;
+    PLOG_ERROR << "[Recovery] Application detected as unresponsive. Attempting recovery...";
     // In production, you might want to:
     // - Restart specific components
     // - Clear caches
@@ -83,10 +84,12 @@ uint16_t parsePort(const char* port_str, uint16_t default_port)
         }
         return static_cast<uint16_t>(port_int);
     } catch (const std::invalid_argument& e) {
+        // Note: Logger might not be initialized yet, so use std::cerr
         std::cerr << "Error: Invalid port number '" << port_str << "': " << e.what() << std::endl;
         std::cerr << "Using default port: " << default_port << std::endl;
         return default_port;
     } catch (const std::out_of_range& e) {
+        // Note: Logger might not be initialized yet, so use std::cerr
         std::cerr << "Error: Port number out of range: " << e.what() << std::endl;
         std::cerr << "Using default port: " << default_port << std::endl;
         return default_port;
@@ -96,11 +99,13 @@ uint16_t parsePort(const char* port_str, uint16_t default_port)
 int main()
 {
     try {
-        std::cout << "========================================" << std::endl;
-        std::cout << "Edge AI API Server" << std::endl;
-        std::cout << "========================================" << std::endl;
-        std::cout << "Starting REST API server..." << std::endl;
-        std::cout << std::endl;
+        // Initialize logger first (before any logging)
+        Logger::init();
+        
+        PLOG_INFO << "========================================";
+        PLOG_INFO << "Edge AI API Server";
+        PLOG_INFO << "========================================";
+        PLOG_INFO << "Starting REST API server...";
 
         // Register signal handlers for graceful shutdown
         std::signal(SIGINT, signalHandler);
@@ -110,26 +115,25 @@ int main()
         std::string host = EnvConfig::getString("API_HOST", "0.0.0.0");
         uint16_t port = static_cast<uint16_t>(EnvConfig::getInt("API_PORT", 8080, 1, 65535));
 
-        std::cout << "Server will listen on: " << host << ":" << port << std::endl;
-        std::cout << "Available endpoints:" << std::endl;
-        std::cout << "  GET /v1/core/health  - Health check" << std::endl;
-        std::cout << "  GET /v1/core/version - Version information" << std::endl;
-        std::cout << "  POST /v1/core/instance - Create new instance" << std::endl;
-        std::cout << "  GET /v1/core/instances - List all instances" << std::endl;
-        std::cout << "  GET /v1/core/instances/{id} - Get instance details" << std::endl;
-        std::cout << "  POST /v1/core/instances/{id}/start - Start instance" << std::endl;
-        std::cout << "  POST /v1/core/instances/{id}/stop - Stop instance" << std::endl;
-        std::cout << "  DELETE /v1/core/instances/{id} - Delete instance" << std::endl;
-        std::cout << "  POST /v1/core/models/upload - Upload model file" << std::endl;
-        std::cout << "  GET /v1/core/models/list - List uploaded models" << std::endl;
-        std::cout << "  DELETE /v1/core/models/{modelName} - Delete model file" << std::endl;
-        std::cout << "  GET /swagger         - Swagger UI (all versions)" << std::endl;
-        std::cout << "  GET /v1/swagger      - Swagger UI for API v1" << std::endl;
-        std::cout << "  GET /v2/swagger      - Swagger UI for API v2" << std::endl;
-        std::cout << "  GET /openapi.yaml    - OpenAPI spec (all versions)" << std::endl;
-        std::cout << "  GET /v1/openapi.yaml - OpenAPI spec for v1" << std::endl;
-        std::cout << "  GET /v2/openapi.yaml - OpenAPI spec for v2" << std::endl;
-        std::cout << std::endl;
+        PLOG_INFO << "Server will listen on: " << host << ":" << port;
+        PLOG_INFO << "Available endpoints:";
+        PLOG_INFO << "  GET /v1/core/health  - Health check";
+        PLOG_INFO << "  GET /v1/core/version - Version information";
+        PLOG_INFO << "  POST /v1/core/instance - Create new instance";
+        PLOG_INFO << "  GET /v1/core/instances - List all instances";
+        PLOG_INFO << "  GET /v1/core/instances/{id} - Get instance details";
+        PLOG_INFO << "  POST /v1/core/instances/{id}/start - Start instance";
+        PLOG_INFO << "  POST /v1/core/instances/{id}/stop - Stop instance";
+        PLOG_INFO << "  DELETE /v1/core/instances/{id} - Delete instance";
+        PLOG_INFO << "  POST /v1/core/models/upload - Upload model file";
+        PLOG_INFO << "  GET /v1/core/models/list - List uploaded models";
+        PLOG_INFO << "  DELETE /v1/core/models/{modelName} - Delete model file";
+        PLOG_INFO << "  GET /swagger         - Swagger UI (all versions)";
+        PLOG_INFO << "  GET /v1/swagger      - Swagger UI for API v1";
+        PLOG_INFO << "  GET /v2/swagger      - Swagger UI for API v2";
+        PLOG_INFO << "  GET /openapi.yaml    - OpenAPI spec (all versions)";
+        PLOG_INFO << "  GET /v1/openapi.yaml - OpenAPI spec for v1";
+        PLOG_INFO << "  GET /v2/openapi.yaml - OpenAPI spec for v2";
 
         // Controllers are auto-registered via Drogon's HttpController system
         // when headers are included and METHOD_LIST_BEGIN/END macros are used
@@ -167,20 +171,19 @@ int main()
         ModelUploadHandler::setModelsDirectory(modelsDir);
         static ModelUploadHandler modelUploadHandler;
         
-        std::cout << "[Main] Instance management initialized" << std::endl;
-        std::cout << "  POST /v1/core/instance - Create new instance" << std::endl;
-        std::cout << "  GET /v1/core/instances - List all instances" << std::endl;
-        std::cout << "  GET /v1/core/instances/{instanceId} - Get instance details" << std::endl;
-        std::cout << "  POST /v1/core/instances/{instanceId}/start - Start instance" << std::endl;
-        std::cout << "  POST /v1/core/instances/{instanceId}/stop - Stop instance" << std::endl;
-        std::cout << "  DELETE /v1/core/instances/{instanceId} - Delete instance" << std::endl;
-        std::cout << "  Instances directory: " << instancesDir << std::endl;
-        std::cout << "[Main] Model upload handler initialized" << std::endl;
-        std::cout << "  POST /v1/core/models/upload - Upload model file" << std::endl;
-        std::cout << "  GET /v1/core/models/list - List uploaded models" << std::endl;
-        std::cout << "  DELETE /v1/core/models/{modelName} - Delete model file" << std::endl;
-        std::cout << "  Models directory: " << modelsDir << std::endl;
-        std::cout << std::endl;
+        PLOG_INFO << "[Main] Instance management initialized";
+        PLOG_INFO << "  POST /v1/core/instance - Create new instance";
+        PLOG_INFO << "  GET /v1/core/instances - List all instances";
+        PLOG_INFO << "  GET /v1/core/instances/{instanceId} - Get instance details";
+        PLOG_INFO << "  POST /v1/core/instances/{instanceId}/start - Start instance";
+        PLOG_INFO << "  POST /v1/core/instances/{instanceId}/stop - Stop instance";
+        PLOG_INFO << "  DELETE /v1/core/instances/{instanceId} - Delete instance";
+        PLOG_INFO << "  Instances directory: " << instancesDir;
+        PLOG_INFO << "[Main] Model upload handler initialized";
+        PLOG_INFO << "  POST /v1/core/models/upload - Upload model file";
+        PLOG_INFO << "  GET /v1/core/models/list - List uploaded models";
+        PLOG_INFO << "  DELETE /v1/core/models/{modelName} - Delete model file";
+        PLOG_INFO << "  Models directory: " << modelsDir;
         
         // Note: Infrastructure components (rate limiter, cache, resource manager, etc.)
         // are available but not initialized here since AI processing endpoints are not needed yet.
@@ -201,9 +204,8 @@ int main()
         WatchdogHandler::setWatchdog(g_watchdog.get());
         WatchdogHandler::setHealthMonitor(g_health_monitor.get());
 
-        std::cout << "[Main] Watchdog and health monitor started" << std::endl;
-        std::cout << "  GET /v1/core/watchdog - Watchdog status" << std::endl;
-        std::cout << std::endl;
+        PLOG_INFO << "[Main] Watchdog and health monitor started";
+        PLOG_INFO << "  GET /v1/core/watchdog - Watchdog status";
 
         // Set HTTP server configuration from environment variables
         size_t max_body_size = EnvConfig::getSizeT("CLIENT_MAX_BODY_SIZE", 1024 * 1024); // Default: 1MB
@@ -236,11 +238,10 @@ int main()
             actual_thread_num = std::max(actual_thread_num, 8U);
         }
         
-        std::cout << "[Performance] Thread pool size: " << actual_thread_num << std::endl;
-        std::cout << "[Performance] Keep-alive: " << keepalive_requests << " requests, " << keepalive_timeout << "s timeout" << std::endl;
-        std::cout << "[Performance] Max body size: " << (max_body_size / 1024 / 1024) << "MB" << std::endl;
-        std::cout << "[Performance] Reuse port: " << (enable_reuse_port ? "enabled" : "disabled") << std::endl;
-        std::cout << std::endl;
+        PLOG_INFO << "[Performance] Thread pool size: " << actual_thread_num;
+        PLOG_INFO << "[Performance] Keep-alive: " << keepalive_requests << " requests, " << keepalive_timeout << "s timeout";
+        PLOG_INFO << "[Performance] Max body size: " << (max_body_size / 1024 / 1024) << "MB";
+        PLOG_INFO << "[Performance] Reuse port: " << (enable_reuse_port ? "enabled" : "disabled");
         
         auto& app = drogon::app();
         app.setClientMaxBodySize(max_body_size)
@@ -250,7 +251,7 @@ int main()
         
         // Explicitly disable HTTPS - we only use HTTP
         // With useSSL=false, Drogon will not check for SSL certificates
-        std::cout << "[Config] Using HTTP only (HTTPS disabled)" << std::endl;
+        PLOG_INFO << "[Config] Using HTTP only (HTTPS disabled)";
         
         // Enable keep-alive for better connection reuse
         // Note: Drogon handles keep-alive automatically, but we can configure it
@@ -264,11 +265,11 @@ int main()
                 app.addListener(host, port, false, "", ""); // false = disable SSL
             }
         } catch (const std::exception& e) {
-            std::cerr << "[Error] Failed to add listener: " << e.what() << std::endl;
+            PLOG_ERROR << "[Error] Failed to add listener: " << e.what();
             throw;
         }
         
-        std::cout << "[Server] Starting HTTP server on " << host << ":" << port << std::endl;
+        PLOG_INFO << "[Server] Starting HTTP server on " << host << ":" << port;
         
         // Suppress HTTPS warning - we're intentionally using HTTP only
         // The warning "You can't use https without cert file or key file" 
@@ -280,8 +281,7 @@ int main()
             std::string error_msg = e.what();
             if (error_msg.find("https") != std::string::npos && 
                 error_msg.find("cert") != std::string::npos) {
-                std::cerr << "[Warning] HTTPS warning detected but ignored (using HTTP only): " 
-                          << error_msg << std::endl;
+                PLOG_WARNING << "[Warning] HTTPS warning detected but ignored (using HTTP only): " << error_msg;
                 // Continue anyway - this is expected when not using HTTPS
                 return 0;
             }
@@ -296,13 +296,13 @@ int main()
             g_watchdog->stop();
         }
 
-        std::cout << "Server stopped." << std::endl;
+        PLOG_INFO << "Server stopped.";
         return 0;
     } catch (const std::exception& e) {
-        std::cerr << "Fatal error: " << e.what() << std::endl;
+        PLOG_FATAL << "Fatal error: " << e.what();
         return 1;
     } catch (...) {
-        std::cerr << "Fatal error: Unknown exception" << std::endl;
+        PLOG_FATAL << "Fatal error: Unknown exception";
         return 1;
     }
 }
