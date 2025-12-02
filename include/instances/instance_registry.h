@@ -109,14 +109,23 @@ private:
     ) const;
     
     /**
+     * @brief Wait for DNN models to be ready using exponential backoff
+     * @param nodes Pipeline nodes to check
+     * @param maxWaitMs Maximum wait time in milliseconds
+     */
+    void waitForModelsReady(const std::vector<std::shared_ptr<cvedix_nodes::cvedix_node>>& nodes, int maxWaitMs);
+    
+    /**
      * @brief Start pipeline nodes
      */
     bool startPipeline(const std::vector<std::shared_ptr<cvedix_nodes::cvedix_node>>& nodes);
     
     /**
      * @brief Stop and cleanup pipeline nodes
+     * @param nodes Pipeline nodes to stop
+     * @param isDeletion If true, this is for deletion (full cleanup). If false, just stop (can restart).
      */
-    void stopPipeline(const std::vector<std::shared_ptr<cvedix_nodes::cvedix_node>>& nodes);
+    void stopPipeline(const std::vector<std::shared_ptr<cvedix_nodes::cvedix_node>>& nodes, bool isDeletion = false);
     
     /**
      * @brief Rebuild pipeline from instance info (for instances loaded from storage)

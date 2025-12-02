@@ -21,6 +21,7 @@
 #include <memory>
 #include <thread>
 #include <algorithm>
+#include <exception>
 
 /**
  * @brief Edge AI API Server
@@ -36,6 +37,9 @@ static bool g_shutdown = false;
 // Global watchdog and health monitor instances
 static std::unique_ptr<Watchdog> g_watchdog;
 static std::unique_ptr<HealthMonitor> g_health_monitor;
+
+// Global instance registry pointer for error recovery
+static InstanceRegistry* g_instance_registry = nullptr;
 
 // Signal handler for graceful shutdown
 void signalHandler(int signal)
@@ -53,7 +57,88 @@ void signalHandler(int signal)
         }
         
         drogon::app().quit();
+    } else if (signal == SIGABRT) {
+        // SIGABRT is sent when assertion fails (like OpenCV DNN shape mismatch)
+        // NOTE: Signal handlers should be async-signal-safe, but we use logging here
+        // which may not be fully safe. However, since we're already aborting, this is acceptable.
+        std::cerr << "[CRITICAL] Received SIGABRT signal - likely due to OpenCV DNN shape mismatch or assertion failure" << std::endl;
+        std::cerr << "[CRITICAL] This usually happens when model receives frames with inconsistent sizes" << std::endl;
+        std::cerr << "[CRITICAL] Attempting to stop all running instances to prevent further crashes..." << std::endl;
+        
+        // Try to stop all running instances to prevent cascade failures
+        // NOTE: This may not be fully safe in signal handler context, but we're already aborting
+        if (g_instance_registry) {
+            try {
+                // Get all instances and stop them
+                auto instances = g_instance_registry->listInstances();
+                for (const auto& instanceId : instances) {
+                    try {
+                        std::cerr << "[Recovery] Stopping instance " << instanceId << " due to SIGABRT..." << std::endl;
+                        g_instance_registry->stopInstance(instanceId);
+                    } catch (...) {
+                        std::cerr << "[Recovery] Failed to stop instance " << instanceId << std::endl;
+                    }
+                }
+            } catch (...) {
+                std::cerr << "[Recovery] Error accessing instance registry" << std::endl;
+            }
+        }
+        
+        // Log error and abort - SIGABRT means process will terminate anyway
+        std::cerr << "[CRITICAL] SIGABRT occurred - process will terminate" << std::endl;
+        std::cerr << "[CRITICAL] Check logs above for shape mismatch errors and consider:" << std::endl;
+        std::cerr << "[CRITICAL]   1. Using YuNet 2023mar model instead of 2022mar" << std::endl;
+        std::cerr << "[CRITICAL]   2. Ensuring video has consistent resolution" << std::endl;
+        std::cerr << "[CRITICAL]   3. Using resize_ratio that produces even dimensions" << std::endl;
+        
+        // Don't call abort() here - let the default handler do it to avoid recursion
     }
+}
+
+// Terminate handler for uncaught exceptions
+void terminateHandler()
+{
+    PLOG_ERROR << "[CRITICAL] Uncaught exception - calling terminate handler";
+    try {
+        auto exception_ptr = std::current_exception();
+        if (exception_ptr) {
+            std::rethrow_exception(exception_ptr);
+        }
+    } catch (const std::exception& e) {
+        PLOG_ERROR << "[CRITICAL] Uncaught exception: " << e.what();
+    } catch (...) {
+        PLOG_ERROR << "[CRITICAL] Unknown exception type";
+    }
+    
+    // Try to stop all instances before aborting
+    // NOTE: Use try-catch to prevent deadlock if stopInstance is already being called
+    if (g_instance_registry) {
+        try {
+            // Get list of instances (this acquires lock briefly)
+            auto instances = g_instance_registry->listInstances();
+            
+            // Release lock before stopping each instance
+            // stopInstance now releases lock before calling stopPipeline, so this is safe
+            for (const auto& instanceId : instances) {
+                try {
+                    // stopInstance now releases lock before calling stopPipeline
+                    // This prevents deadlock even if called from terminate handler
+                    g_instance_registry->stopInstance(instanceId);
+                } catch (const std::exception& e) {
+                    std::cerr << "[Recovery] Failed to stop instance " << instanceId << ": " << e.what() << std::endl;
+                } catch (...) {
+                    std::cerr << "[Recovery] Failed to stop instance " << instanceId << " (unknown error)" << std::endl;
+                }
+            }
+        } catch (const std::exception& e) {
+            std::cerr << "[Recovery] Error accessing instance registry: " << e.what() << std::endl;
+        } catch (...) {
+            std::cerr << "[Recovery] Error accessing instance registry (unknown error)" << std::endl;
+        }
+    }
+    
+    // Call default terminate (will abort)
+    std::abort();
 }
 
 // Recovery callback for watchdog
@@ -107,9 +192,13 @@ int main()
         PLOG_INFO << "========================================";
         PLOG_INFO << "Starting REST API server...";
 
-        // Register signal handlers for graceful shutdown
+        // Register signal handlers for graceful shutdown and crash prevention
         std::signal(SIGINT, signalHandler);
         std::signal(SIGTERM, signalHandler);
+        std::signal(SIGABRT, signalHandler);  // Catch assertion failures (like OpenCV DNN shape mismatch)
+        
+        // Register terminate handler for uncaught exceptions
+        std::set_terminate(terminateHandler);
 
         // Set server configuration from environment variables
         std::string host = EnvConfig::getString("API_HOST", "0.0.0.0");
@@ -151,6 +240,9 @@ int main()
         std::string instancesDir = EnvConfig::getString("INSTANCES_DIR", "./instances");
         static InstanceStorage instanceStorage(instancesDir);
         static InstanceRegistry instanceRegistry(solutionRegistry, pipelineBuilder, instanceStorage);
+        
+        // Store instance registry pointer for error recovery
+        g_instance_registry = &instanceRegistry;
         
         // Initialize default solutions (face_detection, etc.)
         solutionRegistry.initializeDefaultSolutions();

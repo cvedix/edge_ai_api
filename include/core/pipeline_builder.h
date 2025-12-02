@@ -74,11 +74,56 @@ private:
     );
     
     /**
+     * @brief Create file source node
+     */
+    std::shared_ptr<cvedix_nodes::cvedix_node> createFileSourceNode(
+        const std::string& nodeName,
+        const std::map<std::string, std::string>& params,
+        const CreateInstanceRequest& req
+    );
+    
+    /**
+     * @brief Create SFace feature encoder node
+     */
+    std::shared_ptr<cvedix_nodes::cvedix_node> createSFaceEncoderNode(
+        const std::string& nodeName,
+        const std::map<std::string, std::string>& params,
+        const CreateInstanceRequest& req
+    );
+    
+    /**
+     * @brief Create face OSD v2 node
+     */
+    std::shared_ptr<cvedix_nodes::cvedix_node> createFaceOSDNode(
+        const std::string& nodeName,
+        const std::map<std::string, std::string>& params
+    );
+    
+    /**
+     * @brief Create RTMP destination node
+     */
+    std::shared_ptr<cvedix_nodes::cvedix_node> createRTMPDestinationNode(
+        const std::string& nodeName,
+        const std::map<std::string, std::string>& params,
+        const CreateInstanceRequest& req
+    );
+    
+    /**
      * @brief Map detection sensitivity to threshold value
      * @param sensitivity "Low", "Medium", or "High"
      * @return Threshold value (0.0-1.0)
      */
     double mapDetectionSensitivity(const std::string& sensitivity) const;
+    
+    /**
+     * @brief Get file path from request (for file source)
+     */
+    std::string getFilePath(const CreateInstanceRequest& req) const;
+    
+    /**
+     * @brief Get RTMP URL from request
+     */
+    std::string getRTMPUrl(const CreateInstanceRequest& req) const;
     
     /**
      * @brief Get RTSP URL from request

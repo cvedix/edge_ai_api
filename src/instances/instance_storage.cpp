@@ -46,11 +46,24 @@ bool InstanceStorage::saveInstance(const std::string& instanceId, const Instance
         json["systemInstance"] = info.systemInstance;
         json["inputPixelLimit"] = info.inputPixelLimit;
         json["inputOrientation"] = info.inputOrientation;
-        json["detectorMode"] = info.detectorMode;
-        json["detectionSensitivity"] = info.detectionSensitivity;
-        json["movementSensitivity"] = info.movementSensitivity;
-        json["sensorModality"] = info.sensorModality;
-        json["originator"]["address"] = info.originator.address;
+    json["detectorMode"] = info.detectorMode;
+    json["detectionSensitivity"] = info.detectionSensitivity;
+    json["movementSensitivity"] = info.movementSensitivity;
+    json["sensorModality"] = info.sensorModality;
+    json["originator"]["address"] = info.originator.address;
+    
+    // Save streaming URLs if available
+    if (!info.rtmpUrl.empty()) {
+        json["rtmpUrl"] = info.rtmpUrl;
+    }
+    if (!info.rtspUrl.empty()) {
+        json["rtspUrl"] = info.rtspUrl;
+    }
+    
+    // Save file path if available
+    if (!info.filePath.empty()) {
+        json["filePath"] = info.filePath;
+    }
         
         std::ofstream file(getInstanceFilePath(instanceId));
         if (!file.is_open()) {
@@ -112,6 +125,19 @@ std::optional<InstanceInfo> InstanceStorage::loadInstance(const std::string& ins
         
         if (json.isMember("originator") && json["originator"].isMember("address")) {
             info.originator.address = json["originator"]["address"].asString();
+        }
+        
+        // Load streaming URLs if available
+        if (json.isMember("rtmpUrl") && json["rtmpUrl"].isString()) {
+            info.rtmpUrl = json["rtmpUrl"].asString();
+        }
+        if (json.isMember("rtspUrl") && json["rtspUrl"].isString()) {
+            info.rtspUrl = json["rtspUrl"].asString();
+        }
+        
+        // Load file path if available
+        if (json.isMember("filePath") && json["filePath"].isString()) {
+            info.filePath = json["filePath"].asString();
         }
         
         return info;

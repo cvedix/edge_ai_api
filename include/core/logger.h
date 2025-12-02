@@ -1,7 +1,7 @@
 #pragma once
 
 #include <plog/Log.h>
-#include <plog/Appenders/DailyRollingFileAppender.h>
+#include <plog/Appenders/RollingFileAppender.h>
 #include <plog/Appenders/ConsoleAppender.h>
 #include <plog/Formatters/TxtFormatter.h>
 #include <plog/Init.h>
@@ -80,37 +80,42 @@ inline void init(const std::string& log_dir = "",
     }
     
     // Build log file path
-    // DailyRollingFileAppender will automatically append date to filename
+    // RollingFileAppender will roll files based on size
     std::string log_file_path = log_directory;
     if (!log_directory.empty() && log_directory.back() != '/') {
         log_file_path += "/";
     }
     log_file_path += "log.txt";
     
-    // Initialize Plog with daily rolling file appender
-    // DailyRollingFileAppender automatically creates new files daily
-    // Format: log_YYYY-MM-DD.txt
-    static plog::DailyRollingFileAppender<plog::TxtFormatter> dailyFileAppender(
+    // Calculate max file size (default: 10MB per file)
+    // RollingFileAppender uses size-based rolling, not daily
+    size_t max_file_size = 10 * 1024 * 1024; // 10MB default
+    int max_files = max_days > 0 ? max_days : 0; // Use max_days as max_files count
+    
+    // Initialize Plog with rolling file appender
+    // RollingFileAppender rolls files based on size
+    // Format: log.txt, log.txt.1, log.txt.2, etc.
+    static plog::RollingFileAppender<plog::TxtFormatter> rollingFileAppender(
         log_file_path.c_str(), 
-        max_days,      // Maximum days to keep old log files (0 = keep forever)
-        roll_at_hour   // Hour of day to roll (0 = midnight)
+        max_file_size,  // Maximum file size before rolling
+        max_files       // Maximum number of log files to keep (0 = keep forever)
     );
     
     // Initialize with console appender if enabled
     if (enable_console) {
         static plog::ConsoleAppender<plog::TxtFormatter> consoleAppender;
-        plog::init(log_level, &consoleAppender).addAppender(&dailyFileAppender);
+        plog::init(log_level, &consoleAppender).addAppender(&rollingFileAppender);
     } else {
-        plog::init(log_level, &dailyFileAppender);
+        plog::init(log_level, &rollingFileAppender);
     }
     
     PLOG_INFO << "========================================";
     PLOG_INFO << "Logger initialized";
     PLOG_INFO << "Log directory: " << log_directory;
-    PLOG_INFO << "Log file pattern: " << log_file_path << " (will be: log_YYYY-MM-DD.txt)";
+    PLOG_INFO << "Log file pattern: " << log_file_path << " (will be: log.txt, log.txt.1, log.txt.2, ...)";
     PLOG_INFO << "Log level: " << plog::severityToString(log_level);
-    PLOG_INFO << "Max days to keep: " << (max_days == 0 ? "unlimited" : std::to_string(max_days));
-    PLOG_INFO << "Roll at hour: " << roll_at_hour << ":00";
+    PLOG_INFO << "Max file size: " << (max_file_size / (1024 * 1024)) << "MB";
+    PLOG_INFO << "Max files to keep: " << (max_files == 0 ? "unlimited" : std::to_string(max_files));
     PLOG_INFO << "Console logging: " << (enable_console ? "enabled" : "disabled");
     PLOG_INFO << "========================================";
 }
@@ -118,26 +123,19 @@ inline void init(const std::string& log_dir = "",
 /**
  * @brief Get current log file path
  * 
- * Returns the path to today's log file based on the log directory.
- * DailyRollingFileAppender creates files with pattern: log_YYYY-MM-DD.txt
+ * Returns the path to the current log file based on the log directory.
+ * RollingFileAppender creates files with pattern: log.txt, log.txt.1, log.txt.2, etc.
  * 
  * @param log_dir Log directory (default: ./logs)
- * @return Full path to today's log file
+ * @return Full path to the current log file
  */
 inline std::string getCurrentLogFile(const std::string& log_dir = "./logs") {
-    std::time_t now = std::time(nullptr);
-    std::tm* timeinfo = std::localtime(&now);
-    
     std::ostringstream filename;
     filename << log_dir;
     if (!log_dir.empty() && log_dir.back() != '/') {
         filename << "/";
     }
-    filename << "log_" 
-             << std::setfill('0') << std::setw(4) << (1900 + timeinfo->tm_year) << "-"
-             << std::setfill('0') << std::setw(2) << (timeinfo->tm_mon + 1) << "-"
-             << std::setfill('0') << std::setw(2) << timeinfo->tm_mday
-             << ".txt";
+    filename << "log.txt";
     
     return filename.str();
 }

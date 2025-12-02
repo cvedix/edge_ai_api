@@ -43,6 +43,13 @@ struct InstanceInfo {
         std::string address;
     } originator;
     
+    // Streaming URLs (for RTMP/RTSP solutions)
+    std::string rtmpUrl;  // RTMP URL used for streaming
+    std::string rtspUrl;  // RTSP URL for viewing (if server supports conversion)
+    
+    // Source file path (for file source solutions)
+    std::string filePath;  // File path for file source node
+    
     // Internal: Reference to pipeline nodes (not serialized)
     std::vector<std::shared_ptr<cvedix_nodes::cvedix_node>> pipeline_nodes;
 };
