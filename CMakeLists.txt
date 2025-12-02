@@ -199,6 +199,47 @@ else()
 endif()
 
 # ============================================
+# Plog Logging Library (header-only)
+# ============================================
+if(AUTO_DOWNLOAD_DEPENDENCIES)
+    message(STATUS "Downloading Plog logging library...")
+    include(FetchContent)
+    
+    FetchContent_Declare(
+        plog
+        GIT_REPOSITORY https://github.com/SergiusTheBest/plog.git
+        GIT_TAG        v1.1.9
+        GIT_SHALLOW    TRUE
+    )
+    
+    FetchContent_MakeAvailable(plog)
+    
+    # Plog is header-only, so we just need to add the include directory
+    set(PLOG_INCLUDE_DIR "${CMAKE_BINARY_DIR}/_deps/plog-src/include" CACHE PATH "Plog include directory" FORCE)
+    include_directories(${PLOG_INCLUDE_DIR})
+    
+    message(STATUS "✓ Plog downloaded and configured successfully")
+    message(STATUS "  Include: ${PLOG_INCLUDE_DIR}")
+else()
+    # Try to find system-installed Plog
+    find_path(PLOG_INCLUDE_DIR plog/Log.h
+        PATHS
+            /usr/include
+            /usr/local/include
+            ${CMAKE_SOURCE_DIR}/third_party/plog/include
+    )
+    
+    if(PLOG_INCLUDE_DIR)
+        include_directories(${PLOG_INCLUDE_DIR})
+        message(STATUS "✓ Found system Plog: ${PLOG_INCLUDE_DIR}")
+    else()
+        message(FATAL_ERROR 
+            "Plog not found. Please install Plog or enable auto-download:\n"
+            "  cmake .. -DAUTO_DOWNLOAD_DEPENDENCIES=ON")
+    endif()
+endif()
+
+# ============================================
 # Include directories
 # ============================================
 include_directories(${CMAKE_SOURCE_DIR}/include)
