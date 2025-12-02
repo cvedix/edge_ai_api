@@ -5,6 +5,7 @@
 #include <cvedix/utils/cvedix_utils.h>
 #include <cvedix/objects/shapes/cvedix_size.h>
 #include <cstdlib>
+#include <cstring>
 #include <sstream>
 #include <stdexcept>
 #include <iostream>
@@ -27,6 +28,32 @@ static std::once_flag cvedix_init_flag;
 static void ensureCVEDIXInitialized() {
     std::call_once(cvedix_init_flag, []() {
         try {
+            // Configure GStreamer RTSP transport protocol if specified
+            // This helps avoid UDP firewall issues by forcing TCP
+            const char* rtspProtocols = std::getenv("GST_RTSP_PROTOCOLS");
+            if (!rtspProtocols || strlen(rtspProtocols) == 0) {
+                // Check if RTSP_TRANSPORT is set (alternative name)
+                const char* rtspTransport = std::getenv("RTSP_TRANSPORT");
+                if (rtspTransport && strlen(rtspTransport) > 0) {
+                    std::string transport = rtspTransport;
+                    std::transform(transport.begin(), transport.end(), transport.begin(), ::tolower);
+                    if (transport == "tcp" || transport == "udp") {
+                        setenv("GST_RTSP_PROTOCOLS", transport.c_str(), 0); // Don't overwrite if already set
+                        std::cerr << "[PipelineBuilder] Set GST_RTSP_PROTOCOLS=" << transport 
+                                  << " from RTSP_TRANSPORT environment variable" << std::endl;
+                    }
+                } else {
+                    // Default to TCP for better firewall compatibility
+                    // User can override by setting GST_RTSP_PROTOCOLS=udp if needed
+                    setenv("GST_RTSP_PROTOCOLS", "tcp", 0);
+                    std::cerr << "[PipelineBuilder] Set GST_RTSP_PROTOCOLS=tcp (default for firewall compatibility)" << std::endl;
+                    std::cerr << "[PipelineBuilder] NOTE: To use UDP, set GST_RTSP_PROTOCOLS=udp before starting" << std::endl;
+                }
+            } else {
+                std::cerr << "[PipelineBuilder] Using GST_RTSP_PROTOCOLS=" << rtspProtocols 
+                          << " from environment" << std::endl;
+            }
+            
             CVEDIX_SET_LOG_LEVEL(cvedix_utils::cvedix_log_level::INFO);
             CVEDIX_LOGGER_INIT();
             std::cerr << "[PipelineBuilder] CVEDIX SDK logger initialized" << std::endl;
@@ -289,6 +316,10 @@ std::shared_ptr<cvedix_nodes::cvedix_node> PipelineBuilder::createRTSPSourceNode
             throw std::invalid_argument("resize_ratio must be > 0.0 and <= 1.0, got: " + std::to_string(resize_ratio));
         }
         
+        // Check RTSP transport protocol configuration
+        const char* rtspProtocols = std::getenv("GST_RTSP_PROTOCOLS");
+        std::string transportInfo = rtspProtocols ? std::string(rtspProtocols) : "tcp (default)";
+        
         std::cerr << "[PipelineBuilder] ========================================" << std::endl;
         std::cerr << "[PipelineBuilder] Creating RTSP source node:" << std::endl;
         std::cerr << "[PipelineBuilder]   Name: '" << nodeName << "' (length: " << nodeName.length() << ")" << std::endl;
@@ -296,6 +327,9 @@ std::shared_ptr<cvedix_nodes::cvedix_node> PipelineBuilder::createRTSPSourceNode
         std::cerr << "[PipelineBuilder]   Channel: " << channel << std::endl;
         std::cerr << "[PipelineBuilder]   Resize ratio: " << std::fixed << std::setprecision(3) << resize_ratio 
                   << " (type: float, value: " << static_cast<double>(resize_ratio) << ")" << std::endl;
+        std::cerr << "[PipelineBuilder]   Transport: " << transportInfo << std::endl;
+        std::cerr << "[PipelineBuilder]   NOTE: If UDP is blocked by firewall, connection will retry with TCP" << std::endl;
+        std::cerr << "[PipelineBuilder]   NOTE: Set GST_RTSP_PROTOCOLS=tcp to force TCP (recommended)" << std::endl;
         std::cerr << "[PipelineBuilder] ========================================" << std::endl;
         
         // Double-check resize_ratio is valid float
