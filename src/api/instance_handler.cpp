@@ -463,6 +463,14 @@ Json::Value InstanceHandler::instanceInfoToJson(const InstanceInfo& info) const 
     json["sensorModality"] = info.sensorModality;
     json["originator"]["address"] = info.originator.address;
     
+    // Add streaming URLs if available
+    if (!info.rtmpUrl.empty()) {
+        json["rtmpUrl"] = info.rtmpUrl;
+    }
+    if (!info.rtspUrl.empty()) {
+        json["rtspUrl"] = info.rtspUrl;
+    }
+    
     return json;
 }
 

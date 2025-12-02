@@ -197,6 +197,26 @@ bool CreateInstanceHandler::parseRequest(
         req.additionalParams["MODEL_PATH"] = json["MODEL_PATH"].asString();
     }
     
+    // Also check for FILE_PATH at top level (for file source)
+    if (json.isMember("FILE_PATH") && json["FILE_PATH"].isString()) {
+        req.additionalParams["FILE_PATH"] = json["FILE_PATH"].asString();
+    }
+    
+    // Also check for RTMP_URL at top level (for RTMP destination)
+    if (json.isMember("RTMP_URL") && json["RTMP_URL"].isString()) {
+        req.additionalParams["RTMP_URL"] = json["RTMP_URL"].asString();
+    }
+    
+    // Also check for SFACE_MODEL_PATH at top level (for SFace encoder)
+    if (json.isMember("SFACE_MODEL_PATH") && json["SFACE_MODEL_PATH"].isString()) {
+        req.additionalParams["SFACE_MODEL_PATH"] = json["SFACE_MODEL_PATH"].asString();
+    }
+    
+    // Also check for SFACE_MODEL_NAME at top level (for SFace encoder by name)
+    if (json.isMember("SFACE_MODEL_NAME") && json["SFACE_MODEL_NAME"].isString()) {
+        req.additionalParams["SFACE_MODEL_NAME"] = json["SFACE_MODEL_NAME"].asString();
+    }
+    
     return true;
 }
 
@@ -228,6 +248,14 @@ Json::Value CreateInstanceHandler::instanceInfoToJson(const InstanceInfo& info) 
     json["movementSensitivity"] = info.movementSensitivity;
     json["sensorModality"] = info.sensorModality;
     json["originator"]["address"] = info.originator.address;
+    
+    // Add streaming URLs if available
+    if (!info.rtmpUrl.empty()) {
+        json["rtmpUrl"] = info.rtmpUrl;
+    }
+    if (!info.rtspUrl.empty()) {
+        json["rtspUrl"] = info.rtspUrl;
+    }
     
     return json;
 }

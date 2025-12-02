@@ -1,7 +1,11 @@
 #include "core/pipeline_builder.h"
 #include <cvedix/nodes/src/cvedix_rtsp_src_node.h>
+#include <cvedix/nodes/src/cvedix_file_src_node.h>
 #include <cvedix/nodes/infers/cvedix_yunet_face_detector_node.h>
+#include <cvedix/nodes/infers/cvedix_sface_feature_encoder_node.h>
+#include <cvedix/nodes/osd/cvedix_face_osd_node_v2.h>
 #include <cvedix/nodes/des/cvedix_file_des_node.h>
+#include <cvedix/nodes/des/cvedix_rtmp_des_node.h>
 #include <cvedix/utils/cvedix_utils.h>
 #include <cvedix/objects/shapes/cvedix_size.h>
 #include <cstdlib>
@@ -170,6 +174,10 @@ std::shared_ptr<cvedix_nodes::cvedix_node> PipelineBuilder::createNode(
             value = oss.str();
         } else if (value == "${RTSP_URL}") {
             value = getRTSPUrl(req);
+        } else if (value == "${FILE_PATH}") {
+            value = getFilePath(req);
+        } else if (value == "${RTMP_URL}") {
+            value = getRTMPUrl(req);
         } else if (param.first == "model_path" && value == "${MODEL_PATH}") {
             // Priority: MODEL_NAME > MODEL_PATH > default
             std::string modelPath;
@@ -206,6 +214,40 @@ std::shared_ptr<cvedix_nodes::cvedix_node> PipelineBuilder::createNode(
                 } else {
                     // Default to yunet.onnx - resolve path intelligently
                     value = resolveModelPath("models/face/yunet.onnx");
+                }
+            } else {
+                value = modelPath;
+            }
+        } else if (param.first == "model_path" && value == "${SFACE_MODEL_PATH}") {
+            // Handle SFace model path
+            std::string modelPath;
+            
+            // 1. Check SFACE_MODEL_NAME first
+            auto modelNameIt = req.additionalParams.find("SFACE_MODEL_NAME");
+            if (modelNameIt != req.additionalParams.end() && !modelNameIt->second.empty()) {
+                std::string modelName = modelNameIt->second;
+                std::string category = "face";
+                
+                size_t colonPos = modelName.find(':');
+                if (colonPos != std::string::npos) {
+                    category = modelName.substr(0, colonPos);
+                    modelName = modelName.substr(colonPos + 1);
+                }
+                
+                modelPath = resolveModelByName(modelName, category);
+                if (!modelPath.empty()) {
+                    value = modelPath;
+                }
+            }
+            
+            // 2. If SFACE_MODEL_NAME not found, check SFACE_MODEL_PATH
+            if (modelPath.empty()) {
+                auto it = req.additionalParams.find("SFACE_MODEL_PATH");
+                if (it != req.additionalParams.end() && !it->second.empty()) {
+                    value = it->second;
+                } else {
+                    // Default to sface model - resolve path intelligently
+                    value = resolveModelPath("models/face/face_recognition_sface_2021dec.onnx");
                 }
             } else {
                 value = modelPath;
@@ -251,10 +293,18 @@ std::shared_ptr<cvedix_nodes::cvedix_node> PipelineBuilder::createNode(
     try {
         if (nodeConfig.nodeType == "rtsp_src") {
             return createRTSPSourceNode(nodeName, params, req);
+        } else if (nodeConfig.nodeType == "file_src") {
+            return createFileSourceNode(nodeName, params, req);
         } else if (nodeConfig.nodeType == "yunet_face_detector") {
             return createFaceDetectorNode(nodeName, params, req);
+        } else if (nodeConfig.nodeType == "sface_feature_encoder") {
+            return createSFaceEncoderNode(nodeName, params, req);
+        } else if (nodeConfig.nodeType == "face_osd_v2") {
+            return createFaceOSDNode(nodeName, params);
         } else if (nodeConfig.nodeType == "file_des") {
             return createFileDestinationNode(nodeName, params, instanceId);
+        } else if (nodeConfig.nodeType == "rtmp_des") {
+            return createRTMPDestinationNode(nodeName, params, req);
         } else {
             std::cerr << "[PipelineBuilder] Unknown node type: " << nodeConfig.nodeType << std::endl;
             throw std::runtime_error("Unknown node type: " + nodeConfig.nodeType);
@@ -957,5 +1007,198 @@ std::vector<std::string> PipelineBuilder::listAvailableModels(const std::string&
     // Convert set to vector
     models.assign(uniqueModels.begin(), uniqueModels.end());
     return models;
+}
+
+std::shared_ptr<cvedix_nodes::cvedix_node> PipelineBuilder::createFileSourceNode(
+    const std::string& nodeName,
+    const std::map<std::string, std::string>& params,
+    const CreateInstanceRequest& req) {
+    
+    try {
+        // Get file path from params or request
+        std::string filePath = params.count("file_path") ? 
+            params.at("file_path") : getFilePath(req);
+        int channel = params.count("channel") ? std::stoi(params.at("channel")) : 0;
+        float resizeRatio = params.count("resize_ratio") ? 
+            std::stof(params.at("resize_ratio")) : 0.25f;  // Default to 0.25 for fixed size (320x180 from 1280x720)
+        
+        // Validate parameters
+        if (nodeName.empty()) {
+            throw std::invalid_argument("Node name cannot be empty");
+        }
+        if (filePath.empty()) {
+            throw std::invalid_argument("File path cannot be empty");
+        }
+        if (resizeRatio <= 0.0f || resizeRatio > 1.0f) {
+            std::cerr << "[PipelineBuilder] Warning: resize_ratio out of range, using 0.25" << std::endl;
+            resizeRatio = 0.25f;
+        }
+        
+        std::cerr << "[PipelineBuilder] Creating file source node:" << std::endl;
+        std::cerr << "  Name: '" << nodeName << "'" << std::endl;
+        std::cerr << "  File path: '" << filePath << "'" << std::endl;
+        std::cerr << "  Channel: " << channel << std::endl;
+        std::cerr << "  Resize ratio: " << resizeRatio << std::endl;
+        
+        auto node = std::make_shared<cvedix_nodes::cvedix_file_src_node>(
+            nodeName,
+            channel,
+            filePath,
+            resizeRatio
+        );
+        
+        std::cerr << "[PipelineBuilder] ✓ File source node created successfully" << std::endl;
+        return node;
+    } catch (const std::exception& e) {
+        std::cerr << "[PipelineBuilder] Exception in createFileSourceNode: " << e.what() << std::endl;
+        throw;
+    }
+}
+
+std::shared_ptr<cvedix_nodes::cvedix_node> PipelineBuilder::createSFaceEncoderNode(
+    const std::string& nodeName,
+    const std::map<std::string, std::string>& params,
+    const CreateInstanceRequest& req) {
+    
+    try {
+        // Get model path - resolve intelligently
+        std::string modelPath = params.count("model_path") ? 
+            params.at("model_path") : 
+            resolveModelPath("models/face/face_recognition_sface_2021dec.onnx");
+        
+        // Check MODEL_NAME or MODEL_PATH in additionalParams
+        auto modelNameIt = req.additionalParams.find("SFACE_MODEL_NAME");
+        if (modelNameIt != req.additionalParams.end() && !modelNameIt->second.empty()) {
+            std::string modelName = modelNameIt->second;
+            std::string category = "face";
+            size_t colonPos = modelName.find(':');
+            if (colonPos != std::string::npos) {
+                category = modelName.substr(0, colonPos);
+                modelName = modelName.substr(colonPos + 1);
+            }
+            std::string resolvedPath = resolveModelByName(modelName, category);
+            if (!resolvedPath.empty()) {
+                modelPath = resolvedPath;
+            }
+        } else {
+            auto it = req.additionalParams.find("SFACE_MODEL_PATH");
+            if (it != req.additionalParams.end() && !it->second.empty()) {
+                modelPath = it->second;
+            }
+        }
+        
+        // Validate parameters
+        if (nodeName.empty()) {
+            throw std::invalid_argument("Node name cannot be empty");
+        }
+        if (modelPath.empty()) {
+            throw std::invalid_argument("Model path cannot be empty");
+        }
+        
+        std::cerr << "[PipelineBuilder] Creating SFace encoder node:" << std::endl;
+        std::cerr << "  Name: '" << nodeName << "'" << std::endl;
+        std::cerr << "  Model path: '" << modelPath << "'" << std::endl;
+        
+        auto node = std::make_shared<cvedix_nodes::cvedix_sface_feature_encoder_node>(
+            nodeName,
+            modelPath
+        );
+        
+        std::cerr << "[PipelineBuilder] ✓ SFace encoder node created successfully" << std::endl;
+        return node;
+    } catch (const std::exception& e) {
+        std::cerr << "[PipelineBuilder] Exception in createSFaceEncoderNode: " << e.what() << std::endl;
+        throw;
+    }
+}
+
+std::shared_ptr<cvedix_nodes::cvedix_node> PipelineBuilder::createFaceOSDNode(
+    const std::string& nodeName,
+    const std::map<std::string, std::string>& params) {
+    
+    try {
+        // Validate node name
+        if (nodeName.empty()) {
+            throw std::invalid_argument("Node name cannot be empty");
+        }
+        
+        std::cerr << "[PipelineBuilder] Creating face OSD v2 node:" << std::endl;
+        std::cerr << "  Name: '" << nodeName << "'" << std::endl;
+        
+        auto node = std::make_shared<cvedix_nodes::cvedix_face_osd_node_v2>(nodeName);
+        
+        std::cerr << "[PipelineBuilder] ✓ Face OSD v2 node created successfully" << std::endl;
+        return node;
+    } catch (const std::exception& e) {
+        std::cerr << "[PipelineBuilder] Exception in createFaceOSDNode: " << e.what() << std::endl;
+        throw;
+    }
+}
+
+std::shared_ptr<cvedix_nodes::cvedix_node> PipelineBuilder::createRTMPDestinationNode(
+    const std::string& nodeName,
+    const std::map<std::string, std::string>& params,
+    const CreateInstanceRequest& req) {
+    
+    try {
+        // Get RTMP URL from params or request
+        std::string rtmpUrl = params.count("rtmp_url") ? 
+            params.at("rtmp_url") : getRTMPUrl(req);
+        int channel = params.count("channel") ? std::stoi(params.at("channel")) : 0;
+        
+        // Validate parameters
+        if (nodeName.empty()) {
+            throw std::invalid_argument("Node name cannot be empty");
+        }
+        if (rtmpUrl.empty()) {
+            throw std::invalid_argument("RTMP URL cannot be empty");
+        }
+        
+        std::cerr << "[PipelineBuilder] Creating RTMP destination node:" << std::endl;
+        std::cerr << "  Name: '" << nodeName << "'" << std::endl;
+        std::cerr << "  RTMP URL: '" << rtmpUrl << "'" << std::endl;
+        std::cerr << "  Channel: " << channel << std::endl;
+        std::cerr << "  NOTE: RTMP node automatically adds '_0' suffix to stream key" << std::endl;
+        
+        auto node = std::make_shared<cvedix_nodes::cvedix_rtmp_des_node>(
+            nodeName,
+            channel,
+            rtmpUrl
+        );
+        
+        std::cerr << "[PipelineBuilder] ✓ RTMP destination node created successfully" << std::endl;
+        return node;
+    } catch (const std::exception& e) {
+        std::cerr << "[PipelineBuilder] Exception in createRTMPDestinationNode: " << e.what() << std::endl;
+        throw;
+    }
+}
+
+std::string PipelineBuilder::getFilePath(const CreateInstanceRequest& req) const {
+    // Get file path from additionalParams
+    auto it = req.additionalParams.find("FILE_PATH");
+    if (it != req.additionalParams.end() && !it->second.empty()) {
+        std::cerr << "[PipelineBuilder] File path from request additionalParams: '" << it->second << "'" << std::endl;
+        return it->second;
+    }
+    
+    // Default fallback
+    std::cerr << "[PipelineBuilder] WARNING: Using default file path (./cvedix_data/test_video/face.mp4)" << std::endl;
+    std::cerr << "[PipelineBuilder] NOTE: To use custom file path, provide 'FILE_PATH' in request body additionalParams" << std::endl;
+    return "./cvedix_data/test_video/face.mp4";
+}
+
+std::string PipelineBuilder::getRTMPUrl(const CreateInstanceRequest& req) const {
+    // Get RTMP URL from additionalParams
+    auto it = req.additionalParams.find("RTMP_URL");
+    if (it != req.additionalParams.end() && !it->second.empty()) {
+        std::cerr << "[PipelineBuilder] RTMP URL from request additionalParams: '" << it->second << "'" << std::endl;
+        return it->second;
+    }
+    
+    // Default fallback
+    std::cerr << "[PipelineBuilder] WARNING: Using default RTMP URL" << std::endl;
+    std::cerr << "[PipelineBuilder] NOTE: To use custom RTMP URL, provide 'RTMP_URL' in request body additionalParams" << std::endl;
+    return "rtmp://localhost:1935/live/camera_demo_1";
 }
 

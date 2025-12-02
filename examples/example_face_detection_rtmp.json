@@ -1,0 +1,14 @@
+{
+  "name": "face_detection_demo_1",
+  "group": "demo",
+  "solution": "face_detection_rtmp",
+  "persistent": true,
+  "autoStart": true,
+  "detectionSensitivity": "Low",
+  "additionalParams": {
+    "FILE_PATH": "/home/pnsang/project/edge_ai_sdk/cvedix_data/test_video/face.mp4",
+    "RTMP_URL": "rtmp://localhost:1935/live/camera_demo_1",
+    "MODEL_PATH": "/home/pnsang/project/edge_ai_sdk/cvedix_data/models/face/face_detection_yunet_2023mar.onnx",
+    "SFACE_MODEL_PATH": "/home/pnsang/project/edge_ai_sdk/cvedix_data/models/face/face_recognition_sface_2021dec.onnx"
+  }
+}

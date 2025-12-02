@@ -69,5 +69,10 @@ private:
      * @brief Register object detection solution (YOLO)
      */
     void registerObjectDetectionSolution();
+    
+    /**
+     * @brief Register face detection with RTMP streaming solution
+     */
+    void registerFaceDetectionRTMPSolution();
 };
 
