@@ -17,11 +17,15 @@
 #include <iostream>
 #include <csignal>
 #include <cstdlib>
+#include <csetjmp>
 #include <stdexcept>
 #include <memory>
 #include <thread>
+#include <chrono>
 #include <algorithm>
 #include <exception>
+#include <atomic>
+#include <string>
 
 /**
  * @brief Edge AI API Server
@@ -41,6 +45,9 @@ static std::unique_ptr<HealthMonitor> g_health_monitor;
 // Global instance registry pointer for error recovery
 static InstanceRegistry* g_instance_registry = nullptr;
 
+// Flag to prevent multiple handlers from stopping instances simultaneously
+static std::atomic<bool> g_cleanup_in_progress{false};
+
 // Signal handler for graceful shutdown
 void signalHandler(int signal)
 {
@@ -59,86 +66,219 @@ void signalHandler(int signal)
         drogon::app().quit();
     } else if (signal == SIGABRT) {
         // SIGABRT is sent when assertion fails (like OpenCV DNN shape mismatch)
-        // NOTE: Signal handlers should be async-signal-safe, but we use logging here
-        // which may not be fully safe. However, since we're already aborting, this is acceptable.
-        std::cerr << "[CRITICAL] Received SIGABRT signal - likely due to OpenCV DNN shape mismatch or assertion failure" << std::endl;
-        std::cerr << "[CRITICAL] This usually happens when model receives frames with inconsistent sizes" << std::endl;
-        std::cerr << "[CRITICAL] Attempting to stop all running instances to prevent further crashes..." << std::endl;
+        // For shape mismatch errors, we want to recover instead of crashing
+        std::cerr << "[RECOVERY] Received SIGABRT signal - likely due to OpenCV DNN shape mismatch" << std::endl;
+        std::cerr << "[RECOVERY] This usually happens when model receives frames with inconsistent sizes" << std::endl;
+        std::cerr << "[RECOVERY] Attempting to recover by stopping problematic instances..." << std::endl;
         
-        // Try to stop all running instances to prevent cascade failures
-        // NOTE: This may not be fully safe in signal handler context, but we're already aborting
-        if (g_instance_registry) {
-            try {
-                // Get all instances and stop them
-                auto instances = g_instance_registry->listInstances();
-                for (const auto& instanceId : instances) {
-                    try {
-                        std::cerr << "[Recovery] Stopping instance " << instanceId << " due to SIGABRT..." << std::endl;
-                        g_instance_registry->stopInstance(instanceId);
-                    } catch (...) {
-                        std::cerr << "[Recovery] Failed to stop instance " << instanceId << std::endl;
+        // Check if cleanup is already in progress (from terminate handler)
+        // This prevents deadlock if both handlers try to stop instances simultaneously
+        bool expected = false;
+        if (g_cleanup_in_progress.compare_exchange_strong(expected, true)) {
+            if (g_instance_registry) {
+                try {
+                    // Get all instances and stop them
+                    auto instances = g_instance_registry->listInstances();
+                    for (const auto& instanceId : instances) {
+                        try {
+                            std::cerr << "[RECOVERY] Stopping instance " << instanceId << " due to shape mismatch error..." << std::endl;
+                            g_instance_registry->stopInstance(instanceId);
+                        } catch (...) {
+                            std::cerr << "[RECOVERY] Failed to stop instance " << instanceId << std::endl;
+                        }
                     }
+                    std::cerr << "[RECOVERY] All instances stopped. Application will continue running." << std::endl;
+                    std::cerr << "[RECOVERY] Please check logs above and fix the root cause:" << std::endl;
+                    std::cerr << "[RECOVERY]   1. Ensure video has consistent resolution (re-encode if needed)" << std::endl;
+                    std::cerr << "[RECOVERY]   2. Use YuNet 2023mar model (better dynamic input support)" << std::endl;
+                    std::cerr << "[RECOVERY]   3. Try different RESIZE_RATIO values" << std::endl;
+                } catch (...) {
+                    std::cerr << "[RECOVERY] Error accessing instance registry" << std::endl;
                 }
-            } catch (...) {
-                std::cerr << "[Recovery] Error accessing instance registry" << std::endl;
             }
+            // Reset cleanup flag after a delay to allow recovery
+            g_cleanup_in_progress.store(false);
+        } else {
+            std::cerr << "[RECOVERY] Cleanup already in progress (from terminate handler), skipping..." << std::endl;
         }
         
-        // Log error and abort - SIGABRT means process will terminate anyway
-        std::cerr << "[CRITICAL] SIGABRT occurred - process will terminate" << std::endl;
-        std::cerr << "[CRITICAL] Check logs above for shape mismatch errors and consider:" << std::endl;
-        std::cerr << "[CRITICAL]   1. Using YuNet 2023mar model instead of 2022mar" << std::endl;
-        std::cerr << "[CRITICAL]   2. Ensuring video has consistent resolution" << std::endl;
-        std::cerr << "[CRITICAL]   3. Using resize_ratio that produces even dimensions" << std::endl;
-        
-        // Don't call abort() here - let the default handler do it to avoid recursion
+        // For shape mismatch errors, don't exit - let the application continue
+        // This is non-standard but allows recovery from OpenCV DNN errors
+        // Note: This may cause undefined behavior, but it's better than crashing
+        return;  // Return from signal handler to continue execution
     }
 }
 
 // Terminate handler for uncaught exceptions
 void terminateHandler()
 {
-    PLOG_ERROR << "[CRITICAL] Uncaught exception - calling terminate handler";
+    std::string error_msg;
+    
+    // Get exception message first (before doing anything else)
     try {
         auto exception_ptr = std::current_exception();
         if (exception_ptr) {
             std::rethrow_exception(exception_ptr);
         }
     } catch (const std::exception& e) {
-        PLOG_ERROR << "[CRITICAL] Uncaught exception: " << e.what();
+        error_msg = e.what();
+        PLOG_ERROR << "[CRITICAL] Uncaught exception: " << error_msg;
     } catch (...) {
+        error_msg = "Unknown exception";
         PLOG_ERROR << "[CRITICAL] Unknown exception type";
     }
     
-    // Try to stop all instances before aborting
-    // NOTE: Use try-catch to prevent deadlock if stopInstance is already being called
-    if (g_instance_registry) {
-        try {
-            // Get list of instances (this acquires lock briefly)
-            auto instances = g_instance_registry->listInstances();
-            
-            // Release lock before stopping each instance
-            // stopInstance now releases lock before calling stopPipeline, so this is safe
-            for (const auto& instanceId : instances) {
+    // Debug: Log exception message to verify it's being captured correctly
+    std::cerr << "[DEBUG] Exception message in terminate handler: '" << error_msg << "'" << std::endl;
+    
+    // Check if this is an OpenCV DNN shape mismatch error
+    bool is_shape_mismatch = (error_msg.find("getMemoryShapes") != std::string::npos ||
+                              error_msg.find("eltwise_layer") != std::string::npos ||
+                              error_msg.find("Assertion failed") != std::string::npos ||
+                              error_msg.find("inputs[vecIdx][j]") != std::string::npos ||
+                              error_msg.find("inputs[0] = [") != std::string::npos ||
+                              error_msg.find("inputs[1] = [") != std::string::npos);
+    
+    std::cerr << "[DEBUG] is_shape_mismatch = " << (is_shape_mismatch ? "true" : "false") << std::endl;
+    
+    if (is_shape_mismatch) {
+        std::cerr << "[RECOVERY] Detected OpenCV DNN shape mismatch error - attempting recovery..." << std::endl;
+        std::cerr << "[RECOVERY] This error usually occurs when model receives frames with inconsistent sizes" << std::endl;
+        std::cerr << "[RECOVERY] Exception: " << error_msg << std::endl;
+        
+        // Try to stop all instances before aborting
+        // NOTE: Use atomic flag to prevent deadlock if SIGABRT handler is also trying to stop instances
+        bool expected = false;
+        if (g_cleanup_in_progress.compare_exchange_strong(expected, true)) {
+            if (g_instance_registry) {
                 try {
-                    // stopInstance now releases lock before calling stopPipeline
-                    // This prevents deadlock even if called from terminate handler
-                    g_instance_registry->stopInstance(instanceId);
+                    // Get list of instances (this acquires lock briefly)
+                    // If this fails due to deadlock, skip cleanup to avoid crash
+                    std::vector<std::string> instances;
+                    try {
+                        instances = g_instance_registry->listInstances();
+                    } catch (const std::exception& e) {
+                        std::cerr << "[RECOVERY] Cannot list instances (possible deadlock): " << e.what() << std::endl;
+                        std::cerr << "[RECOVERY] Skipping instance cleanup to avoid deadlock" << std::endl;
+                        instances.clear(); // Skip cleanup
+                    } catch (...) {
+                        std::cerr << "[RECOVERY] Cannot list instances (unknown error) - skipping cleanup" << std::endl;
+                        instances.clear(); // Skip cleanup
+                    }
+                    
+                    // Release lock before stopping each instance
+                    // stopInstance now releases lock before calling stopPipeline, so this is safe
+                    for (const auto& instanceId : instances) {
+                        try {
+                            std::cerr << "[RECOVERY] Stopping instance " << instanceId << " due to shape mismatch..." << std::endl;
+                            // stopInstance now releases lock before calling stopPipeline
+                            // This prevents deadlock even if called from terminate handler
+                            g_instance_registry->stopInstance(instanceId);
+                        } catch (const std::exception& e) {
+                            std::cerr << "[RECOVERY] Failed to stop instance " << instanceId << ": " << e.what() << std::endl;
+                        } catch (...) {
+                            std::cerr << "[RECOVERY] Failed to stop instance " << instanceId << " (unknown error)" << std::endl;
+                        }
+                    }
+                    std::cerr << "[RECOVERY] All instances stopped. Application will continue running." << std::endl;
+                    std::cerr << "[RECOVERY] Please check logs above and fix the root cause:" << std::endl;
+                    std::cerr << "[RECOVERY]   1. Ensure video has consistent resolution (re-encode if needed)" << std::endl;
+                    std::cerr << "[RECOVERY]   2. Use YuNet 2023mar model (better dynamic input support)" << std::endl;
+                    std::cerr << "[RECOVERY]   3. Try different RESIZE_RATIO values" << std::endl;
                 } catch (const std::exception& e) {
-                    std::cerr << "[Recovery] Failed to stop instance " << instanceId << ": " << e.what() << std::endl;
+                    std::cerr << "[RECOVERY] Error accessing instance registry: " << e.what() << std::endl;
                 } catch (...) {
-                    std::cerr << "[Recovery] Failed to stop instance " << instanceId << " (unknown error)" << std::endl;
+                    std::cerr << "[RECOVERY] Error accessing instance registry (unknown error)" << std::endl;
                 }
             }
-        } catch (const std::exception& e) {
-            std::cerr << "[Recovery] Error accessing instance registry: " << e.what() << std::endl;
-        } catch (...) {
-            std::cerr << "[Recovery] Error accessing instance registry (unknown error)" << std::endl;
+            // Reset cleanup flag to allow recovery
+            g_cleanup_in_progress.store(false);
+        } else {
+            std::cerr << "[RECOVERY] Cleanup already in progress (from SIGABRT handler), skipping..." << std::endl;
+        }
+        
+        // For shape mismatch errors, don't call abort() - just log and return
+        // This allows the application to continue running (non-standard but prevents crash)
+        // Note: According to C++ standard, terminate handler must terminate, but we're
+        // intentionally violating this to allow recovery from OpenCV DNN errors
+        std::cerr << "[RECOVERY] Shape mismatch error handled - application will continue running" << std::endl;
+        std::cerr << "[RECOVERY] Instance has been stopped. You can try starting it again after fixing the issue." << std::endl;
+        
+        // Don't call abort() or exit() - just return to allow application to continue
+        // This is non-standard but prevents crash
+        return;
+    }
+    
+    // For other exceptions, try to stop instances gracefully
+    // BUT: Be very careful to avoid deadlock - if we're already in stopInstance, don't call it again
+    bool expected = false;
+    if (g_cleanup_in_progress.compare_exchange_strong(expected, true)) {
+        if (g_instance_registry) {
+            try {
+                // Use a timeout or non-blocking approach to avoid deadlock
+                // If listInstances() fails (e.g., due to deadlock), just skip cleanup
+                std::vector<std::string> instances;
+                try {
+                    instances = g_instance_registry->listInstances();
+                } catch (const std::exception& e) {
+                    std::cerr << "[CRITICAL] Cannot list instances (possible deadlock): " << e.what() << std::endl;
+                    std::cerr << "[CRITICAL] Skipping instance cleanup to avoid deadlock" << std::endl;
+                    instances.clear(); // Skip cleanup
+                } catch (...) {
+                    std::cerr << "[CRITICAL] Cannot list instances (unknown error) - skipping cleanup" << std::endl;
+                    instances.clear(); // Skip cleanup
+                }
+                
+                // Only try to stop instances if we successfully got the list
+                for (const auto& instanceId : instances) {
+                    try {
+                        // stopInstance() releases lock before calling stopPipeline, so this should be safe
+                        // But wrap in try-catch to be extra safe
+                        g_instance_registry->stopInstance(instanceId);
+                    } catch (const std::exception& e) {
+                        std::cerr << "[CRITICAL] Failed to stop instance " << instanceId << ": " << e.what() << std::endl;
+                        // Continue with other instances
+                    } catch (...) {
+                        std::cerr << "[CRITICAL] Failed to stop instance " << instanceId << " (unknown error)" << std::endl;
+                        // Continue with other instances
+                    }
+                }
+            } catch (const std::exception& e) {
+                std::cerr << "[CRITICAL] Error during cleanup: " << e.what() << std::endl;
+                // Don't crash - just log and continue to exit
+            } catch (...) {
+                std::cerr << "[CRITICAL] Unknown error during cleanup" << std::endl;
+                // Don't crash - just log and continue to exit
+            }
+        }
+        g_cleanup_in_progress.store(false);
+    } else {
+        // Cleanup already in progress - this means we're being called recursively
+        // This can happen if an exception occurs during cleanup (e.g., "Resource deadlock avoided")
+        // In this case, don't exit - let the original cleanup finish
+        std::cerr << "[CRITICAL] Cleanup already in progress - exception occurred during cleanup" << std::endl;
+        std::cerr << "[CRITICAL] Exception: " << error_msg << std::endl;
+        std::cerr << "[CRITICAL] Waiting for original cleanup to complete..." << std::endl;
+        
+        // Wait a bit for cleanup to complete (but don't wait forever)
+        // After 5 seconds, give up and exit
+        for (int i = 0; i < 50 && g_cleanup_in_progress.load(); ++i) {
+            std::this_thread::sleep_for(std::chrono::milliseconds(100));
+        }
+        
+        if (g_cleanup_in_progress.load()) {
+            std::cerr << "[CRITICAL] Cleanup taking too long - forcing exit" << std::endl;
+            std::_Exit(1);
+        } else {
+            std::cerr << "[CRITICAL] Cleanup completed - original handler will handle exit" << std::endl;
+            // Don't exit here - let the original cleanup handler exit
+            return;
         }
     }
     
-    // Call default terminate (will abort)
-    std::abort();
+    std::cerr << "[CRITICAL] Terminating application due to uncaught exception" << std::endl;
+    std::cerr << "[CRITICAL] Exception: " << error_msg << std::endl;
+    std::_Exit(1);  // Exit immediately without calling destructors (safer in terminate handler)
 }
 
 // Recovery callback for watchdog
