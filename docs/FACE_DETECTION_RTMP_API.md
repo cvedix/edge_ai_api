@@ -22,17 +22,18 @@ POST /v1/core/instance
 
 ```json
 {
-  "name": "face_detection_demo",
+  "name": "face_detection_demo_1",
   "group": "demo",
   "solution": "face_detection_rtmp",
-  "persistent": false,
+  "persistent": true,
   "autoStart": true,
   "detectionSensitivity": "Low",
   "additionalParams": {
-    "FILE_PATH": "./cvedix_data/test_video/face.mp4",
+    "FILE_PATH": "/home/pnsang/project/edge_ai_sdk/cvedix_data/test_video/face.mp4",
     "RTMP_URL": "rtmp://localhost:1935/live/camera_demo_1",
-    "MODEL_PATH": "./cvedix_data/models/face/face_detection_yunet_2022mar.onnx",
-    "SFACE_MODEL_PATH": "./cvedix_data/models/face/face_recognition_sface_2021dec.onnx"
+    "MODEL_PATH": "/usr/share/cvedix/cvedix_data/models/face/face_detection_yunet_2022mar.onnx",
+    "SFACE_MODEL_PATH": "/home/pnsang/project/edge_ai_sdk/cvedix_data/models/face/face_recognition_sface_2021dec.onnx",
+    "RESIZE_RATIO": "1.0"
   }
 }
 ```
@@ -54,6 +55,7 @@ POST /v1/core/instance
 - `RTMP_URL`: URL RTMP server để stream (required)
 - `MODEL_PATH`: Đường dẫn đến model YuNet face detector (optional, có default)
 - `SFACE_MODEL_PATH`: Đường dẫn đến model SFace encoder (optional, có default)
+- `RESIZE_RATIO`: Tỷ lệ resize video (optional, default: `"0.5"`). Sử dụng `"1.0"` để không resize
 - `MODEL_NAME`: Tên model (có thể dùng thay cho MODEL_PATH, format: `"category:modelname"` hoặc `"modelname"`)
 - `SFACE_MODEL_NAME`: Tên model SFace (tương tự MODEL_NAME)
 
@@ -63,13 +65,18 @@ POST /v1/core/instance
 curl -X POST http://localhost:8080/v1/core/instance \
   -H "Content-Type: application/json" \
   -d '{
-    "name": "face_detection_demo",
+    "name": "face_detection_demo_1",
+    "group": "demo",
     "solution": "face_detection_rtmp",
+    "persistent": true,
     "autoStart": true,
     "detectionSensitivity": "Low",
     "additionalParams": {
-      "FILE_PATH": "./cvedix_data/test_video/face.mp4",
-      "RTMP_URL": "rtmp://localhost:1935/live/camera_demo_1"
+      "FILE_PATH": "/home/pnsang/project/edge_ai_sdk/cvedix_data/test_video/face.mp4",
+      "RTMP_URL": "rtmp://localhost:1935/live/camera_demo_1",
+      "MODEL_PATH": "/usr/share/cvedix/cvedix_data/models/face/face_detection_yunet_2022mar.onnx",
+      "SFACE_MODEL_PATH": "/home/pnsang/project/edge_ai_sdk/cvedix_data/models/face/face_recognition_sface_2021dec.onnx",
+      "RESIZE_RATIO": "1.0"
     }
   }'
 ```
