@@ -84,9 +84,17 @@ std::string InstanceRegistry::createInstance(const CreateInstanceRequest& req) {
         pipelines_[instanceId] = pipeline;
     }
     
-    // Save to storage if persistent
-    if (req.persistent) {
-        instance_storage_.saveInstance(instanceId, info);
+    // Save to storage for all instances (for debugging and inspection)
+    // Only persistent instances will be loaded on server restart
+    bool saved = instance_storage_.saveInstance(instanceId, info);
+    if (saved) {
+        if (req.persistent) {
+            std::cerr << "[InstanceRegistry] Instance configuration saved (persistent - will be loaded on restart)" << std::endl;
+        } else {
+            std::cerr << "[InstanceRegistry] Instance configuration saved (non-persistent - for inspection only)" << std::endl;
+        }
+    } else {
+        std::cerr << "[InstanceRegistry] Warning: Failed to save instance configuration to file" << std::endl;
     }
     
         // Auto start if requested
@@ -174,94 +182,93 @@ std::optional<InstanceInfo> InstanceRegistry::getInstance(const std::string& ins
 }
 
 bool InstanceRegistry::startInstance(const std::string& instanceId) {
-    // CRITICAL: Release lock before calling waitForModelsReady and startPipeline
-    // These functions can take a long time (30 seconds!) and don't need the lock
-    // This prevents deadlock if another thread needs the lock
-    std::vector<std::shared_ptr<cvedix_nodes::cvedix_node>> pipelineCopy;
-    bool needRebuild = false;
-    bool alreadyRunning = false;
+    // NEW BEHAVIOR: Start instance means create a new instance with same ID and config
+    // This ensures fresh pipeline is built every time
     
+    InstanceInfo existingInfo;
+    bool instanceExists = false;
+    std::vector<std::shared_ptr<cvedix_nodes::cvedix_node>> pipelineToStop;
+    bool wasRunning = false;
+    
+    // Get existing instance info
     {
         std::lock_guard<std::mutex> lock(mutex_);
-        
         auto instanceIt = instances_.find(instanceId);
         if (instanceIt == instances_.end()) {
+            std::cerr << "[InstanceRegistry] Instance " << instanceId << " not found" << std::endl;
             return false;
         }
         
-        // Check if already running
-        if (instanceIt->second.running) {
-            std::cerr << "[InstanceRegistry] Instance " << instanceId << " is already running" << std::endl;
-            return true;
-        }
+        instanceExists = true;
+        existingInfo = instanceIt->second;
         
-        // Check if pipeline exists and is valid
-        // After stop, pipeline is cleared from map, so we always need to rebuild
-        auto pipelineIt = pipelines_.find(instanceId);
+        // Stop instance if it's running
+        wasRunning = instanceIt->second.running;
         
-        if (pipelineIt == pipelines_.end()) {
-            needRebuild = true;
-            std::cerr << "[InstanceRegistry] Pipeline not found for instance " << instanceId 
-                      << ", rebuilding from instance info..." << std::endl;
-        } else if (pipelineIt->second.empty()) {
-            needRebuild = true;
-            std::cerr << "[InstanceRegistry] Pipeline is empty for instance " << instanceId 
-                      << ", rebuilding..." << std::endl;
-        } else {
-            // After detach_recursively(), nodes cannot be restarted
-            // Always rebuild to ensure fresh pipeline
-            std::cerr << "[InstanceRegistry] Pipeline exists but may be invalid after previous stop, rebuilding to ensure fresh pipeline..." << std::endl;
-            needRebuild = true;
-        }
-        
-        if (needRebuild) {
-            // Release lock before rebuilding (rebuildPipelineFromInstanceInfo may need lock internally)
-            // Actually, rebuildPipelineFromInstanceInfo doesn't use lock, so we can call it here
-            // But we'll release lock before the long operations
-        } else {
-            // Copy pipeline before releasing lock
-            pipelineCopy = pipelineIt->second;
-        }
-    } // Release lock here - rebuild and wait operations don't need it
-    
-    if (needRebuild) {
-        if (!rebuildPipelineFromInstanceInfo(instanceId)) {
-            std::cerr << "[InstanceRegistry] ✗ Failed to rebuild pipeline for instance " << instanceId << std::endl;
-            return false;
-        }
-        
-        // Get pipeline copy after rebuild (need lock briefly)
-        {
-            std::lock_guard<std::mutex> lock(mutex_);
+        if (wasRunning) {
+            std::cerr << "[InstanceRegistry] Instance " << instanceId << " is currently running, stopping it first..." << std::endl;
+            instanceIt->second.running = false;
+            
+            // Get pipeline copy before releasing lock
             auto pipelineIt = pipelines_.find(instanceId);
-            if (pipelineIt == pipelines_.end() || pipelineIt->second.empty()) {
-                std::cerr << "[InstanceRegistry] ✗ Pipeline rebuild failed or returned empty pipeline" << std::endl;
-                return false;
+            if (pipelineIt != pipelines_.end() && !pipelineIt->second.empty()) {
+                pipelineToStop = pipelineIt->second;
             }
-            pipelineCopy = pipelineIt->second;
-        } // Release lock again
+        }
         
-        std::cerr << "[InstanceRegistry] ✓ Pipeline rebuilt successfully" << std::endl;
-        
-        // IMPORTANT: When restarting, we need extra time because:
-        // 1. Model is being loaded again (may have cache/state issues)
-        // 2. OpenCV DNN may need time to clear old state
-        // 3. File source needs to reset to beginning of file
-        // Use adaptive waiting with longer timeout for restart scenarios
-        // NOTE: This is called WITHOUT holding the lock to prevent deadlock
-        std::cerr << "[InstanceRegistry] Waiting for models to be ready (adaptive, up to 30 seconds)..." << std::endl;
-        std::cerr << "[InstanceRegistry] This ensures OpenCV DNN clears any cached state and models are fully initialized" << std::endl;
-        waitForModelsReady(pipelineCopy, 30000); // Max 30 seconds for restart
+        // Remove old pipeline to ensure fresh build
+        pipelines_.erase(instanceId);
+    } // Release lock
+    
+    // Stop pipeline if it was running (do this outside lock)
+    // Use full cleanup to ensure OpenCV DNN state is cleared
+    if (wasRunning && !pipelineToStop.empty()) {
+        stopPipeline(pipelineToStop, true); // true = full cleanup to clear DNN state
+        pipelineToStop.clear(); // Ensure nodes are destroyed immediately
     }
     
     std::cerr << "[InstanceRegistry] ========================================" << std::endl;
-    std::cerr << "[InstanceRegistry] Starting instance " << instanceId << "..." << std::endl;
+    std::cerr << "[InstanceRegistry] Starting instance " << instanceId << " (creating new pipeline)..." << std::endl;
     std::cerr << "[InstanceRegistry] ========================================" << std::endl;
     
-    // Call startPipeline without holding the lock
-    bool started = startPipeline(pipelineCopy);
+    // Rebuild pipeline from instance info (this creates a fresh pipeline)
+    if (!rebuildPipelineFromInstanceInfo(instanceId)) {
+        std::cerr << "[InstanceRegistry] ✗ Failed to rebuild pipeline for instance " << instanceId << std::endl;
+        return false;
+    }
     
-    // Update running status (need lock briefly)
+    // Get pipeline copy after rebuild
+    std::vector<std::shared_ptr<cvedix_nodes::cvedix_node>> pipelineCopy;
+    {
+        std::lock_guard<std::mutex> lock(mutex_);
+        auto pipelineIt = pipelines_.find(instanceId);
+        if (pipelineIt == pipelines_.end() || pipelineIt->second.empty()) {
+            std::cerr << "[InstanceRegistry] ✗ Pipeline rebuild failed or returned empty pipeline" << std::endl;
+            return false;
+        }
+        pipelineCopy = pipelineIt->second;
+    } // Release lock
+    
+    std::cerr << "[InstanceRegistry] ✓ Pipeline rebuilt successfully (fresh pipeline)" << std::endl;
+    
+    // Wait for models to be ready (use longer timeout for restart scenario)
+    std::cerr << "[InstanceRegistry] Waiting for models to be ready (adaptive, up to 60 seconds)..." << std::endl;
+    std::cerr << "[InstanceRegistry] This ensures OpenCV DNN clears any cached state and models are fully initialized" << std::endl;
+    waitForModelsReady(pipelineCopy, 2000); // 60 seconds
+    
+    // Additional delay after rebuild to ensure OpenCV DNN has fully cleared old state
+    std::cerr << "[InstanceRegistry] Additional stabilization delay after rebuild (2 seconds)..." << std::endl;
+    std::cerr << "[InstanceRegistry] This ensures OpenCV DNN has fully cleared any cached state from previous run" << std::endl;
+    std::this_thread::sleep_for(std::chrono::milliseconds(2000));
+    
+    std::cerr << "[InstanceRegistry] ========================================" << std::endl;
+    std::cerr << "[InstanceRegistry] Starting pipeline for instance " << instanceId << "..." << std::endl;
+    std::cerr << "[InstanceRegistry] ========================================" << std::endl;
+    
+    // Start pipeline (isRestart=true because we rebuilt the pipeline)
+    bool started = startPipeline(pipelineCopy, true);
+    
+    // Update running status
     {
         std::lock_guard<std::mutex> lock(mutex_);
         auto instanceIt = instances_.find(instanceId);
@@ -314,22 +321,39 @@ bool InstanceRegistry::stopInstance(const std::string& instanceId) {
     
     std::cerr << "[InstanceRegistry] ========================================" << std::endl;
     std::cerr << "[InstanceRegistry] Stopping instance " << instanceId << "..." << std::endl;
+    std::cerr << "[InstanceRegistry] NOTE: All nodes will be fully destroyed to clear OpenCV DNN state" << std::endl;
     std::cerr << "[InstanceRegistry] ========================================" << std::endl;
     
     // Now call stopPipeline without holding the lock
     // This prevents deadlock if stopPipeline takes a long time
+    // Use isDeletion=true to fully cleanup nodes and clear OpenCV DNN state
+    // CRITICAL: stopPipeline() is now guaranteed to never throw (it catches all exceptions internally)
     try {
-        stopPipeline(pipelineCopy, false);  // false = not deletion, just stop
+        stopPipeline(pipelineCopy, true);  // true = full cleanup like deletion to clear DNN state
     } catch (const std::exception& e) {
-        std::cerr << "[InstanceRegistry] Exception in stopPipeline: " << e.what() << std::endl;
+        // This should never happen since stopPipeline catches all exceptions, but just in case...
+        std::cerr << "[InstanceRegistry] CRITICAL: Unexpected exception in stopPipeline: " << e.what() << std::endl;
+        std::cerr << "[InstanceRegistry] This indicates a bug - stopPipeline should not throw" << std::endl;
         // Continue anyway - pipeline is already removed from map
     } catch (...) {
-        std::cerr << "[InstanceRegistry] Unknown exception in stopPipeline" << std::endl;
+        // This should never happen since stopPipeline catches all exceptions, but just in case...
+        std::cerr << "[InstanceRegistry] CRITICAL: Unexpected unknown exception in stopPipeline" << std::endl;
+        std::cerr << "[InstanceRegistry] This indicates a bug - stopPipeline should not throw" << std::endl;
         // Continue anyway - pipeline is already removed from map
     }
     
+    // Clear pipeline copy to ensure all nodes are destroyed immediately
+    // This helps ensure OpenCV DNN releases all internal state
+    // Wrap in try-catch to be extra safe (though clear() shouldn't throw)
+    try {
+        pipelineCopy.clear();
+    } catch (...) {
+        std::cerr << "[InstanceRegistry] Warning: Exception clearing pipeline copy (unexpected)" << std::endl;
+    }
+    
     std::cerr << "[InstanceRegistry] ✓ Instance " << instanceId << " stopped successfully" << std::endl;
-    std::cerr << "[InstanceRegistry] NOTE: Pipeline will be automatically rebuilt when you start this instance again" << std::endl;
+    std::cerr << "[InstanceRegistry] NOTE: All nodes have been destroyed. Pipeline will be rebuilt from scratch when you start this instance again" << std::endl;
+    std::cerr << "[InstanceRegistry] NOTE: This ensures OpenCV DNN starts with a clean state" << std::endl;
     std::cerr << "[InstanceRegistry] ========================================" << std::endl;
     
     return true;
@@ -403,6 +427,9 @@ InstanceInfo InstanceRegistry::createInstanceInfo(
         info.solutionName = solution->solutionName;
     }
     
+    // Copy all additional parameters from request (MODEL_PATH, SFACE_MODEL_PATH, RESIZE_RATIO, etc.)
+    info.additionalParams = req.additionalParams;
+    
     // Extract RTMP URL from request
     auto rtmpIt = req.additionalParams.find("RTMP_URL");
     if (rtmpIt != req.additionalParams.end() && !rtmpIt->second.empty()) {
@@ -452,6 +479,7 @@ InstanceInfo InstanceRegistry::createInstanceInfo(
 
 // Helper function to wait for DNN models to be ready using exponential backoff
 // This is more reliable than fixed delay as it adapts to model loading time
+// If maxWaitMs < 0, wait indefinitely (no timeout)
 void InstanceRegistry::waitForModelsReady(const std::vector<std::shared_ptr<cvedix_nodes::cvedix_node>>& nodes, 
                                          int maxWaitMs) {
     // Check if pipeline contains DNN models (face detector, feature encoder, etc.)
@@ -475,41 +503,75 @@ void InstanceRegistry::waitForModelsReady(const std::vector<std::shared_ptr<cved
         return;
     }
     
+    // Check if unlimited wait (maxWaitMs < 0)
+    bool unlimitedWait = (maxWaitMs < 0);
+    
+    if (unlimitedWait) {
+        std::cerr << "[InstanceRegistry] Waiting for DNN models to initialize (UNLIMITED - will wait until ready)..." << std::endl;
+        std::cerr << "[InstanceRegistry] NOTE: This will wait indefinitely until models are ready" << std::endl;
+    } else {
+        std::cerr << "[InstanceRegistry] Waiting for DNN models to initialize (adaptive, max " << maxWaitMs << "ms)..." << std::endl;
+    }
+    
     // Use exponential backoff with adaptive waiting
-    // Start with small delays and increase gradually until maxWaitMs
-    std::cerr << "[InstanceRegistry] Waiting for DNN models to initialize (adaptive, max " << maxWaitMs << "ms)..." << std::endl;
+    // Start with small delays and increase gradually
     int currentDelay = 200; // Start with 200ms
     int totalWaited = 0;
     int attempt = 0;
-    // Calculate max attempts needed: for 30s (30000ms) with exponential backoff up to 1600ms per attempt
-    // Need at least 30000/1600 = ~19 attempts, add buffer for safety
-    const int maxAttempts = (maxWaitMs / 1600) + 10; // Dynamic based on maxWaitMs
+    const int maxDelayPerAttempt = 2000; // Cap at 2 seconds per attempt for unlimited wait
     
-    // Calculate number of attempts needed to reach maxWaitMs
-    // With exponential backoff: 200, 400, 800, 1600, 1600, 1600...
-    while (totalWaited < maxWaitMs && attempt < maxAttempts) {
-        int delayThisRound = std::min(currentDelay, maxWaitMs - totalWaited);
-        std::cerr << "[InstanceRegistry]   Attempt " << (attempt + 1) << ": waiting " << delayThisRound << "ms (total: " << totalWaited << "ms / " << maxWaitMs << "ms)..." << std::endl;
+    // For unlimited wait, use a very large number for maxAttempts
+    // For limited wait, calculate based on maxWaitMs
+    int maxAttempts = unlimitedWait ? 1000000 : ((maxWaitMs / 1600) + 10);
+    
+    // With exponential backoff: 200, 400, 800, 1600, 2000, 2000, 2000...
+    while (unlimitedWait || (totalWaited < maxWaitMs && attempt < maxAttempts)) {
+        int delayThisRound;
+        if (unlimitedWait) {
+            // For unlimited wait, use exponential backoff up to maxDelayPerAttempt
+            delayThisRound = std::min(currentDelay, maxDelayPerAttempt);
+        } else {
+            // For limited wait, calculate remaining time
+            delayThisRound = std::min(currentDelay, maxWaitMs - totalWaited);
+        }
+        
+        if (unlimitedWait) {
+            std::cerr << "[InstanceRegistry]   Attempt " << (attempt + 1) << ": waiting " << delayThisRound << "ms (total: " << totalWaited << "ms, unlimited wait)..." << std::endl;
+        } else {
+            std::cerr << "[InstanceRegistry]   Attempt " << (attempt + 1) << ": waiting " << delayThisRound << "ms (total: " << totalWaited << "ms / " << maxWaitMs << "ms)..." << std::endl;
+        }
+        
         std::this_thread::sleep_for(std::chrono::milliseconds(delayThisRound));
         totalWaited += delayThisRound;
         
-        // Exponential backoff: double the delay each time, cap at 1600ms per attempt
-        currentDelay = std::min(currentDelay * 2, 1600);
+        // Exponential backoff: double the delay each time
+        // For unlimited wait, cap at maxDelayPerAttempt
+        // For limited wait, cap at 1600ms per attempt
+        int maxDelay = unlimitedWait ? maxDelayPerAttempt : 1600;
+        currentDelay = std::min(currentDelay * 2, maxDelay);
         attempt++;
         
         // For shorter waits (create scenario), can exit early
-        // For longer waits (restart scenario), wait closer to maxWaitMs
-        if (maxWaitMs <= 2000 && totalWaited >= 1000) {
+        if (!unlimitedWait && maxWaitMs <= 2000 && totalWaited >= 1000) {
             // For create scenario (2s max), exit after 1s if models usually ready
             std::cerr << "[InstanceRegistry]   Models should be ready now (waited " << totalWaited << "ms)" << std::endl;
             break;
         }
+        
+        // For unlimited wait, log progress every 10 seconds
+        if (unlimitedWait && totalWaited > 0 && totalWaited % 10000 == 0) {
+            std::cerr << "[InstanceRegistry]   Still waiting... (total: " << (totalWaited / 1000) << " seconds)" << std::endl;
+        }
     }
     
-    std::cerr << "[InstanceRegistry] ✓ Models initialization wait completed (total: " << totalWaited << "ms / " << maxWaitMs << "ms)" << std::endl;
+    if (unlimitedWait) {
+        std::cerr << "[InstanceRegistry] ✓ Models initialization wait completed (total: " << totalWaited << "ms, unlimited wait)" << std::endl;
+    } else {
+        std::cerr << "[InstanceRegistry] ✓ Models initialization wait completed (total: " << totalWaited << "ms / " << maxWaitMs << "ms)" << std::endl;
+    }
 }
 
-bool InstanceRegistry::startPipeline(const std::vector<std::shared_ptr<cvedix_nodes::cvedix_node>>& nodes) {
+bool InstanceRegistry::startPipeline(const std::vector<std::shared_ptr<cvedix_nodes::cvedix_node>>& nodes, bool isRestart) {
     if (nodes.empty()) {
         std::cerr << "[InstanceRegistry] Cannot start pipeline: no nodes" << std::endl;
         return false;
@@ -573,10 +635,21 @@ bool InstanceRegistry::startPipeline(const std::vector<std::shared_ptr<cvedix_no
             std::cerr << "[InstanceRegistry] Starting file source pipeline..." << std::endl;
             std::cerr << "[InstanceRegistry] ========================================" << std::endl;
             
-            // Additional small delay to ensure file source and model pipeline are fully synchronized
-            // Note: We already waited for models after rebuild, but add small delay here for final sync
-            std::cerr << "[InstanceRegistry] Final synchronization delay before starting file source (200ms)..." << std::endl;
-            std::this_thread::sleep_for(std::chrono::milliseconds(200));
+            // CRITICAL: Delay BEFORE start() to ensure model is fully ready
+            // Once fileNode->start() is called, frames are immediately sent to the pipeline
+            // If model is not ready, shape mismatch errors will occur
+            // For restart scenarios, use longer delay to ensure OpenCV DNN has fully cleared old state
+            if (isRestart) {
+                std::cerr << "[InstanceRegistry] CRITICAL: Final synchronization delay before starting file source (restart: 5 seconds)..." << std::endl;
+                std::cerr << "[InstanceRegistry] This delay is CRITICAL - once start() is called, frames are sent immediately" << std::endl;
+                std::cerr << "[InstanceRegistry] Model must be fully ready before start() to prevent shape mismatch errors" << std::endl;
+                std::cerr << "[InstanceRegistry] Using longer delay for restart to ensure OpenCV DNN state is fully cleared" << std::endl;
+                std::this_thread::sleep_for(std::chrono::milliseconds(5000));
+            } else {
+                std::cerr << "[InstanceRegistry] Final synchronization delay before starting file source (2 seconds)..." << std::endl;
+                std::cerr << "[InstanceRegistry] Ensuring model is ready before start() to prevent shape mismatch errors" << std::endl;
+                std::this_thread::sleep_for(std::chrono::milliseconds(2000));
+            }
             
             std::cerr << "[InstanceRegistry] Calling fileNode->start()..." << std::endl;
             auto startTime = std::chrono::steady_clock::now();
@@ -598,23 +671,41 @@ bool InstanceRegistry::startPipeline(const std::vector<std::shared_ptr<cvedix_no
             
             std::cerr << "[InstanceRegistry] ✓ File source node start() completed in " << duration << "ms" << std::endl;
             
-            // CRITICAL: Add delay after start to allow model to process first frame
-            // This prevents shape mismatch errors that occur when model receives frames
-            // before it's fully ready to process them
-            std::cerr << "[InstanceRegistry] Waiting for model to process first frame (1 second)..." << std::endl;
-            std::cerr << "[InstanceRegistry] This prevents shape mismatch errors during initial frame processing" << std::endl;
-            std::this_thread::sleep_for(std::chrono::milliseconds(1000));
+            // Additional delay after start() to allow first frame to be processed
+            // Note: This delay is less critical than the delay BEFORE start()
+            // because frames are already being sent, but it helps ensure smooth processing
+            if (isRestart) {
+                std::cerr << "[InstanceRegistry] Additional stabilization delay after start() (restart: 1 second)..." << std::endl;
+                std::cerr << "[InstanceRegistry] This allows first frame to be processed smoothly" << std::endl;
+                std::this_thread::sleep_for(std::chrono::milliseconds(1000));
+            } else {
+                std::cerr << "[InstanceRegistry] Additional stabilization delay after start() (500ms)..." << std::endl;
+                std::this_thread::sleep_for(std::chrono::milliseconds(500));
+            }
             
-            // NOTE: Shape mismatch errors may still occur after this point if:
-            // 1. Video has inconsistent frame sizes
+            // NOTE: Shape mismatch errors may still occur if:
+            // 1. Video has inconsistent frame sizes (most common cause)
+            //    - Check with: ffprobe -v error -select_streams v:0 -show_entries frame=width,height -of csv=s=x:p=0 video.mp4 | sort -u
+            //    - If multiple sizes appear, video needs re-encoding with fixed resolution
             // 2. Model (especially YuNet 2022mar) doesn't handle dynamic input well
+            //    - Solution: Use YuNet 2023mar model
             // 3. Resize ratio doesn't produce consistent dimensions
+            //    - Solution: Re-encode video with fixed resolution, then use resize_ratio=1.0
             // If this happens, SIGABRT handler will catch it and stop the instance
             std::cerr << "[InstanceRegistry] File source pipeline started successfully" << std::endl;
-            std::cerr << "[InstanceRegistry] NOTE: If you see shape mismatch errors, consider:" << std::endl;
-            std::cerr << "[InstanceRegistry]   1. Using YuNet 2023mar model (better dynamic input support)" << std::endl;
-            std::cerr << "[InstanceRegistry]   2. Ensuring video has consistent resolution" << std::endl;
-            std::cerr << "[InstanceRegistry]   3. Re-encoding video to fixed resolution if needed" << std::endl;
+            std::cerr << "[InstanceRegistry] ========================================" << std::endl;
+            std::cerr << "[InstanceRegistry] IMPORTANT: If you see shape mismatch errors, the most likely cause is:" << std::endl;
+            std::cerr << "[InstanceRegistry]   Video has inconsistent frame sizes (different resolutions per frame)" << std::endl;
+            std::cerr << "[InstanceRegistry] Solutions (in order of recommendation):" << std::endl;
+            std::cerr << "[InstanceRegistry]   1. Re-encode video with fixed resolution:" << std::endl;
+            std::cerr << "[InstanceRegistry]      ffmpeg -i input.mp4 -vf \"scale=640:360:force_original_aspect_ratio=decrease,pad=640:360:(ow-iw)/2:(oh-ih)/2\" \\" << std::endl;
+            std::cerr << "[InstanceRegistry]             -c:v libx264 -preset fast -crf 23 -c:a copy output.mp4" << std::endl;
+            std::cerr << "[InstanceRegistry]      Then use RESIZE_RATIO: \"1.0\" in additionalParams" << std::endl;
+            std::cerr << "[InstanceRegistry]   2. Use YuNet 2023mar model (better dynamic input support)" << std::endl;
+            std::cerr << "[InstanceRegistry]   3. Check video resolution consistency:" << std::endl;
+            std::cerr << "[InstanceRegistry]      ffprobe -v error -select_streams v:0 -show_entries frame=width,height \\" << std::endl;
+            std::cerr << "[InstanceRegistry]              -of csv=s=x:p=0 video.mp4 | sort -u" << std::endl;
+            std::cerr << "[InstanceRegistry] ========================================" << std::endl;
             std::cerr << "[InstanceRegistry] ========================================" << std::endl;
             return true;
         }
@@ -640,6 +731,17 @@ void InstanceRegistry::stopPipeline(const std::vector<std::shared_ptr<cvedix_nod
     }
     
     try {
+        // Check if pipeline contains DNN models (face detector, feature encoder, etc.)
+        // These need extra time to finish processing and clear internal state
+        bool hasDNNModels = false;
+        for (const auto& node : nodes) {
+            if (std::dynamic_pointer_cast<cvedix_nodes::cvedix_yunet_face_detector_node>(node) ||
+                std::dynamic_pointer_cast<cvedix_nodes::cvedix_sface_feature_encoder_node>(node)) {
+                hasDNNModels = true;
+                break;
+            }
+        }
+        
         // First, give destination nodes (like RTMP) time to flush and finalize
         // This helps reduce GStreamer warnings during cleanup
         if (isDeletion) {
@@ -703,12 +805,30 @@ void InstanceRegistry::stopPipeline(const std::vector<std::shared_ptr<cvedix_nod
             }
         }
         
+        // CRITICAL: After stopping source node, wait for DNN processing nodes to finish
+        // This ensures all frames in the processing queue are handled and DNN models
+        // have cleared their internal state before we detach or restart
+        // This prevents shape mismatch errors when restarting
+        if (hasDNNModels) {
+            if (isDeletion) {
+                std::cerr << "[InstanceRegistry] Waiting for DNN models to finish processing (deletion, 1 second)..." << std::endl;
+                std::this_thread::sleep_for(std::chrono::milliseconds(1000));
+            } else {
+                // For stop (not deletion), use longer delay to ensure DNN state is fully cleared
+                // This is critical to prevent shape mismatch errors when restarting
+                std::cerr << "[InstanceRegistry] Waiting for DNN models to finish processing and clear state (stop, 2 seconds)..." << std::endl;
+                std::cerr << "[InstanceRegistry] This ensures OpenCV DNN releases all internal state before restart" << std::endl;
+                std::this_thread::sleep_for(std::chrono::milliseconds(2000));
+            }
+        }
+        
         // Give GStreamer time to properly cleanup after detach
         // This helps reduce warnings about VideoWriter finalization
         if (isDeletion) {
             std::cerr << "[InstanceRegistry] Waiting for GStreamer cleanup..." << std::endl;
             std::this_thread::sleep_for(std::chrono::milliseconds(300));
-            std::cerr << "[InstanceRegistry] Pipeline stopped and detached (deletion)" << std::endl;
+            std::cerr << "[InstanceRegistry] Pipeline stopped and fully destroyed (all nodes cleared)" << std::endl;
+            std::cerr << "[InstanceRegistry] NOTE: All nodes have been destroyed to ensure clean state (especially OpenCV DNN)" << std::endl;
             std::cerr << "[InstanceRegistry] NOTE: GStreamer warnings about VideoWriter finalization are normal during cleanup" << std::endl;
         } else {
             // Note: We detach nodes but keep them in the pipeline vector
@@ -716,14 +836,30 @@ void InstanceRegistry::stopPipeline(const std::vector<std::shared_ptr<cvedix_nod
             // The nodes will be recreated when startInstance is called if needed
             std::cerr << "[InstanceRegistry] Pipeline stopped (nodes detached but kept for potential restart)" << std::endl;
             std::cerr << "[InstanceRegistry] NOTE: Pipeline will be automatically rebuilt when restarting" << std::endl;
+            if (hasDNNModels) {
+                std::cerr << "[InstanceRegistry] NOTE: DNN models have been given time to clear internal state" << std::endl;
+                std::cerr << "[InstanceRegistry] NOTE: This helps prevent shape mismatch errors when restarting" << std::endl;
+            }
         }
     } catch (const std::exception& e) {
         std::cerr << "[InstanceRegistry] Exception in stopPipeline: " << e.what() << std::endl;
         std::cerr << "[InstanceRegistry] NOTE: GStreamer warnings during cleanup are usually harmless" << std::endl;
+        // Swallow exception - don't let it propagate to prevent terminate handler deadlock
+    } catch (...) {
+        std::cerr << "[InstanceRegistry] Unknown exception in stopPipeline - caught and ignored" << std::endl;
+        // Swallow exception - don't let it propagate to prevent terminate handler deadlock
     }
+    // Ensure function never throws - this prevents deadlock in terminate handler
 }
 
 bool InstanceRegistry::rebuildPipelineFromInstanceInfo(const std::string& instanceId) {
+    std::cerr << "[InstanceRegistry] ========================================" << std::endl;
+    std::cerr << "[InstanceRegistry] Rebuilding pipeline for instance " << instanceId << "..." << std::endl;
+    std::cerr << "[InstanceRegistry] NOTE: This is normal when restarting an instance." << std::endl;
+    std::cerr << "[InstanceRegistry] After stop(), pipeline is removed from map and nodes are detached." << std::endl;
+    std::cerr << "[InstanceRegistry] Rebuilding ensures fresh pipeline with clean DNN model state." << std::endl;
+    std::cerr << "[InstanceRegistry] ========================================" << std::endl;
+    
     // Get instance info (need lock)
     InstanceInfo info;
     {
@@ -772,19 +908,23 @@ bool InstanceRegistry::rebuildPipelineFromInstanceInfo(const std::string& instan
     req.inputOrientation = info.inputOrientation;
     req.inputPixelLimit = info.inputPixelLimit;
     
-    // Restore additional parameters from InstanceInfo
+    // Restore all additional parameters from InstanceInfo
+    // This includes MODEL_PATH, SFACE_MODEL_PATH, RESIZE_RATIO, etc.
+    req.additionalParams = info.additionalParams;
+    
+    // Also restore individual fields for backward compatibility
     // Use originator.address as RTSP URL if available
-    if (!info.originator.address.empty()) {
+    if (!info.originator.address.empty() && req.additionalParams.find("RTSP_URL") == req.additionalParams.end()) {
         req.additionalParams["RTSP_URL"] = info.originator.address;
     }
     
-    // Restore RTMP URL if available
-    if (!info.rtmpUrl.empty()) {
+    // Restore RTMP URL if available (override if not in additionalParams)
+    if (!info.rtmpUrl.empty() && req.additionalParams.find("RTMP_URL") == req.additionalParams.end()) {
         req.additionalParams["RTMP_URL"] = info.rtmpUrl;
     }
     
-    // Restore FILE_PATH if available
-    if (!info.filePath.empty()) {
+    // Restore FILE_PATH if available (override if not in additionalParams)
+    if (!info.filePath.empty() && req.additionalParams.find("FILE_PATH") == req.additionalParams.end()) {
         req.additionalParams["FILE_PATH"] = info.filePath;
     }
     
