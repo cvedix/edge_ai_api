@@ -1,4 +1,5 @@
 #include "api/instance_handler.h"
+#include "models/update_instance_request.h"
 #include "instances/instance_registry.h"
 #include "instances/instance_info.h"
 #include <drogon/HttpResponse.h>
@@ -322,16 +323,17 @@ void InstanceHandler::restartInstance(
             std::cerr << "[InstanceHandler] Instance is running, stopping first..." << std::endl;
             if (!instance_registry_->stopInstance(instanceId)) {
                 std::cerr << "[InstanceHandler] Warning: Failed to stop instance before restart" << std::endl;
-                // Continue anyway - try to start it
-            } else {
-                // Give it a moment to fully stop
-                std::this_thread::sleep_for(std::chrono::milliseconds(200));
+                callback(createErrorResponse(500, "Failed to restart", "Could not stop instance before restart"));
+                return;
             }
+            // Give it a moment to fully stop and cleanup
+            std::cerr << "[InstanceHandler] Waiting for instance to fully stop..." << std::endl;
+            std::this_thread::sleep_for(std::chrono::milliseconds(500));
         }
         
-        // Now start the instance
+        // Now start the instance (skip auto-stop since we already stopped it)
         std::cerr << "[InstanceHandler] Starting instance..." << std::endl;
-        if (instance_registry_->startInstance(instanceId)) {
+        if (instance_registry_->startInstance(instanceId, true)) { // true = skipAutoStop
             // Get updated instance info
             optInfo = instance_registry_->getInstance(instanceId);
             if (optInfo.has_value()) {
@@ -350,6 +352,97 @@ void InstanceHandler::restartInstance(
             }
         } else {
             callback(createErrorResponse(400, "Failed to restart", "Could not restart instance. Check if instance exists and has a pipeline."));
+        }
+        
+    } catch (const std::exception& e) {
+        std::cerr << "[InstanceHandler] Exception: " << e.what() << std::endl;
+        callback(createErrorResponse(500, "Internal server error", e.what()));
+    } catch (...) {
+        std::cerr << "[InstanceHandler] Unknown exception" << std::endl;
+        callback(createErrorResponse(500, "Internal server error", "Unknown error occurred"));
+    }
+}
+
+void InstanceHandler::updateInstance(
+    const HttpRequestPtr &req,
+    std::function<void(const HttpResponsePtr &)> &&callback) {
+    
+    try {
+        // Check if registry is set
+        if (!instance_registry_) {
+            callback(createErrorResponse(500, "Internal server error", "Instance registry not initialized"));
+            return;
+        }
+        
+        // Get instance ID from path parameter
+        std::string instanceId = req->getParameter("instanceId");
+        
+        // Fallback: extract from path if getParameter doesn't work
+        if (instanceId.empty()) {
+            std::string path = req->getPath();
+            size_t instancesPos = path.find("/instances/");
+            if (instancesPos != std::string::npos) {
+                size_t start = instancesPos + 11; // length of "/instances/"
+                size_t end = path.find("/", start);
+                if (end == std::string::npos) {
+                    end = path.length();
+                }
+                instanceId = path.substr(start, end - start);
+            }
+        }
+        
+        if (instanceId.empty()) {
+            callback(createErrorResponse(400, "Invalid request", "Instance ID is required"));
+            return;
+        }
+        
+        // Parse JSON body
+        auto json = req->getJsonObject();
+        if (!json) {
+            callback(createErrorResponse(400, "Invalid request", "Request body must be valid JSON"));
+            return;
+        }
+        
+        // Parse update request
+        UpdateInstanceRequest updateReq;
+        std::string parseError;
+        if (!parseUpdateRequest(*json, updateReq, parseError)) {
+            callback(createErrorResponse(400, "Invalid request", parseError));
+            return;
+        }
+        
+        // Validate request
+        if (!updateReq.validate()) {
+            callback(createErrorResponse(400, "Validation failed", updateReq.getValidationError()));
+            return;
+        }
+        
+        // Check if request has any updates
+        if (!updateReq.hasUpdates()) {
+            callback(createErrorResponse(400, "Invalid request", "No fields to update"));
+            return;
+        }
+        
+        // Update instance
+        if (instance_registry_->updateInstance(instanceId, updateReq)) {
+            // Get updated instance info
+            auto optInfo = instance_registry_->getInstance(instanceId);
+            if (optInfo.has_value()) {
+                Json::Value response = instanceInfoToJson(optInfo.value());
+                response["message"] = "Instance updated successfully";
+                
+                auto resp = HttpResponse::newHttpJsonResponse(response);
+                resp->setStatusCode(k200OK);
+                resp->addHeader("Access-Control-Allow-Origin", "*");
+                resp->addHeader("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS");
+                resp->addHeader("Access-Control-Allow-Headers", "Content-Type, Authorization");
+                
+                callback(resp);
+            } else {
+                callback(createErrorResponse(500, "Internal server error", "Instance updated but could not retrieve info"));
+            }
+        } else {
+            callback(createErrorResponse(400, "Failed to update", "Could not update instance. Check if instance exists and is not read-only."));
         }
         
     } catch (const std::exception& e) {
@@ -432,6 +525,123 @@ void InstanceHandler::handleOptions(
     resp->addHeader("Access-Control-Allow-Headers", "Content-Type, Authorization");
     resp->addHeader("Access-Control-Max-Age", "3600");
     callback(resp);
+}
+
+bool InstanceHandler::parseUpdateRequest(
+    const Json::Value& json,
+    UpdateInstanceRequest& req,
+    std::string& error) {
+    
+    // Optional fields - only parse if provided
+    if (json.isMember("name") && json["name"].isString()) {
+        req.name = json["name"].asString();
+    }
+    
+    if (json.isMember("group") && json["group"].isString()) {
+        req.group = json["group"].asString();
+    }
+    
+    if (json.isMember("persistent") && json["persistent"].isBool()) {
+        req.persistent = json["persistent"].asBool();
+    }
+    
+    if (json.isMember("frameRateLimit") && json["frameRateLimit"].isNumeric()) {
+        req.frameRateLimit = json["frameRateLimit"].asInt();
+    }
+    
+    if (json.isMember("metadataMode") && json["metadataMode"].isBool()) {
+        req.metadataMode = json["metadataMode"].asBool();
+    }
+    
+    if (json.isMember("statisticsMode") && json["statisticsMode"].isBool()) {
+        req.statisticsMode = json["statisticsMode"].asBool();
+    }
+    
+    if (json.isMember("diagnosticsMode") && json["diagnosticsMode"].isBool()) {
+        req.diagnosticsMode = json["diagnosticsMode"].asBool();
+    }
+    
+    if (json.isMember("debugMode") && json["debugMode"].isBool()) {
+        req.debugMode = json["debugMode"].asBool();
+    }
+    
+    if (json.isMember("detectorMode") && json["detectorMode"].isString()) {
+        req.detectorMode = json["detectorMode"].asString();
+    }
+    
+    if (json.isMember("detectionSensitivity") && json["detectionSensitivity"].isString()) {
+        req.detectionSensitivity = json["detectionSensitivity"].asString();
+    }
+    
+    if (json.isMember("movementSensitivity") && json["movementSensitivity"].isString()) {
+        req.movementSensitivity = json["movementSensitivity"].asString();
+    }
+    
+    if (json.isMember("sensorModality") && json["sensorModality"].isString()) {
+        req.sensorModality = json["sensorModality"].asString();
+    }
+    
+    if (json.isMember("autoStart") && json["autoStart"].isBool()) {
+        req.autoStart = json["autoStart"].asBool();
+    }
+    
+    if (json.isMember("autoRestart") && json["autoRestart"].isBool()) {
+        req.autoRestart = json["autoRestart"].asBool();
+    }
+    
+    if (json.isMember("inputOrientation") && json["inputOrientation"].isNumeric()) {
+        req.inputOrientation = json["inputOrientation"].asInt();
+    }
+    
+    if (json.isMember("inputPixelLimit") && json["inputPixelLimit"].isNumeric()) {
+        req.inputPixelLimit = json["inputPixelLimit"].asInt();
+    }
+    
+    // Additional parameters (e.g., RTSP_URL, MODEL_PATH, FILE_PATH, RTMP_URL)
+    if (json.isMember("additionalParams") && json["additionalParams"].isObject()) {
+        for (const auto& key : json["additionalParams"].getMemberNames()) {
+            if (json["additionalParams"][key].isString()) {
+                req.additionalParams[key] = json["additionalParams"][key].asString();
+            }
+        }
+    }
+    
+    // Also check for RTSP_URL at top level
+    if (json.isMember("RTSP_URL") && json["RTSP_URL"].isString()) {
+        req.additionalParams["RTSP_URL"] = json["RTSP_URL"].asString();
+    }
+    
+    // Also check for MODEL_NAME at top level
+    if (json.isMember("MODEL_NAME") && json["MODEL_NAME"].isString()) {
+        req.additionalParams["MODEL_NAME"] = json["MODEL_NAME"].asString();
+    }
+    
+    // Also check for MODEL_PATH at top level
+    if (json.isMember("MODEL_PATH") && json["MODEL_PATH"].isString()) {
+        req.additionalParams["MODEL_PATH"] = json["MODEL_PATH"].asString();
+    }
+    
+    // Also check for FILE_PATH at top level (for file source)
+    if (json.isMember("FILE_PATH") && json["FILE_PATH"].isString()) {
+        req.additionalParams["FILE_PATH"] = json["FILE_PATH"].asString();
+    }
+    
+    // Also check for RTMP_URL at top level (for RTMP destination)
+    if (json.isMember("RTMP_URL") && json["RTMP_URL"].isString()) {
+        req.additionalParams["RTMP_URL"] = json["RTMP_URL"].asString();
+    }
+    
+    // Also check for SFACE_MODEL_PATH at top level (for SFace encoder)
+    if (json.isMember("SFACE_MODEL_PATH") && json["SFACE_MODEL_PATH"].isString()) {
+        req.additionalParams["SFACE_MODEL_PATH"] = json["SFACE_MODEL_PATH"].asString();
+    }
+    
+    // Also check for SFACE_MODEL_NAME at top level (for SFace encoder by name)
+    if (json.isMember("SFACE_MODEL_NAME") && json["SFACE_MODEL_NAME"].isString()) {
+        req.additionalParams["SFACE_MODEL_NAME"] = json["SFACE_MODEL_NAME"].asString();
+    }
+    
+    return true;
 }
 
 Json::Value InstanceHandler::instanceInfoToJson(const InstanceInfo& info) const {

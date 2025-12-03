@@ -61,9 +61,10 @@ public:
     /**
      * @brief Start an instance (start pipeline)
      * @param instanceId Instance ID
+     * @param skipAutoStop If true, skip auto-stop of running instance (for restart scenario)
      * @return true if successful
      */
-    bool startInstance(const std::string& instanceId);
+    bool startInstance(const std::string& instanceId, bool skipAutoStop = false);
     
     /**
      * @brief Stop an instance (stop pipeline)
@@ -71,6 +72,14 @@ public:
      * @return true if successful
      */
     bool stopInstance(const std::string& instanceId);
+    
+    /**
+     * @brief Update instance information
+     * @param instanceId Instance ID
+     * @param req Update instance request
+     * @return true if successful
+     */
+    bool updateInstance(const std::string& instanceId, const class UpdateInstanceRequest& req);
     
     /**
      * @brief List all instance IDs

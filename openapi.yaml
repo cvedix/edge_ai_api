@@ -306,6 +306,58 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
+    
+    put:
+      summary: Update instance information
+      description: Updates configuration of an existing instance. Only provided fields will be updated. If the instance is currently running, it will be automatically restarted to apply the changes. If the instance is not running, changes will take effect when the instance is started.
+      operationId: updateInstance
+      tags:
+        - Instances
+      parameters:
+        - name: instanceId
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Instance ID (UUID)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateInstanceRequest'
+      responses:
+        '200':
+          description: Instance updated successfully
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/InstanceInfo'
+                  - type: object
+                    properties:
+                      message:
+                        type: string
+                        example: "Instance updated successfully"
+        '400':
+          description: Invalid request or validation failed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: Instance not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+    
     delete:
       summary: Delete an instance
       description: Deletes an instance and stops its pipeline if running.
@@ -755,6 +807,100 @@ components:
             - RTSP_URL: RTSP stream URL
             - MODEL_NAME: Model name (e.g., "yunet_2023mar", "face:yunet_2023mar")
             - MODEL_PATH: Direct path to model file
+          additionalProperties:
+            type: string
+
+    UpdateInstanceRequest:
+      type: object
+      description: Request body for updating an instance. All fields are optional - only provided fields will be updated.
+      properties:
+        name:
+          type: string
+          description: "Instance name (pattern: ^[A-Za-z0-9 -_]+$)"
+          example: "Face Detection Camera 1"
+        group:
+          type: string
+          description: "Group name (pattern: ^[A-Za-z0-9 -_]+$)"
+          example: "cameras"
+        persistent:
+          type: boolean
+          description: Save instance to JSON file
+        frameRateLimit:
+          type: integer
+          description: Frame rate limit (FPS)
+          minimum: 0
+        metadataMode:
+          type: boolean
+          description: Enable metadata mode
+        statisticsMode:
+          type: boolean
+          description: Enable statistics mode
+        diagnosticsMode:
+          type: boolean
+          description: Enable diagnostics mode
+        debugMode:
+          type: boolean
+          description: Enable debug mode
+        detectorMode:
+          type: string
+          description: Detector mode
+          enum: [SmartDetection]
+        detectionSensitivity:
+          type: string
+          description: Detection sensitivity level
+          enum: [Low, Medium, High]
+        movementSensitivity:
+          type: string
+          description: Movement sensitivity level
+          enum: [Low, Medium, High]
+        sensorModality:
+          type: string
+          description: Sensor modality
+          enum: [RGB, Thermal]
+        autoStart:
+          type: boolean
+          description: Automatically start instance when created
+        autoRestart:
+          type: boolean
+          description: Automatically restart instance on error
+        inputOrientation:
+          type: integer
+          description: Input orientation (0-3)
+          minimum: 0
+          maximum: 3
+        inputPixelLimit:
+          type: integer
+          description: Input pixel limit
+          minimum: 0
+        RTSP_URL:
+          type: string
+          description: RTSP URL for source
+          example: "rtsp://localhost:8554/stream"
+        MODEL_NAME:
+          type: string
+          description: Model name to use
+          example: "yunet_2023mar"
+        MODEL_PATH:
+          type: string
+          description: Direct path to model file
+          example: "./models/yunet.onnx"
+        FILE_PATH:
+          type: string
+          description: File path for file source
+          example: "/path/to/video.mp4"
+        RTMP_URL:
+          type: string
+          description: RTMP URL for streaming destination
+          example: "rtmp://localhost:1935/live/stream"
+        SFACE_MODEL_PATH:
+          type: string
+          description: Path to SFace encoder model
+        SFACE_MODEL_NAME:
+          type: string
+          description: Name of SFace encoder model
+        additionalParams:
+          type: object
+          description: Additional solution-specific parameters
           additionalProperties:
             type: string
 

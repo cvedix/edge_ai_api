@@ -1,4 +1,5 @@
 #include "instances/instance_registry.h"
+#include "models/update_instance_request.h"
 #include "core/uuid_generator.h"
 #include <cvedix/cvedix_version.h>
 #include <cvedix/nodes/src/cvedix_rtsp_src_node.h>
@@ -20,12 +21,13 @@ InstanceRegistry::InstanceRegistry(
 }
 
 std::string InstanceRegistry::createInstance(const CreateInstanceRequest& req) {
-    std::lock_guard<std::mutex> lock(mutex_);
+    // CRITICAL: Release lock before building pipeline and auto-starting
+    // This allows multiple instances to be created concurrently without blocking each other
     
-    // Generate instance ID
+    // Generate instance ID (no lock needed)
     std::string instanceId = UUIDGenerator::generateUUID();
     
-    // Get solution config if specified
+    // Get solution config if specified (no lock needed)
     SolutionConfig* solution = nullptr;
     SolutionConfig solutionConfig;
     if (!req.solution.empty()) {
@@ -37,7 +39,7 @@ std::string InstanceRegistry::createInstance(const CreateInstanceRequest& req) {
         solution = &solutionConfig;
     }
     
-    // Build pipeline if solution is provided
+    // Build pipeline if solution is provided (do this OUTSIDE lock - can take time)
     std::vector<std::shared_ptr<cvedix_nodes::cvedix_node>> pipeline;
     if (solution) {
         try {
@@ -75,14 +77,17 @@ std::string InstanceRegistry::createInstance(const CreateInstanceRequest& req) {
         }
     }
     
-    // Create instance info
+    // Create instance info (no lock needed)
     InstanceInfo info = createInstanceInfo(instanceId, req, solution);
     
-    // Store instance
-    instances_[instanceId] = info;
-    if (!pipeline.empty()) {
-        pipelines_[instanceId] = pipeline;
-    }
+    // Store instance (need lock briefly)
+    {
+        std::lock_guard<std::mutex> lock(mutex_);
+        instances_[instanceId] = info;
+        if (!pipeline.empty()) {
+            pipelines_[instanceId] = pipeline;
+        }
+    } // Release lock - save to storage doesn't need it
     
     // Save to storage for all instances (for debugging and inspection)
     // Only persistent instances will be loaded on server restart
@@ -97,76 +102,111 @@ std::string InstanceRegistry::createInstance(const CreateInstanceRequest& req) {
         std::cerr << "[InstanceRegistry] Warning: Failed to save instance configuration to file" << std::endl;
     }
     
-        // Auto start if requested
-        if (req.autoStart && !pipeline.empty()) {
-            std::cerr << "[InstanceRegistry] ========================================" << std::endl;
-            std::cerr << "[InstanceRegistry] Auto-starting pipeline for instance " << instanceId << std::endl;
-            std::cerr << "[InstanceRegistry] ========================================" << std::endl;
-            
-            // Wait for DNN models to be ready using exponential backoff
-            // This is more reliable than fixed delay as it adapts to model loading time
-            waitForModelsReady(pipeline, 2000); // Max 2 seconds
-            
-            try {
-                if (startPipeline(pipeline)) {
-                    info.running = true;
-                    instances_[instanceId] = info;
-                    std::cerr << "[InstanceRegistry] ========================================" << std::endl;
-                    std::cerr << "[InstanceRegistry] ✓ Pipeline started successfully for instance " << instanceId << std::endl;
-                    std::cerr << "[InstanceRegistry] NOTE: If RTSP connection fails, the node will retry automatically" << std::endl;
-                    std::cerr << "[InstanceRegistry] NOTE: Monitor logs above for RTSP connection status" << std::endl;
-                    std::cerr << "[InstanceRegistry] ========================================" << std::endl;
-                } else {
-                    std::cerr << "[InstanceRegistry] ✗ Failed to start pipeline for instance " 
-                              << instanceId << " (pipeline created but not started)" << std::endl;
-                    std::cerr << "[InstanceRegistry] You can manually start it later using startInstance API" << std::endl;
-                }
-            } catch (const std::exception& e) {
-                std::cerr << "[InstanceRegistry] ✗ Exception starting pipeline for instance " 
-                          << instanceId << ": " << e.what() << std::endl;
-                std::cerr << "[InstanceRegistry] Instance created but pipeline not started. You can start it manually later." << std::endl;
-                // Don't crash - instance is created but not running
-            } catch (...) {
-                std::cerr << "[InstanceRegistry] ✗ Unknown error starting pipeline for instance " 
-                          << instanceId << std::endl;
-                std::cerr << "[InstanceRegistry] Instance created but pipeline not started. You can start it manually later." << std::endl;
+    // Auto start if requested (do this OUTSIDE lock - can take time)
+    if (req.autoStart && !pipeline.empty()) {
+        std::cerr << "[InstanceRegistry] ========================================" << std::endl;
+        std::cerr << "[InstanceRegistry] Auto-starting pipeline for instance " << instanceId << std::endl;
+        std::cerr << "[InstanceRegistry] ========================================" << std::endl;
+        
+        // Wait for DNN models to be ready using exponential backoff
+        // This is more reliable than fixed delay as it adapts to model loading time
+        waitForModelsReady(pipeline, 2000); // Max 2 seconds
+        
+        try {
+            if (startPipeline(pipeline)) {
+                // Update running status (need lock briefly)
+                {
+                    std::lock_guard<std::mutex> lock(mutex_);
+                    auto instanceIt = instances_.find(instanceId);
+                    if (instanceIt != instances_.end()) {
+                        instanceIt->second.running = true;
+                    }
+                } // Release lock
+                std::cerr << "[InstanceRegistry] ========================================" << std::endl;
+                std::cerr << "[InstanceRegistry] ✓ Pipeline started successfully for instance " << instanceId << std::endl;
+                std::cerr << "[InstanceRegistry] NOTE: If RTSP connection fails, the node will retry automatically" << std::endl;
+                std::cerr << "[InstanceRegistry] NOTE: Monitor logs above for RTSP connection status" << std::endl;
+                std::cerr << "[InstanceRegistry] ========================================" << std::endl;
+            } else {
+                std::cerr << "[InstanceRegistry] ✗ Failed to start pipeline for instance " 
+                          << instanceId << " (pipeline created but not started)" << std::endl;
+                std::cerr << "[InstanceRegistry] You can manually start it later using startInstance API" << std::endl;
             }
-        } else if (!pipeline.empty()) {
-            std::cerr << "[InstanceRegistry] Pipeline created but not started (autoStart=false)" << std::endl;
-            std::cerr << "[InstanceRegistry] Use startInstance API to start the pipeline when ready" << std::endl;
+        } catch (const std::exception& e) {
+            std::cerr << "[InstanceRegistry] ✗ Exception starting pipeline for instance " 
+                      << instanceId << ": " << e.what() << std::endl;
+            std::cerr << "[InstanceRegistry] Instance created but pipeline not started. You can start it manually later." << std::endl;
+            // Don't crash - instance is created but not running
+        } catch (...) {
+            std::cerr << "[InstanceRegistry] ✗ Unknown error starting pipeline for instance " 
+                      << instanceId << std::endl;
+            std::cerr << "[InstanceRegistry] Instance created but pipeline not started. You can start it manually later." << std::endl;
         }
+    } else if (!pipeline.empty()) {
+        std::cerr << "[InstanceRegistry] Pipeline created but not started (autoStart=false)" << std::endl;
+        std::cerr << "[InstanceRegistry] Use startInstance API to start the pipeline when ready" << std::endl;
+    }
     
     return instanceId;
 }
 
 bool InstanceRegistry::deleteInstance(const std::string& instanceId) {
-    std::lock_guard<std::mutex> lock(mutex_);
+    // CRITICAL: Get pipeline copy and release lock before calling stopPipeline
+    // stopPipeline can take a long time and doesn't need the lock
+    // This prevents blocking other operations when deleting instances
     
-    auto it = instances_.find(instanceId);
-    if (it == instances_.end()) {
-        return false;
-    }
+    std::vector<std::shared_ptr<cvedix_nodes::cvedix_node>> pipelineToStop;
+    bool isPersistent = false;
+    bool instanceExists = false;
+    
+    {
+        std::lock_guard<std::mutex> lock(mutex_);
+        
+        auto it = instances_.find(instanceId);
+        if (it == instances_.end()) {
+            return false;
+        }
+        
+        instanceExists = true;
+        isPersistent = it->second.persistent;
+        
+        // Get pipeline copy before releasing lock
+        auto pipelineIt = pipelines_.find(instanceId);
+        if (pipelineIt != pipelines_.end() && !pipelineIt->second.empty()) {
+            pipelineToStop = pipelineIt->second;
+        }
+        
+        // Remove from maps immediately to prevent other threads from accessing
+        pipelines_.erase(instanceId);
+        instances_.erase(it);
+    } // Release lock - stopPipeline and storage operations don't need it
     
     std::cerr << "[InstanceRegistry] ========================================" << std::endl;
     std::cerr << "[InstanceRegistry] Deleting instance " << instanceId << "..." << std::endl;
     std::cerr << "[InstanceRegistry] ========================================" << std::endl;
     
-    // Stop pipeline if running (cleanup before deletion)
-    auto pipelineIt = pipelines_.find(instanceId);
-    if (pipelineIt != pipelines_.end()) {
+    // Stop pipeline if running (cleanup before deletion) - do this outside lock
+    if (!pipelineToStop.empty()) {
         std::cerr << "[InstanceRegistry] Stopping pipeline before deletion..." << std::endl;
-        stopPipeline(pipelineIt->second, true);  // true = deletion, cleanup everything
-        pipelines_.erase(pipelineIt);
-        std::cerr << "[InstanceRegistry] Pipeline stopped and removed" << std::endl;
+        try {
+            stopPipeline(pipelineToStop, true);  // true = deletion, cleanup everything
+            pipelineToStop.clear(); // Ensure nodes are destroyed
+            std::cerr << "[InstanceRegistry] Pipeline stopped and removed" << std::endl;
+        } catch (const std::exception& e) {
+            std::cerr << "[InstanceRegistry] Exception stopping pipeline during deletion: " << e.what() << std::endl;
+            // Continue with deletion anyway
+        } catch (...) {
+            std::cerr << "[InstanceRegistry] Unknown exception stopping pipeline during deletion" << std::endl;
+            // Continue with deletion anyway
+        }
     }
     
-    // Delete from storage
-    if (it->second.persistent) {
+    // Delete from storage (doesn't need lock)
+    if (isPersistent) {
         std::cerr << "[InstanceRegistry] Removing persistent instance from storage..." << std::endl;
         instance_storage_.deleteInstance(instanceId);
     }
     
-    instances_.erase(it);
     std::cerr << "[InstanceRegistry] ✓ Instance " << instanceId << " deleted successfully" << std::endl;
     std::cerr << "[InstanceRegistry] ========================================" << std::endl;
     return true;
@@ -181,7 +221,7 @@ std::optional<InstanceInfo> InstanceRegistry::getInstance(const std::string& ins
     return std::nullopt;
 }
 
-bool InstanceRegistry::startInstance(const std::string& instanceId) {
+bool InstanceRegistry::startInstance(const std::string& instanceId, bool skipAutoStop) {
     // NEW BEHAVIOR: Start instance means create a new instance with same ID and config
     // This ensures fresh pipeline is built every time
     
@@ -202,10 +242,10 @@ bool InstanceRegistry::startInstance(const std::string& instanceId) {
         instanceExists = true;
         existingInfo = instanceIt->second;
         
-        // Stop instance if it's running
+        // Stop instance if it's running (unless skipAutoStop is true)
         wasRunning = instanceIt->second.running;
         
-        if (wasRunning) {
+        if (wasRunning && !skipAutoStop) {
             std::cerr << "[InstanceRegistry] Instance " << instanceId << " is currently running, stopping it first..." << std::endl;
             instanceIt->second.running = false;
             
@@ -214,15 +254,27 @@ bool InstanceRegistry::startInstance(const std::string& instanceId) {
             if (pipelineIt != pipelines_.end() && !pipelineIt->second.empty()) {
                 pipelineToStop = pipelineIt->second;
             }
+        } else if (wasRunning && skipAutoStop) {
+            // If skipAutoStop is true, instance should already be stopped
+            // Fail if instance is still running to prevent resource conflicts
+            if (instanceIt->second.running) {
+                std::cerr << "[InstanceRegistry] ✗ Error: Instance " << instanceId << " is still running despite skipAutoStop=true" << std::endl;
+                std::cerr << "[InstanceRegistry] Instance must be stopped before calling startInstance with skipAutoStop=true" << std::endl;
+                return false; // Fail early to prevent resource conflicts
+            }
         }
         
-        // Remove old pipeline to ensure fresh build
+        // Remove old pipeline from map to ensure fresh build
+        // This is safe because:
+        // - If wasRunning && !skipAutoStop: pipeline copy is saved in pipelineToStop before erase
+        // - If wasRunning && skipAutoStop: instance should already be stopped, so no active pipeline
+        // - If !wasRunning: no active pipeline to worry about
         pipelines_.erase(instanceId);
     } // Release lock
     
-    // Stop pipeline if it was running (do this outside lock)
+    // Stop pipeline if it was running and not skipping auto-stop (do this outside lock)
     // Use full cleanup to ensure OpenCV DNN state is cleared
-    if (wasRunning && !pipelineToStop.empty()) {
+    if (wasRunning && !skipAutoStop && !pipelineToStop.empty()) {
         stopPipeline(pipelineToStop, true); // true = full cleanup to clear DNN state
         pipelineToStop.clear(); // Ensure nodes are destroyed immediately
     }
@@ -232,15 +284,31 @@ bool InstanceRegistry::startInstance(const std::string& instanceId) {
     std::cerr << "[InstanceRegistry] ========================================" << std::endl;
     
     // Rebuild pipeline from instance info (this creates a fresh pipeline)
+    // Check instance still exists before rebuilding (may have been deleted)
+    {
+        std::lock_guard<std::mutex> lock(mutex_);
+        if (instances_.find(instanceId) == instances_.end()) {
+            std::cerr << "[InstanceRegistry] ✗ Instance " << instanceId << " was deleted during start operation" << std::endl;
+            return false;
+        }
+    } // Release lock
+    
     if (!rebuildPipelineFromInstanceInfo(instanceId)) {
         std::cerr << "[InstanceRegistry] ✗ Failed to rebuild pipeline for instance " << instanceId << std::endl;
         return false;
     }
     
     // Get pipeline copy after rebuild
+    // Check instance still exists (may have been deleted during rebuild)
     std::vector<std::shared_ptr<cvedix_nodes::cvedix_node>> pipelineCopy;
     {
         std::lock_guard<std::mutex> lock(mutex_);
+        if (instances_.find(instanceId) == instances_.end()) {
+            std::cerr << "[InstanceRegistry] ✗ Instance " << instanceId << " was deleted during rebuild" << std::endl;
+            // Cleanup pipeline that was just created
+            pipelines_.erase(instanceId);
+            return false;
+        }
         auto pipelineIt = pipelines_.find(instanceId);
         if (pipelineIt == pipelines_.end() || pipelineIt->second.empty()) {
             std::cerr << "[InstanceRegistry] ✗ Pipeline rebuild failed or returned empty pipeline" << std::endl;
@@ -251,24 +319,82 @@ bool InstanceRegistry::startInstance(const std::string& instanceId) {
     
     std::cerr << "[InstanceRegistry] ✓ Pipeline rebuilt successfully (fresh pipeline)" << std::endl;
     
-    // Wait for models to be ready (use longer timeout for restart scenario)
-    std::cerr << "[InstanceRegistry] Waiting for models to be ready (adaptive, up to 60 seconds)..." << std::endl;
+    // Wait for models to be ready (use adaptive timeout)
+    std::cerr << "[InstanceRegistry] Waiting for models to be ready (adaptive, up to 2 seconds)..." << std::endl;
     std::cerr << "[InstanceRegistry] This ensures OpenCV DNN clears any cached state and models are fully initialized" << std::endl;
-    waitForModelsReady(pipelineCopy, 2000); // 60 seconds
+    
+    // Check instance still exists before waiting
+    {
+        std::lock_guard<std::mutex> lock(mutex_);
+        if (instances_.find(instanceId) == instances_.end()) {
+            std::cerr << "[InstanceRegistry] ✗ Instance " << instanceId << " was deleted before model initialization" << std::endl;
+            pipelines_.erase(instanceId);
+            return false;
+        }
+    } // Release lock
+    
+    try {
+        waitForModelsReady(pipelineCopy, 2000); // 2 seconds max
+    } catch (const std::exception& e) {
+        std::cerr << "[InstanceRegistry] ✗ Exception waiting for models: " << e.what() << std::endl;
+        // Cleanup pipeline on error
+        {
+            std::lock_guard<std::mutex> lock(mutex_);
+            pipelines_.erase(instanceId);
+        }
+        return false;
+    } catch (...) {
+        std::cerr << "[InstanceRegistry] ✗ Unknown exception waiting for models" << std::endl;
+        // Cleanup pipeline on error
+        {
+            std::lock_guard<std::mutex> lock(mutex_);
+            pipelines_.erase(instanceId);
+        }
+        return false;
+    }
     
     // Additional delay after rebuild to ensure OpenCV DNN has fully cleared old state
     std::cerr << "[InstanceRegistry] Additional stabilization delay after rebuild (2 seconds)..." << std::endl;
     std::cerr << "[InstanceRegistry] This ensures OpenCV DNN has fully cleared any cached state from previous run" << std::endl;
     std::this_thread::sleep_for(std::chrono::milliseconds(2000));
     
+    // Check instance still exists after delay
+    {
+        std::lock_guard<std::mutex> lock(mutex_);
+        if (instances_.find(instanceId) == instances_.end()) {
+            std::cerr << "[InstanceRegistry] ✗ Instance " << instanceId << " was deleted during stabilization delay" << std::endl;
+            pipelines_.erase(instanceId);
+            return false;
+        }
+    } // Release lock
+    
     std::cerr << "[InstanceRegistry] ========================================" << std::endl;
     std::cerr << "[InstanceRegistry] Starting pipeline for instance " << instanceId << "..." << std::endl;
     std::cerr << "[InstanceRegistry] ========================================" << std::endl;
     
     // Start pipeline (isRestart=true because we rebuilt the pipeline)
-    bool started = startPipeline(pipelineCopy, true);
+    bool started = false;
+    try {
+        started = startPipeline(pipelineCopy, true);
+    } catch (const std::exception& e) {
+        std::cerr << "[InstanceRegistry] ✗ Exception starting pipeline: " << e.what() << std::endl;
+        // Cleanup pipeline on error
+        {
+            std::lock_guard<std::mutex> lock(mutex_);
+            pipelines_.erase(instanceId);
+        }
+        return false;
+    } catch (...) {
+        std::cerr << "[InstanceRegistry] ✗ Unknown exception starting pipeline" << std::endl;
+        // Cleanup pipeline on error
+        {
+            std::lock_guard<std::mutex> lock(mutex_);
+            pipelines_.erase(instanceId);
+        }
+        return false;
+    }
     
-    // Update running status
+    // Update running status and cleanup on failure
     {
         std::lock_guard<std::mutex> lock(mutex_);
         auto instanceIt = instances_.find(instanceId);
@@ -278,7 +404,14 @@ bool InstanceRegistry::startInstance(const std::string& instanceId) {
                 std::cerr << "[InstanceRegistry] ✓ Instance " << instanceId << " started successfully" << std::endl;
             } else {
                 std::cerr << "[InstanceRegistry] ✗ Failed to start instance " << instanceId << std::endl;
+                // Cleanup pipeline if start failed to prevent resource leak
+                pipelines_.erase(instanceId);
+                std::cerr << "[InstanceRegistry] Cleaned up pipeline after start failure" << std::endl;
             }
+        } else {
+            // Instance was deleted during start - cleanup pipeline
+            pipelines_.erase(instanceId);
+            std::cerr << "[InstanceRegistry] Instance " << instanceId << " was deleted during start - cleaned up pipeline" << std::endl;
         }
     }
     
@@ -372,6 +505,231 @@ std::vector<std::string> InstanceRegistry::listInstances() const {
 bool InstanceRegistry::hasInstance(const std::string& instanceId) const {
     std::lock_guard<std::mutex> lock(mutex_);
     return instances_.find(instanceId) != instances_.end();
+}
+
+bool InstanceRegistry::updateInstance(const std::string& instanceId, const UpdateInstanceRequest& req) {
+    bool isPersistent = false;
+    InstanceInfo infoCopy;
+    bool hasChanges = false;
+    
+    {
+        std::lock_guard<std::mutex> lock(mutex_);
+        
+        auto instanceIt = instances_.find(instanceId);
+        if (instanceIt == instances_.end()) {
+            std::cerr << "[InstanceRegistry] Instance " << instanceId << " not found" << std::endl;
+            return false;
+        }
+        
+        InstanceInfo& info = instanceIt->second;
+        
+        // Check if instance is read-only
+        if (info.readOnly) {
+            std::cerr << "[InstanceRegistry] Cannot update read-only instance " << instanceId << std::endl;
+            return false;
+        }
+        
+        std::cerr << "[InstanceRegistry] ========================================" << std::endl;
+        std::cerr << "[InstanceRegistry] Updating instance " << instanceId << "..." << std::endl;
+        std::cerr << "[InstanceRegistry] ========================================" << std::endl;
+        
+        // Update fields if provided
+        if (!req.name.empty()) {
+            std::cerr << "[InstanceRegistry] Updating displayName: " << info.displayName << " -> " << req.name << std::endl;
+            info.displayName = req.name;
+            hasChanges = true;
+        }
+        
+        if (!req.group.empty()) {
+            std::cerr << "[InstanceRegistry] Updating group: " << info.group << " -> " << req.group << std::endl;
+            info.group = req.group;
+            hasChanges = true;
+        }
+        
+        if (req.persistent.has_value()) {
+            std::cerr << "[InstanceRegistry] Updating persistent: " << info.persistent << " -> " << req.persistent.value() << std::endl;
+            info.persistent = req.persistent.value();
+            hasChanges = true;
+        }
+        
+        if (req.frameRateLimit != -1) {
+            std::cerr << "[InstanceRegistry] Updating frameRateLimit: " << info.frameRateLimit << " -> " << req.frameRateLimit << std::endl;
+            info.frameRateLimit = req.frameRateLimit;
+            hasChanges = true;
+        }
+        
+        if (req.metadataMode.has_value()) {
+            std::cerr << "[InstanceRegistry] Updating metadataMode: " << info.metadataMode << " -> " << req.metadataMode.value() << std::endl;
+            info.metadataMode = req.metadataMode.value();
+            hasChanges = true;
+        }
+        
+        if (req.statisticsMode.has_value()) {
+            std::cerr << "[InstanceRegistry] Updating statisticsMode: " << info.statisticsMode << " -> " << req.statisticsMode.value() << std::endl;
+            info.statisticsMode = req.statisticsMode.value();
+            hasChanges = true;
+        }
+        
+        if (req.diagnosticsMode.has_value()) {
+            std::cerr << "[InstanceRegistry] Updating diagnosticsMode: " << info.diagnosticsMode << " -> " << req.diagnosticsMode.value() << std::endl;
+            info.diagnosticsMode = req.diagnosticsMode.value();
+            hasChanges = true;
+        }
+        
+        if (req.debugMode.has_value()) {
+            std::cerr << "[InstanceRegistry] Updating debugMode: " << info.debugMode << " -> " << req.debugMode.value() << std::endl;
+            info.debugMode = req.debugMode.value();
+            hasChanges = true;
+        }
+        
+        if (!req.detectorMode.empty()) {
+            std::cerr << "[InstanceRegistry] Updating detectorMode: " << info.detectorMode << " -> " << req.detectorMode << std::endl;
+            info.detectorMode = req.detectorMode;
+            hasChanges = true;
+        }
+        
+        if (!req.detectionSensitivity.empty()) {
+            std::cerr << "[InstanceRegistry] Updating detectionSensitivity: " << info.detectionSensitivity << " -> " << req.detectionSensitivity << std::endl;
+            info.detectionSensitivity = req.detectionSensitivity;
+            hasChanges = true;
+        }
+        
+        if (!req.movementSensitivity.empty()) {
+            std::cerr << "[InstanceRegistry] Updating movementSensitivity: " << info.movementSensitivity << " -> " << req.movementSensitivity << std::endl;
+            info.movementSensitivity = req.movementSensitivity;
+            hasChanges = true;
+        }
+        
+        if (!req.sensorModality.empty()) {
+            std::cerr << "[InstanceRegistry] Updating sensorModality: " << info.sensorModality << " -> " << req.sensorModality << std::endl;
+            info.sensorModality = req.sensorModality;
+            hasChanges = true;
+        }
+        
+        if (req.autoStart.has_value()) {
+            std::cerr << "[InstanceRegistry] Updating autoStart: " << info.autoStart << " -> " << req.autoStart.value() << std::endl;
+            info.autoStart = req.autoStart.value();
+            hasChanges = true;
+        }
+        
+        if (req.autoRestart.has_value()) {
+            std::cerr << "[InstanceRegistry] Updating autoRestart: " << info.autoRestart << " -> " << req.autoRestart.value() << std::endl;
+            info.autoRestart = req.autoRestart.value();
+            hasChanges = true;
+        }
+        
+        if (req.inputOrientation != -1) {
+            std::cerr << "[InstanceRegistry] Updating inputOrientation: " << info.inputOrientation << " -> " << req.inputOrientation << std::endl;
+            info.inputOrientation = req.inputOrientation;
+            hasChanges = true;
+        }
+        
+        if (req.inputPixelLimit != -1) {
+            std::cerr << "[InstanceRegistry] Updating inputPixelLimit: " << info.inputPixelLimit << " -> " << req.inputPixelLimit << std::endl;
+            info.inputPixelLimit = req.inputPixelLimit;
+            hasChanges = true;
+        }
+        
+        // Update additionalParams (merge with existing)
+        if (!req.additionalParams.empty()) {
+            std::cerr << "[InstanceRegistry] Updating additionalParams..." << std::endl;
+            for (const auto& pair : req.additionalParams) {
+                std::cerr << "[InstanceRegistry]   " << pair.first << ": " << info.additionalParams[pair.first] << " -> " << pair.second << std::endl;
+                info.additionalParams[pair.first] = pair.second;
+            }
+            hasChanges = true;
+            
+            // Update RTMP URL if changed
+            auto rtmpIt = req.additionalParams.find("RTMP_URL");
+            if (rtmpIt != req.additionalParams.end() && !rtmpIt->second.empty()) {
+                info.rtmpUrl = rtmpIt->second;
+                // Generate RTSP URL from RTMP URL
+                std::string rtmpUrl = rtmpIt->second;
+                size_t protocolPos = rtmpUrl.find("rtmp://");
+                if (protocolPos != std::string::npos) {
+                    std::string rtspUrl = rtmpUrl;
+                    rtspUrl.replace(protocolPos, 7, "rtsp://");
+                    size_t portPos = rtspUrl.find(":1935");
+                    if (portPos != std::string::npos) {
+                        rtspUrl.replace(portPos, 5, ":8554");
+                    }
+                    size_t lastSlash = rtspUrl.find_last_of('/');
+                    if (lastSlash != std::string::npos) {
+                        std::string streamKey = rtspUrl.substr(lastSlash + 1);
+                        if (streamKey.find("_0") == std::string::npos && !streamKey.empty()) {
+                            rtspUrl += "_0";
+                        }
+                    }
+                    info.rtspUrl = rtspUrl;
+                }
+            }
+            
+            // Update FILE_PATH if changed
+            auto filePathIt = req.additionalParams.find("FILE_PATH");
+            if (filePathIt != req.additionalParams.end() && !filePathIt->second.empty()) {
+                info.filePath = filePathIt->second;
+            }
+        }
+        
+        if (!hasChanges) {
+            std::cerr << "[InstanceRegistry] No changes to update" << std::endl;
+            std::cerr << "[InstanceRegistry] ========================================" << std::endl;
+            return true; // No changes, but still success
+        }
+        
+        // Copy info for saving (release lock before saving)
+        isPersistent = info.persistent;
+        infoCopy = info;
+    } // Release lock here
+    
+    // Save to storage if persistent (do this outside lock)
+    if (isPersistent) {
+        bool saved = instance_storage_.saveInstance(instanceId, infoCopy);
+        if (saved) {
+            std::cerr << "[InstanceRegistry] Instance configuration saved to file" << std::endl;
+        } else {
+            std::cerr << "[InstanceRegistry] Warning: Failed to save instance configuration to file" << std::endl;
+        }
+    }
+    
+    std::cerr << "[InstanceRegistry] ✓ Instance " << instanceId << " updated successfully" << std::endl;
+    
+    // Check if instance is running and restart it to apply changes
+    bool wasRunning = false;
+    {
+        std::lock_guard<std::mutex> lock(mutex_);
+        auto instanceIt = instances_.find(instanceId);
+        if (instanceIt != instances_.end()) {
+            wasRunning = instanceIt->second.running;
+        }
+    }
+    
+    if (wasRunning) {
+        std::cerr << "[InstanceRegistry] Instance is running, restarting to apply changes..." << std::endl;
+        
+        // Stop instance first
+        if (stopInstance(instanceId)) {
+            // Wait a moment for cleanup
+            std::this_thread::sleep_for(std::chrono::milliseconds(500));
+            
+            // Start instance again (this will rebuild pipeline with new config)
+            if (startInstance(instanceId, true)) {
+                std::cerr << "[InstanceRegistry] ✓ Instance restarted successfully with new configuration" << std::endl;
+            } else {
+                std::cerr << "[InstanceRegistry] ⚠ Instance stopped but failed to restart" << std::endl;
+                std::cerr << "[InstanceRegistry] NOTE: Configuration has been updated. You can manually start the instance later." << std::endl;
+            }
+        } else {
+            std::cerr << "[InstanceRegistry] ⚠ Failed to stop instance for restart" << std::endl;
+            std::cerr << "[InstanceRegistry] NOTE: Configuration has been updated. Restart the instance manually to apply changes." << std::endl;
+        }
+    } else {
+        std::cerr << "[InstanceRegistry] Instance is not running. Changes will take effect when instance is started." << std::endl;
+    }
+    
+    std::cerr << "[InstanceRegistry] ========================================" << std::endl;
+    
+    return true;
 }
 
 void InstanceRegistry::loadPersistentInstances() {
