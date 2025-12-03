@@ -227,3 +227,46 @@ POST /v1/core/instance/{instanceId}/start
 DELETE /v1/core/instance/{instanceId}
 ```
 
+## Vấn Đề Khi Restart
+
+### Vấn đề: Lỗi khi restart nhưng create thì chạy được
+
+**Triệu chứng:**
+- Khi tạo instance mới (create), video chạy bình thường
+- Khi restart instance (stop rồi start lại), gặp lỗi shape mismatch:
+  ```
+  OpenCV(4.6.0) ./modules/dnn/src/layers/eltwise_layer.cpp:251: error: (-215:Assertion failed) 
+  inputs[vecIdx][j] == inputs[i][j] in function 'getMemoryShapes'
+  ```
+
+**Nguyên nhân:**
+1. **OpenCV DNN state cache**: Khi restart, OpenCV DNN có thể vẫn giữ state cũ từ lần chạy trước
+2. **Model chưa sẵn sàng**: Model cần thời gian để reload và clear state cũ trước khi xử lý frame đầu tiên
+3. **Timing issue**: Frame đầu tiên có thể được gửi đến model trước khi model sẵn sàng xử lý
+
+**Giải pháp đã được áp dụng:**
+- Tăng delay sau khi rebuild pipeline (2 giây) để OpenCV DNN clear state cũ
+- Tăng delay trước khi start file source (500ms cho restart vs 200ms cho create)
+- Tăng delay sau khi start file source (3 giây cho restart vs 1 giây cho create)
+- Đảm bảo model có đủ thời gian để initialize trước khi nhận frame đầu tiên
+
+**Nếu vẫn gặp lỗi sau khi áp dụng fix:**
+1. **Re-encode video với resolution cố định** (khuyến nghị nhất):
+   ```bash
+   ffmpeg -i input.mp4 -vf "scale=320:240:force_original_aspect_ratio=decrease,pad=320:240:(ow-iw)/2:(oh-ih)/2" \
+          -c:v libx264 -preset fast -crf 23 -c:a copy output_320x240.mp4
+   ```
+   Sau đó sử dụng `RESIZE_RATIO: "1.0"` trong `additionalParams`.
+
+2. **Sử dụng model YuNet 2023mar** thay vì 2022mar:
+   ```json
+   "MODEL_PATH": "./cvedix_data/models/face/face_detection_yunet_2023mar.onnx"
+   ```
+
+3. **Kiểm tra video có resolution đều không**:
+   ```bash
+   ffprobe -v error -select_streams v:0 -show_entries frame=width,height \
+           -of csv=s=x:p=0 input.mp4 | sort -u
+   ```
+   Nếu output có nhiều kích thước khác nhau, video cần được re-encode.
+
