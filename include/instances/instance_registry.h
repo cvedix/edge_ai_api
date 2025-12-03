@@ -111,14 +111,16 @@ private:
     /**
      * @brief Wait for DNN models to be ready using exponential backoff
      * @param nodes Pipeline nodes to check
-     * @param maxWaitMs Maximum wait time in milliseconds
+     * @param maxWaitMs Maximum wait time in milliseconds. Use -1 for unlimited wait (no timeout)
      */
     void waitForModelsReady(const std::vector<std::shared_ptr<cvedix_nodes::cvedix_node>>& nodes, int maxWaitMs);
     
     /**
      * @brief Start pipeline nodes
+     * @param nodes Pipeline nodes to start
+     * @param isRestart If true, this is a restart (use longer delays for model initialization)
      */
-    bool startPipeline(const std::vector<std::shared_ptr<cvedix_nodes::cvedix_node>>& nodes);
+    bool startPipeline(const std::vector<std::shared_ptr<cvedix_nodes::cvedix_node>>& nodes, bool isRestart = false);
     
     /**
      * @brief Stop and cleanup pipeline nodes
