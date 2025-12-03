@@ -147,5 +147,17 @@ private:
     HttpResponsePtr createErrorResponse(int statusCode,
                                        const std::string& error,
                                        const std::string& message = "") const;
+    
+    /**
+     * @brief Extract instance ID from request path
+     * @param req HTTP request
+     * @return Instance ID if found, empty string otherwise
+     */
+    std::string extractInstanceId(const HttpRequestPtr &req) const;
+    
+    /**
+     * @brief Create success JSON response with CORS headers
+     */
+    HttpResponsePtr createSuccessResponse(const Json::Value& data, int statusCode = 200) const;
 };
 
