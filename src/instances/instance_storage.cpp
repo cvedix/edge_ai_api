@@ -64,6 +64,15 @@ bool InstanceStorage::saveInstance(const std::string& instanceId, const Instance
     if (!info.filePath.empty()) {
         json["filePath"] = info.filePath;
     }
+    
+    // Save additional parameters (MODEL_PATH, SFACE_MODEL_PATH, RESIZE_RATIO, etc.)
+    if (!info.additionalParams.empty()) {
+        Json::Value additionalParamsJson;
+        for (const auto& pair : info.additionalParams) {
+            additionalParamsJson[pair.first] = pair.second;
+        }
+        json["additionalParams"] = additionalParamsJson;
+    }
         
         std::ofstream file(getInstanceFilePath(instanceId));
         if (!file.is_open()) {
@@ -138,6 +147,15 @@ std::optional<InstanceInfo> InstanceStorage::loadInstance(const std::string& ins
         // Load file path if available
         if (json.isMember("filePath") && json["filePath"].isString()) {
             info.filePath = json["filePath"].asString();
+        }
+        
+        // Load additional parameters if available
+        if (json.isMember("additionalParams") && json["additionalParams"].isObject()) {
+            for (const auto& key : json["additionalParams"].getMemberNames()) {
+                if (json["additionalParams"][key].isString()) {
+                    info.additionalParams[key] = json["additionalParams"][key].asString();
+                }
+            }
         }
         
         return info;
