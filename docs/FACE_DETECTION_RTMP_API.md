@@ -116,6 +116,138 @@ curl -X POST http://localhost:8080/v1/core/instance \
 }
 ```
 
+## Cập Nhật Instance
+
+Sau khi tạo instance, bạn có thể cập nhật các thông tin của instance mà không cần xóa và tạo lại. Nếu instance đang chạy, nó sẽ tự động restart để áp dụng các thay đổi.
+
+### Endpoint
+```
+PUT /v1/core/instances/{instanceId}
+```
+
+### Các trường có thể cập nhật
+
+- `name`: Tên instance mới
+- `group`: Nhóm instance mới
+- `persistent`: Lưu instance sau khi restart
+- `autoStart`: Tự động start khi khởi động lại
+- `autoRestart`: Tự động restart khi crash
+- `detectionSensitivity`: Độ nhạy phát hiện (`"Low"`, `"Medium"`, `"High"`)
+- `movementSensitivity`: Độ nhạy chuyển động (`"Low"`, `"Medium"`, `"High"`)
+- `frameRateLimit`: Giới hạn FPS
+- `metadataMode`: Bật/tắt metadata mode
+- `statisticsMode`: Bật/tắt statistics mode
+- `diagnosticsMode`: Bật/tắt diagnostics mode
+- `debugMode`: Bật/tắt debug mode
+- `additionalParams`: Các tham số cấu hình solution-specific
+
+### Ví dụ: Cập nhật RTMP URL
+
+```bash
+curl -X PUT http://localhost:8080/v1/core/instances/{instanceId} \
+  -H "Content-Type: application/json" \
+  -d '{
+    "additionalParams": {
+      "RTMP_URL": "rtmp://new-server.example.com:1935/live/new_stream"
+    }
+  }'
+```
+
+### Ví dụ: Cập nhật đường dẫn file video
+
+```bash
+curl -X PUT http://localhost:8080/v1/core/instances/{instanceId} \
+  -H "Content-Type: application/json" \
+  -d '{
+    "additionalParams": {
+      "FILE_PATH": "/path/to/new/video.mp4"
+    }
+  }'
+```
+
+### Ví dụ: Cập nhật model paths
+
+```bash
+curl -X PUT http://localhost:8080/v1/core/instances/{instanceId} \
+  -H "Content-Type: application/json" \
+  -d '{
+    "additionalParams": {
+      "MODEL_PATH": "/usr/share/cvedix/cvedix_data/models/face/face_detection_yunet_2023mar.onnx",
+      "SFACE_MODEL_PATH": "/usr/share/cvedix/cvedix_data/models/face/face_recognition_sface_2021dec.onnx"
+    }
+  }'
+```
+
+### Ví dụ: Cập nhật RESIZE_RATIO
+
+```bash
+curl -X PUT http://localhost:8080/v1/core/instances/{instanceId} \
+  -H "Content-Type: application/json" \
+  -d '{
+    "additionalParams": {
+      "RESIZE_RATIO": "0.5"
+    }
+  }'
+```
+
+### Ví dụ: Cập nhật tên và group
+
+```bash
+curl -X PUT http://localhost:8080/v1/core/instances/{instanceId} \
+  -H "Content-Type: application/json" \
+  -d '{
+    "name": "updated_face_detection_demo",
+    "group": "updated_group"
+  }'
+```
+
+### Ví dụ: Cập nhật nhiều tham số cùng lúc
+
+```bash
+curl -X PUT http://localhost:8080/v1/core/instances/{instanceId} \
+  -H "Content-Type: application/json" \
+  -d '{
+    "name": "face_detection_demo_updated",
+    "persistent": true,
+    "autoStart": true,
+    "detectionSensitivity": "Medium",
+    "additionalParams": {
+      "FILE_PATH": "/home/pnsang/project/edge_ai_sdk/cvedix_data/test_video/new_face.mp4",
+      "RTMP_URL": "rtmp://localhost:1935/live/camera_demo_2",
+      "RESIZE_RATIO": "1.0"
+    }
+  }'
+```
+
+### Response
+
+Response trả về thông tin instance đã được cập nhật:
+
+```json
+{
+  "instanceId": "abc123-def456-ghi789",
+  "displayName": "updated_face_detection_demo",
+  "group": "updated_group",
+  "solutionId": "face_detection_rtmp",
+  "solutionName": "Face Detection with RTMP Streaming",
+  "persistent": true,
+  "loaded": true,
+  "running": true,
+  "message": "Instance updated successfully",
+  ...
+}
+```
+
+### Lưu ý khi cập nhật
+
+1. **Chỉ cập nhật các trường cần thiết**: Chỉ gửi các trường bạn muốn thay đổi. Các trường không được gửi sẽ giữ nguyên giá trị cũ.
+
+2. **Instance đang chạy**: Nếu instance đang chạy, nó sẽ tự động restart để áp dụng các thay đổi. Quá trình này có thể mất vài giây.
+
+3. **additionalParams**: Khi cập nhật `additionalParams`, chỉ các key được gửi sẽ được cập nhật. Các key khác trong `additionalParams` sẽ giữ nguyên.
+
+4. **Read-only instances**: Không thể cập nhật các instance có `readOnly: true`.
+
 ## Lưu ý
 
 1. **RTMP URL**: RTMP node tự động thêm suffix `"_0"` vào stream key. Ví dụ:
