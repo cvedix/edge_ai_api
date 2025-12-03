@@ -48,6 +48,10 @@ if(NOT Jsoncpp_FOUND)
         message(STATUS "Jsoncpp not found. Attempting to download using FetchContent...")
         include(FetchContent)
         
+        # Enable position-independent code for jsoncpp (required for shared libraries)
+        # This must be set before FetchContent_MakeAvailable
+        set(CMAKE_POSITION_INDEPENDENT_CODE ON)
+        
         FetchContent_Declare(
             jsoncpp
             GIT_REPOSITORY https://github.com/open-source-parsers/jsoncpp.git
@@ -264,6 +268,7 @@ set(SOURCES
     src/api/swagger_handler.cpp
     src/api/create_instance_handler.cpp
     src/api/instance_handler.cpp
+    src/api/system_info_handler.cpp
     src/models/model_upload_handler.cpp
     src/core/watchdog.cpp
     src/core/health_monitor.cpp
@@ -321,19 +326,30 @@ endif()
 # If CVEDIX SDK is not found, you need to install it system-wide first.
 # The find_package() command will automatically locate it via CMake package config files.
 #
-# Include CMakePackageConfigHelpers for check_required_components
-include(CMakePackageConfigHelpers)
-# Define check_required_components if not available (for older CMake versions)
+# Workaround: Define check_required_components if not available
+# (needed for cvedix-config.cmake which uses this function)
 if(NOT COMMAND check_required_components)
-    macro(check_required_components _package)
-        foreach(_comp ${${_package}_FIND_COMPONENTS})
-            if(NOT ${_package}_${_comp}_FOUND)
-                if(${_package}_FIND_REQUIRED_${_comp})
-                    set(${_package}_FOUND FALSE)
+    function(check_required_components _package_name)
+        foreach(_comp ${ARGN})
+            # Check if target exists (for modern CMake packages)
+            string(REPLACE "_" "::" _comp_target "${_package_name}::${_comp}")
+            if(NOT TARGET "${_comp_target}")
+                # Also check variable-based approach
+                set(_comp_var "${_package_name}_${_comp}_FOUND")
+                if(NOT ${_comp_var})
+                    set(${_package_name}_FOUND FALSE)
+                    set(${_package_name}_NOT_FOUND_MESSAGE "${_package_name} ${_comp} component not found")
+                    if(${_package_name}_FIND_REQUIRED)
+                        message(FATAL_ERROR "${${_package_name}_NOT_FOUND_MESSAGE}")
+                    else()
+                        if(NOT ${_package_name}_FIND_QUIETLY)
+                            message(STATUS "${${_package_name}_NOT_FOUND_MESSAGE}")
+                        endif()
+                    endif()
                 endif()
             endif()
         endforeach()
-    endmacro()
+    endfunction()
 endif()
 find_package(cvedix REQUIRED)
 target_link_libraries(edge_ai_api PRIVATE cvedix::cvedix_instance_sdk)
@@ -355,6 +371,19 @@ if(OpenCV_FOUND)
         target_link_libraries(edge_ai_api PRIVATE ${OpenCV_LIBRARIES})
     endif()
     message(STATUS "✓ OpenCV linked to edge_ai_api")
+endif()
+
+# ============================================
+# hwinfo - Hardware Information Library
+# ============================================
+if(EXISTS "${CMAKE_SOURCE_DIR}/third_party/hwinfo/CMakeLists.txt")
+    message(STATUS "Adding hwinfo submodule...")
+    add_subdirectory(third_party/hwinfo)
+    target_link_libraries(edge_ai_api PRIVATE lfreist-hwinfo::hwinfo)
+    message(STATUS "✓ hwinfo linked to edge_ai_api")
+else()
+    message(WARNING "hwinfo submodule not found. System info endpoints will not work.")
+    message(WARNING "Run: git submodule update --init --recursive")
 endif()
 
 # Additional libraries (if needed)

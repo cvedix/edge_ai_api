@@ -61,6 +61,64 @@ paths:
                 api_version: "v1"
                 service: "edge_ai_api"
 
+  /v1/core/system/info:
+    get:
+      summary: Get system hardware information
+      description: Returns detailed hardware information including CPU, GPU, RAM, Disk, Mainboard, OS, and Battery
+      operationId: getSystemInfo
+      tags:
+        - Core
+      responses:
+        '200':
+          description: System hardware information
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SystemInfoResponse'
+        '500':
+          description: Server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+    options:
+      summary: CORS preflight for system info
+      operationId: getSystemInfoOptions
+      tags:
+        - Core
+      responses:
+        '200':
+          description: CORS preflight response
+
+  /v1/core/system/status:
+    get:
+      summary: Get system status
+      description: Returns current system status including CPU usage, RAM usage, load average, and uptime
+      operationId: getSystemStatus
+      tags:
+        - Core
+      responses:
+        '200':
+          description: System status information
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SystemStatusResponse'
+        '500':
+          description: Server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+    options:
+      summary: CORS preflight for system status
+      operationId: getSystemStatusOptions
+      tags:
+        - Core
+      responses:
+        '200':
+          description: CORS preflight response
+
   /v1/core/models/upload:
     post:
       summary: Upload a model file
@@ -692,6 +750,279 @@ components:
           description: Error message
         code:
           type: integer
+          description: Error code
+        message:
+          type: string
+          description: Detailed error message
+
+    SystemInfoResponse:
+      type: object
+      description: System hardware information
+      properties:
+        cpu:
+          type: object
+          properties:
+            vendor:
+              type: string
+              example: "GenuineIntel"
+            model:
+              type: string
+              example: "Intel(R) Core(TM) i7-10700K CPU @ 3.80GHz"
+            physical_cores:
+              type: integer
+              example: 8
+            logical_cores:
+              type: integer
+              example: 16
+            max_frequency:
+              type: integer
+              description: Maximum frequency in MHz
+              example: 3792
+            regular_frequency:
+              type: integer
+              description: Regular frequency in MHz
+              example: 3792
+            min_frequency:
+              type: integer
+              description: Minimum frequency in MHz (-1 if not available)
+              example: -1
+            current_frequency:
+              type: integer
+              description: Current frequency in MHz (-1 if not available)
+              example: 3792
+            cache_size:
+              type: integer
+              format: int64
+              description: Cache size in bytes
+              example: 16777216
+        ram:
+          type: object
+          properties:
+            vendor:
+              type: string
+              example: "Corsair"
+            model:
+              type: string
+              example: "CMK32GX4M2Z3600C18"
+            name:
+              type: string
+              example: "Physical Memory"
+            serial_number:
+              type: string
+              example: "N/A"
+            size_mib:
+              type: integer
+              format: int64
+              description: Total size in MiB
+              example: 65437
+            free_mib:
+              type: integer
+              format: int64
+              description: Free memory in MiB
+              example: 54405
+            available_mib:
+              type: integer
+              format: int64
+              description: Available memory in MiB
+              example: 54405
+        gpu:
+          type: array
+          items:
+            type: object
+            properties:
+              vendor:
+                type: string
+                example: "NVIDIA"
+              model:
+                type: string
+                example: "NVIDIA GeForce RTX 3070 Ti"
+              driver_version:
+                type: string
+                example: "31.0.15.2698"
+              memory_mib:
+                type: integer
+                format: int64
+                description: Memory size in MiB
+                example: 8190
+              min_frequency:
+                type: integer
+                example: -1
+              current_frequency:
+                type: integer
+                description: Current frequency in MHz
+                example: 0
+              max_frequency:
+                type: integer
+                example: -1
+        disk:
+          type: array
+          items:
+            type: object
+            properties:
+              vendor:
+                type: string
+                example: "(Standard disk drives)"
+              model:
+                type: string
+                example: "WD_BLACK SN850 Heatsink 1TB"
+              serial_number:
+                type: string
+                example: "***"
+              size_bytes:
+                type: integer
+                format: int64
+                description: Total size in bytes
+                example: 1000202273280
+              free_size_bytes:
+                type: integer
+                format: int64
+                description: Free size in bytes
+                example: 500000000000
+              volumes:
+                type: array
+                items:
+                  type: string
+                description: List of volume/partition names
+        mainboard:
+          type: object
+          properties:
+            vendor:
+              type: string
+              example: "ASUSTeK COMPUTER INC."
+            name:
+              type: string
+              example: "PRIME Z490-A"
+            version:
+              type: string
+              example: "Rev 1.xx"
+            serial_number:
+              type: string
+              example: "N/A"
+        os:
+          type: object
+          properties:
+            name:
+              type: string
+              example: "Ubuntu 22.04 LTS"
+            short_name:
+              type: string
+              example: "Linux"
+            version:
+              type: string
+              example: "22.04"
+            kernel:
+              type: string
+              example: "5.15.0-72-generic"
+            architecture:
+              type: string
+              example: "64 bit"
+            endianess:
+              type: string
+              example: "little endian"
+        battery:
+          type: array
+          description: Battery information (empty array if no batteries)
+          items:
+            type: object
+            properties:
+              vendor:
+                type: string
+              model:
+                type: string
+              serial_number:
+                type: string
+              technology:
+                type: string
+              capacity_mwh:
+                type: integer
+                format: int64
+                description: Capacity in mWh
+              charging:
+                type: boolean
+                description: Whether battery is charging
+
+    SystemStatusResponse:
+      type: object
+      description: Current system status
+      properties:
+        cpu:
+          type: object
+          properties:
+            usage_percent:
+              type: number
+              format: double
+              description: CPU usage percentage (0-100)
+              example: 25.5
+            current_frequency_mhz:
+              type: integer
+              description: Current CPU frequency in MHz (-1 if not available)
+              example: 3792
+            temperature_celsius:
+              type: number
+              format: double
+              description: CPU temperature in Celsius (optional, -1 if not available)
+              example: 45.5
+        ram:
+          type: object
+          properties:
+            total_mib:
+              type: integer
+              format: int64
+              description: Total RAM in MiB
+              example: 65437
+            used_mib:
+              type: integer
+              format: int64
+              description: Used RAM in MiB
+              example: 11032
+            free_mib:
+              type: integer
+              format: int64
+              description: Free RAM in MiB
+              example: 54405
+            available_mib:
+              type: integer
+              format: int64
+              description: Available RAM in MiB
+              example: 54405
+            usage_percent:
+              type: number
+              format: double
+              description: RAM usage percentage (0-100)
+              example: 16.85
+            cached_mib:
+              type: integer
+              format: int64
+              description: Cached memory in MiB (optional)
+              example: 5000
+            buffers_mib:
+              type: integer
+              format: int64
+              description: Buffers memory in MiB (optional)
+              example: 1000
+        load_average:
+          type: object
+          properties:
+            "1min":
+              type: number
+              format: double
+              description: Load average for 1 minute
+              example: 0.75
+            "5min":
+              type: number
+              format: double
+              description: Load average for 5 minutes
+              example: 0.82
+            "15min":
+              type: number
+              format: double
+              description: Load average for 15 minutes
+              example: 0.88
+        uptime_seconds:
+          type: integer
+          format: int64
+          description: System uptime in seconds
+          example: 86400
           description: Error code
         message:
           type: string

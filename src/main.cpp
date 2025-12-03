@@ -5,6 +5,7 @@
 #include "api/swagger_handler.h"
 #include "api/create_instance_handler.h"
 #include "api/instance_handler.h"
+#include "api/system_info_handler.h"
 #include "models/model_upload_handler.h"
 #include "core/watchdog.h"
 #include "core/health_monitor.h"
@@ -371,6 +372,7 @@ int main()
         static VersionHandler versionHandler;
         static WatchdogHandler watchdogHandler;
         static SwaggerHandler swaggerHandler;
+        static SystemInfoHandler systemInfoHandler;
         
         // Initialize instance management components
         static SolutionRegistry& solutionRegistry = SolutionRegistry::getInstance();
