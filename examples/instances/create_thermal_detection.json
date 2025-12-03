@@ -1,0 +1,18 @@
+{
+  "name": "thermal_object_detection",
+  "group": "thermal",
+  "solution": "object_detection",
+  "persistent": true,
+  "autoStart": false,
+  "frameRateLimit": 10,
+  "metadataMode": true,
+  "detectorMode": "SmartDetection",
+  "detectionSensitivity": "High",
+  "sensorModality": "Thermal",
+  "inputOrientation": 0,
+  "additionalParams": {
+    "RTSP_URL": "rtsp://thermal-camera.example.com:8554/live/thermal_stream",
+    "MODEL_PATH": "/usr/share/cvedix/cvedix_data/models/thermal/pva_det_mosaic_320.trt"
+  }
+}
+
