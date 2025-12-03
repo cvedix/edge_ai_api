@@ -15,6 +15,7 @@ using namespace drogon;
  * Endpoints:
  * - GET /v1/core/instances - List all instances
  * - GET /v1/core/instances/{instanceId} - Get instance details
+ * - PUT /v1/core/instances/{instanceId} - Update instance information
  * - POST /v1/core/instances/{instanceId}/start - Start an instance
  * - POST /v1/core/instances/{instanceId}/stop - Stop an instance
  * - POST /v1/core/instances/{instanceId}/restart - Restart an instance
@@ -25,6 +26,7 @@ public:
     METHOD_LIST_BEGIN
         ADD_METHOD_TO(InstanceHandler::listInstances, "/v1/core/instances", Get);
         ADD_METHOD_TO(InstanceHandler::getInstance, "/v1/core/instances/{instanceId}", Get);
+        ADD_METHOD_TO(InstanceHandler::updateInstance, "/v1/core/instances/{instanceId}", Put);
         ADD_METHOD_TO(InstanceHandler::startInstance, "/v1/core/instances/{instanceId}/start", Post);
         ADD_METHOD_TO(InstanceHandler::stopInstance, "/v1/core/instances/{instanceId}/stop", Post);
         ADD_METHOD_TO(InstanceHandler::restartInstance, "/v1/core/instances/{instanceId}/restart", Post);
@@ -79,6 +81,13 @@ public:
                        std::function<void(const HttpResponsePtr &)> &&callback);
     
     /**
+     * @brief Handle PUT /v1/core/instances/{instanceId}
+     * Updates instance information
+     */
+    void updateInstance(const HttpRequestPtr &req,
+                       std::function<void(const HttpResponsePtr &)> &&callback);
+    
+    /**
      * @brief Handle OPTIONS request for CORS preflight
      */
     void handleOptions(const HttpRequestPtr &req,
@@ -91,6 +100,11 @@ public:
     
 private:
     static class InstanceRegistry* instance_registry_;
+    
+    /**
+     * @brief Parse JSON request body to UpdateInstanceRequest
+     */
+    bool parseUpdateRequest(const Json::Value& json, class UpdateInstanceRequest& req, std::string& error);
     
     /**
      * @brief Convert InstanceInfo to JSON

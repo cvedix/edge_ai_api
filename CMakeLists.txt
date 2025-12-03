@@ -277,6 +277,7 @@ set(SOURCES
     src/instances/instance_storage.cpp
     src/core/uuid_generator.cpp
     src/models/create_instance_request.cpp
+    src/models/update_instance_request.cpp
     src/models/solution_config.cpp
     # Infrastructure components (available but not used in main yet)
     # src/core/resource_manager.cpp
