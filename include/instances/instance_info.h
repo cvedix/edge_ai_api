@@ -2,6 +2,7 @@
 
 #include <string>
 #include <vector>
+#include <map>
 #include <memory>
 
 // Forward declaration
@@ -49,6 +50,9 @@ struct InstanceInfo {
     
     // Source file path (for file source solutions)
     std::string filePath;  // File path for file source node
+    
+    // Additional parameters (MODEL_PATH, SFACE_MODEL_PATH, RESIZE_RATIO, etc.)
+    std::map<std::string, std::string> additionalParams;
     
     // Internal: Reference to pipeline nodes (not serialized)
     std::vector<std::shared_ptr<cvedix_nodes::cvedix_node>> pipeline_nodes;
