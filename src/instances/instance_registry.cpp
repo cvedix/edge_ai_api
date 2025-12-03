@@ -502,6 +502,11 @@ std::vector<std::string> InstanceRegistry::listInstances() const {
     return result;
 }
 
+std::unordered_map<std::string, InstanceInfo> InstanceRegistry::getAllInstances() const {
+    std::lock_guard<std::mutex> lock(mutex_);
+    return instances_; // Return copy of all instances in one lock acquisition
+}
+
 bool InstanceRegistry::hasInstance(const std::string& instanceId) const {
     std::lock_guard<std::mutex> lock(mutex_);
     return instances_.find(instanceId) != instances_.end();

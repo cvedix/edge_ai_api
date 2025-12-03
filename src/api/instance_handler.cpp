@@ -17,6 +17,36 @@ void InstanceHandler::setInstanceRegistry(InstanceRegistry* registry) {
     instance_registry_ = registry;
 }
 
+std::string InstanceHandler::extractInstanceId(const HttpRequestPtr &req) const {
+    // Try getParameter first (standard way)
+    std::string instanceId = req->getParameter("instanceId");
+    
+    // Fallback: extract from path if getParameter doesn't work
+    if (instanceId.empty()) {
+        std::string path = req->getPath();
+        size_t instancesPos = path.find("/instances/");
+        if (instancesPos != std::string::npos) {
+            size_t start = instancesPos + 11; // length of "/instances/"
+            size_t end = path.find("/", start);
+            if (end == std::string::npos) {
+                end = path.length();
+            }
+            instanceId = path.substr(start, end - start);
+        }
+    }
+    
+    return instanceId;
+}
+
+HttpResponsePtr InstanceHandler::createSuccessResponse(const Json::Value& data, int statusCode) const {
+    auto resp = HttpResponse::newHttpJsonResponse(data);
+    resp->setStatusCode(static_cast<HttpStatusCode>(statusCode));
+    resp->addHeader("Access-Control-Allow-Origin", "*");
+    resp->addHeader("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS");
+    resp->addHeader("Access-Control-Allow-Headers", "Content-Type, Authorization");
+    return resp;
+}
+
 void InstanceHandler::listInstances(
     const HttpRequestPtr &req,
     std::function<void(const HttpResponsePtr &)> &&callback) {
@@ -28,8 +58,8 @@ void InstanceHandler::listInstances(
             return;
         }
         
-        // Get all instance IDs
-        std::vector<std::string> instanceIds = instance_registry_->listInstances();
+        // Get all instances in one lock acquisition (optimized)
+        auto allInstances = instance_registry_->getAllInstances();
         
         // Build response with summary information
         Json::Value response;
@@ -39,28 +69,25 @@ void InstanceHandler::listInstances(
         int runningCount = 0;
         int stoppedCount = 0;
         
-        for (const auto& instanceId : instanceIds) {
-            auto optInfo = instance_registry_->getInstance(instanceId);
-            if (optInfo.has_value()) {
-                const auto& info = optInfo.value();
-                Json::Value instance;
-                instance["instanceId"] = info.instanceId;
-                instance["displayName"] = info.displayName;
-                instance["group"] = info.group;
-                instance["solutionId"] = info.solutionId;
-                instance["solutionName"] = info.solutionName;
-                instance["running"] = info.running;
-                instance["loaded"] = info.loaded;
-                instance["persistent"] = info.persistent;
-                instance["fps"] = info.fps;
-                
-                instances.append(instance);
-                totalCount++;
-                if (info.running) {
-                    runningCount++;
-                } else {
-                    stoppedCount++;
-                }
+        // Process all instances without additional lock acquisitions
+        for (const auto& [instanceId, info] : allInstances) {
+            Json::Value instance;
+            instance["instanceId"] = info.instanceId;
+            instance["displayName"] = info.displayName;
+            instance["group"] = info.group;
+            instance["solutionId"] = info.solutionId;
+            instance["solutionName"] = info.solutionName;
+            instance["running"] = info.running;
+            instance["loaded"] = info.loaded;
+            instance["persistent"] = info.persistent;
+            instance["fps"] = info.fps;
+            
+            instances.append(instance); // Use append instead of operator[] to avoid ambiguous overload
+            totalCount++;
+            if (info.running) {
+                runningCount++;
+            } else {
+                stoppedCount++;
             }
         }
         
@@ -69,13 +96,7 @@ void InstanceHandler::listInstances(
         response["running"] = runningCount;
         response["stopped"] = stoppedCount;
         
-        auto resp = HttpResponse::newHttpJsonResponse(response);
-        resp->setStatusCode(k200OK);
-        resp->addHeader("Access-Control-Allow-Origin", "*");
-        resp->addHeader("Access-Control-Allow-Methods", "GET, POST, DELETE, OPTIONS");
-        resp->addHeader("Access-Control-Allow-Headers", "Content-Type, Authorization");
-        
-        callback(resp);
+        callback(createSuccessResponse(response));
         
     } catch (const std::exception& e) {
         std::cerr << "[InstanceHandler] Exception: " << e.what() << std::endl;
@@ -98,21 +119,7 @@ void InstanceHandler::getInstance(
         }
         
         // Get instance ID from path parameter
-        std::string instanceId = req->getParameter("instanceId");
-        
-        // Fallback: extract from path if getParameter doesn't work
-        if (instanceId.empty()) {
-            std::string path = req->getPath();
-            size_t instancesPos = path.find("/instances/");
-            if (instancesPos != std::string::npos) {
-                size_t start = instancesPos + 11; // length of "/instances/"
-                size_t end = path.find("/", start);
-                if (end == std::string::npos) {
-                    end = path.length();
-                }
-                instanceId = path.substr(start, end - start);
-            }
-        }
+        std::string instanceId = extractInstanceId(req);
         
         if (instanceId.empty()) {
             callback(createErrorResponse(400, "Invalid request", "Instance ID is required"));
@@ -128,14 +135,7 @@ void InstanceHandler::getInstance(
         
         // Build response
         Json::Value response = instanceInfoToJson(optInfo.value());
-        
-        auto resp = HttpResponse::newHttpJsonResponse(response);
-        resp->setStatusCode(k200OK);
-        resp->addHeader("Access-Control-Allow-Origin", "*");
-        resp->addHeader("Access-Control-Allow-Methods", "GET, POST, DELETE, OPTIONS");
-        resp->addHeader("Access-Control-Allow-Headers", "Content-Type, Authorization");
-        
-        callback(resp);
+        callback(createSuccessResponse(response));
         
     } catch (const std::exception& e) {
         std::cerr << "[InstanceHandler] Exception: " << e.what() << std::endl;
@@ -158,21 +158,7 @@ void InstanceHandler::startInstance(
         }
         
         // Get instance ID from path parameter
-        std::string instanceId = req->getParameter("instanceId");
-        
-        // Fallback: extract from path if getParameter doesn't work
-        if (instanceId.empty()) {
-            std::string path = req->getPath();
-            size_t instancesPos = path.find("/instances/");
-            if (instancesPos != std::string::npos) {
-                size_t start = instancesPos + 11; // length of "/instances/"
-                size_t end = path.find("/", start);
-                if (end == std::string::npos) {
-                    end = path.length();
-                }
-                instanceId = path.substr(start, end - start);
-            }
-        }
+        std::string instanceId = extractInstanceId(req);
         
         if (instanceId.empty()) {
             callback(createErrorResponse(400, "Invalid request", "Instance ID is required"));
@@ -186,14 +172,7 @@ void InstanceHandler::startInstance(
             if (optInfo.has_value()) {
                 Json::Value response = instanceInfoToJson(optInfo.value());
                 response["message"] = "Instance started successfully";
-                
-                auto resp = HttpResponse::newHttpJsonResponse(response);
-                resp->setStatusCode(k200OK);
-                resp->addHeader("Access-Control-Allow-Origin", "*");
-                resp->addHeader("Access-Control-Allow-Methods", "GET, POST, DELETE, OPTIONS");
-                resp->addHeader("Access-Control-Allow-Headers", "Content-Type, Authorization");
-                
-                callback(resp);
+                callback(createSuccessResponse(response));
             } else {
                 callback(createErrorResponse(500, "Internal server error", "Instance started but could not retrieve info"));
             }
@@ -222,33 +201,7 @@ void InstanceHandler::stopInstance(
         }
         
         // Get instance ID from path parameter
-        // Try multiple ways to get path parameter
-        std::string instanceId = req->getParameter("instanceId");
-        
-        // Debug: log all parameters
-        std::cerr << "[InstanceHandler] stopInstance - All parameters:" << std::endl;
-        auto params = req->getParameters();
-        for (const auto& param : params) {
-            std::cerr << "[InstanceHandler]   " << param.first << " = " << param.second << std::endl;
-        }
-        std::cerr << "[InstanceHandler] Path: " << req->getPath() << std::endl;
-        std::cerr << "[InstanceHandler] instanceId from getParameter: '" << instanceId << "'" << std::endl;
-        
-        // Try alternative: get from path directly
-        if (instanceId.empty()) {
-            // Extract from path: /v1/core/instances/{instanceId}/stop
-            std::string path = req->getPath();
-            size_t instancesPos = path.find("/instances/");
-            if (instancesPos != std::string::npos) {
-                size_t start = instancesPos + 11; // length of "/instances/"
-                size_t end = path.find("/", start);
-                if (end == std::string::npos) {
-                    end = path.length();
-                }
-                instanceId = path.substr(start, end - start);
-                std::cerr << "[InstanceHandler] Extracted instanceId from path: '" << instanceId << "'" << std::endl;
-            }
-        }
+        std::string instanceId = extractInstanceId(req);
         
         if (instanceId.empty()) {
             callback(createErrorResponse(400, "Invalid request", "Instance ID is required"));
@@ -262,14 +215,7 @@ void InstanceHandler::stopInstance(
             if (optInfo.has_value()) {
                 Json::Value response = instanceInfoToJson(optInfo.value());
                 response["message"] = "Instance stopped successfully";
-                
-                auto resp = HttpResponse::newHttpJsonResponse(response);
-                resp->setStatusCode(k200OK);
-                resp->addHeader("Access-Control-Allow-Origin", "*");
-                resp->addHeader("Access-Control-Allow-Methods", "GET, POST, DELETE, OPTIONS");
-                resp->addHeader("Access-Control-Allow-Headers", "Content-Type, Authorization");
-                
-                callback(resp);
+                callback(createSuccessResponse(response));
             } else {
                 callback(createErrorResponse(500, "Internal server error", "Instance stopped but could not retrieve info"));
             }
@@ -298,59 +244,32 @@ void InstanceHandler::restartInstance(
         }
         
         // Get instance ID from path parameter
-        std::string instanceId = req->getParameter("instanceId");
-        
-        // Fallback: extract from path if getParameter doesn't work
-        if (instanceId.empty()) {
-            std::string path = req->getPath();
-            size_t instancesPos = path.find("/instances/");
-            if (instancesPos != std::string::npos) {
-                size_t start = instancesPos + 11; // length of "/instances/"
-                size_t end = path.find("/", start);
-                if (end == std::string::npos) {
-                    end = path.length();
-                }
-                instanceId = path.substr(start, end - start);
-            }
-        }
+        std::string instanceId = extractInstanceId(req);
         
         if (instanceId.empty()) {
             callback(createErrorResponse(400, "Invalid request", "Instance ID is required"));
             return;
         }
         
-        std::cerr << "[InstanceHandler] Restarting instance: " << instanceId << std::endl;
-        
         // First, stop the instance if it's running
         auto optInfo = instance_registry_->getInstance(instanceId);
         if (optInfo.has_value() && optInfo.value().running) {
-            std::cerr << "[InstanceHandler] Instance is running, stopping first..." << std::endl;
             if (!instance_registry_->stopInstance(instanceId)) {
-                std::cerr << "[InstanceHandler] Warning: Failed to stop instance before restart" << std::endl;
                 callback(createErrorResponse(500, "Failed to restart", "Could not stop instance before restart"));
                 return;
             }
             // Give it a moment to fully stop and cleanup
-            std::cerr << "[InstanceHandler] Waiting for instance to fully stop..." << std::endl;
             std::this_thread::sleep_for(std::chrono::milliseconds(500));
         }
         
         // Now start the instance (skip auto-stop since we already stopped it)
-        std::cerr << "[InstanceHandler] Starting instance..." << std::endl;
         if (instance_registry_->startInstance(instanceId, true)) { // true = skipAutoStop
             // Get updated instance info
             optInfo = instance_registry_->getInstance(instanceId);
             if (optInfo.has_value()) {
                 Json::Value response = instanceInfoToJson(optInfo.value());
                 response["message"] = "Instance restarted successfully";
-                
-                auto resp = HttpResponse::newHttpJsonResponse(response);
-                resp->setStatusCode(k200OK);
-                resp->addHeader("Access-Control-Allow-Origin", "*");
-                resp->addHeader("Access-Control-Allow-Methods", "GET, POST, DELETE, OPTIONS");
-                resp->addHeader("Access-Control-Allow-Headers", "Content-Type, Authorization");
-                
-                callback(resp);
+                callback(createSuccessResponse(response));
             } else {
                 callback(createErrorResponse(500, "Internal server error", "Instance restarted but could not retrieve info"));
             }
@@ -379,21 +298,7 @@ void InstanceHandler::updateInstance(
         }
         
         // Get instance ID from path parameter
-        std::string instanceId = req->getParameter("instanceId");
-        
-        // Fallback: extract from path if getParameter doesn't work
-        if (instanceId.empty()) {
-            std::string path = req->getPath();
-            size_t instancesPos = path.find("/instances/");
-            if (instancesPos != std::string::npos) {
-                size_t start = instancesPos + 11; // length of "/instances/"
-                size_t end = path.find("/", start);
-                if (end == std::string::npos) {
-                    end = path.length();
-                }
-                instanceId = path.substr(start, end - start);
-            }
-        }
+        std::string instanceId = extractInstanceId(req);
         
         if (instanceId.empty()) {
             callback(createErrorResponse(400, "Invalid request", "Instance ID is required"));
@@ -434,14 +339,7 @@ void InstanceHandler::updateInstance(
             if (optInfo.has_value()) {
                 Json::Value response = instanceInfoToJson(optInfo.value());
                 response["message"] = "Instance updated successfully";
-                
-                auto resp = HttpResponse::newHttpJsonResponse(response);
-                resp->setStatusCode(k200OK);
-                resp->addHeader("Access-Control-Allow-Origin", "*");
-                resp->addHeader("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS");
-                resp->addHeader("Access-Control-Allow-Headers", "Content-Type, Authorization");
-                
-                callback(resp);
+                callback(createSuccessResponse(response));
             } else {
                 callback(createErrorResponse(500, "Internal server error", "Instance updated but could not retrieve info"));
             }
@@ -470,21 +368,7 @@ void InstanceHandler::deleteInstance(
         }
         
         // Get instance ID from path parameter
-        std::string instanceId = req->getParameter("instanceId");
-        
-        // Fallback: extract from path if getParameter doesn't work
-        if (instanceId.empty()) {
-            std::string path = req->getPath();
-            size_t instancesPos = path.find("/instances/");
-            if (instancesPos != std::string::npos) {
-                size_t start = instancesPos + 11; // length of "/instances/"
-                size_t end = path.find("/", start);
-                if (end == std::string::npos) {
-                    end = path.length();
-                }
-                instanceId = path.substr(start, end - start);
-            }
-        }
+        std::string instanceId = extractInstanceId(req);
         
         if (instanceId.empty()) {
             callback(createErrorResponse(400, "Invalid request", "Instance ID is required"));
@@ -497,14 +381,7 @@ void InstanceHandler::deleteInstance(
             response["success"] = true;
             response["message"] = "Instance deleted successfully";
             response["instanceId"] = instanceId;
-            
-            auto resp = HttpResponse::newHttpJsonResponse(response);
-            resp->setStatusCode(k200OK);
-            resp->addHeader("Access-Control-Allow-Origin", "*");
-            resp->addHeader("Access-Control-Allow-Methods", "GET, POST, DELETE, OPTIONS");
-            resp->addHeader("Access-Control-Allow-Headers", "Content-Type, Authorization");
-            
-            callback(resp);
+            callback(createSuccessResponse(response));
         } else {
             callback(createErrorResponse(404, "Not found", "Instance not found: " + instanceId));
         }
@@ -790,13 +667,7 @@ void InstanceHandler::batchStartInstances(
         response["failed"] = failureCount;
         response["message"] = "Batch start operation completed";
         
-        auto resp = HttpResponse::newHttpJsonResponse(response);
-        resp->setStatusCode(k200OK);
-        resp->addHeader("Access-Control-Allow-Origin", "*");
-        resp->addHeader("Access-Control-Allow-Methods", "GET, POST, DELETE, OPTIONS");
-        resp->addHeader("Access-Control-Allow-Headers", "Content-Type, Authorization");
-        
-        callback(resp);
+        callback(createSuccessResponse(response));
         
     } catch (const std::exception& e) {
         std::cerr << "[InstanceHandler] Exception in batchStartInstances: " << e.what() << std::endl;
@@ -892,13 +763,7 @@ void InstanceHandler::batchStopInstances(
         response["failed"] = failureCount;
         response["message"] = "Batch stop operation completed";
         
-        auto resp = HttpResponse::newHttpJsonResponse(response);
-        resp->setStatusCode(k200OK);
-        resp->addHeader("Access-Control-Allow-Origin", "*");
-        resp->addHeader("Access-Control-Allow-Methods", "GET, POST, DELETE, OPTIONS");
-        resp->addHeader("Access-Control-Allow-Headers", "Content-Type, Authorization");
-        
-        callback(resp);
+        callback(createSuccessResponse(response));
         
     } catch (const std::exception& e) {
         std::cerr << "[InstanceHandler] Exception in batchStopInstances: " << e.what() << std::endl;
@@ -1005,13 +870,7 @@ void InstanceHandler::batchRestartInstances(
         response["failed"] = failureCount;
         response["message"] = "Batch restart operation completed";
         
-        auto resp = HttpResponse::newHttpJsonResponse(response);
-        resp->setStatusCode(k200OK);
-        resp->addHeader("Access-Control-Allow-Origin", "*");
-        resp->addHeader("Access-Control-Allow-Methods", "GET, POST, DELETE, OPTIONS");
-        resp->addHeader("Access-Control-Allow-Headers", "Content-Type, Authorization");
-        
-        callback(resp);
+        callback(createSuccessResponse(response));
         
     } catch (const std::exception& e) {
         std::cerr << "[InstanceHandler] Exception in batchRestartInstances: " << e.what() << std::endl;

@@ -88,6 +88,12 @@ public:
     std::vector<std::string> listInstances() const;
     
     /**
+     * @brief Get all instances info in one lock acquisition (optimized for list operations)
+     * @return Map of instance ID to InstanceInfo
+     */
+    std::unordered_map<std::string, InstanceInfo> getAllInstances() const;
+    
+    /**
      * @brief Check if instance exists
      * @param instanceId Instance ID
      * @return true if instance exists
