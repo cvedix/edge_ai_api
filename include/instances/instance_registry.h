@@ -105,6 +105,13 @@ public:
      */
     void loadPersistentInstances();
     
+    /**
+     * @brief Check if instance has RTMP output
+     * @param instanceId Instance ID
+     * @return true if instance has RTMP output
+     */
+    bool hasRTMPOutput(const std::string& instanceId) const;
+    
 private:
     SolutionRegistry& solution_registry_;
     PipelineBuilder& pipeline_builder_;
@@ -150,5 +157,11 @@ private:
      * @return true if pipeline was rebuilt successfully
      */
     bool rebuildPipelineFromInstanceInfo(const std::string& instanceId);
+    
+    /**
+     * @brief Log processing results for instance (for instances without RTMP output)
+     * @param instanceId Instance ID
+     */
+    void logProcessingResults(const std::string& instanceId) const;
 };
 
