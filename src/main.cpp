@@ -11,6 +11,8 @@
 #include "core/health_monitor.h"
 #include "core/env_config.h"
 #include "core/logger.h"
+#include "core/categorized_logger.h"
+#include "core/logging_flags.h"
 #include "instances/instance_registry.h"
 #include "core/solution_registry.h"
 #include "core/pipeline_builder.h"
@@ -22,6 +24,8 @@
 #include <csignal>
 #include <cstdlib>
 #include <csetjmp>
+#include <unistd.h>
+#include <sys/types.h>
 #include <stdexcept>
 #include <memory>
 #include <thread>
@@ -55,8 +59,16 @@ static InstanceRegistry* g_instance_registry = nullptr;
 // Flag to prevent multiple handlers from stopping instances simultaneously
 static std::atomic<bool> g_cleanup_in_progress{false};
 
+// Flag to indicate force exit requested (bypass SIGABRT recovery)
+static std::atomic<bool> g_force_exit{false};
+
 // Global debug flag
 static std::atomic<bool> g_debug_mode{false};
+
+// Global logging flags (exported via logging_flags.h)
+std::atomic<bool> g_log_api{false};
+std::atomic<bool> g_log_instance{false};
+std::atomic<bool> g_log_sdk_output{false};
 
 // Global analysis board thread management
 static std::unique_ptr<std::thread> g_analysis_board_display_thread;
@@ -180,32 +192,78 @@ void signalHandler(int signal)
                 }
             }).detach();
             
-            // Start shutdown timer thread - force exit after 1 second if still running
-            // Very short timeout to ensure fast response when instances are stuck
+            // Start shutdown timer thread - force exit after 3 seconds if still running
+            // Give instances time to stop gracefully, but not too long
             std::thread([]() {
-                std::this_thread::sleep_for(std::chrono::seconds(1));
-                if (g_shutdown) {
+                std::this_thread::sleep_for(std::chrono::seconds(3));
+                if (g_shutdown && !g_force_exit.load()) {
                     PLOG_WARNING << "Shutdown timeout reached - forcing exit";
-                    std::cerr << "[CRITICAL] Shutdown timeout (1s) - forcing exit NOW" << std::endl;
+                    std::cerr << "[CRITICAL] Shutdown timeout (3s) - KILLING PROCESS NOW" << std::endl;
                     std::fflush(stdout);
                     std::fflush(stderr);
-                    // Use abort() to force immediate termination, bypassing all cleanup
-                    // This sends SIGABRT which cannot be ignored
-                    std::abort();
+                    
+                    // Set force exit flag
+                    g_force_exit = true;
+                    
+                    // Unregister all signal handlers to prevent recovery
+                    std::signal(SIGINT, SIG_DFL);
+                    std::signal(SIGTERM, SIG_DFL);
+                    std::signal(SIGABRT, SIG_DFL);
+                    
+                    // Try to quit Drogon (non-blocking)
+                    try {
+                        drogon::app().quit();
+                    } catch (...) {
+                        // Ignore errors
+                    }
+                    
+                    // Use kill() with SIGKILL to force immediate termination
+                    // SIGKILL cannot be caught or ignored
+                    kill(getpid(), SIGKILL);
+                    
+                    // Fallback: if kill() somehow fails, use _exit()
+                    _exit(1);
                 }
             }).detach();
         } else {
             // Second signal (Ctrl+C again) - force immediate exit
             // This should happen immediately, no delays, no cleanup
             PLOG_WARNING << "Received signal " << signal << " again (" << count << " times) - forcing immediate exit";
-            std::cerr << "[CRITICAL] Force exit requested (signal received " << count << " times) - ABORTING NOW" << std::endl;
+            std::cerr << "[CRITICAL] Force exit requested (signal received " << count << " times) - KILLING PROCESS NOW" << std::endl;
             std::fflush(stdout);
             std::fflush(stderr);
-            // Use abort() to force immediate termination
-            // This bypasses all destructors and cleanup, ensuring immediate exit
-            std::abort();
+            
+            // Set force exit flag to bypass SIGABRT recovery
+            g_force_exit = true;
+            
+            // Unregister all signal handlers to prevent any recovery logic
+            std::signal(SIGINT, SIG_DFL);
+            std::signal(SIGTERM, SIG_DFL);
+            std::signal(SIGABRT, SIG_DFL);
+            
+            // Try to quit Drogon (non-blocking)
+            try {
+                drogon::app().quit();
+            } catch (...) {
+                // Ignore errors
+            }
+            
+            // Use kill() with SIGKILL to force immediate termination
+            // SIGKILL cannot be caught or ignored, ensuring immediate exit
+            kill(getpid(), SIGKILL);
+            
+            // Fallback: if kill() somehow fails, use _exit()
+            _exit(1);
         }
     } else if (signal == SIGABRT) {
+        // If force exit was requested, exit immediately without recovery
+        if (g_force_exit.load()) {
+            std::cerr << "[CRITICAL] Force exit confirmed - terminating immediately" << std::endl;
+            std::fflush(stdout);
+            std::fflush(stderr);
+            _exit(1);
+        }
+        
         // SIGABRT can be triggered by:
         // 1. OpenCV DNN shape mismatch (recover by stopping instances)
         // 2. Qt display error in analysis board (don't stop instances, just disable board)
@@ -466,11 +524,23 @@ bool parseArguments(int argc, char* argv[])
         if (arg == "--debug" || arg == "-d") {
             g_debug_mode = true;
             std::cerr << "[Main] Debug mode enabled - analysis board will be displayed" << std::endl;
+        } else if (arg == "--log-api" || arg == "--debug-api") {
+            g_log_api = true;
+            std::cerr << "[Main] API logging enabled" << std::endl;
+        } else if (arg == "--log-instance" || arg == "--debug-instance") {
+            g_log_instance = true;
+            std::cerr << "[Main] Instance execution logging enabled" << std::endl;
+        } else if (arg == "--log-sdk-output" || arg == "--debug-sdk-output") {
+            g_log_sdk_output = true;
+            std::cerr << "[Main] SDK output logging enabled" << std::endl;
         } else if (arg == "--help" || arg == "-h") {
             std::cerr << "Usage: " << argv[0] << " [OPTIONS]" << std::endl;
             std::cerr << "Options:" << std::endl;
-            std::cerr << "  --debug, -d    Enable debug mode (display analysis board)" << std::endl;
-            std::cerr << "  --help, -h    Show this help message" << std::endl;
+            std::cerr << "  --debug, -d                    Enable debug mode (display analysis board)" << std::endl;
+            std::cerr << "  --log-api, --debug-api              Enable API request/response logging" << std::endl;
+            std::cerr << "  --log-instance, --debug-instance     Enable instance execution logging (start/stop/status)" << std::endl;
+            std::cerr << "  --log-sdk-output, --debug-sdk-output    Enable SDK output logging (when SDK returns results)" << std::endl;
+            std::cerr << "  --help, -h                     Show this help message" << std::endl;
             return false;
         } else {
             std::cerr << "Unknown option: " << arg << std::endl;
@@ -808,14 +878,24 @@ int main(int argc, char* argv[])
             return 0; // Help was requested, exit normally
         }
         
-        // Initialize logger first (before any logging)
-        Logger::init();
+        // Initialize categorized logger first (before any logging)
+        // This sets up log directories, daily rotation, and cleanup
+        CategorizedLogger::init();
         
         PLOG_INFO << "========================================";
         PLOG_INFO << "Edge AI API Server";
         PLOG_INFO << "========================================";
         if (g_debug_mode.load()) {
             PLOG_INFO << "Debug mode: ENABLED";
+        }
+        if (g_log_api.load()) {
+            PLOG_INFO << "API logging: ENABLED";
+        }
+        if (g_log_instance.load()) {
+            PLOG_INFO << "Instance execution logging: ENABLED";
+        }
+        if (g_log_sdk_output.load()) {
+            PLOG_INFO << "SDK output logging: ENABLED";
         }
         PLOG_INFO << "Starting REST API server...";
 
@@ -1024,6 +1104,9 @@ int main(int argc, char* argv[])
         if (g_watchdog) {
             g_watchdog->stop();
         }
+        
+        // Stop log cleanup thread
+        CategorizedLogger::shutdown();
 
         PLOG_INFO << "Server stopped.";
         return 0;
