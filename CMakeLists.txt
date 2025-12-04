@@ -281,6 +281,7 @@ set(SOURCES
     src/core/pipeline_builder.cpp
     src/instances/instance_storage.cpp
     src/core/uuid_generator.cpp
+    src/core/log_manager.cpp
     src/models/create_instance_request.cpp
     src/models/update_instance_request.cpp
     src/models/solution_config.cpp
