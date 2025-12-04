@@ -2,9 +2,12 @@
 #include "models/create_instance_request.h"
 #include "instances/instance_registry.h"
 #include "instances/instance_info.h"
+#include "core/logging_flags.h"
+#include "core/logger.h"
 #include <drogon/HttpResponse.h>
 #include <json/json.h>
 #include <sstream>
+#include <chrono>
 
 InstanceRegistry* CreateInstanceHandler::instance_registry_ = nullptr;
 
@@ -16,9 +19,19 @@ void CreateInstanceHandler::createInstance(
     const HttpRequestPtr &req,
     std::function<void(const HttpResponsePtr &)> &&callback) {
     
+    auto start_time = std::chrono::steady_clock::now();
+    
+    if (isApiLoggingEnabled()) {
+        PLOG_INFO << "[API] POST /v1/core/instance - Create instance";
+        PLOG_DEBUG << "[API] Request from: " << req->getPeerAddr().toIpPort();
+    }
+    
     try {
         // Check if registry is set
         if (!instance_registry_) {
+            if (isApiLoggingEnabled()) {
+                PLOG_ERROR << "[API] POST /v1/core/instance - Error: Instance registry not initialized";
+            }
             callback(createErrorResponse(500, "Internal server error", "Instance registry not initialized"));
             return;
         }
@@ -26,6 +39,9 @@ void CreateInstanceHandler::createInstance(
         // Parse JSON body
         auto json = req->getJsonObject();
         if (!json) {
+            if (isApiLoggingEnabled()) {
+                PLOG_WARNING << "[API] POST /v1/core/instance - Error: Invalid JSON body";
+            }
             callback(createErrorResponse(400, "Invalid request", "Request body must be valid JSON"));
             return;
         }
@@ -34,19 +50,31 @@ void CreateInstanceHandler::createInstance(
         CreateInstanceRequest createReq;
         std::string parseError;
         if (!parseRequest(*json, createReq, parseError)) {
+            if (isApiLoggingEnabled()) {
+                PLOG_WARNING << "[API] POST /v1/core/instance - Parse error: " << parseError;
+            }
             callback(createErrorResponse(400, "Invalid request", parseError));
             return;
         }
         
         // Validate request
         if (!createReq.validate()) {
+            if (isApiLoggingEnabled()) {
+                PLOG_WARNING << "[API] POST /v1/core/instance - Validation failed: " << createReq.getValidationError();
+            }
             callback(createErrorResponse(400, "Validation failed", createReq.getValidationError()));
             return;
         }
         
         // Create instance
         std::string instanceId = instance_registry_->createInstance(createReq);
+        auto end_time = std::chrono::steady_clock::now();
+        auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(end_time - start_time);
+        
         if (instanceId.empty()) {
+            if (isApiLoggingEnabled()) {
+                PLOG_ERROR << "[API] POST /v1/core/instance - Failed to create instance - " << duration.count() << "ms";
+            }
             callback(createErrorResponse(500, "Failed to create instance", "Could not create instance. Check solution ID and parameters."));
             return;
         }
@@ -54,12 +82,22 @@ void CreateInstanceHandler::createInstance(
         // Get instance info
         auto optInfo = instance_registry_->getInstance(instanceId);
         if (!optInfo.has_value()) {
+            if (isApiLoggingEnabled()) {
+                PLOG_WARNING << "[API] POST /v1/core/instance - Created but could not retrieve info - " << duration.count() << "ms";
+            }
             callback(createErrorResponse(500, "Internal server error", "Instance created but could not retrieve info"));
             return;
         }
         
         // Build response
         Json::Value response = instanceInfoToJson(optInfo.value());
+        
+        if (isApiLoggingEnabled()) {
+            const auto& info = optInfo.value();
+            PLOG_INFO << "[API] POST /v1/core/instance - Success: Created instance " << instanceId 
+                      << " (" << info.displayName << ", solution: " << info.solutionId 
+                      << ") - " << duration.count() << "ms";
+        }
         
         auto resp = HttpResponse::newHttpJsonResponse(response);
         resp->setStatusCode(k201Created);
@@ -72,9 +110,19 @@ void CreateInstanceHandler::createInstance(
         callback(resp);
         
     } catch (const std::exception& e) {
+        auto end_time = std::chrono::steady_clock::now();
+        auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(end_time - start_time);
+        if (isApiLoggingEnabled()) {
+            PLOG_ERROR << "[API] POST /v1/core/instance - Exception: " << e.what() << " - " << duration.count() << "ms";
+        }
         std::cerr << "[CreateInstanceHandler] Exception: " << e.what() << std::endl;
         callback(createErrorResponse(500, "Internal server error", e.what()));
     } catch (...) {
+        auto end_time = std::chrono::steady_clock::now();
+        auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(end_time - start_time);
+        if (isApiLoggingEnabled()) {
+            PLOG_ERROR << "[API] POST /v1/core/instance - Unknown exception - " << duration.count() << "ms";
+        }
         std::cerr << "[CreateInstanceHandler] Unknown exception" << std::endl;
         callback(createErrorResponse(500, "Internal server error", "Unknown error occurred"));
     }
@@ -273,6 +321,11 @@ HttpResponsePtr CreateInstanceHandler::createErrorResponse(
     
     auto resp = HttpResponse::newHttpJsonResponse(errorJson);
     resp->setStatusCode(static_cast<HttpStatusCode>(statusCode));
+    
+    // Add CORS headers to error responses
+    resp->addHeader("Access-Control-Allow-Origin", "*");
+    resp->addHeader("Access-Control-Allow-Methods", "POST, OPTIONS");
+    resp->addHeader("Access-Control-Allow-Headers", "Content-Type, Authorization");
     
     return resp;
 }
