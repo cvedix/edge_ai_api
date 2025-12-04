@@ -1,0 +1,18 @@
+{
+  "name": "classifier_demo",
+  "group": "classification",
+  "solution": "classifier",
+  "persistent": true,
+  "autoStart": true,
+  "detectionSensitivity": "Medium",
+  "additionalParams": {
+    "FILE_PATH": "./cvedix_data/test_video/classification.mp4",
+    "MODEL_PATH": "./cvedix_data/models/classification/resnet50.onnx",
+    "LABELS_PATH": "./cvedix_data/models/imagenet_classes.txt",
+    "INPUT_WIDTH": "224",
+    "INPUT_HEIGHT": "224",
+    "BATCH_SIZE": "1",
+    "NEED_SOFTMAX": "true"
+  }
+}
+
