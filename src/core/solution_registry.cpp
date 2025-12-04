@@ -32,6 +32,7 @@ bool SolutionRegistry::hasSolution(const std::string& solutionId) const {
 
 void SolutionRegistry::initializeDefaultSolutions() {
     registerFaceDetectionSolution();
+    registerFaceDetectionFileSolution();  // Add face detection with file source
     registerObjectDetectionSolution();  // Add YOLO-based solution
     registerFaceDetectionRTMPSolution();  // Add face detection with RTMP streaming
 }
@@ -50,6 +51,50 @@ void SolutionRegistry::registerFaceDetectionSolution() {
     rtspSrc.parameters["channel"] = "0";
     rtspSrc.parameters["resize_ratio"] = "1.0";  // Use resize_ratio instead of fps (must be > 0 and <= 1.0)
     config.pipeline.push_back(rtspSrc);
+    
+    // YuNet Face Detector Node
+    SolutionConfig::NodeConfig faceDetector;
+    faceDetector.nodeType = "yunet_face_detector";
+    faceDetector.nodeName = "face_detector_{instanceId}";
+    // Use ${MODEL_PATH} placeholder - can be overridden via additionalParams["MODEL_PATH"] in request
+    // Default to yunet.onnx if not provided
+    faceDetector.parameters["model_path"] = "${MODEL_PATH}";
+    faceDetector.parameters["score_threshold"] = "${detectionSensitivity}";
+    faceDetector.parameters["nms_threshold"] = "0.5";
+    faceDetector.parameters["top_k"] = "50";
+    config.pipeline.push_back(faceDetector);
+    
+    // File Destination Node
+    SolutionConfig::NodeConfig fileDes;
+    fileDes.nodeType = "file_des";
+    fileDes.nodeName = "file_des_{instanceId}";
+    fileDes.parameters["save_dir"] = "./output/{instanceId}";
+    fileDes.parameters["name_prefix"] = "face_detection";
+    fileDes.parameters["osd"] = "true";
+    config.pipeline.push_back(fileDes);
+    
+    // Default configurations
+    config.defaults["detectorMode"] = "SmartDetection";
+    config.defaults["detectionSensitivity"] = "0.7";
+    config.defaults["sensorModality"] = "RGB";
+    
+    registerSolution(config);
+}
+
+void SolutionRegistry::registerFaceDetectionFileSolution() {
+    SolutionConfig config;
+    config.solutionId = "face_detection_file";
+    config.solutionName = "Face Detection with File Source";
+    config.solutionType = "face_detection";
+    
+    // File Source Node
+    SolutionConfig::NodeConfig fileSrc;
+    fileSrc.nodeType = "file_src";
+    fileSrc.nodeName = "file_src_{instanceId}";
+    fileSrc.parameters["file_path"] = "${FILE_PATH}";
+    fileSrc.parameters["channel"] = "0";
+    fileSrc.parameters["resize_ratio"] = "1.0";  // Use resize_ratio instead of fps (must be > 0 and <= 1.0)
+    config.pipeline.push_back(fileSrc);
     
     // YuNet Face Detector Node
     SolutionConfig::NodeConfig faceDetector;

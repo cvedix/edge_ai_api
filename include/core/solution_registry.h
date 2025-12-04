@@ -66,6 +66,11 @@ private:
     void registerFaceDetectionSolution();
     
     /**
+     * @brief Register face detection with file source solution
+     */
+    void registerFaceDetectionFileSolution();
+    
+    /**
      * @brief Register object detection solution (YOLO)
      */
     void registerObjectDetectionSolution();
