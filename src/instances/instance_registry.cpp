@@ -6,10 +6,13 @@
 #include <cvedix/nodes/src/cvedix_file_src_node.h>
 #include <cvedix/nodes/infers/cvedix_yunet_face_detector_node.h>
 #include <cvedix/nodes/infers/cvedix_sface_feature_encoder_node.h>
+#include <cvedix/nodes/des/cvedix_rtmp_des_node.h>
 #include <algorithm>
 #include <typeinfo>
 #include <thread>
 #include <chrono>
+#include <iomanip>
+#include <sstream>
 
 InstanceRegistry::InstanceRegistry(
     SolutionRegistry& solutionRegistry,
@@ -103,45 +106,84 @@ std::string InstanceRegistry::createInstance(const CreateInstanceRequest& req) {
     }
     
     // Auto start if requested (do this OUTSIDE lock - can take time)
+    // IMPORTANT: Run auto-start in a separate thread to avoid blocking API response
     if (req.autoStart && !pipeline.empty()) {
         std::cerr << "[InstanceRegistry] ========================================" << std::endl;
-        std::cerr << "[InstanceRegistry] Auto-starting pipeline for instance " << instanceId << std::endl;
+        std::cerr << "[InstanceRegistry] Auto-starting pipeline for instance " << instanceId << " (async)" << std::endl;
         std::cerr << "[InstanceRegistry] ========================================" << std::endl;
         
-        // Wait for DNN models to be ready using exponential backoff
-        // This is more reliable than fixed delay as it adapts to model loading time
-        waitForModelsReady(pipeline, 2000); // Max 2 seconds
-        
-        try {
-            if (startPipeline(pipeline)) {
-                // Update running status (need lock briefly)
-                {
-                    std::lock_guard<std::mutex> lock(mutex_);
-                    auto instanceIt = instances_.find(instanceId);
-                    if (instanceIt != instances_.end()) {
-                        instanceIt->second.running = true;
+        // Start auto-start process in a separate thread (non-blocking)
+        // This allows the API to return immediately after instance creation
+        std::thread([this, instanceId, pipeline]() {
+            // Wait for DNN models to be ready using exponential backoff
+            // This is more reliable than fixed delay as it adapts to model loading time
+            waitForModelsReady(pipeline, 2000); // Max 2 seconds
+            
+            try {
+                if (startPipeline(pipeline)) {
+                    // Update running status (need lock briefly)
+                    {
+                        std::lock_guard<std::mutex> lock(mutex_);
+                        auto instanceIt = instances_.find(instanceId);
+                        if (instanceIt != instances_.end()) {
+                            instanceIt->second.running = true;
+                        }
+                    } // Release lock
+                    std::cerr << "[InstanceRegistry] ========================================" << std::endl;
+                    std::cerr << "[InstanceRegistry] ✓ Pipeline started successfully for instance " << instanceId << std::endl;
+                    std::cerr << "[InstanceRegistry] NOTE: If RTSP connection fails, the node will retry automatically" << std::endl;
+                    std::cerr << "[InstanceRegistry] NOTE: Monitor logs above for RTSP connection status" << std::endl;
+                    std::cerr << "[InstanceRegistry] ========================================" << std::endl;
+                    
+                    // Log processing results for instances without RTMP output
+                    // Wait a bit for pipeline to initialize
+                    std::this_thread::sleep_for(std::chrono::milliseconds(2000));
+                    if (!hasRTMPOutput(instanceId)) {
+                        std::cerr << "[InstanceRegistry] Instance does not have RTMP output - enabling processing result logging" << std::endl;
+                        logProcessingResults(instanceId);
+                        
+                        // Start periodic logging in a separate thread (non-blocking)
+                        std::thread([this, instanceId]() {
+                            while (true) {
+                                // Wait 10 seconds between logs
+                                std::this_thread::sleep_for(std::chrono::seconds(10));
+                                
+                                // Check if instance still exists and is running
+                                {
+                                    std::lock_guard<std::mutex> lock(mutex_);
+                                    auto instanceIt = instances_.find(instanceId);
+                                    if (instanceIt == instances_.end() || !instanceIt->second.running) {
+                                        // Instance deleted or stopped, exit logging thread
+                                        break;
+                                    }
+                                }
+                                
+                                // Log processing results
+                                if (!hasRTMPOutput(instanceId)) {
+                                    logProcessingResults(instanceId);
+                                } else {
+                                    // Instance now has RTMP output, stop logging
+                                    break;
+                                }
+                            }
+                        }).detach(); // Detach thread so it runs independently
                     }
-                } // Release lock
-                std::cerr << "[InstanceRegistry] ========================================" << std::endl;
-                std::cerr << "[InstanceRegistry] ✓ Pipeline started successfully for instance " << instanceId << std::endl;
-                std::cerr << "[InstanceRegistry] NOTE: If RTSP connection fails, the node will retry automatically" << std::endl;
-                std::cerr << "[InstanceRegistry] NOTE: Monitor logs above for RTSP connection status" << std::endl;
-                std::cerr << "[InstanceRegistry] ========================================" << std::endl;
-            } else {
-                std::cerr << "[InstanceRegistry] ✗ Failed to start pipeline for instance " 
-                          << instanceId << " (pipeline created but not started)" << std::endl;
-                std::cerr << "[InstanceRegistry] You can manually start it later using startInstance API" << std::endl;
+                } else {
+                    std::cerr << "[InstanceRegistry] ✗ Failed to start pipeline for instance " 
+                              << instanceId << " (pipeline created but not started)" << std::endl;
+                    std::cerr << "[InstanceRegistry] You can manually start it later using startInstance API" << std::endl;
+                }
+            } catch (const std::exception& e) {
+                std::cerr << "[InstanceRegistry] ✗ Exception starting pipeline for instance " 
+                          << instanceId << ": " << e.what() << std::endl;
+                std::cerr << "[InstanceRegistry] Instance created but pipeline not started. You can start it manually later." << std::endl;
+                // Don't crash - instance is created but not running
+            } catch (...) {
+                std::cerr << "[InstanceRegistry] ✗ Unknown error starting pipeline for instance " 
+                          << instanceId << std::endl;
+                std::cerr << "[InstanceRegistry] Instance created but pipeline not started. You can start it manually later." << std::endl;
             }
-        } catch (const std::exception& e) {
-            std::cerr << "[InstanceRegistry] ✗ Exception starting pipeline for instance " 
-                      << instanceId << ": " << e.what() << std::endl;
-            std::cerr << "[InstanceRegistry] Instance created but pipeline not started. You can start it manually later." << std::endl;
-            // Don't crash - instance is created but not running
-        } catch (...) {
-            std::cerr << "[InstanceRegistry] ✗ Unknown error starting pipeline for instance " 
-                      << instanceId << std::endl;
-            std::cerr << "[InstanceRegistry] Instance created but pipeline not started. You can start it manually later." << std::endl;
-        }
+        }).detach(); // Detach thread so it runs independently and doesn't block
     } else if (!pipeline.empty()) {
         std::cerr << "[InstanceRegistry] Pipeline created but not started (autoStart=false)" << std::endl;
         std::cerr << "[InstanceRegistry] Use startInstance API to start the pipeline when ready" << std::endl;
@@ -412,6 +454,44 @@ bool InstanceRegistry::startInstance(const std::string& instanceId, bool skipAut
             // Instance was deleted during start - cleanup pipeline
             pipelines_.erase(instanceId);
             std::cerr << "[InstanceRegistry] Instance " << instanceId << " was deleted during start - cleaned up pipeline" << std::endl;
+        }
+    }
+    
+    // Log processing results for instances without RTMP output (after a short delay to allow pipeline to start)
+    if (started) {
+        // Wait a bit for pipeline to initialize and start processing
+        std::this_thread::sleep_for(std::chrono::milliseconds(2000));
+        
+        // Log initial processing status
+        if (!hasRTMPOutput(instanceId)) {
+            std::cerr << "[InstanceRegistry] Instance does not have RTMP output - enabling processing result logging" << std::endl;
+            logProcessingResults(instanceId);
+            
+            // Start periodic logging in a separate thread (non-blocking)
+            std::thread([this, instanceId]() {
+                while (true) {
+                    // Wait 10 seconds between logs
+                    std::this_thread::sleep_for(std::chrono::seconds(10));
+                    
+                    // Check if instance still exists and is running
+                    {
+                        std::lock_guard<std::mutex> lock(mutex_);
+                        auto instanceIt = instances_.find(instanceId);
+                        if (instanceIt == instances_.end() || !instanceIt->second.running) {
+                            // Instance deleted or stopped, exit logging thread
+                            break;
+                        }
+                    }
+                    
+                    // Log processing results
+                    if (!hasRTMPOutput(instanceId)) {
+                        logProcessingResults(instanceId);
+                    } else {
+                        // Instance now has RTMP output, stop logging
+                        break;
+                    }
+                }
+            }).detach(); // Detach thread so it runs independently
         }
     }
     
@@ -1315,5 +1395,133 @@ bool InstanceRegistry::rebuildPipelineFromInstanceInfo(const std::string& instan
         std::cerr << "[InstanceRegistry] Unknown error rebuilding pipeline for instance " << instanceId << std::endl;
         return false;
     }
+}
+
+bool InstanceRegistry::hasRTMPOutput(const std::string& instanceId) const {
+    std::lock_guard<std::mutex> lock(mutex_);
+    
+    // Check if instance exists
+    auto instanceIt = instances_.find(instanceId);
+    if (instanceIt == instances_.end()) {
+        return false;
+    }
+    
+    // Check if RTMP_URL is in additionalParams
+    const auto& additionalParams = instanceIt->second.additionalParams;
+    if (additionalParams.find("RTMP_URL") != additionalParams.end() && 
+        !additionalParams.at("RTMP_URL").empty()) {
+        return true;
+    }
+    
+    // Check if rtmpUrl field is set
+    if (!instanceIt->second.rtmpUrl.empty()) {
+        return true;
+    }
+    
+    // Check if pipeline has RTMP destination node
+    auto pipelineIt = pipelines_.find(instanceId);
+    if (pipelineIt != pipelines_.end()) {
+        for (const auto& node : pipelineIt->second) {
+            if (std::dynamic_pointer_cast<cvedix_nodes::cvedix_rtmp_des_node>(node)) {
+                return true;
+            }
+        }
+    }
+    
+    return false;
+}
+
+void InstanceRegistry::logProcessingResults(const std::string& instanceId) const {
+    std::lock_guard<std::mutex> lock(mutex_);
+    
+    // Check if instance exists
+    auto instanceIt = instances_.find(instanceId);
+    if (instanceIt == instances_.end()) {
+        return;
+    }
+    
+    const InstanceInfo& info = instanceIt->second;
+    
+    // Only log for running instances
+    if (!info.running) {
+        return;
+    }
+    
+    // Get current timestamp
+    auto now = std::chrono::system_clock::now();
+    auto time_t = std::chrono::system_clock::to_time_t(now);
+    auto ms = std::chrono::duration_cast<std::chrono::milliseconds>(
+        now.time_since_epoch()) % 1000;
+    
+    std::stringstream ss;
+    ss << std::put_time(std::localtime(&time_t), "%Y-%m-%d %H:%M:%S");
+    ss << '.' << std::setfill('0') << std::setw(3) << ms.count();
+    std::string timestamp = ss.str();
+    
+    // Log processing results
+    std::cerr << "[InstanceProcessingLog] ========================================" << std::endl;
+    std::cerr << "[InstanceProcessingLog] [" << timestamp << "] Instance: " << info.displayName 
+              << " (" << instanceId << ")" << std::endl;
+    std::cerr << "[InstanceProcessingLog] Solution: " << info.solutionName 
+              << " (" << info.solutionId << ")" << std::endl;
+    std::cerr << "[InstanceProcessingLog] Status: RUNNING" << std::endl;
+    std::cerr << "[InstanceProcessingLog] FPS: " << std::fixed << std::setprecision(2) << info.fps << std::endl;
+    
+    // Log input source
+    if (!info.filePath.empty()) {
+        std::cerr << "[InstanceProcessingLog] Input Source: FILE - " << info.filePath << std::endl;
+    } else if (info.additionalParams.find("RTSP_URL") != info.additionalParams.end()) {
+        std::cerr << "[InstanceProcessingLog] Input Source: RTSP - " 
+                  << info.additionalParams.at("RTSP_URL") << std::endl;
+    } else if (info.additionalParams.find("FILE_PATH") != info.additionalParams.end()) {
+        std::cerr << "[InstanceProcessingLog] Input Source: FILE - " 
+                  << info.additionalParams.at("FILE_PATH") << std::endl;
+    }
+    
+    // Log output type
+    if (hasRTMPOutput(instanceId)) {
+        std::cerr << "[InstanceProcessingLog] Output: RTMP Stream" << std::endl;
+        if (!info.rtmpUrl.empty()) {
+            std::cerr << "[InstanceProcessingLog] RTMP URL: " << info.rtmpUrl << std::endl;
+        } else if (info.additionalParams.find("RTMP_URL") != info.additionalParams.end()) {
+            std::cerr << "[InstanceProcessingLog] RTMP URL: " 
+                      << info.additionalParams.at("RTMP_URL") << std::endl;
+        }
+    } else {
+        std::cerr << "[InstanceProcessingLog] Output: File-based (no RTMP stream)" << std::endl;
+        
+        // Check for file destination output directory
+        auto pipelineIt = pipelines_.find(instanceId);
+        if (pipelineIt != pipelines_.end()) {
+            // Try to determine output directory from file_des node
+            // Output is typically in ./output/{instanceId} or ./build/output/{instanceId}
+            std::cerr << "[InstanceProcessingLog] Output Directory: ./output/" << instanceId 
+                      << " (or ./build/output/" << instanceId << ")" << std::endl;
+        }
+    }
+    
+    // Log detection settings
+    std::cerr << "[InstanceProcessingLog] Detection Sensitivity: " << info.detectionSensitivity << std::endl;
+    if (!info.detectorMode.empty()) {
+        std::cerr << "[InstanceProcessingLog] Detector Mode: " << info.detectorMode << std::endl;
+    }
+    
+    // Log processing modes
+    if (info.statisticsMode) {
+        std::cerr << "[InstanceProcessingLog] Statistics Mode: ENABLED" << std::endl;
+    }
+    if (info.metadataMode) {
+        std::cerr << "[InstanceProcessingLog] Metadata Mode: ENABLED" << std::endl;
+    }
+    if (info.debugMode) {
+        std::cerr << "[InstanceProcessingLog] Debug Mode: ENABLED" << std::endl;
+    }
+    
+    // Log frame rate limit if set
+    if (info.frameRateLimit > 0) {
+        std::cerr << "[InstanceProcessingLog] Frame Rate Limit: " << info.frameRateLimit << " fps" << std::endl;
+    }
+    
+    std::cerr << "[InstanceProcessingLog] ========================================" << std::endl;
 }
 
