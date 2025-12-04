@@ -43,7 +43,7 @@ Thumbs.db
 
 # Project specific
 task/
-
+sample/
 # Environment files
 .env
 .env.local

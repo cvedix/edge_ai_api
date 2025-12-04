@@ -58,6 +58,14 @@ Environment="API_PORT=8080"
 | `THREAD_NUM` | Số lượng worker threads (0 = auto, minimum 8 for AI) | `0` | `src/main.cpp` |
 | `LOG_LEVEL` | Mức độ logging (TRACE/DEBUG/INFO/WARN/ERROR) | `INFO` | `src/main.cpp` |
 
+#### Logging Configuration
+| Biến | Mô tả | Mặc định | File sử dụng |
+|------|-------|----------|--------------|
+| `LOG_DIR` | Thư mục lưu log files | `./logs` | `src/core/log_manager.cpp` |
+| `LOG_RETENTION_DAYS` | Số ngày giữ logs (tự động xóa sau thời gian này) | `30` | `src/core/log_manager.cpp` |
+| `LOG_MAX_DISK_USAGE_PERCENT` | Ngưỡng dung lượng đĩa để trigger cleanup (%) | `85` | `src/core/log_manager.cpp` |
+| `LOG_CLEANUP_INTERVAL_HOURS` | Khoảng thời gian kiểm tra và cleanup (giờ) | `24` | `src/core/log_manager.cpp` |
+
 #### Performance Optimization Settings
 | Biến | Mô tả | Mặc định | File sử dụng |
 |------|-------|----------|--------------|
