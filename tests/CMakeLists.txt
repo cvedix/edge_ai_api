@@ -24,6 +24,7 @@ set(TEST_SOURCES
     test_swagger_handler.cpp
     test_watchdog_handler.cpp
     test_endpoints_handler.cpp
+    test_instance_storage.cpp
     test_main.cpp
 )
 
@@ -54,6 +55,7 @@ target_sources(edge_ai_api_tests PRIVATE
     ${CMAKE_SOURCE_DIR}/src/core/health_monitor.cpp
     ${CMAKE_SOURCE_DIR}/src/core/endpoint_monitor.cpp
     ${CMAKE_SOURCE_DIR}/src/core/request_middleware.cpp
+    ${CMAKE_SOURCE_DIR}/src/instances/instance_storage.cpp
 )
 
 # Link jsoncpp if available
