@@ -15,6 +15,9 @@
 #include "core/solution_registry.h"
 #include "core/pipeline_builder.h"
 #include "instances/instance_storage.h"
+#include <cvedix/utils/analysis_board/cvedix_analysis_board.h>
+#include <cvedix/nodes/src/cvedix_rtsp_src_node.h>
+#include <cvedix/nodes/src/cvedix_file_src_node.h>
 #include <iostream>
 #include <csignal>
 #include <cstdlib>
@@ -28,6 +31,8 @@
 #include <atomic>
 #include <string>
 #include <future>
+#include <vector>
+#include <fstream>
 
 /**
  * @brief Edge AI API Server
@@ -49,6 +54,15 @@ static InstanceRegistry* g_instance_registry = nullptr;
 
 // Flag to prevent multiple handlers from stopping instances simultaneously
 static std::atomic<bool> g_cleanup_in_progress{false};
+
+// Global debug flag
+static std::atomic<bool> g_debug_mode{false};
+
+// Global analysis board thread management
+static std::unique_ptr<std::thread> g_analysis_board_display_thread;
+static std::atomic<bool> g_stop_analysis_board{false};
+static std::atomic<bool> g_analysis_board_running{false};
+static std::atomic<bool> g_analysis_board_disabled{false}; // Flag to disable after Qt abort
 
 // Signal handler for graceful shutdown
 void signalHandler(int signal)
@@ -192,6 +206,25 @@ void signalHandler(int signal)
             std::abort();
         }
     } else if (signal == SIGABRT) {
+        // SIGABRT can be triggered by:
+        // 1. OpenCV DNN shape mismatch (recover by stopping instances)
+        // 2. Qt display error in analysis board (don't stop instances, just disable board)
+        
+        // Check if analysis board is running - if so, this is likely a Qt display error
+        if (g_analysis_board_running.load() || g_debug_mode.load()) {
+            std::cerr << "[RECOVERY] Received SIGABRT signal - likely due to Qt display error in analysis board" << std::endl;
+            std::cerr << "[RECOVERY] Analysis board cannot connect to display - disabling analysis board" << std::endl;
+            std::cerr << "[RECOVERY] Server will continue running - instances are NOT affected" << std::endl;
+            
+            // Disable analysis board permanently
+            g_analysis_board_disabled = true;
+            g_analysis_board_running = false;
+            
+            // Don't stop instances - this is just a display error, not a pipeline error
+            // Return to allow server to continue
+            return;
+        }
+        
         // SIGABRT is sent when assertion fails (like OpenCV DNN shape mismatch)
         // For shape mismatch errors, we want to recover instead of crashing
         std::cerr << "[RECOVERY] Received SIGABRT signal - likely due to OpenCV DNN shape mismatch" << std::endl;
@@ -421,6 +454,325 @@ void recoveryAction()
 }
 
 /**
+ * @brief Parse command line arguments
+ * @param argc Argument count
+ * @param argv Argument vector
+ * @return true if parsing successful, false if help requested
+ */
+bool parseArguments(int argc, char* argv[])
+{
+    for (int i = 1; i < argc; ++i) {
+        std::string arg = argv[i];
+        if (arg == "--debug" || arg == "-d") {
+            g_debug_mode = true;
+            std::cerr << "[Main] Debug mode enabled - analysis board will be displayed" << std::endl;
+        } else if (arg == "--help" || arg == "-h") {
+            std::cerr << "Usage: " << argv[0] << " [OPTIONS]" << std::endl;
+            std::cerr << "Options:" << std::endl;
+            std::cerr << "  --debug, -d    Enable debug mode (display analysis board)" << std::endl;
+            std::cerr << "  --help, -h    Show this help message" << std::endl;
+            return false;
+        } else {
+            std::cerr << "Unknown option: " << arg << std::endl;
+            std::cerr << "Use --help for usage information" << std::endl;
+            return false;
+        }
+    }
+    return true;
+}
+
+/**
+ * @brief Check if display is available and actually working
+ */
+static bool has_display() {
+#if defined(_WIN32)
+    return true;
+#else
+    const char *display = std::getenv("DISPLAY");
+    const char *wayland = std::getenv("WAYLAND_DISPLAY");
+    
+    // Check if DISPLAY or WAYLAND_DISPLAY is set
+    if (!display && !wayland) {
+        return false;
+    }
+    
+    // Try to verify X server is actually running (for X11)
+    if (display && display[0] != '\0') {
+        // Check if X11 socket exists
+        std::string displayStr(display);
+        if (displayStr[0] == ':') {
+            std::string socketPath = "/tmp/.X11-unix/X" + displayStr.substr(1);
+            // Check if socket file exists
+            std::ifstream socketFile(socketPath);
+            if (!socketFile.good()) {
+                // Socket doesn't exist - X server is not running
+                return false;
+            }
+        }
+        
+        // Try to test X server connection using xdpyinfo if available
+        // This is a more reliable check
+        std::string testCmd = "timeout 1 xdpyinfo -display " + std::string(display) + " >/dev/null 2>&1";
+        int status = std::system(testCmd.c_str());
+        if (status != 0) {
+            // xdpyinfo failed or not available - assume display is not accessible
+            // Note: If xdpyinfo is not installed, this will fail but we'll still try
+            // The actual Qt connection test will catch the real error
+            return false;
+        }
+    }
+    
+    return true;
+#endif
+}
+
+/**
+ * @brief Thread function to run analysis board display (blocking call)
+ */
+void runAnalysisBoardDisplay(const std::vector<std::shared_ptr<cvedix_nodes::cvedix_node>>& sourceNodes)
+{
+    // Set thread name for debugging
+    #ifdef __GLIBC__
+    pthread_setname_np(pthread_self(), "analysis-board");
+    #endif
+    
+    // Note: We can't easily catch SIGABRT in a thread-specific way
+    // Qt will abort if display is not accessible, which will trigger global SIGABRT handler
+    // The best we can do is catch exceptions during board creation
+    
+    // Mark thread as running
+    g_analysis_board_running = true;
+    
+    try {
+        PLOG_INFO << "[Debug] Creating analysis board for " << sourceNodes.size() << " running instance(s)";
+        
+        // Check if analysis board is disabled (due to previous Qt abort)
+        if (g_analysis_board_disabled.load()) {
+            PLOG_WARNING << "[Debug] Analysis board is disabled (Qt display error detected previously)";
+            g_analysis_board_running = false;
+            return;
+        }
+        
+        // Double-check display before creating board
+        if (!has_display()) {
+            PLOG_WARNING << "[Debug] Display not available when creating board - skipping";
+            g_analysis_board_running = false;
+            return;
+        }
+        
+        // Try to create board - this may throw if display is not accessible
+        std::unique_ptr<cvedix_utils::cvedix_analysis_board> board;
+        try {
+            board = std::make_unique<cvedix_utils::cvedix_analysis_board>(sourceNodes);
+            PLOG_INFO << "[Debug] Analysis board created successfully";
+        } catch (const std::exception& e) {
+            std::cerr << "[Debug] Failed to create analysis board: " << e.what() << std::endl;
+            PLOG_ERROR << "[Debug] Failed to create analysis board: " << e.what();
+            PLOG_WARNING << "[Debug] This usually means X server is not accessible. Analysis board disabled.";
+            g_analysis_board_disabled = true; // Disable permanently to prevent retry
+            g_analysis_board_running = false;
+            return;
+        } catch (...) {
+            std::cerr << "[Debug] Unknown error creating analysis board" << std::endl;
+            PLOG_ERROR << "[Debug] Unknown error creating analysis board";
+            g_analysis_board_disabled = true; // Disable permanently to prevent retry
+            g_analysis_board_running = false;
+            return;
+        }
+        
+        // CRITICAL: Do NOT call board.display() if display is not accessible
+        // Qt will abort if it cannot connect to display, and we can't catch that abort reliably
+        // So we must verify display is accessible BEFORE calling display()
+        
+        // Final check: Test X server connection before calling display()
+        const char *display = std::getenv("DISPLAY");
+        if (display && display[0] != '\0') {
+            // Try to test X server connection using xdpyinfo
+            std::string testCmd = "timeout 1 xdpyinfo -display " + std::string(display) + " >/dev/null 2>&1";
+            int status = std::system(testCmd.c_str());
+            if (status != 0) {
+                PLOG_WARNING << "[Debug] X server connection test failed - not calling board.display()";
+                PLOG_WARNING << "[Debug] This prevents Qt abort. Analysis board disabled.";
+                g_analysis_board_disabled = true;
+                g_analysis_board_running = false;
+                return;
+            }
+            PLOG_INFO << "[Debug] X server connection test passed";
+        }
+        
+        // If we reach here, display is verified to be accessible
+        // Now we can safely call board.display()
+        PLOG_INFO << "[Debug] Starting analysis board display (blocking call)";
+        PLOG_INFO << "[Debug] Display verified - calling board.display()";
+        
+        // Try to display - this should work now since we verified display
+        try {
+            // display() refreshes every 1 second and doesn't auto-close
+            // This is a blocking call that should run until shutdown
+            board->display(1, false);
+            
+            // If we reach here, display() returned (shouldn't happen for blocking call)
+            PLOG_WARNING << "[Debug] Analysis board display() returned unexpectedly";
+            g_analysis_board_disabled = true;
+        } catch (const std::exception& e) {
+            std::cerr << "[Debug] Exception displaying analysis board: " << e.what() << std::endl;
+            PLOG_ERROR << "[Debug] Exception displaying analysis board: " << e.what();
+            g_analysis_board_disabled = true;
+        } catch (...) {
+            std::cerr << "[Debug] Unknown exception displaying analysis board" << std::endl;
+            PLOG_ERROR << "[Debug] Unknown exception displaying analysis board";
+            g_analysis_board_disabled = true;
+        }
+    } catch (const std::exception& e) {
+        std::cerr << "[Debug] Error in analysis board thread: " << e.what() << std::endl;
+        PLOG_ERROR << "[Debug] Error in analysis board thread: " << e.what();
+        // Don't rethrow - just log and exit thread
+    } catch (...) {
+        std::cerr << "[Debug] Unknown error in analysis board thread" << std::endl;
+        PLOG_ERROR << "[Debug] Unknown error in analysis board thread";
+        // Don't rethrow - just log and exit thread
+    }
+    
+    // Mark thread as stopped
+    g_analysis_board_running = false;
+    PLOG_INFO << "[Debug] Analysis board display thread stopped";
+}
+
+/**
+ * @brief Debug thread function to display analysis board for running instances
+ */
+void debugAnalysisBoardThread()
+{
+    if (!g_instance_registry) {
+        return;
+    }
+    
+    // Check if display is available
+    bool display_available = has_display();
+    if (!display_available) {
+        PLOG_WARNING << "[Debug] DISPLAY/WAYLAND not found. Analysis board requires display to work.";
+        PLOG_WARNING << "[Debug] Analysis board will be disabled. Set DISPLAY or WAYLAND_DISPLAY environment variable to enable.";
+        PLOG_WARNING << "[Debug] Example: export DISPLAY=:0 before running server";
+        // Keep thread running but don't try to display board
+        while (!g_shutdown && g_debug_mode.load()) {
+            std::this_thread::sleep_for(std::chrono::seconds(5));
+        }
+        return;
+    }
+    
+    PLOG_INFO << "[Debug] Analysis board thread started (display available)";
+    
+    size_t lastSourceNodeCount = 0;
+    
+    while (!g_shutdown && g_debug_mode.load()) {
+        try {
+            // Get source nodes from all running instances
+            auto sourceNodes = g_instance_registry->getSourceNodesFromRunningInstances();
+            
+            // If we have source nodes, create and display analysis board
+            if (!sourceNodes.empty()) {
+                // Check if analysis board is disabled
+                if (g_analysis_board_disabled.load()) {
+                    // Analysis board is disabled - just sleep and check again
+                    std::this_thread::sleep_for(std::chrono::seconds(5));
+                    continue;
+                }
+                
+                // Check if we need to create/update the board
+                bool needUpdate = false;
+                
+                if (sourceNodes.size() != lastSourceNodeCount) {
+                    needUpdate = true;
+                    PLOG_INFO << "[Debug] Instance count changed: " << lastSourceNodeCount 
+                              << " -> " << sourceNodes.size();
+                }
+                
+                // Check if board thread is actually running (using atomic flag)
+                bool threadRunning = g_analysis_board_running.load();
+                
+                // Only create new thread if not running and we have instances
+                if (!threadRunning) {
+                    // Create new board with current source nodes
+                    auto sourceNodesCopy = sourceNodes; // Copy for thread
+                    g_stop_analysis_board = false;
+                    g_analysis_board_display_thread = std::make_unique<std::thread>(
+                        runAnalysisBoardDisplay, sourceNodesCopy
+                    );
+                    g_analysis_board_display_thread->detach(); // Detach so it runs independently
+                    
+                    lastSourceNodeCount = sourceNodes.size();
+                    PLOG_INFO << "[Debug] Analysis board display thread started";
+                    
+                    // Wait a bit for thread to initialize and set running flag
+                    std::this_thread::sleep_for(std::chrono::milliseconds(500));
+                    
+                    // Check if thread is still running after initialization
+                    // Wait a bit longer to see if thread exits due to Qt abort
+                    std::this_thread::sleep_for(std::chrono::milliseconds(2000));
+                    
+                    if (!g_analysis_board_running.load()) {
+                        PLOG_WARNING << "[Debug] Analysis board thread exited early (likely Qt display error)";
+                        PLOG_WARNING << "[Debug] Analysis board disabled - Qt cannot connect to display";
+                        PLOG_WARNING << "[Debug] To enable: ensure X server is running and DISPLAY is set correctly";
+                        // Disable analysis board permanently to prevent retry
+                        g_analysis_board_disabled = true;
+                        g_analysis_board_running.store(true); // Set to true to prevent retry
+                        lastSourceNodeCount = sourceNodes.size(); // Update count to prevent retry
+                    } else {
+                        PLOG_INFO << "[Debug] Analysis board thread is running successfully";
+                    }
+                } else {
+                    // Thread is running - just update count
+                    if (needUpdate) {
+                        PLOG_INFO << "[Debug] Analysis board already running with " << lastSourceNodeCount 
+                                  << " instance(s) - current: " << sourceNodes.size();
+                    }
+                    lastSourceNodeCount = sourceNodes.size();
+                }
+                
+                // Sleep a bit before checking again
+                std::this_thread::sleep_for(std::chrono::seconds(2));
+            } else {
+                // No running instances
+                if (lastSourceNodeCount > 0) {
+                    PLOG_INFO << "[Debug] No running instances - waiting for instances to start...";
+                    lastSourceNodeCount = 0;
+                }
+                
+                // Stop board display thread if running
+                // Note: board.display() is blocking, so we can't easily stop it
+                // It will stop when instances are stopped or when Qt error occurs
+                // Just reset the flag - thread will set g_analysis_board_running = false when it exits
+                if (g_analysis_board_running.load()) {
+                    g_stop_analysis_board = true;
+                    // Thread will exit on its own when board.display() fails or instances stop
+                }
+                g_analysis_board_display_thread.reset();
+                
+                // Sleep a bit before checking again
+                std::this_thread::sleep_for(std::chrono::seconds(2));
+            }
+        } catch (const std::exception& e) {
+            std::cerr << "[Debug] Error in analysis board thread: " << e.what() << std::endl;
+            PLOG_ERROR << "[Debug] Error in analysis board thread: " << e.what();
+            std::this_thread::sleep_for(std::chrono::seconds(5));
+        } catch (...) {
+            std::cerr << "[Debug] Unknown error in analysis board thread" << std::endl;
+            PLOG_ERROR << "[Debug] Unknown error in analysis board thread";
+            std::this_thread::sleep_for(std::chrono::seconds(5));
+        }
+    }
+    
+    // Cleanup: stop board display thread
+    if (g_analysis_board_display_thread && g_analysis_board_display_thread->joinable()) {
+        g_stop_analysis_board = true;
+        g_analysis_board_display_thread.reset();
+    }
+    
+    PLOG_INFO << "[Debug] Analysis board thread stopped";
+}
+
+/**
  * @brief Validate and parse port number
  */
 uint16_t parsePort(const char* port_str, uint16_t default_port)
@@ -448,15 +800,23 @@ uint16_t parsePort(const char* port_str, uint16_t default_port)
     }
 }
 
-int main()
+int main(int argc, char* argv[])
 {
     try {
+        // Parse command line arguments
+        if (!parseArguments(argc, argv)) {
+            return 0; // Help was requested, exit normally
+        }
+        
         // Initialize logger first (before any logging)
         Logger::init();
         
         PLOG_INFO << "========================================";
         PLOG_INFO << "Edge AI API Server";
         PLOG_INFO << "========================================";
+        if (g_debug_mode.load()) {
+            PLOG_INFO << "Debug mode: ENABLED";
+        }
         PLOG_INFO << "Starting REST API server...";
 
         // Register signal handlers for graceful shutdown and crash prevention
@@ -567,6 +927,14 @@ int main()
         PLOG_INFO << "[Main] Watchdog and health monitor started";
         PLOG_INFO << "  GET /v1/core/watchdog - Watchdog status";
 
+        // Start debug analysis board thread if debug mode is enabled
+        std::thread debugThread;
+        if (g_debug_mode.load()) {
+            PLOG_INFO << "[Main] Starting debug analysis board thread...";
+            debugThread = std::thread(debugAnalysisBoardThread);
+            debugThread.detach(); // Detach so it runs independently
+        }
+
         // Set HTTP server configuration from environment variables
         size_t max_body_size = EnvConfig::getSizeT("CLIENT_MAX_BODY_SIZE", 1024 * 1024); // Default: 1MB
         size_t max_memory_body_size = EnvConfig::getSizeT("CLIENT_MAX_MEMORY_BODY_SIZE", 1024 * 1024); // Default: 1MB
@@ -649,6 +1017,7 @@ int main()
         }
 
         // Cleanup
+        // Note: Debug thread will stop automatically when g_shutdown is true
         if (g_health_monitor) {
             g_health_monitor->stop();
         }
