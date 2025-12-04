@@ -1,7 +1,30 @@
 openapi: 3.0.3
 info:
   title: Edge AI API
-  description: REST API for Edge AI operations and management
+  description: |
+    REST API for Edge AI operations and management.
+    
+    ## Logging Features
+    
+    The server supports detailed logging features that can be enabled via command-line arguments:
+    
+    - **API Logging** (`--log-api` or `--debug-api`): Logs all API requests and responses with response times
+    - **Instance Execution Logging** (`--log-instance` or `--debug-instance`): Logs instance lifecycle events (start/stop/status)
+    - **SDK Output Logging** (`--log-sdk-output` or `--debug-sdk-output`): Logs SDK output when instances process data
+    
+    Example usage:
+    ```bash
+    ./edge_ai_api --log-api --log-instance --log-sdk-output
+    ```
+    
+    For more details, see the [Logging Documentation](../docs/LOGGING.md).
+    
+    ## Swagger UI
+    
+    This API provides Swagger UI for interactive testing and exploration:
+    - Access Swagger UI at `/swagger` or `/v1/swagger`
+    - OpenAPI specification available at `/openapi.yaml` or `/v1/openapi.yaml`
+    - Server URLs are automatically updated based on environment variables (`API_HOST` and `API_PORT`)
   version: 1.0.0
   contact:
     name: Edge AI API Support
