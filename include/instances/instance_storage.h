@@ -1,6 +1,7 @@
 #pragma once
 
 #include "instances/instance_info.h"
+#include <json/json.h>
 #include <string>
 #include <vector>
 #include <optional>
@@ -59,6 +60,48 @@ public:
      */
     std::string getStorageDir() const { return storage_dir_; }
     
+    /**
+     * @brief Validate InstanceInfo before conversion
+     * @param info InstanceInfo to validate
+     * @param error Error message output
+     * @return true if valid, false otherwise
+     */
+    bool validateInstanceInfo(const InstanceInfo& info, std::string& error) const;
+    
+    /**
+     * @brief Validate JSON config object before conversion
+     * @param config JSON config to validate
+     * @param error Error message output
+     * @return true if valid, false otherwise
+     */
+    bool validateConfigJson(const Json::Value& config, std::string& error) const;
+    
+    /**
+     * @brief Merge new config into existing config, preserving complex nested structures
+     * @param existingConfig Existing config (will be modified)
+     * @param newConfig New config to merge
+     * @param preserveKeys List of keys to preserve from existing config (e.g., "TensorRT", "Zone", etc.)
+     * @return true if merge successful
+     */
+    bool mergeConfigs(Json::Value& existingConfig, const Json::Value& newConfig, 
+                     const std::vector<std::string>& preserveKeys = {}) const;
+    
+    /**
+     * @brief Convert InstanceInfo to JSON config object (new format)
+     * @param info InstanceInfo to convert
+     * @param error Optional error message output
+     * @return JSON config object, or empty object on error
+     */
+    Json::Value instanceInfoToConfigJson(const InstanceInfo& info, std::string* error = nullptr) const;
+    
+    /**
+     * @brief Convert JSON config object to InstanceInfo
+     * @param config JSON config object to convert
+     * @param error Optional error message output
+     * @return InstanceInfo if successful, empty optional on error
+     */
+    std::optional<InstanceInfo> configJsonToInstanceInfo(const Json::Value& config, std::string* error = nullptr) const;
+    
 private:
     std::string storage_dir_;
     
@@ -68,18 +111,18 @@ private:
     void ensureStorageDir() const;
     
     /**
-     * @brief Get file path for instance
+     * @brief Get file path for instances.json
      */
-    std::string getInstanceFilePath(const std::string& instanceId) const;
+    std::string getInstancesFilePath() const;
     
     /**
-     * @brief Convert InstanceInfo to JSON
+     * @brief Load entire instances.json file
      */
-    std::string instanceInfoToJson(const InstanceInfo& info) const;
+    Json::Value loadInstancesFile() const;
     
     /**
-     * @brief Convert JSON to InstanceInfo
+     * @brief Save entire instances.json file
      */
-    std::optional<InstanceInfo> jsonToInstanceInfo(const std::string& json) const;
+    bool saveInstancesFile(const Json::Value& instances) const;
 };
 
