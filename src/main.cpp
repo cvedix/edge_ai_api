@@ -27,6 +27,7 @@
 #include <exception>
 #include <atomic>
 #include <string>
+#include <future>
 
 /**
  * @brief Edge AI API Server
@@ -53,18 +54,143 @@ static std::atomic<bool> g_cleanup_in_progress{false};
 void signalHandler(int signal)
 {
     if (signal == SIGINT || signal == SIGTERM) {
-        PLOG_INFO << "Received signal " << signal << ", shutting down gracefully...";
-        g_shutdown = true;
+        static std::atomic<int> signal_count{0};
+        int count = signal_count.fetch_add(1) + 1;
         
-        // Stop watchdog and health monitor
-        if (g_health_monitor) {
-            g_health_monitor->stop();
+        if (count == 1) {
+            // First signal - attempt graceful shutdown
+            PLOG_INFO << "Received signal " << signal << ", shutting down gracefully...";
+            std::cerr << "[SHUTDOWN] Received signal " << signal << ", shutting down gracefully..." << std::endl;
+            std::cerr << "[SHUTDOWN] Press Ctrl+C again to force immediate exit" << std::endl;
+            g_shutdown = true;
+            
+            // Stop all instances first (this is critical for clean shutdown)
+            // Use a separate thread with timeout to avoid blocking
+            std::thread([]() {
+                if (g_instance_registry) {
+                    try {
+                        std::cerr << "[SHUTDOWN] Stopping all instances (timeout: 3 seconds)..." << std::endl;
+                        PLOG_INFO << "Stopping all instances before shutdown...";
+                        
+                        // Get list of instances (with timeout protection)
+                        std::vector<std::string> instances;
+                        try {
+                            instances = g_instance_registry->listInstances();
+                        } catch (...) {
+                            std::cerr << "[SHUTDOWN] Warning: Cannot list instances, skipping..." << std::endl;
+                            instances.clear();
+                        }
+                        
+                        // Stop instances with timeout protection
+                        // Use async with timeout to prevent blocking
+                        int stopped_count = 0;
+                        for (const auto& instanceId : instances) {
+                            if (!g_shutdown) break; // Check if force exit was requested
+                            
+                            try {
+                                auto optInfo = g_instance_registry->getInstance(instanceId);
+                                if (optInfo.has_value() && optInfo.value().running) {
+                                    std::cerr << "[SHUTDOWN] Stopping instance: " << instanceId << std::endl;
+                                    PLOG_INFO << "Stopping instance: " << instanceId;
+                                    
+                                    // Use async with timeout to prevent blocking
+                                    // Capture instanceId by value and use global registry
+                                    auto future = std::async(std::launch::async, [instanceId]() -> bool {
+                                        try {
+                                            if (g_instance_registry) {
+                                                g_instance_registry->stopInstance(instanceId);
+                                                return true;
+                                            }
+                                            return false;
+                                        } catch (...) {
+                                            return false;
+                                        }
+                                    });
+                                    
+                                    // Wait with timeout (1 second per instance)
+                                    auto status = future.wait_for(std::chrono::seconds(1));
+                                    if (status == std::future_status::timeout) {
+                                        std::cerr << "[SHUTDOWN] Warning: Instance " << instanceId << " stop timeout (1s), skipping..." << std::endl;
+                                        // Don't wait for it - continue with other instances
+                                    } else if (status == std::future_status::ready) {
+                                        try {
+                                            if (future.get()) {
+                                                stopped_count++;
+                                            }
+                                        } catch (...) {
+                                            // Ignore errors from get()
+                                        }
+                                    }
+                                }
+                            } catch (const std::exception& e) {
+                                PLOG_WARNING << "Failed to stop instance " << instanceId << ": " << e.what();
+                                std::cerr << "[SHUTDOWN] Warning: Failed to stop instance " << instanceId << ": " << e.what() << std::endl;
+                            } catch (...) {
+                                PLOG_WARNING << "Failed to stop instance " << instanceId << " (unknown error)";
+                                std::cerr << "[SHUTDOWN] Warning: Failed to stop instance " << instanceId << " (unknown error)" << std::endl;
+                            }
+                        }
+                        std::cerr << "[SHUTDOWN] Stopped " << stopped_count << " instance(s)" << std::endl;
+                        PLOG_INFO << "All instances stopped";
+                    } catch (const std::exception& e) {
+                        PLOG_WARNING << "Error stopping instances: " << e.what();
+                        std::cerr << "[SHUTDOWN] Warning: Error stopping instances: " << e.what() << std::endl;
+                    } catch (...) {
+                        PLOG_WARNING << "Error stopping instances (unknown error)";
+                        std::cerr << "[SHUTDOWN] Warning: Error stopping instances (unknown error)" << std::endl;
+                    }
+                }
+                
+                // Stop watchdog and health monitor (quick, should not block)
+                if (g_health_monitor) {
+                    try {
+                        g_health_monitor->stop();
+                    } catch (...) {
+                        // Ignore errors
+                    }
+                }
+                if (g_watchdog) {
+                    try {
+                        g_watchdog->stop();
+                    } catch (...) {
+                        // Ignore errors
+                    }
+                }
+                
+                // Request Drogon to quit
+                std::cerr << "[SHUTDOWN] Requesting Drogon to quit..." << std::endl;
+                try {
+                    drogon::app().quit();
+                } catch (...) {
+                    // Ignore errors
+                }
+            }).detach();
+            
+            // Start shutdown timer thread - force exit after 1 second if still running
+            // Very short timeout to ensure fast response when instances are stuck
+            std::thread([]() {
+                std::this_thread::sleep_for(std::chrono::seconds(1));
+                if (g_shutdown) {
+                    PLOG_WARNING << "Shutdown timeout reached - forcing exit";
+                    std::cerr << "[CRITICAL] Shutdown timeout (1s) - forcing exit NOW" << std::endl;
+                    std::fflush(stdout);
+                    std::fflush(stderr);
+                    // Use abort() to force immediate termination, bypassing all cleanup
+                    // This sends SIGABRT which cannot be ignored
+                    std::abort();
+                }
+            }).detach();
+        } else {
+            // Second signal (Ctrl+C again) - force immediate exit
+            // This should happen immediately, no delays, no cleanup
+            PLOG_WARNING << "Received signal " << signal << " again (" << count << " times) - forcing immediate exit";
+            std::cerr << "[CRITICAL] Force exit requested (signal received " << count << " times) - ABORTING NOW" << std::endl;
+            std::fflush(stdout);
+            std::fflush(stderr);
+            // Use abort() to force immediate termination
+            // This bypasses all destructors and cleanup, ensuring immediate exit
+            std::abort();
         }
-        if (g_watchdog) {
-            g_watchdog->stop();
-        }
-        
-        drogon::app().quit();
     } else if (signal == SIGABRT) {
         // SIGABRT is sent when assertion fails (like OpenCV DNN shape mismatch)
         // For shape mismatch errors, we want to recover instead of crashing
