@@ -81,6 +81,17 @@ void signalHandler(int signal)
 {
     if (signal == SIGINT || signal == SIGTERM) {
         static std::atomic<int> signal_count{0};
+        static std::atomic<bool> signal_handling{false};
+        
+        // Prevent multiple signal handlers from running simultaneously
+        // Use compare_exchange to ensure only one handler runs at a time
+        bool expected = false;
+        if (!signal_handling.compare_exchange_strong(expected, true)) {
+            // Another handler is already running, just increment count and return
+            signal_count.fetch_add(1);
+            return;
+        }
+        
         int count = signal_count.fetch_add(1) + 1;
         
         if (count == 1) {
@@ -89,6 +100,14 @@ void signalHandler(int signal)
             std::cerr << "[SHUTDOWN] Received signal " << signal << ", shutting down gracefully..." << std::endl;
             std::cerr << "[SHUTDOWN] Press Ctrl+C again to force immediate exit" << std::endl;
             g_shutdown = true;
+            
+            // CRITICAL: Call quit() immediately in signal handler (thread-safe in Drogon)
+            // This ensures the main event loop exits even if cleanup threads are slow
+            try {
+                drogon::app().quit();
+            } catch (...) {
+                // Ignore errors
+            }
             
             // Stop all instances first (this is critical for clean shutdown)
             // Use a separate thread with timeout to avoid blocking
@@ -111,7 +130,7 @@ void signalHandler(int signal)
                         // Use async with timeout to prevent blocking
                         int stopped_count = 0;
                         for (const auto& instanceId : instances) {
-                            if (!g_shutdown) break; // Check if force exit was requested
+                            if (g_force_exit.load()) break; // Check if force exit was requested
                             
                             try {
                                 auto optInfo = g_instance_registry->getInstance(instanceId);
@@ -182,14 +201,6 @@ void signalHandler(int signal)
                         // Ignore errors
                     }
                 }
-                
-                // Request Drogon to quit
-                std::cerr << "[SHUTDOWN] Requesting Drogon to quit..." << std::endl;
-                try {
-                    drogon::app().quit();
-                } catch (...) {
-                    // Ignore errors
-                }
             }).detach();
             
             // Start shutdown timer thread - force exit after 3 seconds if still running
@@ -210,18 +221,7 @@ void signalHandler(int signal)
                     std::signal(SIGTERM, SIG_DFL);
                     std::signal(SIGABRT, SIG_DFL);
                     
-                    // Try to quit Drogon (non-blocking)
-                    try {
-                        drogon::app().quit();
-                    } catch (...) {
-                        // Ignore errors
-                    }
-                    
-                    // Use kill() with SIGKILL to force immediate termination
-                    // SIGKILL cannot be caught or ignored
-                    kill(getpid(), SIGKILL);
-                    
-                    // Fallback: if kill() somehow fails, use _exit()
+                    // Use _exit() immediately - no need to call quit() again
                     _exit(1);
                 }
             }).detach();
@@ -241,18 +241,7 @@ void signalHandler(int signal)
             std::signal(SIGTERM, SIG_DFL);
             std::signal(SIGABRT, SIG_DFL);
             
-            // Try to quit Drogon (non-blocking)
-            try {
-                drogon::app().quit();
-            } catch (...) {
-                // Ignore errors
-            }
-            
-            // Use kill() with SIGKILL to force immediate termination
-            // SIGKILL cannot be caught or ignored, ensuring immediate exit
-            kill(getpid(), SIGKILL);
-            
-            // Fallback: if kill() somehow fails, use _exit()
+            // Use _exit() immediately - this bypasses all cleanup and exits immediately
             _exit(1);
         }
     } else if (signal == SIGABRT) {
