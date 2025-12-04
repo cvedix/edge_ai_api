@@ -39,6 +39,7 @@ http://localhost:8848/v1/core
 | POST | `/instance` | Tạo instance mới |
 | GET | `/instances` | Liệt kê tất cả instances |
 | GET | `/instances/{instanceId}` | Lấy thông tin chi tiết instance |
+| GET | `/instances/{instanceId}/output` | Lấy output/processing results real-time của instance |
 | PUT | `/instances/{instanceId}` | Cập nhật instance |
 | POST | `/instances/{instanceId}/start` | Khởi động instance |
 | POST | `/instances/{instanceId}/stop` | Dừng instance |
@@ -117,7 +118,129 @@ curl -X POST http://localhost:8848/v1/core/instance \
 
 ## 2. READ - Đọc Thông Tin Instance
 
-### 2.1. Liệt kê tất cả instances
+### 2.1. Lấy Output/Processing Results Real-time
+
+**Endpoint mới:** `GET /v1/core/instances/{instanceId}/output`
+
+Lấy thông tin output và processing results real-time của instance tại thời điểm request.
+
+```bash
+curl -X GET http://localhost:8848/v1/core/instances/{instanceId}/output
+```
+
+**Response ví dụ (cho instance không có RTMP output):**
+```json
+{
+  "timestamp": "2025-01-15 14:30:25.123",
+  "instanceId": "abc-123-def",
+  "displayName": "face_detection_file_source",
+  "solutionId": "face_detection",
+  "solutionName": "Face Detection",
+  "running": true,
+  "loaded": true,
+  "metrics": {
+    "fps": 25.50,
+    "frameRateLimit": 0
+  },
+  "input": {
+    "type": "FILE",
+    "path": "/path/to/video.mp4"
+  },
+  "output": {
+    "type": "FILE",
+    "files": {
+      "exists": true,
+      "directory": "./output/abc-123-def",
+      "fileCount": 15,
+      "totalSizeBytes": 15728640,
+      "totalSize": "15 MB",
+      "latestFile": "face_detection_20250115_143025.mp4",
+      "latestFileTime": "2025-01-15 14:30:25",
+      "recentFileCount": 3,
+      "isActive": true
+    }
+  },
+  "detection": {
+    "sensitivity": "Low",
+    "mode": "SmartDetection",
+    "movementSensitivity": "Low",
+    "sensorModality": "RGB"
+  },
+  "modes": {
+    "statisticsMode": true,
+    "metadataMode": false,
+    "debugMode": true,
+    "diagnosticsMode": false
+  },
+  "status": {
+    "running": true,
+    "processing": true,
+    "message": "Instance is running and processing frames"
+  }
+}
+```
+
+**Response ví dụ (cho instance có RTMP output):**
+```json
+{
+  "timestamp": "2025-01-15 14:30:25.123",
+  "instanceId": "xyz-789",
+  "displayName": "face_detection_rtmp_stream",
+  "solutionId": "face_detection_rtmp",
+  "solutionName": "Face Detection RTMP",
+  "running": true,
+  "loaded": true,
+  "metrics": {
+    "fps": 30.0,
+    "frameRateLimit": 25
+  },
+  "input": {
+    "type": "FILE",
+    "path": "/path/to/video.mp4"
+  },
+  "output": {
+    "type": "RTMP_STREAM",
+    "rtmpUrl": "rtmp://localhost:1935/live/face_stream",
+    "rtspUrl": "rtsp://localhost:8554/live/face_stream_0"
+  },
+  "detection": {
+    "sensitivity": "High",
+    "mode": "SmartDetection",
+    "movementSensitivity": "Low",
+    "sensorModality": "RGB"
+  },
+  "modes": {
+    "statisticsMode": true,
+    "metadataMode": true,
+    "debugMode": false,
+    "diagnosticsMode": false
+  },
+  "status": {
+    "running": true,
+    "processing": true,
+    "message": "Instance is running and processing frames"
+  }
+}
+```
+
+**Các trường quan trọng:**
+
+| Trường | Mô tả |
+|--------|-------|
+| `timestamp` | Thời điểm lấy thông tin (real-time) |
+| `metrics.fps` | FPS hiện tại của instance |
+| `output.type` | Loại output: `FILE` hoặc `RTMP_STREAM` |
+| `output.files` | Thông tin file output (nếu type = FILE) |
+| `output.files.isActive` | `true` nếu có file mới được tạo trong 1 phút qua |
+| `status.processing` | `true` nếu instance đang xử lý frames (running && fps > 0) |
+
+**Sử dụng:**
+- Kiểm tra real-time xem instance có đang xử lý không
+- Xem số lượng file output và kích thước
+- Kiểm tra FPS hiện tại
+- Xác định loại output (FILE hoặc RTMP)
+
+### 2.2. Liệt kê tất cả instances
 ```bash
 curl -X GET http://localhost:8848/v1/core/instances
 ```
@@ -566,6 +689,9 @@ sudo journalctl -u edge-ai-api -f
 
 # Filter theo instance ID
 tail -f /var/log/edge_ai_api.log | grep {instanceId}
+
+# Filter theo processing logs (cho instances không có RTMP output)
+tail -f /var/log/edge_ai_api.log | grep InstanceProcessingLog
 ```
 
 **Các log message quan trọng:**
@@ -581,6 +707,53 @@ tail -f /var/log/edge_ai_api.log | grep {instanceId}
 - `Model loading failed`
 - `Pipeline error`
 - `Exception in`
+
+#### 8.3.1. Automatic Processing Result Logging
+
+**Tính năng tự động log kết quả xử lý:**
+
+Hệ thống tự động log kết quả xử lý real-time cho các instances **không có RTMP output**. Điều này giúp bạn theo dõi quá trình xử lý mà không cần kiểm tra output files hoặc stream.
+
+**Khi nào logging được kích hoạt:**
+- Instance không có `RTMP_URL` trong `additionalParams`
+- Instance không có RTMP destination node trong pipeline
+- Instance đang chạy (running = true)
+
+**Nội dung log bao gồm:**
+- Timestamp
+- Instance ID và tên
+- Solution ID và tên
+- Trạng thái (RUNNING)
+- FPS hiện tại
+- Input source (FILE hoặc RTSP URL)
+- Output type (File-based hoặc RTMP)
+- Detection settings (sensitivity, mode)
+- Processing modes (statistics, metadata, debug)
+- Frame rate limit (nếu có)
+
+**Tần suất log:**
+- Log ban đầu: Sau 2 giây khi instance start
+- Log định kỳ: Mỗi 10 giây một lần
+
+**Ví dụ log:**
+```
+[InstanceProcessingLog] ========================================
+[InstanceProcessingLog] [2025-01-15 14:30:25.123] Instance: face_detection_file_source (abc-123-def)
+[InstanceProcessingLog] Solution: Face Detection (face_detection)
+[InstanceProcessingLog] Status: RUNNING
+[InstanceProcessingLog] FPS: 25.50
+[InstanceProcessingLog] Input Source: FILE - /path/to/video.mp4
+[InstanceProcessingLog] Output: File-based (no RTMP stream)
+[InstanceProcessingLog] Output Directory: ./output/abc-123-def
+[InstanceProcessingLog] Detection Sensitivity: Low
+[InstanceProcessingLog] Statistics Mode: ENABLED
+[InstanceProcessingLog] ========================================
+```
+
+**Lưu ý:**
+- Logging chỉ áp dụng cho instances không có RTMP output
+- Nếu instance có RTMP output, bạn có thể xem kết quả trực tiếp qua stream
+- Logging tự động dừng khi instance bị stop hoặc delete
 
 ### 8.4. Checklist kiểm tra thành công
 
