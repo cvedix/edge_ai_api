@@ -1431,6 +1431,37 @@ bool InstanceRegistry::hasRTMPOutput(const std::string& instanceId) const {
     return false;
 }
 
+std::vector<std::shared_ptr<cvedix_nodes::cvedix_node>> InstanceRegistry::getSourceNodesFromRunningInstances() const {
+    std::lock_guard<std::mutex> lock(mutex_);
+    
+    std::vector<std::shared_ptr<cvedix_nodes::cvedix_node>> sourceNodes;
+    
+    // Iterate through all instances
+    for (const auto& [instanceId, info] : instances_) {
+        // Only get source nodes from running instances
+        if (!info.running) {
+            continue;
+        }
+        
+        // Get pipeline for this instance
+        auto pipelineIt = pipelines_.find(instanceId);
+        if (pipelineIt != pipelines_.end() && !pipelineIt->second.empty()) {
+            // Source node is always the first node in the pipeline
+            const auto& sourceNode = pipelineIt->second[0];
+            
+            // Verify it's a source node (RTSP or file source)
+            auto rtspNode = std::dynamic_pointer_cast<cvedix_nodes::cvedix_rtsp_src_node>(sourceNode);
+            auto fileNode = std::dynamic_pointer_cast<cvedix_nodes::cvedix_file_src_node>(sourceNode);
+            
+            if (rtspNode || fileNode) {
+                sourceNodes.push_back(sourceNode);
+            }
+        }
+    }
+    
+    return sourceNodes;
+}
+
 void InstanceRegistry::logProcessingResults(const std::string& instanceId) const {
     std::lock_guard<std::mutex> lock(mutex_);
     
