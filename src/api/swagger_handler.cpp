@@ -291,12 +291,25 @@ std::string SwaggerHandler::readOpenAPIFile(const std::string& version, const st
             auto elapsed = std::chrono::duration_cast<std::chrono::seconds>(
                 now - it->second.timestamp);
             
+            // Check if cache is still valid (not expired)
             if (elapsed < it->second.ttl) {
-                return it->second.content; // Return cached content
-            } else {
-                // Cache expired, remove it
-                cache_.erase(it);
+                // Check if file has been modified since cache was created
+                try {
+                    if (!it->second.filePath.empty() && std::filesystem::exists(it->second.filePath)) {
+                        auto currentModTime = std::filesystem::last_write_time(it->second.filePath);
+                        if (currentModTime <= it->second.fileModTime) {
+                            // File hasn't changed, return cached content
+                            return it->second.content;
+                        }
+                        // File has changed, invalidate cache
+                    }
+                } catch (...) {
+                    // If we can't check file time, use cache anyway (fallback)
+                    return it->second.content;
+                }
             }
+            // Cache expired or file changed, remove it
+            cache_.erase(it);
         }
     }
     
@@ -374,6 +387,9 @@ std::string SwaggerHandler::readOpenAPIFile(const std::string& version, const st
     
     // Try to read from found paths
     std::string yamlContent;
+    std::filesystem::path actualFilePath;
+    std::filesystem::file_time_type fileModTime;
+    
     for (const auto& path : possiblePaths) {
         try {
             // Use canonical path to ensure no symlink attacks
@@ -386,6 +402,8 @@ std::string SwaggerHandler::readOpenAPIFile(const std::string& version, const st
                 file.close();
                 yamlContent = buffer.str();
                 if (!yamlContent.empty()) {
+                    actualFilePath = canonicalPath;
+                    fileModTime = std::filesystem::last_write_time(canonicalPath);
                     break;
                 }
             }
@@ -409,13 +427,15 @@ std::string SwaggerHandler::readOpenAPIFile(const std::string& version, const st
         finalContent = filterOpenAPIByVersion(updatedContent, version);
     }
     
-    // Update cache
+    // Update cache with file path and modification time
     {
         std::lock_guard<std::mutex> lock(cache_mutex_);
         CacheEntry entry;
         entry.content = finalContent;
         entry.timestamp = std::chrono::steady_clock::now();
         entry.ttl = cache_ttl_;
+        entry.filePath = actualFilePath;
+        entry.fileModTime = fileModTime;
         cache_[cacheKey] = entry;
     }
     

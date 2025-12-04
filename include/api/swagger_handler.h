@@ -7,6 +7,7 @@
 #include <mutex>
 #include <unordered_map>
 #include <chrono>
+#include <filesystem>
 
 using namespace drogon;
 
@@ -116,6 +117,8 @@ private:
         std::string content;
         std::chrono::steady_clock::time_point timestamp;
         std::chrono::seconds ttl;
+        std::filesystem::path filePath;
+        std::filesystem::file_time_type fileModTime;
     };
     
     static std::unordered_map<std::string, CacheEntry> cache_;
