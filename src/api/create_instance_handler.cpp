@@ -221,6 +221,44 @@ bool CreateInstanceHandler::parseRequest(
         req.inputPixelLimit = json["inputPixelLimit"].asInt();
     }
     
+    // Detector configuration (detailed)
+    if (json.isMember("detectorModelFile") && json["detectorModelFile"].isString()) {
+        req.detectorModelFile = json["detectorModelFile"].asString();
+    }
+    if (json.isMember("animalConfidenceThreshold") && json["animalConfidenceThreshold"].isNumeric()) {
+        req.animalConfidenceThreshold = json["animalConfidenceThreshold"].asDouble();
+    }
+    if (json.isMember("personConfidenceThreshold") && json["personConfidenceThreshold"].isNumeric()) {
+        req.personConfidenceThreshold = json["personConfidenceThreshold"].asDouble();
+    }
+    if (json.isMember("vehicleConfidenceThreshold") && json["vehicleConfidenceThreshold"].isNumeric()) {
+        req.vehicleConfidenceThreshold = json["vehicleConfidenceThreshold"].asDouble();
+    }
+    if (json.isMember("faceConfidenceThreshold") && json["faceConfidenceThreshold"].isNumeric()) {
+        req.faceConfidenceThreshold = json["faceConfidenceThreshold"].asDouble();
+    }
+    if (json.isMember("licensePlateConfidenceThreshold") && json["licensePlateConfidenceThreshold"].isNumeric()) {
+        req.licensePlateConfidenceThreshold = json["licensePlateConfidenceThreshold"].asDouble();
+    }
+    if (json.isMember("confThreshold") && json["confThreshold"].isNumeric()) {
+        req.confThreshold = json["confThreshold"].asDouble();
+    }
+    
+    // DetectorThermal configuration
+    if (json.isMember("detectorThermalModelFile") && json["detectorThermalModelFile"].isString()) {
+        req.detectorThermalModelFile = json["detectorThermalModelFile"].asString();
+    }
+    
+    // Performance mode
+    if (json.isMember("performanceMode") && json["performanceMode"].isString()) {
+        req.performanceMode = json["performanceMode"].asString();
+    }
+    
+    // SolutionManager settings
+    if (json.isMember("recommendedFrameRate") && json["recommendedFrameRate"].isNumeric()) {
+        req.recommendedFrameRate = json["recommendedFrameRate"].asInt();
+    }
+    
     // Additional parameters (e.g., RTSP_URL)
     if (json.isMember("additionalParams") && json["additionalParams"].isObject()) {
         for (const auto& key : json["additionalParams"].getMemberNames()) {
