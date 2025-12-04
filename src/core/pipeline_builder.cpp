@@ -1020,8 +1020,46 @@ std::shared_ptr<cvedix_nodes::cvedix_node> PipelineBuilder::createFileSourceNode
         std::string filePath = params.count("file_path") ? 
             params.at("file_path") : getFilePath(req);
         int channel = params.count("channel") ? std::stoi(params.at("channel")) : 0;
-        float resizeRatio = params.count("resize_ratio") ? 
-            std::stof(params.at("resize_ratio")) : 0.25f;  // Default to 0.25 for fixed size (320x180 from 1280x720)
+        
+        // Get resize_ratio: Priority: additionalParams > params > default
+        // additionalParams takes highest priority to allow runtime override
+        float resizeRatio = 0.25f;  // Default to 0.25 for fixed size (320x180 from 1280x720)
+        
+        // Debug: Log what we have
+        std::cerr << "[PipelineBuilder] DEBUG: Checking resize_ratio sources..." << std::endl;
+        if (params.count("resize_ratio")) {
+            std::cerr << "[PipelineBuilder] DEBUG: params has resize_ratio = " << params.at("resize_ratio") << std::endl;
+        } else {
+            std::cerr << "[PipelineBuilder] DEBUG: params does NOT have resize_ratio" << std::endl;
+        }
+        std::cerr << "[PipelineBuilder] DEBUG: additionalParams size = " << req.additionalParams.size() << std::endl;
+        for (const auto& p : req.additionalParams) {
+            std::cerr << "[PipelineBuilder] DEBUG: additionalParams[" << p.first << "] = " << p.second << std::endl;
+        }
+        
+        // First check additionalParams (highest priority - allows runtime override)
+        auto it = req.additionalParams.find("RESIZE_RATIO");
+        if (it != req.additionalParams.end() && !it->second.empty()) {
+            try {
+                resizeRatio = std::stof(it->second);
+                std::cerr << "[PipelineBuilder] ✓ Using RESIZE_RATIO from additionalParams: " << resizeRatio << std::endl;
+            } catch (const std::exception& e) {
+                std::cerr << "[PipelineBuilder] Warning: Invalid RESIZE_RATIO in additionalParams: " << it->second << ", trying params..." << std::endl;
+                // Fall through to check params
+                if (params.count("resize_ratio")) {
+                    resizeRatio = std::stof(params.at("resize_ratio"));
+                    std::cerr << "[PipelineBuilder] Using resize_ratio from solution config: " << resizeRatio << std::endl;
+                }
+            }
+        } else {
+            // RESIZE_RATIO not in additionalParams, check params
+            if (params.count("resize_ratio")) {
+                resizeRatio = std::stof(params.at("resize_ratio"));
+                std::cerr << "[PipelineBuilder] Using resize_ratio from solution config: " << resizeRatio << std::endl;
+            } else {
+                std::cerr << "[PipelineBuilder] Using default resize_ratio: " << resizeRatio << std::endl;
+            }
+        }
         
         // Validate parameters
         if (nodeName.empty()) {
@@ -1031,7 +1069,7 @@ std::shared_ptr<cvedix_nodes::cvedix_node> PipelineBuilder::createFileSourceNode
             throw std::invalid_argument("File path cannot be empty");
         }
         if (resizeRatio <= 0.0f || resizeRatio > 1.0f) {
-            std::cerr << "[PipelineBuilder] Warning: resize_ratio out of range, using 0.25" << std::endl;
+            std::cerr << "[PipelineBuilder] Warning: resize_ratio out of range (" << resizeRatio << "), using 0.25" << std::endl;
             resizeRatio = 0.25f;
         }
         
