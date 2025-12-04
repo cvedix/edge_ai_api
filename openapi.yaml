@@ -599,6 +599,135 @@ paths:
         '200':
           description: CORS preflight response
 
+  /v1/core/instances/{instanceId}/output:
+    get:
+      summary: Get instance output and processing results
+      description: |
+        Returns real-time output and processing results for a specific instance at the time of the request.
+        This endpoint provides comprehensive information about:
+        - Current processing metrics (FPS, frame rate limit)
+        - Input source (FILE or RTSP)
+        - Output type and details (FILE output files or RTMP stream)
+        - Detection settings and processing modes
+        - Current status and processing state
+        
+        For instances with FILE output, it includes file count, total size, latest file information, and activity status.
+        For instances with RTMP output, it includes RTMP and RTSP URLs.
+      operationId: getInstanceOutput
+      tags:
+        - Instances
+      parameters:
+        - name: instanceId
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Instance ID (UUID)
+      responses:
+        '200':
+          description: Instance output and processing results
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/InstanceOutputResponse'
+              examples:
+                fileOutput:
+                  summary: Instance with FILE output
+                  value:
+                    timestamp: "2025-01-15 14:30:25.123"
+                    instanceId: "abc-123-def"
+                    displayName: "face_detection_file_source"
+                    solutionId: "face_detection"
+                    solutionName: "Face Detection"
+                    running: true
+                    loaded: true
+                    metrics:
+                      fps: 25.50
+                      frameRateLimit: 0
+                    input:
+                      type: "FILE"
+                      path: "/path/to/video.mp4"
+                    output:
+                      type: "FILE"
+                      files:
+                        exists: true
+                        directory: "./output/abc-123-def"
+                        fileCount: 15
+                        totalSizeBytes: 15728640
+                        totalSize: "15 MB"
+                        latestFile: "face_detection_20250115_143025.mp4"
+                        latestFileTime: "2025-01-15 14:30:25"
+                        recentFileCount: 3
+                        isActive: true
+                    detection:
+                      sensitivity: "Low"
+                      mode: "SmartDetection"
+                      movementSensitivity: "Low"
+                      sensorModality: "RGB"
+                    modes:
+                      statisticsMode: true
+                      metadataMode: false
+                      debugMode: true
+                      diagnosticsMode: false
+                    status:
+                      running: true
+                      processing: true
+                      message: "Instance is running and processing frames"
+                rtmpOutput:
+                  summary: Instance with RTMP output
+                  value:
+                    timestamp: "2025-01-15 14:30:25.123"
+                    instanceId: "xyz-789"
+                    displayName: "face_detection_rtmp_stream"
+                    solutionId: "face_detection_rtmp"
+                    solutionName: "Face Detection RTMP"
+                    running: true
+                    loaded: true
+                    metrics:
+                      fps: 30.0
+                      frameRateLimit: 25
+                    input:
+                      type: "FILE"
+                      path: "/path/to/video.mp4"
+                    output:
+                      type: "RTMP_STREAM"
+                      rtmpUrl: "rtmp://localhost:1935/live/face_stream"
+                      rtspUrl: "rtsp://localhost:8554/live/face_stream_0"
+                    detection:
+                      sensitivity: "High"
+                      mode: "SmartDetection"
+                      movementSensitivity: "Low"
+                      sensorModality: "RGB"
+                    modes:
+                      statisticsMode: true
+                      metadataMode: true
+                      debugMode: false
+                      diagnosticsMode: false
+                    status:
+                      running: true
+                      processing: true
+                      message: "Instance is running and processing frames"
+        '404':
+          description: Instance not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+    options:
+      summary: CORS preflight for get instance output
+      operationId: getInstanceOutputOptions
+      tags:
+        - Instances
+      responses:
+        '200':
+          description: CORS preflight response
+
   /v1/core/instances/batch/start:
     post:
       summary: Start multiple instances concurrently
@@ -1625,6 +1754,213 @@ components:
             address:
               type: string
               description: Originator address
+
+    InstanceOutputResponse:
+      type: object
+      description: Real-time output and processing results for an instance
+      required:
+        - timestamp
+        - instanceId
+        - displayName
+        - running
+        - loaded
+        - metrics
+        - input
+        - output
+        - status
+      properties:
+        timestamp:
+          type: string
+          description: Timestamp when the output information was retrieved (real-time)
+          example: "2025-01-15 14:30:25.123"
+        instanceId:
+          type: string
+          description: Unique instance identifier (UUID)
+          example: "abc-123-def"
+        displayName:
+          type: string
+          description: Display name of the instance
+          example: "face_detection_file_source"
+        solutionId:
+          type: string
+          description: Solution ID
+          example: "face_detection"
+        solutionName:
+          type: string
+          description: Solution name
+          example: "Face Detection"
+        running:
+          type: boolean
+          description: Whether instance pipeline is running
+          example: true
+        loaded:
+          type: boolean
+          description: Whether instance is loaded
+          example: true
+        metrics:
+          type: object
+          description: Processing metrics
+          required:
+            - fps
+          properties:
+            fps:
+              type: number
+              format: double
+              description: Current frames per second
+              example: 25.50
+            frameRateLimit:
+              type: integer
+              description: Frame rate limit (0 = no limit)
+              example: 0
+        input:
+          type: object
+          description: Input source information
+          required:
+            - type
+          properties:
+            type:
+              type: string
+              enum: [FILE, RTSP, UNKNOWN]
+              description: Type of input source
+              example: "FILE"
+            path:
+              type: string
+              description: File path (if type is FILE)
+              example: "/path/to/video.mp4"
+            url:
+              type: string
+              description: RTSP URL (if type is RTSP)
+              example: "rtsp://example.com:8554/live/stream"
+        output:
+          type: object
+          description: Output information
+          required:
+            - type
+          properties:
+            type:
+              type: string
+              enum: [FILE, RTMP_STREAM]
+              description: Type of output
+              example: "FILE"
+            rtmpUrl:
+              type: string
+              description: RTMP URL (if type is RTMP_STREAM)
+              example: "rtmp://localhost:1935/live/face_stream"
+            rtspUrl:
+              type: string
+              description: RTSP URL for viewing (if type is RTMP_STREAM and available)
+              example: "rtsp://localhost:8554/live/face_stream_0"
+            files:
+              type: object
+              description: File output information (if type is FILE)
+              properties:
+                exists:
+                  type: boolean
+                  description: Whether output directory exists
+                  example: true
+                directory:
+                  type: string
+                  description: Output directory path
+                  example: "./output/abc-123-def"
+                fileCount:
+                  type: integer
+                  description: Total number of output files
+                  example: 15
+                totalSizeBytes:
+                  type: integer
+                  format: int64
+                  description: Total size of all output files in bytes
+                  example: 15728640
+                totalSize:
+                  type: string
+                  description: Total size formatted as human-readable string
+                  example: "15 MB"
+                latestFile:
+                  type: string
+                  description: Name of the most recently created file
+                  example: "face_detection_20250115_143025.mp4"
+                latestFileTime:
+                  type: string
+                  description: Modification time of the latest file
+                  example: "2025-01-15 14:30:25"
+                recentFileCount:
+                  type: integer
+                  description: Number of files created in the last minute
+                  example: 3
+                isActive:
+                  type: boolean
+                  description: Whether instance is actively creating new files (files created in last minute)
+                  example: true
+                expectedPaths:
+                  type: array
+                  items:
+                    type: string
+                  description: Expected output directory paths (if directory doesn't exist)
+                  example: ["./output/abc-123-def", "./build/output/abc-123-def"]
+                error:
+                  type: string
+                  description: Error message if directory reading failed
+                  example: "Error reading directory: Permission denied"
+        detection:
+          type: object
+          description: Detection settings
+          properties:
+            sensitivity:
+              type: string
+              description: Detection sensitivity level
+              example: "Low"
+            mode:
+              type: string
+              description: Detector mode
+              example: "SmartDetection"
+            movementSensitivity:
+              type: string
+              description: Movement sensitivity level
+              example: "Low"
+            sensorModality:
+              type: string
+              description: Sensor modality
+              example: "RGB"
+        modes:
+          type: object
+          description: Processing modes
+          properties:
+            statisticsMode:
+              type: boolean
+              description: Statistics mode enabled
+              example: true
+            metadataMode:
+              type: boolean
+              description: Metadata mode enabled
+              example: false
+            debugMode:
+              type: boolean
+              description: Debug mode enabled
+              example: true
+            diagnosticsMode:
+              type: boolean
+              description: Diagnostics mode enabled
+              example: false
+        status:
+          type: object
+          description: Status summary
+          required:
+            - running
+            - processing
+            - message
+          properties:
+            running:
+              type: boolean
+              description: Whether instance is running
+              example: true
+            processing:
+              type: boolean
+              description: Whether instance is processing frames (running && fps > 0)
+              example: true
+            message:
+              type: string
+              description: Human-readable status message
+              example: "Instance is running and processing frames"
 
 tags:
   - name: Core
