@@ -112,6 +112,12 @@ public:
      */
     bool hasRTMPOutput(const std::string& instanceId) const;
     
+    /**
+     * @brief Get source nodes from all running instances (for debug/analysis board)
+     * @return Vector of source nodes from running instances
+     */
+    std::vector<std::shared_ptr<cvedix_nodes::cvedix_node>> getSourceNodesFromRunningInstances() const;
+    
 private:
     SolutionRegistry& solution_registry_;
     PipelineBuilder& pipeline_builder_;
