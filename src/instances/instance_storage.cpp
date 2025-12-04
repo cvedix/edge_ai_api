@@ -328,10 +328,17 @@ Json::Value InstanceStorage::instanceInfoToConfigJson(const InstanceInfo& info, 
     if (info.inputPixelLimit > 0) {
         solutionManager["input_pixel_limit"] = info.inputPixelLimit;
     }
+    if (info.recommendedFrameRate > 0) {
+        solutionManager["recommended_frame_rate"] = info.recommendedFrameRate;
+    }
     config["SolutionManager"] = solutionManager;
     
     // Store Detector settings
-    if (!info.detectorMode.empty() || !info.detectionSensitivity.empty()) {
+    if (!info.detectorMode.empty() || !info.detectionSensitivity.empty() || 
+        !info.detectorModelFile.empty() || info.animalConfidenceThreshold > 0.0 ||
+        info.personConfidenceThreshold > 0.0 || info.vehicleConfidenceThreshold > 0.0 ||
+        info.faceConfidenceThreshold > 0.0 || info.licensePlateConfidenceThreshold > 0.0 ||
+        info.confThreshold > 0.0) {
         Json::Value detector(Json::objectValue);
         if (!info.detectorMode.empty()) {
             detector["current_preset"] = info.detectorMode;
@@ -339,7 +346,42 @@ Json::Value InstanceStorage::instanceInfoToConfigJson(const InstanceInfo& info, 
         if (!info.detectionSensitivity.empty()) {
             detector["current_sensitivity_preset"] = info.detectionSensitivity;
         }
+        if (!info.detectorModelFile.empty()) {
+            detector["model_file"] = info.detectorModelFile;
+        }
+        if (info.animalConfidenceThreshold > 0.0) {
+            detector["animal_confidence_threshold"] = info.animalConfidenceThreshold;
+        }
+        if (info.personConfidenceThreshold > 0.0) {
+            detector["person_confidence_threshold"] = info.personConfidenceThreshold;
+        }
+        if (info.vehicleConfidenceThreshold > 0.0) {
+            detector["vehicle_confidence_threshold"] = info.vehicleConfidenceThreshold;
+        }
+        if (info.faceConfidenceThreshold > 0.0) {
+            detector["face_confidence_threshold"] = info.faceConfidenceThreshold;
+        }
+        if (info.licensePlateConfidenceThreshold > 0.0) {
+            detector["license_plate_confidence_threshold"] = info.licensePlateConfidenceThreshold;
+        }
+        if (info.confThreshold > 0.0) {
+            detector["conf_threshold"] = info.confThreshold;
+        }
         config["Detector"] = detector;
+    }
+    
+    // Store DetectorThermal settings
+    if (!info.detectorThermalModelFile.empty()) {
+        Json::Value detectorThermal(Json::objectValue);
+        detectorThermal["model_file"] = info.detectorThermalModelFile;
+        config["DetectorThermal"] = detectorThermal;
+    }
+    
+    // Store PerformanceMode
+    if (!info.performanceMode.empty() && info.performanceMode != "Balanced") {
+        Json::Value performanceMode(Json::objectValue);
+        performanceMode["current_preset"] = info.performanceMode;
+        config["PerformanceMode"] = performanceMode;
     }
     
     // Store Movement settings
@@ -522,6 +564,9 @@ std::optional<InstanceInfo> InstanceStorage::configJsonToInstanceInfo(const Json
             if (sm.isMember("input_pixel_limit") && sm["input_pixel_limit"].isInt()) {
                 info.inputPixelLimit = sm["input_pixel_limit"].asInt();
             }
+            if (sm.isMember("recommended_frame_rate") && sm["recommended_frame_rate"].isInt()) {
+                info.recommendedFrameRate = sm["recommended_frame_rate"].asInt();
+            }
         }
         
         // Extract Detector settings
@@ -532,6 +577,43 @@ std::optional<InstanceInfo> InstanceStorage::configJsonToInstanceInfo(const Json
             }
             if (detector.isMember("current_sensitivity_preset") && detector["current_sensitivity_preset"].isString()) {
                 info.detectionSensitivity = detector["current_sensitivity_preset"].asString();
+            }
+            if (detector.isMember("model_file") && detector["model_file"].isString()) {
+                info.detectorModelFile = detector["model_file"].asString();
+            }
+            if (detector.isMember("animal_confidence_threshold") && detector["animal_confidence_threshold"].isNumeric()) {
+                info.animalConfidenceThreshold = detector["animal_confidence_threshold"].asDouble();
+            }
+            if (detector.isMember("person_confidence_threshold") && detector["person_confidence_threshold"].isNumeric()) {
+                info.personConfidenceThreshold = detector["person_confidence_threshold"].asDouble();
+            }
+            if (detector.isMember("vehicle_confidence_threshold") && detector["vehicle_confidence_threshold"].isNumeric()) {
+                info.vehicleConfidenceThreshold = detector["vehicle_confidence_threshold"].asDouble();
+            }
+            if (detector.isMember("face_confidence_threshold") && detector["face_confidence_threshold"].isNumeric()) {
+                info.faceConfidenceThreshold = detector["face_confidence_threshold"].asDouble();
+            }
+            if (detector.isMember("license_plate_confidence_threshold") && detector["license_plate_confidence_threshold"].isNumeric()) {
+                info.licensePlateConfidenceThreshold = detector["license_plate_confidence_threshold"].asDouble();
+            }
+            if (detector.isMember("conf_threshold") && detector["conf_threshold"].isNumeric()) {
+                info.confThreshold = detector["conf_threshold"].asDouble();
+            }
+        }
+        
+        // Extract DetectorThermal settings
+        if (config.isMember("DetectorThermal") && config["DetectorThermal"].isObject()) {
+            const Json::Value& detectorThermal = config["DetectorThermal"];
+            if (detectorThermal.isMember("model_file") && detectorThermal["model_file"].isString()) {
+                info.detectorThermalModelFile = detectorThermal["model_file"].asString();
+            }
+        }
+        
+        // Extract PerformanceMode
+        if (config.isMember("PerformanceMode") && config["PerformanceMode"].isObject()) {
+            const Json::Value& performanceMode = config["PerformanceMode"];
+            if (performanceMode.isMember("current_preset") && performanceMode["current_preset"].isString()) {
+                info.performanceMode = performanceMode["current_preset"].asString();
             }
         }
         
