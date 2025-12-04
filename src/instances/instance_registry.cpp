@@ -1,6 +1,8 @@
 #include "instances/instance_registry.h"
 #include "models/update_instance_request.h"
 #include "core/uuid_generator.h"
+#include "core/logging_flags.h"
+#include "core/logger.h"
 #include <cvedix/cvedix_version.h>
 #include <cvedix/nodes/src/cvedix_rtsp_src_node.h>
 #include <cvedix/nodes/src/cvedix_file_src_node.h>
@@ -325,6 +327,11 @@ bool InstanceRegistry::startInstance(const std::string& instanceId, bool skipAut
     std::cerr << "[InstanceRegistry] Starting instance " << instanceId << " (creating new pipeline)..." << std::endl;
     std::cerr << "[InstanceRegistry] ========================================" << std::endl;
     
+    if (isInstanceLoggingEnabled()) {
+        PLOG_INFO << "[Instance] Starting instance: " << instanceId 
+                  << " (" << existingInfo.displayName << ", solution: " << existingInfo.solutionId << ")";
+    }
+    
     // Rebuild pipeline from instance info (this creates a fresh pipeline)
     // Check instance still exists before rebuilding (may have been deleted)
     {
@@ -444,8 +451,18 @@ bool InstanceRegistry::startInstance(const std::string& instanceId, bool skipAut
             if (started) {
                 instanceIt->second.running = true;
                 std::cerr << "[InstanceRegistry] ✓ Instance " << instanceId << " started successfully" << std::endl;
+                if (isInstanceLoggingEnabled()) {
+                    const auto& info = instanceIt->second;
+                    PLOG_INFO << "[Instance] Instance started successfully: " << instanceId 
+                              << " (" << info.displayName << ", solution: " << info.solutionId 
+                              << ", running: true)";
+                }
             } else {
                 std::cerr << "[InstanceRegistry] ✗ Failed to start instance " << instanceId << std::endl;
+                if (isInstanceLoggingEnabled()) {
+                    PLOG_ERROR << "[Instance] Failed to start instance: " << instanceId 
+                               << " (" << existingInfo.displayName << ")";
+                }
                 // Cleanup pipeline if start failed to prevent resource leak
                 pipelines_.erase(instanceId);
                 std::cerr << "[InstanceRegistry] Cleaned up pipeline after start failure" << std::endl;
@@ -454,6 +471,9 @@ bool InstanceRegistry::startInstance(const std::string& instanceId, bool skipAut
             // Instance was deleted during start - cleanup pipeline
             pipelines_.erase(instanceId);
             std::cerr << "[InstanceRegistry] Instance " << instanceId << " was deleted during start - cleaned up pipeline" << std::endl;
+            if (isInstanceLoggingEnabled()) {
+                PLOG_WARNING << "[Instance] Instance was deleted during start: " << instanceId;
+            }
         }
     }
     
@@ -505,6 +525,8 @@ bool InstanceRegistry::stopInstance(const std::string& instanceId) {
     std::vector<std::shared_ptr<cvedix_nodes::cvedix_node>> pipelineCopy;
     bool instanceExists = false;
     bool wasRunning = false;
+    std::string displayName;
+    std::string solutionId;
     
     {
         std::lock_guard<std::mutex> lock(mutex_);
@@ -521,6 +543,8 @@ bool InstanceRegistry::stopInstance(const std::string& instanceId) {
         
         instanceExists = true;
         wasRunning = instanceIt->second.running;
+        displayName = instanceIt->second.displayName;
+        solutionId = instanceIt->second.solutionId;
         
         // Copy pipeline before releasing lock
         pipelineCopy = pipelineIt->second;
@@ -536,6 +560,12 @@ bool InstanceRegistry::stopInstance(const std::string& instanceId) {
     std::cerr << "[InstanceRegistry] Stopping instance " << instanceId << "..." << std::endl;
     std::cerr << "[InstanceRegistry] NOTE: All nodes will be fully destroyed to clear OpenCV DNN state" << std::endl;
     std::cerr << "[InstanceRegistry] ========================================" << std::endl;
+    
+    if (isInstanceLoggingEnabled()) {
+        PLOG_INFO << "[Instance] Stopping instance: " << instanceId 
+                  << " (" << displayName << ", solution: " << solutionId 
+                  << ", was running: " << (wasRunning ? "true" : "false") << ")";
+    }
     
     // Now call stopPipeline without holding the lock
     // This prevents deadlock if stopPipeline takes a long time
@@ -568,6 +598,11 @@ bool InstanceRegistry::stopInstance(const std::string& instanceId) {
     std::cerr << "[InstanceRegistry] NOTE: All nodes have been destroyed. Pipeline will be rebuilt from scratch when you start this instance again" << std::endl;
     std::cerr << "[InstanceRegistry] NOTE: This ensures OpenCV DNN starts with a clean state" << std::endl;
     std::cerr << "[InstanceRegistry] ========================================" << std::endl;
+    
+    if (isInstanceLoggingEnabled()) {
+        PLOG_INFO << "[Instance] Instance stopped successfully: " << instanceId 
+                  << " (" << displayName << ", solution: " << solutionId << ")";
+    }
     
     return true;
 }
@@ -854,6 +889,25 @@ InstanceInfo InstanceRegistry::createInstanceInfo(
     info.autoRestart = req.autoRestart;
     info.inputOrientation = req.inputOrientation;
     info.inputPixelLimit = req.inputPixelLimit;
+    
+    // Detector configuration (detailed)
+    info.detectorModelFile = req.detectorModelFile;
+    info.animalConfidenceThreshold = req.animalConfidenceThreshold;
+    info.personConfidenceThreshold = req.personConfidenceThreshold;
+    info.vehicleConfidenceThreshold = req.vehicleConfidenceThreshold;
+    info.faceConfidenceThreshold = req.faceConfidenceThreshold;
+    info.licensePlateConfidenceThreshold = req.licensePlateConfidenceThreshold;
+    info.confThreshold = req.confThreshold;
+    
+    // DetectorThermal configuration
+    info.detectorThermalModelFile = req.detectorThermalModelFile;
+    
+    // Performance mode
+    info.performanceMode = req.performanceMode;
+    
+    // SolutionManager settings
+    info.recommendedFrameRate = req.recommendedFrameRate;
+    
     info.loaded = true;
     info.running = false;
     info.fps = 0.0;
@@ -1488,6 +1542,13 @@ void InstanceRegistry::logProcessingResults(const std::string& instanceId) const
     ss << std::put_time(std::localtime(&time_t), "%Y-%m-%d %H:%M:%S");
     ss << '.' << std::setfill('0') << std::setw(3) << ms.count();
     std::string timestamp = ss.str();
+    
+    // Log to PLOG if SDK output logging is enabled
+    if (isSdkOutputLoggingEnabled()) {
+        PLOG_INFO << "[SDKOutput] [" << timestamp << "] Instance: " << info.displayName 
+                  << " (" << instanceId << ") - FPS: " << std::fixed << std::setprecision(2) << info.fps
+                  << ", Solution: " << info.solutionId;
+    }
     
     // Log processing results
     std::cerr << "[InstanceProcessingLog] ========================================" << std::endl;
