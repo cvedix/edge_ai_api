@@ -1148,6 +1148,398 @@ paths:
         '200':
           description: CORS preflight response
 
+  /v1/core/groups:
+    get:
+      summary: List all groups
+      description: |
+        Returns a list of all groups with summary information including group name, description, instance count, and metadata.
+        
+        The response includes:
+        - Total count of groups
+        - Number of default groups
+        - Number of custom groups
+        - Summary information for each group (ID, name, description, instance count, etc.)
+        
+        This endpoint is useful for getting an overview of all groups in the system without fetching detailed information for each one.
+      operationId: listGroups
+      tags:
+        - Groups
+      responses:
+        '200':
+          description: List of groups
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  groups:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/GroupInfo'
+                  total:
+                    type: integer
+                    description: Total number of groups
+                  default:
+                    type: integer
+                    description: Number of default groups
+                  custom:
+                    type: integer
+                    description: Number of custom groups
+              example:
+                total: 2
+                default: 0
+                custom: 2
+                groups:
+                  - groupId: "cameras"
+                    groupName: "Security Cameras"
+                    description: "Group for security camera instances"
+                    instanceCount: 3
+                    isDefault: false
+                    readOnly: false
+                  - groupId: "test"
+                    groupName: "Test Group"
+                    description: "Group for testing"
+                    instanceCount: 1
+                    isDefault: false
+                    readOnly: false
+        '500':
+          description: Server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+    post:
+      summary: Create a new group
+      description: |
+        Creates a new group for organizing instances. Groups help organize and manage multiple instances together.
+        
+        **Group Properties:**
+        - **groupId** (required): Unique identifier for the group (alphanumeric, underscores, hyphens only)
+        - **groupName** (optional): Display name for the group (defaults to groupId if not provided)
+        - **description** (optional): Description of the group's purpose
+        
+        **Validation:**
+        - Group ID must be unique
+        - Group ID must match pattern: `^[A-Za-z0-9_-]+$`
+        - Group name must match pattern: `^[A-Za-z0-9 -_]+$`
+        
+        **Persistence:**
+        - Groups are automatically saved to storage
+        - Group files are stored in `/var/lib/edge_ai_api/groups` (configurable via `GROUPS_DIR` environment variable)
+        
+        **Returns:** The created group information including timestamps.
+      operationId: createGroup
+      tags:
+        - Groups
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateGroupRequest'
+            example:
+              groupId: "cameras"
+              groupName: "Security Cameras"
+              description: "Group for security camera instances"
+      responses:
+        '201':
+          description: Group created successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GroupInfo'
+        '400':
+          description: Bad request (validation failed or group already exists)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+    options:
+      summary: CORS preflight for groups
+      operationId: listGroupsOptions
+      tags:
+        - Groups
+      responses:
+        '200':
+          description: CORS preflight response
+
+  /v1/core/groups/{groupId}:
+    get:
+      summary: Get group details
+      description: |
+        Returns detailed information about a specific group including group metadata and list of instance IDs.
+        
+        The response includes:
+        - Group configuration (ID, name, description)
+        - Group metadata (isDefault, readOnly, timestamps)
+        - Instance count
+        - List of instance IDs in the group
+        
+        The group must exist. If the group is not found, a 404 error will be returned.
+      operationId: getGroup
+      tags:
+        - Groups
+      parameters:
+        - name: groupId
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Group ID
+      responses:
+        '200':
+          description: Group details
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/GroupInfo'
+                  - type: object
+                    properties:
+                      instanceIds:
+                        type: array
+                        items:
+                          type: string
+                        description: List of instance IDs in this group
+        '404':
+          description: Group not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+    put:
+      summary: Update a group
+      description: |
+        Updates an existing group's information. Only provided fields will be updated.
+        
+        **Updateable Fields:**
+        - **groupName**: Update the display name of the group
+        - **description**: Update the description of the group
+        
+        **Restrictions:**
+        - Group must exist
+        - Group must not be read-only
+        - Group ID cannot be changed
+        
+        **Behavior:**
+        - Only provided fields will be updated
+        - Other fields remain unchanged
+        - Updated timestamp is automatically set
+      operationId: updateGroup
+      tags:
+        - Groups
+      parameters:
+        - name: groupId
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Group ID
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateGroupRequest'
+            example:
+              groupName: "Updated Group Name"
+              description: "Updated description"
+      responses:
+        '200':
+          description: Group updated successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GroupInfo'
+        '400':
+          description: Bad request (validation failed or group is read-only)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: Group not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+    delete:
+      summary: Delete a group
+      description: |
+        Deletes a group from the system. This operation permanently removes the group.
+        
+        **Prerequisites:**
+        - Group must exist
+        - Group must not be a default group
+        - Group must not be read-only
+        - Group must have no instances (all instances must be removed or moved to other groups first)
+        
+        **Behavior:**
+        - Group configuration will be removed from memory
+        - Group file will be deleted from storage
+        - All resources associated with the group will be released
+        
+        **Note:** This operation cannot be undone. Once deleted, the group must be recreated using the create group endpoint.
+      operationId: deleteGroup
+      tags:
+        - Groups
+      parameters:
+        - name: groupId
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Group ID
+      responses:
+        '200':
+          description: Group deleted successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  message:
+                    type: string
+                  groupId:
+                    type: string
+        '400':
+          description: Failed to delete (group has instances, is default, or is read-only)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: Group not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+    options:
+      summary: CORS preflight for group
+      operationId: getGroupOptions
+      tags:
+        - Groups
+      responses:
+        '200':
+          description: CORS preflight response
+
+  /v1/core/groups/{groupId}/instances:
+    get:
+      summary: Get instances in a group
+      description: |
+        Returns a list of all instances that belong to a specific group.
+        
+        The response includes:
+        - Group ID
+        - List of instances with summary information (ID, display name, solution, running status)
+        - Total count of instances in the group
+        
+        **Use Cases:**
+        - View all instances in a specific group
+        - Monitor group status and performance
+        - Manage instances by group
+        
+        The group must exist. If the group is not found, a 404 error will be returned.
+      operationId: getGroupInstances
+      tags:
+        - Groups
+      parameters:
+        - name: groupId
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Group ID
+      responses:
+        '200':
+          description: List of instances in the group
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  groupId:
+                    type: string
+                    description: Group ID
+                  instances:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        instanceId:
+                          type: string
+                        displayName:
+                          type: string
+                        solutionId:
+                          type: string
+                        running:
+                          type: boolean
+                        loaded:
+                          type: boolean
+                  count:
+                    type: integer
+                    description: Number of instances in the group
+              example:
+                groupId: "cameras"
+                count: 2
+                instances:
+                  - instanceId: "abc-123"
+                    displayName: "Camera 1"
+                    solutionId: "face_detection"
+                    running: true
+                    loaded: true
+                  - instanceId: "def-456"
+                    displayName: "Camera 2"
+                    solutionId: "face_detection"
+                    running: false
+                    loaded: true
+        '404':
+          description: Group not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+    options:
+      summary: CORS preflight for group instances
+      operationId: getGroupInstancesOptions
+      tags:
+        - Groups
+      responses:
+        '200':
+          description: CORS preflight response
+
   /v1/core/instance:
     post:
       summary: Create a new AI instance
@@ -2642,6 +3034,83 @@ components:
           additionalProperties:
             type: string
 
+    GroupInfo:
+      type: object
+      required:
+        - groupId
+        - groupName
+      properties:
+        groupId:
+          type: string
+          description: Unique group identifier
+          pattern: "^[A-Za-z0-9_-]+$"
+          example: "cameras"
+        groupName:
+          type: string
+          description: Display name of the group
+          pattern: "^[A-Za-z0-9 -_]+$"
+          example: "Security Cameras"
+        description:
+          type: string
+          description: Description of the group
+          example: "Group for security camera instances"
+        isDefault:
+          type: boolean
+          description: Whether this is a default group (cannot be deleted)
+          example: false
+        readOnly:
+          type: boolean
+          description: Whether this group is read-only (cannot be modified)
+          example: false
+        instanceCount:
+          type: integer
+          description: Number of instances in this group
+          example: 3
+        createdAt:
+          type: string
+          format: date-time
+          description: Creation timestamp
+          example: "2024-01-01T00:00:00.000Z"
+        updatedAt:
+          type: string
+          format: date-time
+          description: Last update timestamp
+          example: "2024-01-01T00:00:00.000Z"
+
+    CreateGroupRequest:
+      type: object
+      required:
+        - groupId
+      properties:
+        groupId:
+          type: string
+          description: Unique group identifier (alphanumeric, underscore, hyphen only)
+          pattern: "^[A-Za-z0-9_-]+$"
+          example: "cameras"
+        groupName:
+          type: string
+          description: Display name of the group (optional, defaults to groupId)
+          pattern: "^[A-Za-z0-9 -_]+$"
+          example: "Security Cameras"
+        description:
+          type: string
+          description: Description of the group
+          example: "Group for security camera instances"
+
+    UpdateGroupRequest:
+      type: object
+      description: Request body for updating a group. All fields are optional.
+      properties:
+        groupName:
+          type: string
+          description: Display name of the group
+          pattern: "^[A-Za-z0-9 -_]+$"
+          example: "Updated Group Name"
+        description:
+          type: string
+          description: Description of the group
+          example: "Updated description"
+
 tags:
   - name: Core
     description: Core API endpoints for health and version information
@@ -2649,6 +3118,8 @@ tags:
     description: AI instance management endpoints (create, list, start, stop, delete)
   - name: Solutions
     description: Solution configuration management endpoints (create, list, update, delete)
+  - name: Groups
+    description: Group management endpoints for organizing instances (create, list, update, delete)
   - name: Models
     description: Model file management endpoints
 

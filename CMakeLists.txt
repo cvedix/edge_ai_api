@@ -269,6 +269,7 @@ set(SOURCES
     src/api/create_instance_handler.cpp
     src/api/instance_handler.cpp
     src/api/solution_handler.cpp
+    src/api/group_handler.cpp
     src/api/system_info_handler.cpp
     src/models/model_upload_handler.cpp
     src/core/watchdog.cpp
@@ -279,14 +280,18 @@ set(SOURCES
     src/core/ai_watchdog.cpp
     src/instances/instance_registry.cpp
     src/solutions/solution_registry.cpp
+    src/groups/group_registry.cpp
     src/core/pipeline_builder.cpp
     src/instances/instance_storage.cpp
     src/solutions/solution_storage.cpp
+    src/groups/group_storage.cpp
     src/core/uuid_generator.cpp
     src/core/log_manager.cpp
     src/models/create_instance_request.cpp
     src/models/update_instance_request.cpp
     src/models/solution_config.cpp
+    src/models/group_info.cpp
+    src/api/group_handler.cpp
     # Infrastructure components (available but not used in main yet)
     # src/core/resource_manager.cpp
     # src/core/rate_limiter.cpp
