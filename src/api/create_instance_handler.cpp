@@ -2,6 +2,7 @@
 #include "models/create_instance_request.h"
 #include "instances/instance_registry.h"
 #include "instances/instance_info.h"
+#include "solutions/solution_registry.h"
 #include "core/logging_flags.h"
 #include "core/logger.h"
 #include <drogon/HttpResponse.h>
@@ -10,9 +11,14 @@
 #include <chrono>
 
 InstanceRegistry* CreateInstanceHandler::instance_registry_ = nullptr;
+SolutionRegistry* CreateInstanceHandler::solution_registry_ = nullptr;
 
 void CreateInstanceHandler::setInstanceRegistry(InstanceRegistry* registry) {
     instance_registry_ = registry;
+}
+
+void CreateInstanceHandler::setSolutionRegistry(SolutionRegistry* registry) {
+    solution_registry_ = registry;
 }
 
 void CreateInstanceHandler::createInstance(
@@ -64,6 +70,26 @@ void CreateInstanceHandler::createInstance(
             }
             callback(createErrorResponse(400, "Validation failed", createReq.getValidationError()));
             return;
+        }
+        
+        // Validate solution if provided
+        if (!createReq.solution.empty()) {
+            if (!solution_registry_) {
+                if (isApiLoggingEnabled()) {
+                    PLOG_ERROR << "[API] POST /v1/core/instance - Error: Solution registry not initialized";
+                }
+                callback(createErrorResponse(500, "Internal server error", "Solution registry not initialized"));
+                return;
+            }
+            
+            if (!solution_registry_->hasSolution(createReq.solution)) {
+                if (isApiLoggingEnabled()) {
+                    PLOG_WARNING << "[API] POST /v1/core/instance - Solution not found: " << createReq.solution;
+                }
+                callback(createErrorResponse(400, "Invalid solution", 
+                    "Solution not found: " + createReq.solution + ". Please check available solutions using GET /v1/core/solutions"));
+                return;
+            }
         }
         
         // Create instance
