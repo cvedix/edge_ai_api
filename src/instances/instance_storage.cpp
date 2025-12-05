@@ -12,8 +12,17 @@ InstanceStorage::InstanceStorage(const std::string& storage_dir)
 }
 
 void InstanceStorage::ensureStorageDir() const {
-    if (!std::filesystem::exists(storage_dir_)) {
-        std::filesystem::create_directories(storage_dir_);
+    try {
+        if (!std::filesystem::exists(storage_dir_)) {
+            std::cerr << "[InstanceStorage] Creating storage directory: " << storage_dir_ << std::endl;
+            std::filesystem::create_directories(storage_dir_);
+            std::cerr << "[InstanceStorage] Storage directory created successfully" << std::endl;
+        } else {
+            std::cerr << "[InstanceStorage] Storage directory already exists: " << storage_dir_ << std::endl;
+        }
+    } catch (const std::exception& e) {
+        std::cerr << "[InstanceStorage] Error creating storage directory: " << e.what() << std::endl;
+        throw;
     }
 }
 
@@ -52,8 +61,11 @@ bool InstanceStorage::saveInstancesFile(const Json::Value& instances) const {
         ensureStorageDir();
         
         std::string filepath = getInstancesFilePath();
+        std::cerr << "[InstanceStorage] Saving instances to: " << filepath << std::endl;
+        
         std::ofstream file(filepath);
         if (!file.is_open()) {
+            std::cerr << "[InstanceStorage] Error: Failed to open file for writing: " << filepath << std::endl;
             return false;
         }
         
@@ -61,9 +73,15 @@ bool InstanceStorage::saveInstancesFile(const Json::Value& instances) const {
         builder["indentation"] = "    "; // 4 spaces for indentation
         std::unique_ptr<Json::StreamWriter> writer(builder.newStreamWriter());
         writer->write(instances, &file);
+        file.close();
         
+        std::cerr << "[InstanceStorage] Successfully saved instances file" << std::endl;
         return true;
     } catch (const std::exception& e) {
+        std::cerr << "[InstanceStorage] Exception in saveInstancesFile: " << e.what() << std::endl;
+        return false;
+    } catch (...) {
+        std::cerr << "[InstanceStorage] Unknown exception in saveInstancesFile" << std::endl;
         return false;
     }
 }
@@ -159,8 +177,9 @@ bool InstanceStorage::mergeConfigs(Json::Value& existingConfig, const Json::Valu
     
     // List of keys that should be merged (nested objects)
     std::vector<std::string> mergeKeys = {
-        "Input", "SolutionManager", "Detector", "Movement", 
-        "OriginatorInfo", "AdditionalParams", "Output"
+        "Input", "SolutionManager", "Detector", "DetectorRegions", "DetectorThermal",
+        "Movement", "OriginatorInfo", "AdditionalParams", "Output",
+        "PerformanceMode", "Tripwire", "Zone"
     };
     
     // Replace simple fields
@@ -270,46 +289,62 @@ Json::Value InstanceStorage::instanceInfoToConfigJson(const InstanceInfo& info, 
     // Store AutoRestart
     config["AutoRestart"] = info.autoRestart;
     
-    // Store Input configuration
-    if (info.inputPixelLimit > 0 || info.inputOrientation > 0) {
-        Json::Value input(Json::objectValue);
-        if (info.inputPixelLimit > 0) {
-            input["media_format"]["input_pixel_limit"] = info.inputPixelLimit;
-        }
-        if (info.inputOrientation > 0) {
-            input["inputOrientation"] = info.inputOrientation;
-        }
-        if (!input.empty()) {
-            config["Input"] = input;
-        }
-    }
+    // Store Input configuration (always include)
+    Json::Value input(Json::objectValue);
     
-    // Store Input URI if available
+    // Input media_format
+    Json::Value mediaFormat(Json::objectValue);
+    mediaFormat["color_format"] = 0;
+    mediaFormat["default_format"] = true;
+    mediaFormat["height"] = 0;
+    mediaFormat["is_software"] = false;
+    mediaFormat["name"] = "Same as Source";
+    input["media_format"] = mediaFormat;
+    
+    // Input media_type and uri
     if (!info.rtspUrl.empty()) {
-        if (!config.isMember("Input")) {
-            config["Input"] = Json::Value(Json::objectValue);
-        }
-        config["Input"]["media_type"] = "IP Camera";
-        config["Input"]["uri"] = "gstreamer:///urisourcebin uri=" + info.rtspUrl + " ! decodebin ! videoconvert ! video/x-raw, format=NV12 ! appsink drop=true name=cvdsink";
+        input["media_type"] = "IP Camera";
+        input["uri"] = "gstreamer:///urisourcebin uri=" + info.rtspUrl + " ! decodebin ! videoconvert ! video/x-raw, format=NV12 ! appsink drop=true name=cvdsink";
     } else if (!info.filePath.empty()) {
-        if (!config.isMember("Input")) {
-            config["Input"] = Json::Value(Json::objectValue);
-        }
-        config["Input"]["media_type"] = "File";
-        config["Input"]["uri"] = info.filePath;
+        input["media_type"] = "File";
+        input["uri"] = info.filePath;
+    } else {
+        input["media_type"] = "IP Camera";
+        input["uri"] = "";
     }
     
-    // Store RTMP URL in Output section if available
-    if (!info.rtmpUrl.empty()) {
-        if (!config.isMember("Output")) {
-            config["Output"] = Json::Value(Json::objectValue);
+    config["Input"] = input;
+    
+    // Store Output configuration (always include)
+    Json::Value output(Json::objectValue);
+    output["JSONExport"]["enabled"] = info.metadataMode;
+    output["NXWitness"]["enabled"] = false;
+    
+    // Output handlers (RTSP output if available)
+    Json::Value handlers(Json::objectValue);
+    if (!info.rtspUrl.empty() || !info.rtmpUrl.empty()) {
+        Json::Value rtspHandler(Json::objectValue);
+        Json::Value handlerConfig(Json::objectValue);
+        handlerConfig["debug"] = info.debugMode ? "4" : "0";
+        handlerConfig["fps"] = info.frameRateLimit > 0 ? info.frameRateLimit : 10;
+        handlerConfig["pipeline"] = "( appsrc name=cvedia-rt ! videoconvert ! videoscale ! x264enc ! video/x-h264,profile=high ! rtph264pay name=pay0 pt=96 )";
+        rtspHandler["config"] = handlerConfig;
+        rtspHandler["enabled"] = info.running;
+        rtspHandler["sink"] = "output-image";
+        
+        std::string outputUrl = info.rtspUrl;
+        if (outputUrl.empty() && !info.rtmpUrl.empty()) {
+            outputUrl = "rtsp://0.0.0.0:8554/stream1";
         }
-        if (!config["Output"].isMember("handlers")) {
-            config["Output"]["handlers"] = Json::Value(Json::objectValue);
+        if (outputUrl.empty()) {
+            outputUrl = "rtsp://0.0.0.0:8554/stream1";
         }
-        // Store RTMP URL for reference (actual RTMP output is handled by pipeline)
-        config["Output"]["rtmpUrl"] = info.rtmpUrl;
+        rtspHandler["uri"] = outputUrl;
+        handlers["rtsp:--0.0.0.0:8554-stream1"] = rtspHandler;
     }
+    output["handlers"] = handlers;
+    output["render_preset"] = "Default";
+    config["Output"] = output;
     
     // Store OriginatorInfo
     if (!info.originator.address.empty()) {
@@ -333,63 +368,49 @@ Json::Value InstanceStorage::instanceInfoToConfigJson(const InstanceInfo& info, 
     }
     config["SolutionManager"] = solutionManager;
     
-    // Store Detector settings
-    if (!info.detectorMode.empty() || !info.detectionSensitivity.empty() || 
-        !info.detectorModelFile.empty() || info.animalConfidenceThreshold > 0.0 ||
-        info.personConfidenceThreshold > 0.0 || info.vehicleConfidenceThreshold > 0.0 ||
-        info.faceConfidenceThreshold > 0.0 || info.licensePlateConfidenceThreshold > 0.0 ||
-        info.confThreshold > 0.0) {
-        Json::Value detector(Json::objectValue);
-        if (!info.detectorMode.empty()) {
-            detector["current_preset"] = info.detectorMode;
-        }
-        if (!info.detectionSensitivity.empty()) {
-            detector["current_sensitivity_preset"] = info.detectionSensitivity;
-        }
-        if (!info.detectorModelFile.empty()) {
-            detector["model_file"] = info.detectorModelFile;
-        }
-        if (info.animalConfidenceThreshold > 0.0) {
-            detector["animal_confidence_threshold"] = info.animalConfidenceThreshold;
-        }
-        if (info.personConfidenceThreshold > 0.0) {
-            detector["person_confidence_threshold"] = info.personConfidenceThreshold;
-        }
-        if (info.vehicleConfidenceThreshold > 0.0) {
-            detector["vehicle_confidence_threshold"] = info.vehicleConfidenceThreshold;
-        }
-        if (info.faceConfidenceThreshold > 0.0) {
-            detector["face_confidence_threshold"] = info.faceConfidenceThreshold;
-        }
-        if (info.licensePlateConfidenceThreshold > 0.0) {
-            detector["license_plate_confidence_threshold"] = info.licensePlateConfidenceThreshold;
-        }
-        if (info.confThreshold > 0.0) {
-            detector["conf_threshold"] = info.confThreshold;
-        }
-        config["Detector"] = detector;
-    }
+    // Store Detector settings (always include, with defaults if needed)
+    Json::Value detector(Json::objectValue);
+    detector["animal_confidence_threshold"] = info.animalConfidenceThreshold > 0.0 ? info.animalConfidenceThreshold : 0.3;
+    detector["conf_threshold"] = info.confThreshold > 0.0 ? info.confThreshold : 0.2;
+    detector["current_preset"] = info.detectorMode.empty() ? "FullRegionInference" : info.detectorMode;
+    detector["current_sensitivity_preset"] = info.detectionSensitivity.empty() ? "High" : info.detectionSensitivity;
+    detector["face_confidence_threshold"] = info.faceConfidenceThreshold > 0.0 ? info.faceConfidenceThreshold : 0.1;
+    detector["license_plate_confidence_threshold"] = info.licensePlateConfidenceThreshold > 0.0 ? info.licensePlateConfidenceThreshold : 0.1;
+    detector["model_file"] = info.detectorModelFile.empty() ? "pva_det_full_frame_512" : info.detectorModelFile;
+    detector["person_confidence_threshold"] = info.personConfidenceThreshold > 0.0 ? info.personConfidenceThreshold : 0.3;
+    detector["vehicle_confidence_threshold"] = info.vehicleConfidenceThreshold > 0.0 ? info.vehicleConfidenceThreshold : 0.3;
     
-    // Store DetectorThermal settings
-    if (!info.detectorThermalModelFile.empty()) {
-        Json::Value detectorThermal(Json::objectValue);
-        detectorThermal["model_file"] = info.detectorThermalModelFile;
-        config["DetectorThermal"] = detectorThermal;
-    }
+    // Preset values
+    Json::Value presetValues(Json::objectValue);
+    Json::Value mosaicInference(Json::objectValue);
+    mosaicInference["Detector/model_file"] = "pva_det_mosaic_320";
+    presetValues["MosaicInference"] = mosaicInference;
+    detector["preset_values"] = presetValues;
     
-    // Store PerformanceMode
-    if (!info.performanceMode.empty() && info.performanceMode != "Balanced") {
-        Json::Value performanceMode(Json::objectValue);
-        performanceMode["current_preset"] = info.performanceMode;
-        config["PerformanceMode"] = performanceMode;
-    }
+    config["Detector"] = detector;
     
-    // Store Movement settings
-    if (!info.movementSensitivity.empty()) {
-        Json::Value movement(Json::objectValue);
-        movement["current_sensitivity_preset"] = info.movementSensitivity;
-        config["Movement"] = movement;
-    }
+    // DetectorRegions (always include, empty by default)
+    config["DetectorRegions"] = Json::Value(Json::objectValue);
+    
+    // Store DetectorThermal settings (always include)
+    Json::Value detectorThermal(Json::objectValue);
+    detectorThermal["model_file"] = info.detectorThermalModelFile.empty() ? "pva_det_mosaic_320" : info.detectorThermalModelFile;
+    config["DetectorThermal"] = detectorThermal;
+    
+    // Store PerformanceMode (always include)
+    Json::Value performanceMode(Json::objectValue);
+    performanceMode["current_preset"] = info.performanceMode.empty() ? "Balanced" : info.performanceMode;
+    config["PerformanceMode"] = performanceMode;
+    
+    // Store Tripwire (always include, empty by default)
+    Json::Value tripwire(Json::objectValue);
+    tripwire["Tripwires"] = Json::Value(Json::objectValue);
+    config["Tripwire"] = tripwire;
+    
+    // Store Zone (always include, empty by default)
+    Json::Value zone(Json::objectValue);
+    zone["Zones"] = Json::Value(Json::objectValue);
+    config["Zone"] = zone;
     
     // Store additional parameters as nested config
     if (!info.additionalParams.empty()) {
@@ -688,6 +709,9 @@ std::optional<InstanceInfo> InstanceStorage::configJsonToInstanceInfo(const Json
 }
 
 bool InstanceStorage::saveInstance(const std::string& instanceId, const InstanceInfo& info) {
+    std::cerr << "[InstanceStorage] saveInstance called for instance: " << instanceId << std::endl;
+    std::cerr << "[InstanceStorage] Storage directory: " << storage_dir_ << std::endl;
+    
     try {
         // Validate instanceId matches
         if (info.instanceId != instanceId) {
@@ -711,8 +735,11 @@ bool InstanceStorage::saveInstance(const std::string& instanceId, const Instance
         Json::Value config = instanceInfoToConfigJson(info, &conversionError);
         if (config.isNull() || config.empty()) {
             std::cerr << "[InstanceStorage] Conversion error: " << conversionError << std::endl;
+            std::cerr << "[InstanceStorage] InstanceId: " << instanceId << std::endl;
             return false;
         }
+        
+        std::cerr << "[InstanceStorage] Successfully converted InstanceInfo to JSON for instance: " << instanceId << std::endl;
         
         // If instance already exists, merge with existing config to preserve TensorRT and other nested configs
         if (instances.isMember(instanceId) && instances[instanceId].isObject()) {
@@ -755,6 +782,7 @@ bool InstanceStorage::saveInstance(const std::string& instanceId, const Instance
             return false;
         }
         
+        std::cerr << "[InstanceStorage] ✓ Successfully saved instance: " << instanceId << std::endl;
         return true;
     } catch (const std::exception& e) {
         std::cerr << "[InstanceStorage] Exception in saveInstance: " << e.what() << std::endl;
