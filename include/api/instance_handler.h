@@ -13,6 +13,7 @@ using namespace drogon;
  * Handles instance management operations.
  * 
  * Endpoints:
+ * - GET /v1/core/instance/status/summary - Get instance status summary (total, running, stopped counts)
  * - GET /v1/core/instances - List all instances
  * - GET /v1/core/instances/{instanceId} - Get instance details
  * - PUT /v1/core/instances/{instanceId} - Update instance information
@@ -29,6 +30,7 @@ using namespace drogon;
 class InstanceHandler : public drogon::HttpController<InstanceHandler> {
 public:
     METHOD_LIST_BEGIN
+        ADD_METHOD_TO(InstanceHandler::getStatusSummary, "/v1/core/instance/status/summary", Get);
         ADD_METHOD_TO(InstanceHandler::listInstances, "/v1/core/instances", Get);
         ADD_METHOD_TO(InstanceHandler::getInstance, "/v1/core/instances/{instanceId}", Get);
         ADD_METHOD_TO(InstanceHandler::updateInstance, "/v1/core/instances/{instanceId}", Put);
@@ -51,7 +53,15 @@ public:
         ADD_METHOD_TO(InstanceHandler::handleOptions, "/v1/core/instances/batch/start", Options);
         ADD_METHOD_TO(InstanceHandler::handleOptions, "/v1/core/instances/batch/stop", Options);
         ADD_METHOD_TO(InstanceHandler::handleOptions, "/v1/core/instances/batch/restart", Options);
+        ADD_METHOD_TO(InstanceHandler::handleOptions, "/v1/core/instance/status/summary", Options);
     METHOD_LIST_END
+    
+    /**
+     * @brief Handle GET /v1/core/instance/status/summary
+     * Returns status summary about instances (total, configured, running, stopped counts)
+     */
+    void getStatusSummary(const HttpRequestPtr &req,
+                          std::function<void(const HttpResponsePtr &)> &&callback);
     
     /**
      * @brief Handle GET /v1/core/instances
