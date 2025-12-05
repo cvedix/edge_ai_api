@@ -321,6 +321,174 @@ TEST_F(InstanceStorageTest, MergeConfigs_PreserveSpecialKeys) {
     EXPECT_TRUE(existing.isMember("AnimalTracker"));
 }
 
+TEST_F(InstanceStorageTest, MergeConfigs_UpdateDetector) {
+    Json::Value existing = createValidConfigJson();
+    existing["Detector"]["current_preset"] = "FullRegionInference";
+    existing["Detector"]["person_confidence_threshold"] = 0.3;
+    
+    Json::Value newConfig(Json::objectValue);
+    newConfig["Detector"]["current_preset"] = "SmartDetection";
+    newConfig["Detector"]["current_sensitivity_preset"] = "High";
+    newConfig["Detector"]["person_confidence_threshold"] = 0.5;
+    
+    std::vector<std::string> preserveKeys;
+    bool merged = storage_->mergeConfigs(existing, newConfig, preserveKeys);
+    
+    EXPECT_TRUE(merged);
+    EXPECT_EQ(existing["Detector"]["current_preset"].asString(), "SmartDetection");
+    EXPECT_EQ(existing["Detector"]["current_sensitivity_preset"].asString(), "High");
+    EXPECT_EQ(existing["Detector"]["person_confidence_threshold"].asDouble(), 0.5);
+}
+
+TEST_F(InstanceStorageTest, MergeConfigs_UpdateInput) {
+    Json::Value existing = createValidConfigJson();
+    existing["Input"]["uri"] = "gstreamer:///urisourcebin uri=rtsp://old:8554/stream ! decodebin ! videoconvert ! video/x-raw, format=NV12 ! appsink drop=true name=cvdsink";
+    
+    Json::Value newConfig(Json::objectValue);
+    newConfig["Input"]["uri"] = "gstreamer:///urisourcebin uri=rtsp://new:8554/stream ! decodebin ! videoconvert ! video/x-raw, format=NV12 ! appsink drop=true name=cvdsink";
+    
+    std::vector<std::string> preserveKeys;
+    bool merged = storage_->mergeConfigs(existing, newConfig, preserveKeys);
+    
+    EXPECT_TRUE(merged);
+    EXPECT_NE(existing["Input"]["uri"].asString().find("rtsp://new:8554/stream"), std::string::npos);
+}
+
+TEST_F(InstanceStorageTest, MergeConfigs_UpdateOutput) {
+    Json::Value existing = createValidConfigJson();
+    existing["Output"]["JSONExport"]["enabled"] = false;
+    
+    Json::Value newConfig(Json::objectValue);
+    newConfig["Output"]["JSONExport"]["enabled"] = true;
+    newConfig["Output"]["handlers"]["rtsp:--0.0.0.0:8554-stream1"]["config"]["fps"] = 15;
+    
+    std::vector<std::string> preserveKeys;
+    bool merged = storage_->mergeConfigs(existing, newConfig, preserveKeys);
+    
+    EXPECT_TRUE(merged);
+    EXPECT_TRUE(existing["Output"]["JSONExport"]["enabled"].asBool());
+    EXPECT_EQ(existing["Output"]["handlers"]["rtsp:--0.0.0.0:8554-stream1"]["config"]["fps"].asInt(), 15);
+}
+
+TEST_F(InstanceStorageTest, MergeConfigs_UpdateSolutionManager) {
+    Json::Value existing = createValidConfigJson();
+    existing["SolutionManager"]["frame_rate_limit"] = 10;
+    existing["SolutionManager"]["send_metadata"] = false;
+    
+    Json::Value newConfig(Json::objectValue);
+    newConfig["SolutionManager"]["frame_rate_limit"] = 20;
+    newConfig["SolutionManager"]["send_metadata"] = true;
+    newConfig["SolutionManager"]["run_statistics"] = true;
+    
+    std::vector<std::string> preserveKeys;
+    bool merged = storage_->mergeConfigs(existing, newConfig, preserveKeys);
+    
+    EXPECT_TRUE(merged);
+    EXPECT_EQ(existing["SolutionManager"]["frame_rate_limit"].asInt(), 20);
+    EXPECT_TRUE(existing["SolutionManager"]["send_metadata"].asBool());
+    EXPECT_TRUE(existing["SolutionManager"]["run_statistics"].asBool());
+}
+
+TEST_F(InstanceStorageTest, MergeConfigs_PreserveZoneAndTripwire) {
+    Json::Value existing = createValidConfigJson();
+    existing["Zone"]["Zones"]["zone-123"]["name"] = "Test Zone";
+    existing["Tripwire"]["Tripwires"]["tripwire-123"]["name"] = "Test Tripwire";
+    
+    Json::Value newConfig(Json::objectValue);
+    newConfig["DisplayName"] = "Updated Name";
+    newConfig["Detector"]["current_preset"] = "SmartDetection";
+    
+    std::vector<std::string> preserveKeys = {"Zone", "Tripwire"};
+    bool merged = storage_->mergeConfigs(existing, newConfig, preserveKeys);
+    
+    EXPECT_TRUE(merged);
+    EXPECT_EQ(existing["DisplayName"].asString(), "Updated Name");
+    // Zone and Tripwire should be preserved
+    EXPECT_TRUE(existing.isMember("Zone"));
+    EXPECT_TRUE(existing.isMember("Tripwire"));
+    EXPECT_EQ(existing["Zone"]["Zones"]["zone-123"]["name"].asString(), "Test Zone");
+    EXPECT_EQ(existing["Tripwire"]["Tripwires"]["tripwire-123"]["name"].asString(), "Test Tripwire");
+}
+
+TEST_F(InstanceStorageTest, MergeConfigs_UpdatePerformanceMode) {
+    Json::Value existing = createValidConfigJson();
+    existing["PerformanceMode"]["current_preset"] = "Balanced";
+    
+    Json::Value newConfig(Json::objectValue);
+    newConfig["PerformanceMode"]["current_preset"] = "HighPerformance";
+    
+    std::vector<std::string> preserveKeys;
+    bool merged = storage_->mergeConfigs(existing, newConfig, preserveKeys);
+    
+    EXPECT_TRUE(merged);
+    EXPECT_EQ(existing["PerformanceMode"]["current_preset"].asString(), "HighPerformance");
+}
+
+TEST_F(InstanceStorageTest, MergeConfigs_UpdateDetectorThermal) {
+    Json::Value existing = createValidConfigJson();
+    existing["DetectorThermal"]["model_file"] = "pva_det_mosaic_320";
+    
+    Json::Value newConfig(Json::objectValue);
+    newConfig["DetectorThermal"]["model_file"] = "pva_det_thermal_512";
+    
+    std::vector<std::string> preserveKeys;
+    bool merged = storage_->mergeConfigs(existing, newConfig, preserveKeys);
+    
+    EXPECT_TRUE(merged);
+    EXPECT_EQ(existing["DetectorThermal"]["model_file"].asString(), "pva_det_thermal_512");
+}
+
+TEST_F(InstanceStorageTest, InstanceInfoToConfigJson_AllFields) {
+    InstanceInfo info = createValidInstanceInfo();
+    info.rtspUrl = "rtsp://localhost:8554/stream";
+    info.detectorMode = "SmartDetection";
+    info.detectionSensitivity = "High";
+    info.performanceMode = "HighPerformance";
+    info.animalConfidenceThreshold = 0.4;
+    info.personConfidenceThreshold = 0.5;
+    info.vehicleConfidenceThreshold = 0.6;
+    info.faceConfidenceThreshold = 0.2;
+    info.licensePlateConfidenceThreshold = 0.2;
+    info.confThreshold = 0.3;
+    info.detectorModelFile = "pva_det_custom_512";
+    info.detectorThermalModelFile = "pva_det_thermal_custom";
+    
+    std::string error;
+    Json::Value config = storage_->instanceInfoToConfigJson(info, &error);
+    
+    EXPECT_FALSE(config.isNull());
+    EXPECT_TRUE(error.empty());
+    
+    // Check all fields are present
+    EXPECT_TRUE(config.isMember("Detector"));
+    EXPECT_EQ(config["Detector"]["current_preset"].asString(), "SmartDetection");
+    EXPECT_EQ(config["Detector"]["current_sensitivity_preset"].asString(), "High");
+    EXPECT_EQ(config["Detector"]["person_confidence_threshold"].asDouble(), 0.5);
+    EXPECT_EQ(config["Detector"]["animal_confidence_threshold"].asDouble(), 0.4);
+    EXPECT_EQ(config["Detector"]["vehicle_confidence_threshold"].asDouble(), 0.6);
+    EXPECT_EQ(config["Detector"]["face_confidence_threshold"].asDouble(), 0.2);
+    EXPECT_EQ(config["Detector"]["license_plate_confidence_threshold"].asDouble(), 0.2);
+    EXPECT_EQ(config["Detector"]["conf_threshold"].asDouble(), 0.3);
+    EXPECT_EQ(config["Detector"]["model_file"].asString(), "pva_det_custom_512");
+    
+    EXPECT_TRUE(config.isMember("DetectorThermal"));
+    EXPECT_EQ(config["DetectorThermal"]["model_file"].asString(), "pva_det_thermal_custom");
+    
+    EXPECT_TRUE(config.isMember("PerformanceMode"));
+    EXPECT_EQ(config["PerformanceMode"]["current_preset"].asString(), "HighPerformance");
+    
+    EXPECT_TRUE(config.isMember("DetectorRegions"));
+    EXPECT_TRUE(config.isMember("Zone"));
+    EXPECT_TRUE(config.isMember("Tripwire"));
+    
+    EXPECT_TRUE(config.isMember("Input"));
+    EXPECT_EQ(config["Input"]["media_type"].asString(), "IP Camera");
+    
+    EXPECT_TRUE(config.isMember("Output"));
+    EXPECT_TRUE(config["Output"].isMember("JSONExport"));
+    EXPECT_TRUE(config["Output"].isMember("handlers"));
+}
+
 // Test save/load operations
 TEST_F(InstanceStorageTest, SaveAndLoadInstance) {
     InstanceInfo info = createValidInstanceInfo("test-save-load-123");

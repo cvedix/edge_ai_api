@@ -25,6 +25,8 @@ set(TEST_SOURCES
     test_watchdog_handler.cpp
     test_endpoints_handler.cpp
     test_instance_storage.cpp
+    test_instance_update.cpp
+    test_solution_handler.cpp
     test_main.cpp
 )
 
@@ -51,11 +53,16 @@ target_sources(edge_ai_api_tests PRIVATE
     ${CMAKE_SOURCE_DIR}/src/api/swagger_handler.cpp
     ${CMAKE_SOURCE_DIR}/src/api/watchdog_handler.cpp
     ${CMAKE_SOURCE_DIR}/src/api/endpoints_handler.cpp
+    ${CMAKE_SOURCE_DIR}/src/api/solution_handler.cpp
     ${CMAKE_SOURCE_DIR}/src/core/watchdog.cpp
     ${CMAKE_SOURCE_DIR}/src/core/health_monitor.cpp
     ${CMAKE_SOURCE_DIR}/src/core/endpoint_monitor.cpp
     ${CMAKE_SOURCE_DIR}/src/core/request_middleware.cpp
     ${CMAKE_SOURCE_DIR}/src/instances/instance_storage.cpp
+    ${CMAKE_SOURCE_DIR}/src/solutions/solution_registry.cpp
+    ${CMAKE_SOURCE_DIR}/src/solutions/solution_storage.cpp
+    ${CMAKE_SOURCE_DIR}/src/models/solution_config.cpp
+    ${CMAKE_SOURCE_DIR}/src/models/update_instance_request.cpp
 )
 
 # Link jsoncpp if available
