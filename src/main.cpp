@@ -7,6 +7,7 @@
 #include "api/instance_handler.h"
 #include "api/system_info_handler.h"
 #include "api/solution_handler.h"
+#include "api/group_handler.h"
 #include "models/model_upload_handler.h"
 #include "core/watchdog.h"
 #include "core/health_monitor.h"
@@ -19,6 +20,8 @@
 #include "core/pipeline_builder.h"
 #include "instances/instance_storage.h"
 #include "solutions/solution_storage.h"
+#include "groups/group_registry.h"
+#include "groups/group_storage.h"
 #include <cvedix/utils/analysis_board/cvedix_analysis_board.h>
 #include <cvedix/nodes/src/cvedix_rtsp_src_node.h>
 #include <cvedix/nodes/src/cvedix_file_src_node.h>
@@ -986,10 +989,54 @@ int main(int argc, char* argv[])
         SolutionHandler::setSolutionRegistry(&solutionRegistry);
         SolutionHandler::setSolutionStorage(&solutionStorage);
         
+        // Initialize group registry and storage
+        // Default: /var/lib/edge_ai_api/groups (auto-created if needed)
+        std::string groupsDir = EnvConfig::resolveDataDir("GROUPS_DIR", "groups");
+        PLOG_INFO << "[Main] Groups directory: " << groupsDir;
+        static GroupStorage groupStorage(groupsDir);
+        static GroupRegistry& groupRegistry = GroupRegistry::getInstance();
+        
+        // Initialize default groups
+        groupRegistry.initializeDefaultGroups();
+        
+        // Load persisted groups
+        auto persistedGroups = groupStorage.loadAllGroups();
+        for (const auto& group : persistedGroups) {
+            if (!groupRegistry.groupExists(group.groupId)) {
+                groupRegistry.registerGroup(group.groupId, group.groupName, group.description);
+                PLOG_INFO << "[Main] Loaded group: " << group.groupId << " (" << group.groupName << ")";
+            }
+        }
+        
+        // Sync groups with instances after loading
+        // This ensures groups have correct instance counts and instance IDs
+        auto allInstances = instanceRegistry.getAllInstances();
+        std::map<std::string, std::vector<std::string>> groupInstancesMap;
+        for (const auto& [instanceId, info] : allInstances) {
+            if (!info.group.empty()) {
+                // Auto-create group if it doesn't exist
+                if (!groupRegistry.groupExists(info.group)) {
+                    groupRegistry.registerGroup(info.group, info.group, "");
+                    PLOG_INFO << "[Main] Auto-created group from instance: " << info.group;
+                }
+                groupInstancesMap[info.group].push_back(instanceId);
+            }
+        }
+        // Update group registry with instance IDs
+        for (const auto& [groupId, instanceIds] : groupInstancesMap) {
+            groupRegistry.setInstanceIds(groupId, instanceIds);
+        }
+        
+        // Register group registry, storage, and instance registry with group handler
+        GroupHandler::setGroupRegistry(&groupRegistry);
+        GroupHandler::setGroupStorage(&groupStorage);
+        GroupHandler::setInstanceRegistry(&instanceRegistry);
+        
         // Create handler instances to register endpoints
         static CreateInstanceHandler createInstanceHandler;
         static InstanceHandler instanceHandler;
         static SolutionHandler solutionHandler;
+        static GroupHandler groupHandler;
         
         // Initialize model upload handler with configurable directory
         // Default: /var/lib/edge_ai_api/models (auto-created if needed)
@@ -1014,6 +1061,15 @@ int main(int argc, char* argv[])
         PLOG_INFO << "  PUT /v1/core/solutions/{solutionId} - Update solution";
         PLOG_INFO << "  DELETE /v1/core/solutions/{solutionId} - Delete solution";
         PLOG_INFO << "  Instances directory: " << instancesDir;
+        
+        PLOG_INFO << "[Main] Group management initialized";
+        PLOG_INFO << "  GET /v1/core/groups - List all groups";
+        PLOG_INFO << "  GET /v1/core/groups/{groupId} - Get group details";
+        PLOG_INFO << "  POST /v1/core/groups - Create new group";
+        PLOG_INFO << "  PUT /v1/core/groups/{groupId} - Update group";
+        PLOG_INFO << "  DELETE /v1/core/groups/{groupId} - Delete group";
+        PLOG_INFO << "  GET /v1/core/groups/{groupId}/instances - Get instances in group";
+        PLOG_INFO << "  Groups directory: " << groupsDir;
         PLOG_INFO << "[Main] Model upload handler initialized";
         PLOG_INFO << "  POST /v1/core/models/upload - Upload model file";
         PLOG_INFO << "  GET /v1/core/models/list - List uploaded models";
