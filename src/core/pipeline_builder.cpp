@@ -40,7 +40,8 @@
 #include <cvedix/nodes/infers/cvedix_mask_rcnn_detector_node.h>
 #include <cvedix/nodes/infers/cvedix_openpose_detector_node.h>
 #include <cvedix/nodes/infers/cvedix_classifier_node.h>
-#include <cvedix/nodes/infers/cvedix_feature_encoder_node.h>
+// Note: cvedix_feature_encoder_node is abstract - use cvedix_sface_feature_encoder_node or cvedix_trt_vehicle_feature_encoder instead
+// #include <cvedix/nodes/infers/cvedix_feature_encoder_node.h>
 #include <cvedix/nodes/infers/cvedix_lane_detector_node.h>
 #ifdef CVEDIX_WITH_PADDLE
 #include <cvedix/nodes/infers/cvedix_ppocr_text_detector_node.h>
@@ -49,22 +50,26 @@
 #include <vector>
 
 // Broker Nodes
-#include <cvedix/nodes/broker/cvedix_json_console_broker_node.h>
-#include <cvedix/nodes/broker/cvedix_json_enhanced_console_broker_node.h>
+// Temporarily disabled JSON broker nodes due to cereal dependency issue
+// TODO: Re-enable after fixing cereal symlink or CVEDIX SDK update
+// #include <cvedix/nodes/broker/cvedix_json_console_broker_node.h>
+// #include <cvedix/nodes/broker/cvedix_json_enhanced_console_broker_node.h>
 #ifdef CVEDIX_WITH_MQTT
-#include <cvedix/nodes/broker/cvedix_json_mqtt_broker_node.h>
+// #include <cvedix/nodes/broker/cvedix_json_mqtt_broker_node.h>
 #endif
 #ifdef CVEDIX_WITH_KAFKA
-#include <cvedix/nodes/broker/cvedix_json_kafka_broker_node.h>
+// #include <cvedix/nodes/broker/cvedix_json_kafka_broker_node.h>
 #endif
-#include <cvedix/nodes/broker/cvedix_xml_file_broker_node.h>
-#include <cvedix/nodes/broker/cvedix_xml_socket_broker_node.h>
-#include <cvedix/nodes/broker/cvedix_msg_broker_node.h>
-#include <cvedix/nodes/broker/cvedix_ba_socket_broker_node.h>
-#include <cvedix/nodes/broker/cvedix_embeddings_socket_broker_node.h>
-#include <cvedix/nodes/broker/cvedix_embeddings_properties_socket_broker_node.h>
-#include <cvedix/nodes/broker/cvedix_plate_socket_broker_node.h>
-#include <cvedix/nodes/broker/cvedix_expr_socket_broker_node.h>
+// Temporarily disabled all broker nodes due to cereal dependency issue
+// TODO: Re-enable after fixing cereal symlink or CVEDIX SDK update
+// #include <cvedix/nodes/broker/cvedix_xml_file_broker_node.h>
+// #include <cvedix/nodes/broker/cvedix_xml_socket_broker_node.h>
+// #include <cvedix/nodes/broker/cvedix_msg_broker_node.h>
+// #include <cvedix/nodes/broker/cvedix_ba_socket_broker_node.h>
+// #include <cvedix/nodes/broker/cvedix_embeddings_socket_broker_node.h>
+// #include <cvedix/nodes/broker/cvedix_embeddings_properties_socket_broker_node.h>
+// #include <cvedix/nodes/broker/cvedix_plate_socket_broker_node.h>
+// #include <cvedix/nodes/broker/cvedix_expr_socket_broker_node.h>
 #include <cstdlib>
 #include <cstring>
 #include <sstream>
@@ -371,6 +376,7 @@ std::shared_ptr<cvedix_nodes::cvedix_node> PipelineBuilder::createNode(
         } else if (nodeConfig.nodeType == "face_osd_v2") {
             return createFaceOSDNode(nodeName, params);
         }
+#ifdef CVEDIX_WITH_TRT
         // TensorRT YOLOv8 nodes
         else if (nodeConfig.nodeType == "trt_yolov8_detector") {
             return createTRTYOLOv8DetectorNode(nodeName, params, req);
@@ -397,12 +403,15 @@ std::shared_ptr<cvedix_nodes::cvedix_node> PipelineBuilder::createNode(
         } else if (nodeConfig.nodeType == "trt_vehicle_scanner") {
             return createTRTVehicleScannerNode(nodeName, params, req);
         }
+#endif
+#ifdef CVEDIX_WITH_RKNN
         // RKNN nodes
         else if (nodeConfig.nodeType == "rknn_yolov8_detector") {
             return createRKNNYOLOv8DetectorNode(nodeName, params, req);
         } else if (nodeConfig.nodeType == "rknn_face_detector") {
             return createRKNNFaceDetectorNode(nodeName, params, req);
         }
+#endif
         // Other inference nodes
         else if (nodeConfig.nodeType == "yolo_detector") {
             return createYOLODetectorNode(nodeName, params, req);
@@ -415,39 +424,55 @@ std::shared_ptr<cvedix_nodes::cvedix_node> PipelineBuilder::createNode(
         } else if (nodeConfig.nodeType == "classifier") {
             return createClassifierNode(nodeName, params, req);
         } else if (nodeConfig.nodeType == "feature_encoder") {
-            return createFeatureEncoderNode(nodeName, params, req);
+            std::cerr << "[PipelineBuilder] feature_encoder node type is not supported (abstract class). Use 'sface_feature_encoder' or 'trt_vehicle_feature_encoder' instead." << std::endl;
+            throw std::runtime_error("feature_encoder node type is not supported. Use 'sface_feature_encoder' or 'trt_vehicle_feature_encoder' instead.");
         } else if (nodeConfig.nodeType == "lane_detector") {
             return createLaneDetectorNode(nodeName, params, req);
+#ifdef CVEDIX_WITH_PADDLE
         } else if (nodeConfig.nodeType == "ppocr_text_detector") {
             return createPaddleOCRTextDetectorNode(nodeName, params, req);
+#endif
         } else if (nodeConfig.nodeType == "restoration") {
             return createRestorationNode(nodeName, params, req);
         }
         // Broker nodes
+        // Temporarily disabled JSON broker nodes due to cereal dependency issue
         else if (nodeConfig.nodeType == "json_console_broker") {
-            return createJSONConsoleBrokerNode(nodeName, params, req);
+            std::cerr << "[PipelineBuilder] json_console_broker is temporarily disabled due to cereal dependency issue" << std::endl;
+            return nullptr;
         } else if (nodeConfig.nodeType == "json_enhanced_console_broker") {
-            return createJSONEnhancedConsoleBrokerNode(nodeName, params, req);
+            std::cerr << "[PipelineBuilder] json_enhanced_console_broker is temporarily disabled due to cereal dependency issue" << std::endl;
+            return nullptr;
         } else if (nodeConfig.nodeType == "json_mqtt_broker") {
-            return createJSONMQTTBrokerNode(nodeName, params, req);
+            std::cerr << "[PipelineBuilder] json_mqtt_broker is temporarily disabled due to cereal dependency issue" << std::endl;
+            return nullptr;
         } else if (nodeConfig.nodeType == "json_kafka_broker") {
-            return createJSONKafkaBrokerNode(nodeName, params, req);
+            std::cerr << "[PipelineBuilder] json_kafka_broker is temporarily disabled due to cereal dependency issue" << std::endl;
+            return nullptr;
         } else if (nodeConfig.nodeType == "xml_file_broker") {
-            return createXMLFileBrokerNode(nodeName, params, req);
+            std::cerr << "[PipelineBuilder] xml_file_broker is temporarily disabled due to cereal dependency issue" << std::endl;
+            return nullptr;
         } else if (nodeConfig.nodeType == "xml_socket_broker") {
-            return createXMLSocketBrokerNode(nodeName, params, req);
+            std::cerr << "[PipelineBuilder] xml_socket_broker is temporarily disabled due to cereal dependency issue" << std::endl;
+            return nullptr;
         } else if (nodeConfig.nodeType == "msg_broker") {
-            return createMessageBrokerNode(nodeName, params, req);
+            std::cerr << "[PipelineBuilder] msg_broker is temporarily disabled due to cereal dependency issue" << std::endl;
+            return nullptr;
         } else if (nodeConfig.nodeType == "ba_socket_broker") {
-            return createBASocketBrokerNode(nodeName, params, req);
+            std::cerr << "[PipelineBuilder] ba_socket_broker is temporarily disabled due to cereal dependency issue" << std::endl;
+            return nullptr;
         } else if (nodeConfig.nodeType == "embeddings_socket_broker") {
-            return createEmbeddingsSocketBrokerNode(nodeName, params, req);
+            std::cerr << "[PipelineBuilder] embeddings_socket_broker is temporarily disabled due to cereal dependency issue" << std::endl;
+            return nullptr;
         } else if (nodeConfig.nodeType == "embeddings_properties_socket_broker") {
-            return createEmbeddingsPropertiesSocketBrokerNode(nodeName, params, req);
+            std::cerr << "[PipelineBuilder] embeddings_properties_socket_broker is temporarily disabled due to cereal dependency issue" << std::endl;
+            return nullptr;
         } else if (nodeConfig.nodeType == "plate_socket_broker") {
-            return createPlateSocketBrokerNode(nodeName, params, req);
+            std::cerr << "[PipelineBuilder] plate_socket_broker is temporarily disabled due to cereal dependency issue" << std::endl;
+            return nullptr;
         } else if (nodeConfig.nodeType == "expr_socket_broker") {
-            return createExpressionSocketBrokerNode(nodeName, params, req);
+            std::cerr << "[PipelineBuilder] expr_socket_broker is temporarily disabled due to cereal dependency issue" << std::endl;
+            return nullptr;
         }
         // Destination nodes
         else if (nodeConfig.nodeType == "file_des") {
@@ -2285,6 +2310,9 @@ std::shared_ptr<cvedix_nodes::cvedix_node> PipelineBuilder::createClassifierNode
     }
 }
 
+// Note: createFeatureEncoderNode is disabled because cvedix_feature_encoder_node is abstract
+// Use createSFaceEncoderNode (for "sface_feature_encoder") or createTRTVehicleFeatureEncoderNode (for "trt_vehicle_feature_encoder") instead
+/*
 std::shared_ptr<cvedix_nodes::cvedix_node> PipelineBuilder::createFeatureEncoderNode(
     const std::string& nodeName,
     const std::map<std::string, std::string>& params,
@@ -2320,6 +2348,7 @@ std::shared_ptr<cvedix_nodes::cvedix_node> PipelineBuilder::createFeatureEncoder
         throw;
     }
 }
+*/
 
 std::shared_ptr<cvedix_nodes::cvedix_node> PipelineBuilder::createLaneDetectorNode(
     const std::string& nodeName,
@@ -2672,6 +2701,9 @@ std::shared_ptr<cvedix_nodes::cvedix_node> PipelineBuilder::createUDPSourceNode(
 
 // ========== Broker Nodes Implementation ==========
 
+// Temporarily disabled JSON broker nodes due to cereal dependency issue
+// TODO: Re-enable after fixing cereal symlink or CVEDIX SDK update
+/*
 std::shared_ptr<cvedix_nodes::cvedix_node> PipelineBuilder::createJSONConsoleBrokerNode(
     const std::string& nodeName,
     const std::map<std::string, std::string>& params,
@@ -2872,7 +2904,31 @@ std::shared_ptr<cvedix_nodes::cvedix_node> PipelineBuilder::createJSONKafkaBroke
     }
 }
 #endif
+*/
+// Stub implementations to avoid linker errors
+std::shared_ptr<cvedix_nodes::cvedix_node> PipelineBuilder::createJSONConsoleBrokerNode(
+    const std::string&, const std::map<std::string, std::string>&, const CreateInstanceRequest&) {
+    return nullptr;
+}
+std::shared_ptr<cvedix_nodes::cvedix_node> PipelineBuilder::createJSONEnhancedConsoleBrokerNode(
+    const std::string&, const std::map<std::string, std::string>&, const CreateInstanceRequest&) {
+    return nullptr;
+}
+#ifdef CVEDIX_WITH_MQTT
+std::shared_ptr<cvedix_nodes::cvedix_node> PipelineBuilder::createJSONMQTTBrokerNode(
+    const std::string&, const std::map<std::string, std::string>&, const CreateInstanceRequest&) {
+    return nullptr;
+}
+#endif
+#ifdef CVEDIX_WITH_KAFKA
+std::shared_ptr<cvedix_nodes::cvedix_node> PipelineBuilder::createJSONKafkaBrokerNode(
+    const std::string&, const std::map<std::string, std::string>&, const CreateInstanceRequest&) {
+    return nullptr;
+}
+#endif
 
+// Temporarily disabled all broker node implementations due to cereal dependency issue
+/*
 std::shared_ptr<cvedix_nodes::cvedix_node> PipelineBuilder::createXMLFileBrokerNode(
     const std::string& nodeName,
     const std::map<std::string, std::string>& params,
@@ -3426,5 +3482,39 @@ std::shared_ptr<cvedix_nodes::cvedix_node> PipelineBuilder::createExpressionSock
         std::cerr << "[PipelineBuilder] Exception in createExpressionSocketBrokerNode: " << e.what() << std::endl;
         throw;
     }
+}
+*/
+// Stub implementations for all broker nodes to avoid linker errors
+std::shared_ptr<cvedix_nodes::cvedix_node> PipelineBuilder::createXMLFileBrokerNode(
+    const std::string&, const std::map<std::string, std::string>&, const CreateInstanceRequest&) {
+    return nullptr;
+}
+std::shared_ptr<cvedix_nodes::cvedix_node> PipelineBuilder::createXMLSocketBrokerNode(
+    const std::string&, const std::map<std::string, std::string>&, const CreateInstanceRequest&) {
+    return nullptr;
+}
+std::shared_ptr<cvedix_nodes::cvedix_node> PipelineBuilder::createMessageBrokerNode(
+    const std::string&, const std::map<std::string, std::string>&, const CreateInstanceRequest&) {
+    return nullptr;
+}
+std::shared_ptr<cvedix_nodes::cvedix_node> PipelineBuilder::createBASocketBrokerNode(
+    const std::string&, const std::map<std::string, std::string>&, const CreateInstanceRequest&) {
+    return nullptr;
+}
+std::shared_ptr<cvedix_nodes::cvedix_node> PipelineBuilder::createEmbeddingsSocketBrokerNode(
+    const std::string&, const std::map<std::string, std::string>&, const CreateInstanceRequest&) {
+    return nullptr;
+}
+std::shared_ptr<cvedix_nodes::cvedix_node> PipelineBuilder::createEmbeddingsPropertiesSocketBrokerNode(
+    const std::string&, const std::map<std::string, std::string>&, const CreateInstanceRequest&) {
+    return nullptr;
+}
+std::shared_ptr<cvedix_nodes::cvedix_node> PipelineBuilder::createPlateSocketBrokerNode(
+    const std::string&, const std::map<std::string, std::string>&, const CreateInstanceRequest&) {
+    return nullptr;
+}
+std::shared_ptr<cvedix_nodes::cvedix_node> PipelineBuilder::createExpressionSocketBrokerNode(
+    const std::string&, const std::map<std::string, std::string>&, const CreateInstanceRequest&) {
+    return nullptr;
 }
 

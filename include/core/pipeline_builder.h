@@ -121,15 +121,6 @@ private:
     );
     
     /**
-     * @brief Create file source node
-     */
-    std::shared_ptr<cvedix_nodes::cvedix_node> createFileSourceNode(
-        const std::string& nodeName,
-        const std::map<std::string, std::string>& params,
-        const CreateInstanceRequest& req
-    );
-    
-    /**
      * @brief Create SFace feature encoder node
      */
     std::shared_ptr<cvedix_nodes::cvedix_node> createSFaceEncoderNode(
@@ -435,12 +426,13 @@ private:
     
     /**
      * @brief Create feature encoder node (generic)
+     * @note DISABLED: cvedix_feature_encoder_node is abstract. Use createSFaceEncoderNode or createTRTVehicleFeatureEncoderNode instead.
      */
-    std::shared_ptr<cvedix_nodes::cvedix_node> createFeatureEncoderNode(
-        const std::string& nodeName,
-        const std::map<std::string, std::string>& params,
-        const CreateInstanceRequest& req
-    );
+    // std::shared_ptr<cvedix_nodes::cvedix_node> createFeatureEncoderNode(
+    //     const std::string& nodeName,
+    //     const std::map<std::string, std::string>& params,
+    //     const CreateInstanceRequest& req
+    // );
     
     /**
      * @brief Create lane detector node

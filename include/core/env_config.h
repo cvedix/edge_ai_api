@@ -7,6 +7,7 @@
 #include <iostream>
 #include <algorithm>
 #include <climits>
+#include <filesystem>
 
 /**
  * @brief Helper functions to parse environment variables
@@ -201,6 +202,64 @@ inline int parseLogLevelInt(const std::string& level_str, int default_level) {
     std::cerr << "Warning: Invalid LOG_LEVEL='" << level_str 
              << "'. Using default: INFO" << std::endl;
     return default_level;
+}
+
+/**
+ * @brief Resolve data directory path intelligently
+ * 
+ * Priority:
+ * 1. Environment variable (if set) - highest priority
+ * 2. Use /var/lib/edge_ai_api/{subdir} as default
+ * 
+ * Directory will be created automatically if it doesn't exist.
+ * 
+ * @param env_var_name Environment variable name (e.g., "SOLUTIONS_DIR")
+ * @param subdir Subdirectory name under /var/lib/edge_ai_api (e.g., "solutions")
+ * @return Resolved directory path
+ */
+inline std::string resolveDataDir(const char* env_var_name, const std::string& subdir) {
+    // 1. Check environment variable first (highest priority)
+    const char* env_value = std::getenv(env_var_name);
+    if (env_value && strlen(env_value) > 0) {
+        std::string path = std::string(env_value);
+        // Ensure directory exists
+        try {
+            std::filesystem::create_directories(path);
+        } catch (...) {
+            // Log error but continue - storage classes will handle creation
+        }
+        return path;
+    }
+    
+    // 2. Use /var/lib/edge_ai_api/{subdir} as default
+    std::string default_path = "/var/lib/edge_ai_api/" + subdir;
+    
+    // Ensure directory exists
+    try {
+        std::filesystem::create_directories(default_path);
+    } catch (const std::exception& e) {
+        // If can't create /var/lib (need root), try user directory as fallback
+        const char* home = std::getenv("HOME");
+        if (home) {
+            std::string fallback_path = std::string(home) + "/.local/share/edge_ai_api/" + subdir;
+            try {
+                std::filesystem::create_directories(fallback_path);
+                std::cerr << "[EnvConfig] Cannot create " << default_path 
+                         << " (permission denied), using " << fallback_path << std::endl;
+                return fallback_path;
+            } catch (...) {
+                // Last resort: use current directory
+                std::cerr << "[EnvConfig] Warning: Cannot create data directories, using current directory" << std::endl;
+                return "./" + subdir;
+            }
+        }
+        // Last resort: use current directory
+        std::cerr << "[EnvConfig] Warning: Cannot create " << default_path 
+                 << ", using current directory" << std::endl;
+        return "./" + subdir;
+    }
+    
+    return default_path;
 }
 
 } // namespace EnvConfig

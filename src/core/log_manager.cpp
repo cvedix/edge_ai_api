@@ -7,6 +7,7 @@
 #include <filesystem>
 #include <sys/statvfs.h>
 #include <unistd.h>
+#include <future>
 
 namespace fs = std::filesystem;
 
@@ -28,8 +29,9 @@ void LogManager::init(const std::string& base_dir, int max_disk_usage_percent, i
     std::lock_guard<std::mutex> lock(cleanup_mutex_);
     
     // Get base directory from environment or use provided/default
+    // Default: /var/lib/edge_ai_api/logs (auto-created if needed)
     base_dir_ = base_dir.empty() 
-        ? EnvConfig::getString("LOG_DIR", "./logs")
+        ? EnvConfig::resolveDataDir("LOG_DIR", "logs")
         : base_dir;
     
     // Get max disk usage from environment
@@ -134,7 +136,17 @@ void LogManager::startCleanupThread() {
 void LogManager::stopCleanupThread() {
     cleanup_running_ = false;
     if (cleanup_thread_ && cleanup_thread_->joinable()) {
-        cleanup_thread_->join();
+        // Use timeout to avoid blocking indefinitely during shutdown
+        // Capture cleanup_thread_ pointer by value since this is a static function
+        auto thread_ptr = cleanup_thread_.get();
+        auto future = std::async(std::launch::async, [thread_ptr]() {
+            thread_ptr->join();
+        });
+        
+        if (future.wait_for(std::chrono::seconds(1)) == std::future_status::timeout) {
+            std::cerr << "[LogManager] Warning: Cleanup thread join timeout, detaching..." << std::endl;
+            cleanup_thread_->detach();
+        }
     }
     cleanup_thread_.reset();
 }
@@ -280,9 +292,11 @@ void LogManager::cleanupOnLowDiskSpace() {
 
 void LogManager::cleanupThreadFunc() {
     while (cleanup_running_.load()) {
-        // Sleep for cleanup interval
-        for (int i = 0; i < cleanup_interval_hours_ && cleanup_running_.load(); ++i) {
-            std::this_thread::sleep_for(std::chrono::hours(1));
+        // Sleep for cleanup interval, but check flag frequently (every second)
+        // This allows immediate shutdown instead of waiting up to cleanup_interval_hours_
+        int total_seconds = cleanup_interval_hours_ * 3600;
+        for (int i = 0; i < total_seconds && cleanup_running_.load(); ++i) {
+            std::this_thread::sleep_for(std::chrono::seconds(1));
         }
         
         if (!cleanup_running_.load()) {
