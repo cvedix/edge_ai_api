@@ -4,6 +4,7 @@
 #include <sstream>
 #include <unistd.h>
 #include <sys/resource.h>
+#include <future>
 
 HealthMonitor::HealthMonitor(uint32_t monitor_interval_ms)
     : monitor_interval_ms_(monitor_interval_ms)
@@ -47,7 +48,15 @@ void HealthMonitor::stop()
     running_.store(false);
 
     if (monitor_thread_ && monitor_thread_->joinable()) {
-        monitor_thread_->join();
+        // Use timeout to avoid blocking indefinitely during shutdown
+        auto future = std::async(std::launch::async, [this]() {
+            monitor_thread_->join();
+        });
+        
+        if (future.wait_for(std::chrono::seconds(1)) == std::future_status::timeout) {
+            std::cerr << "[HealthMonitor] Warning: Thread join timeout, detaching..." << std::endl;
+            monitor_thread_->detach();
+        }
     }
 
     std::cout << "[HealthMonitor] Stopped" << std::endl;
