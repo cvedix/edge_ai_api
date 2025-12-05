@@ -12,6 +12,7 @@ struct SolutionConfig {
     std::string solutionId;
     std::string solutionName;
     std::string solutionType;  // "face_detection", "object_detection", etc.
+    bool isDefault = false;     // If true, solution cannot be deleted
     
     /**
      * @brief Node configuration in pipeline
