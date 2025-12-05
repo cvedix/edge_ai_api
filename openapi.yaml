@@ -1096,6 +1096,258 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
+    options:
+      summary: CORS preflight for create instance
+      operationId: createInstanceOptions
+      tags:
+        - Instances
+      responses:
+        '200':
+          description: CORS preflight response
+
+  /v1/core/solutions:
+    get:
+      summary: List all solutions
+      description: Returns a list of all available solutions with summary information including solution type and pipeline node count.
+      operationId: listSolutions
+      tags:
+        - Solutions
+      responses:
+        '200':
+          description: List of solutions
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  solutions:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/SolutionSummary'
+                  total:
+                    type: integer
+                    description: Total number of solutions
+                  default:
+                    type: integer
+                    description: Number of default solutions
+                  custom:
+                    type: integer
+                    description: Number of custom solutions
+              example:
+                total: 2
+                default: 1
+                custom: 1
+                solutions:
+                  - solutionId: "face_detection"
+                    solutionName: "Face Detection"
+                    solutionType: "face_detection"
+                    isDefault: true
+                    pipelineNodeCount: 3
+        '500':
+          description: Server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+    post:
+      summary: Create a new solution
+      description: Creates a new custom solution configuration. Custom solutions can be modified and deleted, unlike default solutions.
+      operationId: createSolution
+      tags:
+        - Solutions
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateSolutionRequest'
+            example:
+              solutionId: "custom_face_detection"
+              solutionName: "Custom Face Detection"
+              solutionType: "face_detection"
+              pipeline:
+                - nodeType: "rtsp_src"
+                  nodeName: "source_{instanceId}"
+                  parameters:
+                    url: "rtsp://example.com/stream"
+                - nodeType: "yunet_face_detector"
+                  nodeName: "detector_{instanceId}"
+                  parameters:
+                    model_path: "models/face/yunet.onnx"
+                - nodeType: "file_des"
+                  nodeName: "output_{instanceId}"
+                  parameters:
+                    output_path: "/tmp/output"
+              defaults:
+                RTSP_URL: "rtsp://example.com/stream"
+      responses:
+        '201':
+          description: Solution created successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SolutionConfig'
+        '400':
+          description: Bad request (validation failed)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '409':
+          description: Solution already exists
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+    options:
+      summary: CORS preflight for solutions
+      operationId: listSolutionsOptions
+      tags:
+        - Solutions
+      responses:
+        '200':
+          description: CORS preflight response
+
+  /v1/core/solutions/{solutionId}:
+    get:
+      summary: Get solution details
+      description: Returns detailed information about a specific solution including full pipeline configuration.
+      operationId: getSolution
+      tags:
+        - Solutions
+      parameters:
+        - name: solutionId
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Solution ID
+      responses:
+        '200':
+          description: Solution details
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SolutionConfig'
+        '404':
+          description: Solution not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+    put:
+      summary: Update a solution
+      description: Updates an existing custom solution configuration. Default solutions cannot be updated.
+      operationId: updateSolution
+      tags:
+        - Solutions
+      parameters:
+        - name: solutionId
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Solution ID
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateSolutionRequest'
+      responses:
+        '200':
+          description: Solution updated successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SolutionConfig'
+        '400':
+          description: Bad request (validation failed)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '403':
+          description: Cannot update default solution
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: Solution not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+    delete:
+      summary: Delete a solution
+      description: Deletes a custom solution. Default solutions cannot be deleted.
+      operationId: deleteSolution
+      tags:
+        - Solutions
+      parameters:
+        - name: solutionId
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Solution ID
+      responses:
+        '200':
+          description: Solution deleted successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                  solutionId:
+                    type: string
+        '403':
+          description: Cannot delete default solution
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: Solution not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+    options:
+      summary: CORS preflight for solution
+      operationId: getSolutionOptions
+      tags:
+        - Solutions
+      responses:
+        '200':
+          description: CORS preflight response
 
 components:
   schemas:
@@ -1985,11 +2237,180 @@ components:
               description: Human-readable status message
               example: "Instance is running and processing frames"
 
+    SolutionSummary:
+      type: object
+      properties:
+        solutionId:
+          type: string
+          description: Unique solution identifier
+          example: "face_detection"
+        solutionName:
+          type: string
+          description: Display name of the solution
+          example: "Face Detection"
+        solutionType:
+          type: string
+          description: Type of solution
+          example: "face_detection"
+        isDefault:
+          type: boolean
+          description: Whether this is a default solution (cannot be deleted)
+          example: true
+        pipelineNodeCount:
+          type: integer
+          description: Number of nodes in the pipeline
+          example: 3
+
+    SolutionConfig:
+      type: object
+      required:
+        - solutionId
+        - solutionName
+        - solutionType
+        - pipeline
+      properties:
+        solutionId:
+          type: string
+          description: Unique solution identifier
+          example: "face_detection"
+        solutionName:
+          type: string
+          description: Display name of the solution
+          example: "Face Detection"
+        solutionType:
+          type: string
+          description: Type of solution
+          example: "face_detection"
+        isDefault:
+          type: boolean
+          description: Whether this is a default solution
+          example: false
+        pipeline:
+          type: array
+          description: Pipeline node configurations
+          items:
+            type: object
+            required:
+              - nodeType
+              - nodeName
+            properties:
+              nodeType:
+                type: string
+                description: Type of node (e.g., "rtsp_src", "yunet_face_detector", "file_des")
+                example: "rtsp_src"
+              nodeName:
+                type: string
+                description: Node name template (may contain {instanceId} placeholder)
+                example: "source_{instanceId}"
+              parameters:
+                type: object
+                description: Node-specific parameters
+                additionalProperties:
+                  type: string
+                example:
+                  url: "rtsp://example.com/stream"
+        defaults:
+          type: object
+          description: Default parameter values
+          additionalProperties:
+            type: string
+          example:
+            RTSP_URL: "rtsp://example.com/stream"
+
+    CreateSolutionRequest:
+      type: object
+      required:
+        - solutionId
+        - solutionName
+        - solutionType
+        - pipeline
+      properties:
+        solutionId:
+          type: string
+          description: Unique solution identifier (alphanumeric, underscore, hyphen only)
+          pattern: "^[A-Za-z0-9_-]+$"
+          example: "custom_face_detection"
+        solutionName:
+          type: string
+          description: Display name of the solution
+          example: "Custom Face Detection"
+        solutionType:
+          type: string
+          description: Type of solution
+          example: "face_detection"
+        pipeline:
+          type: array
+          description: Pipeline node configurations
+          items:
+            type: object
+            required:
+              - nodeType
+              - nodeName
+            properties:
+              nodeType:
+                type: string
+                description: Type of node
+                example: "rtsp_src"
+              nodeName:
+                type: string
+                description: Node name template
+                example: "source_{instanceId}"
+              parameters:
+                type: object
+                description: Node-specific parameters
+                additionalProperties:
+                  type: string
+        defaults:
+          type: object
+          description: Default parameter values
+          additionalProperties:
+            type: string
+
+    UpdateSolutionRequest:
+      type: object
+      description: Request body for updating a solution. All fields except solutionId are optional.
+      properties:
+        solutionName:
+          type: string
+          description: Display name of the solution
+          example: "Updated Solution Name"
+        solutionType:
+          type: string
+          description: Type of solution
+          example: "face_detection"
+        pipeline:
+          type: array
+          description: Pipeline node configurations
+          items:
+            type: object
+            required:
+              - nodeType
+              - nodeName
+            properties:
+              nodeType:
+                type: string
+                description: Type of node
+              nodeName:
+                type: string
+                description: Node name template
+              parameters:
+                type: object
+                description: Node-specific parameters
+                additionalProperties:
+                  type: string
+        defaults:
+          type: object
+          description: Default parameter values
+          additionalProperties:
+            type: string
+
 tags:
   - name: Core
     description: Core API endpoints for health and version information
   - name: Instances
     description: AI instance management endpoints (create, list, start, stop, delete)
+  - name: Solutions
+    description: Solution configuration management endpoints (create, list, update, delete)
   - name: Models
     description: Model file management endpoints
 
