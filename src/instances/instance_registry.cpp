@@ -38,6 +38,16 @@ std::string InstanceRegistry::createInstance(const CreateInstanceRequest& req) {
     if (!req.solution.empty()) {
         auto optSolution = solution_registry_.getSolution(req.solution);
         if (!optSolution.has_value()) {
+            std::cerr << "[InstanceRegistry] Solution not found: " << req.solution << std::endl;
+            std::cerr << "[InstanceRegistry] Available solutions: ";
+            auto availableSolutions = solution_registry_.listSolutions();
+            for (size_t i = 0; i < availableSolutions.size(); ++i) {
+                std::cerr << availableSolutions[i];
+                if (i < availableSolutions.size() - 1) {
+                    std::cerr << ", ";
+                }
+            }
+            std::cerr << std::endl;
             return ""; // Solution not found
         }
         solutionConfig = optSolution.value();
@@ -759,35 +769,95 @@ bool InstanceRegistry::updateInstance(const std::string& instanceId, const Updat
             }
             hasChanges = true;
             
+            // Update RTSP URL if changed
+            auto rtspIt = req.additionalParams.find("RTSP_URL");
+            if (rtspIt != req.additionalParams.end() && !rtspIt->second.empty()) {
+                info.rtspUrl = rtspIt->second;
+            }
+            
             // Update RTMP URL if changed
             auto rtmpIt = req.additionalParams.find("RTMP_URL");
             if (rtmpIt != req.additionalParams.end() && !rtmpIt->second.empty()) {
                 info.rtmpUrl = rtmpIt->second;
-                // Generate RTSP URL from RTMP URL
-                std::string rtmpUrl = rtmpIt->second;
-                size_t protocolPos = rtmpUrl.find("rtmp://");
-                if (protocolPos != std::string::npos) {
-                    std::string rtspUrl = rtmpUrl;
-                    rtspUrl.replace(protocolPos, 7, "rtsp://");
-                    size_t portPos = rtspUrl.find(":1935");
-                    if (portPos != std::string::npos) {
-                        rtspUrl.replace(portPos, 5, ":8554");
-                    }
-                    size_t lastSlash = rtspUrl.find_last_of('/');
-                    if (lastSlash != std::string::npos) {
-                        std::string streamKey = rtspUrl.substr(lastSlash + 1);
-                        if (streamKey.find("_0") == std::string::npos && !streamKey.empty()) {
-                            rtspUrl += "_0";
-                        }
-                    }
-                    info.rtspUrl = rtspUrl;
-                }
             }
             
             // Update FILE_PATH if changed
             auto filePathIt = req.additionalParams.find("FILE_PATH");
             if (filePathIt != req.additionalParams.end() && !filePathIt->second.empty()) {
                 info.filePath = filePathIt->second;
+            }
+            
+            // Update Detector model file
+            auto detectorModelIt = req.additionalParams.find("DETECTOR_MODEL_FILE");
+            if (detectorModelIt != req.additionalParams.end() && !detectorModelIt->second.empty()) {
+                info.detectorModelFile = detectorModelIt->second;
+            }
+            
+            // Update DetectorThermal model file
+            auto thermalModelIt = req.additionalParams.find("DETECTOR_THERMAL_MODEL_FILE");
+            if (thermalModelIt != req.additionalParams.end() && !thermalModelIt->second.empty()) {
+                info.detectorThermalModelFile = thermalModelIt->second;
+            }
+            
+            // Update confidence thresholds
+            auto animalThreshIt = req.additionalParams.find("ANIMAL_CONFIDENCE_THRESHOLD");
+            if (animalThreshIt != req.additionalParams.end() && !animalThreshIt->second.empty()) {
+                try {
+                    info.animalConfidenceThreshold = std::stod(animalThreshIt->second);
+                } catch (...) {
+                    std::cerr << "[InstanceRegistry] Invalid animal_confidence_threshold value: " << animalThreshIt->second << std::endl;
+                }
+            }
+            
+            auto personThreshIt = req.additionalParams.find("PERSON_CONFIDENCE_THRESHOLD");
+            if (personThreshIt != req.additionalParams.end() && !personThreshIt->second.empty()) {
+                try {
+                    info.personConfidenceThreshold = std::stod(personThreshIt->second);
+                } catch (...) {
+                    std::cerr << "[InstanceRegistry] Invalid person_confidence_threshold value: " << personThreshIt->second << std::endl;
+                }
+            }
+            
+            auto vehicleThreshIt = req.additionalParams.find("VEHICLE_CONFIDENCE_THRESHOLD");
+            if (vehicleThreshIt != req.additionalParams.end() && !vehicleThreshIt->second.empty()) {
+                try {
+                    info.vehicleConfidenceThreshold = std::stod(vehicleThreshIt->second);
+                } catch (...) {
+                    std::cerr << "[InstanceRegistry] Invalid vehicle_confidence_threshold value: " << vehicleThreshIt->second << std::endl;
+                }
+            }
+            
+            auto faceThreshIt = req.additionalParams.find("FACE_CONFIDENCE_THRESHOLD");
+            if (faceThreshIt != req.additionalParams.end() && !faceThreshIt->second.empty()) {
+                try {
+                    info.faceConfidenceThreshold = std::stod(faceThreshIt->second);
+                } catch (...) {
+                    std::cerr << "[InstanceRegistry] Invalid face_confidence_threshold value: " << faceThreshIt->second << std::endl;
+                }
+            }
+            
+            auto licenseThreshIt = req.additionalParams.find("LICENSE_PLATE_CONFIDENCE_THRESHOLD");
+            if (licenseThreshIt != req.additionalParams.end() && !licenseThreshIt->second.empty()) {
+                try {
+                    info.licensePlateConfidenceThreshold = std::stod(licenseThreshIt->second);
+                } catch (...) {
+                    std::cerr << "[InstanceRegistry] Invalid license_plate_confidence_threshold value: " << licenseThreshIt->second << std::endl;
+                }
+            }
+            
+            auto confThreshIt = req.additionalParams.find("CONF_THRESHOLD");
+            if (confThreshIt != req.additionalParams.end() && !confThreshIt->second.empty()) {
+                try {
+                    info.confThreshold = std::stod(confThreshIt->second);
+                } catch (...) {
+                    std::cerr << "[InstanceRegistry] Invalid conf_threshold value: " << confThreshIt->second << std::endl;
+                }
+            }
+            
+            // Update PerformanceMode
+            auto perfModeIt = req.additionalParams.find("PERFORMANCE_MODE");
+            if (perfModeIt != req.additionalParams.end() && !perfModeIt->second.empty()) {
+                info.performanceMode = perfModeIt->second;
             }
         }
         
@@ -1615,5 +1685,137 @@ void InstanceRegistry::logProcessingResults(const std::string& instanceId) const
     }
     
     std::cerr << "[InstanceProcessingLog] ========================================" << std::endl;
+}
+
+bool InstanceRegistry::updateInstanceFromConfig(const std::string& instanceId, const Json::Value& configJson) {
+    std::cerr << "[InstanceRegistry] ========================================" << std::endl;
+    std::cerr << "[InstanceRegistry] Updating instance from config: " << instanceId << std::endl;
+    std::cerr << "[InstanceRegistry] ========================================" << std::endl;
+    
+    bool wasRunning = false;
+    bool isPersistent = false;
+    InstanceInfo currentInfo;
+    
+    {
+        std::lock_guard<std::mutex> lock(mutex_);
+        
+        auto instanceIt = instances_.find(instanceId);
+        if (instanceIt == instances_.end()) {
+            std::cerr << "[InstanceRegistry] Instance " << instanceId << " not found" << std::endl;
+            return false;
+        }
+        
+        InstanceInfo& info = instanceIt->second;
+        
+        // Check if instance is read-only
+        if (info.readOnly) {
+            std::cerr << "[InstanceRegistry] Cannot update read-only instance " << instanceId << std::endl;
+            return false;
+        }
+        
+        wasRunning = info.running;
+        isPersistent = info.persistent;
+        currentInfo = info; // Copy current info
+    } // Release lock
+    
+    // Convert current InstanceInfo to config JSON
+    std::string conversionError;
+    Json::Value existingConfig = instance_storage_.instanceInfoToConfigJson(currentInfo, &conversionError);
+    if (existingConfig.isNull() || existingConfig.empty()) {
+        std::cerr << "[InstanceRegistry] Failed to convert current InstanceInfo to config: " << conversionError << std::endl;
+        return false;
+    }
+    
+    // List of keys to preserve (TensorRT model IDs, Zone IDs, etc.)
+    std::vector<std::string> preserveKeys;
+    
+    // Collect UUID-like keys (TensorRT model IDs) from existing config
+    for (const auto& key : existingConfig.getMemberNames()) {
+        if (key.length() >= 36 && key.find('-') != std::string::npos) {
+            preserveKeys.push_back(key);
+        }
+    }
+    
+    // Add special keys to preserve
+    std::vector<std::string> specialKeys = {
+        "AnimalTracker", "LicensePlateTracker", "ObjectAttributeExtraction", 
+        "ObjectMovementClassifier", "PersonTracker", "VehicleTracker", "Global"
+    };
+    preserveKeys.insert(preserveKeys.end(), specialKeys.begin(), specialKeys.end());
+    
+    // Merge configs (preserve Zone, Tripwire, DetectorRegions if not in update)
+    if (!instance_storage_.mergeConfigs(existingConfig, configJson, preserveKeys)) {
+        std::cerr << "[InstanceRegistry] Merge failed for instance " << instanceId << std::endl;
+        return false;
+    }
+    
+    // Ensure InstanceId matches
+    existingConfig["InstanceId"] = instanceId;
+    
+    // Convert merged config back to InstanceInfo
+    auto optInfo = instance_storage_.configJsonToInstanceInfo(existingConfig, &conversionError);
+    if (!optInfo.has_value()) {
+        std::cerr << "[InstanceRegistry] Failed to convert config to InstanceInfo: " << conversionError << std::endl;
+        return false;
+    }
+    
+    InstanceInfo updatedInfo = optInfo.value();
+    
+    // Preserve runtime state
+    updatedInfo.loaded = currentInfo.loaded;
+    updatedInfo.running = currentInfo.running;
+    updatedInfo.fps = currentInfo.fps;
+    
+    // Update instance in registry
+    {
+        std::lock_guard<std::mutex> lock(mutex_);
+        auto instanceIt = instances_.find(instanceId);
+        if (instanceIt == instances_.end()) {
+            std::cerr << "[InstanceRegistry] Instance " << instanceId << " not found during update" << std::endl;
+            return false;
+        }
+        
+        InstanceInfo& info = instanceIt->second;
+        
+        // Update all fields from merged config
+        info = updatedInfo;
+        
+        std::cerr << "[InstanceRegistry] ✓ Instance info updated in registry" << std::endl;
+    } // Release lock
+    
+    // Save to storage
+    if (isPersistent) {
+        bool saved = instance_storage_.saveInstance(instanceId, updatedInfo);
+        if (saved) {
+            std::cerr << "[InstanceRegistry] Instance configuration saved to file" << std::endl;
+        } else {
+            std::cerr << "[InstanceRegistry] Warning: Failed to save instance configuration to file" << std::endl;
+        }
+    }
+    
+    std::cerr << "[InstanceRegistry] ✓ Instance " << instanceId << " updated successfully from config" << std::endl;
+    
+    // Restart instance if it was running to apply changes
+    if (wasRunning) {
+        std::cerr << "[InstanceRegistry] Instance was running, restarting to apply changes..." << std::endl;
+        
+        // Stop instance first
+        if (stopInstance(instanceId)) {
+            // Wait a moment for cleanup
+            std::this_thread::sleep_for(std::chrono::milliseconds(500));
+            
+            // Start instance again (this will rebuild pipeline with new config)
+            if (startInstance(instanceId, true)) {
+                std::cerr << "[InstanceRegistry] ✓ Instance restarted successfully with new configuration" << std::endl;
+            } else {
+                std::cerr << "[InstanceRegistry] ⚠ Instance stopped but failed to restart" << std::endl;
+            }
+        } else {
+            std::cerr << "[InstanceRegistry] ⚠ Failed to stop instance for restart" << std::endl;
+        }
+    }
+    
+    std::cerr << "[InstanceRegistry] ========================================" << std::endl;
+    return true;
 }
 

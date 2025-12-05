@@ -2,7 +2,7 @@
 
 #include "instances/instance_info.h"
 #include "models/create_instance_request.h"
-#include "core/solution_registry.h"
+#include "solutions/solution_registry.h"
 #include "core/pipeline_builder.h"
 #include "instances/instance_storage.h"
 #include <string>
@@ -80,6 +80,14 @@ public:
      * @return true if successful
      */
     bool updateInstance(const std::string& instanceId, const class UpdateInstanceRequest& req);
+    
+    /**
+     * @brief Update instance from JSON config (direct config update)
+     * @param instanceId Instance ID
+     * @param configJson JSON config to merge (PascalCase format matching instance_detail.txt)
+     * @return true if successful
+     */
+    bool updateInstanceFromConfig(const std::string& instanceId, const class Json::Value& configJson);
     
     /**
      * @brief List all instance IDs
