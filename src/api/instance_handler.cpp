@@ -30,6 +30,7 @@ std::string InstanceHandler::extractInstanceId(const HttpRequestPtr &req) const 
     // Fallback: extract from path if getParameter doesn't work
     if (instanceId.empty()) {
         std::string path = req->getPath();
+        // Try /instances/ pattern first
         size_t instancesPos = path.find("/instances/");
         if (instancesPos != std::string::npos) {
             size_t start = instancesPos + 11; // length of "/instances/"
@@ -38,6 +39,17 @@ std::string InstanceHandler::extractInstanceId(const HttpRequestPtr &req) const 
                 end = path.length();
             }
             instanceId = path.substr(start, end - start);
+        } else {
+            // Try /instance/ pattern (singular)
+            size_t instancePos = path.find("/instance/");
+            if (instancePos != std::string::npos) {
+                size_t start = instancePos + 10; // length of "/instance/"
+                size_t end = path.find("/", start);
+                if (end == std::string::npos) {
+                    end = path.length();
+                }
+                instanceId = path.substr(start, end - start);
+            }
         }
     }
     
@@ -564,6 +576,169 @@ void InstanceHandler::deleteInstance(
         callback(createErrorResponse(500, "Internal server error", e.what()));
     } catch (...) {
         std::cerr << "[InstanceHandler] Unknown exception" << std::endl;
+        callback(createErrorResponse(500, "Internal server error", "Unknown error occurred"));
+    }
+}
+
+void InstanceHandler::setInstanceInput(
+    const HttpRequestPtr &req,
+    std::function<void(const HttpResponsePtr &)> &&callback) {
+    
+    auto start_time = std::chrono::steady_clock::now();
+    
+    if (isApiLoggingEnabled()) {
+        PLOG_INFO << "[API] PUT /v1/core/instance/{instanceId}/input - Set input source";
+        PLOG_DEBUG << "[API] Request from: " << req->getPeerAddr().toIpPort();
+    }
+    
+    try {
+        // Check if registry is set
+        if (!instance_registry_) {
+            if (isApiLoggingEnabled()) {
+                PLOG_ERROR << "[API] PUT /v1/core/instance/{instanceId}/input - Error: Instance registry not initialized";
+            }
+            callback(createErrorResponse(500, "Internal server error", "Instance registry not initialized"));
+            return;
+        }
+        
+        // Get instance ID from path parameter
+        std::string instanceId = extractInstanceId(req);
+        
+        if (instanceId.empty()) {
+            if (isApiLoggingEnabled()) {
+                PLOG_WARNING << "[API] PUT /v1/core/instance/{instanceId}/input - Error: Instance ID is empty";
+            }
+            callback(createErrorResponse(400, "Bad request", "Instance ID is required"));
+            return;
+        }
+        
+        // Parse JSON body
+        auto json = req->getJsonObject();
+        if (!json) {
+            if (isApiLoggingEnabled()) {
+                PLOG_WARNING << "[API] PUT /v1/core/instance/" << instanceId << "/input - Error: Invalid JSON body";
+            }
+            callback(createErrorResponse(400, "Bad request", "Request body must be valid JSON"));
+            return;
+        }
+        
+        // Validate required fields
+        if (!json->isMember("type") || !(*json)["type"].isString()) {
+            if (isApiLoggingEnabled()) {
+                PLOG_WARNING << "[API] PUT /v1/core/instance/" << instanceId << "/input - Error: Missing or invalid 'type' field";
+            }
+            callback(createErrorResponse(400, "Bad request", "Field 'type' is required and must be a string"));
+            return;
+        }
+        
+        if (!json->isMember("uri") || !(*json)["uri"].isString()) {
+            if (isApiLoggingEnabled()) {
+                PLOG_WARNING << "[API] PUT /v1/core/instance/" << instanceId << "/input - Error: Missing or invalid 'uri' field";
+            }
+            callback(createErrorResponse(400, "Bad request", "Field 'uri' is required and must be a string"));
+            return;
+        }
+        
+        std::string type = (*json)["type"].asString();
+        std::string uri = (*json)["uri"].asString();
+        
+        // Validate type
+        if (type != "RTSP" && type != "HLS" && type != "Manual") {
+            if (isApiLoggingEnabled()) {
+                PLOG_WARNING << "[API] PUT /v1/core/instance/" << instanceId << "/input - Error: Invalid type: " << type;
+            }
+            callback(createErrorResponse(400, "Bad request", "Field 'type' must be one of: RTSP, HLS, Manual"));
+            return;
+        }
+        
+        // Validate uri is not empty
+        if (uri.empty()) {
+            if (isApiLoggingEnabled()) {
+                PLOG_WARNING << "[API] PUT /v1/core/instance/" << instanceId << "/input - Error: URI cannot be empty";
+            }
+            callback(createErrorResponse(400, "Bad request", "Field 'uri' cannot be empty"));
+            return;
+        }
+        
+        // Check if instance exists
+        auto optInfo = instance_registry_->getInstance(instanceId);
+        if (!optInfo.has_value()) {
+            auto end_time = std::chrono::steady_clock::now();
+            auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(end_time - start_time);
+            if (isApiLoggingEnabled()) {
+                PLOG_WARNING << "[API] PUT /v1/core/instance/" << instanceId << "/input - Instance not found - " << duration.count() << "ms";
+            }
+            callback(createErrorResponse(404, "Instance not found", "Instance not found: " + instanceId));
+            return;
+        }
+        
+        // Build Input configuration JSON (PascalCase format)
+        Json::Value inputConfig(Json::objectValue);
+        Json::Value input(Json::objectValue);
+        
+        // Set media_format (required field)
+        Json::Value mediaFormat(Json::objectValue);
+        mediaFormat["color_format"] = 0;
+        mediaFormat["default_format"] = true;
+        mediaFormat["height"] = 0;
+        mediaFormat["is_software"] = false;
+        mediaFormat["name"] = "Same as Source";
+        input["media_format"] = mediaFormat;
+        
+        // Set media_type and uri based on type
+        if (type == "RTSP") {
+            input["media_type"] = "IP Camera";
+            // Format URI for RTSP: gstreamer:///urisourcebin uri=... ! decodebin ! videoconvert ! video/x-raw, format=NV12 ! appsink drop=true name=cvdsink
+            input["uri"] = "gstreamer:///urisourcebin uri=" + uri + " ! decodebin ! videoconvert ! video/x-raw, format=NV12 ! appsink drop=true name=cvdsink";
+        } else if (type == "HLS") {
+            input["media_type"] = "IP Camera";
+            // For HLS, use the URI directly (hls_src node will handle it)
+            input["uri"] = uri;
+        } else if (type == "Manual") {
+            input["media_type"] = "IP Camera";
+            // For Manual (v4l2_src), use the URI directly (device path)
+            input["uri"] = uri;
+        }
+        
+        inputConfig["Input"] = input;
+        
+        // Update instance using updateInstanceFromConfig
+        if (instance_registry_->updateInstanceFromConfig(instanceId, inputConfig)) {
+            auto end_time = std::chrono::steady_clock::now();
+            auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(end_time - start_time);
+            if (isApiLoggingEnabled()) {
+                PLOG_INFO << "[API] PUT /v1/core/instance/" << instanceId << "/input - Success - " << duration.count() << "ms";
+            }
+            
+            // Return 204 No Content as specified in task
+            auto resp = HttpResponse::newHttpResponse();
+            resp->setStatusCode(k204NoContent);
+            resp->addHeader("Access-Control-Allow-Origin", "*");
+            resp->addHeader("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS");
+            resp->addHeader("Access-Control-Allow-Headers", "Content-Type, Authorization");
+            callback(resp);
+        } else {
+            auto end_time = std::chrono::steady_clock::now();
+            auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(end_time - start_time);
+            if (isApiLoggingEnabled()) {
+                PLOG_WARNING << "[API] PUT /v1/core/instance/" << instanceId << "/input - Failed to update - " << duration.count() << "ms";
+            }
+            callback(createErrorResponse(500, "Internal server error", "Failed to update input settings"));
+        }
+        
+    } catch (const std::exception& e) {
+        auto end_time = std::chrono::steady_clock::now();
+        auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(end_time - start_time);
+        if (isApiLoggingEnabled()) {
+            PLOG_ERROR << "[API] PUT /v1/core/instance/{instanceId}/input - Exception: " << e.what() << " - " << duration.count() << "ms";
+        }
+        callback(createErrorResponse(500, "Internal server error", e.what()));
+    } catch (...) {
+        auto end_time = std::chrono::steady_clock::now();
+        auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(end_time - start_time);
+        if (isApiLoggingEnabled()) {
+            PLOG_ERROR << "[API] PUT /v1/core/instance/{instanceId}/input - Unknown exception - " << duration.count() << "ms";
+        }
         callback(createErrorResponse(500, "Internal server error", "Unknown error occurred"));
     }
 }

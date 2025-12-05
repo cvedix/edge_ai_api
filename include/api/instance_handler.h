@@ -24,6 +24,7 @@ using namespace drogon;
  * - POST /v1/core/instances/batch/stop - Stop multiple instances concurrently
  * - POST /v1/core/instances/batch/restart - Restart multiple instances concurrently
  * - GET /v1/core/instances/{instanceId}/output - Get instance output/processing results
+ * - PUT /v1/core/instance/{instanceId}/input - Set input source for an instance
  */
 class InstanceHandler : public drogon::HttpController<InstanceHandler> {
 public:
@@ -39,12 +40,14 @@ public:
         ADD_METHOD_TO(InstanceHandler::batchStartInstances, "/v1/core/instances/batch/start", Post);
         ADD_METHOD_TO(InstanceHandler::batchStopInstances, "/v1/core/instances/batch/stop", Post);
         ADD_METHOD_TO(InstanceHandler::batchRestartInstances, "/v1/core/instances/batch/restart", Post);
+        ADD_METHOD_TO(InstanceHandler::setInstanceInput, "/v1/core/instance/{instanceId}/input", Put);
         ADD_METHOD_TO(InstanceHandler::handleOptions, "/v1/core/instances", Options);
         ADD_METHOD_TO(InstanceHandler::handleOptions, "/v1/core/instances/{instanceId}", Options);
         ADD_METHOD_TO(InstanceHandler::handleOptions, "/v1/core/instances/{instanceId}/start", Options);
         ADD_METHOD_TO(InstanceHandler::handleOptions, "/v1/core/instances/{instanceId}/stop", Options);
         ADD_METHOD_TO(InstanceHandler::handleOptions, "/v1/core/instances/{instanceId}/restart", Options);
         ADD_METHOD_TO(InstanceHandler::handleOptions, "/v1/core/instances/{instanceId}/output", Options);
+        ADD_METHOD_TO(InstanceHandler::handleOptions, "/v1/core/instance/{instanceId}/input", Options);
         ADD_METHOD_TO(InstanceHandler::handleOptions, "/v1/core/instances/batch/start", Options);
         ADD_METHOD_TO(InstanceHandler::handleOptions, "/v1/core/instances/batch/stop", Options);
         ADD_METHOD_TO(InstanceHandler::handleOptions, "/v1/core/instances/batch/restart", Options);
@@ -126,6 +129,13 @@ public:
      */
     void batchRestartInstances(const HttpRequestPtr &req,
                               std::function<void(const HttpResponsePtr &)> &&callback);
+    
+    /**
+     * @brief Handle PUT /v1/core/instance/{instanceId}/input
+     * Sets input source for an instance
+     */
+    void setInstanceInput(const HttpRequestPtr &req,
+                        std::function<void(const HttpResponsePtr &)> &&callback);
     
     /**
      * @brief Handle OPTIONS request for CORS preflight
