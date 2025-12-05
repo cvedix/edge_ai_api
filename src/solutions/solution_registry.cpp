@@ -1,8 +1,19 @@
-#include "core/solution_registry.h"
+#include "solutions/solution_registry.h"
 #include <algorithm>
+#include <iostream>
 
 void SolutionRegistry::registerSolution(const SolutionConfig& config) {
     std::lock_guard<std::mutex> lock(mutex_);
+    
+    // Check if solution already exists and is a default solution
+    auto it = solutions_.find(config.solutionId);
+    if (it != solutions_.end() && it->second.isDefault) {
+        // Cannot override default solutions
+        std::cerr << "[SolutionRegistry] Warning: Attempted to override default solution: " 
+                  << config.solutionId << ". Ignoring registration." << std::endl;
+        return;
+    }
+    
     solutions_[config.solutionId] = config;
 }
 
@@ -30,6 +41,56 @@ bool SolutionRegistry::hasSolution(const std::string& solutionId) const {
     return solutions_.find(solutionId) != solutions_.end();
 }
 
+std::unordered_map<std::string, SolutionConfig> SolutionRegistry::getAllSolutions() const {
+    std::lock_guard<std::mutex> lock(mutex_);
+    return solutions_;
+}
+
+bool SolutionRegistry::updateSolution(const SolutionConfig& config) {
+    std::lock_guard<std::mutex> lock(mutex_);
+    
+    auto it = solutions_.find(config.solutionId);
+    if (it == solutions_.end()) {
+        return false; // Solution doesn't exist
+    }
+    
+    // Check if it's a default solution - default solutions cannot be updated
+    if (it->second.isDefault) {
+        return false;
+    }
+    
+    // Update the solution
+    solutions_[config.solutionId] = config;
+    return true;
+}
+
+bool SolutionRegistry::deleteSolution(const std::string& solutionId) {
+    std::lock_guard<std::mutex> lock(mutex_);
+    
+    auto it = solutions_.find(solutionId);
+    if (it == solutions_.end()) {
+        return false; // Solution doesn't exist
+    }
+    
+    // Check if it's a default solution - default solutions cannot be deleted
+    if (it->second.isDefault) {
+        return false;
+    }
+    
+    // Delete the solution
+    solutions_.erase(it);
+    return true;
+}
+
+bool SolutionRegistry::isDefaultSolution(const std::string& solutionId) const {
+    std::lock_guard<std::mutex> lock(mutex_);
+    auto it = solutions_.find(solutionId);
+    if (it != solutions_.end()) {
+        return it->second.isDefault;
+    }
+    return false;
+}
+
 void SolutionRegistry::initializeDefaultSolutions() {
     registerFaceDetectionSolution();
     registerFaceDetectionFileSolution();  // Add face detection with file source
@@ -42,6 +103,7 @@ void SolutionRegistry::registerFaceDetectionSolution() {
     config.solutionId = "face_detection";
     config.solutionName = "Face Detection";
     config.solutionType = "face_detection";
+    config.isDefault = true;
     
     // RTSP Source Node
     SolutionConfig::NodeConfig rtspSrc;
@@ -86,6 +148,7 @@ void SolutionRegistry::registerFaceDetectionFileSolution() {
     config.solutionId = "face_detection_file";
     config.solutionName = "Face Detection with File Source";
     config.solutionType = "face_detection";
+    config.isDefault = true;
     
     // File Source Node
     SolutionConfig::NodeConfig fileSrc;
@@ -130,6 +193,7 @@ void SolutionRegistry::registerObjectDetectionSolution() {
     config.solutionId = "object_detection";
     config.solutionName = "Object Detection (YOLO)";
     config.solutionType = "object_detection";
+    config.isDefault = true;
     
     // RTSP Source Node
     SolutionConfig::NodeConfig rtspSrc;
@@ -177,6 +241,7 @@ void SolutionRegistry::registerFaceDetectionRTMPSolution() {
     config.solutionId = "face_detection_rtmp";
     config.solutionName = "Face Detection with RTMP Streaming";
     config.solutionType = "face_detection";
+    config.isDefault = true;
     
     // File Source Node
     SolutionConfig::NodeConfig fileSrc;
