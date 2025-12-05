@@ -65,6 +65,92 @@ HttpResponsePtr InstanceHandler::createSuccessResponse(const Json::Value& data, 
     return resp;
 }
 
+void InstanceHandler::getStatusSummary(
+    const HttpRequestPtr &req,
+    std::function<void(const HttpResponsePtr &)> &&callback) {
+    
+    auto start_time = std::chrono::steady_clock::now();
+    
+    if (isApiLoggingEnabled()) {
+        PLOG_INFO << "[API] GET /v1/core/instance/status/summary - Get instance status summary";
+        PLOG_DEBUG << "[API] Request from: " << req->getPeerAddr().toIpPort();
+    }
+    
+    try {
+        // Check if registry is set
+        if (!instance_registry_) {
+            if (isApiLoggingEnabled()) {
+                PLOG_ERROR << "[API] GET /v1/core/instance/status/summary - Error: Instance registry not initialized";
+            }
+            callback(createErrorResponse(500, "Internal server error", "Instance registry not initialized"));
+            return;
+        }
+        
+        // Get all instances in one lock acquisition (optimized)
+        auto allInstances = instance_registry_->getAllInstances();
+        
+        // Count instances by status
+        int totalCount = 0;
+        int runningCount = 0;
+        int stoppedCount = 0;
+        
+        for (const auto& [instanceId, info] : allInstances) {
+            totalCount++;
+            if (info.running) {
+                runningCount++;
+            } else {
+                stoppedCount++;
+            }
+        }
+        
+        // Build response
+        Json::Value response;
+        response["total"] = totalCount;
+        response["configured"] = totalCount;  // Same as total for clarity
+        response["running"] = runningCount;
+        response["stopped"] = stoppedCount;
+        
+        // Add timestamp
+        auto now = std::chrono::system_clock::now();
+        auto time_t = std::chrono::system_clock::to_time_t(now);
+        auto ms = std::chrono::duration_cast<std::chrono::milliseconds>(
+            now.time_since_epoch()) % 1000;
+        std::stringstream ss;
+        ss << std::put_time(std::localtime(&time_t), "%Y-%m-%dT%H:%M:%S");
+        ss << '.' << std::setfill('0') << std::setw(3) << ms.count() << "Z";
+        response["timestamp"] = ss.str();
+        
+        auto end_time = std::chrono::steady_clock::now();
+        auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(end_time - start_time);
+        
+        if (isApiLoggingEnabled()) {
+            PLOG_INFO << "[API] GET /v1/core/instance/status/summary - Success: " 
+                      << totalCount << " total (running: " << runningCount 
+                      << ", stopped: " << stoppedCount << ") - " 
+                      << duration.count() << "ms";
+        }
+        
+        callback(createSuccessResponse(response));
+        
+    } catch (const std::exception& e) {
+        auto end_time = std::chrono::steady_clock::now();
+        auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(end_time - start_time);
+        if (isApiLoggingEnabled()) {
+            PLOG_ERROR << "[API] GET /v1/core/instance/status/summary - Exception: " << e.what() << " - " << duration.count() << "ms";
+        }
+        std::cerr << "[InstanceHandler] Exception in getStatusSummary: " << e.what() << std::endl;
+        callback(createErrorResponse(500, "Internal server error", e.what()));
+    } catch (...) {
+        auto end_time = std::chrono::steady_clock::now();
+        auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(end_time - start_time);
+        if (isApiLoggingEnabled()) {
+            PLOG_ERROR << "[API] GET /v1/core/instance/status/summary - Unknown exception - " << duration.count() << "ms";
+        }
+        std::cerr << "[InstanceHandler] Unknown exception in getStatusSummary" << std::endl;
+        callback(createErrorResponse(500, "Internal server error", "Unknown error occurred"));
+    }
+}
+
 void InstanceHandler::listInstances(
     const HttpRequestPtr &req,
     std::function<void(const HttpResponsePtr &)> &&callback) {

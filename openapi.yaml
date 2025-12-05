@@ -302,6 +302,56 @@ paths:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
 
+  /v1/core/instance/status/summary:
+    get:
+      summary: Get instance status summary
+      description: |
+        Returns a summary of instance status including total number of configured instances, 
+        number of running instances, and number of stopped instances.
+      operationId: getStatusSummary
+      tags:
+        - Instances
+      responses:
+        '200':
+          description: Instance status summary
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StatusResponse'
+              example:
+                total: 5
+                configured: 5
+                running: 3
+                stopped: 2
+                timestamp: "2024-01-01T00:00:00.000Z"
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+    options:
+      summary: CORS preflight for status summary endpoint
+      operationId: statusSummaryOptions
+      tags:
+        - Instances
+      responses:
+        '200':
+          description: CORS preflight response
+          headers:
+            Access-Control-Allow-Origin:
+              schema:
+                type: string
+                example: "*"
+            Access-Control-Allow-Methods:
+              schema:
+                type: string
+                example: "GET, OPTIONS"
+            Access-Control-Allow-Headers:
+              schema:
+                type: string
+                example: "Content-Type, Authorization"
+
   /v1/core/instances:
     get:
       summary: List all instances
@@ -1994,6 +2044,37 @@ components:
           type: string
           description: Service version
           example: "1.0.0"
+
+    StatusResponse:
+      type: object
+      required:
+        - total
+        - configured
+        - running
+        - stopped
+        - timestamp
+      properties:
+        total:
+          type: integer
+          description: Total number of configured instances
+          example: 5
+        configured:
+          type: integer
+          description: Number of configured instances (same as total)
+          example: 5
+        running:
+          type: integer
+          description: Number of instances currently running
+          example: 3
+        stopped:
+          type: integer
+          description: Number of instances currently stopped
+          example: 2
+        timestamp:
+          type: string
+          format: date-time
+          description: Current timestamp in ISO 8601 format
+          example: "2024-01-01T00:00:00.000Z"
 
     VersionResponse:
       type: object
