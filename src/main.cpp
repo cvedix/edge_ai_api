@@ -6,6 +6,7 @@
 #include "api/create_instance_handler.h"
 #include "api/instance_handler.h"
 #include "api/system_info_handler.h"
+#include "api/solution_handler.h"
 #include "models/model_upload_handler.h"
 #include "core/watchdog.h"
 #include "core/health_monitor.h"
@@ -14,9 +15,10 @@
 #include "core/categorized_logger.h"
 #include "core/logging_flags.h"
 #include "instances/instance_registry.h"
-#include "core/solution_registry.h"
+#include "solutions/solution_registry.h"
 #include "core/pipeline_builder.h"
 #include "instances/instance_storage.h"
+#include "solutions/solution_storage.h"
 #include <cvedix/utils/analysis_board/cvedix_analysis_board.h>
 #include <cvedix/nodes/src/cvedix_rtsp_src_node.h>
 #include <cvedix/nodes/src/cvedix_file_src_node.h>
@@ -104,9 +106,12 @@ void signalHandler(int signal)
             // CRITICAL: Call quit() immediately in signal handler (thread-safe in Drogon)
             // This ensures the main event loop exits even if cleanup threads are slow
             try {
-                drogon::app().quit();
+                auto& app = drogon::app();
+                app.quit();
+                // Also try to stop the event loop explicitly
+                app.getLoop()->quit();
             } catch (...) {
-                // Ignore errors
+                // Ignore errors - try to exit anyway
             }
             
             // Stop all instances first (this is critical for clean shutdown)
@@ -934,7 +939,9 @@ int main(int argc, char* argv[])
         static PipelineBuilder pipelineBuilder;
         
         // Initialize instance storage with configurable directory
-        std::string instancesDir = EnvConfig::getString("INSTANCES_DIR", "./instances");
+        // Default: /var/lib/edge_ai_api/instances (auto-created if needed)
+        std::string instancesDir = EnvConfig::resolveDataDir("INSTANCES_DIR", "instances");
+        PLOG_INFO << "[Main] Instances directory: " << instancesDir;
         static InstanceStorage instanceStorage(instancesDir);
         static InstanceRegistry instanceRegistry(solutionRegistry, pipelineBuilder, instanceStorage);
         
@@ -944,19 +951,49 @@ int main(int argc, char* argv[])
         // Initialize default solutions (face_detection, etc.)
         solutionRegistry.initializeDefaultSolutions();
         
+        // Initialize solution storage and load custom solutions
+        // Default: /var/lib/edge_ai_api/solutions (auto-created if needed)
+        std::string solutionsDir = EnvConfig::resolveDataDir("SOLUTIONS_DIR", "solutions");
+        PLOG_INFO << "[Main] Solutions directory: " << solutionsDir;
+        static SolutionStorage solutionStorage(solutionsDir);
+        
+        // Load persisted custom solutions
+        auto customSolutions = solutionStorage.loadAllSolutions();
+        for (const auto& config : customSolutions) {
+            // Check if solution ID conflicts with default solution
+            if (solutionRegistry.isDefaultSolution(config.solutionId)) {
+                PLOG_WARNING << "[Main] Skipping custom solution '" << config.solutionId 
+                           << "': ID conflicts with default system solution. "
+                           << "Please rename the solution to use a different ID.";
+                continue;
+            }
+            
+            // Register solution (registerSolution will also check for default solutions)
+            solutionRegistry.registerSolution(config);
+            PLOG_INFO << "[Main] Loaded custom solution: " << config.solutionId << " (" << config.solutionName << ")";
+        }
+        
         // Load persistent instances
         instanceRegistry.loadPersistentInstances();
         
-        // Register instance registry with handlers
+        // Register instance registry and solution registry with handlers
         CreateInstanceHandler::setInstanceRegistry(&instanceRegistry);
+        CreateInstanceHandler::setSolutionRegistry(&solutionRegistry);
         InstanceHandler::setInstanceRegistry(&instanceRegistry);
+        
+        // Register solution registry and storage with solution handler
+        SolutionHandler::setSolutionRegistry(&solutionRegistry);
+        SolutionHandler::setSolutionStorage(&solutionStorage);
         
         // Create handler instances to register endpoints
         static CreateInstanceHandler createInstanceHandler;
         static InstanceHandler instanceHandler;
+        static SolutionHandler solutionHandler;
         
         // Initialize model upload handler with configurable directory
-        std::string modelsDir = EnvConfig::getString("MODELS_DIR", "./models");
+        // Default: /var/lib/edge_ai_api/models (auto-created if needed)
+        std::string modelsDir = EnvConfig::resolveDataDir("MODELS_DIR", "models");
+        PLOG_INFO << "[Main] Models directory: " << modelsDir;
         ModelUploadHandler::setModelsDirectory(modelsDir);
         static ModelUploadHandler modelUploadHandler;
         
@@ -967,6 +1004,13 @@ int main(int argc, char* argv[])
         PLOG_INFO << "  POST /v1/core/instances/{instanceId}/start - Start instance";
         PLOG_INFO << "  POST /v1/core/instances/{instanceId}/stop - Stop instance";
         PLOG_INFO << "  DELETE /v1/core/instances/{instanceId} - Delete instance";
+        
+        PLOG_INFO << "[Main] Solution management initialized";
+        PLOG_INFO << "  GET /v1/core/solutions - List all solutions";
+        PLOG_INFO << "  GET /v1/core/solutions/{solutionId} - Get solution details";
+        PLOG_INFO << "  POST /v1/core/solutions - Create new solution";
+        PLOG_INFO << "  PUT /v1/core/solutions/{solutionId} - Update solution";
+        PLOG_INFO << "  DELETE /v1/core/solutions/{solutionId} - Delete solution";
         PLOG_INFO << "  Instances directory: " << instancesDir;
         PLOG_INFO << "[Main] Model upload handler initialized";
         PLOG_INFO << "  POST /v1/core/models/upload - Upload model file";
@@ -1072,7 +1116,20 @@ int main(int argc, char* argv[])
         // The warning "You can't use https without cert file or key file" 
         // is expected when HTTPS is not configured, but we only want HTTP
         try {
+            // Run server - this blocks until quit() is called
             app.run();
+            
+            // After app.run() returns, ensure we exit cleanly
+            // If we're here, quit() was called, so proceed with cleanup
+            if (g_shutdown || g_force_exit.load()) {
+                PLOG_INFO << "[Server] Shutdown signal received, cleaning up...";
+            }
+            
+            // If force exit was requested, skip cleanup and exit immediately
+            if (g_force_exit.load()) {
+                std::cerr << "[SHUTDOWN] Force exit requested, skipping cleanup..." << std::endl;
+                _exit(0);
+            }
         } catch (const std::exception& e) {
             // Check if it's just the HTTPS warning
             std::string error_msg = e.what();
@@ -1085,17 +1142,19 @@ int main(int argc, char* argv[])
             throw; // Re-throw if it's a different error
         }
 
-        // Cleanup
-        // Note: Debug thread will stop automatically when g_shutdown is true
-        if (g_health_monitor) {
-            g_health_monitor->stop();
+        // Cleanup - but only if not force exit
+        if (!g_force_exit.load()) {
+            // Note: Debug thread will stop automatically when g_shutdown is true
+            if (g_health_monitor) {
+                g_health_monitor->stop();
+            }
+            if (g_watchdog) {
+                g_watchdog->stop();
+            }
+            
+            // Stop log cleanup thread (with timeout protection)
+            CategorizedLogger::shutdown();
         }
-        if (g_watchdog) {
-            g_watchdog->stop();
-        }
-        
-        // Stop log cleanup thread
-        CategorizedLogger::shutdown();
 
         PLOG_INFO << "Server stopped.";
         return 0;
