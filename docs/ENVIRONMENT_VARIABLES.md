@@ -89,6 +89,19 @@ Environment="API_PORT=8080"
 |------|-------|----------|--------------|
 | `HEALTH_MONITOR_INTERVAL_MS` | Khoảng thời gian monitor health (ms) | `1000` | `src/main.cpp` |
 
+#### Data Storage Configuration
+| Biến | Mô tả | Mặc định | File sử dụng |
+|------|-------|----------|--------------|
+| `SOLUTIONS_DIR` | Thư mục lưu trữ custom solutions | `./solutions` | `src/main.cpp` |
+| `INSTANCES_DIR` | Thư mục lưu trữ instance configurations | `./instances` | `src/main.cpp` |
+| `MODELS_DIR` | Thư mục lưu trữ model files | `./models` | `src/main.cpp` |
+
+**Lưu ý về Storage Directories:**
+- **Development**: Khuyến nghị lưu ở project root (`/path/to/project/solutions`, `/path/to/project/instances`)
+- **Production**: Khuyến nghị lưu ở system data directory (`/var/lib/edge_ai_api/solutions`, `/var/lib/edge_ai_api/instances`)
+- **⚠️ Không nên lưu trong `build/` directory** - Dữ liệu có thể bị mất khi clean build
+- Xem chi tiết: [Storage Best Practices](STORAGE_BEST_PRACTICES.md)
+
 #### CVEDIX SDK Configuration (Example)
 | Biến | Mô tả | Mặc định | File sử dụng |
 |------|-------|----------|--------------|
@@ -134,6 +147,10 @@ export API_PORT=8080
 ```bash
 export API_HOST=0.0.0.0
 export API_PORT=80
+export SOLUTIONS_DIR=/var/lib/edge_ai_api/solutions
+export INSTANCES_DIR=/var/lib/edge_ai_api/instances
+export MODELS_DIR=/var/lib/edge_ai_api/models
+export LOG_DIR=/var/log/edge_ai_api
 ```
 
 ### Custom Port
