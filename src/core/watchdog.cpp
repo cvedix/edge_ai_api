@@ -1,6 +1,7 @@
 #include "core/watchdog.h"
 #include <iostream>
 #include <chrono>
+#include <future>
 
 Watchdog::Watchdog(uint32_t check_interval_ms, uint32_t timeout_ms)
     : check_interval_ms_(check_interval_ms)
@@ -49,7 +50,15 @@ void Watchdog::stop()
     cv_.notify_all();
 
     if (watchdog_thread_ && watchdog_thread_->joinable()) {
-        watchdog_thread_->join();
+        // Use timeout to avoid blocking indefinitely during shutdown
+        auto future = std::async(std::launch::async, [this]() {
+            watchdog_thread_->join();
+        });
+        
+        if (future.wait_for(std::chrono::seconds(1)) == std::future_status::timeout) {
+            std::cerr << "[Watchdog] Warning: Thread join timeout, detaching..." << std::endl;
+            watchdog_thread_->detach();
+        }
     }
 
     std::cout << "[Watchdog] Stopped" << std::endl;

@@ -1,6 +1,10 @@
 #include "core/pipeline_builder.h"
 #include <cvedix/nodes/src/cvedix_rtsp_src_node.h>
 #include <cvedix/nodes/src/cvedix_file_src_node.h>
+#include <cvedix/nodes/src/cvedix_app_src_node.h>
+#include <cvedix/nodes/src/cvedix_image_src_node.h>
+#include <cvedix/nodes/src/cvedix_rtmp_src_node.h>
+#include <cvedix/nodes/src/cvedix_udp_src_node.h>
 #include <cvedix/nodes/infers/cvedix_yunet_face_detector_node.h>
 #include <cvedix/nodes/infers/cvedix_sface_feature_encoder_node.h>
 #include <cvedix/nodes/osd/cvedix_face_osd_node_v2.h>
@@ -8,6 +12,64 @@
 #include <cvedix/nodes/des/cvedix_rtmp_des_node.h>
 #include <cvedix/utils/cvedix_utils.h>
 #include <cvedix/objects/shapes/cvedix_size.h>
+
+// TensorRT Inference Nodes
+#ifdef CVEDIX_WITH_TRT
+#include <cvedix/nodes/infers/cvedix_trt_yolov8_detector.h>
+#include <cvedix/nodes/infers/cvedix_trt_yolov8_seg_detector.h>
+#include <cvedix/nodes/infers/cvedix_trt_yolov8_pose_detector.h>
+#include <cvedix/nodes/infers/cvedix_trt_yolov8_classifier.h>
+#include <cvedix/nodes/infers/cvedix_trt_vehicle_detector.h>
+#include <cvedix/nodes/infers/cvedix_trt_vehicle_plate_detector.h>
+#include <cvedix/nodes/infers/cvedix_trt_vehicle_plate_detector_v2.h>
+#include <cvedix/nodes/infers/cvedix_trt_vehicle_color_classifier.h>
+#include <cvedix/nodes/infers/cvedix_trt_vehicle_type_classifier.h>
+#include <cvedix/nodes/infers/cvedix_trt_vehicle_feature_encoder.h>
+#include <cvedix/nodes/infers/cvedix_trt_vehicle_scanner.h>
+#endif
+
+// RKNN Inference Nodes
+#ifdef CVEDIX_WITH_RKNN
+#include <cvedix/nodes/infers/cvedix_rknn_yolov8_detector_node.h>
+#include <cvedix/nodes/infers/cvedix_rknn_face_detector_node.h>
+#endif
+
+// Other Inference Nodes
+#include <cvedix/nodes/infers/cvedix_yolo_detector_node.h>
+#include <cvedix/nodes/infers/cvedix_enet_seg_node.h>
+#include <cvedix/nodes/infers/cvedix_mask_rcnn_detector_node.h>
+#include <cvedix/nodes/infers/cvedix_openpose_detector_node.h>
+#include <cvedix/nodes/infers/cvedix_classifier_node.h>
+// Note: cvedix_feature_encoder_node is abstract - use cvedix_sface_feature_encoder_node or cvedix_trt_vehicle_feature_encoder instead
+// #include <cvedix/nodes/infers/cvedix_feature_encoder_node.h>
+#include <cvedix/nodes/infers/cvedix_lane_detector_node.h>
+#ifdef CVEDIX_WITH_PADDLE
+#include <cvedix/nodes/infers/cvedix_ppocr_text_detector_node.h>
+#endif
+#include <cvedix/nodes/infers/cvedix_restoration_node.h>
+#include <vector>
+
+// Broker Nodes
+// Temporarily disabled JSON broker nodes due to cereal dependency issue
+// TODO: Re-enable after fixing cereal symlink or CVEDIX SDK update
+// #include <cvedix/nodes/broker/cvedix_json_console_broker_node.h>
+// #include <cvedix/nodes/broker/cvedix_json_enhanced_console_broker_node.h>
+#ifdef CVEDIX_WITH_MQTT
+// #include <cvedix/nodes/broker/cvedix_json_mqtt_broker_node.h>
+#endif
+#ifdef CVEDIX_WITH_KAFKA
+// #include <cvedix/nodes/broker/cvedix_json_kafka_broker_node.h>
+#endif
+// Temporarily disabled all broker nodes due to cereal dependency issue
+// TODO: Re-enable after fixing cereal symlink or CVEDIX SDK update
+// #include <cvedix/nodes/broker/cvedix_xml_file_broker_node.h>
+// #include <cvedix/nodes/broker/cvedix_xml_socket_broker_node.h>
+// #include <cvedix/nodes/broker/cvedix_msg_broker_node.h>
+// #include <cvedix/nodes/broker/cvedix_ba_socket_broker_node.h>
+// #include <cvedix/nodes/broker/cvedix_embeddings_socket_broker_node.h>
+// #include <cvedix/nodes/broker/cvedix_embeddings_properties_socket_broker_node.h>
+// #include <cvedix/nodes/broker/cvedix_plate_socket_broker_node.h>
+// #include <cvedix/nodes/broker/cvedix_expr_socket_broker_node.h>
 #include <cstdlib>
 #include <cstring>
 #include <sstream>
@@ -292,17 +354,128 @@ std::shared_ptr<cvedix_nodes::cvedix_node> PipelineBuilder::createNode(
     
     // Create node based on type
     try {
+        // Source nodes
         if (nodeConfig.nodeType == "rtsp_src") {
             return createRTSPSourceNode(nodeName, params, req);
         } else if (nodeConfig.nodeType == "file_src") {
             return createFileSourceNode(nodeName, params, req);
-        } else if (nodeConfig.nodeType == "yunet_face_detector") {
+        } else if (nodeConfig.nodeType == "app_src") {
+            return createAppSourceNode(nodeName, params, req);
+        } else if (nodeConfig.nodeType == "image_src") {
+            return createImageSourceNode(nodeName, params, req);
+        } else if (nodeConfig.nodeType == "rtmp_src") {
+            return createRTMPSourceNode(nodeName, params, req);
+        } else if (nodeConfig.nodeType == "udp_src") {
+            return createUDPSourceNode(nodeName, params, req);
+        }
+        // Face detection nodes
+        else if (nodeConfig.nodeType == "yunet_face_detector") {
             return createFaceDetectorNode(nodeName, params, req);
         } else if (nodeConfig.nodeType == "sface_feature_encoder") {
             return createSFaceEncoderNode(nodeName, params, req);
         } else if (nodeConfig.nodeType == "face_osd_v2") {
             return createFaceOSDNode(nodeName, params);
-        } else if (nodeConfig.nodeType == "file_des") {
+        }
+#ifdef CVEDIX_WITH_TRT
+        // TensorRT YOLOv8 nodes
+        else if (nodeConfig.nodeType == "trt_yolov8_detector") {
+            return createTRTYOLOv8DetectorNode(nodeName, params, req);
+        } else if (nodeConfig.nodeType == "trt_yolov8_seg_detector") {
+            return createTRTYOLOv8SegDetectorNode(nodeName, params, req);
+        } else if (nodeConfig.nodeType == "trt_yolov8_pose_detector") {
+            return createTRTYOLOv8PoseDetectorNode(nodeName, params, req);
+        } else if (nodeConfig.nodeType == "trt_yolov8_classifier") {
+            return createTRTYOLOv8ClassifierNode(nodeName, params, req);
+        }
+        // TensorRT Vehicle nodes
+        else if (nodeConfig.nodeType == "trt_vehicle_detector") {
+            return createTRTVehicleDetectorNode(nodeName, params, req);
+        } else if (nodeConfig.nodeType == "trt_vehicle_plate_detector") {
+            return createTRTVehiclePlateDetectorNode(nodeName, params, req);
+        } else if (nodeConfig.nodeType == "trt_vehicle_plate_detector_v2") {
+            return createTRTVehiclePlateDetectorV2Node(nodeName, params, req);
+        } else if (nodeConfig.nodeType == "trt_vehicle_color_classifier") {
+            return createTRTVehicleColorClassifierNode(nodeName, params, req);
+        } else if (nodeConfig.nodeType == "trt_vehicle_type_classifier") {
+            return createTRTVehicleTypeClassifierNode(nodeName, params, req);
+        } else if (nodeConfig.nodeType == "trt_vehicle_feature_encoder") {
+            return createTRTVehicleFeatureEncoderNode(nodeName, params, req);
+        } else if (nodeConfig.nodeType == "trt_vehicle_scanner") {
+            return createTRTVehicleScannerNode(nodeName, params, req);
+        }
+#endif
+#ifdef CVEDIX_WITH_RKNN
+        // RKNN nodes
+        else if (nodeConfig.nodeType == "rknn_yolov8_detector") {
+            return createRKNNYOLOv8DetectorNode(nodeName, params, req);
+        } else if (nodeConfig.nodeType == "rknn_face_detector") {
+            return createRKNNFaceDetectorNode(nodeName, params, req);
+        }
+#endif
+        // Other inference nodes
+        else if (nodeConfig.nodeType == "yolo_detector") {
+            return createYOLODetectorNode(nodeName, params, req);
+        } else if (nodeConfig.nodeType == "enet_seg") {
+            return createENetSegNode(nodeName, params, req);
+        } else if (nodeConfig.nodeType == "mask_rcnn_detector") {
+            return createMaskRCNNDetectorNode(nodeName, params, req);
+        } else if (nodeConfig.nodeType == "openpose_detector") {
+            return createOpenPoseDetectorNode(nodeName, params, req);
+        } else if (nodeConfig.nodeType == "classifier") {
+            return createClassifierNode(nodeName, params, req);
+        } else if (nodeConfig.nodeType == "feature_encoder") {
+            std::cerr << "[PipelineBuilder] feature_encoder node type is not supported (abstract class). Use 'sface_feature_encoder' or 'trt_vehicle_feature_encoder' instead." << std::endl;
+            throw std::runtime_error("feature_encoder node type is not supported. Use 'sface_feature_encoder' or 'trt_vehicle_feature_encoder' instead.");
+        } else if (nodeConfig.nodeType == "lane_detector") {
+            return createLaneDetectorNode(nodeName, params, req);
+#ifdef CVEDIX_WITH_PADDLE
+        } else if (nodeConfig.nodeType == "ppocr_text_detector") {
+            return createPaddleOCRTextDetectorNode(nodeName, params, req);
+#endif
+        } else if (nodeConfig.nodeType == "restoration") {
+            return createRestorationNode(nodeName, params, req);
+        }
+        // Broker nodes
+        // Temporarily disabled JSON broker nodes due to cereal dependency issue
+        else if (nodeConfig.nodeType == "json_console_broker") {
+            std::cerr << "[PipelineBuilder] json_console_broker is temporarily disabled due to cereal dependency issue" << std::endl;
+            return nullptr;
+        } else if (nodeConfig.nodeType == "json_enhanced_console_broker") {
+            std::cerr << "[PipelineBuilder] json_enhanced_console_broker is temporarily disabled due to cereal dependency issue" << std::endl;
+            return nullptr;
+        } else if (nodeConfig.nodeType == "json_mqtt_broker") {
+            std::cerr << "[PipelineBuilder] json_mqtt_broker is temporarily disabled due to cereal dependency issue" << std::endl;
+            return nullptr;
+        } else if (nodeConfig.nodeType == "json_kafka_broker") {
+            std::cerr << "[PipelineBuilder] json_kafka_broker is temporarily disabled due to cereal dependency issue" << std::endl;
+            return nullptr;
+        } else if (nodeConfig.nodeType == "xml_file_broker") {
+            std::cerr << "[PipelineBuilder] xml_file_broker is temporarily disabled due to cereal dependency issue" << std::endl;
+            return nullptr;
+        } else if (nodeConfig.nodeType == "xml_socket_broker") {
+            std::cerr << "[PipelineBuilder] xml_socket_broker is temporarily disabled due to cereal dependency issue" << std::endl;
+            return nullptr;
+        } else if (nodeConfig.nodeType == "msg_broker") {
+            std::cerr << "[PipelineBuilder] msg_broker is temporarily disabled due to cereal dependency issue" << std::endl;
+            return nullptr;
+        } else if (nodeConfig.nodeType == "ba_socket_broker") {
+            std::cerr << "[PipelineBuilder] ba_socket_broker is temporarily disabled due to cereal dependency issue" << std::endl;
+            return nullptr;
+        } else if (nodeConfig.nodeType == "embeddings_socket_broker") {
+            std::cerr << "[PipelineBuilder] embeddings_socket_broker is temporarily disabled due to cereal dependency issue" << std::endl;
+            return nullptr;
+        } else if (nodeConfig.nodeType == "embeddings_properties_socket_broker") {
+            std::cerr << "[PipelineBuilder] embeddings_properties_socket_broker is temporarily disabled due to cereal dependency issue" << std::endl;
+            return nullptr;
+        } else if (nodeConfig.nodeType == "plate_socket_broker") {
+            std::cerr << "[PipelineBuilder] plate_socket_broker is temporarily disabled due to cereal dependency issue" << std::endl;
+            return nullptr;
+        } else if (nodeConfig.nodeType == "expr_socket_broker") {
+            std::cerr << "[PipelineBuilder] expr_socket_broker is temporarily disabled due to cereal dependency issue" << std::endl;
+            return nullptr;
+        }
+        // Destination nodes
+        else if (nodeConfig.nodeType == "file_des") {
             return createFileDestinationNode(nodeName, params, instanceId);
         } else if (nodeConfig.nodeType == "rtmp_des") {
             return createRTMPDestinationNode(nodeName, params, req);
@@ -1020,8 +1193,46 @@ std::shared_ptr<cvedix_nodes::cvedix_node> PipelineBuilder::createFileSourceNode
         std::string filePath = params.count("file_path") ? 
             params.at("file_path") : getFilePath(req);
         int channel = params.count("channel") ? std::stoi(params.at("channel")) : 0;
-        float resizeRatio = params.count("resize_ratio") ? 
-            std::stof(params.at("resize_ratio")) : 0.25f;  // Default to 0.25 for fixed size (320x180 from 1280x720)
+        
+        // Get resize_ratio: Priority: additionalParams > params > default
+        // additionalParams takes highest priority to allow runtime override
+        float resizeRatio = 0.25f;  // Default to 0.25 for fixed size (320x180 from 1280x720)
+        
+        // Debug: Log what we have
+        std::cerr << "[PipelineBuilder] DEBUG: Checking resize_ratio sources..." << std::endl;
+        if (params.count("resize_ratio")) {
+            std::cerr << "[PipelineBuilder] DEBUG: params has resize_ratio = " << params.at("resize_ratio") << std::endl;
+        } else {
+            std::cerr << "[PipelineBuilder] DEBUG: params does NOT have resize_ratio" << std::endl;
+        }
+        std::cerr << "[PipelineBuilder] DEBUG: additionalParams size = " << req.additionalParams.size() << std::endl;
+        for (const auto& p : req.additionalParams) {
+            std::cerr << "[PipelineBuilder] DEBUG: additionalParams[" << p.first << "] = " << p.second << std::endl;
+        }
+        
+        // First check additionalParams (highest priority - allows runtime override)
+        auto it = req.additionalParams.find("RESIZE_RATIO");
+        if (it != req.additionalParams.end() && !it->second.empty()) {
+            try {
+                resizeRatio = std::stof(it->second);
+                std::cerr << "[PipelineBuilder] ✓ Using RESIZE_RATIO from additionalParams: " << resizeRatio << std::endl;
+            } catch (const std::exception& e) {
+                std::cerr << "[PipelineBuilder] Warning: Invalid RESIZE_RATIO in additionalParams: " << it->second << ", trying params..." << std::endl;
+                // Fall through to check params
+                if (params.count("resize_ratio")) {
+                    resizeRatio = std::stof(params.at("resize_ratio"));
+                    std::cerr << "[PipelineBuilder] Using resize_ratio from solution config: " << resizeRatio << std::endl;
+                }
+            }
+        } else {
+            // RESIZE_RATIO not in additionalParams, check params
+            if (params.count("resize_ratio")) {
+                resizeRatio = std::stof(params.at("resize_ratio"));
+                std::cerr << "[PipelineBuilder] Using resize_ratio from solution config: " << resizeRatio << std::endl;
+            } else {
+                std::cerr << "[PipelineBuilder] Using default resize_ratio: " << resizeRatio << std::endl;
+            }
+        }
         
         // Validate parameters
         if (nodeName.empty()) {
@@ -1031,7 +1242,7 @@ std::shared_ptr<cvedix_nodes::cvedix_node> PipelineBuilder::createFileSourceNode
             throw std::invalid_argument("File path cannot be empty");
         }
         if (resizeRatio <= 0.0f || resizeRatio > 1.0f) {
-            std::cerr << "[PipelineBuilder] Warning: resize_ratio out of range, using 0.25" << std::endl;
+            std::cerr << "[PipelineBuilder] Warning: resize_ratio out of range (" << resizeRatio << "), using 0.25" << std::endl;
             resizeRatio = 0.25f;
         }
         
@@ -1201,5 +1412,2109 @@ std::string PipelineBuilder::getRTMPUrl(const CreateInstanceRequest& req) const 
     std::cerr << "[PipelineBuilder] WARNING: Using default RTMP URL" << std::endl;
     std::cerr << "[PipelineBuilder] NOTE: To use custom RTMP URL, provide 'RTMP_URL' in request body additionalParams" << std::endl;
     return "rtmp://localhost:1935/live/camera_demo_1";
+}
+
+// ========== TensorRT YOLOv8 Nodes Implementation ==========
+
+#ifdef CVEDIX_WITH_TRT
+std::shared_ptr<cvedix_nodes::cvedix_node> PipelineBuilder::createTRTYOLOv8DetectorNode(
+    const std::string& nodeName,
+    const std::map<std::string, std::string>& params,
+    const CreateInstanceRequest& req) {
+    
+    try {
+        std::string modelPath = params.count("model_path") ? params.at("model_path") : "";
+        std::string labelsPath = params.count("labels_path") ? params.at("labels_path") : "";
+        
+        // Get from additionalParams if not in params
+        if (modelPath.empty()) {
+            auto it = req.additionalParams.find("MODEL_PATH");
+            if (it != req.additionalParams.end() && !it->second.empty()) {
+                modelPath = it->second;
+            }
+        }
+        if (labelsPath.empty()) {
+            auto it = req.additionalParams.find("LABELS_PATH");
+            if (it != req.additionalParams.end() && !it->second.empty()) {
+                labelsPath = it->second;
+            }
+        }
+        
+        if (nodeName.empty()) {
+            throw std::invalid_argument("Node name cannot be empty");
+        }
+        if (modelPath.empty()) {
+            throw std::invalid_argument("Model path cannot be empty for TRT YOLOv8 detector");
+        }
+        
+        std::cerr << "[PipelineBuilder] Creating TRT YOLOv8 detector node:" << std::endl;
+        std::cerr << "  Name: '" << nodeName << "'" << std::endl;
+        std::cerr << "  Model path: '" << modelPath << "'" << std::endl;
+        if (!labelsPath.empty()) {
+            std::cerr << "  Labels path: '" << labelsPath << "'" << std::endl;
+        }
+        
+        auto node = std::make_shared<cvedix_nodes::cvedix_trt_yolov8_detector>(
+            nodeName,
+            modelPath,
+            labelsPath
+        );
+        
+        std::cerr << "[PipelineBuilder] ✓ TRT YOLOv8 detector node created successfully" << std::endl;
+        return node;
+    } catch (const std::exception& e) {
+        std::cerr << "[PipelineBuilder] Exception in createTRTYOLOv8DetectorNode: " << e.what() << std::endl;
+        throw;
+    }
+}
+
+std::shared_ptr<cvedix_nodes::cvedix_node> PipelineBuilder::createTRTYOLOv8SegDetectorNode(
+    const std::string& nodeName,
+    const std::map<std::string, std::string>& params,
+    const CreateInstanceRequest& req) {
+    
+    try {
+        std::string modelPath = params.count("model_path") ? params.at("model_path") : "";
+        std::string labelsPath = params.count("labels_path") ? params.at("labels_path") : "";
+        
+        if (modelPath.empty()) {
+            auto it = req.additionalParams.find("MODEL_PATH");
+            if (it != req.additionalParams.end() && !it->second.empty()) {
+                modelPath = it->second;
+            }
+        }
+        if (labelsPath.empty()) {
+            auto it = req.additionalParams.find("LABELS_PATH");
+            if (it != req.additionalParams.end() && !it->second.empty()) {
+                labelsPath = it->second;
+            }
+        }
+        
+        if (nodeName.empty() || modelPath.empty()) {
+            throw std::invalid_argument("Node name and model path are required");
+        }
+        
+        std::cerr << "[PipelineBuilder] Creating TRT YOLOv8 segmentation detector node:" << std::endl;
+        std::cerr << "  Name: '" << nodeName << "'" << std::endl;
+        std::cerr << "  Model path: '" << modelPath << "'" << std::endl;
+        
+        auto node = std::make_shared<cvedix_nodes::cvedix_trt_yolov8_seg_detector>(
+            nodeName,
+            modelPath,
+            labelsPath
+        );
+        
+        std::cerr << "[PipelineBuilder] ✓ TRT YOLOv8 segmentation detector node created successfully" << std::endl;
+        return node;
+    } catch (const std::exception& e) {
+        std::cerr << "[PipelineBuilder] Exception in createTRTYOLOv8SegDetectorNode: " << e.what() << std::endl;
+        throw;
+    }
+}
+
+std::shared_ptr<cvedix_nodes::cvedix_node> PipelineBuilder::createTRTYOLOv8PoseDetectorNode(
+    const std::string& nodeName,
+    const std::map<std::string, std::string>& params,
+    const CreateInstanceRequest& req) {
+    
+    try {
+        std::string modelPath = params.count("model_path") ? params.at("model_path") : "";
+        if (modelPath.empty()) {
+            auto it = req.additionalParams.find("MODEL_PATH");
+            if (it != req.additionalParams.end() && !it->second.empty()) {
+                modelPath = it->second;
+            }
+        }
+        
+        if (nodeName.empty() || modelPath.empty()) {
+            throw std::invalid_argument("Node name and model path are required");
+        }
+        
+        std::cerr << "[PipelineBuilder] Creating TRT YOLOv8 pose detector node:" << std::endl;
+        std::cerr << "  Name: '" << nodeName << "'" << std::endl;
+        std::cerr << "  Model path: '" << modelPath << "'" << std::endl;
+        
+        auto node = std::make_shared<cvedix_nodes::cvedix_trt_yolov8_pose_detector>(
+            nodeName,
+            modelPath
+        );
+        
+        std::cerr << "[PipelineBuilder] ✓ TRT YOLOv8 pose detector node created successfully" << std::endl;
+        return node;
+    } catch (const std::exception& e) {
+        std::cerr << "[PipelineBuilder] Exception in createTRTYOLOv8PoseDetectorNode: " << e.what() << std::endl;
+        throw;
+    }
+}
+
+std::shared_ptr<cvedix_nodes::cvedix_node> PipelineBuilder::createTRTYOLOv8ClassifierNode(
+    const std::string& nodeName,
+    const std::map<std::string, std::string>& params,
+    const CreateInstanceRequest& req) {
+    
+    try {
+        std::string modelPath = params.count("model_path") ? params.at("model_path") : "";
+        std::string labelsPath = params.count("labels_path") ? params.at("labels_path") : "";
+        
+        // Parse class_ids_applied_to from params (comma-separated)
+        std::vector<int> classIdsAppliedTo;
+        if (params.count("class_ids_applied_to")) {
+            std::string idsStr = params.at("class_ids_applied_to");
+            std::istringstream iss(idsStr);
+            std::string token;
+            while (std::getline(iss, token, ',')) {
+                try {
+                    classIdsAppliedTo.push_back(std::stoi(token));
+                } catch (...) {
+                    // Ignore invalid tokens
+                }
+            }
+        }
+        
+        int minWidth = params.count("min_width_applied_to") ? std::stoi(params.at("min_width_applied_to")) : 0;
+        int minHeight = params.count("min_height_applied_to") ? std::stoi(params.at("min_height_applied_to")) : 0;
+        
+        if (modelPath.empty()) {
+            auto it = req.additionalParams.find("MODEL_PATH");
+            if (it != req.additionalParams.end() && !it->second.empty()) {
+                modelPath = it->second;
+            }
+        }
+        
+        if (nodeName.empty() || modelPath.empty()) {
+            throw std::invalid_argument("Node name and model path are required");
+        }
+        
+        std::cerr << "[PipelineBuilder] Creating TRT YOLOv8 classifier node:" << std::endl;
+        std::cerr << "  Name: '" << nodeName << "'" << std::endl;
+        std::cerr << "  Model path: '" << modelPath << "'" << std::endl;
+        
+        auto node = std::make_shared<cvedix_nodes::cvedix_trt_yolov8_classifier>(
+            nodeName,
+            modelPath,
+            labelsPath,
+            classIdsAppliedTo,
+            minWidth,
+            minHeight
+        );
+        
+        std::cerr << "[PipelineBuilder] ✓ TRT YOLOv8 classifier node created successfully" << std::endl;
+        return node;
+    } catch (const std::exception& e) {
+        std::cerr << "[PipelineBuilder] Exception in createTRTYOLOv8ClassifierNode: " << e.what() << std::endl;
+        throw;
+    }
+}
+
+// ========== TensorRT Vehicle Nodes Implementation ==========
+
+std::shared_ptr<cvedix_nodes::cvedix_node> PipelineBuilder::createTRTVehicleDetectorNode(
+    const std::string& nodeName,
+    const std::map<std::string, std::string>& params,
+    const CreateInstanceRequest& req) {
+    
+    try {
+        std::string modelPath = params.count("model_path") ? params.at("model_path") : "";
+        if (modelPath.empty()) {
+            auto it = req.additionalParams.find("MODEL_PATH");
+            if (it != req.additionalParams.end() && !it->second.empty()) {
+                modelPath = it->second;
+            }
+        }
+        
+        if (nodeName.empty() || modelPath.empty()) {
+            throw std::invalid_argument("Node name and model path are required");
+        }
+        
+        std::cerr << "[PipelineBuilder] Creating TRT vehicle detector node:" << std::endl;
+        std::cerr << "  Name: '" << nodeName << "'" << std::endl;
+        std::cerr << "  Model path: '" << modelPath << "'" << std::endl;
+        
+        auto node = std::make_shared<cvedix_nodes::cvedix_trt_vehicle_detector>(
+            nodeName,
+            modelPath
+        );
+        
+        std::cerr << "[PipelineBuilder] ✓ TRT vehicle detector node created successfully" << std::endl;
+        return node;
+    } catch (const std::exception& e) {
+        std::cerr << "[PipelineBuilder] Exception in createTRTVehicleDetectorNode: " << e.what() << std::endl;
+        throw;
+    }
+}
+
+std::shared_ptr<cvedix_nodes::cvedix_node> PipelineBuilder::createTRTVehiclePlateDetectorNode(
+    const std::string& nodeName,
+    const std::map<std::string, std::string>& params,
+    const CreateInstanceRequest& req) {
+    
+    try {
+        std::string detModelPath = params.count("det_model_path") ? params.at("det_model_path") : "";
+        std::string recModelPath = params.count("rec_model_path") ? params.at("rec_model_path") : "";
+        
+        if (detModelPath.empty()) {
+            auto it = req.additionalParams.find("DET_MODEL_PATH");
+            if (it != req.additionalParams.end() && !it->second.empty()) {
+                detModelPath = it->second;
+            }
+        }
+        if (recModelPath.empty()) {
+            auto it = req.additionalParams.find("REC_MODEL_PATH");
+            if (it != req.additionalParams.end() && !it->second.empty()) {
+                recModelPath = it->second;
+            }
+        }
+        
+        if (nodeName.empty() || detModelPath.empty()) {
+            throw std::invalid_argument("Node name and detection model path are required");
+        }
+        
+        std::cerr << "[PipelineBuilder] Creating TRT vehicle plate detector node:" << std::endl;
+        std::cerr << "  Name: '" << nodeName << "'" << std::endl;
+        std::cerr << "  Detection model path: '" << detModelPath << "'" << std::endl;
+        if (!recModelPath.empty()) {
+            std::cerr << "  Recognition model path: '" << recModelPath << "'" << std::endl;
+        }
+        
+        auto node = std::make_shared<cvedix_nodes::cvedix_trt_vehicle_plate_detector>(
+            nodeName,
+            detModelPath,
+            recModelPath
+        );
+        
+        std::cerr << "[PipelineBuilder] ✓ TRT vehicle plate detector node created successfully" << std::endl;
+        return node;
+    } catch (const std::exception& e) {
+        std::cerr << "[PipelineBuilder] Exception in createTRTVehiclePlateDetectorNode: " << e.what() << std::endl;
+        throw;
+    }
+}
+
+std::shared_ptr<cvedix_nodes::cvedix_node> PipelineBuilder::createTRTVehiclePlateDetectorV2Node(
+    const std::string& nodeName,
+    const std::map<std::string, std::string>& params,
+    const CreateInstanceRequest& req) {
+    
+    try {
+        std::string detModelPath = params.count("det_model_path") ? params.at("det_model_path") : "";
+        std::string recModelPath = params.count("rec_model_path") ? params.at("rec_model_path") : "";
+        
+        if (detModelPath.empty()) {
+            auto it = req.additionalParams.find("DET_MODEL_PATH");
+            if (it != req.additionalParams.end() && !it->second.empty()) {
+                detModelPath = it->second;
+            }
+        }
+        if (recModelPath.empty()) {
+            auto it = req.additionalParams.find("REC_MODEL_PATH");
+            if (it != req.additionalParams.end() && !it->second.empty()) {
+                recModelPath = it->second;
+            }
+        }
+        
+        if (nodeName.empty() || detModelPath.empty()) {
+            throw std::invalid_argument("Node name and detection model path are required");
+        }
+        
+        std::cerr << "[PipelineBuilder] Creating TRT vehicle plate detector v2 node:" << std::endl;
+        std::cerr << "  Name: '" << nodeName << "'" << std::endl;
+        std::cerr << "  Detection model path: '" << detModelPath << "'" << std::endl;
+        
+        auto node = std::make_shared<cvedix_nodes::cvedix_trt_vehicle_plate_detector_v2>(
+            nodeName,
+            detModelPath,
+            recModelPath
+        );
+        
+        std::cerr << "[PipelineBuilder] ✓ TRT vehicle plate detector v2 node created successfully" << std::endl;
+        return node;
+    } catch (const std::exception& e) {
+        std::cerr << "[PipelineBuilder] Exception in createTRTVehiclePlateDetectorV2Node: " << e.what() << std::endl;
+        throw;
+    }
+}
+
+std::shared_ptr<cvedix_nodes::cvedix_node> PipelineBuilder::createTRTVehicleColorClassifierNode(
+    const std::string& nodeName,
+    const std::map<std::string, std::string>& params,
+    const CreateInstanceRequest& req) {
+    
+    try {
+        std::string modelPath = params.count("model_path") ? params.at("model_path") : "";
+        
+        // Parse class_ids_applied_to
+        std::vector<int> classIdsAppliedTo;
+        if (params.count("class_ids_applied_to")) {
+            std::string idsStr = params.at("class_ids_applied_to");
+            std::istringstream iss(idsStr);
+            std::string token;
+            while (std::getline(iss, token, ',')) {
+                try {
+                    classIdsAppliedTo.push_back(std::stoi(token));
+                } catch (...) {}
+            }
+        }
+        
+        int minWidth = params.count("min_width_applied_to") ? std::stoi(params.at("min_width_applied_to")) : 0;
+        int minHeight = params.count("min_height_applied_to") ? std::stoi(params.at("min_height_applied_to")) : 0;
+        
+        if (modelPath.empty()) {
+            auto it = req.additionalParams.find("MODEL_PATH");
+            if (it != req.additionalParams.end() && !it->second.empty()) {
+                modelPath = it->second;
+            }
+        }
+        
+        if (nodeName.empty() || modelPath.empty()) {
+            throw std::invalid_argument("Node name and model path are required");
+        }
+        
+        std::cerr << "[PipelineBuilder] Creating TRT vehicle color classifier node:" << std::endl;
+        std::cerr << "  Name: '" << nodeName << "'" << std::endl;
+        std::cerr << "  Model path: '" << modelPath << "'" << std::endl;
+        
+        auto node = std::make_shared<cvedix_nodes::cvedix_trt_vehicle_color_classifier>(
+            nodeName,
+            modelPath,
+            classIdsAppliedTo,
+            minWidth,
+            minHeight
+        );
+        
+        std::cerr << "[PipelineBuilder] ✓ TRT vehicle color classifier node created successfully" << std::endl;
+        return node;
+    } catch (const std::exception& e) {
+        std::cerr << "[PipelineBuilder] Exception in createTRTVehicleColorClassifierNode: " << e.what() << std::endl;
+        throw;
+    }
+}
+
+std::shared_ptr<cvedix_nodes::cvedix_node> PipelineBuilder::createTRTVehicleTypeClassifierNode(
+    const std::string& nodeName,
+    const std::map<std::string, std::string>& params,
+    const CreateInstanceRequest& req) {
+    
+    try {
+        std::string modelPath = params.count("model_path") ? params.at("model_path") : "";
+        
+        std::vector<int> classIdsAppliedTo;
+        if (params.count("class_ids_applied_to")) {
+            std::string idsStr = params.at("class_ids_applied_to");
+            std::istringstream iss(idsStr);
+            std::string token;
+            while (std::getline(iss, token, ',')) {
+                try {
+                    classIdsAppliedTo.push_back(std::stoi(token));
+                } catch (...) {}
+            }
+        }
+        
+        int minWidth = params.count("min_width_applied_to") ? std::stoi(params.at("min_width_applied_to")) : 0;
+        int minHeight = params.count("min_height_applied_to") ? std::stoi(params.at("min_height_applied_to")) : 0;
+        
+        if (modelPath.empty()) {
+            auto it = req.additionalParams.find("MODEL_PATH");
+            if (it != req.additionalParams.end() && !it->second.empty()) {
+                modelPath = it->second;
+            }
+        }
+        
+        if (nodeName.empty() || modelPath.empty()) {
+            throw std::invalid_argument("Node name and model path are required");
+        }
+        
+        std::cerr << "[PipelineBuilder] Creating TRT vehicle type classifier node:" << std::endl;
+        std::cerr << "  Name: '" << nodeName << "'" << std::endl;
+        std::cerr << "  Model path: '" << modelPath << "'" << std::endl;
+        
+        auto node = std::make_shared<cvedix_nodes::cvedix_trt_vehicle_type_classifier>(
+            nodeName,
+            modelPath,
+            classIdsAppliedTo,
+            minWidth,
+            minHeight
+        );
+        
+        std::cerr << "[PipelineBuilder] ✓ TRT vehicle type classifier node created successfully" << std::endl;
+        return node;
+    } catch (const std::exception& e) {
+        std::cerr << "[PipelineBuilder] Exception in createTRTVehicleTypeClassifierNode: " << e.what() << std::endl;
+        throw;
+    }
+}
+
+std::shared_ptr<cvedix_nodes::cvedix_node> PipelineBuilder::createTRTVehicleFeatureEncoderNode(
+    const std::string& nodeName,
+    const std::map<std::string, std::string>& params,
+    const CreateInstanceRequest& req) {
+    
+    try {
+        std::string modelPath = params.count("model_path") ? params.at("model_path") : "";
+        
+        std::vector<int> classIdsAppliedTo;
+        if (params.count("class_ids_applied_to")) {
+            std::string idsStr = params.at("class_ids_applied_to");
+            std::istringstream iss(idsStr);
+            std::string token;
+            while (std::getline(iss, token, ',')) {
+                try {
+                    classIdsAppliedTo.push_back(std::stoi(token));
+                } catch (...) {}
+            }
+        }
+        
+        int minWidth = params.count("min_width_applied_to") ? std::stoi(params.at("min_width_applied_to")) : 0;
+        int minHeight = params.count("min_height_applied_to") ? std::stoi(params.at("min_height_applied_to")) : 0;
+        
+        if (modelPath.empty()) {
+            auto it = req.additionalParams.find("MODEL_PATH");
+            if (it != req.additionalParams.end() && !it->second.empty()) {
+                modelPath = it->second;
+            }
+        }
+        
+        if (nodeName.empty() || modelPath.empty()) {
+            throw std::invalid_argument("Node name and model path are required");
+        }
+        
+        std::cerr << "[PipelineBuilder] Creating TRT vehicle feature encoder node:" << std::endl;
+        std::cerr << "  Name: '" << nodeName << "'" << std::endl;
+        std::cerr << "  Model path: '" << modelPath << "'" << std::endl;
+        
+        auto node = std::make_shared<cvedix_nodes::cvedix_trt_vehicle_feature_encoder>(
+            nodeName,
+            modelPath,
+            classIdsAppliedTo,
+            minWidth,
+            minHeight
+        );
+        
+        std::cerr << "[PipelineBuilder] ✓ TRT vehicle feature encoder node created successfully" << std::endl;
+        return node;
+    } catch (const std::exception& e) {
+        std::cerr << "[PipelineBuilder] Exception in createTRTVehicleFeatureEncoderNode: " << e.what() << std::endl;
+        throw;
+    }
+}
+
+std::shared_ptr<cvedix_nodes::cvedix_node> PipelineBuilder::createTRTVehicleScannerNode(
+    const std::string& nodeName,
+    const std::map<std::string, std::string>& params,
+    const CreateInstanceRequest& req) {
+    
+    try {
+        std::string modelPath = params.count("model_path") ? params.at("model_path") : "";
+        if (modelPath.empty()) {
+            auto it = req.additionalParams.find("MODEL_PATH");
+            if (it != req.additionalParams.end() && !it->second.empty()) {
+                modelPath = it->second;
+            }
+        }
+        
+        if (nodeName.empty() || modelPath.empty()) {
+            throw std::invalid_argument("Node name and model path are required");
+        }
+        
+        std::cerr << "[PipelineBuilder] Creating TRT vehicle scanner node:" << std::endl;
+        std::cerr << "  Name: '" << nodeName << "'" << std::endl;
+        std::cerr << "  Model path: '" << modelPath << "'" << std::endl;
+        
+        auto node = std::make_shared<cvedix_nodes::cvedix_trt_vehicle_scanner>(
+            nodeName,
+            modelPath
+        );
+        
+        std::cerr << "[PipelineBuilder] ✓ TRT vehicle scanner node created successfully" << std::endl;
+        return node;
+    } catch (const std::exception& e) {
+        std::cerr << "[PipelineBuilder] Exception in createTRTVehicleScannerNode: " << e.what() << std::endl;
+        throw;
+    }
+}
+#endif // CVEDIX_WITH_TRT
+
+// ========== RKNN Nodes Implementation ==========
+
+#ifdef CVEDIX_WITH_RKNN
+std::shared_ptr<cvedix_nodes::cvedix_node> PipelineBuilder::createRKNNYOLOv8DetectorNode(
+    const std::string& nodeName,
+    const std::map<std::string, std::string>& params,
+    const CreateInstanceRequest& req) {
+    
+    try {
+        std::string modelPath = params.count("model_path") ? params.at("model_path") : "";
+        float scoreThreshold = params.count("score_threshold") ? std::stof(params.at("score_threshold")) : 0.5f;
+        float nmsThreshold = params.count("nms_threshold") ? std::stof(params.at("nms_threshold")) : 0.5f;
+        int inputWidth = params.count("input_width") ? std::stoi(params.at("input_width")) : 640;
+        int inputHeight = params.count("input_height") ? std::stoi(params.at("input_height")) : 640;
+        int numClasses = params.count("num_classes") ? std::stoi(params.at("num_classes")) : 80;
+        
+        if (modelPath.empty()) {
+            auto it = req.additionalParams.find("MODEL_PATH");
+            if (it != req.additionalParams.end() && !it->second.empty()) {
+                modelPath = it->second;
+            }
+        }
+        
+        if (nodeName.empty() || modelPath.empty()) {
+            throw std::invalid_argument("Node name and model path are required");
+        }
+        
+        std::cerr << "[PipelineBuilder] Creating RKNN YOLOv8 detector node:" << std::endl;
+        std::cerr << "  Name: '" << nodeName << "'" << std::endl;
+        std::cerr << "  Model path: '" << modelPath << "'" << std::endl;
+        std::cerr << "  Score threshold: " << scoreThreshold << std::endl;
+        std::cerr << "  NMS threshold: " << nmsThreshold << std::endl;
+        std::cerr << "  Input size: " << inputWidth << "x" << inputHeight << std::endl;
+        std::cerr << "  Num classes: " << numClasses << std::endl;
+        
+        auto node = std::make_shared<cvedix_nodes::cvedix_rknn_yolov8_detector_node>(
+            nodeName,
+            modelPath,
+            scoreThreshold,
+            nmsThreshold,
+            inputWidth,
+            inputHeight,
+            numClasses
+        );
+        
+        std::cerr << "[PipelineBuilder] ✓ RKNN YOLOv8 detector node created successfully" << std::endl;
+        return node;
+    } catch (const std::exception& e) {
+        std::cerr << "[PipelineBuilder] Exception in createRKNNYOLOv8DetectorNode: " << e.what() << std::endl;
+        throw;
+    }
+}
+
+std::shared_ptr<cvedix_nodes::cvedix_node> PipelineBuilder::createRKNNFaceDetectorNode(
+    const std::string& nodeName,
+    const std::map<std::string, std::string>& params,
+    const CreateInstanceRequest& req) {
+    
+    try {
+        std::string modelPath = params.count("model_path") ? params.at("model_path") : "";
+        float scoreThreshold = params.count("score_threshold") ? std::stof(params.at("score_threshold")) : 0.5f;
+        float nmsThreshold = params.count("nms_threshold") ? std::stof(params.at("nms_threshold")) : 0.5f;
+        int inputWidth = params.count("input_width") ? std::stoi(params.at("input_width")) : 640;
+        int inputHeight = params.count("input_height") ? std::stoi(params.at("input_height")) : 640;
+        int topK = params.count("top_k") ? std::stoi(params.at("top_k")) : 50;
+        
+        if (modelPath.empty()) {
+            auto it = req.additionalParams.find("MODEL_PATH");
+            if (it != req.additionalParams.end() && !it->second.empty()) {
+                modelPath = it->second;
+            }
+        }
+        
+        if (nodeName.empty() || modelPath.empty()) {
+            throw std::invalid_argument("Node name and model path are required");
+        }
+        
+        std::cerr << "[PipelineBuilder] Creating RKNN face detector node:" << std::endl;
+        std::cerr << "  Name: '" << nodeName << "'" << std::endl;
+        std::cerr << "  Model path: '" << modelPath << "'" << std::endl;
+        std::cerr << "  Score threshold: " << scoreThreshold << std::endl;
+        std::cerr << "  NMS threshold: " << nmsThreshold << std::endl;
+        std::cerr << "  Input size: " << inputWidth << "x" << inputHeight << std::endl;
+        std::cerr << "  Top K: " << topK << std::endl;
+        
+        auto node = std::make_shared<cvedix_nodes::cvedix_rknn_face_detector_node>(
+            nodeName,
+            modelPath,
+            scoreThreshold,
+            nmsThreshold,
+            inputWidth,
+            inputHeight,
+            topK
+        );
+        
+        std::cerr << "[PipelineBuilder] ✓ RKNN face detector node created successfully" << std::endl;
+        return node;
+    } catch (const std::exception& e) {
+        std::cerr << "[PipelineBuilder] Exception in createRKNNFaceDetectorNode: " << e.what() << std::endl;
+        throw;
+    }
+}
+#endif // CVEDIX_WITH_RKNN
+
+// ========== Other Inference Nodes Implementation ==========
+
+std::shared_ptr<cvedix_nodes::cvedix_node> PipelineBuilder::createYOLODetectorNode(
+    const std::string& nodeName,
+    const std::map<std::string, std::string>& params,
+    const CreateInstanceRequest& req) {
+    
+    try {
+        std::string modelPath = params.count("model_path") ? params.at("model_path") : "";
+        std::string modelConfigPath = params.count("model_config_path") ? params.at("model_config_path") : "";
+        std::string labelsPath = params.count("labels_path") ? params.at("labels_path") : "";
+        int inputWidth = params.count("input_width") ? std::stoi(params.at("input_width")) : 416;
+        int inputHeight = params.count("input_height") ? std::stoi(params.at("input_height")) : 416;
+        int batchSize = params.count("batch_size") ? std::stoi(params.at("batch_size")) : 1;
+        int classIdOffset = params.count("class_id_offset") ? std::stoi(params.at("class_id_offset")) : 0;
+        float scoreThreshold = params.count("score_threshold") ? std::stof(params.at("score_threshold")) : 0.5f;
+        float confidenceThreshold = params.count("confidence_threshold") ? std::stof(params.at("confidence_threshold")) : 0.5f;
+        float nmsThreshold = params.count("nms_threshold") ? std::stof(params.at("nms_threshold")) : 0.5f;
+        
+        if (modelPath.empty()) {
+            auto it = req.additionalParams.find("MODEL_PATH");
+            if (it != req.additionalParams.end() && !it->second.empty()) {
+                modelPath = it->second;
+            }
+        }
+        
+        if (nodeName.empty() || modelPath.empty()) {
+            throw std::invalid_argument("Node name and model path are required");
+        }
+        
+        std::cerr << "[PipelineBuilder] Creating YOLO detector node:" << std::endl;
+        std::cerr << "  Name: '" << nodeName << "'" << std::endl;
+        std::cerr << "  Model path: '" << modelPath << "'" << std::endl;
+        
+        auto node = std::make_shared<cvedix_nodes::cvedix_yolo_detector_node>(
+            nodeName,
+            modelPath,
+            modelConfigPath,
+            labelsPath,
+            inputWidth,
+            inputHeight,
+            batchSize,
+            classIdOffset,
+            scoreThreshold,
+            confidenceThreshold,
+            nmsThreshold
+        );
+        
+        std::cerr << "[PipelineBuilder] ✓ YOLO detector node created successfully" << std::endl;
+        return node;
+    } catch (const std::exception& e) {
+        std::cerr << "[PipelineBuilder] Exception in createYOLODetectorNode: " << e.what() << std::endl;
+        throw;
+    }
+}
+
+std::shared_ptr<cvedix_nodes::cvedix_node> PipelineBuilder::createENetSegNode(
+    const std::string& nodeName,
+    const std::map<std::string, std::string>& params,
+    const CreateInstanceRequest& req) {
+    
+    try {
+        std::string modelPath = params.count("model_path") ? params.at("model_path") : "";
+        std::string modelConfigPath = params.count("model_config_path") ? params.at("model_config_path") : "";
+        std::string labelsPath = params.count("labels_path") ? params.at("labels_path") : "";
+        int inputWidth = params.count("input_width") ? std::stoi(params.at("input_width")) : 1024;
+        int inputHeight = params.count("input_height") ? std::stoi(params.at("input_height")) : 512;
+        int batchSize = params.count("batch_size") ? std::stoi(params.at("batch_size")) : 1;
+        int classIdOffset = params.count("class_id_offset") ? std::stoi(params.at("class_id_offset")) : 0;
+        
+        if (modelPath.empty()) {
+            auto it = req.additionalParams.find("MODEL_PATH");
+            if (it != req.additionalParams.end() && !it->second.empty()) {
+                modelPath = it->second;
+            }
+        }
+        
+        if (nodeName.empty() || modelPath.empty()) {
+            throw std::invalid_argument("Node name and model path are required");
+        }
+        
+        std::cerr << "[PipelineBuilder] Creating ENet segmentation node:" << std::endl;
+        std::cerr << "  Name: '" << nodeName << "'" << std::endl;
+        std::cerr << "  Model path: '" << modelPath << "'" << std::endl;
+        
+        auto node = std::make_shared<cvedix_nodes::cvedix_enet_seg_node>(
+            nodeName,
+            modelPath,
+            modelConfigPath,
+            labelsPath,
+            inputWidth,
+            inputHeight,
+            batchSize,
+            classIdOffset
+        );
+        
+        std::cerr << "[PipelineBuilder] ✓ ENet segmentation node created successfully" << std::endl;
+        return node;
+    } catch (const std::exception& e) {
+        std::cerr << "[PipelineBuilder] Exception in createENetSegNode: " << e.what() << std::endl;
+        throw;
+    }
+}
+
+std::shared_ptr<cvedix_nodes::cvedix_node> PipelineBuilder::createMaskRCNNDetectorNode(
+    const std::string& nodeName,
+    const std::map<std::string, std::string>& params,
+    const CreateInstanceRequest& req) {
+    
+    try {
+        std::string modelPath = params.count("model_path") ? params.at("model_path") : "";
+        std::string modelConfigPath = params.count("model_config_path") ? params.at("model_config_path") : "";
+        std::string labelsPath = params.count("labels_path") ? params.at("labels_path") : "";
+        int inputWidth = params.count("input_width") ? std::stoi(params.at("input_width")) : 416;
+        int inputHeight = params.count("input_height") ? std::stoi(params.at("input_height")) : 416;
+        int batchSize = params.count("batch_size") ? std::stoi(params.at("batch_size")) : 1;
+        int classIdOffset = params.count("class_id_offset") ? std::stoi(params.at("class_id_offset")) : 0;
+        float scoreThreshold = params.count("score_threshold") ? std::stof(params.at("score_threshold")) : 0.5f;
+        
+        if (modelPath.empty()) {
+            auto it = req.additionalParams.find("MODEL_PATH");
+            if (it != req.additionalParams.end() && !it->second.empty()) {
+                modelPath = it->second;
+            }
+        }
+        
+        if (nodeName.empty() || modelPath.empty()) {
+            throw std::invalid_argument("Node name and model path are required");
+        }
+        
+        std::cerr << "[PipelineBuilder] Creating Mask RCNN detector node:" << std::endl;
+        std::cerr << "  Name: '" << nodeName << "'" << std::endl;
+        std::cerr << "  Model path: '" << modelPath << "'" << std::endl;
+        
+        auto node = std::make_shared<cvedix_nodes::cvedix_mask_rcnn_detector_node>(
+            nodeName,
+            modelPath,
+            modelConfigPath,
+            labelsPath,
+            inputWidth,
+            inputHeight,
+            batchSize,
+            classIdOffset,
+            scoreThreshold
+        );
+        
+        std::cerr << "[PipelineBuilder] ✓ Mask RCNN detector node created successfully" << std::endl;
+        return node;
+    } catch (const std::exception& e) {
+        std::cerr << "[PipelineBuilder] Exception in createMaskRCNNDetectorNode: " << e.what() << std::endl;
+        throw;
+    }
+}
+
+std::shared_ptr<cvedix_nodes::cvedix_node> PipelineBuilder::createOpenPoseDetectorNode(
+    const std::string& nodeName,
+    const std::map<std::string, std::string>& params,
+    const CreateInstanceRequest& req) {
+    
+    try {
+        std::string modelPath = params.count("model_path") ? params.at("model_path") : "";
+        std::string modelConfigPath = params.count("model_config_path") ? params.at("model_config_path") : "";
+        std::string labelsPath = params.count("labels_path") ? params.at("labels_path") : "";
+        int inputWidth = params.count("input_width") ? std::stoi(params.at("input_width")) : 368;
+        int inputHeight = params.count("input_height") ? std::stoi(params.at("input_height")) : 368;
+        int batchSize = params.count("batch_size") ? std::stoi(params.at("batch_size")) : 1;
+        int classIdOffset = params.count("class_id_offset") ? std::stoi(params.at("class_id_offset")) : 0;
+        float scoreThreshold = params.count("score_threshold") ? std::stof(params.at("score_threshold")) : 0.1f;
+        
+        if (modelPath.empty()) {
+            auto it = req.additionalParams.find("MODEL_PATH");
+            if (it != req.additionalParams.end() && !it->second.empty()) {
+                modelPath = it->second;
+            }
+        }
+        
+        if (nodeName.empty() || modelPath.empty()) {
+            throw std::invalid_argument("Node name and model path are required");
+        }
+        
+        std::cerr << "[PipelineBuilder] Creating OpenPose detector node:" << std::endl;
+        std::cerr << "  Name: '" << nodeName << "'" << std::endl;
+        std::cerr << "  Model path: '" << modelPath << "'" << std::endl;
+        
+        auto node = std::make_shared<cvedix_nodes::cvedix_openpose_detector_node>(
+            nodeName,
+            modelPath,
+            modelConfigPath,
+            labelsPath,
+            inputWidth,
+            inputHeight,
+            batchSize,
+            classIdOffset,
+            scoreThreshold
+        );
+        
+        std::cerr << "[PipelineBuilder] ✓ OpenPose detector node created successfully" << std::endl;
+        return node;
+    } catch (const std::exception& e) {
+        std::cerr << "[PipelineBuilder] Exception in createOpenPoseDetectorNode: " << e.what() << std::endl;
+        throw;
+    }
+}
+
+std::shared_ptr<cvedix_nodes::cvedix_node> PipelineBuilder::createClassifierNode(
+    const std::string& nodeName,
+    const std::map<std::string, std::string>& params,
+    const CreateInstanceRequest& req) {
+    
+    try {
+        std::string modelPath = params.count("model_path") ? params.at("model_path") : "";
+        std::string modelConfigPath = params.count("model_config_path") ? params.at("model_config_path") : "";
+        std::string labelsPath = params.count("labels_path") ? params.at("labels_path") : "";
+        int inputWidth = params.count("input_width") ? std::stoi(params.at("input_width")) : 128;
+        int inputHeight = params.count("input_height") ? std::stoi(params.at("input_height")) : 128;
+        int batchSize = params.count("batch_size") ? std::stoi(params.at("batch_size")) : 1;
+        
+        // Parse class_ids_applied_to
+        std::vector<int> classIdsAppliedTo;
+        if (params.count("class_ids_applied_to")) {
+            std::string idsStr = params.at("class_ids_applied_to");
+            std::istringstream iss(idsStr);
+            std::string token;
+            while (std::getline(iss, token, ',')) {
+                try {
+                    classIdsAppliedTo.push_back(std::stoi(token));
+                } catch (...) {}
+            }
+        }
+        
+        int minWidth = params.count("min_width_applied_to") ? std::stoi(params.at("min_width_applied_to")) : 0;
+        int minHeight = params.count("min_height_applied_to") ? std::stoi(params.at("min_height_applied_to")) : 0;
+        int cropPadding = params.count("crop_padding") ? std::stoi(params.at("crop_padding")) : 10;
+        bool needSoftmax = params.count("need_softmax") ? (params.at("need_softmax") == "true" || params.at("need_softmax") == "1") : true;
+        
+        if (modelPath.empty()) {
+            auto it = req.additionalParams.find("MODEL_PATH");
+            if (it != req.additionalParams.end() && !it->second.empty()) {
+                modelPath = it->second;
+            }
+        }
+        
+        if (nodeName.empty() || modelPath.empty()) {
+            throw std::invalid_argument("Node name and model path are required");
+        }
+        
+        std::cerr << "[PipelineBuilder] Creating classifier node:" << std::endl;
+        std::cerr << "  Name: '" << nodeName << "'" << std::endl;
+        std::cerr << "  Model path: '" << modelPath << "'" << std::endl;
+        
+        auto node = std::make_shared<cvedix_nodes::cvedix_classifier_node>(
+            nodeName,
+            modelPath,
+            modelConfigPath,
+            labelsPath,
+            inputWidth,
+            inputHeight,
+            batchSize,
+            classIdsAppliedTo,
+            minWidth,
+            minHeight,
+            cropPadding,
+            needSoftmax
+        );
+        
+        std::cerr << "[PipelineBuilder] ✓ Classifier node created successfully" << std::endl;
+        return node;
+    } catch (const std::exception& e) {
+        std::cerr << "[PipelineBuilder] Exception in createClassifierNode: " << e.what() << std::endl;
+        throw;
+    }
+}
+
+// Note: createFeatureEncoderNode is disabled because cvedix_feature_encoder_node is abstract
+// Use createSFaceEncoderNode (for "sface_feature_encoder") or createTRTVehicleFeatureEncoderNode (for "trt_vehicle_feature_encoder") instead
+/*
+std::shared_ptr<cvedix_nodes::cvedix_node> PipelineBuilder::createFeatureEncoderNode(
+    const std::string& nodeName,
+    const std::map<std::string, std::string>& params,
+    const CreateInstanceRequest& req) {
+    
+    try {
+        std::string modelPath = params.count("model_path") ? params.at("model_path") : "";
+        
+        if (modelPath.empty()) {
+            auto it = req.additionalParams.find("MODEL_PATH");
+            if (it != req.additionalParams.end() && !it->second.empty()) {
+                modelPath = it->second;
+            }
+        }
+        
+        if (nodeName.empty() || modelPath.empty()) {
+            throw std::invalid_argument("Node name and model path are required");
+        }
+        
+        std::cerr << "[PipelineBuilder] Creating feature encoder node:" << std::endl;
+        std::cerr << "  Name: '" << nodeName << "'" << std::endl;
+        std::cerr << "  Model path: '" << modelPath << "'" << std::endl;
+        
+        auto node = std::make_shared<cvedix_nodes::cvedix_feature_encoder_node>(
+            nodeName,
+            modelPath
+        );
+        
+        std::cerr << "[PipelineBuilder] ✓ Feature encoder node created successfully" << std::endl;
+        return node;
+    } catch (const std::exception& e) {
+        std::cerr << "[PipelineBuilder] Exception in createFeatureEncoderNode: " << e.what() << std::endl;
+        throw;
+    }
+}
+*/
+
+std::shared_ptr<cvedix_nodes::cvedix_node> PipelineBuilder::createLaneDetectorNode(
+    const std::string& nodeName,
+    const std::map<std::string, std::string>& params,
+    const CreateInstanceRequest& req) {
+    
+    try {
+        std::string modelPath = params.count("model_path") ? params.at("model_path") : "";
+        std::string modelConfigPath = params.count("model_config_path") ? params.at("model_config_path") : "";
+        std::string labelsPath = params.count("labels_path") ? params.at("labels_path") : "";
+        int inputWidth = params.count("input_width") ? std::stoi(params.at("input_width")) : 736;
+        int inputHeight = params.count("input_height") ? std::stoi(params.at("input_height")) : 416;
+        int batchSize = params.count("batch_size") ? std::stoi(params.at("batch_size")) : 1;
+        int classIdOffset = params.count("class_id_offset") ? std::stoi(params.at("class_id_offset")) : 0;
+        
+        if (modelPath.empty()) {
+            auto it = req.additionalParams.find("MODEL_PATH");
+            if (it != req.additionalParams.end() && !it->second.empty()) {
+                modelPath = it->second;
+            }
+        }
+        
+        if (nodeName.empty() || modelPath.empty()) {
+            throw std::invalid_argument("Node name and model path are required");
+        }
+        
+        std::cerr << "[PipelineBuilder] Creating lane detector node:" << std::endl;
+        std::cerr << "  Name: '" << nodeName << "'" << std::endl;
+        std::cerr << "  Model path: '" << modelPath << "'" << std::endl;
+        
+        auto node = std::make_shared<cvedix_nodes::cvedix_lane_detector_node>(
+            nodeName,
+            modelPath,
+            modelConfigPath,
+            labelsPath,
+            inputWidth,
+            inputHeight,
+            batchSize,
+            classIdOffset
+        );
+        
+        std::cerr << "[PipelineBuilder] ✓ Lane detector node created successfully" << std::endl;
+        return node;
+    } catch (const std::exception& e) {
+        std::cerr << "[PipelineBuilder] Exception in createLaneDetectorNode: " << e.what() << std::endl;
+        throw;
+    }
+}
+
+#ifdef CVEDIX_WITH_PADDLE
+std::shared_ptr<cvedix_nodes::cvedix_node> PipelineBuilder::createPaddleOCRTextDetectorNode(
+    const std::string& nodeName,
+    const std::map<std::string, std::string>& params,
+    const CreateInstanceRequest& req) {
+    
+    try {
+        std::string detModelDir = params.count("det_model_dir") ? params.at("det_model_dir") : "";
+        std::string clsModelDir = params.count("cls_model_dir") ? params.at("cls_model_dir") : "";
+        std::string recModelDir = params.count("rec_model_dir") ? params.at("rec_model_dir") : "";
+        std::string recCharDictPath = params.count("rec_char_dict_path") ? params.at("rec_char_dict_path") : "";
+        
+        if (nodeName.empty()) {
+            throw std::invalid_argument("Node name is required");
+        }
+        
+        std::cerr << "[PipelineBuilder] Creating PaddleOCR text detector node:" << std::endl;
+        std::cerr << "  Name: '" << nodeName << "'" << std::endl;
+        if (!detModelDir.empty()) {
+            std::cerr << "  Detection model dir: '" << detModelDir << "'" << std::endl;
+        }
+        if (!recModelDir.empty()) {
+            std::cerr << "  Recognition model dir: '" << recModelDir << "'" << std::endl;
+        }
+        
+        auto node = std::make_shared<cvedix_nodes::cvedix_ppocr_text_detector_node>(
+            nodeName,
+            detModelDir,
+            clsModelDir,
+            recModelDir,
+            recCharDictPath
+        );
+        
+        std::cerr << "[PipelineBuilder] ✓ PaddleOCR text detector node created successfully" << std::endl;
+        return node;
+    } catch (const std::exception& e) {
+        std::cerr << "[PipelineBuilder] Exception in createPaddleOCRTextDetectorNode: " << e.what() << std::endl;
+        throw;
+    }
+}
+#endif
+
+std::shared_ptr<cvedix_nodes::cvedix_node> PipelineBuilder::createRestorationNode(
+    const std::string& nodeName,
+    const std::map<std::string, std::string>& params,
+    const CreateInstanceRequest& req) {
+    
+    try {
+        std::string bgRestorationModel = params.count("bg_restoration_model") ? params.at("bg_restoration_model") : "";
+        std::string faceRestorationModel = params.count("face_restoration_model") ? params.at("face_restoration_model") : "";
+        bool restorationToOSD = params.count("restoration_to_osd") ? (params.at("restoration_to_osd") == "true" || params.at("restoration_to_osd") == "1") : true;
+        
+        if (bgRestorationModel.empty()) {
+            auto it = req.additionalParams.find("BG_RESTORATION_MODEL");
+            if (it != req.additionalParams.end() && !it->second.empty()) {
+                bgRestorationModel = it->second;
+            }
+        }
+        
+        if (nodeName.empty() || bgRestorationModel.empty()) {
+            throw std::invalid_argument("Node name and background restoration model path are required");
+        }
+        
+        std::cerr << "[PipelineBuilder] Creating restoration node:" << std::endl;
+        std::cerr << "  Name: '" << nodeName << "'" << std::endl;
+        std::cerr << "  Background restoration model: '" << bgRestorationModel << "'" << std::endl;
+        if (!faceRestorationModel.empty()) {
+            std::cerr << "  Face restoration model: '" << faceRestorationModel << "'" << std::endl;
+        }
+        
+        auto node = std::make_shared<cvedix_nodes::cvedix_restoration_node>(
+            nodeName,
+            bgRestorationModel,
+            faceRestorationModel,
+            restorationToOSD
+        );
+        
+        std::cerr << "[PipelineBuilder] ✓ Restoration node created successfully" << std::endl;
+        return node;
+    } catch (const std::exception& e) {
+        std::cerr << "[PipelineBuilder] Exception in createRestorationNode: " << e.what() << std::endl;
+        throw;
+    }
+}
+
+// ========== Source Nodes Implementation ==========
+
+std::shared_ptr<cvedix_nodes::cvedix_node> PipelineBuilder::createAppSourceNode(
+    const std::string& nodeName,
+    const std::map<std::string, std::string>& params,
+    const CreateInstanceRequest& req) {
+    
+    try {
+        int channelIndex = params.count("channel") ? std::stoi(params.at("channel")) : 0;
+        
+        if (nodeName.empty()) {
+            throw std::invalid_argument("Node name cannot be empty");
+        }
+        
+        std::cerr << "[PipelineBuilder] Creating app source node:" << std::endl;
+        std::cerr << "  Name: '" << nodeName << "'" << std::endl;
+        std::cerr << "  Channel index: " << channelIndex << std::endl;
+        std::cerr << "  NOTE: Use push_frames() method to push frames into pipeline" << std::endl;
+        
+        auto node = std::make_shared<cvedix_nodes::cvedix_app_src_node>(
+            nodeName,
+            channelIndex
+        );
+        
+        std::cerr << "[PipelineBuilder] ✓ App source node created successfully" << std::endl;
+        return node;
+    } catch (const std::exception& e) {
+        std::cerr << "[PipelineBuilder] Exception in createAppSourceNode: " << e.what() << std::endl;
+        throw;
+    }
+}
+
+std::shared_ptr<cvedix_nodes::cvedix_node> PipelineBuilder::createImageSourceNode(
+    const std::string& nodeName,
+    const std::map<std::string, std::string>& params,
+    const CreateInstanceRequest& req) {
+    
+    try {
+        int channelIndex = params.count("channel") ? std::stoi(params.at("channel")) : 0;
+        std::string portOrLocation = params.count("port_or_location") ? params.at("port_or_location") : "";
+        int interval = params.count("interval") ? std::stoi(params.at("interval")) : 1;
+        float resizeRatio = params.count("resize_ratio") ? std::stof(params.at("resize_ratio")) : 1.0f;
+        bool cycle = params.count("cycle") ? (params.at("cycle") == "true" || params.at("cycle") == "1") : true;
+        std::string gstDecoderName = params.count("gst_decoder_name") ? params.at("gst_decoder_name") : "jpegdec";
+        
+        // Get from additionalParams if not in params
+        if (portOrLocation.empty()) {
+            auto it = req.additionalParams.find("IMAGE_SRC_PORT_OR_LOCATION");
+            if (it != req.additionalParams.end() && !it->second.empty()) {
+                portOrLocation = it->second;
+            } else {
+                // Default: use file path pattern
+                portOrLocation = "./cvedix_data/test_images/%d.jpg";
+            }
+        }
+        
+        if (nodeName.empty()) {
+            throw std::invalid_argument("Node name cannot be empty");
+        }
+        if (portOrLocation.empty()) {
+            throw std::invalid_argument("port_or_location cannot be empty");
+        }
+        
+        // Validate resize_ratio
+        if (resizeRatio <= 0.0f || resizeRatio > 1.0f) {
+            std::cerr << "[PipelineBuilder] Warning: resize_ratio out of range, using 1.0" << std::endl;
+            resizeRatio = 1.0f;
+        }
+        
+        std::cerr << "[PipelineBuilder] Creating image source node:" << std::endl;
+        std::cerr << "  Name: '" << nodeName << "'" << std::endl;
+        std::cerr << "  Channel index: " << channelIndex << std::endl;
+        std::cerr << "  Port/Location: '" << portOrLocation << "'" << std::endl;
+        std::cerr << "  Interval: " << interval << " seconds" << std::endl;
+        std::cerr << "  Resize ratio: " << resizeRatio << std::endl;
+        std::cerr << "  Cycle: " << (cycle ? "true" : "false") << std::endl;
+        
+        auto node = std::make_shared<cvedix_nodes::cvedix_image_src_node>(
+            nodeName,
+            channelIndex,
+            portOrLocation,
+            interval,
+            resizeRatio,
+            cycle,
+            gstDecoderName
+        );
+        
+        std::cerr << "[PipelineBuilder] ✓ Image source node created successfully" << std::endl;
+        return node;
+    } catch (const std::exception& e) {
+        std::cerr << "[PipelineBuilder] Exception in createImageSourceNode: " << e.what() << std::endl;
+        throw;
+    }
+}
+
+std::shared_ptr<cvedix_nodes::cvedix_node> PipelineBuilder::createRTMPSourceNode(
+    const std::string& nodeName,
+    const std::map<std::string, std::string>& params,
+    const CreateInstanceRequest& req) {
+    
+    try {
+        int channelIndex = params.count("channel") ? std::stoi(params.at("channel")) : 0;
+        std::string rtmpUrl = params.count("rtmp_url") ? params.at("rtmp_url") : "";
+        float resizeRatio = params.count("resize_ratio") ? std::stof(params.at("resize_ratio")) : 1.0f;
+        std::string gstDecoderName = params.count("gst_decoder_name") ? params.at("gst_decoder_name") : "avdec_h264";
+        int skipInterval = params.count("skip_interval") ? std::stoi(params.at("skip_interval")) : 0;
+        
+        // Get from additionalParams if not in params
+        if (rtmpUrl.empty()) {
+            auto it = req.additionalParams.find("RTMP_SRC_URL");
+            if (it != req.additionalParams.end() && !it->second.empty()) {
+                rtmpUrl = it->second;
+            } else {
+                // Default fake data
+                rtmpUrl = "rtmp://localhost:1935/live/stream";
+            }
+        }
+        
+        if (nodeName.empty()) {
+            throw std::invalid_argument("Node name cannot be empty");
+        }
+        if (rtmpUrl.empty()) {
+            throw std::invalid_argument("RTMP URL cannot be empty");
+        }
+        
+        // Validate resize_ratio
+        if (resizeRatio <= 0.0f || resizeRatio > 1.0f) {
+            std::cerr << "[PipelineBuilder] Warning: resize_ratio out of range, using 1.0" << std::endl;
+            resizeRatio = 1.0f;
+        }
+        
+        std::cerr << "[PipelineBuilder] Creating RTMP source node:" << std::endl;
+        std::cerr << "  Name: '" << nodeName << "'" << std::endl;
+        std::cerr << "  Channel index: " << channelIndex << std::endl;
+        std::cerr << "  RTMP URL: '" << rtmpUrl << "'" << std::endl;
+        std::cerr << "  Resize ratio: " << resizeRatio << std::endl;
+        std::cerr << "  Skip interval: " << skipInterval << std::endl;
+        
+        auto node = std::make_shared<cvedix_nodes::cvedix_rtmp_src_node>(
+            nodeName,
+            channelIndex,
+            rtmpUrl,
+            resizeRatio,
+            gstDecoderName,
+            skipInterval
+        );
+        
+        std::cerr << "[PipelineBuilder] ✓ RTMP source node created successfully" << std::endl;
+        return node;
+    } catch (const std::exception& e) {
+        std::cerr << "[PipelineBuilder] Exception in createRTMPSourceNode: " << e.what() << std::endl;
+        throw;
+    }
+}
+
+std::shared_ptr<cvedix_nodes::cvedix_node> PipelineBuilder::createUDPSourceNode(
+    const std::string& nodeName,
+    const std::map<std::string, std::string>& params,
+    const CreateInstanceRequest& req) {
+    
+    try {
+        int channelIndex = params.count("channel") ? std::stoi(params.at("channel")) : 0;
+        int port = params.count("port") ? std::stoi(params.at("port")) : 6000;
+        float resizeRatio = params.count("resize_ratio") ? std::stof(params.at("resize_ratio")) : 1.0f;
+        std::string gstDecoderName = params.count("gst_decoder_name") ? params.at("gst_decoder_name") : "avdec_h264";
+        int skipInterval = params.count("skip_interval") ? std::stoi(params.at("skip_interval")) : 0;
+        
+        // Get from additionalParams if not in params
+        if (params.count("port") == 0) {
+            auto it = req.additionalParams.find("UDP_PORT");
+            if (it != req.additionalParams.end() && !it->second.empty()) {
+                try {
+                    port = std::stoi(it->second);
+                } catch (...) {
+                    std::cerr << "[PipelineBuilder] Warning: Invalid UDP_PORT, using default 6000" << std::endl;
+                }
+            }
+        }
+        
+        if (nodeName.empty()) {
+            throw std::invalid_argument("Node name cannot be empty");
+        }
+        if (port <= 0 || port > 65535) {
+            throw std::invalid_argument("UDP port must be between 1 and 65535");
+        }
+        
+        // Validate resize_ratio
+        if (resizeRatio <= 0.0f || resizeRatio > 1.0f) {
+            std::cerr << "[PipelineBuilder] Warning: resize_ratio out of range, using 1.0" << std::endl;
+            resizeRatio = 1.0f;
+        }
+        
+        std::cerr << "[PipelineBuilder] Creating UDP source node:" << std::endl;
+        std::cerr << "  Name: '" << nodeName << "'" << std::endl;
+        std::cerr << "  Channel index: " << channelIndex << std::endl;
+        std::cerr << "  Port: " << port << std::endl;
+        std::cerr << "  Resize ratio: " << resizeRatio << std::endl;
+        std::cerr << "  Skip interval: " << skipInterval << std::endl;
+        
+        auto node = std::make_shared<cvedix_nodes::cvedix_udp_src_node>(
+            nodeName,
+            channelIndex,
+            port,
+            resizeRatio,
+            gstDecoderName,
+            skipInterval
+        );
+        
+        std::cerr << "[PipelineBuilder] ✓ UDP source node created successfully" << std::endl;
+        return node;
+    } catch (const std::exception& e) {
+        std::cerr << "[PipelineBuilder] Exception in createUDPSourceNode: " << e.what() << std::endl;
+        throw;
+    }
+}
+
+// ========== Broker Nodes Implementation ==========
+
+// Temporarily disabled JSON broker nodes due to cereal dependency issue
+// TODO: Re-enable after fixing cereal symlink or CVEDIX SDK update
+/*
+std::shared_ptr<cvedix_nodes::cvedix_node> PipelineBuilder::createJSONConsoleBrokerNode(
+    const std::string& nodeName,
+    const std::map<std::string, std::string>& params,
+    const CreateInstanceRequest& req) {
+    
+    try {
+        // Parse broke_for enum
+        std::string brokeForStr = params.count("broke_for") ? params.at("broke_for") : "NORMAL";
+        cvedix_nodes::cvedix_broke_for brokeFor = cvedix_nodes::cvedix_broke_for::NORMAL;
+        
+        if (brokeForStr == "FACE") {
+            brokeFor = cvedix_nodes::cvedix_broke_for::FACE;
+        } else if (brokeForStr == "TEXT") {
+            brokeFor = cvedix_nodes::cvedix_broke_for::TEXT;
+        } else if (brokeForStr == "POSE") {
+            brokeFor = cvedix_nodes::cvedix_broke_for::POSE;
+        } else if (brokeForStr == "POSE") {
+            brokeFor = cvedix_nodes::cvedix_broke_for::POSE;
+        } else if (brokeForStr == "NORMAL") {
+            brokeFor = cvedix_nodes::cvedix_broke_for::NORMAL;
+        }
+        
+        int warnThreshold = params.count("broking_cache_warn_threshold") ? std::stoi(params.at("broking_cache_warn_threshold")) : 50;
+        int ignoreThreshold = params.count("broking_cache_ignore_threshold") ? std::stoi(params.at("broking_cache_ignore_threshold")) : 200;
+        
+        if (nodeName.empty()) {
+            throw std::invalid_argument("Node name cannot be empty");
+        }
+        
+        std::cerr << "[PipelineBuilder] Creating JSON console broker node:" << std::endl;
+        std::cerr << "  Name: '" << nodeName << "'" << std::endl;
+        std::cerr << "  Broke for: " << brokeForStr << std::endl;
+        
+        auto node = std::make_shared<cvedix_nodes::cvedix_json_console_broker_node>(
+            nodeName,
+            brokeFor,
+            warnThreshold,
+            ignoreThreshold
+        );
+        
+        std::cerr << "[PipelineBuilder] ✓ JSON console broker node created successfully" << std::endl;
+        return node;
+    } catch (const std::exception& e) {
+        std::cerr << "[PipelineBuilder] Exception in createJSONConsoleBrokerNode: " << e.what() << std::endl;
+        throw;
+    }
+}
+
+std::shared_ptr<cvedix_nodes::cvedix_node> PipelineBuilder::createJSONEnhancedConsoleBrokerNode(
+    const std::string& nodeName,
+    const std::map<std::string, std::string>& params,
+    const CreateInstanceRequest& req) {
+    
+    try {
+        std::string brokeForStr = params.count("broke_for") ? params.at("broke_for") : "NORMAL";
+        cvedix_nodes::cvedix_broke_for brokeFor = cvedix_nodes::cvedix_broke_for::NORMAL;
+        
+        if (brokeForStr == "FACE") {
+            brokeFor = cvedix_nodes::cvedix_broke_for::FACE;
+        } else if (brokeForStr == "TEXT") {
+            brokeFor = cvedix_nodes::cvedix_broke_for::TEXT;
+        } else if (brokeForStr == "POSE") {
+            brokeFor = cvedix_nodes::cvedix_broke_for::POSE;
+        }
+        
+        int warnThreshold = params.count("broking_cache_warn_threshold") ? std::stoi(params.at("broking_cache_warn_threshold")) : 50;
+        int ignoreThreshold = params.count("broking_cache_ignore_threshold") ? std::stoi(params.at("broking_cache_ignore_threshold")) : 200;
+        bool encodeFullFrame = params.count("encode_full_frame") ? (params.at("encode_full_frame") == "true" || params.at("encode_full_frame") == "1") : false;
+        
+        if (nodeName.empty()) {
+            throw std::invalid_argument("Node name cannot be empty");
+        }
+        
+        std::cerr << "[PipelineBuilder] Creating JSON enhanced console broker node:" << std::endl;
+        std::cerr << "  Name: '" << nodeName << "'" << std::endl;
+        std::cerr << "  Broke for: " << brokeForStr << std::endl;
+        std::cerr << "  Encode full frame: " << (encodeFullFrame ? "true" : "false") << std::endl;
+        
+        auto node = std::make_shared<cvedix_nodes::cvedix_json_enhanced_console_broker_node>(
+            nodeName,
+            brokeFor,
+            warnThreshold,
+            ignoreThreshold,
+            encodeFullFrame
+        );
+        
+        std::cerr << "[PipelineBuilder] ✓ JSON enhanced console broker node created successfully" << std::endl;
+        return node;
+    } catch (const std::exception& e) {
+        std::cerr << "[PipelineBuilder] Exception in createJSONEnhancedConsoleBrokerNode: " << e.what() << std::endl;
+        throw;
+    }
+}
+
+#ifdef CVEDIX_WITH_MQTT
+std::shared_ptr<cvedix_nodes::cvedix_node> PipelineBuilder::createJSONMQTTBrokerNode(
+    const std::string& nodeName,
+    const std::map<std::string, std::string>& params,
+    const CreateInstanceRequest& req) {
+    
+    try {
+        std::string brokeForStr = params.count("broke_for") ? params.at("broke_for") : "NORMAL";
+        cvedix_nodes::cvedix_broke_for brokeFor = cvedix_nodes::cvedix_broke_for::NORMAL;
+        
+        if (brokeForStr == "FACE") {
+            brokeFor = cvedix_nodes::cvedix_broke_for::FACE;
+        } else if (brokeForStr == "TEXT") {
+            brokeFor = cvedix_nodes::cvedix_broke_for::TEXT;
+        } else if (brokeForStr == "POSE") {
+            brokeFor = cvedix_nodes::cvedix_broke_for::POSE;
+        }
+        
+        // MQTT broker node requires custom callbacks - use fake/default for now
+        // In real implementation, these should be provided via additionalParams or config
+        std::cerr << "[PipelineBuilder] Creating JSON MQTT broker node:" << std::endl;
+        std::cerr << "  Name: '" << nodeName << "'" << std::endl;
+        std::cerr << "  Broke for: " << brokeForStr << std::endl;
+        std::cerr << "  NOTE: MQTT broker requires custom callbacks - using default implementation" << std::endl;
+        
+        // Create with default/null callbacks (fake data)
+        auto node = std::make_shared<cvedix_nodes::cvedix_json_mqtt_broker_node>(
+            nodeName,
+            brokeFor,
+            nullptr,  // json_transformer (nullptr = use original JSON)
+            nullptr   // mqtt_publisher (nullptr = will need to be set later or use default)
+        );
+        
+        std::cerr << "[PipelineBuilder] ✓ JSON MQTT broker node created successfully" << std::endl;
+        return node;
+    } catch (const std::exception& e) {
+        std::cerr << "[PipelineBuilder] Exception in createJSONMQTTBrokerNode: " << e.what() << std::endl;
+        throw;
+    }
+}
+#endif
+
+#ifdef CVEDIX_WITH_KAFKA
+std::shared_ptr<cvedix_nodes::cvedix_node> PipelineBuilder::createJSONKafkaBrokerNode(
+    const std::string& nodeName,
+    const std::map<std::string, std::string>& params,
+    const CreateInstanceRequest& req) {
+    
+    try {
+        std::string kafkaServers = params.count("kafka_servers") ? params.at("kafka_servers") : "127.0.0.1:9092";
+        std::string topicName = params.count("topic_name") ? params.at("topic_name") : "videopipe_topic";
+        std::string brokeForStr = params.count("broke_for") ? params.at("broke_for") : "NORMAL";
+        cvedix_nodes::cvedix_broke_for brokeFor = cvedix_nodes::cvedix_broke_for::NORMAL;
+        
+        // Get from additionalParams if not in params
+        if (params.count("kafka_servers") == 0) {
+            auto it = req.additionalParams.find("KAFKA_SERVERS");
+            if (it != req.additionalParams.end() && !it->second.empty()) {
+                kafkaServers = it->second;
+            }
+        }
+        if (params.count("topic_name") == 0) {
+            auto it = req.additionalParams.find("KAFKA_TOPIC");
+            if (it != req.additionalParams.end() && !it->second.empty()) {
+                topicName = it->second;
+            }
+        }
+        
+        if (brokeForStr == "FACE") {
+            brokeFor = cvedix_nodes::cvedix_broke_for::FACE;
+        } else if (brokeForStr == "TEXT") {
+            brokeFor = cvedix_nodes::cvedix_broke_for::TEXT;
+        } else if (brokeForStr == "POSE") {
+            brokeFor = cvedix_nodes::cvedix_broke_for::POSE;
+        }
+        
+        int warnThreshold = params.count("broking_cache_warn_threshold") ? std::stoi(params.at("broking_cache_warn_threshold")) : 50;
+        int ignoreThreshold = params.count("broking_cache_ignore_threshold") ? std::stoi(params.at("broking_cache_ignore_threshold")) : 200;
+        
+        if (nodeName.empty()) {
+            throw std::invalid_argument("Node name cannot be empty");
+        }
+        
+        std::cerr << "[PipelineBuilder] Creating JSON Kafka broker node:" << std::endl;
+        std::cerr << "  Name: '" << nodeName << "'" << std::endl;
+        std::cerr << "  Kafka servers: '" << kafkaServers << "'" << std::endl;
+        std::cerr << "  Topic name: '" << topicName << "'" << std::endl;
+        std::cerr << "  Broke for: " << brokeForStr << std::endl;
+        
+        auto node = std::make_shared<cvedix_nodes::cvedix_json_kafka_broker_node>(
+            nodeName,
+            kafkaServers,
+            topicName,
+            brokeFor,
+            warnThreshold,
+            ignoreThreshold
+        );
+        
+        std::cerr << "[PipelineBuilder] ✓ JSON Kafka broker node created successfully" << std::endl;
+        return node;
+    } catch (const std::exception& e) {
+        std::cerr << "[PipelineBuilder] Exception in createJSONKafkaBrokerNode: " << e.what() << std::endl;
+        throw;
+    }
+}
+#endif
+*/
+// Stub implementations to avoid linker errors
+std::shared_ptr<cvedix_nodes::cvedix_node> PipelineBuilder::createJSONConsoleBrokerNode(
+    const std::string&, const std::map<std::string, std::string>&, const CreateInstanceRequest&) {
+    return nullptr;
+}
+std::shared_ptr<cvedix_nodes::cvedix_node> PipelineBuilder::createJSONEnhancedConsoleBrokerNode(
+    const std::string&, const std::map<std::string, std::string>&, const CreateInstanceRequest&) {
+    return nullptr;
+}
+#ifdef CVEDIX_WITH_MQTT
+std::shared_ptr<cvedix_nodes::cvedix_node> PipelineBuilder::createJSONMQTTBrokerNode(
+    const std::string&, const std::map<std::string, std::string>&, const CreateInstanceRequest&) {
+    return nullptr;
+}
+#endif
+#ifdef CVEDIX_WITH_KAFKA
+std::shared_ptr<cvedix_nodes::cvedix_node> PipelineBuilder::createJSONKafkaBrokerNode(
+    const std::string&, const std::map<std::string, std::string>&, const CreateInstanceRequest&) {
+    return nullptr;
+}
+#endif
+
+// Temporarily disabled all broker node implementations due to cereal dependency issue
+/*
+std::shared_ptr<cvedix_nodes::cvedix_node> PipelineBuilder::createXMLFileBrokerNode(
+    const std::string& nodeName,
+    const std::map<std::string, std::string>& params,
+    const CreateInstanceRequest& req) {
+    
+    try {
+        std::string brokeForStr = params.count("broke_for") ? params.at("broke_for") : "NORMAL";
+        cvedix_nodes::cvedix_broke_for brokeFor = cvedix_nodes::cvedix_broke_for::NORMAL;
+        
+        if (brokeForStr == "FACE") {
+            brokeFor = cvedix_nodes::cvedix_broke_for::FACE;
+        } else if (brokeForStr == "TEXT") {
+            brokeFor = cvedix_nodes::cvedix_broke_for::TEXT;
+        } else if (brokeForStr == "POSE") {
+            brokeFor = cvedix_nodes::cvedix_broke_for::POSE;
+        }
+        
+        std::string filePath = params.count("file_path") ? params.at("file_path") : "";
+        if (filePath.empty()) {
+            auto it = req.additionalParams.find("XML_FILE_PATH");
+            if (it != req.additionalParams.end() && !it->second.empty()) {
+                filePath = it->second;
+            } else {
+                // Default fake data
+                filePath = "./output/broker_output.xml";
+            }
+        }
+        
+        int warnThreshold = params.count("broking_cache_warn_threshold") ? std::stoi(params.at("broking_cache_warn_threshold")) : 50;
+        int ignoreThreshold = params.count("broking_cache_ignore_threshold") ? std::stoi(params.at("broking_cache_ignore_threshold")) : 200;
+        
+        if (nodeName.empty()) {
+            throw std::invalid_argument("Node name cannot be empty");
+        }
+        
+        std::cerr << "[PipelineBuilder] Creating XML file broker node:" << std::endl;
+        std::cerr << "  Name: '" << nodeName << "'" << std::endl;
+        std::cerr << "  File path: '" << filePath << "'" << std::endl;
+        std::cerr << "  Broke for: " << brokeForStr << std::endl;
+        
+        auto node = std::make_shared<cvedix_nodes::cvedix_xml_file_broker_node>(
+            nodeName,
+            brokeFor,
+            filePath,
+            warnThreshold,
+            ignoreThreshold
+        );
+        
+        std::cerr << "[PipelineBuilder] ✓ XML file broker node created successfully" << std::endl;
+        return node;
+    } catch (const std::exception& e) {
+        std::cerr << "[PipelineBuilder] Exception in createXMLFileBrokerNode: " << e.what() << std::endl;
+        throw;
+    }
+}
+
+std::shared_ptr<cvedix_nodes::cvedix_node> PipelineBuilder::createXMLSocketBrokerNode(
+    const std::string& nodeName,
+    const std::map<std::string, std::string>& params,
+    const CreateInstanceRequest& req) {
+    
+    try {
+        std::string desIp = params.count("des_ip") ? params.at("des_ip") : "";
+        int desPort = params.count("des_port") ? std::stoi(params.at("des_port")) : 0;
+        std::string brokeForStr = params.count("broke_for") ? params.at("broke_for") : "NORMAL";
+        cvedix_nodes::cvedix_broke_for brokeFor = cvedix_nodes::cvedix_broke_for::NORMAL;
+        
+        // Get from additionalParams if not in params
+        if (desIp.empty()) {
+            auto it = req.additionalParams.find("XML_SOCKET_IP");
+            if (it != req.additionalParams.end() && !it->second.empty()) {
+                desIp = it->second;
+            } else {
+                // Default fake data
+                desIp = "127.0.0.1";
+            }
+        }
+        if (desPort == 0) {
+            auto it = req.additionalParams.find("XML_SOCKET_PORT");
+            if (it != req.additionalParams.end() && !it->second.empty()) {
+                try {
+                    desPort = std::stoi(it->second);
+                } catch (...) {
+                    desPort = 8080; // Default fake data
+                }
+            } else {
+                desPort = 8080; // Default fake data
+            }
+        }
+        
+        if (brokeForStr == "FACE") {
+            brokeFor = cvedix_nodes::cvedix_broke_for::FACE;
+        } else if (brokeForStr == "TEXT") {
+            brokeFor = cvedix_nodes::cvedix_broke_for::TEXT;
+        } else if (brokeForStr == "POSE") {
+            brokeFor = cvedix_nodes::cvedix_broke_for::POSE;
+        }
+        
+        int warnThreshold = params.count("broking_cache_warn_threshold") ? std::stoi(params.at("broking_cache_warn_threshold")) : 50;
+        int ignoreThreshold = params.count("broking_cache_ignore_threshold") ? std::stoi(params.at("broking_cache_ignore_threshold")) : 200;
+        
+        if (nodeName.empty()) {
+            throw std::invalid_argument("Node name cannot be empty");
+        }
+        
+        std::cerr << "[PipelineBuilder] Creating XML socket broker node:" << std::endl;
+        std::cerr << "  Name: '" << nodeName << "'" << std::endl;
+        std::cerr << "  Destination IP: '" << desIp << "'" << std::endl;
+        std::cerr << "  Destination port: " << desPort << std::endl;
+        std::cerr << "  Broke for: " << brokeForStr << std::endl;
+        
+        auto node = std::make_shared<cvedix_nodes::cvedix_xml_socket_broker_node>(
+            nodeName,
+            desIp,
+            desPort,
+            brokeFor,
+            warnThreshold,
+            ignoreThreshold
+        );
+        
+        std::cerr << "[PipelineBuilder] ✓ XML socket broker node created successfully" << std::endl;
+        return node;
+    } catch (const std::exception& e) {
+        std::cerr << "[PipelineBuilder] Exception in createXMLSocketBrokerNode: " << e.what() << std::endl;
+        throw;
+    }
+}
+
+std::shared_ptr<cvedix_nodes::cvedix_node> PipelineBuilder::createMessageBrokerNode(
+    const std::string& nodeName,
+    const std::map<std::string, std::string>& params,
+    const CreateInstanceRequest& req) {
+    
+    try {
+        std::string brokeForStr = params.count("broke_for") ? params.at("broke_for") : "NORMAL";
+        cvedix_nodes::cvedix_broke_for brokeFor = cvedix_nodes::cvedix_broke_for::NORMAL;
+        
+        if (brokeForStr == "FACE") {
+            brokeFor = cvedix_nodes::cvedix_broke_for::FACE;
+        } else if (brokeForStr == "TEXT") {
+            brokeFor = cvedix_nodes::cvedix_broke_for::TEXT;
+        } else if (brokeForStr == "POSE") {
+            brokeFor = cvedix_nodes::cvedix_broke_for::POSE;
+        }
+        
+        int warnThreshold = params.count("broking_cache_warn_threshold") ? std::stoi(params.at("broking_cache_warn_threshold")) : 50;
+        int ignoreThreshold = params.count("broking_cache_ignore_threshold") ? std::stoi(params.at("broking_cache_ignore_threshold")) : 200;
+        
+        if (nodeName.empty()) {
+            throw std::invalid_argument("Node name cannot be empty");
+        }
+        
+        std::cerr << "[PipelineBuilder] Creating message broker node:" << std::endl;
+        std::cerr << "  Name: '" << nodeName << "'" << std::endl;
+        std::cerr << "  Broke for: " << brokeForStr << std::endl;
+        
+        auto node = std::make_shared<cvedix_nodes::cvedix_msg_broker_node>(
+            nodeName,
+            brokeFor,
+            warnThreshold,
+            ignoreThreshold
+        );
+        
+        std::cerr << "[PipelineBuilder] ✓ Message broker node created successfully" << std::endl;
+        return node;
+    } catch (const std::exception& e) {
+        std::cerr << "[PipelineBuilder] Exception in createMessageBrokerNode: " << e.what() << std::endl;
+        throw;
+    }
+}
+
+std::shared_ptr<cvedix_nodes::cvedix_node> PipelineBuilder::createBASocketBrokerNode(
+    const std::string& nodeName,
+    const std::map<std::string, std::string>& params,
+    const CreateInstanceRequest& req) {
+    
+    try {
+        std::string desIp = params.count("des_ip") ? params.at("des_ip") : "";
+        int desPort = params.count("des_port") ? std::stoi(params.at("des_port")) : 0;
+        std::string brokeForStr = params.count("broke_for") ? params.at("broke_for") : "NORMAL";
+        cvedix_nodes::cvedix_broke_for brokeFor = cvedix_nodes::cvedix_broke_for::NORMAL;
+        
+        // Get from additionalParams if not in params
+        if (desIp.empty()) {
+            auto it = req.additionalParams.find("BA_SOCKET_IP");
+            if (it != req.additionalParams.end() && !it->second.empty()) {
+                desIp = it->second;
+            } else {
+                desIp = "127.0.0.1"; // Default fake data
+            }
+        }
+        if (desPort == 0) {
+            auto it = req.additionalParams.find("BA_SOCKET_PORT");
+            if (it != req.additionalParams.end() && !it->second.empty()) {
+                try {
+                    desPort = std::stoi(it->second);
+                } catch (...) {
+                    desPort = 8080; // Default fake data
+                }
+            } else {
+                desPort = 8080; // Default fake data
+            }
+        }
+        
+        if (brokeForStr == "FACE") {
+            brokeFor = cvedix_nodes::cvedix_broke_for::FACE;
+        } else if (brokeForStr == "TEXT") {
+            brokeFor = cvedix_nodes::cvedix_broke_for::TEXT;
+        } else if (brokeForStr == "POSE") {
+            brokeFor = cvedix_nodes::cvedix_broke_for::POSE;
+        }
+        
+        int warnThreshold = params.count("broking_cache_warn_threshold") ? std::stoi(params.at("broking_cache_warn_threshold")) : 50;
+        int ignoreThreshold = params.count("broking_cache_ignore_threshold") ? std::stoi(params.at("broking_cache_ignore_threshold")) : 200;
+        
+        if (nodeName.empty()) {
+            throw std::invalid_argument("Node name cannot be empty");
+        }
+        
+        std::cerr << "[PipelineBuilder] Creating BA socket broker node:" << std::endl;
+        std::cerr << "  Name: '" << nodeName << "'" << std::endl;
+        std::cerr << "  Destination IP: '" << desIp << "'" << std::endl;
+        std::cerr << "  Destination port: " << desPort << std::endl;
+        std::cerr << "  Broke for: " << brokeForStr << std::endl;
+        
+        auto node = std::make_shared<cvedix_nodes::cvedix_ba_socket_broker_node>(
+            nodeName,
+            desIp,
+            desPort,
+            brokeFor,
+            warnThreshold,
+            ignoreThreshold
+        );
+        
+        std::cerr << "[PipelineBuilder] ✓ BA socket broker node created successfully" << std::endl;
+        return node;
+    } catch (const std::exception& e) {
+        std::cerr << "[PipelineBuilder] Exception in createBASocketBrokerNode: " << e.what() << std::endl;
+        throw;
+    }
+}
+
+std::shared_ptr<cvedix_nodes::cvedix_node> PipelineBuilder::createEmbeddingsSocketBrokerNode(
+    const std::string& nodeName,
+    const std::map<std::string, std::string>& params,
+    const CreateInstanceRequest& req) {
+    
+    try {
+        std::string desIp = params.count("des_ip") ? params.at("des_ip") : "";
+        int desPort = params.count("des_port") ? std::stoi(params.at("des_port")) : 0;
+        std::string croppedDir = params.count("cropped_dir") ? params.at("cropped_dir") : "cropped_images";
+        int minCropWidth = params.count("min_crop_width") ? std::stoi(params.at("min_crop_width")) : 50;
+        int minCropHeight = params.count("min_crop_height") ? std::stoi(params.at("min_crop_height")) : 50;
+        std::string brokeForStr = params.count("broke_for") ? params.at("broke_for") : "NORMAL";
+        cvedix_nodes::cvedix_broke_for brokeFor = cvedix_nodes::cvedix_broke_for::NORMAL;
+        bool onlyForTracked = params.count("only_for_tracked") ? (params.at("only_for_tracked") == "true" || params.at("only_for_tracked") == "1") : false;
+        
+        // Get from additionalParams if not in params
+        if (desIp.empty()) {
+            auto it = req.additionalParams.find("EMBEDDINGS_SOCKET_IP");
+            if (it != req.additionalParams.end() && !it->second.empty()) {
+                desIp = it->second;
+            } else {
+                desIp = "127.0.0.1"; // Default fake data
+            }
+        }
+        if (desPort == 0) {
+            auto it = req.additionalParams.find("EMBEDDINGS_SOCKET_PORT");
+            if (it != req.additionalParams.end() && !it->second.empty()) {
+                try {
+                    desPort = std::stoi(it->second);
+                } catch (...) {
+                    desPort = 8080; // Default fake data
+                }
+            } else {
+                desPort = 8080; // Default fake data
+            }
+        }
+        
+        if (brokeForStr == "FACE") {
+            brokeFor = cvedix_nodes::cvedix_broke_for::FACE;
+        } else if (brokeForStr == "TEXT") {
+            brokeFor = cvedix_nodes::cvedix_broke_for::TEXT;
+        } else if (brokeForStr == "POSE") {
+            brokeFor = cvedix_nodes::cvedix_broke_for::POSE;
+        }
+        
+        int warnThreshold = params.count("broking_cache_warn_threshold") ? std::stoi(params.at("broking_cache_warn_threshold")) : 50;
+        int ignoreThreshold = params.count("broking_cache_ignore_threshold") ? std::stoi(params.at("broking_cache_ignore_threshold")) : 200;
+        
+        if (nodeName.empty()) {
+            throw std::invalid_argument("Node name cannot be empty");
+        }
+        
+        std::cerr << "[PipelineBuilder] Creating embeddings socket broker node:" << std::endl;
+        std::cerr << "  Name: '" << nodeName << "'" << std::endl;
+        std::cerr << "  Destination IP: '" << desIp << "'" << std::endl;
+        std::cerr << "  Destination port: " << desPort << std::endl;
+        std::cerr << "  Cropped dir: '" << croppedDir << "'" << std::endl;
+        
+        auto node = std::make_shared<cvedix_nodes::cvedix_embeddings_socket_broker_node>(
+            nodeName,
+            desIp,
+            desPort,
+            croppedDir,
+            minCropWidth,
+            minCropHeight,
+            brokeFor,
+            onlyForTracked,
+            warnThreshold,
+            ignoreThreshold
+        );
+        
+        std::cerr << "[PipelineBuilder] ✓ Embeddings socket broker node created successfully" << std::endl;
+        return node;
+    } catch (const std::exception& e) {
+        std::cerr << "[PipelineBuilder] Exception in createEmbeddingsSocketBrokerNode: " << e.what() << std::endl;
+        throw;
+    }
+}
+
+std::shared_ptr<cvedix_nodes::cvedix_node> PipelineBuilder::createEmbeddingsPropertiesSocketBrokerNode(
+    const std::string& nodeName,
+    const std::map<std::string, std::string>& params,
+    const CreateInstanceRequest& req) {
+    
+    try {
+        std::string desIp = params.count("des_ip") ? params.at("des_ip") : "";
+        int desPort = params.count("des_port") ? std::stoi(params.at("des_port")) : 0;
+        std::string croppedDir = params.count("cropped_dir") ? params.at("cropped_dir") : "cropped_images";
+        int minCropWidth = params.count("min_crop_width") ? std::stoi(params.at("min_crop_width")) : 50;
+        int minCropHeight = params.count("min_crop_height") ? std::stoi(params.at("min_crop_height")) : 50;
+        std::string brokeForStr = params.count("broke_for") ? params.at("broke_for") : "NORMAL";
+        cvedix_nodes::cvedix_broke_for brokeFor = cvedix_nodes::cvedix_broke_for::NORMAL;
+        bool onlyForTracked = params.count("only_for_tracked") ? (params.at("only_for_tracked") == "true" || params.at("only_for_tracked") == "1") : false;
+        
+        // Get from additionalParams if not in params
+        if (desIp.empty()) {
+            auto it = req.additionalParams.find("EMBEDDINGS_PROPERTIES_SOCKET_IP");
+            if (it != req.additionalParams.end() && !it->second.empty()) {
+                desIp = it->second;
+            } else {
+                desIp = "127.0.0.1"; // Default fake data
+            }
+        }
+        if (desPort == 0) {
+            auto it = req.additionalParams.find("EMBEDDINGS_PROPERTIES_SOCKET_PORT");
+            if (it != req.additionalParams.end() && !it->second.empty()) {
+                try {
+                    desPort = std::stoi(it->second);
+                } catch (...) {
+                    desPort = 8080; // Default fake data
+                }
+            } else {
+                desPort = 8080; // Default fake data
+            }
+        }
+        
+        if (brokeForStr == "FACE") {
+            brokeFor = cvedix_nodes::cvedix_broke_for::FACE;
+        } else if (brokeForStr == "TEXT") {
+            brokeFor = cvedix_nodes::cvedix_broke_for::TEXT;
+        } else if (brokeForStr == "POSE") {
+            brokeFor = cvedix_nodes::cvedix_broke_for::POSE;
+        }
+        
+        int warnThreshold = params.count("broking_cache_warn_threshold") ? std::stoi(params.at("broking_cache_warn_threshold")) : 50;
+        int ignoreThreshold = params.count("broking_cache_ignore_threshold") ? std::stoi(params.at("broking_cache_ignore_threshold")) : 200;
+        
+        if (nodeName.empty()) {
+            throw std::invalid_argument("Node name cannot be empty");
+        }
+        
+        std::cerr << "[PipelineBuilder] Creating embeddings properties socket broker node:" << std::endl;
+        std::cerr << "  Name: '" << nodeName << "'" << std::endl;
+        std::cerr << "  Destination IP: '" << desIp << "'" << std::endl;
+        std::cerr << "  Destination port: " << desPort << std::endl;
+        
+        auto node = std::make_shared<cvedix_nodes::cvedix_embeddings_properties_socket_broker_node>(
+            nodeName,
+            desIp,
+            desPort,
+            croppedDir,
+            minCropWidth,
+            minCropHeight,
+            brokeFor,
+            onlyForTracked,
+            warnThreshold,
+            ignoreThreshold
+        );
+        
+        std::cerr << "[PipelineBuilder] ✓ Embeddings properties socket broker node created successfully" << std::endl;
+        return node;
+    } catch (const std::exception& e) {
+        std::cerr << "[PipelineBuilder] Exception in createEmbeddingsPropertiesSocketBrokerNode: " << e.what() << std::endl;
+        throw;
+    }
+}
+
+std::shared_ptr<cvedix_nodes::cvedix_node> PipelineBuilder::createPlateSocketBrokerNode(
+    const std::string& nodeName,
+    const std::map<std::string, std::string>& params,
+    const CreateInstanceRequest& req) {
+    
+    try {
+        std::string desIp = params.count("des_ip") ? params.at("des_ip") : "";
+        int desPort = params.count("des_port") ? std::stoi(params.at("des_port")) : 0;
+        std::string platesDir = params.count("plates_dir") ? params.at("plates_dir") : "plate_images";
+        int minCropWidth = params.count("min_crop_width") ? std::stoi(params.at("min_crop_width")) : 100;
+        int minCropHeight = params.count("min_crop_height") ? std::stoi(params.at("min_crop_height")) : 0;
+        std::string brokeForStr = params.count("broke_for") ? params.at("broke_for") : "NORMAL";
+        cvedix_nodes::cvedix_broke_for brokeFor = cvedix_nodes::cvedix_broke_for::NORMAL;
+        bool onlyForTracked = params.count("only_for_tracked") ? (params.at("only_for_tracked") == "true" || params.at("only_for_tracked") == "1") : true;
+        
+        // Get from additionalParams if not in params
+        if (desIp.empty()) {
+            auto it = req.additionalParams.find("PLATE_SOCKET_IP");
+            if (it != req.additionalParams.end() && !it->second.empty()) {
+                desIp = it->second;
+            } else {
+                desIp = "127.0.0.1"; // Default fake data
+            }
+        }
+        if (desPort == 0) {
+            auto it = req.additionalParams.find("PLATE_SOCKET_PORT");
+            if (it != req.additionalParams.end() && !it->second.empty()) {
+                try {
+                    desPort = std::stoi(it->second);
+                } catch (...) {
+                    desPort = 8080; // Default fake data
+                }
+            } else {
+                desPort = 8080; // Default fake data
+            }
+        }
+        
+        if (brokeForStr == "FACE") {
+            brokeFor = cvedix_nodes::cvedix_broke_for::FACE;
+        } else if (brokeForStr == "TEXT") {
+            brokeFor = cvedix_nodes::cvedix_broke_for::TEXT;
+        } else if (brokeForStr == "POSE") {
+            brokeFor = cvedix_nodes::cvedix_broke_for::POSE;
+        }
+        
+        int warnThreshold = params.count("broking_cache_warn_threshold") ? std::stoi(params.at("broking_cache_warn_threshold")) : 50;
+        int ignoreThreshold = params.count("broking_cache_ignore_threshold") ? std::stoi(params.at("broking_cache_ignore_threshold")) : 200;
+        
+        if (nodeName.empty()) {
+            throw std::invalid_argument("Node name cannot be empty");
+        }
+        
+        std::cerr << "[PipelineBuilder] Creating plate socket broker node:" << std::endl;
+        std::cerr << "  Name: '" << nodeName << "'" << std::endl;
+        std::cerr << "  Destination IP: '" << desIp << "'" << std::endl;
+        std::cerr << "  Destination port: " << desPort << std::endl;
+        std::cerr << "  Plates dir: '" << platesDir << "'" << std::endl;
+        
+        auto node = std::make_shared<cvedix_nodes::cvedix_plate_socket_broker_node>(
+            nodeName,
+            desIp,
+            desPort,
+            platesDir,
+            minCropWidth,
+            minCropHeight,
+            brokeFor,
+            onlyForTracked,
+            warnThreshold,
+            ignoreThreshold
+        );
+        
+        std::cerr << "[PipelineBuilder] ✓ Plate socket broker node created successfully" << std::endl;
+        return node;
+    } catch (const std::exception& e) {
+        std::cerr << "[PipelineBuilder] Exception in createPlateSocketBrokerNode: " << e.what() << std::endl;
+        throw;
+    }
+}
+
+std::shared_ptr<cvedix_nodes::cvedix_node> PipelineBuilder::createExpressionSocketBrokerNode(
+    const std::string& nodeName,
+    const std::map<std::string, std::string>& params,
+    const CreateInstanceRequest& req) {
+    
+    try {
+        std::string desIp = params.count("des_ip") ? params.at("des_ip") : "";
+        int desPort = params.count("des_port") ? std::stoi(params.at("des_port")) : 0;
+        std::string screenshotDir = params.count("screenshot_dir") ? params.at("screenshot_dir") : "screenshot_images";
+        std::string brokeForStr = params.count("broke_for") ? params.at("broke_for") : "TEXT";
+        cvedix_nodes::cvedix_broke_for brokeFor = cvedix_nodes::cvedix_broke_for::TEXT;
+        
+        // Get from additionalParams if not in params
+        if (desIp.empty()) {
+            auto it = req.additionalParams.find("EXPR_SOCKET_IP");
+            if (it != req.additionalParams.end() && !it->second.empty()) {
+                desIp = it->second;
+            } else {
+                desIp = "127.0.0.1"; // Default fake data
+            }
+        }
+        if (desPort == 0) {
+            auto it = req.additionalParams.find("EXPR_SOCKET_PORT");
+            if (it != req.additionalParams.end() && !it->second.empty()) {
+                try {
+                    desPort = std::stoi(it->second);
+                } catch (...) {
+                    desPort = 8080; // Default fake data
+                }
+            } else {
+                desPort = 8080; // Default fake data
+            }
+        }
+        
+        if (brokeForStr == "FACE") {
+            brokeFor = cvedix_nodes::cvedix_broke_for::FACE;
+        } else if (brokeForStr == "TEXT") {
+            brokeFor = cvedix_nodes::cvedix_broke_for::TEXT;
+        } else if (brokeForStr == "POSE") {
+            brokeFor = cvedix_nodes::cvedix_broke_for::POSE;
+        } else if (brokeForStr == "POSE") {
+            brokeFor = cvedix_nodes::cvedix_broke_for::POSE;
+        } else if (brokeForStr == "NORMAL") {
+            brokeFor = cvedix_nodes::cvedix_broke_for::NORMAL;
+        }
+        
+        int warnThreshold = params.count("broking_cache_warn_threshold") ? std::stoi(params.at("broking_cache_warn_threshold")) : 50;
+        int ignoreThreshold = params.count("broking_cache_ignore_threshold") ? std::stoi(params.at("broking_cache_ignore_threshold")) : 200;
+        
+        if (nodeName.empty()) {
+            throw std::invalid_argument("Node name cannot be empty");
+        }
+        
+        std::cerr << "[PipelineBuilder] Creating expression socket broker node:" << std::endl;
+        std::cerr << "  Name: '" << nodeName << "'" << std::endl;
+        std::cerr << "  Destination IP: '" << desIp << "'" << std::endl;
+        std::cerr << "  Destination port: " << desPort << std::endl;
+        std::cerr << "  Screenshot dir: '" << screenshotDir << "'" << std::endl;
+        
+        auto node = std::make_shared<cvedix_nodes::cvedix_expr_socket_broker_node>(
+            nodeName,
+            desIp,
+            desPort,
+            screenshotDir,
+            brokeFor,
+            warnThreshold,
+            ignoreThreshold
+        );
+        
+        std::cerr << "[PipelineBuilder] ✓ Expression socket broker node created successfully" << std::endl;
+        return node;
+    } catch (const std::exception& e) {
+        std::cerr << "[PipelineBuilder] Exception in createExpressionSocketBrokerNode: " << e.what() << std::endl;
+        throw;
+    }
+}
+*/
+// Stub implementations for all broker nodes to avoid linker errors
+std::shared_ptr<cvedix_nodes::cvedix_node> PipelineBuilder::createXMLFileBrokerNode(
+    const std::string&, const std::map<std::string, std::string>&, const CreateInstanceRequest&) {
+    return nullptr;
+}
+std::shared_ptr<cvedix_nodes::cvedix_node> PipelineBuilder::createXMLSocketBrokerNode(
+    const std::string&, const std::map<std::string, std::string>&, const CreateInstanceRequest&) {
+    return nullptr;
+}
+std::shared_ptr<cvedix_nodes::cvedix_node> PipelineBuilder::createMessageBrokerNode(
+    const std::string&, const std::map<std::string, std::string>&, const CreateInstanceRequest&) {
+    return nullptr;
+}
+std::shared_ptr<cvedix_nodes::cvedix_node> PipelineBuilder::createBASocketBrokerNode(
+    const std::string&, const std::map<std::string, std::string>&, const CreateInstanceRequest&) {
+    return nullptr;
+}
+std::shared_ptr<cvedix_nodes::cvedix_node> PipelineBuilder::createEmbeddingsSocketBrokerNode(
+    const std::string&, const std::map<std::string, std::string>&, const CreateInstanceRequest&) {
+    return nullptr;
+}
+std::shared_ptr<cvedix_nodes::cvedix_node> PipelineBuilder::createEmbeddingsPropertiesSocketBrokerNode(
+    const std::string&, const std::map<std::string, std::string>&, const CreateInstanceRequest&) {
+    return nullptr;
+}
+std::shared_ptr<cvedix_nodes::cvedix_node> PipelineBuilder::createPlateSocketBrokerNode(
+    const std::string&, const std::map<std::string, std::string>&, const CreateInstanceRequest&) {
+    return nullptr;
+}
+std::shared_ptr<cvedix_nodes::cvedix_node> PipelineBuilder::createExpressionSocketBrokerNode(
+    const std::string&, const std::map<std::string, std::string>&, const CreateInstanceRequest&) {
+    return nullptr;
 }
 

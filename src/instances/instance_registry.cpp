@@ -1,15 +1,20 @@
 #include "instances/instance_registry.h"
 #include "models/update_instance_request.h"
 #include "core/uuid_generator.h"
+#include "core/logging_flags.h"
+#include "core/logger.h"
 #include <cvedix/cvedix_version.h>
 #include <cvedix/nodes/src/cvedix_rtsp_src_node.h>
 #include <cvedix/nodes/src/cvedix_file_src_node.h>
 #include <cvedix/nodes/infers/cvedix_yunet_face_detector_node.h>
 #include <cvedix/nodes/infers/cvedix_sface_feature_encoder_node.h>
+#include <cvedix/nodes/des/cvedix_rtmp_des_node.h>
 #include <algorithm>
 #include <typeinfo>
 #include <thread>
 #include <chrono>
+#include <iomanip>
+#include <sstream>
 
 InstanceRegistry::InstanceRegistry(
     SolutionRegistry& solutionRegistry,
@@ -33,6 +38,16 @@ std::string InstanceRegistry::createInstance(const CreateInstanceRequest& req) {
     if (!req.solution.empty()) {
         auto optSolution = solution_registry_.getSolution(req.solution);
         if (!optSolution.has_value()) {
+            std::cerr << "[InstanceRegistry] Solution not found: " << req.solution << std::endl;
+            std::cerr << "[InstanceRegistry] Available solutions: ";
+            auto availableSolutions = solution_registry_.listSolutions();
+            for (size_t i = 0; i < availableSolutions.size(); ++i) {
+                std::cerr << availableSolutions[i];
+                if (i < availableSolutions.size() - 1) {
+                    std::cerr << ", ";
+                }
+            }
+            std::cerr << std::endl;
             return ""; // Solution not found
         }
         solutionConfig = optSolution.value();
@@ -103,45 +118,61 @@ std::string InstanceRegistry::createInstance(const CreateInstanceRequest& req) {
     }
     
     // Auto start if requested (do this OUTSIDE lock - can take time)
+    // IMPORTANT: Run auto-start in a separate thread to avoid blocking API response
     if (req.autoStart && !pipeline.empty()) {
         std::cerr << "[InstanceRegistry] ========================================" << std::endl;
-        std::cerr << "[InstanceRegistry] Auto-starting pipeline for instance " << instanceId << std::endl;
+        std::cerr << "[InstanceRegistry] Auto-starting pipeline for instance " << instanceId << " (async)" << std::endl;
         std::cerr << "[InstanceRegistry] ========================================" << std::endl;
         
-        // Wait for DNN models to be ready using exponential backoff
-        // This is more reliable than fixed delay as it adapts to model loading time
-        waitForModelsReady(pipeline, 2000); // Max 2 seconds
-        
-        try {
-            if (startPipeline(pipeline)) {
-                // Update running status (need lock briefly)
-                {
-                    std::lock_guard<std::mutex> lock(mutex_);
-                    auto instanceIt = instances_.find(instanceId);
-                    if (instanceIt != instances_.end()) {
-                        instanceIt->second.running = true;
+        // Start auto-start process in a separate thread (non-blocking)
+        // This allows the API to return immediately after instance creation
+        std::thread([this, instanceId, pipeline]() {
+            // Wait for DNN models to be ready using exponential backoff
+            // This is more reliable than fixed delay as it adapts to model loading time
+            waitForModelsReady(pipeline, 2000); // Max 2 seconds
+            
+            try {
+                if (startPipeline(pipeline)) {
+                    // Update running status (need lock briefly)
+                    {
+                        std::lock_guard<std::mutex> lock(mutex_);
+                        auto instanceIt = instances_.find(instanceId);
+                        if (instanceIt != instances_.end()) {
+                            instanceIt->second.running = true;
+                        }
+                    } // Release lock
+                    std::cerr << "[InstanceRegistry] ========================================" << std::endl;
+                    std::cerr << "[InstanceRegistry] ✓ Pipeline started successfully for instance " << instanceId << std::endl;
+                    std::cerr << "[InstanceRegistry] NOTE: If RTSP connection fails, the node will retry automatically" << std::endl;
+                    std::cerr << "[InstanceRegistry] NOTE: Monitor logs above for RTSP connection status" << std::endl;
+                    std::cerr << "[InstanceRegistry] ========================================" << std::endl;
+                    
+                    // Log processing results for instances without RTMP output
+                    // Wait a bit for pipeline to initialize
+                    std::this_thread::sleep_for(std::chrono::milliseconds(2000));
+                    if (!hasRTMPOutput(instanceId)) {
+                        std::cerr << "[InstanceRegistry] Instance does not have RTMP output - enabling processing result logging" << std::endl;
+                        logProcessingResults(instanceId);
+                        
+                        // Start periodic logging in a separate thread (managed, not detached)
+                        startLoggingThread(instanceId);
                     }
-                } // Release lock
-                std::cerr << "[InstanceRegistry] ========================================" << std::endl;
-                std::cerr << "[InstanceRegistry] ✓ Pipeline started successfully for instance " << instanceId << std::endl;
-                std::cerr << "[InstanceRegistry] NOTE: If RTSP connection fails, the node will retry automatically" << std::endl;
-                std::cerr << "[InstanceRegistry] NOTE: Monitor logs above for RTSP connection status" << std::endl;
-                std::cerr << "[InstanceRegistry] ========================================" << std::endl;
-            } else {
-                std::cerr << "[InstanceRegistry] ✗ Failed to start pipeline for instance " 
-                          << instanceId << " (pipeline created but not started)" << std::endl;
-                std::cerr << "[InstanceRegistry] You can manually start it later using startInstance API" << std::endl;
+                } else {
+                    std::cerr << "[InstanceRegistry] ✗ Failed to start pipeline for instance " 
+                              << instanceId << " (pipeline created but not started)" << std::endl;
+                    std::cerr << "[InstanceRegistry] You can manually start it later using startInstance API" << std::endl;
+                }
+            } catch (const std::exception& e) {
+                std::cerr << "[InstanceRegistry] ✗ Exception starting pipeline for instance " 
+                          << instanceId << ": " << e.what() << std::endl;
+                std::cerr << "[InstanceRegistry] Instance created but pipeline not started. You can start it manually later." << std::endl;
+                // Don't crash - instance is created but not running
+            } catch (...) {
+                std::cerr << "[InstanceRegistry] ✗ Unknown error starting pipeline for instance " 
+                          << instanceId << std::endl;
+                std::cerr << "[InstanceRegistry] Instance created but pipeline not started. You can start it manually later." << std::endl;
             }
-        } catch (const std::exception& e) {
-            std::cerr << "[InstanceRegistry] ✗ Exception starting pipeline for instance " 
-                      << instanceId << ": " << e.what() << std::endl;
-            std::cerr << "[InstanceRegistry] Instance created but pipeline not started. You can start it manually later." << std::endl;
-            // Don't crash - instance is created but not running
-        } catch (...) {
-            std::cerr << "[InstanceRegistry] ✗ Unknown error starting pipeline for instance " 
-                      << instanceId << std::endl;
-            std::cerr << "[InstanceRegistry] Instance created but pipeline not started. You can start it manually later." << std::endl;
-        }
+        }).detach(); // Detach thread so it runs independently and doesn't block
     } else if (!pipeline.empty()) {
         std::cerr << "[InstanceRegistry] Pipeline created but not started (autoStart=false)" << std::endl;
         std::cerr << "[InstanceRegistry] Use startInstance API to start the pipeline when ready" << std::endl;
@@ -200,6 +231,9 @@ bool InstanceRegistry::deleteInstance(const std::string& instanceId) {
             // Continue with deletion anyway
         }
     }
+    
+    // Stop logging thread if exists
+    stopLoggingThread(instanceId);
     
     // Delete from storage (doesn't need lock)
     if (isPersistent) {
@@ -282,6 +316,11 @@ bool InstanceRegistry::startInstance(const std::string& instanceId, bool skipAut
     std::cerr << "[InstanceRegistry] ========================================" << std::endl;
     std::cerr << "[InstanceRegistry] Starting instance " << instanceId << " (creating new pipeline)..." << std::endl;
     std::cerr << "[InstanceRegistry] ========================================" << std::endl;
+    
+    if (isInstanceLoggingEnabled()) {
+        PLOG_INFO << "[Instance] Starting instance: " << instanceId 
+                  << " (" << existingInfo.displayName << ", solution: " << existingInfo.solutionId << ")";
+    }
     
     // Rebuild pipeline from instance info (this creates a fresh pipeline)
     // Check instance still exists before rebuilding (may have been deleted)
@@ -402,8 +441,18 @@ bool InstanceRegistry::startInstance(const std::string& instanceId, bool skipAut
             if (started) {
                 instanceIt->second.running = true;
                 std::cerr << "[InstanceRegistry] ✓ Instance " << instanceId << " started successfully" << std::endl;
+                if (isInstanceLoggingEnabled()) {
+                    const auto& info = instanceIt->second;
+                    PLOG_INFO << "[Instance] Instance started successfully: " << instanceId 
+                              << " (" << info.displayName << ", solution: " << info.solutionId 
+                              << ", running: true)";
+                }
             } else {
                 std::cerr << "[InstanceRegistry] ✗ Failed to start instance " << instanceId << std::endl;
+                if (isInstanceLoggingEnabled()) {
+                    PLOG_ERROR << "[Instance] Failed to start instance: " << instanceId 
+                               << " (" << existingInfo.displayName << ")";
+                }
                 // Cleanup pipeline if start failed to prevent resource leak
                 pipelines_.erase(instanceId);
                 std::cerr << "[InstanceRegistry] Cleaned up pipeline after start failure" << std::endl;
@@ -412,6 +461,24 @@ bool InstanceRegistry::startInstance(const std::string& instanceId, bool skipAut
             // Instance was deleted during start - cleanup pipeline
             pipelines_.erase(instanceId);
             std::cerr << "[InstanceRegistry] Instance " << instanceId << " was deleted during start - cleaned up pipeline" << std::endl;
+            if (isInstanceLoggingEnabled()) {
+                PLOG_WARNING << "[Instance] Instance was deleted during start: " << instanceId;
+            }
+        }
+    }
+    
+    // Log processing results for instances without RTMP output (after a short delay to allow pipeline to start)
+    if (started) {
+        // Wait a bit for pipeline to initialize and start processing
+        std::this_thread::sleep_for(std::chrono::milliseconds(2000));
+        
+        // Log initial processing status
+        if (!hasRTMPOutput(instanceId)) {
+            std::cerr << "[InstanceRegistry] Instance does not have RTMP output - enabling processing result logging" << std::endl;
+            logProcessingResults(instanceId);
+            
+            // Start periodic logging in a separate thread (managed, not detached)
+            startLoggingThread(instanceId);
         }
     }
     
@@ -425,6 +492,8 @@ bool InstanceRegistry::stopInstance(const std::string& instanceId) {
     std::vector<std::shared_ptr<cvedix_nodes::cvedix_node>> pipelineCopy;
     bool instanceExists = false;
     bool wasRunning = false;
+    std::string displayName;
+    std::string solutionId;
     
     {
         std::lock_guard<std::mutex> lock(mutex_);
@@ -441,6 +510,8 @@ bool InstanceRegistry::stopInstance(const std::string& instanceId) {
         
         instanceExists = true;
         wasRunning = instanceIt->second.running;
+        displayName = instanceIt->second.displayName;
+        solutionId = instanceIt->second.solutionId;
         
         // Copy pipeline before releasing lock
         pipelineCopy = pipelineIt->second;
@@ -456,6 +527,12 @@ bool InstanceRegistry::stopInstance(const std::string& instanceId) {
     std::cerr << "[InstanceRegistry] Stopping instance " << instanceId << "..." << std::endl;
     std::cerr << "[InstanceRegistry] NOTE: All nodes will be fully destroyed to clear OpenCV DNN state" << std::endl;
     std::cerr << "[InstanceRegistry] ========================================" << std::endl;
+    
+    if (isInstanceLoggingEnabled()) {
+        PLOG_INFO << "[Instance] Stopping instance: " << instanceId 
+                  << " (" << displayName << ", solution: " << solutionId 
+                  << ", was running: " << (wasRunning ? "true" : "false") << ")";
+    }
     
     // Now call stopPipeline without holding the lock
     // This prevents deadlock if stopPipeline takes a long time
@@ -484,10 +561,18 @@ bool InstanceRegistry::stopInstance(const std::string& instanceId) {
         std::cerr << "[InstanceRegistry] Warning: Exception clearing pipeline copy (unexpected)" << std::endl;
     }
     
+    // Stop logging thread if exists
+    stopLoggingThread(instanceId);
+    
     std::cerr << "[InstanceRegistry] ✓ Instance " << instanceId << " stopped successfully" << std::endl;
     std::cerr << "[InstanceRegistry] NOTE: All nodes have been destroyed. Pipeline will be rebuilt from scratch when you start this instance again" << std::endl;
     std::cerr << "[InstanceRegistry] NOTE: This ensures OpenCV DNN starts with a clean state" << std::endl;
     std::cerr << "[InstanceRegistry] ========================================" << std::endl;
+    
+    if (isInstanceLoggingEnabled()) {
+        PLOG_INFO << "[Instance] Instance stopped successfully: " << instanceId 
+                  << " (" << displayName << ", solution: " << solutionId << ")";
+    }
     
     return true;
 }
@@ -500,6 +585,11 @@ std::vector<std::string> InstanceRegistry::listInstances() const {
         result.push_back(pair.first);
     }
     return result;
+}
+
+std::unordered_map<std::string, InstanceInfo> InstanceRegistry::getAllInstances() const {
+    std::lock_guard<std::mutex> lock(mutex_);
+    return instances_; // Return copy of all instances in one lock acquisition
 }
 
 bool InstanceRegistry::hasInstance(const std::string& instanceId) const {
@@ -639,35 +729,95 @@ bool InstanceRegistry::updateInstance(const std::string& instanceId, const Updat
             }
             hasChanges = true;
             
+            // Update RTSP URL if changed
+            auto rtspIt = req.additionalParams.find("RTSP_URL");
+            if (rtspIt != req.additionalParams.end() && !rtspIt->second.empty()) {
+                info.rtspUrl = rtspIt->second;
+            }
+            
             // Update RTMP URL if changed
             auto rtmpIt = req.additionalParams.find("RTMP_URL");
             if (rtmpIt != req.additionalParams.end() && !rtmpIt->second.empty()) {
                 info.rtmpUrl = rtmpIt->second;
-                // Generate RTSP URL from RTMP URL
-                std::string rtmpUrl = rtmpIt->second;
-                size_t protocolPos = rtmpUrl.find("rtmp://");
-                if (protocolPos != std::string::npos) {
-                    std::string rtspUrl = rtmpUrl;
-                    rtspUrl.replace(protocolPos, 7, "rtsp://");
-                    size_t portPos = rtspUrl.find(":1935");
-                    if (portPos != std::string::npos) {
-                        rtspUrl.replace(portPos, 5, ":8554");
-                    }
-                    size_t lastSlash = rtspUrl.find_last_of('/');
-                    if (lastSlash != std::string::npos) {
-                        std::string streamKey = rtspUrl.substr(lastSlash + 1);
-                        if (streamKey.find("_0") == std::string::npos && !streamKey.empty()) {
-                            rtspUrl += "_0";
-                        }
-                    }
-                    info.rtspUrl = rtspUrl;
-                }
             }
             
             // Update FILE_PATH if changed
             auto filePathIt = req.additionalParams.find("FILE_PATH");
             if (filePathIt != req.additionalParams.end() && !filePathIt->second.empty()) {
                 info.filePath = filePathIt->second;
+            }
+            
+            // Update Detector model file
+            auto detectorModelIt = req.additionalParams.find("DETECTOR_MODEL_FILE");
+            if (detectorModelIt != req.additionalParams.end() && !detectorModelIt->second.empty()) {
+                info.detectorModelFile = detectorModelIt->second;
+            }
+            
+            // Update DetectorThermal model file
+            auto thermalModelIt = req.additionalParams.find("DETECTOR_THERMAL_MODEL_FILE");
+            if (thermalModelIt != req.additionalParams.end() && !thermalModelIt->second.empty()) {
+                info.detectorThermalModelFile = thermalModelIt->second;
+            }
+            
+            // Update confidence thresholds
+            auto animalThreshIt = req.additionalParams.find("ANIMAL_CONFIDENCE_THRESHOLD");
+            if (animalThreshIt != req.additionalParams.end() && !animalThreshIt->second.empty()) {
+                try {
+                    info.animalConfidenceThreshold = std::stod(animalThreshIt->second);
+                } catch (...) {
+                    std::cerr << "[InstanceRegistry] Invalid animal_confidence_threshold value: " << animalThreshIt->second << std::endl;
+                }
+            }
+            
+            auto personThreshIt = req.additionalParams.find("PERSON_CONFIDENCE_THRESHOLD");
+            if (personThreshIt != req.additionalParams.end() && !personThreshIt->second.empty()) {
+                try {
+                    info.personConfidenceThreshold = std::stod(personThreshIt->second);
+                } catch (...) {
+                    std::cerr << "[InstanceRegistry] Invalid person_confidence_threshold value: " << personThreshIt->second << std::endl;
+                }
+            }
+            
+            auto vehicleThreshIt = req.additionalParams.find("VEHICLE_CONFIDENCE_THRESHOLD");
+            if (vehicleThreshIt != req.additionalParams.end() && !vehicleThreshIt->second.empty()) {
+                try {
+                    info.vehicleConfidenceThreshold = std::stod(vehicleThreshIt->second);
+                } catch (...) {
+                    std::cerr << "[InstanceRegistry] Invalid vehicle_confidence_threshold value: " << vehicleThreshIt->second << std::endl;
+                }
+            }
+            
+            auto faceThreshIt = req.additionalParams.find("FACE_CONFIDENCE_THRESHOLD");
+            if (faceThreshIt != req.additionalParams.end() && !faceThreshIt->second.empty()) {
+                try {
+                    info.faceConfidenceThreshold = std::stod(faceThreshIt->second);
+                } catch (...) {
+                    std::cerr << "[InstanceRegistry] Invalid face_confidence_threshold value: " << faceThreshIt->second << std::endl;
+                }
+            }
+            
+            auto licenseThreshIt = req.additionalParams.find("LICENSE_PLATE_CONFIDENCE_THRESHOLD");
+            if (licenseThreshIt != req.additionalParams.end() && !licenseThreshIt->second.empty()) {
+                try {
+                    info.licensePlateConfidenceThreshold = std::stod(licenseThreshIt->second);
+                } catch (...) {
+                    std::cerr << "[InstanceRegistry] Invalid license_plate_confidence_threshold value: " << licenseThreshIt->second << std::endl;
+                }
+            }
+            
+            auto confThreshIt = req.additionalParams.find("CONF_THRESHOLD");
+            if (confThreshIt != req.additionalParams.end() && !confThreshIt->second.empty()) {
+                try {
+                    info.confThreshold = std::stod(confThreshIt->second);
+                } catch (...) {
+                    std::cerr << "[InstanceRegistry] Invalid conf_threshold value: " << confThreshIt->second << std::endl;
+                }
+            }
+            
+            // Update PerformanceMode
+            auto perfModeIt = req.additionalParams.find("PERFORMANCE_MODE");
+            if (perfModeIt != req.additionalParams.end() && !perfModeIt->second.empty()) {
+                info.performanceMode = perfModeIt->second;
             }
         }
         
@@ -769,6 +919,25 @@ InstanceInfo InstanceRegistry::createInstanceInfo(
     info.autoRestart = req.autoRestart;
     info.inputOrientation = req.inputOrientation;
     info.inputPixelLimit = req.inputPixelLimit;
+    
+    // Detector configuration (detailed)
+    info.detectorModelFile = req.detectorModelFile;
+    info.animalConfidenceThreshold = req.animalConfidenceThreshold;
+    info.personConfidenceThreshold = req.personConfidenceThreshold;
+    info.vehicleConfidenceThreshold = req.vehicleConfidenceThreshold;
+    info.faceConfidenceThreshold = req.faceConfidenceThreshold;
+    info.licensePlateConfidenceThreshold = req.licensePlateConfidenceThreshold;
+    info.confThreshold = req.confThreshold;
+    
+    // DetectorThermal configuration
+    info.detectorThermalModelFile = req.detectorThermalModelFile;
+    
+    // Performance mode
+    info.performanceMode = req.performanceMode;
+    
+    // SolutionManager settings
+    info.recommendedFrameRate = req.recommendedFrameRate;
+    
     info.loaded = true;
     info.running = false;
     info.fps = 0.0;
@@ -1309,6 +1478,412 @@ bool InstanceRegistry::rebuildPipelineFromInstanceInfo(const std::string& instan
     } catch (...) {
         std::cerr << "[InstanceRegistry] Unknown error rebuilding pipeline for instance " << instanceId << std::endl;
         return false;
+    }
+}
+
+bool InstanceRegistry::hasRTMPOutput(const std::string& instanceId) const {
+    std::lock_guard<std::mutex> lock(mutex_);
+    
+    // Check if instance exists
+    auto instanceIt = instances_.find(instanceId);
+    if (instanceIt == instances_.end()) {
+        return false;
+    }
+    
+    // Check if RTMP_URL is in additionalParams
+    const auto& additionalParams = instanceIt->second.additionalParams;
+    if (additionalParams.find("RTMP_URL") != additionalParams.end() && 
+        !additionalParams.at("RTMP_URL").empty()) {
+        return true;
+    }
+    
+    // Check if rtmpUrl field is set
+    if (!instanceIt->second.rtmpUrl.empty()) {
+        return true;
+    }
+    
+    // Check if pipeline has RTMP destination node
+    auto pipelineIt = pipelines_.find(instanceId);
+    if (pipelineIt != pipelines_.end()) {
+        for (const auto& node : pipelineIt->second) {
+            if (std::dynamic_pointer_cast<cvedix_nodes::cvedix_rtmp_des_node>(node)) {
+                return true;
+            }
+        }
+    }
+    
+    return false;
+}
+
+std::vector<std::shared_ptr<cvedix_nodes::cvedix_node>> InstanceRegistry::getSourceNodesFromRunningInstances() const {
+    std::lock_guard<std::mutex> lock(mutex_);
+    
+    std::vector<std::shared_ptr<cvedix_nodes::cvedix_node>> sourceNodes;
+    
+    // Iterate through all instances
+    for (const auto& [instanceId, info] : instances_) {
+        // Only get source nodes from running instances
+        if (!info.running) {
+            continue;
+        }
+        
+        // Get pipeline for this instance
+        auto pipelineIt = pipelines_.find(instanceId);
+        if (pipelineIt != pipelines_.end() && !pipelineIt->second.empty()) {
+            // Source node is always the first node in the pipeline
+            const auto& sourceNode = pipelineIt->second[0];
+            
+            // Verify it's a source node (RTSP or file source)
+            auto rtspNode = std::dynamic_pointer_cast<cvedix_nodes::cvedix_rtsp_src_node>(sourceNode);
+            auto fileNode = std::dynamic_pointer_cast<cvedix_nodes::cvedix_file_src_node>(sourceNode);
+            
+            if (rtspNode || fileNode) {
+                sourceNodes.push_back(sourceNode);
+            }
+        }
+    }
+    
+    return sourceNodes;
+}
+
+void InstanceRegistry::logProcessingResults(const std::string& instanceId) const {
+    std::lock_guard<std::mutex> lock(mutex_);
+    
+    // Check if instance exists
+    auto instanceIt = instances_.find(instanceId);
+    if (instanceIt == instances_.end()) {
+        return;
+    }
+    
+    const InstanceInfo& info = instanceIt->second;
+    
+    // Only log for running instances
+    if (!info.running) {
+        return;
+    }
+    
+    // Get current timestamp
+    auto now = std::chrono::system_clock::now();
+    auto time_t = std::chrono::system_clock::to_time_t(now);
+    auto ms = std::chrono::duration_cast<std::chrono::milliseconds>(
+        now.time_since_epoch()) % 1000;
+    
+    std::stringstream ss;
+    ss << std::put_time(std::localtime(&time_t), "%Y-%m-%d %H:%M:%S");
+    ss << '.' << std::setfill('0') << std::setw(3) << ms.count();
+    std::string timestamp = ss.str();
+    
+    // Log to PLOG if SDK output logging is enabled
+    if (isSdkOutputLoggingEnabled()) {
+        PLOG_INFO << "[SDKOutput] [" << timestamp << "] Instance: " << info.displayName 
+                  << " (" << instanceId << ") - FPS: " << std::fixed << std::setprecision(2) << info.fps
+                  << ", Solution: " << info.solutionId;
+    }
+    
+    // Log processing results
+    std::cerr << "[InstanceProcessingLog] ========================================" << std::endl;
+    std::cerr << "[InstanceProcessingLog] [" << timestamp << "] Instance: " << info.displayName 
+              << " (" << instanceId << ")" << std::endl;
+    std::cerr << "[InstanceProcessingLog] Solution: " << info.solutionName 
+              << " (" << info.solutionId << ")" << std::endl;
+    std::cerr << "[InstanceProcessingLog] Status: RUNNING" << std::endl;
+    std::cerr << "[InstanceProcessingLog] FPS: " << std::fixed << std::setprecision(2) << info.fps << std::endl;
+    
+    // Log input source
+    if (!info.filePath.empty()) {
+        std::cerr << "[InstanceProcessingLog] Input Source: FILE - " << info.filePath << std::endl;
+    } else if (info.additionalParams.find("RTSP_URL") != info.additionalParams.end()) {
+        std::cerr << "[InstanceProcessingLog] Input Source: RTSP - " 
+                  << info.additionalParams.at("RTSP_URL") << std::endl;
+    } else if (info.additionalParams.find("FILE_PATH") != info.additionalParams.end()) {
+        std::cerr << "[InstanceProcessingLog] Input Source: FILE - " 
+                  << info.additionalParams.at("FILE_PATH") << std::endl;
+    }
+    
+    // Log output type
+    if (hasRTMPOutput(instanceId)) {
+        std::cerr << "[InstanceProcessingLog] Output: RTMP Stream" << std::endl;
+        if (!info.rtmpUrl.empty()) {
+            std::cerr << "[InstanceProcessingLog] RTMP URL: " << info.rtmpUrl << std::endl;
+        } else if (info.additionalParams.find("RTMP_URL") != info.additionalParams.end()) {
+            std::cerr << "[InstanceProcessingLog] RTMP URL: " 
+                      << info.additionalParams.at("RTMP_URL") << std::endl;
+        }
+    } else {
+        std::cerr << "[InstanceProcessingLog] Output: File-based (no RTMP stream)" << std::endl;
+        
+        // Check for file destination output directory
+        auto pipelineIt = pipelines_.find(instanceId);
+        if (pipelineIt != pipelines_.end()) {
+            // Try to determine output directory from file_des node
+            // Output is typically in ./output/{instanceId} or ./build/output/{instanceId}
+            std::cerr << "[InstanceProcessingLog] Output Directory: ./output/" << instanceId 
+                      << " (or ./build/output/" << instanceId << ")" << std::endl;
+        }
+    }
+    
+    // Log detection settings
+    std::cerr << "[InstanceProcessingLog] Detection Sensitivity: " << info.detectionSensitivity << std::endl;
+    if (!info.detectorMode.empty()) {
+        std::cerr << "[InstanceProcessingLog] Detector Mode: " << info.detectorMode << std::endl;
+    }
+    
+    // Log processing modes
+    if (info.statisticsMode) {
+        std::cerr << "[InstanceProcessingLog] Statistics Mode: ENABLED" << std::endl;
+    }
+    if (info.metadataMode) {
+        std::cerr << "[InstanceProcessingLog] Metadata Mode: ENABLED" << std::endl;
+    }
+    if (info.debugMode) {
+        std::cerr << "[InstanceProcessingLog] Debug Mode: ENABLED" << std::endl;
+    }
+    
+    // Log frame rate limit if set
+    if (info.frameRateLimit > 0) {
+        std::cerr << "[InstanceProcessingLog] Frame Rate Limit: " << info.frameRateLimit << " fps" << std::endl;
+    }
+    
+    std::cerr << "[InstanceProcessingLog] ========================================" << std::endl;
+}
+
+bool InstanceRegistry::updateInstanceFromConfig(const std::string& instanceId, const Json::Value& configJson) {
+    std::cerr << "[InstanceRegistry] ========================================" << std::endl;
+    std::cerr << "[InstanceRegistry] Updating instance from config: " << instanceId << std::endl;
+    std::cerr << "[InstanceRegistry] ========================================" << std::endl;
+    
+    bool wasRunning = false;
+    bool isPersistent = false;
+    InstanceInfo currentInfo;
+    
+    {
+        std::lock_guard<std::mutex> lock(mutex_);
+        
+        auto instanceIt = instances_.find(instanceId);
+        if (instanceIt == instances_.end()) {
+            std::cerr << "[InstanceRegistry] Instance " << instanceId << " not found" << std::endl;
+            return false;
+        }
+        
+        InstanceInfo& info = instanceIt->second;
+        
+        // Check if instance is read-only
+        if (info.readOnly) {
+            std::cerr << "[InstanceRegistry] Cannot update read-only instance " << instanceId << std::endl;
+            return false;
+        }
+        
+        wasRunning = info.running;
+        isPersistent = info.persistent;
+        currentInfo = info; // Copy current info
+    } // Release lock
+    
+    // Convert current InstanceInfo to config JSON
+    std::string conversionError;
+    Json::Value existingConfig = instance_storage_.instanceInfoToConfigJson(currentInfo, &conversionError);
+    if (existingConfig.isNull() || existingConfig.empty()) {
+        std::cerr << "[InstanceRegistry] Failed to convert current InstanceInfo to config: " << conversionError << std::endl;
+        return false;
+    }
+    
+    // List of keys to preserve (TensorRT model IDs, Zone IDs, etc.)
+    std::vector<std::string> preserveKeys;
+    
+    // Collect UUID-like keys (TensorRT model IDs) from existing config
+    for (const auto& key : existingConfig.getMemberNames()) {
+        if (key.length() >= 36 && key.find('-') != std::string::npos) {
+            preserveKeys.push_back(key);
+        }
+    }
+    
+    // Add special keys to preserve
+    std::vector<std::string> specialKeys = {
+        "AnimalTracker", "LicensePlateTracker", "ObjectAttributeExtraction", 
+        "ObjectMovementClassifier", "PersonTracker", "VehicleTracker", "Global"
+    };
+    preserveKeys.insert(preserveKeys.end(), specialKeys.begin(), specialKeys.end());
+    
+    // Merge configs (preserve Zone, Tripwire, DetectorRegions if not in update)
+    if (!instance_storage_.mergeConfigs(existingConfig, configJson, preserveKeys)) {
+        std::cerr << "[InstanceRegistry] Merge failed for instance " << instanceId << std::endl;
+        return false;
+    }
+    
+    // Ensure InstanceId matches
+    existingConfig["InstanceId"] = instanceId;
+    
+    // Convert merged config back to InstanceInfo
+    auto optInfo = instance_storage_.configJsonToInstanceInfo(existingConfig, &conversionError);
+    if (!optInfo.has_value()) {
+        std::cerr << "[InstanceRegistry] Failed to convert config to InstanceInfo: " << conversionError << std::endl;
+        return false;
+    }
+    
+    InstanceInfo updatedInfo = optInfo.value();
+    
+    // Preserve runtime state
+    updatedInfo.loaded = currentInfo.loaded;
+    updatedInfo.running = currentInfo.running;
+    updatedInfo.fps = currentInfo.fps;
+    
+    // Update instance in registry
+    {
+        std::lock_guard<std::mutex> lock(mutex_);
+        auto instanceIt = instances_.find(instanceId);
+        if (instanceIt == instances_.end()) {
+            std::cerr << "[InstanceRegistry] Instance " << instanceId << " not found during update" << std::endl;
+            return false;
+        }
+        
+        InstanceInfo& info = instanceIt->second;
+        
+        // Update all fields from merged config
+        info = updatedInfo;
+        
+        std::cerr << "[InstanceRegistry] ✓ Instance info updated in registry" << std::endl;
+    } // Release lock
+    
+    // Save to storage
+    if (isPersistent) {
+        bool saved = instance_storage_.saveInstance(instanceId, updatedInfo);
+        if (saved) {
+            std::cerr << "[InstanceRegistry] Instance configuration saved to file" << std::endl;
+        } else {
+            std::cerr << "[InstanceRegistry] Warning: Failed to save instance configuration to file" << std::endl;
+        }
+    }
+    
+    std::cerr << "[InstanceRegistry] ✓ Instance " << instanceId << " updated successfully from config" << std::endl;
+    
+    // Restart instance if it was running to apply changes
+    if (wasRunning) {
+        std::cerr << "[InstanceRegistry] Instance was running, restarting to apply changes..." << std::endl;
+        
+        // Stop instance first
+        if (stopInstance(instanceId)) {
+            // Wait a moment for cleanup
+            std::this_thread::sleep_for(std::chrono::milliseconds(500));
+            
+            // Start instance again (this will rebuild pipeline with new config)
+            if (startInstance(instanceId, true)) {
+                std::cerr << "[InstanceRegistry] ✓ Instance restarted successfully with new configuration" << std::endl;
+            } else {
+                std::cerr << "[InstanceRegistry] ⚠ Instance stopped but failed to restart" << std::endl;
+            }
+        } else {
+            std::cerr << "[InstanceRegistry] ⚠ Failed to stop instance for restart" << std::endl;
+        }
+    }
+    
+    std::cerr << "[InstanceRegistry] ========================================" << std::endl;
+    return true;
+}
+
+void InstanceRegistry::startLoggingThread(const std::string& instanceId) {
+    // Stop existing thread if any
+    stopLoggingThread(instanceId);
+    
+    // Create stop flag
+    {
+        std::lock_guard<std::mutex> lock(thread_mutex_);
+        logging_thread_stop_flags_.emplace(instanceId, false);
+    }
+    
+    // Start new logging thread
+    std::thread loggingThread([this, instanceId]() {
+        while (true) {
+            // Check stop flag first (before sleep to allow quick exit)
+            {
+                std::lock_guard<std::mutex> lock(thread_mutex_);
+                auto flagIt = logging_thread_stop_flags_.find(instanceId);
+                if (flagIt == logging_thread_stop_flags_.end() || flagIt->second.load()) {
+                    // Thread should stop
+                    break;
+                }
+            }
+            
+            // Wait 10 seconds between logs (but check flag periodically)
+            for (int i = 0; i < 100; ++i) { // Check every 100ms for 10 seconds
+                std::this_thread::sleep_for(std::chrono::milliseconds(100));
+                
+                // Check stop flag
+                {
+                    std::lock_guard<std::mutex> lock(thread_mutex_);
+                    auto flagIt = logging_thread_stop_flags_.find(instanceId);
+                    if (flagIt == logging_thread_stop_flags_.end() || flagIt->second.load()) {
+                        return; // Exit thread
+                    }
+                }
+                
+                // Check if instance still exists and is running
+                {
+                    std::lock_guard<std::mutex> lock(mutex_);
+                    auto instanceIt = instances_.find(instanceId);
+                    if (instanceIt == instances_.end() || !instanceIt->second.running) {
+                        // Instance deleted or stopped, exit logging thread
+                        return;
+                    }
+                }
+            }
+            
+            // Log processing results if instance still exists and has no RTMP output
+            {
+                std::lock_guard<std::mutex> lock(mutex_);
+                auto instanceIt = instances_.find(instanceId);
+                if (instanceIt == instances_.end() || !instanceIt->second.running) {
+                    // Instance deleted or stopped, exit logging thread
+                    break;
+                }
+                
+                // Check if instance now has RTMP output
+                if (hasRTMPOutput(instanceId)) {
+                    // Instance now has RTMP output, stop logging
+                    break;
+                }
+            }
+            
+            // Log processing results
+            logProcessingResults(instanceId);
+        }
+    });
+    
+    // Store thread handle
+    {
+        std::lock_guard<std::mutex> lock(thread_mutex_);
+        logging_threads_[instanceId] = std::move(loggingThread);
+    }
+}
+
+void InstanceRegistry::stopLoggingThread(const std::string& instanceId) {
+    std::unique_lock<std::mutex> lock(thread_mutex_);
+    
+    // Set stop flag
+    auto flagIt = logging_thread_stop_flags_.find(instanceId);
+    if (flagIt != logging_thread_stop_flags_.end()) {
+        flagIt->second.store(true);
+    }
+    
+    // Get thread handle and release lock before joining to avoid deadlock
+    std::thread threadToJoin;
+    auto threadIt = logging_threads_.find(instanceId);
+    if (threadIt != logging_threads_.end()) {
+        if (threadIt->second.joinable()) {
+            threadToJoin = std::move(threadIt->second);
+        }
+        logging_threads_.erase(threadIt);
+    }
+    
+    // Remove stop flag
+    if (flagIt != logging_thread_stop_flags_.end()) {
+        logging_thread_stop_flags_.erase(flagIt);
+    }
+    
+    // Release lock before joining to avoid deadlock
+    lock.unlock();
+    
+    // Join thread outside of lock
+    if (threadToJoin.joinable()) {
+        threadToJoin.join();
     }
 }
 

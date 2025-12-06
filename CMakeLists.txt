@@ -48,6 +48,10 @@ if(NOT Jsoncpp_FOUND)
         message(STATUS "Jsoncpp not found. Attempting to download using FetchContent...")
         include(FetchContent)
         
+        # Enable position-independent code for jsoncpp (required for shared libraries)
+        # This must be set before FetchContent_MakeAvailable
+        set(CMAKE_POSITION_INDEPENDENT_CODE ON)
+        
         FetchContent_Declare(
             jsoncpp
             GIT_REPOSITORY https://github.com/open-source-parsers/jsoncpp.git
@@ -264,6 +268,9 @@ set(SOURCES
     src/api/swagger_handler.cpp
     src/api/create_instance_handler.cpp
     src/api/instance_handler.cpp
+    src/api/solution_handler.cpp
+    src/api/group_handler.cpp
+    src/api/system_info_handler.cpp
     src/models/model_upload_handler.cpp
     src/core/watchdog.cpp
     src/core/health_monitor.cpp
@@ -272,13 +279,19 @@ set(SOURCES
     src/core/ai_processor.cpp
     src/core/ai_watchdog.cpp
     src/instances/instance_registry.cpp
-    src/core/solution_registry.cpp
+    src/solutions/solution_registry.cpp
+    src/groups/group_registry.cpp
     src/core/pipeline_builder.cpp
     src/instances/instance_storage.cpp
+    src/solutions/solution_storage.cpp
+    src/groups/group_storage.cpp
     src/core/uuid_generator.cpp
+    src/core/log_manager.cpp
     src/models/create_instance_request.cpp
     src/models/update_instance_request.cpp
     src/models/solution_config.cpp
+    src/models/group_info.cpp
+    src/api/group_handler.cpp
     # Infrastructure components (available but not used in main yet)
     # src/core/resource_manager.cpp
     # src/core/rate_limiter.cpp
@@ -310,6 +323,87 @@ else()
 endif()
 
 # ============================================
+# Cereal (required by CVEDIX SDK)
+# ============================================
+# CVEDIX SDK expects cereal at ../../../third_party/cereal relative to its headers
+# We need to create a symlink structure or add include path
+message(STATUS "Checking for Cereal library...")
+
+# Try to find cereal in system
+find_path(CEREAL_INCLUDE_DIR cereal/cereal.hpp
+    PATHS
+        /usr/include
+        /usr/local/include
+        ${CMAKE_BINARY_DIR}/_deps/cereal-src/include
+)
+
+if(NOT CEREAL_INCLUDE_DIR AND AUTO_DOWNLOAD_DEPENDENCIES)
+    message(STATUS "Cereal not found. Downloading headers only...")
+    include(FetchContent)
+    
+    # Download cereal source without building (header-only library)
+    FetchContent_Declare(
+        cereal
+        GIT_REPOSITORY https://github.com/USCiLab/cereal.git
+        GIT_TAG        v1.3.2
+        GIT_SHALLOW    TRUE
+    )
+    
+    # Only fetch, don't configure/build (cereal is header-only)
+    FetchContent_GetProperties(cereal)
+    if(NOT cereal_POPULATED)
+        FetchContent_Populate(cereal)
+        set(CEREAL_INCLUDE_DIR "${cereal_SOURCE_DIR}/include" CACHE PATH "Cereal include directory" FORCE)
+        message(STATUS "✓ Cereal headers downloaded to: ${CEREAL_INCLUDE_DIR}")
+    endif()
+endif()
+
+if(CEREAL_INCLUDE_DIR)
+    include_directories(${CEREAL_INCLUDE_DIR})
+    message(STATUS "✓ Found Cereal: ${CEREAL_INCLUDE_DIR}")
+    
+    # CVEDIX SDK expects cereal at ../../../third_party/cereal relative to /usr/include/cvedix/nodes/broker/cereal_archive/
+    # This means it looks for /usr/include/cvedix/third_party/cereal/cereal.hpp
+    # Create the exact directory structure CVEDIX SDK expects in build directory
+    set(CVEDIX_THIRD_PARTY_DIR "${CMAKE_BINARY_DIR}/cvedix_third_party")
+    set(CVEDIX_CEREAL_DIR "${CVEDIX_THIRD_PARTY_DIR}/cereal")
+    file(MAKE_DIRECTORY "${CVEDIX_THIRD_PARTY_DIR}")
+    
+    # Create symlink: build/cvedix_third_party/cereal -> cereal include dir
+    if(NOT EXISTS "${CVEDIX_CEREAL_DIR}")
+        execute_process(
+            COMMAND ${CMAKE_COMMAND} -E create_symlink
+            "${CEREAL_INCLUDE_DIR}/cereal"
+            "${CVEDIX_CEREAL_DIR}"
+            RESULT_VARIABLE SYMLINK_RESULT
+            ERROR_QUIET
+        )
+    endif()
+    
+    # Add include path so compiler can resolve ../../../third_party/cereal from CVEDIX headers
+    # We add the parent directory so the path structure matches what CVEDIX SDK expects
+    include_directories("${CMAKE_BINARY_DIR}")
+    include_directories("${CEREAL_INCLUDE_DIR}")
+    
+    # Check if system symlink exists (required for CVEDIX SDK)
+    if(NOT EXISTS "/usr/include/cvedix/third_party/cereal")
+        message(WARNING "")
+        message(WARNING "⚠ CVEDIX SDK requires cereal symlink at /usr/include/cvedix/third_party/cereal")
+        message(WARNING "  Run: sudo bash ${CMAKE_SOURCE_DIR}/scripts/fix_cereal_symlink.sh")
+        message(WARNING "  Or manually:")
+        message(WARNING "    sudo mkdir -p /usr/include/cvedix/third_party")
+        message(WARNING "    sudo ln -sf ${CEREAL_INCLUDE_DIR}/cereal /usr/include/cvedix/third_party/cereal")
+        message(WARNING "")
+    else()
+        message(STATUS "✓ Cereal symlink found at /usr/include/cvedix/third_party/cereal")
+    endif()
+    message(STATUS "✓ Configured cereal paths for CVEDIX SDK")
+else()
+    message(WARNING "Cereal not found. CVEDIX SDK features may not work.")
+    message(WARNING "To install: sudo apt-get install libcereal-dev (if available) or enable AUTO_DOWNLOAD_DEPENDENCIES")
+endif()
+
+# ============================================
 # CVEDIX SDK (required for AI processing)
 # ============================================
 # CVEDIX SDK is expected to be installed system-wide (not downloaded via FetchContent)
@@ -321,21 +415,43 @@ endif()
 # If CVEDIX SDK is not found, you need to install it system-wide first.
 # The find_package() command will automatically locate it via CMake package config files.
 #
-# Include CMakePackageConfigHelpers for check_required_components
-include(CMakePackageConfigHelpers)
-# Define check_required_components if not available (for older CMake versions)
+# Workaround: Define check_required_components if not available
+# (needed for cvedix-config.cmake which uses this function)
 if(NOT COMMAND check_required_components)
-    macro(check_required_components _package)
-        foreach(_comp ${${_package}_FIND_COMPONENTS})
-            if(NOT ${_package}_${_comp}_FOUND)
-                if(${_package}_FIND_REQUIRED_${_comp})
-                    set(${_package}_FOUND FALSE)
+    function(check_required_components _package_name)
+        foreach(_comp ${ARGN})
+            # Check if target exists (for modern CMake packages)
+            string(REPLACE "_" "::" _comp_target "${_package_name}::${_comp}")
+            if(NOT TARGET "${_comp_target}")
+                # Also check variable-based approach
+                set(_comp_var "${_package_name}_${_comp}_FOUND")
+                if(NOT ${_comp_var})
+                    set(${_package_name}_FOUND FALSE)
+                    set(${_package_name}_NOT_FOUND_MESSAGE "${_package_name} ${_comp} component not found")
+                    if(${_package_name}_FIND_REQUIRED)
+                        message(FATAL_ERROR "${${_package_name}_NOT_FOUND_MESSAGE}")
+                    else()
+                        if(NOT ${_package_name}_FIND_QUIETLY)
+                            message(STATUS "${${_package_name}_NOT_FOUND_MESSAGE}")
+                        endif()
+                    endif()
                 endif()
             endif()
         endforeach()
-    endmacro()
+    endfunction()
 endif()
 find_package(cvedix REQUIRED)
+
+# Add cereal include path for CVEDIX SDK
+# CVEDIX SDK headers include cereal with relative path ../../../third_party/cereal/cereal.hpp
+# We've created the structure in build directory, now add it to include paths
+if(CEREAL_INCLUDE_DIR)
+    # Add build directory so compiler can resolve cvedix_third_party/cereal
+    target_include_directories(edge_ai_api PRIVATE "${CMAKE_BINARY_DIR}")
+    target_include_directories(edge_ai_api PRIVATE "${CEREAL_INCLUDE_DIR}")
+    message(STATUS "✓ Added cereal include paths for CVEDIX SDK")
+endif()
+
 target_link_libraries(edge_ai_api PRIVATE cvedix::cvedix_instance_sdk)
 message(STATUS "✓ CVEDIX SDK linked: cvedix::cvedix_instance_sdk")
 
@@ -355,6 +471,19 @@ if(OpenCV_FOUND)
         target_link_libraries(edge_ai_api PRIVATE ${OpenCV_LIBRARIES})
     endif()
     message(STATUS "✓ OpenCV linked to edge_ai_api")
+endif()
+
+# ============================================
+# hwinfo - Hardware Information Library
+# ============================================
+if(EXISTS "${CMAKE_SOURCE_DIR}/third_party/hwinfo/CMakeLists.txt")
+    message(STATUS "Adding hwinfo submodule...")
+    add_subdirectory(third_party/hwinfo)
+    target_link_libraries(edge_ai_api PRIVATE lfreist-hwinfo::hwinfo)
+    message(STATUS "✓ hwinfo linked to edge_ai_api")
+else()
+    message(WARNING "hwinfo submodule not found. System info endpoints will not work.")
+    message(WARNING "Run: git submodule update --init --recursive")
 endif()
 
 # Additional libraries (if needed)

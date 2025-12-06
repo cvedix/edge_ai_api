@@ -142,3 +142,38 @@ sudo systemctl restart edge-ai-api
 
 📚 **Xem chi tiết:** [deploy/README.md](deploy/README.md) - Hướng dẫn triển khai đầy đủ
 
+## 📊 Logging và Monitoring
+
+Edge AI API Server cung cấp các tính năng logging chi tiết để debug và monitor hệ thống:
+
+- **API Logging** (`--log-api`): Log tất cả API requests/responses với response time
+- **Instance Execution Logging** (`--log-instance`): Log instance lifecycle (start/stop/status)
+- **SDK Output Logging** (`--log-sdk-output`): Log output từ SDK khi instance xử lý
+
+**Ví dụ sử dụng:**
+```bash
+# Development với đầy đủ logging
+./build/edge_ai_api --log-api --log-instance --log-sdk-output
+
+# Production - chỉ log API và instance execution
+./build/edge_ai_api --log-api --log-instance
+```
+
+📚 **Xem chi tiết:** [docs/LOGGING.md](docs/LOGGING.md) - Tài liệu đầy đủ về logging
+
+## 📖 Swagger UI
+
+Server cung cấp Swagger UI để test và explore API:
+
+- **Swagger UI**: `http://localhost:8080/swagger`
+- **API v1 Swagger**: `http://localhost:8080/v1/swagger`
+- **OpenAPI Spec**: `http://localhost:8080/openapi.yaml`
+
+**Tính năng:**
+- Tự động cập nhật server URL từ biến môi trường
+- Test API trực tiếp từ browser
+- Xem tất cả endpoints và schemas
+- Export OpenAPI specification
+
+📚 **Xem chi tiết:** [docs/GETTING_STARTED.md](docs/GETTING_STARTED.md) - Hướng dẫn sử dụng Swagger UI
+

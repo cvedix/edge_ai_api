@@ -1,0 +1,15 @@
+{
+  "name": "lane_detector_demo",
+  "group": "lane",
+  "solution": "lane_detection",
+  "persistent": true,
+  "autoStart": true,
+  "detectionSensitivity": "Medium",
+  "additionalParams": {
+    "FILE_PATH": "./cvedix_data/test_video/lane.mp4",
+    "MODEL_PATH": "./cvedix_data/models/lane/lane_detection.onnx",
+    "INPUT_WIDTH": "736",
+    "INPUT_HEIGHT": "416"
+  }
+}
+

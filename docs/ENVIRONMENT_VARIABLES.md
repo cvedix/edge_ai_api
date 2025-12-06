@@ -58,6 +58,14 @@ Environment="API_PORT=8080"
 | `THREAD_NUM` | Số lượng worker threads (0 = auto, minimum 8 for AI) | `0` | `src/main.cpp` |
 | `LOG_LEVEL` | Mức độ logging (TRACE/DEBUG/INFO/WARN/ERROR) | `INFO` | `src/main.cpp` |
 
+#### Logging Configuration
+| Biến | Mô tả | Mặc định | File sử dụng |
+|------|-------|----------|--------------|
+| `LOG_DIR` | Thư mục lưu log files | `./logs` | `src/core/log_manager.cpp` |
+| `LOG_RETENTION_DAYS` | Số ngày giữ logs (tự động xóa sau thời gian này) | `30` | `src/core/log_manager.cpp` |
+| `LOG_MAX_DISK_USAGE_PERCENT` | Ngưỡng dung lượng đĩa để trigger cleanup (%) | `85` | `src/core/log_manager.cpp` |
+| `LOG_CLEANUP_INTERVAL_HOURS` | Khoảng thời gian kiểm tra và cleanup (giờ) | `24` | `src/core/log_manager.cpp` |
+
 #### Performance Optimization Settings
 | Biến | Mô tả | Mặc định | File sử dụng |
 |------|-------|----------|--------------|
@@ -80,6 +88,19 @@ Environment="API_PORT=8080"
 | Biến | Mô tả | Mặc định | File sử dụng |
 |------|-------|----------|--------------|
 | `HEALTH_MONITOR_INTERVAL_MS` | Khoảng thời gian monitor health (ms) | `1000` | `src/main.cpp` |
+
+#### Data Storage Configuration
+| Biến | Mô tả | Mặc định | File sử dụng |
+|------|-------|----------|--------------|
+| `SOLUTIONS_DIR` | Thư mục lưu trữ custom solutions | `./solutions` | `src/main.cpp` |
+| `INSTANCES_DIR` | Thư mục lưu trữ instance configurations | `./instances` | `src/main.cpp` |
+| `MODELS_DIR` | Thư mục lưu trữ model files | `./models` | `src/main.cpp` |
+
+**Lưu ý về Storage Directories:**
+- **Development**: Khuyến nghị lưu ở project root (`/path/to/project/solutions`, `/path/to/project/instances`)
+- **Production**: Khuyến nghị lưu ở system data directory (`/var/lib/edge_ai_api/solutions`, `/var/lib/edge_ai_api/instances`)
+- **⚠️ Không nên lưu trong `build/` directory** - Dữ liệu có thể bị mất khi clean build
+- Xem chi tiết: [Storage Best Practices](STORAGE_BEST_PRACTICES.md)
 
 #### CVEDIX SDK Configuration (Example)
 | Biến | Mô tả | Mặc định | File sử dụng |
@@ -126,6 +147,10 @@ export API_PORT=8080
 ```bash
 export API_HOST=0.0.0.0
 export API_PORT=80
+export SOLUTIONS_DIR=/var/lib/edge_ai_api/solutions
+export INSTANCES_DIR=/var/lib/edge_ai_api/instances
+export MODELS_DIR=/var/lib/edge_ai_api/models
+export LOG_DIR=/var/log/edge_ai_api
 ```
 
 ### Custom Port

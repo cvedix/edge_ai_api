@@ -1,0 +1,13 @@
+{
+  "name": "vehicle_detector_demo",
+  "group": "vehicle",
+  "solution": "trt_vehicle_detection",
+  "persistent": true,
+  "autoStart": true,
+  "detectionSensitivity": "Medium",
+  "additionalParams": {
+    "FILE_PATH": "./cvedix_data/test_video/plate.mp4",
+    "MODEL_PATH": "./cvedix_data/models/trt/vehicle/vehicle_v8.5.trt"
+  }
+}
+

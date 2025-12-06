@@ -2,7 +2,7 @@
 
 #include "instances/instance_info.h"
 #include "models/create_instance_request.h"
-#include "core/solution_registry.h"
+#include "solutions/solution_registry.h"
 #include "core/pipeline_builder.h"
 #include "instances/instance_storage.h"
 #include <string>
@@ -11,6 +11,8 @@
 #include <mutex>
 #include <vector>
 #include <memory>
+#include <atomic>
+#include <thread>
 
 // Forward declarations
 namespace cvedix_nodes {
@@ -82,10 +84,24 @@ public:
     bool updateInstance(const std::string& instanceId, const class UpdateInstanceRequest& req);
     
     /**
+     * @brief Update instance from JSON config (direct config update)
+     * @param instanceId Instance ID
+     * @param configJson JSON config to merge (PascalCase format matching instance_detail.txt)
+     * @return true if successful
+     */
+    bool updateInstanceFromConfig(const std::string& instanceId, const class Json::Value& configJson);
+    
+    /**
      * @brief List all instance IDs
      * @return Vector of instance IDs
      */
     std::vector<std::string> listInstances() const;
+    
+    /**
+     * @brief Get all instances info in one lock acquisition (optimized for list operations)
+     * @return Map of instance ID to InstanceInfo
+     */
+    std::unordered_map<std::string, InstanceInfo> getAllInstances() const;
     
     /**
      * @brief Check if instance exists
@@ -99,6 +115,19 @@ public:
      */
     void loadPersistentInstances();
     
+    /**
+     * @brief Check if instance has RTMP output
+     * @param instanceId Instance ID
+     * @return true if instance has RTMP output
+     */
+    bool hasRTMPOutput(const std::string& instanceId) const;
+    
+    /**
+     * @brief Get source nodes from all running instances (for debug/analysis board)
+     * @return Vector of source nodes from running instances
+     */
+    std::vector<std::shared_ptr<cvedix_nodes::cvedix_node>> getSourceNodesFromRunningInstances() const;
+    
 private:
     SolutionRegistry& solution_registry_;
     PipelineBuilder& pipeline_builder_;
@@ -107,6 +136,11 @@ private:
     mutable std::mutex mutex_;
     std::unordered_map<std::string, InstanceInfo> instances_;
     std::unordered_map<std::string, std::vector<std::shared_ptr<cvedix_nodes::cvedix_node>>> pipelines_;
+    
+    // Thread management for logging threads (prevent memory leaks from detached threads)
+    std::unordered_map<std::string, std::atomic<bool>> logging_thread_stop_flags_;
+    std::unordered_map<std::string, std::thread> logging_threads_;
+    mutable std::mutex thread_mutex_; // Separate mutex for thread management to avoid deadlock
     
     /**
      * @brief Create InstanceInfo from request
@@ -144,5 +178,23 @@ private:
      * @return true if pipeline was rebuilt successfully
      */
     bool rebuildPipelineFromInstanceInfo(const std::string& instanceId);
+    
+    /**
+     * @brief Log processing results for instance (for instances without RTMP output)
+     * @param instanceId Instance ID
+     */
+    void logProcessingResults(const std::string& instanceId) const;
+    
+    /**
+     * @brief Stop and cleanup logging thread for an instance
+     * @param instanceId Instance ID
+     */
+    void stopLoggingThread(const std::string& instanceId);
+    
+    /**
+     * @brief Start logging thread for an instance (if needed)
+     * @param instanceId Instance ID
+     */
+    void startLoggingThread(const std::string& instanceId);
 };
 

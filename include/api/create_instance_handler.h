@@ -40,8 +40,14 @@ public:
      */
     static void setInstanceRegistry(class InstanceRegistry* registry);
     
+    /**
+     * @brief Set solution registry (dependency injection)
+     */
+    static void setSolutionRegistry(class SolutionRegistry* registry);
+    
 private:
     static class InstanceRegistry* instance_registry_;
+    static class SolutionRegistry* solution_registry_;
     
     /**
      * @brief Parse JSON request body to CreateInstanceRequest

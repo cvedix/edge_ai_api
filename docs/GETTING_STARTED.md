@@ -12,6 +12,20 @@ cd build
 ./edge_ai_api
 ```
 
+**Với Logging (Khuyến nghị cho Development):**
+```bash
+# Bật tất cả logging
+./edge_ai_api --log-api --log-instance --log-sdk-output
+
+# Hoặc chỉ bật một số logging
+./edge_ai_api --log-api --log-instance
+```
+
+**Xem các options:**
+```bash
+./edge_ai_api --help
+```
+
 Server sẽ khởi động và hiển thị:
 ```
 ========================================
@@ -29,6 +43,13 @@ Available endpoints:
   GET /openapi.yaml    - OpenAPI spec (all versions)
   GET /v1/openapi.yaml - OpenAPI spec for v1
   GET /v2/openapi.yaml - OpenAPI spec for v2
+```
+
+**Nếu logging được bật, bạn sẽ thấy:**
+```
+API logging: ENABLED
+Instance execution logging: ENABLED
+SDK output logging: ENABLED
 ```
 
 ### Cách 2: Chạy với File .env (Khuyến nghị)
@@ -283,6 +304,11 @@ http://localhost:8080/v2/swagger
 - Nếu server chạy trên port 8082: `http://localhost:8082/v1/swagger`
 - Swagger UI sẽ tự động sử dụng `http://localhost:8082` làm server URL để test API
 
+**Tính năng Logging:**
+- Server hỗ trợ các tính năng logging chi tiết để debug và monitor
+- Xem chi tiết: [LOGGING.md](LOGGING.md)
+- Các logging flags: `--log-api`, `--log-instance`, `--log-sdk-output`
+
 ### 6. OpenAPI Specification
 
 **Endpoints:**
@@ -348,14 +374,48 @@ http GET localhost:8080/v1/core/version
 ### Sử dụng Swagger UI
 
 1. Mở trình duyệt
-2. Truy cập: `http://localhost:8080/swagger`
+2. Truy cập: `http://localhost:8080/swagger` hoặc `http://localhost:8080/v1/swagger`
 3. Test các endpoints trực tiếp từ UI
+4. Xem OpenAPI specification tại `/openapi.yaml`
+
+**Tính năng Swagger UI:**
+- Tự động cập nhật server URL từ biến môi trường
+- Test API trực tiếp từ browser
+- Xem tất cả endpoints và schemas
+- Export OpenAPI specification
+- Hỗ trợ CORS để test từ bất kỳ domain nào
+
+**Lưu ý về Logging:**
+- Khi sử dụng Swagger UI để test API, bạn có thể bật logging để theo dõi requests
+- Chạy server với `--log-api` để xem tất cả API requests/responses trong logs
+- Xem chi tiết: [LOGGING.md](LOGGING.md)
 
 ## 🔍 Monitoring và Logs
 
+### Logging Features
+
+Server hỗ trợ các tính năng logging chi tiết:
+
+- **API Logging** (`--log-api`): Log tất cả API requests/responses
+- **Instance Execution Logging** (`--log-instance`): Log instance lifecycle (start/stop)
+- **SDK Output Logging** (`--log-sdk-output`): Log output từ SDK khi instance xử lý
+
+**Xem chi tiết:** [LOGGING.md](LOGGING.md)
+
 ### Xem Logs
 
-Nếu chạy với output redirect:
+**Log files:**
+```bash
+# Xem log real-time
+tail -f ./logs/log.txt
+
+# Filter theo loại log
+tail -f ./logs/log.txt | grep "\[API\]"
+tail -f ./logs/log.txt | grep "\[Instance\]"
+tail -f ./logs/log.txt | grep "\[SDKOutput\]"
+```
+
+**Nếu chạy với output redirect:**
 ```bash
 tail -f server.log
 ```

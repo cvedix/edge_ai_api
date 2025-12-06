@@ -109,6 +109,7 @@ void SwaggerHandler::getOpenAPISpec(const HttpRequestPtr &req,
         auto resp = HttpResponse::newHttpResponse();
         resp->setStatusCode(k200OK);
         resp->setContentTypeCode(CT_TEXT_PLAIN);
+        resp->addHeader("Content-Type", "text/yaml; charset=utf-8");
         resp->setBody(yaml);
         
         // Add CORS headers (restrictive for production)
@@ -227,14 +228,13 @@ std::string SwaggerHandler::generateSwaggerUIHTML(const std::string& version, co
         fullSpecUrl = cleanBaseUrl + specUrl;
     }
     
-    // Swagger UI HTML with embedded CDN
+    // Swagger UI HTML with embedded CDN and fallback mechanism
     std::string html = R"(<!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>)" + title + R"(</title>
-    <link rel="stylesheet" type="text/css" href="https://unpkg.com/swagger-ui-dist@5.9.0/swagger-ui.css" />
     <style>
         html {
             box-sizing: border-box;
@@ -248,30 +248,133 @@ std::string SwaggerHandler::generateSwaggerUIHTML(const std::string& version, co
             margin:0;
             background: #fafafa;
         }
+        #loading-message {
+            text-align: center;
+            padding: 20px;
+            font-family: Arial, sans-serif;
+            color: #333;
+        }
     </style>
+    <script>
+        // CDN fallback configuration - multiple CDN providers for redundancy
+        const CDN_CONFIGS = {
+            css: [
+                'https://cdn.jsdelivr.net/npm/swagger-ui-dist@5.9.0/swagger-ui.css',
+                'https://unpkg.com/swagger-ui-dist@5.9.0/swagger-ui.css',
+                'https://fastly.jsdelivr.net/npm/swagger-ui-dist@5.9.0/swagger-ui.css'
+            ],
+            bundle: [
+                'https://cdn.jsdelivr.net/npm/swagger-ui-dist@5.9.0/swagger-ui-bundle.js',
+                'https://unpkg.com/swagger-ui-dist@5.9.0/swagger-ui-bundle.js',
+                'https://fastly.jsdelivr.net/npm/swagger-ui-dist@5.9.0/swagger-ui-bundle.js'
+            ],
+            standalone: [
+                'https://cdn.jsdelivr.net/npm/swagger-ui-dist@5.9.0/swagger-ui-standalone-preset.js',
+                'https://unpkg.com/swagger-ui-dist@5.9.0/swagger-ui-standalone-preset.js',
+                'https://fastly.jsdelivr.net/npm/swagger-ui-dist@5.9.0/swagger-ui-standalone-preset.js'
+            ]
+        };
+
+        // Load resource with fallback
+        function loadResource(urls, type, onSuccess, onError, index = 0) {
+            if (index >= urls.length) {
+                console.error('All CDN fallbacks failed for', type);
+                if (onError) onError();
+                return;
+            }
+
+            const url = urls[index];
+            console.log('Trying to load', type, 'from:', url);
+
+            if (type === 'css') {
+                const link = document.createElement('link');
+                link.rel = 'stylesheet';
+                link.type = 'text/css';
+                link.href = url;
+                link.onerror = function() {
+                    console.warn('Failed to load CSS from', url, ', trying next CDN...');
+                    loadResource(urls, type, onSuccess, onError, index + 1);
+                };
+                link.onload = function() {
+                    console.log('Successfully loaded CSS from', url);
+                    if (onSuccess) onSuccess();
+                };
+                document.head.appendChild(link);
+            } else {
+                const script = document.createElement('script');
+                script.src = url;
+                script.onerror = function() {
+                    console.warn('Failed to load script from', url, ', trying next CDN...');
+                    loadResource(urls, type, onSuccess, onError, index + 1);
+                };
+                script.onload = function() {
+                    console.log('Successfully loaded script from', url);
+                    if (onSuccess) onSuccess();
+                };
+                document.head.appendChild(script);
+            }
+        }
+
+        // Initialize Swagger UI after all resources are loaded
+        let cssLoaded = false;
+        let bundleLoaded = false;
+        let standaloneLoaded = false;
+
+        function checkAndInitSwagger() {
+            if (cssLoaded && bundleLoaded && standaloneLoaded && typeof SwaggerUIBundle !== 'undefined' && typeof SwaggerUIStandalonePreset !== 'undefined') {
+                const loadingMsg = document.getElementById('loading-message');
+                if (loadingMsg) loadingMsg.remove();
+
+                try {
+                    const ui = SwaggerUIBundle({
+                        url: ')" + fullSpecUrl + R"(',
+                        dom_id: '#swagger-ui',
+                        deepLinking: true,
+                        presets: [
+                            SwaggerUIBundle.presets.apis,
+                            SwaggerUIStandalonePreset
+                        ],
+                        plugins: [
+                            SwaggerUIBundle.plugins.DownloadUrl
+                        ],
+                        layout: "StandaloneLayout",
+                        validatorUrl: null,
+                        onComplete: function() {
+                            console.log("Swagger UI loaded successfully");
+                        },
+                        onFailure: function(data) {
+                            console.error("Swagger UI failed to load:", data);
+                        }
+                    });
+                } catch (error) {
+                    console.error("Error initializing Swagger UI:", error);
+                    document.getElementById('swagger-ui').innerHTML = '<div style="padding: 20px; color: red;">Error loading Swagger UI. Please check console for details.</div>';
+                }
+            }
+        }
+
+        // Load CSS first
+        loadResource(CDN_CONFIGS.css, 'css', function() {
+            cssLoaded = true;
+            checkAndInitSwagger();
+        });
+
+        // Load bundle script
+        loadResource(CDN_CONFIGS.bundle, 'script', function() {
+            bundleLoaded = true;
+            checkAndInitSwagger();
+        });
+
+        // Load standalone preset script
+        loadResource(CDN_CONFIGS.standalone, 'script', function() {
+            standaloneLoaded = true;
+            checkAndInitSwagger();
+        });
+    </script>
 </head>
 <body>
+    <div id="loading-message">Loading Swagger UI...</div>
     <div id="swagger-ui"></div>
-    <script src="https://unpkg.com/swagger-ui-dist@5.9.0/swagger-ui-bundle.js"></script>
-    <script src="https://unpkg.com/swagger-ui-dist@5.9.0/swagger-ui-standalone-preset.js"></script>
-    <script>
-        window.onload = function() {
-            const ui = SwaggerUIBundle({
-                url: ')" + fullSpecUrl + R"(',
-                dom_id: '#swagger-ui',
-                deepLinking: true,
-                presets: [
-                    SwaggerUIBundle.presets.apis,
-                    SwaggerUIStandalonePreset
-                ],
-                plugins: [
-                    SwaggerUIBundle.plugins.DownloadUrl
-                ],
-                layout: "StandaloneLayout",
-                validatorUrl: null
-            });
-        };
-    </script>
 </body>
 </html>)";
     
@@ -291,12 +394,25 @@ std::string SwaggerHandler::readOpenAPIFile(const std::string& version, const st
             auto elapsed = std::chrono::duration_cast<std::chrono::seconds>(
                 now - it->second.timestamp);
             
+            // Check if cache is still valid (not expired)
             if (elapsed < it->second.ttl) {
-                return it->second.content; // Return cached content
-            } else {
-                // Cache expired, remove it
-                cache_.erase(it);
+                // Check if file has been modified since cache was created
+                try {
+                    if (!it->second.filePath.empty() && std::filesystem::exists(it->second.filePath)) {
+                        auto currentModTime = std::filesystem::last_write_time(it->second.filePath);
+                        if (currentModTime <= it->second.fileModTime) {
+                            // File hasn't changed, return cached content
+                            return it->second.content;
+                        }
+                        // File has changed, invalidate cache
+                    }
+                } catch (...) {
+                    // If we can't check file time, use cache anyway (fallback)
+                    return it->second.content;
+                }
             }
+            // Cache expired or file changed, remove it
+            cache_.erase(it);
         }
     }
     
@@ -374,6 +490,9 @@ std::string SwaggerHandler::readOpenAPIFile(const std::string& version, const st
     
     // Try to read from found paths
     std::string yamlContent;
+    std::filesystem::path actualFilePath;
+    std::filesystem::file_time_type fileModTime;
+    
     for (const auto& path : possiblePaths) {
         try {
             // Use canonical path to ensure no symlink attacks
@@ -386,6 +505,8 @@ std::string SwaggerHandler::readOpenAPIFile(const std::string& version, const st
                 file.close();
                 yamlContent = buffer.str();
                 if (!yamlContent.empty()) {
+                    actualFilePath = canonicalPath;
+                    fileModTime = std::filesystem::last_write_time(canonicalPath);
                     break;
                 }
             }
@@ -409,13 +530,15 @@ std::string SwaggerHandler::readOpenAPIFile(const std::string& version, const st
         finalContent = filterOpenAPIByVersion(updatedContent, version);
     }
     
-    // Update cache
+    // Update cache with file path and modification time
     {
         std::lock_guard<std::mutex> lock(cache_mutex_);
         CacheEntry entry;
         entry.content = finalContent;
         entry.timestamp = std::chrono::steady_clock::now();
         entry.ttl = cache_ttl_;
+        entry.filePath = actualFilePath;
+        entry.fileModTime = fileModTime;
         cache_[cacheKey] = entry;
     }
     

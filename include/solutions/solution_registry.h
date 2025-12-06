@@ -47,6 +47,33 @@ public:
     bool hasSolution(const std::string& solutionId) const;
     
     /**
+     * @brief Get all solutions with details
+     * @return Map of solution ID to SolutionConfig
+     */
+    std::unordered_map<std::string, SolutionConfig> getAllSolutions() const;
+    
+    /**
+     * @brief Update an existing solution
+     * @param config Updated solution configuration
+     * @return true if successful, false if solution doesn't exist or is default
+     */
+    bool updateSolution(const SolutionConfig& config);
+    
+    /**
+     * @brief Delete a solution
+     * @param solutionId Solution ID to delete
+     * @return true if successful, false if solution doesn't exist or is default
+     */
+    bool deleteSolution(const std::string& solutionId);
+    
+    /**
+     * @brief Check if solution is default (non-deletable)
+     * @param solutionId Solution ID
+     * @return true if solution is default
+     */
+    bool isDefaultSolution(const std::string& solutionId) const;
+    
+    /**
      * @brief Initialize default solutions (face_detection, etc.)
      */
     void initializeDefaultSolutions();
@@ -64,6 +91,11 @@ private:
      * @brief Register face detection solution
      */
     void registerFaceDetectionSolution();
+    
+    /**
+     * @brief Register face detection with file source solution
+     */
+    void registerFaceDetectionFileSolution();
     
     /**
      * @brief Register object detection solution (YOLO)
