@@ -915,7 +915,8 @@ int main(int argc, char* argv[])
         PLOG_INFO << "  POST /v1/core/instance - Create new instance";
         PLOG_INFO << "  GET /v1/core/instances - List all instances";
         PLOG_INFO << "  GET /v1/core/instances/{id} - Get instance details";
-        PLOG_INFO << "  PUT /v1/core/instance/{id}/input - Set input source";
+        PLOG_INFO << "  POST /v1/core/instance/{id}/input - Set input source";
+        PLOG_INFO << "  POST /v1/core/instance/{id}/config - Set config value at path";
         PLOG_INFO << "  POST /v1/core/instances/{id}/start - Start instance";
         PLOG_INFO << "  POST /v1/core/instances/{id}/stop - Stop instance";
         PLOG_INFO << "  DELETE /v1/core/instances/{id} - Delete instance";
@@ -1049,7 +1050,8 @@ int main(int argc, char* argv[])
         PLOG_INFO << "  POST /v1/core/instance - Create new instance";
         PLOG_INFO << "  GET /v1/core/instances - List all instances";
         PLOG_INFO << "  GET /v1/core/instances/{instanceId} - Get instance details";
-        PLOG_INFO << "  PUT /v1/core/instance/{instanceId}/input - Set input source";
+        PLOG_INFO << "  POST /v1/core/instance/{instanceId}/input - Set input source";
+        PLOG_INFO << "  POST /v1/core/instance/{instanceId}/config - Set config value at path";
         PLOG_INFO << "  POST /v1/core/instances/{instanceId}/start - Start instance";
         PLOG_INFO << "  POST /v1/core/instances/{instanceId}/stop - Stop instance";
         PLOG_INFO << "  DELETE /v1/core/instances/{instanceId} - Delete instance";
