@@ -40,6 +40,24 @@ struct InstanceInfo {
     std::string movementSensitivity = "Low";
     std::string sensorModality = "RGB";
     
+    // Detector configuration (detailed)
+    std::string detectorModelFile;  // Model file name (e.g., "pva_det_full_frame_512")
+    double animalConfidenceThreshold = 0.0;
+    double personConfidenceThreshold = 0.0;
+    double vehicleConfidenceThreshold = 0.0;
+    double faceConfidenceThreshold = 0.0;
+    double licensePlateConfidenceThreshold = 0.0;
+    double confThreshold = 0.0;  // General confidence threshold
+    
+    // DetectorThermal configuration
+    std::string detectorThermalModelFile;  // Thermal model file name
+    
+    // Performance mode
+    std::string performanceMode = "Balanced";  // "Balanced", "Performance", "Saved"
+    
+    // SolutionManager settings
+    int recommendedFrameRate = 0;  // Recommended frame rate
+    
     struct Originator {
         std::string address;
     } originator;

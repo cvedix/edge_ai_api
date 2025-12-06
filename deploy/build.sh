@@ -200,6 +200,12 @@ if [ "$SKIP_BUILD" = false ]; then
     echo -e "${BLUE}[2/6]${NC} Build project..."
     cd "$PROJECT_ROOT" || exit 1
     
+    # Check if CMakeLists.txt exists
+    if [ ! -f "CMakeLists.txt" ]; then
+        echo -e "${RED}Error: Không tìm thấy CMakeLists.txt trong $PROJECT_ROOT${NC}"
+        exit 1
+    fi
+    
     if [ ! -d "build" ]; then
         echo "Tạo thư mục build..."
         mkdir -p build
@@ -207,15 +213,36 @@ if [ "$SKIP_BUILD" = false ]; then
     
     cd build
     
+    # Check if CMake is available
+    if ! command -v cmake &> /dev/null; then
+        echo -e "${RED}Error: CMake không được cài đặt${NC}"
+        echo "Vui lòng cài đặt CMake hoặc chạy script với --skip-deps để cài dependencies"
+        exit 1
+    fi
+    
     if [ ! -f "CMakeCache.txt" ]; then
         echo "Chạy CMake..."
-        cmake ..
+        if ! cmake ..; then
+            echo -e "${RED}Error: CMake configuration failed${NC}"
+            exit 1
+        fi
     else
         echo "CMake đã được cấu hình, chỉ build..."
     fi
     
+    # Check if make is available
+    if ! command -v make &> /dev/null; then
+        echo -e "${RED}Error: Make không được cài đặt${NC}"
+        exit 1
+    fi
+    
     echo "Build project (sử dụng tất cả CPU cores)..."
-    make -j$(nproc)
+    CPU_CORES=$(nproc)
+    echo "Sử dụng $CPU_CORES CPU cores..."
+    if ! make -j$CPU_CORES; then
+        echo -e "${RED}Error: Build failed${NC}"
+        exit 1
+    fi
     
     cd ..
     echo -e "${GREEN}✓${NC} Build hoàn tất!"
@@ -233,10 +260,23 @@ cd "$PROJECT_ROOT" || exit 1
 
 # Create user and group
 if ! id "$SERVICE_USER" &>/dev/null; then
-    useradd -r -s /bin/false -d "$INSTALL_DIR" "$SERVICE_USER"
-    echo -e "${GREEN}✓${NC} Đã tạo user: $SERVICE_USER"
+    if useradd -r -s /bin/false -d "$INSTALL_DIR" "$SERVICE_USER" 2>/dev/null; then
+        echo -e "${GREEN}✓${NC} Đã tạo user: $SERVICE_USER"
+    else
+        echo -e "${RED}Error: Không thể tạo user $SERVICE_USER${NC}"
+        exit 1
+    fi
 else
     echo -e "${GREEN}✓${NC} User $SERVICE_USER đã tồn tại"
+fi
+
+# Ensure group exists (create if user exists but group doesn't)
+if ! getent group "$SERVICE_GROUP" > /dev/null 2>&1; then
+    if groupadd -r "$SERVICE_GROUP" 2>/dev/null; then
+        echo -e "${GREEN}✓${NC} Đã tạo group: $SERVICE_GROUP"
+    fi
+    # Add user to group if not already a member
+    usermod -a -G "$SERVICE_GROUP" "$SERVICE_USER" 2>/dev/null || true
 fi
 
 # Create installation directory
@@ -253,32 +293,64 @@ echo ""
 # ============================================
 echo -e "${BLUE}[4/6]${NC} Cài đặt executable và libraries..."
 
-# Find executable
+# Find executable - check multiple possible locations
 EXECUTABLE=""
-if [ -f "build/bin/edge_ai_api" ]; then
-    EXECUTABLE="build/bin/edge_ai_api"
-elif [ -f "build/edge_ai_api" ]; then
-    EXECUTABLE="build/edge_ai_api"
-else
+EXECUTABLE_PATHS=(
+    "$PROJECT_ROOT/build/bin/edge_ai_api"
+    "$PROJECT_ROOT/build/edge_ai_api"
+    "$PROJECT_ROOT/build/edge_ai_api/edge_ai_api"
+)
+
+for path in "${EXECUTABLE_PATHS[@]}"; do
+    if [ -f "$path" ] && [ -x "$path" ]; then
+        EXECUTABLE="$path"
+        break
+    fi
+done
+
+if [ -z "$EXECUTABLE" ]; then
     echo -e "${RED}Error: Không tìm thấy executable${NC}"
+    echo "Đã kiểm tra các vị trí sau:"
+    for path in "${EXECUTABLE_PATHS[@]}"; do
+        echo "  - $path"
+    done
+    echo ""
     echo "Vui lòng build project trước hoặc bỏ --skip-build"
     exit 1
 fi
 
 echo "Executable: $EXECUTABLE"
 
+# Verify executable is actually executable
+if [ ! -x "$EXECUTABLE" ]; then
+    echo -e "${YELLOW}⚠${NC}  File không có quyền thực thi, đang thêm quyền..."
+    chmod +x "$EXECUTABLE"
+fi
+
 # Stop service if running (to avoid "Text file busy" error)
 if systemctl is-active --quiet "${SERVICE_NAME}.service" 2>/dev/null; then
     echo "Dừng service để copy file mới..."
     systemctl stop "${SERVICE_NAME}.service" || true
-    sleep 1
+    sleep 2  # Wait a bit longer to ensure service is fully stopped
+fi
+
+# Copy executable with backup if exists
+if [ -f "$BIN_DIR/edge_ai_api" ]; then
+    echo "Backup executable cũ..."
+    cp "$BIN_DIR/edge_ai_api" "$BIN_DIR/edge_ai_api.backup.$(date +%Y%m%d_%H%M%S)" 2>/dev/null || true
 fi
 
 # Copy executable
-cp "$PROJECT_ROOT/$EXECUTABLE" "$BIN_DIR/edge_ai_api"
+cp "$EXECUTABLE" "$BIN_DIR/edge_ai_api"
 chmod +x "$BIN_DIR/edge_ai_api"
 chown root:root "$BIN_DIR/edge_ai_api"
 echo -e "${GREEN}✓${NC} Đã cài đặt: $BIN_DIR/edge_ai_api"
+
+# Verify installation
+if [ ! -f "$BIN_DIR/edge_ai_api" ] || [ ! -x "$BIN_DIR/edge_ai_api" ]; then
+    echo -e "${RED}Error: Không thể cài đặt executable${NC}"
+    exit 1
+fi
 
 # Copy shared libraries
 mkdir -p "$LIB_DIR"
@@ -288,18 +360,24 @@ if [ -d "$LIB_SOURCE" ]; then
     echo "Copy shared libraries..."
     cd "$LIB_SOURCE"
     
+    LIB_COUNT=0
     # Copy all drogon, trantor, and jsoncpp libraries (including symlinks)
     for lib in libdrogon.so* libtrantor.so* libjsoncpp.so*; do
         if [ -e "$lib" ]; then
-            cp -P "$lib" "$LIB_DIR/" 2>/dev/null || true
+            cp -P "$lib" "$LIB_DIR/" 2>/dev/null && LIB_COUNT=$((LIB_COUNT + 1)) || true
         fi
     done
     
-    # Update library cache
-    ldconfig
-    echo -e "${GREEN}✓${NC} Đã cài đặt shared libraries vào $LIB_DIR"
+    if [ $LIB_COUNT -gt 0 ]; then
+        # Update library cache
+        ldconfig
+        echo -e "${GREEN}✓${NC} Đã cài đặt $LIB_COUNT shared libraries vào $LIB_DIR"
+    else
+        echo -e "${YELLOW}⚠${NC}  Không tìm thấy libraries để copy trong $LIB_SOURCE"
+    fi
 else
     echo -e "${YELLOW}⚠${NC}  Thư mục build/lib không tồn tại. Bỏ qua copy libraries."
+    echo "  Libraries có thể đã được cài đặt hệ thống hoặc được link tĩnh."
 fi
 
 cd "$PROJECT_ROOT"
@@ -408,15 +486,28 @@ if [ "$NO_START" = false ]; then
     echo ""
     echo "Khởi động service..."
     if systemctl is-active --quiet "${SERVICE_NAME}.service" 2>/dev/null; then
-        systemctl restart "${SERVICE_NAME}.service"
-        echo -e "${GREEN}✓${NC} Đã restart service"
+        echo "Service đang chạy, đang restart..."
+        if systemctl restart "${SERVICE_NAME}.service"; then
+            echo -e "${GREEN}✓${NC} Đã restart service"
+        else
+            echo -e "${RED}✗${NC} Không thể restart service"
+            echo "Kiểm tra log: sudo journalctl -u ${SERVICE_NAME}.service -n 50"
+            exit 1
+        fi
     else
-        systemctl start "${SERVICE_NAME}.service"
-        echo -e "${GREEN}✓${NC} Đã khởi động service"
+        echo "Khởi động service mới..."
+        if systemctl start "${SERVICE_NAME}.service"; then
+            echo -e "${GREEN}✓${NC} Đã khởi động service"
+        else
+            echo -e "${RED}✗${NC} Không thể khởi động service"
+            echo "Kiểm tra log: sudo journalctl -u ${SERVICE_NAME}.service -n 50"
+            exit 1
+        fi
     fi
     
     # Wait a moment for service to start
-    sleep 2
+    echo "Đợi service khởi động..."
+    sleep 3
     
     # Check service status
     echo ""
@@ -427,10 +518,30 @@ if [ "$NO_START" = false ]; then
         echo -e "${GREEN}✓ Service đang chạy thành công!${NC}"
         echo ""
         echo "Thông tin service:"
-        systemctl status "${SERVICE_NAME}.service" --no-pager -l | head -n 10
+        systemctl status "${SERVICE_NAME}.service" --no-pager -l | head -n 15
+        
+        # Try to get API endpoint info if available
+        echo ""
+        echo "Kiểm tra API endpoint..."
+        sleep 1
+        if command -v curl &> /dev/null; then
+            API_PORT=$(grep -E "^API_PORT=" "$INSTALL_DIR/config/.env" 2>/dev/null | cut -d'=' -f2 || echo "8080")
+            API_HOST=$(grep -E "^API_HOST=" "$INSTALL_DIR/config/.env" 2>/dev/null | cut -d'=' -f2 || echo "0.0.0.0")
+            if [ "$API_HOST" = "0.0.0.0" ] || [ "$API_HOST" = "127.0.0.1" ] || [ -z "$API_HOST" ]; then
+                API_HOST="localhost"
+            fi
+            if curl -s -f "http://${API_HOST}:${API_PORT}/v1/core/health" > /dev/null 2>&1; then
+                echo -e "${GREEN}✓${NC} API endpoint đang phản hồi: http://${API_HOST}:${API_PORT}/v1/core/health"
+            else
+                echo -e "${YELLOW}⚠${NC}  API endpoint chưa sẵn sàng (có thể cần thêm thời gian)"
+            fi
+        fi
     else
         echo -e "${RED}✗ Service không chạy. Kiểm tra log:${NC}"
         echo "  sudo journalctl -u ${SERVICE_NAME}.service -n 50"
+        echo ""
+        echo "Hoặc xem log real-time:"
+        echo "  sudo journalctl -u ${SERVICE_NAME}.service -f"
         exit 1
     fi
 else

@@ -46,10 +46,57 @@ private:
         const std::string& instanceId
     );
     
+    // ========== Source Nodes ==========
+    
     /**
      * @brief Create RTSP source node
      */
     std::shared_ptr<cvedix_nodes::cvedix_node> createRTSPSourceNode(
+        const std::string& nodeName,
+        const std::map<std::string, std::string>& params,
+        const CreateInstanceRequest& req
+    );
+    
+    /**
+     * @brief Create file source node
+     */
+    std::shared_ptr<cvedix_nodes::cvedix_node> createFileSourceNode(
+        const std::string& nodeName,
+        const std::map<std::string, std::string>& params,
+        const CreateInstanceRequest& req
+    );
+    
+    /**
+     * @brief Create app source node
+     */
+    std::shared_ptr<cvedix_nodes::cvedix_node> createAppSourceNode(
+        const std::string& nodeName,
+        const std::map<std::string, std::string>& params,
+        const CreateInstanceRequest& req
+    );
+    
+    /**
+     * @brief Create image source node
+     */
+    std::shared_ptr<cvedix_nodes::cvedix_node> createImageSourceNode(
+        const std::string& nodeName,
+        const std::map<std::string, std::string>& params,
+        const CreateInstanceRequest& req
+    );
+    
+    /**
+     * @brief Create RTMP source node
+     */
+    std::shared_ptr<cvedix_nodes::cvedix_node> createRTMPSourceNode(
+        const std::string& nodeName,
+        const std::map<std::string, std::string>& params,
+        const CreateInstanceRequest& req
+    );
+    
+    /**
+     * @brief Create UDP source node
+     */
+    std::shared_ptr<cvedix_nodes::cvedix_node> createUDPSourceNode(
         const std::string& nodeName,
         const std::map<std::string, std::string>& params,
         const CreateInstanceRequest& req
@@ -74,15 +121,6 @@ private:
     );
     
     /**
-     * @brief Create file source node
-     */
-    std::shared_ptr<cvedix_nodes::cvedix_node> createFileSourceNode(
-        const std::string& nodeName,
-        const std::map<std::string, std::string>& params,
-        const CreateInstanceRequest& req
-    );
-    
-    /**
      * @brief Create SFace feature encoder node
      */
     std::shared_ptr<cvedix_nodes::cvedix_node> createSFaceEncoderNode(
@@ -103,6 +141,321 @@ private:
      * @brief Create RTMP destination node
      */
     std::shared_ptr<cvedix_nodes::cvedix_node> createRTMPDestinationNode(
+        const std::string& nodeName,
+        const std::map<std::string, std::string>& params,
+        const CreateInstanceRequest& req
+    );
+    
+    // ========== Broker Nodes ==========
+    
+    /**
+     * @brief Create JSON console broker node
+     */
+    std::shared_ptr<cvedix_nodes::cvedix_node> createJSONConsoleBrokerNode(
+        const std::string& nodeName,
+        const std::map<std::string, std::string>& params,
+        const CreateInstanceRequest& req
+    );
+    
+    /**
+     * @brief Create JSON enhanced console broker node
+     */
+    std::shared_ptr<cvedix_nodes::cvedix_node> createJSONEnhancedConsoleBrokerNode(
+        const std::string& nodeName,
+        const std::map<std::string, std::string>& params,
+        const CreateInstanceRequest& req
+    );
+    
+    /**
+     * @brief Create JSON MQTT broker node
+     */
+    std::shared_ptr<cvedix_nodes::cvedix_node> createJSONMQTTBrokerNode(
+        const std::string& nodeName,
+        const std::map<std::string, std::string>& params,
+        const CreateInstanceRequest& req
+    );
+    
+    /**
+     * @brief Create JSON Kafka broker node
+     */
+    std::shared_ptr<cvedix_nodes::cvedix_node> createJSONKafkaBrokerNode(
+        const std::string& nodeName,
+        const std::map<std::string, std::string>& params,
+        const CreateInstanceRequest& req
+    );
+    
+    /**
+     * @brief Create XML file broker node
+     */
+    std::shared_ptr<cvedix_nodes::cvedix_node> createXMLFileBrokerNode(
+        const std::string& nodeName,
+        const std::map<std::string, std::string>& params,
+        const CreateInstanceRequest& req
+    );
+    
+    /**
+     * @brief Create XML socket broker node
+     */
+    std::shared_ptr<cvedix_nodes::cvedix_node> createXMLSocketBrokerNode(
+        const std::string& nodeName,
+        const std::map<std::string, std::string>& params,
+        const CreateInstanceRequest& req
+    );
+    
+    /**
+     * @brief Create message broker node
+     */
+    std::shared_ptr<cvedix_nodes::cvedix_node> createMessageBrokerNode(
+        const std::string& nodeName,
+        const std::map<std::string, std::string>& params,
+        const CreateInstanceRequest& req
+    );
+    
+    /**
+     * @brief Create BA socket broker node
+     */
+    std::shared_ptr<cvedix_nodes::cvedix_node> createBASocketBrokerNode(
+        const std::string& nodeName,
+        const std::map<std::string, std::string>& params,
+        const CreateInstanceRequest& req
+    );
+    
+    /**
+     * @brief Create embeddings socket broker node
+     */
+    std::shared_ptr<cvedix_nodes::cvedix_node> createEmbeddingsSocketBrokerNode(
+        const std::string& nodeName,
+        const std::map<std::string, std::string>& params,
+        const CreateInstanceRequest& req
+    );
+    
+    /**
+     * @brief Create embeddings properties socket broker node
+     */
+    std::shared_ptr<cvedix_nodes::cvedix_node> createEmbeddingsPropertiesSocketBrokerNode(
+        const std::string& nodeName,
+        const std::map<std::string, std::string>& params,
+        const CreateInstanceRequest& req
+    );
+    
+    /**
+     * @brief Create plate socket broker node
+     */
+    std::shared_ptr<cvedix_nodes::cvedix_node> createPlateSocketBrokerNode(
+        const std::string& nodeName,
+        const std::map<std::string, std::string>& params,
+        const CreateInstanceRequest& req
+    );
+    
+    /**
+     * @brief Create expression socket broker node
+     */
+    std::shared_ptr<cvedix_nodes::cvedix_node> createExpressionSocketBrokerNode(
+        const std::string& nodeName,
+        const std::map<std::string, std::string>& params,
+        const CreateInstanceRequest& req
+    );
+    
+    // ========== TensorRT Inference Nodes ==========
+    
+    /**
+     * @brief Create TensorRT YOLOv8 detector node
+     */
+    std::shared_ptr<cvedix_nodes::cvedix_node> createTRTYOLOv8DetectorNode(
+        const std::string& nodeName,
+        const std::map<std::string, std::string>& params,
+        const CreateInstanceRequest& req
+    );
+    
+    /**
+     * @brief Create TensorRT YOLOv8 segmentation detector node
+     */
+    std::shared_ptr<cvedix_nodes::cvedix_node> createTRTYOLOv8SegDetectorNode(
+        const std::string& nodeName,
+        const std::map<std::string, std::string>& params,
+        const CreateInstanceRequest& req
+    );
+    
+    /**
+     * @brief Create TensorRT YOLOv8 pose detector node
+     */
+    std::shared_ptr<cvedix_nodes::cvedix_node> createTRTYOLOv8PoseDetectorNode(
+        const std::string& nodeName,
+        const std::map<std::string, std::string>& params,
+        const CreateInstanceRequest& req
+    );
+    
+    /**
+     * @brief Create TensorRT YOLOv8 classifier node
+     */
+    std::shared_ptr<cvedix_nodes::cvedix_node> createTRTYOLOv8ClassifierNode(
+        const std::string& nodeName,
+        const std::map<std::string, std::string>& params,
+        const CreateInstanceRequest& req
+    );
+    
+    /**
+     * @brief Create TensorRT vehicle detector node
+     */
+    std::shared_ptr<cvedix_nodes::cvedix_node> createTRTVehicleDetectorNode(
+        const std::string& nodeName,
+        const std::map<std::string, std::string>& params,
+        const CreateInstanceRequest& req
+    );
+    
+    /**
+     * @brief Create TensorRT vehicle plate detector node
+     */
+    std::shared_ptr<cvedix_nodes::cvedix_node> createTRTVehiclePlateDetectorNode(
+        const std::string& nodeName,
+        const std::map<std::string, std::string>& params,
+        const CreateInstanceRequest& req
+    );
+    
+    /**
+     * @brief Create TensorRT vehicle plate detector v2 node
+     */
+    std::shared_ptr<cvedix_nodes::cvedix_node> createTRTVehiclePlateDetectorV2Node(
+        const std::string& nodeName,
+        const std::map<std::string, std::string>& params,
+        const CreateInstanceRequest& req
+    );
+    
+    /**
+     * @brief Create TensorRT vehicle color classifier node
+     */
+    std::shared_ptr<cvedix_nodes::cvedix_node> createTRTVehicleColorClassifierNode(
+        const std::string& nodeName,
+        const std::map<std::string, std::string>& params,
+        const CreateInstanceRequest& req
+    );
+    
+    /**
+     * @brief Create TensorRT vehicle type classifier node
+     */
+    std::shared_ptr<cvedix_nodes::cvedix_node> createTRTVehicleTypeClassifierNode(
+        const std::string& nodeName,
+        const std::map<std::string, std::string>& params,
+        const CreateInstanceRequest& req
+    );
+    
+    /**
+     * @brief Create TensorRT vehicle feature encoder node
+     */
+    std::shared_ptr<cvedix_nodes::cvedix_node> createTRTVehicleFeatureEncoderNode(
+        const std::string& nodeName,
+        const std::map<std::string, std::string>& params,
+        const CreateInstanceRequest& req
+    );
+    
+    /**
+     * @brief Create TensorRT vehicle scanner node
+     */
+    std::shared_ptr<cvedix_nodes::cvedix_node> createTRTVehicleScannerNode(
+        const std::string& nodeName,
+        const std::map<std::string, std::string>& params,
+        const CreateInstanceRequest& req
+    );
+    
+    // ========== RKNN Inference Nodes ==========
+    
+    /**
+     * @brief Create RKNN YOLOv8 detector node
+     */
+    std::shared_ptr<cvedix_nodes::cvedix_node> createRKNNYOLOv8DetectorNode(
+        const std::string& nodeName,
+        const std::map<std::string, std::string>& params,
+        const CreateInstanceRequest& req
+    );
+    
+    /**
+     * @brief Create RKNN face detector node
+     */
+    std::shared_ptr<cvedix_nodes::cvedix_node> createRKNNFaceDetectorNode(
+        const std::string& nodeName,
+        const std::map<std::string, std::string>& params,
+        const CreateInstanceRequest& req
+    );
+    
+    // ========== Other Inference Nodes ==========
+    
+    /**
+     * @brief Create YOLO detector node (OpenCV DNN)
+     */
+    std::shared_ptr<cvedix_nodes::cvedix_node> createYOLODetectorNode(
+        const std::string& nodeName,
+        const std::map<std::string, std::string>& params,
+        const CreateInstanceRequest& req
+    );
+    
+    /**
+     * @brief Create ENet segmentation node
+     */
+    std::shared_ptr<cvedix_nodes::cvedix_node> createENetSegNode(
+        const std::string& nodeName,
+        const std::map<std::string, std::string>& params,
+        const CreateInstanceRequest& req
+    );
+    
+    /**
+     * @brief Create Mask RCNN detector node
+     */
+    std::shared_ptr<cvedix_nodes::cvedix_node> createMaskRCNNDetectorNode(
+        const std::string& nodeName,
+        const std::map<std::string, std::string>& params,
+        const CreateInstanceRequest& req
+    );
+    
+    /**
+     * @brief Create OpenPose detector node
+     */
+    std::shared_ptr<cvedix_nodes::cvedix_node> createOpenPoseDetectorNode(
+        const std::string& nodeName,
+        const std::map<std::string, std::string>& params,
+        const CreateInstanceRequest& req
+    );
+    
+    /**
+     * @brief Create classifier node (generic)
+     */
+    std::shared_ptr<cvedix_nodes::cvedix_node> createClassifierNode(
+        const std::string& nodeName,
+        const std::map<std::string, std::string>& params,
+        const CreateInstanceRequest& req
+    );
+    
+    /**
+     * @brief Create feature encoder node (generic)
+     * @note DISABLED: cvedix_feature_encoder_node is abstract. Use createSFaceEncoderNode or createTRTVehicleFeatureEncoderNode instead.
+     */
+    // std::shared_ptr<cvedix_nodes::cvedix_node> createFeatureEncoderNode(
+    //     const std::string& nodeName,
+    //     const std::map<std::string, std::string>& params,
+    //     const CreateInstanceRequest& req
+    // );
+    
+    /**
+     * @brief Create lane detector node
+     */
+    std::shared_ptr<cvedix_nodes::cvedix_node> createLaneDetectorNode(
+        const std::string& nodeName,
+        const std::map<std::string, std::string>& params,
+        const CreateInstanceRequest& req
+    );
+    
+    /**
+     * @brief Create PaddleOCR text detector node
+     */
+    std::shared_ptr<cvedix_nodes::cvedix_node> createPaddleOCRTextDetectorNode(
+        const std::string& nodeName,
+        const std::map<std::string, std::string>& params,
+        const CreateInstanceRequest& req
+    );
+    
+    /**
+     * @brief Create restoration node (Real-ESRGAN)
+     */
+    std::shared_ptr<cvedix_nodes::cvedix_node> createRestorationNode(
         const std::string& nodeName,
         const std::map<std::string, std::string>& params,
         const CreateInstanceRequest& req

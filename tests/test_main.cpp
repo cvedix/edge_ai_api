@@ -1,5 +1,12 @@
 #include <gtest/gtest.h>
+#include "core/logging_flags.h"
+#include <atomic>
 #include <iostream>
+
+// Define logging flags for tests (they're normally defined in main.cpp)
+std::atomic<bool> g_log_api{false};
+std::atomic<bool> g_log_instance{false};
+std::atomic<bool> g_log_sdk_output{false};
 
 int main(int argc, char **argv) {
     std::cout << "========================================" << std::endl;

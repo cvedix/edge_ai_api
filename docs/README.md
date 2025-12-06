@@ -18,7 +18,16 @@ Tài liệu hướng dẫn đầy đủ cho Edge AI API project.
    - Testing APIs
    - Monitoring và logs
 
-3. **[DEVELOPMENT_GUIDE.md](DEVELOPMENT_GUIDE.md)** - Hướng dẫn phát triển
+3. **[CREATE_INSTANCE_GUIDE.md](CREATE_INSTANCE_GUIDE.md)** - Hướng dẫn chi tiết tạo instance
+   - 16 cases cụ thể với examples đầy đủ
+   - Inference nodes (Detector): TensorRT, RKNN, YOLO, etc.
+   - Source nodes (Input): RTSP, File, App, Image, RTMP, UDP
+   - Broker nodes (Output): MQTT, Kafka, Socket, Console, XML
+   - Pipeline hoàn chỉnh
+   - Kiểm tra và testing
+   - Troubleshooting
+
+4. **[DEVELOPMENT_GUIDE.md](DEVELOPMENT_GUIDE.md)** - Hướng dẫn phát triển
    - Cấu trúc codebase
    - Tạo API handler mới
    - Viết unit tests
@@ -28,23 +37,55 @@ Tài liệu hướng dẫn đầy đủ cho Edge AI API project.
 
 ### 📖 Tài Liệu Kỹ Thuật
 
-4. **[DROGON_SETUP.md](DROGON_SETUP.md)** - Hướng dẫn Drogon Framework
+5. **[DROGON_SETUP.md](DROGON_SETUP.md)** - Hướng dẫn Drogon Framework
    - Tự động download và build Drogon
    - Cấu hình dependencies
    - Troubleshooting
 
-5. **[architecture.md](architecture.md)** - Kiến trúc hệ thống
+6. **[architecture.md](architecture.md)** - Kiến trúc hệ thống
    - System architecture
    - Request flow
    - Component structure
    - API endpoints diagram
 
-6. **[FLOW_DIAGRAM.md](FLOW_DIAGRAM.md)** - Flow Diagram Tổng Quan
+7. **[FLOW_DIAGRAM.md](FLOW_DIAGRAM.md)** - Flow Diagram Tổng Quan
    - Flow tổng quan hệ thống
    - Flow xử lý request chi tiết
    - Flow khởi động server
    - Background services flow
    - Mô tả các component
+
+8. **[HARDWARE_INFO_API.md](HARDWARE_INFO_API.md)** - Hardware Information API
+   - Hướng dẫn sử dụng API lấy thông tin phần cứng
+   - Endpoints: `/v1/core/system/info` và `/v1/core/system/status`
+   - Ví dụ sử dụng với curl, Python, JavaScript
+   - Troubleshooting và best practices
+   - Chi tiết các thông số có thể lấy được
+
+9. **[LOGGING.md](LOGGING.md)** - Logging Documentation
+
+### Node Support & Implementation
+
+10. **[NODE_SUPPORT_STATUS.md](NODE_SUPPORT_STATUS.md)** - Trạng thái hỗ trợ các node types
+    - Inference nodes: 23 nodes (100%)
+    - Source nodes: 6 nodes (100%)
+    - Broker nodes: 12 nodes (100%)
+
+11. **[REQUIREMENT_CHECKLIST.md](REQUIREMENT_CHECKLIST.md)** - Checklist đáp ứng yêu cầu
+    - Detector (Inference): ✅ 100%
+    - Input (Source): ✅ 100%
+    - Output (Broker): ✅ 100%
+
+12. **[IMPLEMENTATION_SUMMARY.md](IMPLEMENTATION_SUMMARY.md)** - Tổng kết implementation
+    - Tổng số nodes đã hỗ trợ: 41 nodes
+    - Example files: 26 files
+    - Files đã tạo/cập nhật
+   - Hướng dẫn sử dụng các tính năng logging
+   - API logging (`--log-api`)
+   - Instance execution logging (`--log-instance`)
+   - SDK output logging (`--log-sdk-output`)
+   - Cấu hình và best practices
+   - Troubleshooting logging issues
 
 ## 🎯 Quick Start
 

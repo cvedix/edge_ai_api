@@ -1,7 +1,30 @@
 openapi: 3.0.3
 info:
   title: Edge AI API
-  description: REST API for Edge AI operations and management
+  description: |
+    REST API for Edge AI operations and management.
+    
+    ## Logging Features
+    
+    The server supports detailed logging features that can be enabled via command-line arguments:
+    
+    - **API Logging** (`--log-api` or `--debug-api`): Logs all API requests and responses with response times
+    - **Instance Execution Logging** (`--log-instance` or `--debug-instance`): Logs instance lifecycle events (start/stop/status)
+    - **SDK Output Logging** (`--log-sdk-output` or `--debug-sdk-output`): Logs SDK output when instances process data
+    
+    Example usage:
+    ```bash
+    ./edge_ai_api --log-api --log-instance --log-sdk-output
+    ```
+    
+    For more details, see the [Logging Documentation](../docs/LOGGING.md).
+    
+    ## Swagger UI
+    
+    This API provides Swagger UI for interactive testing and exploration:
+    - Access Swagger UI at `/swagger` or `/v1/swagger`
+    - OpenAPI specification available at `/openapi.yaml` or `/v1/openapi.yaml`
+    - Server URLs are automatically updated based on environment variables (`API_HOST` and `API_PORT`)
   version: 1.0.0
   contact:
     name: Edge AI API Support
@@ -60,6 +83,64 @@ paths:
                 git_commit: "abc123def456"
                 api_version: "v1"
                 service: "edge_ai_api"
+
+  /v1/core/system/info:
+    get:
+      summary: Get system hardware information
+      description: Returns detailed hardware information including CPU, GPU, RAM, Disk, Mainboard, OS, and Battery
+      operationId: getSystemInfo
+      tags:
+        - Core
+      responses:
+        '200':
+          description: System hardware information
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SystemInfoResponse'
+        '500':
+          description: Server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+    options:
+      summary: CORS preflight for system info
+      operationId: getSystemInfoOptions
+      tags:
+        - Core
+      responses:
+        '200':
+          description: CORS preflight response
+
+  /v1/core/system/status:
+    get:
+      summary: Get system status
+      description: Returns current system status including CPU usage, RAM usage, load average, and uptime
+      operationId: getSystemStatus
+      tags:
+        - Core
+      responses:
+        '200':
+          description: System status information
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SystemStatusResponse'
+        '500':
+          description: Server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+    options:
+      summary: CORS preflight for system status
+      operationId: getSystemStatusOptions
+      tags:
+        - Core
+      responses:
+        '200':
+          description: CORS preflight response
 
   /v1/core/models/upload:
     post:
@@ -221,10 +302,69 @@ paths:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
 
+  /v1/core/instance/status/summary:
+    get:
+      summary: Get instance status summary
+      description: |
+        Returns a summary of instance status including total number of configured instances, 
+        number of running instances, and number of stopped instances.
+      operationId: getStatusSummary
+      tags:
+        - Instances
+      responses:
+        '200':
+          description: Instance status summary
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StatusResponse'
+              example:
+                total: 5
+                configured: 5
+                running: 3
+                stopped: 2
+                timestamp: "2024-01-01T00:00:00.000Z"
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+    options:
+      summary: CORS preflight for status summary endpoint
+      operationId: statusSummaryOptions
+      tags:
+        - Instances
+      responses:
+        '200':
+          description: CORS preflight response
+          headers:
+            Access-Control-Allow-Origin:
+              schema:
+                type: string
+                example: "*"
+            Access-Control-Allow-Methods:
+              schema:
+                type: string
+                example: "GET, OPTIONS"
+            Access-Control-Allow-Headers:
+              schema:
+                type: string
+                example: "Content-Type, Authorization"
+
   /v1/core/instances:
     get:
       summary: List all instances
-      description: Returns a list of all AI instances with summary information including running status.
+      description: |
+        Returns a list of all AI instances with summary information including running status, solution information, and basic configuration details.
+        
+        The response includes:
+        - Total count of instances
+        - Number of running instances
+        - Number of stopped instances
+        - Summary information for each instance (ID, display name, running status, solution, etc.)
+        
+        This endpoint is useful for getting an overview of all instances in the system without fetching detailed information for each one.
       operationId: listInstances
       tags:
         - Instances
@@ -276,7 +416,17 @@ paths:
   /v1/core/instances/{instanceId}:
     get:
       summary: Get instance details
-      description: Returns detailed information about a specific instance.
+      description: |
+        Returns detailed information about a specific instance including full configuration, status, and runtime information.
+        
+        The response includes:
+        - Instance configuration (display name, group, solution, etc.)
+        - Runtime status (running, loaded, FPS, etc.)
+        - Configuration settings (detector mode, sensitivity, frame rate limits, etc.)
+        - Input/Output configuration
+        - Originator information
+        
+        The instance must exist. If the instance is not found, a 404 error will be returned.
       operationId: getInstance
       tags:
         - Instances
@@ -309,7 +459,22 @@ paths:
     
     put:
       summary: Update instance information
-      description: Updates configuration of an existing instance. Only provided fields will be updated. If the instance is currently running, it will be automatically restarted to apply the changes. If the instance is not running, changes will take effect when the instance is started.
+      description: |
+        Updates configuration of an existing instance. Only provided fields will be updated. Supports two update formats:
+        
+        **Update Format 1: Field-by-field (camelCase)**
+        - Update individual fields like `name`, `group`, `autoStart`, `frameRateLimit`, etc.
+        - Use `additionalParams` to update solution-specific parameters (RTSP_URL, MODEL_PATH, etc.)
+        
+        **Update Format 2: Direct Config (PascalCase)**
+        - Update using PascalCase format matching instance config file
+        - Can update `Input`, `Output`, `Detector`, `Zone`, etc. directly
+        
+        **Behavior:**
+        - If the instance is currently running, it will be automatically restarted to apply the changes
+        - If the instance is not running, changes will take effect when the instance is started
+        - The instance must exist and not be read-only
+        - Only provided fields will be updated; other fields remain unchanged
       operationId: updateInstance
       tags:
         - Instances
@@ -360,7 +525,20 @@ paths:
     
     delete:
       summary: Delete an instance
-      description: Deletes an instance and stops its pipeline if running.
+      description: |
+        Deletes an instance and stops its pipeline if running. This operation permanently removes the instance from the system.
+        
+        **Behavior:**
+        - If the instance is currently running, it will be stopped first
+        - The instance configuration will be removed from memory
+        - If the instance is persistent, its configuration file will be deleted from storage
+        - All resources associated with the instance will be released
+        
+        **Prerequisites:**
+        - Instance must exist
+        - Instance must not be read-only (system instances cannot be deleted)
+        
+        **Note:** This operation cannot be undone. Once deleted, the instance must be recreated using the create instance endpoint.
       operationId: deleteInstance
       tags:
         - Instances
@@ -401,7 +579,22 @@ paths:
   /v1/core/instances/{instanceId}/start:
     post:
       summary: Start an instance
-      description: Starts the pipeline for an instance. The instance must have a pipeline configured.
+      description: |
+        Starts the pipeline for an instance. The instance must have a pipeline configured and a valid solution.
+        
+        **Prerequisites:**
+        - Instance must exist
+        - Instance must have a valid solution configuration
+        - Instance must not be read-only
+        - Input source must be properly configured (if required by solution)
+        
+        **Behavior:**
+        - If the instance is already running, the request will succeed without error
+        - The pipeline will be built and started based on the instance's solution configuration
+        - Processing will begin according to the configured input source and detector settings
+        - Returns the updated instance information with `running: true`
+        
+        **Note:** Starting an instance may take a few seconds as the pipeline is initialized.
       operationId: startInstance
       tags:
         - Instances
@@ -446,7 +639,18 @@ paths:
   /v1/core/instances/{instanceId}/stop:
     post:
       summary: Stop an instance
-      description: Stops the pipeline for an instance.
+      description: |
+        Stops the pipeline for an instance, halting all processing and releasing resources.
+        
+        **Behavior:**
+        - If the instance is already stopped, the request will succeed without error
+        - The pipeline will be gracefully stopped and all resources will be released
+        - Processing will stop immediately
+        - Returns the updated instance information with `running: false`
+        
+        **Note:** Stopping an instance may take a few seconds as the pipeline is cleaned up.
+        
+        The instance configuration is preserved and can be started again using the start endpoint.
       operationId: stopInstance
       tags:
         - Instances
@@ -491,7 +695,21 @@ paths:
   /v1/core/instances/{instanceId}/restart:
     post:
       summary: Restart an instance
-      description: Restarts an instance by stopping it (if running) and then starting it again. This is useful for applying configuration changes or recovering from errors.
+      description: |
+        Restarts an instance by stopping it (if running) and then starting it again. This is useful for applying configuration changes or recovering from errors.
+        
+        **Behavior:**
+        - If the instance is running, it will be stopped first
+        - Then the instance will be started again
+        - This ensures a clean restart with the current configuration
+        - Returns the updated instance information after restart
+        
+        **Use Cases:**
+        - Apply configuration changes that require a restart
+        - Recover from errors or unexpected states
+        - Refresh the pipeline with updated settings
+        
+        **Note:** Restarting an instance may take several seconds as the pipeline is stopped and then restarted.
       operationId: restartInstance
       tags:
         - Instances
@@ -541,10 +759,868 @@ paths:
         '200':
           description: CORS preflight response
 
+  /v1/core/instances/{instanceId}/output:
+    get:
+      summary: Get instance output and processing results
+      description: |
+        Returns real-time output and processing results for a specific instance at the time of the request.
+        This endpoint provides comprehensive information about:
+        - Current processing metrics (FPS, frame rate limit)
+        - Input source (FILE or RTSP)
+        - Output type and details (FILE output files or RTMP stream)
+        - Detection settings and processing modes
+        - Current status and processing state
+        
+        For instances with FILE output, it includes file count, total size, latest file information, and activity status.
+        For instances with RTMP output, it includes RTMP and RTSP URLs.
+      operationId: getInstanceOutput
+      tags:
+        - Instances
+      parameters:
+        - name: instanceId
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Instance ID (UUID)
+      responses:
+        '200':
+          description: Instance output and processing results
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/InstanceOutputResponse'
+              examples:
+                fileOutput:
+                  summary: Instance with FILE output
+                  value:
+                    timestamp: "2025-01-15 14:30:25.123"
+                    instanceId: "abc-123-def"
+                    displayName: "face_detection_file_source"
+                    solutionId: "face_detection"
+                    solutionName: "Face Detection"
+                    running: true
+                    loaded: true
+                    metrics:
+                      fps: 25.50
+                      frameRateLimit: 0
+                    input:
+                      type: "FILE"
+                      path: "/path/to/video.mp4"
+                    output:
+                      type: "FILE"
+                      files:
+                        exists: true
+                        directory: "./output/abc-123-def"
+                        fileCount: 15
+                        totalSizeBytes: 15728640
+                        totalSize: "15 MB"
+                        latestFile: "face_detection_20250115_143025.mp4"
+                        latestFileTime: "2025-01-15 14:30:25"
+                        recentFileCount: 3
+                        isActive: true
+                    detection:
+                      sensitivity: "Low"
+                      mode: "SmartDetection"
+                      movementSensitivity: "Low"
+                      sensorModality: "RGB"
+                    modes:
+                      statisticsMode: true
+                      metadataMode: false
+                      debugMode: true
+                      diagnosticsMode: false
+                    status:
+                      running: true
+                      processing: true
+                      message: "Instance is running and processing frames"
+                rtmpOutput:
+                  summary: Instance with RTMP output
+                  value:
+                    timestamp: "2025-01-15 14:30:25.123"
+                    instanceId: "xyz-789"
+                    displayName: "face_detection_rtmp_stream"
+                    solutionId: "face_detection_rtmp"
+                    solutionName: "Face Detection RTMP"
+                    running: true
+                    loaded: true
+                    metrics:
+                      fps: 30.0
+                      frameRateLimit: 25
+                    input:
+                      type: "FILE"
+                      path: "/path/to/video.mp4"
+                    output:
+                      type: "RTMP_STREAM"
+                      rtmpUrl: "rtmp://localhost:1935/live/face_stream"
+                      rtspUrl: "rtsp://localhost:8554/live/face_stream_0"
+                    detection:
+                      sensitivity: "High"
+                      mode: "SmartDetection"
+                      movementSensitivity: "Low"
+                      sensorModality: "RGB"
+                    modes:
+                      statisticsMode: true
+                      metadataMode: true
+                      debugMode: false
+                      diagnosticsMode: false
+                    status:
+                      running: true
+                      processing: true
+                      message: "Instance is running and processing frames"
+        '404':
+          description: Instance not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+    options:
+      summary: CORS preflight for get instance output
+      operationId: getInstanceOutputOptions
+      tags:
+        - Instances
+      responses:
+        '200':
+          description: CORS preflight response
+
+  /v1/core/instances/batch/start:
+    post:
+      summary: Start multiple instances concurrently
+      description: |
+        Starts multiple instances concurrently for faster batch operations. All operations run in parallel for optimal performance.
+        
+        **Behavior:**
+        - All instances are started in parallel, not sequentially
+        - Each instance is started independently
+        - Results are returned for each instance (success or failure)
+        - Instances that are already running will be marked as successful
+        
+        **Request Format:**
+        - Provide an array of instance IDs in the `instanceIds` field
+        - All instance IDs must exist in the system
+        
+        **Response:**
+        - Returns detailed results for each instance
+        - Includes total count, success count, and failed count
+        - Each result includes the instance ID, success status, running status, and any error messages
+        
+        **Use Cases:**
+        - Start multiple instances after server restart
+        - Batch operations for managing multiple cameras or streams
+        - Efficiently start a group of related instances
+        
+        **Note:** Starting multiple instances simultaneously may consume significant system resources. Monitor system performance when starting many instances at once.
+      operationId: batchStartInstances
+      tags:
+        - Instances
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - instanceIds
+              properties:
+                instanceIds:
+                  type: array
+                  items:
+                    type: string
+                  description: Array of instance IDs to start
+                  example: ["instance-1", "instance-2", "instance-3"]
+      responses:
+        '200':
+          description: Batch start operation completed
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  results:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        instanceId:
+                          type: string
+                        success:
+                          type: boolean
+                        status:
+                          type: string
+                        running:
+                          type: boolean
+                        error:
+                          type: string
+                  total:
+                    type: integer
+                  success:
+                    type: integer
+                  failed:
+                    type: integer
+                  message:
+                    type: string
+              example:
+                results:
+                  - instanceId: "instance-1"
+                    success: true
+                    status: "started"
+                    running: true
+                  - instanceId: "instance-2"
+                    success: false
+                    status: "failed"
+                    error: "Could not start instance. Check if instance exists and has a pipeline."
+                total: 2
+                success: 1
+                failed: 1
+                message: "Batch start operation completed"
+        '400':
+          description: Invalid request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+    options:
+      summary: CORS preflight for batch start
+      operationId: batchStartInstancesOptions
+      tags:
+        - Instances
+      responses:
+        '200':
+          description: CORS preflight response
+
+  /v1/core/instances/batch/stop:
+    post:
+      summary: Stop multiple instances concurrently
+      description: |
+        Stops multiple instances concurrently for faster batch operations. All operations run in parallel for optimal performance.
+        
+        **Behavior:**
+        - All instances are stopped in parallel, not sequentially
+        - Each instance is stopped independently
+        - Results are returned for each instance (success or failure)
+        - Instances that are already stopped will be marked as successful
+        
+        **Request Format:**
+        - Provide an array of instance IDs in the `instanceIds` field
+        - All instance IDs must exist in the system
+        
+        **Response:**
+        - Returns detailed results for each instance
+        - Includes total count, success count, and failed count
+        - Each result includes the instance ID, success status, running status, and any error messages
+        
+        **Use Cases:**
+        - Stop multiple instances for maintenance
+        - Batch operations for managing multiple cameras or streams
+        - Efficiently stop a group of related instances
+        
+        **Note:** Stopping multiple instances simultaneously will release system resources. This is useful for managing system load.
+      operationId: batchStopInstances
+      tags:
+        - Instances
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - instanceIds
+              properties:
+                instanceIds:
+                  type: array
+                  items:
+                    type: string
+                  description: Array of instance IDs to stop
+                  example: ["instance-1", "instance-2", "instance-3"]
+      responses:
+        '200':
+          description: Batch stop operation completed
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  results:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        instanceId:
+                          type: string
+                        success:
+                          type: boolean
+                        status:
+                          type: string
+                        running:
+                          type: boolean
+                        error:
+                          type: string
+                  total:
+                    type: integer
+                  success:
+                    type: integer
+                  failed:
+                    type: integer
+                  message:
+                    type: string
+              example:
+                results:
+                  - instanceId: "instance-1"
+                    success: true
+                    status: "stopped"
+                    running: false
+                  - instanceId: "instance-2"
+                    success: false
+                    status: "failed"
+                    error: "Could not stop instance. Check if instance exists."
+                total: 2
+                success: 1
+                failed: 1
+                message: "Batch stop operation completed"
+        '400':
+          description: Invalid request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+    options:
+      summary: CORS preflight for batch stop
+      operationId: batchStopInstancesOptions
+      tags:
+        - Instances
+      responses:
+        '200':
+          description: CORS preflight response
+
+  /v1/core/instances/batch/restart:
+    post:
+      summary: Restart multiple instances concurrently
+      description: Restarts multiple instances concurrently by stopping and then starting them. All operations run in parallel for optimal performance.
+      operationId: batchRestartInstances
+      tags:
+        - Instances
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - instanceIds
+              properties:
+                instanceIds:
+                  type: array
+                  items:
+                    type: string
+                  description: Array of instance IDs to restart
+                  example: ["instance-1", "instance-2", "instance-3"]
+      responses:
+        '200':
+          description: Batch restart operation completed
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  results:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        instanceId:
+                          type: string
+                        success:
+                          type: boolean
+                        status:
+                          type: string
+                        running:
+                          type: boolean
+                        error:
+                          type: string
+                  total:
+                    type: integer
+                  success:
+                    type: integer
+                  failed:
+                    type: integer
+                  message:
+                    type: string
+              example:
+                results:
+                  - instanceId: "instance-1"
+                    success: true
+                    status: "restarted"
+                    running: true
+                  - instanceId: "instance-2"
+                    success: false
+                    status: "failed"
+                    error: "Could not restart instance. Check if instance exists and has a pipeline."
+                total: 2
+                success: 1
+                failed: 1
+                message: "Batch restart operation completed"
+        '400':
+          description: Invalid request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+    options:
+      summary: CORS preflight for batch restart
+      operationId: batchRestartInstancesOptions
+      tags:
+        - Instances
+      responses:
+        '200':
+          description: CORS preflight response
+
+  /v1/core/groups:
+    get:
+      summary: List all groups
+      description: |
+        Returns a list of all groups with summary information including group name, description, instance count, and metadata.
+        
+        The response includes:
+        - Total count of groups
+        - Number of default groups
+        - Number of custom groups
+        - Summary information for each group (ID, name, description, instance count, etc.)
+        
+        This endpoint is useful for getting an overview of all groups in the system without fetching detailed information for each one.
+      operationId: listGroups
+      tags:
+        - Groups
+      responses:
+        '200':
+          description: List of groups
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  groups:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/GroupInfo'
+                  total:
+                    type: integer
+                    description: Total number of groups
+                  default:
+                    type: integer
+                    description: Number of default groups
+                  custom:
+                    type: integer
+                    description: Number of custom groups
+              example:
+                total: 2
+                default: 0
+                custom: 2
+                groups:
+                  - groupId: "cameras"
+                    groupName: "Security Cameras"
+                    description: "Group for security camera instances"
+                    instanceCount: 3
+                    isDefault: false
+                    readOnly: false
+                  - groupId: "test"
+                    groupName: "Test Group"
+                    description: "Group for testing"
+                    instanceCount: 1
+                    isDefault: false
+                    readOnly: false
+        '500':
+          description: Server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+    post:
+      summary: Create a new group
+      description: |
+        Creates a new group for organizing instances. Groups help organize and manage multiple instances together.
+        
+        **Group Properties:**
+        - **groupId** (required): Unique identifier for the group (alphanumeric, underscores, hyphens only)
+        - **groupName** (optional): Display name for the group (defaults to groupId if not provided)
+        - **description** (optional): Description of the group's purpose
+        
+        **Validation:**
+        - Group ID must be unique
+        - Group ID must match pattern: `^[A-Za-z0-9_-]+$`
+        - Group name must match pattern: `^[A-Za-z0-9 -_]+$`
+        
+        **Persistence:**
+        - Groups are automatically saved to storage
+        - Group files are stored in `/var/lib/edge_ai_api/groups` (configurable via `GROUPS_DIR` environment variable)
+        
+        **Returns:** The created group information including timestamps.
+      operationId: createGroup
+      tags:
+        - Groups
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateGroupRequest'
+            example:
+              groupId: "cameras"
+              groupName: "Security Cameras"
+              description: "Group for security camera instances"
+      responses:
+        '201':
+          description: Group created successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GroupInfo'
+        '400':
+          description: Bad request (validation failed or group already exists)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+    options:
+      summary: CORS preflight for groups
+      operationId: listGroupsOptions
+      tags:
+        - Groups
+      responses:
+        '200':
+          description: CORS preflight response
+
+  /v1/core/groups/{groupId}:
+    get:
+      summary: Get group details
+      description: |
+        Returns detailed information about a specific group including group metadata and list of instance IDs.
+        
+        The response includes:
+        - Group configuration (ID, name, description)
+        - Group metadata (isDefault, readOnly, timestamps)
+        - Instance count
+        - List of instance IDs in the group
+        
+        The group must exist. If the group is not found, a 404 error will be returned.
+      operationId: getGroup
+      tags:
+        - Groups
+      parameters:
+        - name: groupId
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Group ID
+      responses:
+        '200':
+          description: Group details
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/GroupInfo'
+                  - type: object
+                    properties:
+                      instanceIds:
+                        type: array
+                        items:
+                          type: string
+                        description: List of instance IDs in this group
+        '404':
+          description: Group not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+    put:
+      summary: Update a group
+      description: |
+        Updates an existing group's information. Only provided fields will be updated.
+        
+        **Updateable Fields:**
+        - **groupName**: Update the display name of the group
+        - **description**: Update the description of the group
+        
+        **Restrictions:**
+        - Group must exist
+        - Group must not be read-only
+        - Group ID cannot be changed
+        
+        **Behavior:**
+        - Only provided fields will be updated
+        - Other fields remain unchanged
+        - Updated timestamp is automatically set
+      operationId: updateGroup
+      tags:
+        - Groups
+      parameters:
+        - name: groupId
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Group ID
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateGroupRequest'
+            example:
+              groupName: "Updated Group Name"
+              description: "Updated description"
+      responses:
+        '200':
+          description: Group updated successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GroupInfo'
+        '400':
+          description: Bad request (validation failed or group is read-only)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: Group not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+    delete:
+      summary: Delete a group
+      description: |
+        Deletes a group from the system. This operation permanently removes the group.
+        
+        **Prerequisites:**
+        - Group must exist
+        - Group must not be a default group
+        - Group must not be read-only
+        - Group must have no instances (all instances must be removed or moved to other groups first)
+        
+        **Behavior:**
+        - Group configuration will be removed from memory
+        - Group file will be deleted from storage
+        - All resources associated with the group will be released
+        
+        **Note:** This operation cannot be undone. Once deleted, the group must be recreated using the create group endpoint.
+      operationId: deleteGroup
+      tags:
+        - Groups
+      parameters:
+        - name: groupId
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Group ID
+      responses:
+        '200':
+          description: Group deleted successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  message:
+                    type: string
+                  groupId:
+                    type: string
+        '400':
+          description: Failed to delete (group has instances, is default, or is read-only)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: Group not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+    options:
+      summary: CORS preflight for group
+      operationId: getGroupOptions
+      tags:
+        - Groups
+      responses:
+        '200':
+          description: CORS preflight response
+
+  /v1/core/groups/{groupId}/instances:
+    get:
+      summary: Get instances in a group
+      description: |
+        Returns a list of all instances that belong to a specific group.
+        
+        The response includes:
+        - Group ID
+        - List of instances with summary information (ID, display name, solution, running status)
+        - Total count of instances in the group
+        
+        **Use Cases:**
+        - View all instances in a specific group
+        - Monitor group status and performance
+        - Manage instances by group
+        
+        The group must exist. If the group is not found, a 404 error will be returned.
+      operationId: getGroupInstances
+      tags:
+        - Groups
+      parameters:
+        - name: groupId
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Group ID
+      responses:
+        '200':
+          description: List of instances in the group
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  groupId:
+                    type: string
+                    description: Group ID
+                  instances:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        instanceId:
+                          type: string
+                        displayName:
+                          type: string
+                        solutionId:
+                          type: string
+                        running:
+                          type: boolean
+                        loaded:
+                          type: boolean
+                  count:
+                    type: integer
+                    description: Number of instances in the group
+              example:
+                groupId: "cameras"
+                count: 2
+                instances:
+                  - instanceId: "abc-123"
+                    displayName: "Camera 1"
+                    solutionId: "face_detection"
+                    running: true
+                    loaded: true
+                  - instanceId: "def-456"
+                    displayName: "Camera 2"
+                    solutionId: "face_detection"
+                    running: false
+                    loaded: true
+        '404':
+          description: Group not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+    options:
+      summary: CORS preflight for group instances
+      operationId: getGroupInstancesOptions
+      tags:
+        - Groups
+      responses:
+        '200':
+          description: CORS preflight response
+
   /v1/core/instance:
     post:
       summary: Create a new AI instance
-      description: Creates and registers a new AI instance with the specified configuration. Returns the instance ID (UUID).
+      description: |
+        Creates and registers a new AI instance with the specified configuration. Returns the instance ID (UUID) that can be used to control the instance.
+        
+        **Configuration Options:**
+        - **Basic Settings:** name, group, solution, persistent mode
+        - **Performance:** frame rate limits, input pixel limits, input orientation
+        - **Detection:** detector mode, sensitivity levels, sensor modality
+        - **Processing Modes:** metadata mode, statistics mode, diagnostics mode, debug mode
+        - **Auto Management:** auto-start, auto-restart, blocking readahead queue
+        - **Solution Parameters:** RTSP_URL, MODEL_PATH, FILE_PATH, RTMP_URL, etc. (via additionalParams)
+        
+        **Solution Types:**
+        - `face_detection`: Face detection with RTSP input
+        - `face_detection_file`: Face detection with file input
+        - `object_detection`: Object detection (YOLO)
+        - `face_detection_rtmp`: Face detection with RTMP streaming
+        - Custom solutions registered via solution management endpoints
+        
+        **Persistence:**
+        - If `persistent: true`, the instance will be saved to a JSON file in the instances directory
+        - Persistent instances are automatically loaded when the server restarts
+        - Instance configuration files are stored in `/var/lib/edge_ai_api/instances` (configurable via `INSTANCES_DIR` environment variable)
+        
+        **Auto Start:**
+        - If `autoStart: true`, the instance will automatically start after creation
+        - The pipeline will be built and started immediately
+        
+        **Returns:** The created instance information including the generated UUID that can be used for subsequent operations.
       operationId: createInstance
       tags:
         - Instances
@@ -622,6 +1698,394 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
+    options:
+      summary: CORS preflight for create instance
+      operationId: createInstanceOptions
+      tags:
+        - Instances
+      responses:
+        '200':
+          description: CORS preflight response
+
+  /v1/core/instance/{instanceId}/input:
+    post:
+      summary: Set input source for an instance
+      description: |
+        Sets the input source configuration for an instance. Replaces the Input field in the Instance File according to the request.
+        
+        **Input Types:**
+        - **RTSP**: Uses `rtsp_src` node for RTSP streams
+        - **HLS**: Uses `hls_src` node for HLS streams
+        - **Manual**: Uses `v4l2_src` node for V4L2 devices
+        
+        The instance must exist and not be read-only. If the instance is currently running, it will be automatically restarted to apply the changes.
+      operationId: setInstanceInput
+      tags:
+        - Instances
+      parameters:
+        - name: instanceId
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Unique identifier of the instance (UUID)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SetInputRequest'
+            example:
+              type: "Manual"
+              uri: "http://example.com"
+      responses:
+        '204':
+          description: Input settings updated successfully
+        '400':
+          description: Bad request (invalid input or missing required fields)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: Instance not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+    options:
+      summary: CORS preflight for set input
+      operationId: setInstanceInputOptions
+      tags:
+        - Instances
+      responses:
+        '200':
+          description: CORS preflight response
+
+  /v1/core/instance/{instanceId}/config:
+    post:
+      summary: Set config value at a specific path
+      description: |
+        Sets a configuration value at the specified path. The path is a key in the configuration, and for nested structures, it will be nested keys separated by forward slashes "/".
+        
+        **Note:** This operation will overwrite the value at the given path.
+        
+        **Path Examples:**
+        - Simple path: `"DisplayName"` - Sets top-level DisplayName
+        - Nested path: `"Output/handlers/Mqtt"` - Sets Mqtt handler in Output.handlers
+        
+        **jsonValue Format:**
+        - For string values: `"\"my string\""` (escaped JSON string)
+        - For object values: `"{\"key\":\"value\"}"` (escaped JSON object)
+        
+        The instance must exist and not be read-only. If the instance is currently running, it will be automatically restarted to apply the changes.
+      operationId: setConfig
+      tags:
+        - Instances
+      parameters:
+        - name: instanceId
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Unique identifier of the instance (UUID)
+          example: "00000000-0000-0000-0000-000000000000"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SetConfigRequest'
+            examples:
+              stringValue:
+                summary: Set string value
+                value:
+                  path: "my/nested/path"
+                  jsonValue: "\"my string\""
+              objectValue:
+                summary: Set object value
+                value:
+                  path: "Output/handlers/Mqtt"
+                  jsonValue: "{\"uri\":\"mqtt://example.com:1883/events\"}"
+      responses:
+        '204':
+          description: Config value set successfully
+        '400':
+          description: Bad request (invalid input or missing required fields)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: Instance not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+    options:
+      summary: CORS preflight for set config
+      operationId: setConfigOptions
+      tags:
+        - Instances
+      responses:
+        '200':
+          description: CORS preflight response
+
+  /v1/core/solutions:
+    get:
+      summary: List all solutions
+      description: Returns a list of all available solutions with summary information including solution type and pipeline node count.
+      operationId: listSolutions
+      tags:
+        - Solutions
+      responses:
+        '200':
+          description: List of solutions
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  solutions:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/SolutionSummary'
+                  total:
+                    type: integer
+                    description: Total number of solutions
+                  default:
+                    type: integer
+                    description: Number of default solutions
+                  custom:
+                    type: integer
+                    description: Number of custom solutions
+              example:
+                total: 2
+                default: 1
+                custom: 1
+                solutions:
+                  - solutionId: "face_detection"
+                    solutionName: "Face Detection"
+                    solutionType: "face_detection"
+                    isDefault: true
+                    pipelineNodeCount: 3
+        '500':
+          description: Server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+    post:
+      summary: Create a new solution
+      description: Creates a new custom solution configuration. Custom solutions can be modified and deleted, unlike default solutions.
+      operationId: createSolution
+      tags:
+        - Solutions
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateSolutionRequest'
+            example:
+              solutionId: "custom_face_detection"
+              solutionName: "Custom Face Detection"
+              solutionType: "face_detection"
+              pipeline:
+                - nodeType: "rtsp_src"
+                  nodeName: "source_{instanceId}"
+                  parameters:
+                    url: "rtsp://example.com/stream"
+                - nodeType: "yunet_face_detector"
+                  nodeName: "detector_{instanceId}"
+                  parameters:
+                    model_path: "models/face/yunet.onnx"
+                - nodeType: "file_des"
+                  nodeName: "output_{instanceId}"
+                  parameters:
+                    output_path: "/tmp/output"
+              defaults:
+                RTSP_URL: "rtsp://example.com/stream"
+      responses:
+        '201':
+          description: Solution created successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SolutionConfig'
+        '400':
+          description: Bad request (validation failed)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '409':
+          description: Solution already exists
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+    options:
+      summary: CORS preflight for solutions
+      operationId: listSolutionsOptions
+      tags:
+        - Solutions
+      responses:
+        '200':
+          description: CORS preflight response
+
+  /v1/core/solutions/{solutionId}:
+    get:
+      summary: Get solution details
+      description: Returns detailed information about a specific solution including full pipeline configuration.
+      operationId: getSolution
+      tags:
+        - Solutions
+      parameters:
+        - name: solutionId
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Solution ID
+      responses:
+        '200':
+          description: Solution details
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SolutionConfig'
+        '404':
+          description: Solution not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+    put:
+      summary: Update a solution
+      description: Updates an existing custom solution configuration. Default solutions cannot be updated.
+      operationId: updateSolution
+      tags:
+        - Solutions
+      parameters:
+        - name: solutionId
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Solution ID
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateSolutionRequest'
+      responses:
+        '200':
+          description: Solution updated successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SolutionConfig'
+        '400':
+          description: Bad request (validation failed)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '403':
+          description: Cannot update default solution
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: Solution not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+    delete:
+      summary: Delete a solution
+      description: Deletes a custom solution. Default solutions cannot be deleted.
+      operationId: deleteSolution
+      tags:
+        - Solutions
+      parameters:
+        - name: solutionId
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Solution ID
+      responses:
+        '200':
+          description: Solution deleted successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                  solutionId:
+                    type: string
+        '403':
+          description: Cannot delete default solution
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: Solution not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+    options:
+      summary: CORS preflight for solution
+      operationId: getSolutionOptions
+      tags:
+        - Solutions
+      responses:
+        '200':
+          description: CORS preflight response
 
 components:
   schemas:
@@ -655,6 +2119,37 @@ components:
           type: string
           description: Service version
           example: "1.0.0"
+
+    StatusResponse:
+      type: object
+      required:
+        - total
+        - configured
+        - running
+        - stopped
+        - timestamp
+      properties:
+        total:
+          type: integer
+          description: Total number of configured instances
+          example: 5
+        configured:
+          type: integer
+          description: Number of configured instances (same as total)
+          example: 5
+        running:
+          type: integer
+          description: Number of instances currently running
+          example: 3
+        stopped:
+          type: integer
+          description: Number of instances currently stopped
+          example: 2
+        timestamp:
+          type: string
+          format: date-time
+          description: Current timestamp in ISO 8601 format
+          example: "2024-01-01T00:00:00.000Z"
 
     VersionResponse:
       type: object
@@ -696,6 +2191,312 @@ components:
         message:
           type: string
           description: Detailed error message
+
+    SetInputRequest:
+      type: object
+      required:
+        - type
+        - uri
+      properties:
+        type:
+          type: string
+          description: Type of input source
+          enum: [RTSP, HLS, Manual]
+          example: "Manual"
+        uri:
+          type: string
+          format: uri
+          description: URI of the input source (must be valid)
+          example: "http://example.com"
+
+    SetConfigRequest:
+      type: object
+      required:
+        - path
+        - jsonValue
+      properties:
+        path:
+          type: string
+          description: |
+            The key for which the config value is to be updated. For nested structures, use forward slashes "/" as separators.
+            Examples: "DisplayName", "Output/handlers/Mqtt", "Detector/conf_threshold"
+          example: "Output/handlers/Mqtt"
+        jsonValue:
+          type: string
+          description: |
+            A string containing a JSON value or object. Ensure proper escaping for strings or objects.
+            - For string values: "\"my string\"" (escaped JSON string)
+            - For object values: "{\"key\":\"value\"}" (escaped JSON object)
+          example: "{\"uri\":\"mqtt://example.com:1883/events\"}"
+
+    SystemInfoResponse:
+      type: object
+      description: System hardware information
+      properties:
+        cpu:
+          type: object
+          properties:
+            vendor:
+              type: string
+              example: "GenuineIntel"
+            model:
+              type: string
+              example: "Intel(R) Core(TM) i7-10700K CPU @ 3.80GHz"
+            physical_cores:
+              type: integer
+              example: 8
+            logical_cores:
+              type: integer
+              example: 16
+            max_frequency:
+              type: integer
+              description: Maximum frequency in MHz
+              example: 3792
+            regular_frequency:
+              type: integer
+              description: Regular frequency in MHz
+              example: 3792
+            min_frequency:
+              type: integer
+              description: Minimum frequency in MHz (-1 if not available)
+              example: -1
+            current_frequency:
+              type: integer
+              description: Current frequency in MHz (-1 if not available)
+              example: 3792
+            cache_size:
+              type: integer
+              format: int64
+              description: Cache size in bytes
+              example: 16777216
+        ram:
+          type: object
+          properties:
+            vendor:
+              type: string
+              example: "Corsair"
+            model:
+              type: string
+              example: "CMK32GX4M2Z3600C18"
+            name:
+              type: string
+              example: "Physical Memory"
+            serial_number:
+              type: string
+              example: "N/A"
+            size_mib:
+              type: integer
+              format: int64
+              description: Total size in MiB
+              example: 65437
+            free_mib:
+              type: integer
+              format: int64
+              description: Free memory in MiB
+              example: 54405
+            available_mib:
+              type: integer
+              format: int64
+              description: Available memory in MiB
+              example: 54405
+        gpu:
+          type: array
+          items:
+            type: object
+            properties:
+              vendor:
+                type: string
+                example: "NVIDIA"
+              model:
+                type: string
+                example: "NVIDIA GeForce RTX 3070 Ti"
+              driver_version:
+                type: string
+                example: "31.0.15.2698"
+              memory_mib:
+                type: integer
+                format: int64
+                description: Memory size in MiB
+                example: 8190
+              min_frequency:
+                type: integer
+                example: -1
+              current_frequency:
+                type: integer
+                description: Current frequency in MHz
+                example: 0
+              max_frequency:
+                type: integer
+                example: -1
+        disk:
+          type: array
+          items:
+            type: object
+            properties:
+              vendor:
+                type: string
+                example: "(Standard disk drives)"
+              model:
+                type: string
+                example: "WD_BLACK SN850 Heatsink 1TB"
+              serial_number:
+                type: string
+                example: "***"
+              size_bytes:
+                type: integer
+                format: int64
+                description: Total size in bytes
+                example: 1000202273280
+              free_size_bytes:
+                type: integer
+                format: int64
+                description: Free size in bytes
+                example: 500000000000
+              volumes:
+                type: array
+                items:
+                  type: string
+                description: List of volume/partition names
+        mainboard:
+          type: object
+          properties:
+            vendor:
+              type: string
+              example: "ASUSTeK COMPUTER INC."
+            name:
+              type: string
+              example: "PRIME Z490-A"
+            version:
+              type: string
+              example: "Rev 1.xx"
+            serial_number:
+              type: string
+              example: "N/A"
+        os:
+          type: object
+          properties:
+            name:
+              type: string
+              example: "Ubuntu 22.04 LTS"
+            short_name:
+              type: string
+              example: "Linux"
+            version:
+              type: string
+              example: "22.04"
+            kernel:
+              type: string
+              example: "5.15.0-72-generic"
+            architecture:
+              type: string
+              example: "64 bit"
+            endianess:
+              type: string
+              example: "little endian"
+        battery:
+          type: array
+          description: Battery information (empty array if no batteries)
+          items:
+            type: object
+            properties:
+              vendor:
+                type: string
+              model:
+                type: string
+              serial_number:
+                type: string
+              technology:
+                type: string
+              capacity_mwh:
+                type: integer
+                format: int64
+                description: Capacity in mWh
+              charging:
+                type: boolean
+                description: Whether battery is charging
+
+    SystemStatusResponse:
+      type: object
+      description: Current system status
+      properties:
+        cpu:
+          type: object
+          properties:
+            usage_percent:
+              type: number
+              format: double
+              description: CPU usage percentage (0-100)
+              example: 25.5
+            current_frequency_mhz:
+              type: integer
+              description: Current CPU frequency in MHz (-1 if not available)
+              example: 3792
+            temperature_celsius:
+              type: number
+              format: double
+              description: CPU temperature in Celsius (optional, -1 if not available)
+              example: 45.5
+        ram:
+          type: object
+          properties:
+            total_mib:
+              type: integer
+              format: int64
+              description: Total RAM in MiB
+              example: 65437
+            used_mib:
+              type: integer
+              format: int64
+              description: Used RAM in MiB
+              example: 11032
+            free_mib:
+              type: integer
+              format: int64
+              description: Free RAM in MiB
+              example: 54405
+            available_mib:
+              type: integer
+              format: int64
+              description: Available RAM in MiB
+              example: 54405
+            usage_percent:
+              type: number
+              format: double
+              description: RAM usage percentage (0-100)
+              example: 16.85
+            cached_mib:
+              type: integer
+              format: int64
+              description: Cached memory in MiB (optional)
+              example: 5000
+            buffers_mib:
+              type: integer
+              format: int64
+              description: Buffers memory in MiB (optional)
+              example: 1000
+        load_average:
+          type: object
+          properties:
+            "1min":
+              type: number
+              format: double
+              description: Load average for 1 minute
+              example: 0.75
+            "5min":
+              type: number
+              format: double
+              description: Load average for 5 minutes
+              example: 0.82
+            "15min":
+              type: number
+              format: double
+              description: Load average for 15 minutes
+              example: 0.88
+        uptime_seconds:
+          type: integer
+          format: int64
+          description: System uptime in seconds
+          example: 86400
 
     CreateInstanceRequest:
       type: object
@@ -1035,11 +2836,466 @@ components:
               type: string
               description: Originator address
 
+    InstanceOutputResponse:
+      type: object
+      description: Real-time output and processing results for an instance
+      required:
+        - timestamp
+        - instanceId
+        - displayName
+        - running
+        - loaded
+        - metrics
+        - input
+        - output
+        - status
+      properties:
+        timestamp:
+          type: string
+          description: Timestamp when the output information was retrieved (real-time)
+          example: "2025-01-15 14:30:25.123"
+        instanceId:
+          type: string
+          description: Unique instance identifier (UUID)
+          example: "abc-123-def"
+        displayName:
+          type: string
+          description: Display name of the instance
+          example: "face_detection_file_source"
+        solutionId:
+          type: string
+          description: Solution ID
+          example: "face_detection"
+        solutionName:
+          type: string
+          description: Solution name
+          example: "Face Detection"
+        running:
+          type: boolean
+          description: Whether instance pipeline is running
+          example: true
+        loaded:
+          type: boolean
+          description: Whether instance is loaded
+          example: true
+        metrics:
+          type: object
+          description: Processing metrics
+          required:
+            - fps
+          properties:
+            fps:
+              type: number
+              format: double
+              description: Current frames per second
+              example: 25.50
+            frameRateLimit:
+              type: integer
+              description: Frame rate limit (0 = no limit)
+              example: 0
+        input:
+          type: object
+          description: Input source information
+          required:
+            - type
+          properties:
+            type:
+              type: string
+              enum: [FILE, RTSP, UNKNOWN]
+              description: Type of input source
+              example: "FILE"
+            path:
+              type: string
+              description: File path (if type is FILE)
+              example: "/path/to/video.mp4"
+            url:
+              type: string
+              description: RTSP URL (if type is RTSP)
+              example: "rtsp://example.com:8554/live/stream"
+        output:
+          type: object
+          description: Output information
+          required:
+            - type
+          properties:
+            type:
+              type: string
+              enum: [FILE, RTMP_STREAM]
+              description: Type of output
+              example: "FILE"
+            rtmpUrl:
+              type: string
+              description: RTMP URL (if type is RTMP_STREAM)
+              example: "rtmp://localhost:1935/live/face_stream"
+            rtspUrl:
+              type: string
+              description: RTSP URL for viewing (if type is RTMP_STREAM and available)
+              example: "rtsp://localhost:8554/live/face_stream_0"
+            files:
+              type: object
+              description: File output information (if type is FILE)
+              properties:
+                exists:
+                  type: boolean
+                  description: Whether output directory exists
+                  example: true
+                directory:
+                  type: string
+                  description: Output directory path
+                  example: "./output/abc-123-def"
+                fileCount:
+                  type: integer
+                  description: Total number of output files
+                  example: 15
+                totalSizeBytes:
+                  type: integer
+                  format: int64
+                  description: Total size of all output files in bytes
+                  example: 15728640
+                totalSize:
+                  type: string
+                  description: Total size formatted as human-readable string
+                  example: "15 MB"
+                latestFile:
+                  type: string
+                  description: Name of the most recently created file
+                  example: "face_detection_20250115_143025.mp4"
+                latestFileTime:
+                  type: string
+                  description: Modification time of the latest file
+                  example: "2025-01-15 14:30:25"
+                recentFileCount:
+                  type: integer
+                  description: Number of files created in the last minute
+                  example: 3
+                isActive:
+                  type: boolean
+                  description: Whether instance is actively creating new files (files created in last minute)
+                  example: true
+                expectedPaths:
+                  type: array
+                  items:
+                    type: string
+                  description: Expected output directory paths (if directory doesn't exist)
+                  example: ["./output/abc-123-def", "./build/output/abc-123-def"]
+                error:
+                  type: string
+                  description: Error message if directory reading failed
+                  example: "Error reading directory: Permission denied"
+        detection:
+          type: object
+          description: Detection settings
+          properties:
+            sensitivity:
+              type: string
+              description: Detection sensitivity level
+              example: "Low"
+            mode:
+              type: string
+              description: Detector mode
+              example: "SmartDetection"
+            movementSensitivity:
+              type: string
+              description: Movement sensitivity level
+              example: "Low"
+            sensorModality:
+              type: string
+              description: Sensor modality
+              example: "RGB"
+        modes:
+          type: object
+          description: Processing modes
+          properties:
+            statisticsMode:
+              type: boolean
+              description: Statistics mode enabled
+              example: true
+            metadataMode:
+              type: boolean
+              description: Metadata mode enabled
+              example: false
+            debugMode:
+              type: boolean
+              description: Debug mode enabled
+              example: true
+            diagnosticsMode:
+              type: boolean
+              description: Diagnostics mode enabled
+              example: false
+        status:
+          type: object
+          description: Status summary
+          required:
+            - running
+            - processing
+            - message
+          properties:
+            running:
+              type: boolean
+              description: Whether instance is running
+              example: true
+            processing:
+              type: boolean
+              description: Whether instance is processing frames (running && fps > 0)
+              example: true
+            message:
+              type: string
+              description: Human-readable status message
+              example: "Instance is running and processing frames"
+
+    SolutionSummary:
+      type: object
+      properties:
+        solutionId:
+          type: string
+          description: Unique solution identifier
+          example: "face_detection"
+        solutionName:
+          type: string
+          description: Display name of the solution
+          example: "Face Detection"
+        solutionType:
+          type: string
+          description: Type of solution
+          example: "face_detection"
+        isDefault:
+          type: boolean
+          description: Whether this is a default solution (cannot be deleted)
+          example: true
+        pipelineNodeCount:
+          type: integer
+          description: Number of nodes in the pipeline
+          example: 3
+
+    SolutionConfig:
+      type: object
+      required:
+        - solutionId
+        - solutionName
+        - solutionType
+        - pipeline
+      properties:
+        solutionId:
+          type: string
+          description: Unique solution identifier
+          example: "face_detection"
+        solutionName:
+          type: string
+          description: Display name of the solution
+          example: "Face Detection"
+        solutionType:
+          type: string
+          description: Type of solution
+          example: "face_detection"
+        isDefault:
+          type: boolean
+          description: Whether this is a default solution
+          example: false
+        pipeline:
+          type: array
+          description: Pipeline node configurations
+          items:
+            type: object
+            required:
+              - nodeType
+              - nodeName
+            properties:
+              nodeType:
+                type: string
+                description: Type of node (e.g., "rtsp_src", "yunet_face_detector", "file_des")
+                example: "rtsp_src"
+              nodeName:
+                type: string
+                description: Node name template (may contain {instanceId} placeholder)
+                example: "source_{instanceId}"
+              parameters:
+                type: object
+                description: Node-specific parameters
+                additionalProperties:
+                  type: string
+                example:
+                  url: "rtsp://example.com/stream"
+        defaults:
+          type: object
+          description: Default parameter values
+          additionalProperties:
+            type: string
+          example:
+            RTSP_URL: "rtsp://example.com/stream"
+
+    CreateSolutionRequest:
+      type: object
+      required:
+        - solutionId
+        - solutionName
+        - solutionType
+        - pipeline
+      properties:
+        solutionId:
+          type: string
+          description: Unique solution identifier (alphanumeric, underscore, hyphen only)
+          pattern: "^[A-Za-z0-9_-]+$"
+          example: "custom_face_detection"
+        solutionName:
+          type: string
+          description: Display name of the solution
+          example: "Custom Face Detection"
+        solutionType:
+          type: string
+          description: Type of solution
+          example: "face_detection"
+        pipeline:
+          type: array
+          description: Pipeline node configurations
+          items:
+            type: object
+            required:
+              - nodeType
+              - nodeName
+            properties:
+              nodeType:
+                type: string
+                description: Type of node
+                example: "rtsp_src"
+              nodeName:
+                type: string
+                description: Node name template
+                example: "source_{instanceId}"
+              parameters:
+                type: object
+                description: Node-specific parameters
+                additionalProperties:
+                  type: string
+        defaults:
+          type: object
+          description: Default parameter values
+          additionalProperties:
+            type: string
+
+    UpdateSolutionRequest:
+      type: object
+      description: Request body for updating a solution. All fields except solutionId are optional.
+      properties:
+        solutionName:
+          type: string
+          description: Display name of the solution
+          example: "Updated Solution Name"
+        solutionType:
+          type: string
+          description: Type of solution
+          example: "face_detection"
+        pipeline:
+          type: array
+          description: Pipeline node configurations
+          items:
+            type: object
+            required:
+              - nodeType
+              - nodeName
+            properties:
+              nodeType:
+                type: string
+                description: Type of node
+              nodeName:
+                type: string
+                description: Node name template
+              parameters:
+                type: object
+                description: Node-specific parameters
+                additionalProperties:
+                  type: string
+        defaults:
+          type: object
+          description: Default parameter values
+          additionalProperties:
+            type: string
+
+    GroupInfo:
+      type: object
+      required:
+        - groupId
+        - groupName
+      properties:
+        groupId:
+          type: string
+          description: Unique group identifier
+          pattern: "^[A-Za-z0-9_-]+$"
+          example: "cameras"
+        groupName:
+          type: string
+          description: Display name of the group
+          pattern: "^[A-Za-z0-9 -_]+$"
+          example: "Security Cameras"
+        description:
+          type: string
+          description: Description of the group
+          example: "Group for security camera instances"
+        isDefault:
+          type: boolean
+          description: Whether this is a default group (cannot be deleted)
+          example: false
+        readOnly:
+          type: boolean
+          description: Whether this group is read-only (cannot be modified)
+          example: false
+        instanceCount:
+          type: integer
+          description: Number of instances in this group
+          example: 3
+        createdAt:
+          type: string
+          format: date-time
+          description: Creation timestamp
+          example: "2024-01-01T00:00:00.000Z"
+        updatedAt:
+          type: string
+          format: date-time
+          description: Last update timestamp
+          example: "2024-01-01T00:00:00.000Z"
+
+    CreateGroupRequest:
+      type: object
+      required:
+        - groupId
+      properties:
+        groupId:
+          type: string
+          description: Unique group identifier (alphanumeric, underscore, hyphen only)
+          pattern: "^[A-Za-z0-9_-]+$"
+          example: "cameras"
+        groupName:
+          type: string
+          description: Display name of the group (optional, defaults to groupId)
+          pattern: "^[A-Za-z0-9 -_]+$"
+          example: "Security Cameras"
+        description:
+          type: string
+          description: Description of the group
+          example: "Group for security camera instances"
+
+    UpdateGroupRequest:
+      type: object
+      description: Request body for updating a group. All fields are optional.
+      properties:
+        groupName:
+          type: string
+          description: Display name of the group
+          pattern: "^[A-Za-z0-9 -_]+$"
+          example: "Updated Group Name"
+        description:
+          type: string
+          description: Description of the group
+          example: "Updated description"
+
 tags:
   - name: Core
     description: Core API endpoints for health and version information
   - name: Instances
     description: AI instance management endpoints (create, list, start, stop, delete)
+  - name: Solutions
+    description: Solution configuration management endpoints (create, list, update, delete)
+  - name: Groups
+    description: Group management endpoints for organizing instances (create, list, update, delete)
   - name: Models
     description: Model file management endpoints
 
