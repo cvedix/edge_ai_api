@@ -11,6 +11,8 @@
 #include <mutex>
 #include <vector>
 #include <memory>
+#include <atomic>
+#include <thread>
 
 // Forward declarations
 namespace cvedix_nodes {
@@ -135,6 +137,11 @@ private:
     std::unordered_map<std::string, InstanceInfo> instances_;
     std::unordered_map<std::string, std::vector<std::shared_ptr<cvedix_nodes::cvedix_node>>> pipelines_;
     
+    // Thread management for logging threads (prevent memory leaks from detached threads)
+    std::unordered_map<std::string, std::atomic<bool>> logging_thread_stop_flags_;
+    std::unordered_map<std::string, std::thread> logging_threads_;
+    mutable std::mutex thread_mutex_; // Separate mutex for thread management to avoid deadlock
+    
     /**
      * @brief Create InstanceInfo from request
      */
@@ -177,5 +184,17 @@ private:
      * @param instanceId Instance ID
      */
     void logProcessingResults(const std::string& instanceId) const;
+    
+    /**
+     * @brief Stop and cleanup logging thread for an instance
+     * @param instanceId Instance ID
+     */
+    void stopLoggingThread(const std::string& instanceId);
+    
+    /**
+     * @brief Start logging thread for an instance (if needed)
+     * @param instanceId Instance ID
+     */
+    void startLoggingThread(const std::string& instanceId);
 };
 
