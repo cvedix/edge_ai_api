@@ -154,31 +154,8 @@ std::string InstanceRegistry::createInstance(const CreateInstanceRequest& req) {
                         std::cerr << "[InstanceRegistry] Instance does not have RTMP output - enabling processing result logging" << std::endl;
                         logProcessingResults(instanceId);
                         
-                        // Start periodic logging in a separate thread (non-blocking)
-                        std::thread([this, instanceId]() {
-                            while (true) {
-                                // Wait 10 seconds between logs
-                                std::this_thread::sleep_for(std::chrono::seconds(10));
-                                
-                                // Check if instance still exists and is running
-                                {
-                                    std::lock_guard<std::mutex> lock(mutex_);
-                                    auto instanceIt = instances_.find(instanceId);
-                                    if (instanceIt == instances_.end() || !instanceIt->second.running) {
-                                        // Instance deleted or stopped, exit logging thread
-                                        break;
-                                    }
-                                }
-                                
-                                // Log processing results
-                                if (!hasRTMPOutput(instanceId)) {
-                                    logProcessingResults(instanceId);
-                                } else {
-                                    // Instance now has RTMP output, stop logging
-                                    break;
-                                }
-                            }
-                        }).detach(); // Detach thread so it runs independently
+                        // Start periodic logging in a separate thread (managed, not detached)
+                        startLoggingThread(instanceId);
                     }
                 } else {
                     std::cerr << "[InstanceRegistry] ✗ Failed to start pipeline for instance " 
@@ -254,6 +231,9 @@ bool InstanceRegistry::deleteInstance(const std::string& instanceId) {
             // Continue with deletion anyway
         }
     }
+    
+    // Stop logging thread if exists
+    stopLoggingThread(instanceId);
     
     // Delete from storage (doesn't need lock)
     if (isPersistent) {
@@ -497,31 +477,8 @@ bool InstanceRegistry::startInstance(const std::string& instanceId, bool skipAut
             std::cerr << "[InstanceRegistry] Instance does not have RTMP output - enabling processing result logging" << std::endl;
             logProcessingResults(instanceId);
             
-            // Start periodic logging in a separate thread (non-blocking)
-            std::thread([this, instanceId]() {
-                while (true) {
-                    // Wait 10 seconds between logs
-                    std::this_thread::sleep_for(std::chrono::seconds(10));
-                    
-                    // Check if instance still exists and is running
-                    {
-                        std::lock_guard<std::mutex> lock(mutex_);
-                        auto instanceIt = instances_.find(instanceId);
-                        if (instanceIt == instances_.end() || !instanceIt->second.running) {
-                            // Instance deleted or stopped, exit logging thread
-                            break;
-                        }
-                    }
-                    
-                    // Log processing results
-                    if (!hasRTMPOutput(instanceId)) {
-                        logProcessingResults(instanceId);
-                    } else {
-                        // Instance now has RTMP output, stop logging
-                        break;
-                    }
-                }
-            }).detach(); // Detach thread so it runs independently
+            // Start periodic logging in a separate thread (managed, not detached)
+            startLoggingThread(instanceId);
         }
     }
     
@@ -603,6 +560,9 @@ bool InstanceRegistry::stopInstance(const std::string& instanceId) {
     } catch (...) {
         std::cerr << "[InstanceRegistry] Warning: Exception clearing pipeline copy (unexpected)" << std::endl;
     }
+    
+    // Stop logging thread if exists
+    stopLoggingThread(instanceId);
     
     std::cerr << "[InstanceRegistry] ✓ Instance " << instanceId << " stopped successfully" << std::endl;
     std::cerr << "[InstanceRegistry] NOTE: All nodes have been destroyed. Pipeline will be rebuilt from scratch when you start this instance again" << std::endl;
@@ -1817,5 +1777,113 @@ bool InstanceRegistry::updateInstanceFromConfig(const std::string& instanceId, c
     
     std::cerr << "[InstanceRegistry] ========================================" << std::endl;
     return true;
+}
+
+void InstanceRegistry::startLoggingThread(const std::string& instanceId) {
+    // Stop existing thread if any
+    stopLoggingThread(instanceId);
+    
+    // Create stop flag
+    {
+        std::lock_guard<std::mutex> lock(thread_mutex_);
+        logging_thread_stop_flags_.emplace(instanceId, false);
+    }
+    
+    // Start new logging thread
+    std::thread loggingThread([this, instanceId]() {
+        while (true) {
+            // Check stop flag first (before sleep to allow quick exit)
+            {
+                std::lock_guard<std::mutex> lock(thread_mutex_);
+                auto flagIt = logging_thread_stop_flags_.find(instanceId);
+                if (flagIt == logging_thread_stop_flags_.end() || flagIt->second.load()) {
+                    // Thread should stop
+                    break;
+                }
+            }
+            
+            // Wait 10 seconds between logs (but check flag periodically)
+            for (int i = 0; i < 100; ++i) { // Check every 100ms for 10 seconds
+                std::this_thread::sleep_for(std::chrono::milliseconds(100));
+                
+                // Check stop flag
+                {
+                    std::lock_guard<std::mutex> lock(thread_mutex_);
+                    auto flagIt = logging_thread_stop_flags_.find(instanceId);
+                    if (flagIt == logging_thread_stop_flags_.end() || flagIt->second.load()) {
+                        return; // Exit thread
+                    }
+                }
+                
+                // Check if instance still exists and is running
+                {
+                    std::lock_guard<std::mutex> lock(mutex_);
+                    auto instanceIt = instances_.find(instanceId);
+                    if (instanceIt == instances_.end() || !instanceIt->second.running) {
+                        // Instance deleted or stopped, exit logging thread
+                        return;
+                    }
+                }
+            }
+            
+            // Log processing results if instance still exists and has no RTMP output
+            {
+                std::lock_guard<std::mutex> lock(mutex_);
+                auto instanceIt = instances_.find(instanceId);
+                if (instanceIt == instances_.end() || !instanceIt->second.running) {
+                    // Instance deleted or stopped, exit logging thread
+                    break;
+                }
+                
+                // Check if instance now has RTMP output
+                if (hasRTMPOutput(instanceId)) {
+                    // Instance now has RTMP output, stop logging
+                    break;
+                }
+            }
+            
+            // Log processing results
+            logProcessingResults(instanceId);
+        }
+    });
+    
+    // Store thread handle
+    {
+        std::lock_guard<std::mutex> lock(thread_mutex_);
+        logging_threads_[instanceId] = std::move(loggingThread);
+    }
+}
+
+void InstanceRegistry::stopLoggingThread(const std::string& instanceId) {
+    std::unique_lock<std::mutex> lock(thread_mutex_);
+    
+    // Set stop flag
+    auto flagIt = logging_thread_stop_flags_.find(instanceId);
+    if (flagIt != logging_thread_stop_flags_.end()) {
+        flagIt->second.store(true);
+    }
+    
+    // Get thread handle and release lock before joining to avoid deadlock
+    std::thread threadToJoin;
+    auto threadIt = logging_threads_.find(instanceId);
+    if (threadIt != logging_threads_.end()) {
+        if (threadIt->second.joinable()) {
+            threadToJoin = std::move(threadIt->second);
+        }
+        logging_threads_.erase(threadIt);
+    }
+    
+    // Remove stop flag
+    if (flagIt != logging_thread_stop_flags_.end()) {
+        logging_thread_stop_flags_.erase(flagIt);
+    }
+    
+    // Release lock before joining to avoid deadlock
+    lock.unlock();
+    
+    // Join thread outside of lock
+    if (threadToJoin.joinable()) {
+        threadToJoin.join();
+    }
 }
 
