@@ -1769,6 +1769,63 @@ paths:
           description: CORS preflight response
 
   /v1/core/instance/{instanceId}/config:
+    get:
+      summary: Get instance configuration
+      description: |
+        Returns the configuration of an instance. This endpoint provides the configuration settings of the instance, which are different from runtime state. Configuration includes settings like AutoRestart, AutoStart, Detector settings, Input configuration, etc.
+        
+        **Note:** This returns the configuration format, not the runtime state. For runtime state information, use the instance details endpoint.
+      operationId: getConfig
+      tags:
+        - Instances
+      parameters:
+        - name: instanceId
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Unique identifier of the instance (UUID)
+          example: "291a85b8-d4c0-5765-dcb2-48c9b51f48d0"
+      responses:
+        '200':
+          description: Instance configuration
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/InstanceConfig'
+              example:
+                AutoRestart: false
+                AutoStart: false
+                Detector:
+                  preset_values:
+                    MosaicInference:
+                      Detector/conf_threshold: 0.7
+                DetectorRegions: {}
+                DisplayName: "Test Instance"
+                Input:
+                  match_fps: true
+                  media_format:
+                    color_format: 0
+                    default_format: true
+                    height: 0
+                    is_software: false
+                    name: "Same as Source"
+                  media_type: "Images"
+                  output_fps: 8
+                  uri: "https://some_uri"
+                InstanceId: "291a85b8-d4c0-5765-dcb2-48c9b51f48d0"
+        '404':
+          description: Instance not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
     post:
       summary: Set config value at a specific path
       description: |
@@ -2208,6 +2265,86 @@ components:
           format: uri
           description: URI of the input source (must be valid)
           example: "http://example.com"
+
+    InstanceConfig:
+      type: object
+      description: Instance configuration (config format, not runtime state)
+      properties:
+        InstanceId:
+          type: string
+          description: Unique identifier of the instance (UUID)
+          example: "291a85b8-d4c0-5765-dcb2-48c9b51f48d0"
+        DisplayName:
+          type: string
+          description: Display name of the instance
+          example: "Test Instance"
+        AutoStart:
+          type: boolean
+          description: Whether the instance should automatically start on system boot
+          example: false
+        AutoRestart:
+          type: boolean
+          description: Whether the instance should automatically restart on failure
+          example: false
+        Detector:
+          type: object
+          description: Detector configuration
+          properties:
+            preset_values:
+              type: object
+              description: Preset values for different detector modes
+              additionalProperties:
+                type: object
+          example:
+            preset_values:
+              MosaicInference:
+                Detector/conf_threshold: 0.7
+        DetectorRegions:
+          type: object
+          description: Detector regions configuration
+          additionalProperties: true
+        Input:
+          type: object
+          description: Input source configuration
+          properties:
+            match_fps:
+              type: boolean
+              description: Whether to match FPS
+            media_format:
+              type: object
+              properties:
+                color_format:
+                  type: integer
+                default_format:
+                  type: boolean
+                height:
+                  type: integer
+                is_software:
+                  type: boolean
+                name:
+                  type: string
+            media_type:
+              type: string
+              description: Type of media input (e.g., "Images", "IP Camera", "File")
+            output_fps:
+              type: integer
+              description: Output FPS
+            uri:
+              type: string
+              description: URI of the input source
+          example:
+            match_fps: true
+            media_format:
+              color_format: 0
+              default_format: true
+              height: 0
+              is_software: false
+              name: "Same as Source"
+            media_type: "Images"
+            output_fps: 8
+            uri: "https://some_uri"
+      required:
+        - InstanceId
 
     SetConfigRequest:
       type: object

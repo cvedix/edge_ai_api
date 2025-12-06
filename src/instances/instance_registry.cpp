@@ -1887,3 +1887,25 @@ void InstanceRegistry::stopLoggingThread(const std::string& instanceId) {
     }
 }
 
+Json::Value InstanceRegistry::getInstanceConfig(const std::string& instanceId) const {
+    std::lock_guard<std::mutex> lock(mutex_);
+    
+    auto it = instances_.find(instanceId);
+    if (it == instances_.end()) {
+        return Json::Value(Json::objectValue); // Return empty object if not found
+    }
+    
+    const InstanceInfo& info = it->second;
+    std::string error;
+    Json::Value config = instance_storage_.instanceInfoToConfigJson(info, &error);
+    
+    if (!error.empty()) {
+        // Log error but still return config (might be partial)
+        if (isApiLoggingEnabled()) {
+            PLOG_WARNING << "[InstanceRegistry] Error converting instance to config: " << error;
+        }
+    }
+    
+    return config;
+}
+
