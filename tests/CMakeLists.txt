@@ -27,6 +27,7 @@ set(TEST_SOURCES
     test_instance_storage.cpp
     test_instance_update.cpp
     test_instance_status_summary.cpp
+    test_instance_get_config.cpp
     test_solution_handler.cpp
     test_main.cpp
 )

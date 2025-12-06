@@ -128,6 +128,13 @@ public:
      */
     std::vector<std::shared_ptr<cvedix_nodes::cvedix_node>> getSourceNodesFromRunningInstances() const;
     
+    /**
+     * @brief Get instance config as JSON (config format, not state)
+     * @param instanceId Instance ID
+     * @return JSON config if instance exists, empty JSON otherwise
+     */
+    Json::Value getInstanceConfig(const std::string& instanceId) const;
+    
 private:
     SolutionRegistry& solution_registry_;
     PipelineBuilder& pipeline_builder_;

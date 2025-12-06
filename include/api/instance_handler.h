@@ -26,6 +26,7 @@ using namespace drogon;
  * - POST /v1/core/instances/batch/restart - Restart multiple instances concurrently
  * - GET /v1/core/instances/{instanceId}/output - Get instance output/processing results
  * - POST /v1/core/instance/{instanceId}/input - Set input source for an instance
+ * - GET /v1/core/instance/{instanceId}/config - Get instance configuration
  * - POST /v1/core/instance/{instanceId}/config - Set config value at a specific path
  */
 class InstanceHandler : public drogon::HttpController<InstanceHandler> {
@@ -44,6 +45,7 @@ public:
         ADD_METHOD_TO(InstanceHandler::batchStopInstances, "/v1/core/instances/batch/stop", Post);
         ADD_METHOD_TO(InstanceHandler::batchRestartInstances, "/v1/core/instances/batch/restart", Post);
         ADD_METHOD_TO(InstanceHandler::setInstanceInput, "/v1/core/instance/{instanceId}/input", Post);
+        ADD_METHOD_TO(InstanceHandler::getConfig, "/v1/core/instance/{instanceId}/config", Get);
         ADD_METHOD_TO(InstanceHandler::setConfig, "/v1/core/instance/{instanceId}/config", Post);
         ADD_METHOD_TO(InstanceHandler::handleOptions, "/v1/core/instances", Options);
         ADD_METHOD_TO(InstanceHandler::handleOptions, "/v1/core/instances/{instanceId}", Options);
@@ -149,6 +151,13 @@ public:
      */
     void setInstanceInput(const HttpRequestPtr &req,
                         std::function<void(const HttpResponsePtr &)> &&callback);
+    
+    /**
+     * @brief Handle GET /v1/core/instance/{instanceId}/config
+     * Gets instance configuration (config format, not runtime state)
+     */
+    void getConfig(const HttpRequestPtr &req,
+                  std::function<void(const HttpResponsePtr &)> &&callback);
     
     /**
      * @brief Handle POST /v1/core/instance/{instanceId}/config
