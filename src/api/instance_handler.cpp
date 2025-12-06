@@ -15,6 +15,9 @@
 #include <filesystem>
 #include <iomanip>
 #include <ctime>
+#include <json/reader.h>
+#include <json/writer.h>
+#include <sstream>
 namespace fs = std::filesystem;
 
 InstanceRegistry* InstanceHandler::instance_registry_ = nullptr;
@@ -673,7 +676,7 @@ void InstanceHandler::setInstanceInput(
     auto start_time = std::chrono::steady_clock::now();
     
     if (isApiLoggingEnabled()) {
-        PLOG_INFO << "[API] PUT /v1/core/instance/{instanceId}/input - Set input source";
+        PLOG_INFO << "[API] POST /v1/core/instance/{instanceId}/input - Set input source";
         PLOG_DEBUG << "[API] Request from: " << req->getPeerAddr().toIpPort();
     }
     
@@ -681,7 +684,7 @@ void InstanceHandler::setInstanceInput(
         // Check if registry is set
         if (!instance_registry_) {
             if (isApiLoggingEnabled()) {
-                PLOG_ERROR << "[API] PUT /v1/core/instance/{instanceId}/input - Error: Instance registry not initialized";
+                PLOG_ERROR << "[API] POST /v1/core/instance/{instanceId}/input - Error: Instance registry not initialized";
             }
             callback(createErrorResponse(500, "Internal server error", "Instance registry not initialized"));
             return;
@@ -692,7 +695,7 @@ void InstanceHandler::setInstanceInput(
         
         if (instanceId.empty()) {
             if (isApiLoggingEnabled()) {
-                PLOG_WARNING << "[API] PUT /v1/core/instance/{instanceId}/input - Error: Instance ID is empty";
+                PLOG_WARNING << "[API] POST /v1/core/instance/{instanceId}/input - Error: Instance ID is empty";
             }
             callback(createErrorResponse(400, "Bad request", "Instance ID is required"));
             return;
@@ -702,7 +705,7 @@ void InstanceHandler::setInstanceInput(
         auto json = req->getJsonObject();
         if (!json) {
             if (isApiLoggingEnabled()) {
-                PLOG_WARNING << "[API] PUT /v1/core/instance/" << instanceId << "/input - Error: Invalid JSON body";
+                PLOG_WARNING << "[API] POST /v1/core/instance/" << instanceId << "/input - Error: Invalid JSON body";
             }
             callback(createErrorResponse(400, "Bad request", "Request body must be valid JSON"));
             return;
@@ -711,7 +714,7 @@ void InstanceHandler::setInstanceInput(
         // Validate required fields
         if (!json->isMember("type") || !(*json)["type"].isString()) {
             if (isApiLoggingEnabled()) {
-                PLOG_WARNING << "[API] PUT /v1/core/instance/" << instanceId << "/input - Error: Missing or invalid 'type' field";
+                PLOG_WARNING << "[API] POST /v1/core/instance/" << instanceId << "/input - Error: Missing or invalid 'type' field";
             }
             callback(createErrorResponse(400, "Bad request", "Field 'type' is required and must be a string"));
             return;
@@ -719,7 +722,7 @@ void InstanceHandler::setInstanceInput(
         
         if (!json->isMember("uri") || !(*json)["uri"].isString()) {
             if (isApiLoggingEnabled()) {
-                PLOG_WARNING << "[API] PUT /v1/core/instance/" << instanceId << "/input - Error: Missing or invalid 'uri' field";
+                PLOG_WARNING << "[API] POST /v1/core/instance/" << instanceId << "/input - Error: Missing or invalid 'uri' field";
             }
             callback(createErrorResponse(400, "Bad request", "Field 'uri' is required and must be a string"));
             return;
@@ -731,7 +734,7 @@ void InstanceHandler::setInstanceInput(
         // Validate type
         if (type != "RTSP" && type != "HLS" && type != "Manual") {
             if (isApiLoggingEnabled()) {
-                PLOG_WARNING << "[API] PUT /v1/core/instance/" << instanceId << "/input - Error: Invalid type: " << type;
+                PLOG_WARNING << "[API] POST /v1/core/instance/" << instanceId << "/input - Error: Invalid type: " << type;
             }
             callback(createErrorResponse(400, "Bad request", "Field 'type' must be one of: RTSP, HLS, Manual"));
             return;
@@ -740,7 +743,7 @@ void InstanceHandler::setInstanceInput(
         // Validate uri is not empty
         if (uri.empty()) {
             if (isApiLoggingEnabled()) {
-                PLOG_WARNING << "[API] PUT /v1/core/instance/" << instanceId << "/input - Error: URI cannot be empty";
+                PLOG_WARNING << "[API] POST /v1/core/instance/" << instanceId << "/input - Error: URI cannot be empty";
             }
             callback(createErrorResponse(400, "Bad request", "Field 'uri' cannot be empty"));
             return;
@@ -752,7 +755,7 @@ void InstanceHandler::setInstanceInput(
             auto end_time = std::chrono::steady_clock::now();
             auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(end_time - start_time);
             if (isApiLoggingEnabled()) {
-                PLOG_WARNING << "[API] PUT /v1/core/instance/" << instanceId << "/input - Instance not found - " << duration.count() << "ms";
+                PLOG_WARNING << "[API] POST /v1/core/instance/" << instanceId << "/input - Instance not found - " << duration.count() << "ms";
             }
             callback(createErrorResponse(404, "Instance not found", "Instance not found: " + instanceId));
             return;
@@ -793,7 +796,7 @@ void InstanceHandler::setInstanceInput(
             auto end_time = std::chrono::steady_clock::now();
             auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(end_time - start_time);
             if (isApiLoggingEnabled()) {
-                PLOG_INFO << "[API] PUT /v1/core/instance/" << instanceId << "/input - Success - " << duration.count() << "ms";
+                PLOG_INFO << "[API] POST /v1/core/instance/" << instanceId << "/input - Success - " << duration.count() << "ms";
             }
             
             // Return 204 No Content as specified in task
@@ -807,7 +810,7 @@ void InstanceHandler::setInstanceInput(
             auto end_time = std::chrono::steady_clock::now();
             auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(end_time - start_time);
             if (isApiLoggingEnabled()) {
-                PLOG_WARNING << "[API] PUT /v1/core/instance/" << instanceId << "/input - Failed to update - " << duration.count() << "ms";
+                PLOG_WARNING << "[API] POST /v1/core/instance/" << instanceId << "/input - Failed to update - " << duration.count() << "ms";
             }
             callback(createErrorResponse(500, "Internal server error", "Failed to update input settings"));
         }
@@ -816,14 +819,14 @@ void InstanceHandler::setInstanceInput(
         auto end_time = std::chrono::steady_clock::now();
         auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(end_time - start_time);
         if (isApiLoggingEnabled()) {
-            PLOG_ERROR << "[API] PUT /v1/core/instance/{instanceId}/input - Exception: " << e.what() << " - " << duration.count() << "ms";
+            PLOG_ERROR << "[API] POST /v1/core/instance/{instanceId}/input - Exception: " << e.what() << " - " << duration.count() << "ms";
         }
         callback(createErrorResponse(500, "Internal server error", e.what()));
     } catch (...) {
         auto end_time = std::chrono::steady_clock::now();
         auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(end_time - start_time);
         if (isApiLoggingEnabled()) {
-            PLOG_ERROR << "[API] PUT /v1/core/instance/{instanceId}/input - Unknown exception - " << duration.count() << "ms";
+            PLOG_ERROR << "[API] POST /v1/core/instance/{instanceId}/input - Unknown exception - " << duration.count() << "ms";
         }
         callback(createErrorResponse(500, "Internal server error", "Unknown error occurred"));
     }
@@ -1821,5 +1824,198 @@ Json::Value InstanceHandler::getOutputFileInfo(const std::string& instanceId) co
     fileInfo["isActive"] = (recentFileCount > 0);
     
     return fileInfo;
+}
+
+bool InstanceHandler::setNestedJsonValue(Json::Value& root, const std::string& path, const Json::Value& value) const {
+    if (path.empty()) {
+        return false;
+    }
+    
+    // Split path by "/"
+    std::vector<std::string> parts;
+    std::istringstream iss(path);
+    std::string part;
+    while (std::getline(iss, part, '/')) {
+        if (!part.empty()) {
+            parts.push_back(part);
+        }
+    }
+    
+    if (parts.empty()) {
+        return false;
+    }
+    
+    // Navigate/create nested structure
+    Json::Value* current = &root;
+    for (size_t i = 0; i < parts.size() - 1; ++i) {
+        const std::string& key = parts[i];
+        if (!current->isMember(key) || !(*current)[key].isObject()) {
+            (*current)[key] = Json::Value(Json::objectValue);
+        }
+        current = &((*current)[key]);
+    }
+    
+    // Set the final value
+    (*current)[parts.back()] = value;
+    return true;
+}
+
+void InstanceHandler::setConfig(
+    const HttpRequestPtr &req,
+    std::function<void(const HttpResponsePtr &)> &&callback) {
+    
+    auto start_time = std::chrono::steady_clock::now();
+    
+    if (isApiLoggingEnabled()) {
+        PLOG_INFO << "[API] POST /v1/core/instance/{instanceId}/config - Set config";
+        PLOG_DEBUG << "[API] Request from: " << req->getPeerAddr().toIpPort();
+    }
+    
+    try {
+        // Check if registry is set
+        if (!instance_registry_) {
+            if (isApiLoggingEnabled()) {
+                PLOG_ERROR << "[API] POST /v1/core/instance/{instanceId}/config - Error: Instance registry not initialized";
+            }
+            callback(createErrorResponse(500, "Internal server error", "Instance registry not initialized"));
+            return;
+        }
+        
+        // Get instance ID from path parameter
+        std::string instanceId = extractInstanceId(req);
+        
+        if (instanceId.empty()) {
+            if (isApiLoggingEnabled()) {
+                PLOG_WARNING << "[API] POST /v1/core/instance/{instanceId}/config - Error: Instance ID is required";
+            }
+            callback(createErrorResponse(400, "Bad request", "Instance ID is required"));
+            return;
+        }
+        
+        // Parse JSON body
+        auto json = req->getJsonObject();
+        if (!json) {
+            if (isApiLoggingEnabled()) {
+                PLOG_WARNING << "[API] POST /v1/core/instance/" << instanceId << "/config - Error: Invalid JSON body";
+            }
+            callback(createErrorResponse(400, "Bad request", "Request body must be valid JSON"));
+            return;
+        }
+        
+        // Validate required fields
+        if (!json->isMember("path") || !(*json)["path"].isString()) {
+            if (isApiLoggingEnabled()) {
+                PLOG_WARNING << "[API] POST /v1/core/instance/" << instanceId << "/config - Error: Missing or invalid 'path' field";
+            }
+            callback(createErrorResponse(400, "Bad request", "Field 'path' is required and must be a string"));
+            return;
+        }
+        
+        if (!json->isMember("jsonValue") || !(*json)["jsonValue"].isString()) {
+            if (isApiLoggingEnabled()) {
+                PLOG_WARNING << "[API] POST /v1/core/instance/" << instanceId << "/config - Error: Missing or invalid 'jsonValue' field";
+            }
+            callback(createErrorResponse(400, "Bad request", "Field 'jsonValue' is required and must be a string"));
+            return;
+        }
+        
+        std::string path = (*json)["path"].asString();
+        std::string jsonValueStr = (*json)["jsonValue"].asString();
+        
+        // Validate path is not empty
+        if (path.empty()) {
+            if (isApiLoggingEnabled()) {
+                PLOG_WARNING << "[API] POST /v1/core/instance/" << instanceId << "/config - Error: Path cannot be empty";
+            }
+            callback(createErrorResponse(400, "Bad request", "Field 'path' cannot be empty"));
+            return;
+        }
+        
+        // Validate jsonValue is not empty
+        if (jsonValueStr.empty()) {
+            if (isApiLoggingEnabled()) {
+                PLOG_WARNING << "[API] POST /v1/core/instance/" << instanceId << "/config - Error: jsonValue cannot be empty";
+            }
+            callback(createErrorResponse(400, "Bad request", "Field 'jsonValue' cannot be empty"));
+            return;
+        }
+        
+        // Parse jsonValue string to JSON value
+        Json::Value parsedValue;
+        Json::CharReaderBuilder readerBuilder;
+        std::string parseErrors;
+        std::istringstream jsonStream(jsonValueStr);
+        
+        if (!Json::parseFromStream(readerBuilder, jsonStream, &parsedValue, &parseErrors)) {
+            if (isApiLoggingEnabled()) {
+                PLOG_WARNING << "[API] POST /v1/core/instance/" << instanceId << "/config - Error: Invalid JSON in jsonValue: " << parseErrors;
+            }
+            callback(createErrorResponse(400, "Bad request", "Field 'jsonValue' must contain valid JSON: " + parseErrors));
+            return;
+        }
+        
+        // Check if instance exists
+        auto optInfo = instance_registry_->getInstance(instanceId);
+        if (!optInfo.has_value()) {
+            auto end_time = std::chrono::steady_clock::now();
+            auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(end_time - start_time);
+            if (isApiLoggingEnabled()) {
+                PLOG_WARNING << "[API] POST /v1/core/instance/" << instanceId << "/config - Instance not found - " << duration.count() << "ms";
+            }
+            callback(createErrorResponse(404, "Instance not found", "Instance not found: " + instanceId));
+            return;
+        }
+        
+        // Build partial config JSON with only the path to update
+        // This will be merged with existing config by updateInstanceFromConfig
+        Json::Value partialConfig(Json::objectValue);
+        if (!setNestedJsonValue(partialConfig, path, parsedValue)) {
+            if (isApiLoggingEnabled()) {
+                PLOG_WARNING << "[API] POST /v1/core/instance/" << instanceId << "/config - Error: Failed to set value at path: " << path;
+            }
+            callback(createErrorResponse(500, "Internal server error", "Failed to set value at path: " + path));
+            return;
+        }
+        
+        // Update instance using updateInstanceFromConfig
+        // This will merge partialConfig with existing config
+        if (instance_registry_->updateInstanceFromConfig(instanceId, partialConfig)) {
+            auto end_time = std::chrono::steady_clock::now();
+            auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(end_time - start_time);
+            if (isApiLoggingEnabled()) {
+                PLOG_INFO << "[API] POST /v1/core/instance/" << instanceId << "/config - Success: Set " << path << " - " << duration.count() << "ms";
+            }
+            
+            // Return 204 No Content (similar to setInstanceInput)
+            auto resp = HttpResponse::newHttpResponse();
+            resp->setStatusCode(k204NoContent);
+            resp->addHeader("Access-Control-Allow-Origin", "*");
+            resp->addHeader("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS");
+            resp->addHeader("Access-Control-Allow-Headers", "Content-Type, Authorization");
+            callback(resp);
+        } else {
+            auto end_time = std::chrono::steady_clock::now();
+            auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(end_time - start_time);
+            if (isApiLoggingEnabled()) {
+                PLOG_WARNING << "[API] POST /v1/core/instance/" << instanceId << "/config - Failed to update - " << duration.count() << "ms";
+            }
+            callback(createErrorResponse(500, "Internal server error", "Failed to update instance configuration"));
+        }
+        
+    } catch (const std::exception& e) {
+        auto end_time = std::chrono::steady_clock::now();
+        auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(end_time - start_time);
+        if (isApiLoggingEnabled()) {
+            PLOG_ERROR << "[API] POST /v1/core/instance/{instanceId}/config - Exception: " << e.what() << " - " << duration.count() << "ms";
+        }
+        callback(createErrorResponse(500, "Internal server error", e.what()));
+    } catch (...) {
+        auto end_time = std::chrono::steady_clock::now();
+        auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(end_time - start_time);
+        if (isApiLoggingEnabled()) {
+            PLOG_ERROR << "[API] POST /v1/core/instance/{instanceId}/config - Unknown exception - " << duration.count() << "ms";
+        }
+        callback(createErrorResponse(500, "Internal server error", "Unknown error occurred"));
+    }
 }
 

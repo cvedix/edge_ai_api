@@ -1708,10 +1708,10 @@ paths:
           description: CORS preflight response
 
   /v1/core/instance/{instanceId}/input:
-    put:
+    post:
       summary: Set input source for an instance
       description: |
-        Updates the input source configuration for an instance. Replaces the Input field in the Instance File according to the request.
+        Sets the input source configuration for an instance. Replaces the Input field in the Instance File according to the request.
         
         **Input Types:**
         - **RTSP**: Uses `rtsp_src` node for RTSP streams
@@ -1762,6 +1762,81 @@ paths:
     options:
       summary: CORS preflight for set input
       operationId: setInstanceInputOptions
+      tags:
+        - Instances
+      responses:
+        '200':
+          description: CORS preflight response
+
+  /v1/core/instance/{instanceId}/config:
+    post:
+      summary: Set config value at a specific path
+      description: |
+        Sets a configuration value at the specified path. The path is a key in the configuration, and for nested structures, it will be nested keys separated by forward slashes "/".
+        
+        **Note:** This operation will overwrite the value at the given path.
+        
+        **Path Examples:**
+        - Simple path: `"DisplayName"` - Sets top-level DisplayName
+        - Nested path: `"Output/handlers/Mqtt"` - Sets Mqtt handler in Output.handlers
+        
+        **jsonValue Format:**
+        - For string values: `"\"my string\""` (escaped JSON string)
+        - For object values: `"{\"key\":\"value\"}"` (escaped JSON object)
+        
+        The instance must exist and not be read-only. If the instance is currently running, it will be automatically restarted to apply the changes.
+      operationId: setConfig
+      tags:
+        - Instances
+      parameters:
+        - name: instanceId
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Unique identifier of the instance (UUID)
+          example: "00000000-0000-0000-0000-000000000000"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SetConfigRequest'
+            examples:
+              stringValue:
+                summary: Set string value
+                value:
+                  path: "my/nested/path"
+                  jsonValue: "\"my string\""
+              objectValue:
+                summary: Set object value
+                value:
+                  path: "Output/handlers/Mqtt"
+                  jsonValue: "{\"uri\":\"mqtt://example.com:1883/events\"}"
+      responses:
+        '204':
+          description: Config value set successfully
+        '400':
+          description: Bad request (invalid input or missing required fields)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: Instance not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+    options:
+      summary: CORS preflight for set config
+      operationId: setConfigOptions
       tags:
         - Instances
       responses:
@@ -2133,6 +2208,26 @@ components:
           format: uri
           description: URI of the input source (must be valid)
           example: "http://example.com"
+
+    SetConfigRequest:
+      type: object
+      required:
+        - path
+        - jsonValue
+      properties:
+        path:
+          type: string
+          description: |
+            The key for which the config value is to be updated. For nested structures, use forward slashes "/" as separators.
+            Examples: "DisplayName", "Output/handlers/Mqtt", "Detector/conf_threshold"
+          example: "Output/handlers/Mqtt"
+        jsonValue:
+          type: string
+          description: |
+            A string containing a JSON value or object. Ensure proper escaping for strings or objects.
+            - For string values: "\"my string\"" (escaped JSON string)
+            - For object values: "{\"key\":\"value\"}" (escaped JSON object)
+          example: "{\"uri\":\"mqtt://example.com:1883/events\"}"
 
     SystemInfoResponse:
       type: object
