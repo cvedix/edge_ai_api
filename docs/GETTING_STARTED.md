@@ -187,7 +187,7 @@ curl http://localhost:8080/v1/core/health
   "timestamp": "2024-01-01T00:00:00.000Z",
   "uptime": 3600,
   "service": "edge_ai_api",
-  "version": "1.0.0",
+  "version": "2025.0.1.1",
   "checks": {
     "uptime": true,
     "service": true
@@ -213,7 +213,7 @@ curl http://localhost:8080/v1/core/version
 **Response (200 OK):**
 ```json
 {
-  "version": "1.0.0",
+  "version": "2025.0.1.1",
   "build_time": "2024-01-01 00:00:00",
   "git_commit": "abc1234",
   "service": "edge_ai_api",

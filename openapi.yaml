@@ -25,7 +25,7 @@ info:
     - Access Swagger UI at `/swagger` or `/v1/swagger`
     - OpenAPI specification available at `/openapi.yaml` or `/v1/openapi.yaml`
     - Server URLs are automatically updated based on environment variables (`API_HOST` and `API_PORT`)
-  version: 1.0.0
+  version: 2025.0.1.1
   contact:
     name: Edge AI API Support
 
@@ -55,7 +55,7 @@ paths:
                 timestamp: "2024-01-01T00:00:00.000Z"
                 uptime: 3600
                 service: "edge_ai_api"
-                version: "1.0.0"
+                version: "2025.0.1.1"
         '500':
           description: Service is unhealthy
           content:
@@ -78,7 +78,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/VersionResponse'
               example:
-                version: "1.0.0"
+                version: "2025.0.1.1"
                 build_time: "Jan 01 2024 00:00:00"
                 git_commit: "abc123def456"
                 api_version: "v1"
@@ -2447,7 +2447,7 @@ components:
         version:
           type: string
           description: Service version
-          example: "1.0.0"
+          example: "2025.0.1.1"
 
     StatusResponse:
       type: object
@@ -2490,7 +2490,7 @@ components:
         version:
           type: string
           description: Application version
-          example: "1.0.0"
+          example: "2025.0.1.1"
         build_time:
           type: string
           description: Build timestamp

@@ -94,7 +94,7 @@ curl -X POST http://localhost:8080/v1/core/instance \
   "loaded": true,
   "running": true,
   "fps": 0.0,
-  "version": "1.0.0",
+  "version": "2025.0.1.1",
   "frameRateLimit": 0,
   "metadataMode": false,
   "statisticsMode": false,
