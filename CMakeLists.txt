@@ -476,14 +476,37 @@ endif()
 # ============================================
 # hwinfo - Hardware Information Library
 # ============================================
+# Try submodule first (if available)
 if(EXISTS "${CMAKE_SOURCE_DIR}/third_party/hwinfo/CMakeLists.txt")
     message(STATUS "Adding hwinfo submodule...")
     add_subdirectory(third_party/hwinfo)
     target_link_libraries(edge_ai_api PRIVATE lfreist-hwinfo::hwinfo)
     message(STATUS "✓ hwinfo linked to edge_ai_api")
+elseif(AUTO_DOWNLOAD_DEPENDENCIES)
+    # Use FetchContent to download hwinfo automatically
+    message(STATUS "hwinfo submodule not found. Downloading via FetchContent...")
+    
+    # Ensure FetchContent is included (may have been included for other dependencies)
+    if(NOT DEFINED FetchContent_MakeAvailable)
+        include(FetchContent)
+    endif()
+    
+    FetchContent_Declare(
+        hwinfo
+        GIT_REPOSITORY https://github.com/lfreist/hwinfo.git
+        GIT_TAG        main
+        GIT_SHALLOW    TRUE
+    )
+    
+    FetchContent_MakeAvailable(hwinfo)
+    
+    target_link_libraries(edge_ai_api PRIVATE lfreist-hwinfo::hwinfo)
+    message(STATUS "✓ hwinfo downloaded and linked to edge_ai_api")
 else()
-    message(WARNING "hwinfo submodule not found. System info endpoints will not work.")
-    message(WARNING "Run: git submodule update --init --recursive")
+    message(WARNING "hwinfo not found. System info endpoints will not work.")
+    message(WARNING "Options:")
+    message(WARNING "  1. Initialize submodule: git submodule update --init --recursive")
+    message(WARNING "  2. Enable auto-download: cmake -DAUTO_DOWNLOAD_DEPENDENCIES=ON ..")
 endif()
 
 # Additional libraries (if needed)
