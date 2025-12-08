@@ -5,7 +5,9 @@
 #include "api/swagger_handler.h"
 #include "api/create_instance_handler.h"
 #include "api/instance_handler.h"
+#ifdef ENABLE_SYSTEM_INFO_HANDLER
 #include "api/system_info_handler.h"
+#endif
 #include "api/solution_handler.h"
 #include "api/group_handler.h"
 #include "models/model_upload_handler.h"
@@ -937,7 +939,9 @@ int main(int argc, char* argv[])
         static VersionHandler versionHandler;
         static WatchdogHandler watchdogHandler;
         static SwaggerHandler swaggerHandler;
+#ifdef ENABLE_SYSTEM_INFO_HANDLER
         static SystemInfoHandler systemInfoHandler;
+#endif
         
         // Initialize instance management components
         static SolutionRegistry& solutionRegistry = SolutionRegistry::getInstance();
