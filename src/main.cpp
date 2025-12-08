@@ -981,6 +981,13 @@ int main(int argc, char* argv[])
         // Load persistent instances
         instanceRegistry.loadPersistentInstances();
         
+        // ============================================
+        // AUTO-START FUNCTIONALITY - TEMPORARILY DISABLED
+        // ============================================
+        // To re-enable auto-start: Uncomment the code block below
+        // This will automatically start all instances with autoStart flag set to true
+        // when the server starts up.
+        /*
         // Auto-start instances with autoStart flag
         PLOG_INFO << "[Main] Checking for instances with autoStart flag...";
         auto instancesToCheck = instanceRegistry.getAllInstances();
@@ -1003,6 +1010,8 @@ int main(int argc, char* argv[])
         } else {
             PLOG_INFO << "[Main] No instances with autoStart flag found";
         }
+        */
+        PLOG_INFO << "[Main] Auto-start functionality is currently disabled";
         
         // Register instance registry and solution registry with handlers
         CreateInstanceHandler::setInstanceRegistry(&instanceRegistry);
