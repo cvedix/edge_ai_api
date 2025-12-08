@@ -270,7 +270,6 @@ set(SOURCES
     src/api/instance_handler.cpp
     src/api/solution_handler.cpp
     src/api/group_handler.cpp
-    src/api/system_info_handler.cpp
     src/models/model_upload_handler.cpp
     src/core/watchdog.cpp
     src/core/health_monitor.cpp
@@ -481,9 +480,15 @@ if(EXISTS "${CMAKE_SOURCE_DIR}/third_party/hwinfo/CMakeLists.txt")
     add_subdirectory(third_party/hwinfo)
     target_link_libraries(edge_ai_api PRIVATE lfreist-hwinfo::hwinfo)
     message(STATUS "✓ hwinfo linked to edge_ai_api")
+    # Add system_info_handler if hwinfo is available
+    target_sources(edge_ai_api PRIVATE src/api/system_info_handler.cpp)
+    # Define macro to enable SystemInfoHandler in main.cpp
+    target_compile_definitions(edge_ai_api PRIVATE ENABLE_SYSTEM_INFO_HANDLER)
+    message(STATUS "✓ system_info_handler enabled (hwinfo available)")
 else()
     message(WARNING "hwinfo submodule not found. System info endpoints will not work.")
     message(WARNING "Run: git submodule update --init --recursive")
+    message(WARNING "system_info_handler.cpp will not be compiled")
 endif()
 
 # Additional libraries (if needed)

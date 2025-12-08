@@ -1900,6 +1900,89 @@ paths:
         '200':
           description: CORS preflight response
 
+  /v1/core/instance/{instanceId}/output/stream:
+    post:
+      summary: Configure stream output
+      description: |
+        Configures stream output for an instance. This endpoint allows you to enable or disable stream output and set the URI for the stream.
+        
+        **Supported Stream Types:**
+        - **RTMP**: `rtmp://host:port/path/stream_key` - For RTMP streaming (e.g., to MediaMTX, YouTube Live, etc.)
+        - **RTSP**: `rtsp://host:port/path/stream_key` - For RTSP streaming
+        - **HLS**: `hls://host:port/path/stream_key` - For HLS streaming
+        
+        **Behavior:**
+        - When `enabled` is `true`, the `uri` field is required and must be a valid stream URI
+        - When `enabled` is `false`, stream output is disabled (URI is not required)
+        - If the instance is currently running, it will be automatically restarted to apply the changes
+        - The stream output uses the `rtmp_des_node` in the pipeline
+        
+        **MediaMTX Setup:**
+        - For local streaming, ensure MediaMTX is installed and running: https://github.com/bluenviron/mediamtx
+        - Default MediaMTX RTMP endpoint: `rtmp://localhost:1935/live/stream`
+        - Default MediaMTX RTSP endpoint: `rtsp://localhost:8554/live/stream`
+      operationId: configureStreamOutput
+      tags:
+        - Instances
+      parameters:
+        - name: instanceId
+          in: path
+          required: true
+          schema:
+            type: string
+          description: The unique identifier of the instance
+          example: "a5204fc9-9a59-f80f-fb9f-bf3b42214943"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ConfigureStreamOutputRequest'
+            examples:
+              enableLocalRTMP:
+                summary: Enable local RTMP stream
+                value:
+                  enabled: true
+                  uri: "rtmp://localhost:1935/live/stream"
+              enableRemoteRTMP:
+                summary: Enable remote RTMP stream
+                value:
+                  enabled: true
+                  uri: "rtmp://localhost:1935/live/stream"
+              disableStream:
+                summary: Disable stream output
+                value:
+                  enabled: false
+      responses:
+        '204':
+          description: Successfully configured stream output
+        '400':
+          description: Bad request (invalid input or missing required fields)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: Instance not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+    options:
+      summary: CORS preflight for configure stream output
+      operationId: configureStreamOutputOptions
+      tags:
+        - Instances
+      responses:
+        '200':
+          description: CORS preflight response
+
   /v1/core/solutions:
     get:
       summary: List all solutions
@@ -2365,6 +2448,23 @@ components:
             - For string values: "\"my string\"" (escaped JSON string)
             - For object values: "{\"key\":\"value\"}" (escaped JSON object)
           example: "{\"uri\":\"mqtt://example.com:1883/events\"}"
+
+    ConfigureStreamOutputRequest:
+      type: object
+      required:
+        - enabled
+      properties:
+        enabled:
+          type: boolean
+          description: Indicates whether stream output is enabled
+          example: true
+        uri:
+          type: string
+          format: uri
+          description: |
+            The requested URI for the stream output. Required when enabled is true.
+            Must start with rtmp://, rtsp://, or hls://
+          example: "rtmp://localhost:1935/live/stream"
 
     SystemInfoResponse:
       type: object

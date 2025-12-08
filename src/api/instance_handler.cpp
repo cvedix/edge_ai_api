@@ -904,6 +904,197 @@ void InstanceHandler::setInstanceInput(
     }
 }
 
+void InstanceHandler::configureStreamOutput(
+    const HttpRequestPtr &req,
+    std::function<void(const HttpResponsePtr &)> &&callback) {
+    
+    auto start_time = std::chrono::steady_clock::now();
+    
+    // Get instance ID from path parameter
+    std::string instanceId = extractInstanceId(req);
+    
+    if (isApiLoggingEnabled()) {
+        PLOG_INFO << "[API] POST /v1/core/instance/" << instanceId << "/output/stream - Configure stream output";
+        PLOG_DEBUG << "[API] Request from: " << req->getPeerAddr().toIpPort();
+    }
+    
+    try {
+        // Check if registry is set
+        if (!instance_registry_) {
+            if (isApiLoggingEnabled()) {
+                PLOG_ERROR << "[API] POST /v1/core/instance/" << instanceId << "/output/stream - Error: Instance registry not initialized";
+            }
+            callback(createErrorResponse(500, "Internal server error", "Instance registry not initialized"));
+            return;
+        }
+        
+        if (instanceId.empty()) {
+            if (isApiLoggingEnabled()) {
+                PLOG_WARNING << "[API] POST /v1/core/instance/{instanceId}/output/stream - Error: Instance ID is required";
+            }
+            callback(createErrorResponse(400, "Bad request", "Instance ID is required"));
+            return;
+        }
+        
+        // Parse JSON body
+        auto json = req->getJsonObject();
+        if (!json) {
+            if (isApiLoggingEnabled()) {
+                PLOG_WARNING << "[API] POST /v1/core/instance/" << instanceId << "/output/stream - Error: Invalid JSON body";
+            }
+            callback(createErrorResponse(400, "Bad request", "Request body must be valid JSON"));
+            return;
+        }
+        
+        // Validate required fields
+        if (!json->isMember("enabled") || !(*json)["enabled"].isBool()) {
+            if (isApiLoggingEnabled()) {
+                PLOG_WARNING << "[API] POST /v1/core/instance/" << instanceId << "/output/stream - Error: Missing or invalid 'enabled' field";
+            }
+            callback(createErrorResponse(400, "Bad request", "Field 'enabled' is required and must be a boolean"));
+            return;
+        }
+        
+        bool enabled = (*json)["enabled"].asBool();
+        
+        // Check if instance exists
+        auto optInfo = instance_registry_->getInstance(instanceId);
+        if (!optInfo.has_value()) {
+            auto end_time = std::chrono::steady_clock::now();
+            auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(end_time - start_time);
+            if (isApiLoggingEnabled()) {
+                PLOG_WARNING << "[API] POST /v1/core/instance/" << instanceId << "/output/stream - Instance not found - " << duration.count() << "ms";
+            }
+            callback(createErrorResponse(404, "Instance not found", "Instance not found: " + instanceId));
+            return;
+        }
+        
+        // If enabled, validate and set URI
+        if (enabled) {
+            if (!json->isMember("uri") || !(*json)["uri"].isString()) {
+                if (isApiLoggingEnabled()) {
+                    PLOG_WARNING << "[API] POST /v1/core/instance/" << instanceId << "/output/stream - Error: Missing or invalid 'uri' field";
+                }
+                callback(createErrorResponse(400, "Bad request", "Field 'uri' is required when enabled is true"));
+                return;
+            }
+            
+            std::string uri = (*json)["uri"].asString();
+            
+            // Validate URI is not empty
+            if (uri.empty()) {
+                if (isApiLoggingEnabled()) {
+                    PLOG_WARNING << "[API] POST /v1/core/instance/" << instanceId << "/output/stream - Error: URI cannot be empty";
+                }
+                callback(createErrorResponse(400, "Bad request", "Field 'uri' cannot be empty"));
+                return;
+            }
+            
+            // Validate URI format (rtmp://, rtsp://, or hls://)
+            if (uri.find("rtmp://") != 0 && uri.find("rtsp://") != 0 && uri.find("hls://") != 0) {
+                if (isApiLoggingEnabled()) {
+                    PLOG_WARNING << "[API] POST /v1/core/instance/" << instanceId << "/output/stream - Error: Invalid URI format. Must start with rtmp://, rtsp://, or hls://";
+                }
+                callback(createErrorResponse(400, "Bad request", "URI must start with rtmp://, rtsp://, or hls://"));
+                return;
+            }
+            
+            // Build config JSON to update RTMP_URL
+            // For RTMP streams, we use RTMP_URL parameter
+            // For RTSP/HLS, we might need different handling, but for now we'll use RTMP_URL for all
+            Json::Value streamConfig(Json::objectValue);
+            
+            // Determine stream type from URI
+            std::string streamType;
+            if (uri.find("rtmp://") == 0) {
+                streamType = "RTMP";
+                // Set RTMP_URL in additionalParams
+                streamConfig["RTMP_URL"] = uri;
+            } else if (uri.find("rtsp://") == 0) {
+                streamType = "RTSP";
+                // For RTSP output, we might need to configure differently
+                // For now, we'll store it in RTMP_URL as well (can be extended later)
+                streamConfig["RTMP_URL"] = uri; // Temporary: use RTMP_URL field
+            } else if (uri.find("hls://") == 0) {
+                streamType = "HLS";
+                // For HLS output, similar handling
+                streamConfig["RTMP_URL"] = uri; // Temporary: use RTMP_URL field
+            }
+            
+            if (isApiLoggingEnabled()) {
+                PLOG_INFO << "[API] POST /v1/core/instance/" << instanceId << "/output/stream - Configuring " << streamType << " stream: " << uri;
+            }
+            
+            // Update instance using updateInstanceFromConfig
+            // This will merge streamConfig with existing config and update RTMP_URL
+            if (instance_registry_->updateInstanceFromConfig(instanceId, streamConfig)) {
+                auto end_time = std::chrono::steady_clock::now();
+                auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(end_time - start_time);
+                if (isApiLoggingEnabled()) {
+                    PLOG_INFO << "[API] POST /v1/core/instance/" << instanceId << "/output/stream - Success: " << streamType << " stream configured - " << duration.count() << "ms";
+                }
+                
+                // Return 204 No Content as specified
+                auto resp = HttpResponse::newHttpResponse();
+                resp->setStatusCode(k204NoContent);
+                resp->addHeader("Access-Control-Allow-Origin", "*");
+                resp->addHeader("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS");
+                resp->addHeader("Access-Control-Allow-Headers", "Content-Type, Authorization");
+                callback(resp);
+            } else {
+                auto end_time = std::chrono::steady_clock::now();
+                auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(end_time - start_time);
+                if (isApiLoggingEnabled()) {
+                    PLOG_WARNING << "[API] POST /v1/core/instance/" << instanceId << "/output/stream - Failed to update - " << duration.count() << "ms";
+                }
+                callback(createErrorResponse(500, "Internal server error", "Failed to configure stream output"));
+            }
+        } else {
+            // Disable stream output - clear RTMP_URL
+            Json::Value streamConfig(Json::objectValue);
+            streamConfig["RTMP_URL"] = ""; // Empty string to clear
+            
+            if (instance_registry_->updateInstanceFromConfig(instanceId, streamConfig)) {
+                auto end_time = std::chrono::steady_clock::now();
+                auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(end_time - start_time);
+                if (isApiLoggingEnabled()) {
+                    PLOG_INFO << "[API] POST /v1/core/instance/" << instanceId << "/output/stream - Success: Stream output disabled - " << duration.count() << "ms";
+                }
+                
+                // Return 204 No Content
+                auto resp = HttpResponse::newHttpResponse();
+                resp->setStatusCode(k204NoContent);
+                resp->addHeader("Access-Control-Allow-Origin", "*");
+                resp->addHeader("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS");
+                resp->addHeader("Access-Control-Allow-Headers", "Content-Type, Authorization");
+                callback(resp);
+            } else {
+                auto end_time = std::chrono::steady_clock::now();
+                auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(end_time - start_time);
+                if (isApiLoggingEnabled()) {
+                    PLOG_WARNING << "[API] POST /v1/core/instance/" << instanceId << "/output/stream - Failed to disable - " << duration.count() << "ms";
+                }
+                callback(createErrorResponse(500, "Internal server error", "Failed to disable stream output"));
+            }
+        }
+        
+    } catch (const std::exception& e) {
+        auto end_time = std::chrono::steady_clock::now();
+        auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(end_time - start_time);
+        if (isApiLoggingEnabled()) {
+            PLOG_ERROR << "[API] POST /v1/core/instance/{instanceId}/output/stream - Exception: " << e.what() << " - " << duration.count() << "ms";
+        }
+        callback(createErrorResponse(500, "Internal server error", e.what()));
+    } catch (...) {
+        auto end_time = std::chrono::steady_clock::now();
+        auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(end_time - start_time);
+        if (isApiLoggingEnabled()) {
+            PLOG_ERROR << "[API] POST /v1/core/instance/{instanceId}/output/stream - Unknown exception - " << duration.count() << "ms";
+        }
+        callback(createErrorResponse(500, "Internal server error", "Unknown error occurred"));
+    }
+}
+
 void InstanceHandler::handleOptions(
     const HttpRequestPtr & /*req*/,
     std::function<void(const HttpResponsePtr &)> &&callback) {
