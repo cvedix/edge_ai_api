@@ -77,28 +77,30 @@ Tài liệu hướng dẫn đầy đủ cho Edge AI API project.
     - Ví dụ sử dụng với curl
     - Use cases và best practices
 
+11. **[STATISTICS_API.md](STATISTICS_API.md)** - Statistics API Documentation
+    - Hướng dẫn sử dụng Statistics API endpoint
+    - Lấy thống kê thời gian thực của instance
+    - Endpoint: `/v1/core/instance/{instanceId}/statistics`
+    - Ví dụ sử dụng với curl, Python, JavaScript
+    - Use cases: monitoring, alerting, dashboard
+    - Troubleshooting và best practices
+
 ### Node Support & Implementation
 
-11. **[NODE_SUPPORT_STATUS.md](NODE_SUPPORT_STATUS.md)** - Trạng thái hỗ trợ các node types
+12. **[NODE_SUPPORT_STATUS.md](NODE_SUPPORT_STATUS.md)** - Trạng thái hỗ trợ các node types
     - Inference nodes: 23 nodes (100%)
     - Source nodes: 6 nodes (100%)
     - Broker nodes: 12 nodes (100%)
 
-12. **[REQUIREMENT_CHECKLIST.md](REQUIREMENT_CHECKLIST.md)** - Checklist đáp ứng yêu cầu
+13. **[REQUIREMENT_CHECKLIST.md](REQUIREMENT_CHECKLIST.md)** - Checklist đáp ứng yêu cầu
     - Detector (Inference): ✅ 100%
     - Input (Source): ✅ 100%
     - Output (Broker): ✅ 100%
 
-13. **[IMPLEMENTATION_SUMMARY.md](IMPLEMENTATION_SUMMARY.md)** - Tổng kết implementation
+14. **[IMPLEMENTATION_SUMMARY.md](IMPLEMENTATION_SUMMARY.md)** - Tổng kết implementation
     - Tổng số nodes đã hỗ trợ: 41 nodes
     - Example files: 26 files
     - Files đã tạo/cập nhật
-   - Hướng dẫn sử dụng các tính năng logging
-   - API logging (`--log-api`)
-   - Instance execution logging (`--log-instance`)
-   - SDK output logging (`--log-sdk-output`)
-   - Cấu hình và best practices
-   - Troubleshooting logging issues
 
 ## 🎯 Quick Start
 
