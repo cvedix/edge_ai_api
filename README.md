@@ -177,3 +177,19 @@ Server cung cấp Swagger UI để test và explore API:
 
 📚 **Xem chi tiết:** [docs/GETTING_STARTED.md](docs/GETTING_STARTED.md) - Hướng dẫn sử dụng Swagger UI
 
+## 📚 Tài Liệu
+
+### Hướng Dẫn Cơ Bản
+- [Getting Started](docs/GETTING_STARTED.md) - Hướng dẫn khởi động và sử dụng
+- [Development Setup](docs/DEVELOPMENT_SETUP.md) - Setup môi trường phát triển
+- [Environment Variables](docs/ENVIRONMENT_VARIABLES.md) - Cấu hình biến môi trường
+
+### Hướng Dẫn Nâng Cao
+- [Directory Creation Guide](docs/DIRECTORY_CREATION_GUIDE.md) - Tạo thư mục tự động với fallback
+- [Create Instance Guide](docs/CREATE_INSTANCE_GUIDE.md) - Tạo và quản lý instances
+- [Update Instance Guide](docs/UPDATE_INSTANCE_GUIDE.md) - Cập nhật cấu hình instances
+- [Logging Guide](docs/LOGGING.md) - Hướng dẫn logging
+
+### Deployment
+- [Deploy README](deploy/README.md) - Hướng dẫn triển khai production
+
