@@ -13,16 +13,48 @@ InstanceStorage::InstanceStorage(const std::string& storage_dir)
 
 void InstanceStorage::ensureStorageDir() const {
     try {
-        if (!std::filesystem::exists(storage_dir_)) {
-            std::cerr << "[InstanceStorage] Creating storage directory: " << storage_dir_ << std::endl;
-            std::filesystem::create_directories(storage_dir_);
-            std::cerr << "[InstanceStorage] Storage directory created successfully" << std::endl;
-        } else {
-            std::cerr << "[InstanceStorage] Storage directory already exists: " << storage_dir_ << std::endl;
+        // Check if directory already exists
+        if (std::filesystem::exists(storage_dir_)) {
+            if (std::filesystem::is_directory(storage_dir_)) {
+                std::cerr << "[InstanceStorage] Storage directory already exists: " << storage_dir_ << std::endl;
+                return;
+            } else {
+                std::cerr << "[InstanceStorage] Warning: Path exists but is not a directory: " << storage_dir_ << std::endl;
+                return;
+            }
         }
+        
+        // Directory doesn't exist, try to create it
+        std::cerr << "[InstanceStorage] Creating storage directory: " << storage_dir_ << std::endl;
+        
+        // create_directories creates all parent directories too
+        // It returns true if directory was created, false if it already existed
+        bool created = std::filesystem::create_directories(storage_dir_);
+        
+        if (created) {
+            std::cerr << "[InstanceStorage] Storage directory created successfully: " << storage_dir_ << std::endl;
+        } else {
+            // Directory was created by another process between check and create
+            if (std::filesystem::exists(storage_dir_)) {
+                std::cerr << "[InstanceStorage] Storage directory already exists (created by another process): " << storage_dir_ << std::endl;
+            } else {
+                std::cerr << "[InstanceStorage] Warning: create_directories returned false but directory doesn't exist" << std::endl;
+            }
+        }
+    } catch (const std::filesystem::filesystem_error& e) {
+        // Check specific error codes
+        if (e.code() == std::errc::permission_denied) {
+            std::cerr << "[InstanceStorage] Permission denied creating storage directory: " << storage_dir_ << std::endl;
+            std::cerr << "[InstanceStorage] Error: " << e.what() << std::endl;
+            std::cerr << "[InstanceStorage] Directory will be created when first instance is saved (if permissions allow)" << std::endl;
+        } else {
+            std::cerr << "[InstanceStorage] Filesystem error creating storage directory: " << e.what() << std::endl;
+            std::cerr << "[InstanceStorage] Error code: " << e.code().value() << " (" << e.code().message() << ")" << std::endl;
+        }
+        // Don't throw - let the application continue
     } catch (const std::exception& e) {
-        std::cerr << "[InstanceStorage] Error creating storage directory: " << e.what() << std::endl;
-        throw;
+        std::cerr << "[InstanceStorage] Exception creating storage directory: " << e.what() << std::endl;
+        // Don't throw - let the application continue
     }
 }
 
@@ -58,25 +90,75 @@ Json::Value InstanceStorage::loadInstancesFile() const {
 
 bool InstanceStorage::saveInstancesFile(const Json::Value& instances) const {
     try {
+        // Ensure directory exists - try to create if it doesn't exist
         ensureStorageDir();
+        
+        // Double-check: if directory still doesn't exist, try one more time
+        if (!std::filesystem::exists(storage_dir_)) {
+            std::cerr << "[InstanceStorage] Directory still doesn't exist, retrying creation: " << storage_dir_ << std::endl;
+            try {
+                std::filesystem::create_directories(storage_dir_);
+                if (std::filesystem::exists(storage_dir_)) {
+                    std::cerr << "[InstanceStorage] Successfully created directory on retry: " << storage_dir_ << std::endl;
+                }
+            } catch (const std::exception& e) {
+                std::cerr << "[InstanceStorage] Failed to create directory on retry: " << e.what() << std::endl;
+            }
+        }
         
         std::string filepath = getInstancesFilePath();
         std::cerr << "[InstanceStorage] Saving instances to: " << filepath << std::endl;
         
+        // Create parent directory of file if it doesn't exist (should be same as storage_dir_, but be safe)
+        std::filesystem::path file_path_obj(filepath);
+        std::filesystem::path parent_dir = file_path_obj.parent_path();
+        if (!parent_dir.empty() && !std::filesystem::exists(parent_dir)) {
+            try {
+                std::filesystem::create_directories(parent_dir);
+                std::cerr << "[InstanceStorage] Created parent directory for file: " << parent_dir << std::endl;
+            } catch (const std::exception& e) {
+                std::cerr << "[InstanceStorage] Warning: Could not create parent directory: " << e.what() << std::endl;
+            }
+        }
+        
+        // Try to open file for writing
         std::ofstream file(filepath);
         if (!file.is_open()) {
             std::cerr << "[InstanceStorage] Error: Failed to open file for writing: " << filepath << std::endl;
+            
+            // Check if parent directory exists and is writable
+            if (std::filesystem::exists(parent_dir)) {
+                std::cerr << "[InstanceStorage] Parent directory exists: " << parent_dir << std::endl;
+                // Check permissions
+                auto perms = std::filesystem::status(parent_dir).permissions();
+                std::cerr << "[InstanceStorage] Parent directory permissions: " << std::oct << static_cast<int>(perms) << std::dec << std::endl;
+            } else {
+                std::cerr << "[InstanceStorage] Parent directory does not exist: " << parent_dir << std::endl;
+            }
+            
             return false;
         }
         
+        // Write JSON to file
         Json::StreamWriterBuilder builder;
         builder["indentation"] = "    "; // 4 spaces for indentation
         std::unique_ptr<Json::StreamWriter> writer(builder.newStreamWriter());
         writer->write(instances, &file);
         file.close();
         
-        std::cerr << "[InstanceStorage] Successfully saved instances file" << std::endl;
+        // Verify file was written
+        if (std::filesystem::exists(filepath)) {
+            auto file_size = std::filesystem::file_size(filepath);
+            std::cerr << "[InstanceStorage] Successfully saved instances file (size: " << file_size << " bytes)" << std::endl;
+        } else {
+            std::cerr << "[InstanceStorage] Warning: File was written but doesn't exist after close" << std::endl;
+        }
+        
         return true;
+    } catch (const std::filesystem::filesystem_error& e) {
+        std::cerr << "[InstanceStorage] Filesystem exception in saveInstancesFile: " << e.what() << std::endl;
+        std::cerr << "[InstanceStorage] Error code: " << e.code().value() << " (" << e.code().message() << ")" << std::endl;
+        return false;
     } catch (const std::exception& e) {
         std::cerr << "[InstanceStorage] Exception in saveInstancesFile: " << e.what() << std::endl;
         return false;
