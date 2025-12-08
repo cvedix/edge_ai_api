@@ -4,6 +4,7 @@
 #include <vector>
 #include <map>
 #include <memory>
+#include <chrono>
 
 // Forward declaration
 namespace cvedix_nodes {
@@ -33,6 +34,14 @@ struct InstanceInfo {
     bool autoStart = false;
     bool autoRestart = false;
     bool systemInstance = false;
+    
+    // Retry limit configuration
+    int maxRetryCount = 10;  // Maximum number of retry attempts before stopping instance
+    int retryCount = 0;      // Current retry count (reset when instance starts successfully)
+    bool retryLimitReached = false;  // Flag to indicate retry limit has been reached
+    std::chrono::steady_clock::time_point startTime;  // Time when instance started
+    std::chrono::steady_clock::time_point lastActivityTime;  // Time of last successful activity (frames/data)
+    bool hasReceivedData = false;  // Flag to indicate if instance has received any data/frames
     int inputPixelLimit = 0;
     int inputOrientation = 0;
     std::string detectorMode = "SmartDetection";
