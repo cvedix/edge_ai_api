@@ -44,6 +44,7 @@
 #include <vector>
 #include <fstream>
 #include <unordered_map>
+#include <filesystem>
 
 /**
  * @brief Edge AI API Server
@@ -1276,8 +1277,104 @@ int main(int argc, char* argv[])
         static PipelineBuilder pipelineBuilder;
         
         // Initialize instance storage with configurable directory
-        // Default: /var/lib/edge_ai_api/instances (auto-created if needed)
-        std::string instancesDir = EnvConfig::resolveDataDir("INSTANCES_DIR", "instances");
+        // Priority: 1. INSTANCES_DIR env var, 2. /opt/edge_ai_api/instances (with auto-fallback)
+        std::string instancesDir;
+        const char* env_instances_dir = std::getenv("INSTANCES_DIR");
+        if (env_instances_dir && strlen(env_instances_dir) > 0) {
+            instancesDir = std::string(env_instances_dir);
+            std::cerr << "[Main] Using INSTANCES_DIR from environment: " << instancesDir << std::endl;
+        } else {
+            // Try /opt/edge_ai_api/instances first, fallback to user directory if needed
+            instancesDir = "/opt/edge_ai_api/instances";
+            std::cerr << "[Main] Attempting to use: " << instancesDir << std::endl;
+        }
+        
+        // Try to create directory if it doesn't exist
+        // Strategy: Try /opt first, if fails, auto-fallback to user directory
+        bool directory_ready = false;
+        if (!std::filesystem::exists(instancesDir)) {
+            std::cerr << "[Main] Directory does not exist, attempting to create: " << instancesDir << std::endl;
+            
+            try {
+                // Try to create directory (will create parent dirs if we have permission)
+                bool created = std::filesystem::create_directories(instancesDir);
+                if (created) {
+                    std::cerr << "[Main] ✓ Successfully created instances directory: " << instancesDir << std::endl;
+                    directory_ready = true;
+                } else {
+                    // Directory might have been created by another process
+                    if (std::filesystem::exists(instancesDir)) {
+                        std::cerr << "[Main] ✓ Instances directory exists (created by another process): " << instancesDir << std::endl;
+                        directory_ready = true;
+                    }
+                }
+            } catch (const std::filesystem::filesystem_error& e) {
+                if (e.code() == std::errc::permission_denied) {
+                    std::cerr << "[Main] ⚠ Cannot create " << instancesDir << " (permission denied)" << std::endl;
+                    
+                    // Auto-fallback: Try user directory (works without sudo)
+                    if (env_instances_dir == nullptr || strlen(env_instances_dir) == 0) {
+                        const char* home = std::getenv("HOME");
+                        if (home) {
+                            std::string fallback_path = std::string(home) + "/.local/share/edge_ai_api/instances";
+                            std::cerr << "[Main] Auto-fallback: Trying user directory: " << fallback_path << std::endl;
+                            try {
+                                std::filesystem::create_directories(fallback_path);
+                                instancesDir = fallback_path;
+                                directory_ready = true;
+                                std::cerr << "[Main] ✓ Using fallback directory: " << instancesDir << std::endl;
+                                std::cerr << "[Main] ℹ Note: To use /opt/edge_ai_api/instances, create parent directory:" << std::endl;
+                                std::cerr << "[Main] ℹ   sudo mkdir -p /opt/edge_ai_api && sudo chown $USER:$USER /opt/edge_ai_api" << std::endl;
+                            } catch (const std::exception& fallback_e) {
+                                std::cerr << "[Main] ⚠ Fallback also failed: " << fallback_e.what() << std::endl;
+                                // Last resort: current directory
+                                instancesDir = "./instances";
+                                try {
+                                    std::filesystem::create_directories(instancesDir);
+                                    directory_ready = true;
+                                    std::cerr << "[Main] ✓ Using current directory: " << instancesDir << std::endl;
+                                } catch (...) {
+                                    std::cerr << "[Main] ✗ ERROR: Cannot create any instances directory" << std::endl;
+                                }
+                            }
+                        } else {
+                            // No HOME, use current directory
+                            instancesDir = "./instances";
+                            try {
+                                std::filesystem::create_directories(instancesDir);
+                                directory_ready = true;
+                                std::cerr << "[Main] ✓ Using current directory: " << instancesDir << std::endl;
+                            } catch (...) {
+                                std::cerr << "[Main] ✗ ERROR: Cannot create ./instances" << std::endl;
+                            }
+                        }
+                    } else {
+                        // User specified INSTANCES_DIR but can't create it
+                        std::cerr << "[Main] ✗ ERROR: Cannot create user-specified directory: " << instancesDir << std::endl;
+                        std::cerr << "[Main] ✗ Please check permissions or use a different path" << std::endl;
+                    }
+                } else {
+                    std::cerr << "[Main] ✗ ERROR creating " << instancesDir << ": " << e.what() << std::endl;
+                }
+            } catch (const std::exception& e) {
+                std::cerr << "[Main] ✗ Exception creating " << instancesDir << ": " << e.what() << std::endl;
+            }
+        } else {
+            // Check if it's actually a directory
+            if (std::filesystem::is_directory(instancesDir)) {
+                std::cerr << "[Main] ✓ Instances directory already exists: " << instancesDir << std::endl;
+                directory_ready = true;
+            } else {
+                std::cerr << "[Main] ✗ ERROR: Path exists but is not a directory: " << instancesDir << std::endl;
+            }
+        }
+        
+        if (directory_ready) {
+            std::cerr << "[Main] ✓ Instances directory is ready: " << instancesDir << std::endl;
+        } else {
+            std::cerr << "[Main] ⚠ WARNING: Instances directory may not be ready" << std::endl;
+        }
+        
         PLOG_INFO << "[Main] Instances directory: " << instancesDir;
         static InstanceStorage instanceStorage(instancesDir);
         static InstanceRegistry instanceRegistry(solutionRegistry, pipelineBuilder, instanceStorage);

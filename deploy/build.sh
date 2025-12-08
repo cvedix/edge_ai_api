@@ -46,6 +46,25 @@ LIB_DIR="/usr/local/lib"
 SERVICE_NAME="edge-ai-api"
 SERVICE_FILE="${SERVICE_NAME}.service"
 
+# Load directory configuration
+# Source the configuration file if it exists, otherwise use defaults
+DIRS_CONF="$SCRIPT_DIR/directories.conf"
+if [ -f "$DIRS_CONF" ]; then
+    source "$DIRS_CONF"
+else
+    # Fallback: Default directory configuration
+    declare -A APP_DIRECTORIES=(
+        ["instances"]="750"      # Instance configurations (instances.json)
+        ["solutions"]="750"     # Custom solutions
+        ["groups"]="750"        # Group configurations
+        ["models"]="750"        # Uploaded model files
+        ["logs"]="750"          # Application logs
+        ["data"]="750"          # Application data
+        ["config"]="750"        # Configuration files
+        ["uploads"]="755"       # Uploaded files (may need public access)
+    )
+fi
+
 # Flags
 SKIP_DEPS=false
 SKIP_BUILD=false
@@ -279,13 +298,24 @@ if ! getent group "$SERVICE_GROUP" > /dev/null 2>&1; then
     usermod -a -G "$SERVICE_GROUP" "$SERVICE_USER" 2>/dev/null || true
 fi
 
-# Create installation directory
-mkdir -p "$INSTALL_DIR"/{logs,data,config,uploads}
+# Create installation directory and subdirectories
+echo -e "${BLUE}Tạo thư mục...${NC}"
+mkdir -p "$INSTALL_DIR"
+
+# Create all directories from configuration
+for dir_name in "${!APP_DIRECTORIES[@]}"; do
+    dir_path="$INSTALL_DIR/$dir_name"
+    dir_perms="${APP_DIRECTORIES[$dir_name]}"
+    mkdir -p "$dir_path"
+    chmod "$dir_perms" "$dir_path"
+    echo -e "${GREEN}✓${NC} Đã tạo: $dir_path (permissions: $dir_perms)"
+done
+
+# Set ownership for all directories
 chown -R "$SERVICE_USER:$SERVICE_GROUP" "$INSTALL_DIR"
-chmod 755 "$INSTALL_DIR"
-chmod 750 "$INSTALL_DIR"/{logs,data,config}
-chmod 755 "$INSTALL_DIR"/uploads
-echo -e "${GREEN}✓${NC} Đã tạo thư mục: $INSTALL_DIR"
+chmod 755 "$INSTALL_DIR"  # Base directory should be accessible
+
+echo -e "${GREEN}✓${NC} Đã tạo tất cả thư mục trong: $INSTALL_DIR"
 echo ""
 
 # ============================================
@@ -438,9 +468,22 @@ if [ "$SKIP_FIXES" = false ]; then
         sed -i 's/^WatchdogSec=/#WatchdogSec=/' "$INSTALLED_SERVICE_FILE" 2>/dev/null || true
         sed -i 's/^NotifyAccess=/#NotifyAccess=/' "$INSTALLED_SERVICE_FILE" 2>/dev/null || true
         
-        # Ensure ReadWritePaths includes uploads
-        if ! grep -q "ReadWritePaths.*uploads" "$INSTALLED_SERVICE_FILE"; then
-            sed -i 's|ReadWritePaths=\([^ ]*\)|ReadWritePaths=\1 '"$INSTALL_DIR"'/uploads|g' "$INSTALLED_SERVICE_FILE" 2>/dev/null || true
+        # Generate ReadWritePaths from APP_DIRECTORIES configuration
+        READWRITE_PATHS=""
+        for dir_name in "${!APP_DIRECTORIES[@]}"; do
+            READWRITE_PATHS="$READWRITE_PATHS $INSTALL_DIR/$dir_name"
+        done
+        READWRITE_PATHS=$(echo "$READWRITE_PATHS" | sed 's/^ *//')  # Trim leading spaces
+        
+        # Update ReadWritePaths in service file
+        if grep -q "^ReadWritePaths=" "$INSTALLED_SERVICE_FILE"; then
+            # Replace existing ReadWritePaths
+            sed -i "s|^ReadWritePaths=.*|ReadWritePaths=$READWRITE_PATHS|" "$INSTALLED_SERVICE_FILE"
+            echo -e "${GREEN}✓${NC} Đã cập nhật ReadWritePaths trong service file"
+        else
+            # Add ReadWritePaths if it doesn't exist (before [Install] section)
+            sed -i "/^\[Install\]/i ReadWritePaths=$READWRITE_PATHS" "$INSTALLED_SERVICE_FILE"
+            echo -e "${GREEN}✓${NC} Đã thêm ReadWritePaths vào service file"
         fi
         
         echo -e "${GREEN}✓${NC} Service file đã được cập nhật"
@@ -464,9 +507,25 @@ if [ ! -f "$SERVICE_FILE_PATH" ]; then
     exit 1
 fi
 
-# Update service file paths if needed
+# Generate ReadWritePaths from APP_DIRECTORIES configuration
+READWRITE_PATHS=""
+for dir_name in "${!APP_DIRECTORIES[@]}"; do
+    READWRITE_PATHS="$READWRITE_PATHS $INSTALL_DIR/$dir_name"
+done
+READWRITE_PATHS=$(echo "$READWRITE_PATHS" | sed 's/^ *//')  # Trim leading spaces
+
+# Update service file paths and ReadWritePaths
 SERVICE_TEMP=$(mktemp)
 sed "s|/opt/edge_ai_api|$INSTALL_DIR|g" "$SERVICE_FILE_PATH" > "$SERVICE_TEMP"
+
+# Update ReadWritePaths in service file
+if grep -q "^ReadWritePaths=" "$SERVICE_TEMP"; then
+    # Replace existing ReadWritePaths
+    sed -i "s|^ReadWritePaths=.*|ReadWritePaths=$READWRITE_PATHS|" "$SERVICE_TEMP"
+else
+    # Add ReadWritePaths if it doesn't exist (before [Install] section)
+    sed -i "/^\[Install\]/i ReadWritePaths=$READWRITE_PATHS" "$SERVICE_TEMP"
+fi
 
 # Copy service file
 cp "$SERVICE_TEMP" "/etc/systemd/system/${SERVICE_NAME}.service"
