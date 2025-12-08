@@ -986,28 +986,28 @@ int main(int argc, char* argv[])
         // Load persistent instances
         instanceRegistry.loadPersistentInstances();
         
-        // Auto-start instances with autoStart flag
-        PLOG_INFO << "[Main] Checking for instances with autoStart flag...";
-        auto instancesToCheck = instanceRegistry.getAllInstances();
-        int autoStartCount = 0;
-        int autoStartSuccessCount = 0;
-        for (const auto& [instanceId, info] : instancesToCheck) {
-            if (info.autoStart) {
-                autoStartCount++;
-                PLOG_INFO << "[Main] Auto-starting instance: " << instanceId << " (" << info.displayName << ")";
-                if (instanceRegistry.startInstance(instanceId)) {
-                    autoStartSuccessCount++;
-                    PLOG_INFO << "[Main] ✓ Successfully auto-started instance: " << instanceId;
-                } else {
-                    PLOG_WARNING << "[Main] ✗ Failed to auto-start instance: " << instanceId;
-                }
-            }
-        }
-        if (autoStartCount > 0) {
-            PLOG_INFO << "[Main] Auto-start summary: " << autoStartSuccessCount << "/" << autoStartCount << " instances started successfully";
-        } else {
-            PLOG_INFO << "[Main] No instances with autoStart flag found";
-        }
+        // Auto-start instances with autoStart flag - DISABLED
+        // PLOG_INFO << "[Main] Checking for instances with autoStart flag...";
+        // auto instancesToCheck = instanceRegistry.getAllInstances();
+        // int autoStartCount = 0;
+        // int autoStartSuccessCount = 0;
+        // for (const auto& [instanceId, info] : instancesToCheck) {
+        //     if (info.autoStart) {
+        //         autoStartCount++;
+        //         PLOG_INFO << "[Main] Auto-starting instance: " << instanceId << " (" << info.displayName << ")";
+        //         if (instanceRegistry.startInstance(instanceId)) {
+        //             autoStartSuccessCount++;
+        //             PLOG_INFO << "[Main] ✓ Successfully auto-started instance: " << instanceId;
+        //         } else {
+        //             PLOG_WARNING << "[Main] ✗ Failed to auto-start instance: " << instanceId;
+        //         }
+        //     }
+        // }
+        // if (autoStartCount > 0) {
+        //     PLOG_INFO << "[Main] Auto-start summary: " << autoStartSuccessCount << "/" << autoStartCount << " instances started successfully";
+        // } else {
+        //     PLOG_INFO << "[Main] No instances with autoStart flag found";
+        // }
         
         // Register instance registry and solution registry with handlers
         CreateInstanceHandler::setInstanceRegistry(&instanceRegistry);

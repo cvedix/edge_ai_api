@@ -136,6 +136,22 @@ private:
     time_t parseTimestamp(const std::string& timestamp) const;
 
     /**
+     * @brief Extract category from request path
+     * 
+     * @param req HTTP request
+     * @return Category string extracted from path
+     */
+    std::string extractCategory(const HttpRequestPtr &req) const;
+
+    /**
+     * @brief Extract date from request path
+     * 
+     * @param req HTTP request
+     * @return Date string extracted from path
+     */
+    std::string extractDate(const HttpRequestPtr &req) const;
+
+    /**
      * @brief Create error response
      * 
      * @param statusCode HTTP status code

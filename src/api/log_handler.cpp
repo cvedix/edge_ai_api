@@ -56,12 +56,59 @@ void LogHandler::listLogFiles(const HttpRequestPtr & /*req*/,
     }
 }
 
+std::string LogHandler::extractCategory(const HttpRequestPtr &req) const {
+    // Try getParameter first (standard way)
+    std::string category = req->getParameter("category");
+    
+    // Fallback: extract from path if getParameter doesn't work
+    if (category.empty()) {
+        std::string path = req->getPath();
+        size_t logsPos = path.find("/logs/");
+        if (logsPos != std::string::npos) {
+            size_t start = logsPos + 6; // length of "/logs/"
+            size_t end = path.find("/", start);
+            if (end == std::string::npos) {
+                end = path.length();
+            }
+            category = path.substr(start, end - start);
+        }
+    }
+    
+    return category;
+}
+
+std::string LogHandler::extractDate(const HttpRequestPtr &req) const {
+    // Try getParameter first (standard way)
+    std::string date = req->getParameter("date");
+    
+    // Fallback: extract from path if getParameter doesn't work
+    if (date.empty()) {
+        std::string path = req->getPath();
+        // Look for pattern: /logs/{category}/{date}
+        size_t logsPos = path.find("/logs/");
+        if (logsPos != std::string::npos) {
+            size_t categoryStart = logsPos + 6; // length of "/logs/"
+            size_t categoryEnd = path.find("/", categoryStart);
+            if (categoryEnd != std::string::npos) {
+                size_t dateStart = categoryEnd + 1;
+                size_t dateEnd = path.find("/", dateStart);
+                if (dateEnd == std::string::npos) {
+                    dateEnd = path.length();
+                }
+                date = path.substr(dateStart, dateEnd - dateStart);
+            }
+        }
+    }
+    
+    return date;
+}
+
 void LogHandler::getLogsByCategory(const HttpRequestPtr &req,
                                  std::function<void(const HttpResponsePtr &)> &&callback)
 {
     try {
         // Get category from path parameter
-        std::string category_str = req->getParameter("category");
+        std::string category_str = extractCategory(req);
         if (category_str.empty()) {
             callback(createErrorResponse(k400BadRequest, "Bad request", "Category parameter is required"));
             return;
@@ -89,10 +136,16 @@ void LogHandler::getLogsByCategory(const HttpRequestPtr &req,
         }
 
         // Get all log files for this category
+        std::string category_dir = LogManager::getCategoryDir(category);
         auto files = LogManager::listLogFiles(category);
+        
+        // Build response (declare once)
+        Json::Value response;
+        response["category"] = category_str;
+        response["category_dir"] = category_dir;
+        response["files_count"] = static_cast<int>(files.size());
+        
         if (files.empty()) {
-            Json::Value response;
-            response["category"] = category_str;
             response["total_lines"] = 0;
             response["filtered_lines"] = 0;
             response["logs"] = Json::Value(Json::arrayValue);
@@ -129,9 +182,7 @@ void LogHandler::getLogsByCategory(const HttpRequestPtr &req,
         // Apply filters
         auto filteredLogs = filterLogs(allLogs, level_filter, from_timestamp, to_timestamp);
 
-        // Build response
-        Json::Value response;
-        response["category"] = category_str;
+        // Update response with log data
         response["total_lines"] = totalLines;
         response["filtered_lines"] = static_cast<int>(filteredLogs.size());
         response["logs"] = Json::Value(Json::arrayValue);
@@ -156,8 +207,8 @@ void LogHandler::getLogsByCategoryAndDate(const HttpRequestPtr &req,
 {
     try {
         // Get category and date from path parameters
-        std::string category_str = req->getParameter("category");
-        std::string date_str = req->getParameter("date");
+        std::string category_str = extractCategory(req);
+        std::string date_str = extractDate(req);
 
         if (category_str.empty() || date_str.empty()) {
             callback(createErrorResponse(k400BadRequest, "Bad request", "Category and date parameters are required"));
@@ -249,13 +300,15 @@ Json::Value LogHandler::parseLogLine(const std::string& line) const
         return logEntry; // Empty
     }
 
-    // Plog TxtFormatter format: YYYY-MM-DD HH:MM:SS.mmm [LEVEL] message
-    // Example: 2025-01-15 10:30:45.123 [INFO] This is a log message
+    // Plog TxtFormatter format: YYYY-MM-DD HH:MM:SS.mmm LEVEL  [thread] [function@line] message
+    // Example: 2025-12-08 19:16:04.659 INFO  [1699886] [CategorizedLogger::init@93] message
+    // Or simpler: 2025-12-08 19:16:04.659 INFO  message
 
-    std::regex logRegex(R"((\d{4}-\d{2}-\d{2})\s+(\d{2}:\d{2}:\d{2})\.(\d{3})\s+\[(\w+)\]\s+(.*))");
+    // Try to match the full format first
+    std::regex logRegexFull(R"((\d{4}-\d{2}-\d{2})\s+(\d{2}:\d{2}:\d{2})\.(\d{3})\s+(\w+)\s+\[.*?\]\s+\[.*?\]\s+(.*))");
     std::smatch matches;
-
-    if (std::regex_match(line, matches, logRegex)) {
+    
+    if (std::regex_match(line, matches, logRegexFull)) {
         if (matches.size() >= 5) {
             std::string date = matches[1].str();
             std::string time = matches[2].str();
@@ -269,6 +322,27 @@ Json::Value LogHandler::parseLogLine(const std::string& line) const
             logEntry["timestamp"] = timestamp;
             logEntry["level"] = level;
             logEntry["message"] = message;
+            return logEntry;
+        }
+    }
+    
+    // Try simpler format without thread and function info
+    std::regex logRegexSimple(R"((\d{4}-\d{2}-\d{2})\s+(\d{2}:\d{2}:\d{2})\.(\d{3})\s+(\w+)\s+(.*))");
+    if (std::regex_match(line, matches, logRegexSimple)) {
+        if (matches.size() >= 5) {
+            std::string date = matches[1].str();
+            std::string time = matches[2].str();
+            std::string milliseconds = matches[3].str();
+            std::string level = matches[4].str();
+            std::string message = matches.size() > 5 ? matches[5].str() : "";
+
+            // Build ISO 8601 timestamp
+            std::string timestamp = date + "T" + time + "." + milliseconds + "Z";
+
+            logEntry["timestamp"] = timestamp;
+            logEntry["level"] = level;
+            logEntry["message"] = message;
+            return logEntry;
         }
     }
 
