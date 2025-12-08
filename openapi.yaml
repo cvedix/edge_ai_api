@@ -1901,6 +1901,60 @@ paths:
           description: CORS preflight response
 
   /v1/core/instance/{instanceId}/output/stream:
+    get:
+      summary: Get stream output configuration
+      description: |
+        Returns the current stream output configuration for an instance. This endpoint retrieves the stream output settings including whether it is enabled and the configured URI.
+        
+        **Response Format:**
+        - `enabled`: Boolean indicating whether stream output is enabled
+        - `uri`: The configured stream URI (empty string if disabled)
+        
+        The URI can be in one of the following formats:
+        - **RTMP**: `rtmp://host:port/path/stream_key`
+        - **RTSP**: `rtsp://host:port/path/stream_key`
+        - **HLS**: `hls://host:port/path/stream_key`
+      operationId: getStreamOutput
+      tags:
+        - Instances
+      parameters:
+        - name: instanceId
+          in: path
+          required: true
+          schema:
+            type: string
+          description: The unique identifier of the instance
+          example: "a5204fc9-9a59-f80f-fb9f-bf3b42214943"
+      responses:
+        '200':
+          description: Stream output configuration
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StreamOutputResponse'
+              examples:
+                enabled:
+                  summary: Stream output enabled
+                  value:
+                    enabled: true
+                    uri: "rtmp://localhost:1935/live/stream"
+                disabled:
+                  summary: Stream output disabled
+                  value:
+                    enabled: false
+                    uri: ""
+        '404':
+          description: Instance not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
     post:
       summary: Configure stream output
       description: |
@@ -1920,7 +1974,7 @@ paths:
         **MediaMTX Setup:**
         - For local streaming, ensure MediaMTX is installed and running: https://github.com/bluenviron/mediamtx
         - Default MediaMTX RTMP endpoint: `rtmp://localhost:1935/live/stream`
-        - Default MediaMTX RTSP endpoint: `rtsp://localhost:8554/live/stream`
+        - Default MediaMTX RTSP endpoint: `rtsp://localhost:8554/live/stream"
       operationId: configureStreamOutput
       tags:
         - Instances
@@ -1975,8 +2029,8 @@ paths:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
     options:
-      summary: CORS preflight for configure stream output
-      operationId: configureStreamOutputOptions
+      summary: CORS preflight for stream output endpoints
+      operationId: streamOutputOptions
       tags:
         - Instances
       responses:
@@ -2464,6 +2518,24 @@ components:
           description: |
             The requested URI for the stream output. Required when enabled is true.
             Must start with rtmp://, rtsp://, or hls://
+          example: "rtmp://localhost:1935/live/stream"
+
+    StreamOutputResponse:
+      type: object
+      required:
+        - enabled
+        - uri
+      properties:
+        enabled:
+          type: boolean
+          description: Indicates whether stream output is enabled
+          example: true
+        uri:
+          type: string
+          format: uri
+          description: |
+            The configured URI for the stream output. Empty string if disabled.
+            Can be rtmp://, rtsp://, or hls:// format
           example: "rtmp://localhost:1935/live/stream"
 
     SystemInfoResponse:
