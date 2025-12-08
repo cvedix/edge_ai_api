@@ -1,6 +1,7 @@
 #pragma once
 
 #include "instances/instance_info.h"
+#include "instances/instance_statistics.h"
 #include "models/create_instance_request.h"
 #include "solutions/solution_registry.h"
 #include "core/pipeline_builder.h"
@@ -13,6 +14,7 @@
 #include <memory>
 #include <atomic>
 #include <thread>
+#include <chrono>
 
 // Forward declarations
 namespace cvedix_nodes {
@@ -135,6 +137,13 @@ public:
      */
     Json::Value getInstanceConfig(const std::string& instanceId) const;
     
+    /**
+     * @brief Get instance statistics
+     * @param instanceId Instance ID
+     * @return Statistics info if instance exists and is running, empty optional otherwise
+     */
+    std::optional<InstanceStatistics> getInstanceStatistics(const std::string& instanceId) const;
+    
 private:
     SolutionRegistry& solution_registry_;
     PipelineBuilder& pipeline_builder_;
@@ -148,6 +157,21 @@ private:
     std::unordered_map<std::string, std::atomic<bool>> logging_thread_stop_flags_;
     std::unordered_map<std::string, std::thread> logging_threads_;
     mutable std::mutex thread_mutex_; // Separate mutex for thread management to avoid deadlock
+    
+    // Statistics tracking per instance
+    struct InstanceStatsTracker {
+        std::chrono::steady_clock::time_point start_time;
+        uint64_t frames_processed = 0;
+        uint64_t dropped_frames = 0;
+        double last_fps = 0.0;
+        std::chrono::steady_clock::time_point last_fps_update;
+        uint64_t frame_count_since_last_update = 0;
+        std::string resolution;  // Current processing resolution
+        std::string source_resolution;  // Source resolution
+        std::string format;  // Frame format
+    };
+    
+    mutable std::unordered_map<std::string, InstanceStatsTracker> statistics_trackers_;
     
     /**
      * @brief Create InstanceInfo from request

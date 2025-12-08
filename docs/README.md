@@ -63,20 +63,33 @@ Tài liệu hướng dẫn đầy đủ cho Edge AI API project.
    - Chi tiết các thông số có thể lấy được
 
 9. **[LOGGING.md](LOGGING.md)** - Logging Documentation
+   - Hướng dẫn sử dụng các tính năng logging
+   - API logging (`--log-api`)
+   - Instance execution logging (`--log-instance`)
+   - SDK output logging (`--log-sdk-output`)
+   - Cấu hình và best practices
+   - Troubleshooting logging issues
+
+10. **[LOGS_API.md](LOGS_API.md)** - Logs API Documentation
+    - Hướng dẫn sử dụng Logs API endpoints
+    - List log files theo category
+    - Get logs với filtering (level, time range, tail)
+    - Ví dụ sử dụng với curl
+    - Use cases và best practices
 
 ### Node Support & Implementation
 
-10. **[NODE_SUPPORT_STATUS.md](NODE_SUPPORT_STATUS.md)** - Trạng thái hỗ trợ các node types
+11. **[NODE_SUPPORT_STATUS.md](NODE_SUPPORT_STATUS.md)** - Trạng thái hỗ trợ các node types
     - Inference nodes: 23 nodes (100%)
     - Source nodes: 6 nodes (100%)
     - Broker nodes: 12 nodes (100%)
 
-11. **[REQUIREMENT_CHECKLIST.md](REQUIREMENT_CHECKLIST.md)** - Checklist đáp ứng yêu cầu
+12. **[REQUIREMENT_CHECKLIST.md](REQUIREMENT_CHECKLIST.md)** - Checklist đáp ứng yêu cầu
     - Detector (Inference): ✅ 100%
     - Input (Source): ✅ 100%
     - Output (Broker): ✅ 100%
 
-12. **[IMPLEMENTATION_SUMMARY.md](IMPLEMENTATION_SUMMARY.md)** - Tổng kết implementation
+13. **[IMPLEMENTATION_SUMMARY.md](IMPLEMENTATION_SUMMARY.md)** - Tổng kết implementation
     - Tổng số nodes đã hỗ trợ: 41 nodes
     - Example files: 26 files
     - Files đã tạo/cập nhật

@@ -271,6 +271,7 @@ set(SOURCES
     src/api/solution_handler.cpp
     src/api/group_handler.cpp
     src/api/system_info_handler.cpp
+    src/api/log_handler.cpp
     src/models/model_upload_handler.cpp
     src/core/watchdog.cpp
     src/core/health_monitor.cpp

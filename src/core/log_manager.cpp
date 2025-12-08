@@ -359,3 +359,43 @@ int LogManager::getFileAgeDays(const fs::path& file_path) {
     }
 }
 
+std::vector<std::pair<std::string, uint64_t>> LogManager::listLogFiles(Category category) {
+    std::vector<std::pair<std::string, uint64_t>> files;
+    
+    try {
+        std::string category_dir = getCategoryDir(category);
+        
+        if (!fs::exists(category_dir) || !fs::is_directory(category_dir)) {
+            return files; // Return empty vector if directory doesn't exist
+        }
+        
+        // Iterate through all files in the category directory
+        for (const auto& entry : fs::directory_iterator(category_dir)) {
+            if (fs::is_regular_file(entry)) {
+                std::string filename = entry.path().filename().string();
+                
+                // Check if file matches log format: YYYY-MM-DD.log
+                if (filename.length() == 13 && filename.substr(10) == ".log") {
+                    std::string date_str = filename.substr(0, 10);
+                    
+                    // Validate date format (basic check)
+                    if (date_str.length() == 10 && date_str[4] == '-' && date_str[7] == '-') {
+                        uint64_t file_size = fs::file_size(entry.path());
+                        files.push_back({date_str, file_size});
+                    }
+                }
+            }
+        }
+        
+        // Sort by date (newest first)
+        std::sort(files.begin(), files.end(), [](const auto& a, const auto& b) {
+            return a.first > b.first; // Reverse order (newest first)
+        });
+        
+    } catch (const std::exception& e) {
+        std::cerr << "[LogManager] Error listing log files: " << e.what() << std::endl;
+    }
+    
+    return files;
+}
+

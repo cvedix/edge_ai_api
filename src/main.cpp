@@ -8,6 +8,7 @@
 #include "api/system_info_handler.h"
 #include "api/solution_handler.h"
 #include "api/group_handler.h"
+#include "api/log_handler.h"
 #include "models/model_upload_handler.h"
 #include "core/watchdog.h"
 #include "core/health_monitor.h"
@@ -929,6 +930,9 @@ int main(int argc, char* argv[])
         PLOG_INFO << "  GET /openapi.yaml    - OpenAPI spec (all versions)";
         PLOG_INFO << "  GET /v1/openapi.yaml - OpenAPI spec for v1";
         PLOG_INFO << "  GET /v2/openapi.yaml - OpenAPI spec for v2";
+        PLOG_INFO << "  GET /v1/core/logs - List all log files by category";
+        PLOG_INFO << "  GET /v1/core/logs/{category} - Get logs by category (with filtering)";
+        PLOG_INFO << "  GET /v1/core/logs/{category}/{date} - Get logs by category and date (with filtering)";
 
         // Controllers are auto-registered via Drogon's HttpController system
         // when headers are included and METHOD_LIST_BEGIN/END macros are used
@@ -938,6 +942,7 @@ int main(int argc, char* argv[])
         static WatchdogHandler watchdogHandler;
         static SwaggerHandler swaggerHandler;
         static SystemInfoHandler systemInfoHandler;
+        static LogHandler logHandler;
         
         // Initialize instance management components
         static SolutionRegistry& solutionRegistry = SolutionRegistry::getInstance();

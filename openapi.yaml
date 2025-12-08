@@ -1900,6 +1900,77 @@ paths:
         '200':
           description: CORS preflight response
 
+  /v1/core/instance/{instanceId}/statistics:
+    get:
+      summary: Get instance statistics
+      description: |
+        Returns current real-time statistics for the instance. Statistics include frames processed, framerate, latency, resolution, queue size, and dropped frames count.
+        
+        **Note:** Statistics reset to 0 when instance restarts. Statistics are calculated in real-time and are not persisted to storage.
+        
+        **Statistics Fields:**
+        - `frames_processed`: Total number of frames processed since instance started
+        - `source_framerate`: FPS from source (e.g., RTSP stream or video file)
+        - `current_framerate`: Current processing FPS
+        - `latency`: Average processing latency per frame in milliseconds
+        - `start_time`: Instance start time (Unix timestamp in seconds)
+        - `input_queue_size`: Current input queue size (0 if not available)
+        - `dropped_frames_count`: Total number of dropped frames
+        - `resolution`: Current processing resolution (e.g., "1280x720")
+        - `format`: Frame format (e.g., "BGR")
+        - `source_resolution`: Source resolution (e.g., "1920x1080")
+        
+        The instance must exist and be running. If the instance is not found or not running, a 404 error will be returned.
+      operationId: getInstanceStatistics
+      tags:
+        - Instances
+      parameters:
+        - name: instanceId
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Unique identifier for the instance
+          example: "00000000-0000-0000-0000-000000000000"
+      responses:
+        '200':
+          description: Statistics information
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/InstanceStatistics'
+              example:
+                frames_processed: 0
+                source_framerate: 0
+                current_framerate: 5
+                latency: 200
+                start_time: 1764900520
+                input_queue_size: 0
+                dropped_frames_count: 22
+                resolution: "1280x720"
+                format: "BGR"
+                source_resolution: "1920x1080"
+        '404':
+          description: Instance not found or not running
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+    options:
+      summary: CORS preflight for get statistics
+      operationId: getStatisticsOptions
+      tags:
+        - Instances
+      responses:
+        '200':
+          description: CORS preflight response
+
   /v1/core/solutions:
     get:
       summary: List all solutions
@@ -2144,6 +2215,207 @@ paths:
         '200':
           description: CORS preflight response
 
+  /v1/core/logs:
+    get:
+      summary: List all log files by category
+      description: Returns a list of all log files organized by category (api, instance, sdk_output, general)
+      operationId: listLogFiles
+      tags:
+        - Logs
+      responses:
+        '200':
+          description: List of log files by category
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  categories:
+                    type: object
+                    additionalProperties:
+                      type: array
+                      items:
+                        $ref: '#/components/schemas/LogFileInfo'
+              example:
+                categories:
+                  api:
+                    - date: "2025-01-15"
+                      size: 1048576
+                      path: "/var/lib/edge_ai_api/logs/api/2025-01-15.log"
+                  instance:
+                    - date: "2025-01-15"
+                      size: 2048576
+                      path: "/var/lib/edge_ai_api/logs/instance/2025-01-15.log"
+        '500':
+          description: Server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+    options:
+      summary: CORS preflight for logs
+      operationId: listLogFilesOptions
+      tags:
+        - Logs
+      responses:
+        '200':
+          description: CORS preflight response
+
+  /v1/core/logs/{category}:
+    get:
+      summary: Get logs by category
+      description: Returns logs from a specific category with optional filtering by level, time range, and tail
+      operationId: getLogsByCategory
+      tags:
+        - Logs
+      parameters:
+        - name: category
+          in: path
+          required: true
+          schema:
+            type: string
+            enum: [api, instance, sdk_output, general]
+          description: Log category
+        - name: level
+          in: query
+          required: false
+          schema:
+            type: string
+            enum: [INFO, WARNING, ERROR, FATAL, DEBUG, VERBOSE]
+          description: Filter by log level (case-insensitive)
+        - name: from
+          in: query
+          required: false
+          schema:
+            type: string
+            format: date-time
+          description: Filter logs from this timestamp (ISO 8601)
+        - name: to
+          in: query
+          required: false
+          schema:
+            type: string
+            format: date-time
+          description: Filter logs to this timestamp (ISO 8601)
+        - name: tail
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+          description: Get last N lines from the latest log file
+      responses:
+        '200':
+          description: Logs from the specified category
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LogsResponse'
+        '400':
+          description: Bad request (invalid category or parameters)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+    options:
+      summary: CORS preflight for logs by category
+      operationId: getLogsByCategoryOptions
+      tags:
+        - Logs
+      responses:
+        '200':
+          description: CORS preflight response
+
+  /v1/core/logs/{category}/{date}:
+    get:
+      summary: Get logs by category and date
+      description: Returns logs from a specific category and date with optional filtering by level, time range, and tail
+      operationId: getLogsByCategoryAndDate
+      tags:
+        - Logs
+      parameters:
+        - name: category
+          in: path
+          required: true
+          schema:
+            type: string
+            enum: [api, instance, sdk_output, general]
+          description: Log category
+        - name: date
+          in: path
+          required: true
+          schema:
+            type: string
+            pattern: '^\d{4}-\d{2}-\d{2}$'
+          description: Date in YYYY-MM-DD format
+        - name: level
+          in: query
+          required: false
+          schema:
+            type: string
+            enum: [INFO, WARNING, ERROR, FATAL, DEBUG, VERBOSE]
+          description: Filter by log level (case-insensitive)
+        - name: from
+          in: query
+          required: false
+          schema:
+            type: string
+            format: date-time
+          description: Filter logs from this timestamp (ISO 8601)
+        - name: to
+          in: query
+          required: false
+          schema:
+            type: string
+            format: date-time
+          description: Filter logs to this timestamp (ISO 8601)
+        - name: tail
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+          description: Get last N lines from the log file
+      responses:
+        '200':
+          description: Logs from the specified category and date
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LogsResponse'
+        '400':
+          description: Bad request (invalid category, date format, or parameters)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: Log file not found for the specified date
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+    options:
+      summary: CORS preflight for logs by category and date
+      operationId: getLogsByCategoryAndDateOptions
+      tags:
+        - Logs
+      responses:
+        '200':
+          description: CORS preflight response
+
 components:
   schemas:
     HealthResponse:
@@ -2248,6 +2520,69 @@ components:
         message:
           type: string
           description: Detailed error message
+
+    LogFileInfo:
+      type: object
+      properties:
+        date:
+          type: string
+          pattern: '^\d{4}-\d{2}-\d{2}$'
+          description: Date in YYYY-MM-DD format
+          example: "2025-01-15"
+        size:
+          type: integer
+          format: int64
+          description: File size in bytes
+          example: 1048576
+        path:
+          type: string
+          description: Full path to the log file
+          example: "/var/lib/edge_ai_api/logs/api/2025-01-15.log"
+
+    LogEntry:
+      type: object
+      properties:
+        timestamp:
+          type: string
+          format: date-time
+          description: Log entry timestamp in ISO 8601 format
+          example: "2025-01-15T10:30:45.123Z"
+        level:
+          type: string
+          enum: [INFO, WARNING, ERROR, FATAL, DEBUG, VERBOSE]
+          description: Log level
+          example: "INFO"
+        message:
+          type: string
+          description: Log message
+          example: "This is a log message"
+
+    LogsResponse:
+      type: object
+      properties:
+        category:
+          type: string
+          enum: [api, instance, sdk_output, general]
+          description: Log category
+          example: "api"
+        date:
+          type: string
+          pattern: '^\d{4}-\d{2}-\d{2}$'
+          description: Date in YYYY-MM-DD format (only present when date is specified in path)
+          example: "2025-01-15"
+        total_lines:
+          type: integer
+          description: Total number of log lines before filtering
+          example: 1000
+        filtered_lines:
+          type: integer
+          description: Number of log lines after filtering
+          example: 50
+        logs:
+          type: array
+          items:
+            $ref: '#/components/schemas/LogEntry'
+          description: Array of log entries
 
     SetInputRequest:
       type: object
@@ -2972,6 +3307,58 @@ components:
             address:
               type: string
               description: Originator address
+
+    InstanceStatistics:
+      type: object
+      description: Real-time statistics for an instance
+      properties:
+        frames_processed:
+          type: integer
+          format: int64
+          description: Total number of frames processed since instance started
+          example: 0
+        source_framerate:
+          type: number
+          format: double
+          description: Source framerate (FPS from source stream or file)
+          example: 0
+        current_framerate:
+          type: number
+          format: double
+          description: Current processing framerate (FPS)
+          example: 5
+        latency:
+          type: number
+          format: double
+          description: Average processing latency per frame in milliseconds
+          example: 200
+        start_time:
+          type: integer
+          format: int64
+          description: Instance start time (Unix timestamp in seconds)
+          example: 1764900520
+        input_queue_size:
+          type: integer
+          format: int64
+          description: Current input queue size (0 if not available from SDK)
+          example: 0
+        dropped_frames_count:
+          type: integer
+          format: int64
+          description: Total number of dropped frames
+          example: 22
+        resolution:
+          type: string
+          description: Current processing resolution (e.g., "1280x720")
+          example: "1280x720"
+        format:
+          type: string
+          description: Frame format (e.g., "BGR")
+          example: "BGR"
+        source_resolution:
+          type: string
+          description: Source resolution (e.g., "1920x1080")
+          example: "1920x1080"
 
     InstanceOutputResponse:
       type: object

@@ -741,6 +741,82 @@ void InstanceHandler::getConfig(
     }
 }
 
+void InstanceHandler::getStatistics(
+    const HttpRequestPtr &req,
+    std::function<void(const HttpResponsePtr &)> &&callback) {
+    
+    auto start_time = std::chrono::steady_clock::now();
+    
+    // Get instance ID from path parameter
+    std::string instanceId = extractInstanceId(req);
+    
+    if (isApiLoggingEnabled()) {
+        PLOG_INFO << "[API] GET /v1/core/instance/" << instanceId << "/statistics - Get instance statistics";
+        PLOG_DEBUG << "[API] Request from: " << req->getPeerAddr().toIpPort();
+    }
+    
+    try {
+        // Check if registry is set
+        if (!instance_registry_) {
+            if (isApiLoggingEnabled()) {
+                PLOG_ERROR << "[API] GET /v1/core/instance/" << instanceId << "/statistics - Error: Instance registry not initialized";
+            }
+            callback(createErrorResponse(500, "Internal server error", "Instance registry not initialized"));
+            return;
+        }
+        
+        if (instanceId.empty()) {
+            if (isApiLoggingEnabled()) {
+                PLOG_WARNING << "[API] GET /v1/core/instance/{instanceId}/statistics - Error: Instance ID is empty";
+            }
+            callback(createErrorResponse(400, "Invalid request", "Instance ID is required"));
+            return;
+        }
+        
+        // Get statistics
+        auto optStats = instance_registry_->getInstanceStatistics(instanceId);
+        if (!optStats.has_value()) {
+            auto end_time = std::chrono::steady_clock::now();
+            auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(end_time - start_time);
+            if (isApiLoggingEnabled()) {
+                PLOG_WARNING << "[API] GET /v1/core/instance/" << instanceId << "/statistics - Not found or not running - " << duration.count() << "ms";
+            }
+            callback(createErrorResponse(404, "Not found", "Instance not found or not running: " + instanceId));
+            return;
+        }
+        
+        // Build JSON response
+        Json::Value response = optStats.value().toJson();
+        
+        auto end_time = std::chrono::steady_clock::now();
+        auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(end_time - start_time);
+        
+        if (isApiLoggingEnabled()) {
+            PLOG_INFO << "[API] GET /v1/core/instance/" << instanceId 
+                      << "/statistics - Success - " << duration.count() << "ms";
+        }
+        
+        callback(createSuccessResponse(response));
+        
+    } catch (const std::exception& e) {
+        auto end_time = std::chrono::steady_clock::now();
+        auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(end_time - start_time);
+        if (isApiLoggingEnabled()) {
+            PLOG_ERROR << "[API] GET /v1/core/instance/" << instanceId << "/statistics - Exception: " << e.what() << " - " << duration.count() << "ms";
+        }
+        std::cerr << "[InstanceHandler] Exception in getStatistics: " << e.what() << std::endl;
+        callback(createErrorResponse(500, "Internal server error", e.what()));
+    } catch (...) {
+        auto end_time = std::chrono::steady_clock::now();
+        auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(end_time - start_time);
+        if (isApiLoggingEnabled()) {
+            PLOG_ERROR << "[API] GET /v1/core/instance/" << instanceId << "/statistics - Unknown exception - " << duration.count() << "ms";
+        }
+        std::cerr << "[InstanceHandler] Unknown exception in getStatistics" << std::endl;
+        callback(createErrorResponse(500, "Internal server error", "Unknown error occurred"));
+    }
+}
+
 void InstanceHandler::setInstanceInput(
     const HttpRequestPtr &req,
     std::function<void(const HttpResponsePtr &)> &&callback) {

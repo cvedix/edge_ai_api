@@ -47,6 +47,7 @@ public:
         ADD_METHOD_TO(InstanceHandler::setInstanceInput, "/v1/core/instance/{instanceId}/input", Post);
         ADD_METHOD_TO(InstanceHandler::getConfig, "/v1/core/instance/{instanceId}/config", Get);
         ADD_METHOD_TO(InstanceHandler::setConfig, "/v1/core/instance/{instanceId}/config", Post);
+        ADD_METHOD_TO(InstanceHandler::getStatistics, "/v1/core/instance/{instanceId}/statistics", Get);
         ADD_METHOD_TO(InstanceHandler::handleOptions, "/v1/core/instances", Options);
         ADD_METHOD_TO(InstanceHandler::handleOptions, "/v1/core/instances/{instanceId}", Options);
         ADD_METHOD_TO(InstanceHandler::handleOptions, "/v1/core/instances/{instanceId}/start", Options);
@@ -55,6 +56,7 @@ public:
         ADD_METHOD_TO(InstanceHandler::handleOptions, "/v1/core/instances/{instanceId}/output", Options);
         ADD_METHOD_TO(InstanceHandler::handleOptions, "/v1/core/instance/{instanceId}/input", Options);
         ADD_METHOD_TO(InstanceHandler::handleOptions, "/v1/core/instance/{instanceId}/config", Options);
+        ADD_METHOD_TO(InstanceHandler::handleOptions, "/v1/core/instance/{instanceId}/statistics", Options);
         ADD_METHOD_TO(InstanceHandler::handleOptions, "/v1/core/instances/batch/start", Options);
         ADD_METHOD_TO(InstanceHandler::handleOptions, "/v1/core/instances/batch/stop", Options);
         ADD_METHOD_TO(InstanceHandler::handleOptions, "/v1/core/instances/batch/restart", Options);
@@ -165,6 +167,13 @@ public:
      */
     void setConfig(const HttpRequestPtr &req,
                   std::function<void(const HttpResponsePtr &)> &&callback);
+    
+    /**
+     * @brief Handle GET /v1/core/instance/{instanceId}/statistics
+     * Gets real-time statistics for a specific instance
+     */
+    void getStatistics(const HttpRequestPtr &req,
+                      std::function<void(const HttpResponsePtr &)> &&callback);
     
     /**
      * @brief Handle OPTIONS request for CORS preflight
