@@ -17,6 +17,7 @@ using namespace drogon;
  * Endpoints:
  * - POST /v1/core/models/upload - Upload a model file
  * - GET /v1/core/models/list - List uploaded models
+ * - PUT /v1/core/models/{modelName} - Rename a model file
  * - DELETE /v1/core/models/{modelName} - Delete a model file
  */
 class ModelUploadHandler : public drogon::HttpController<ModelUploadHandler> {
@@ -24,6 +25,7 @@ public:
     METHOD_LIST_BEGIN
         ADD_METHOD_TO(ModelUploadHandler::uploadModel, "/v1/core/models/upload", Post);
         ADD_METHOD_TO(ModelUploadHandler::listModels, "/v1/core/models/list", Get);
+        ADD_METHOD_TO(ModelUploadHandler::renameModel, "/v1/core/models/{modelName}", Put);
         ADD_METHOD_TO(ModelUploadHandler::deleteModel, "/v1/core/models/{modelName}", Delete);
         ADD_METHOD_TO(ModelUploadHandler::handleOptions, "/v1/core/models/upload", Options);
     METHOD_LIST_END
@@ -41,6 +43,13 @@ public:
      */
     void listModels(const HttpRequestPtr &req,
                    std::function<void(const HttpResponsePtr &)> &&callback);
+    
+    /**
+     * @brief Handle PUT /v1/core/models/{modelName}
+     * Renames a model file
+     */
+    void renameModel(const HttpRequestPtr &req,
+                    std::function<void(const HttpResponsePtr &)> &&callback);
     
     /**
      * @brief Handle DELETE /v1/core/models/{modelName}
@@ -77,6 +86,11 @@ private:
      * @brief Sanitize filename to prevent path traversal
      */
     std::string sanitizeFilename(const std::string& filename) const;
+    
+    /**
+     * @brief Extract model name from request path
+     */
+    std::string extractModelName(const HttpRequestPtr &req) const;
     
     /**
      * @brief Create error response
