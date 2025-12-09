@@ -28,6 +28,8 @@ using namespace drogon;
  * - POST /v1/core/instance/{instanceId}/input - Set input source for an instance
  * - GET /v1/core/instance/{instanceId}/config - Get instance configuration
  * - POST /v1/core/instance/{instanceId}/config - Set config value at a specific path
+ * - GET /v1/core/instance/{instanceId}/output/stream - Get stream output configuration
+ * - POST /v1/core/instance/{instanceId}/output/stream - Configure stream output (RTMP/RTSP/HLS)
  */
 class InstanceHandler : public drogon::HttpController<InstanceHandler> {
 public:
@@ -48,6 +50,8 @@ public:
         ADD_METHOD_TO(InstanceHandler::getConfig, "/v1/core/instance/{instanceId}/config", Get);
         ADD_METHOD_TO(InstanceHandler::setConfig, "/v1/core/instance/{instanceId}/config", Post);
         ADD_METHOD_TO(InstanceHandler::getStatistics, "/v1/core/instance/{instanceId}/statistics", Get);
+        ADD_METHOD_TO(InstanceHandler::getStreamOutput, "/v1/core/instance/{instanceId}/output/stream", Get);
+        ADD_METHOD_TO(InstanceHandler::configureStreamOutput, "/v1/core/instance/{instanceId}/output/stream", Post);
         ADD_METHOD_TO(InstanceHandler::handleOptions, "/v1/core/instances", Options);
         ADD_METHOD_TO(InstanceHandler::handleOptions, "/v1/core/instances/{instanceId}", Options);
         ADD_METHOD_TO(InstanceHandler::handleOptions, "/v1/core/instances/{instanceId}/start", Options);
@@ -57,6 +61,7 @@ public:
         ADD_METHOD_TO(InstanceHandler::handleOptions, "/v1/core/instance/{instanceId}/input", Options);
         ADD_METHOD_TO(InstanceHandler::handleOptions, "/v1/core/instance/{instanceId}/config", Options);
         ADD_METHOD_TO(InstanceHandler::handleOptions, "/v1/core/instance/{instanceId}/statistics", Options);
+        ADD_METHOD_TO(InstanceHandler::handleOptions, "/v1/core/instance/{instanceId}/output/stream", Options);
         ADD_METHOD_TO(InstanceHandler::handleOptions, "/v1/core/instances/batch/start", Options);
         ADD_METHOD_TO(InstanceHandler::handleOptions, "/v1/core/instances/batch/stop", Options);
         ADD_METHOD_TO(InstanceHandler::handleOptions, "/v1/core/instances/batch/restart", Options);
@@ -174,6 +179,18 @@ public:
      */
     void getStatistics(const HttpRequestPtr &req,
                       std::function<void(const HttpResponsePtr &)> &&callback);
+     * @brief Handle GET /v1/core/instance/{instanceId}/output/stream
+     * Gets stream output configuration for an instance
+     */
+    void getStreamOutput(const HttpRequestPtr &req,
+                        std::function<void(const HttpResponsePtr &)> &&callback);
+    
+    /**
+     * @brief Handle POST /v1/core/instance/{instanceId}/output/stream
+     * Configures stream output for an instance (RTMP/RTSP/HLS)
+     */
+    void configureStreamOutput(const HttpRequestPtr &req,
+                              std::function<void(const HttpResponsePtr &)> &&callback);
     
     /**
      * @brief Handle OPTIONS request for CORS preflight

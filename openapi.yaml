@@ -142,6 +142,519 @@ paths:
         '200':
           description: CORS preflight response
 
+  /v1/core/config:
+    get:
+      summary: Get system configuration
+      description: |
+        Returns system configuration. If `path` query parameter is provided, returns the specific configuration section.
+        Otherwise, returns the complete system configuration.
+        
+        **Path Format:**
+        - Use forward slashes `/` or dots `.` to navigate nested configuration keys
+        - Examples: `system/max_running_instances`, `system.max_running_instances`, `gstreamer/decode_pipelines/auto`
+        
+        **Recommended:** Use query parameter with forward slashes for better compatibility.
+      operationId: getConfig
+      tags:
+        - Config
+      parameters:
+        - name: path
+          in: query
+          required: false
+          schema:
+            type: string
+          description: |
+            Configuration path to get a specific section. Use `/` or `.` as separators.
+            Examples: `system/max_running_instances`, `system.web_server`, `gstreamer/decode_pipelines/auto`
+          example: "system/max_running_instances"
+      responses:
+        '200':
+          description: Full system configuration
+          content:
+            application/json:
+              schema:
+                type: object
+                description: Complete system configuration object
+                additionalProperties: true
+                example:
+                  auto_device_list:
+                    - "hailo.auto"
+                    - "blaize.auto"
+                  decoder_priority_list:
+                    - "blaize.auto"
+                    - "software"
+                  gstreamer:
+                    decode_pipelines:
+                      auto:
+                        pipeline: "decodebin ! videoconvert"
+                  system:
+                    web_server:
+                      enabled: true
+                      ip_address: "0.0.0.0"
+                      port: 3546
+        '500':
+          description: Server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+    post:
+      summary: Create or update configuration (merge)
+      description: |
+        Updates the system configuration by merging the provided JSON with the existing configuration.
+        Only the provided fields will be updated; other fields remain unchanged.
+        The configuration is saved to the config file after update.
+      operationId: createOrUpdateConfig
+      tags:
+        - Config
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              description: Configuration object to merge
+              additionalProperties: true
+              example:
+                system:
+                  web_server:
+                    port: 8080
+      responses:
+        '200':
+          description: Configuration updated successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                    example: "Configuration updated successfully"
+                  config:
+                    type: object
+                    description: Updated full configuration
+                    additionalProperties: true
+        '400':
+          description: Invalid request or validation failed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+    put:
+      summary: Replace entire configuration
+      description: |
+        Replaces the entire system configuration with the provided JSON.
+        All existing configuration will be replaced with the new values.
+        The configuration is saved to the config file after replacement.
+      operationId: replaceConfig
+      tags:
+        - Config
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              description: Complete configuration object to replace existing config
+              additionalProperties: true
+              example:
+                auto_device_list:
+                  - "hailo.auto"
+                system:
+                  web_server:
+                    enabled: true
+                    port: 8080
+      responses:
+        '200':
+          description: Configuration replaced successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                    example: "Configuration replaced successfully"
+                  config:
+                    type: object
+                    description: New full configuration
+                    additionalProperties: true
+        '400':
+          description: Invalid request or validation failed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+    patch:
+      summary: Update configuration section (query parameter)
+      description: |
+        Updates a specific section of the system configuration at the given path.
+        
+        **Path Format:**
+        - Use forward slashes `/` or dots `.` as separators
+        - Examples: `system/max_running_instances`, `system.max_running_instances`
+        
+        Only the provided fields in the section will be updated.
+        The configuration is saved to the config file after update.
+      operationId: updateConfigSectionQuery
+      tags:
+        - Config
+      parameters:
+        - name: path
+          in: query
+          required: true
+          schema:
+            type: string
+          description: Configuration path using `/` or `.` as separators
+          example: "system/max_running_instances"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              description: Configuration section value to update
+              additionalProperties: true
+              example:
+                port: 8080
+      responses:
+        '200':
+          description: Configuration section updated successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                    example: "Configuration section updated successfully"
+                  path:
+                    type: string
+                    example: "system/max_running_instances"
+                  value:
+                    type: object
+                    description: Updated configuration section value
+                    additionalProperties: true
+        '400':
+          description: Invalid request or validation failed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+    delete:
+      summary: Delete configuration section (query parameter)
+      description: |
+        Deletes a specific section of the system configuration at the given path.
+        
+        **Path Format:**
+        - Use forward slashes `/` or dots `.` as separators
+        - Examples: `system/max_running_instances`, `system.max_running_instances`
+        
+        The configuration is saved to the config file after deletion.
+      operationId: deleteConfigSectionQuery
+      tags:
+        - Config
+      parameters:
+        - name: path
+          in: query
+          required: true
+          schema:
+            type: string
+          description: Configuration path using `/` or `.` as separators
+          example: "system/max_running_instances"
+      responses:
+        '200':
+          description: Configuration section deleted successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                    example: "Configuration section deleted successfully"
+                  path:
+                    type: string
+                    example: "system/max_running_instances"
+        '400':
+          description: Invalid request (empty path)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: Configuration section not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+    options:
+      summary: CORS preflight for config
+      operationId: configOptions
+      tags:
+        - Config
+      responses:
+        '200':
+          description: CORS preflight response
+
+  /v1/core/config/reset:
+    post:
+      summary: Reset configuration to defaults
+      description: |
+        Resets the entire system configuration to default values.
+        All existing configuration will be replaced with default values.
+        The configuration is saved to the config file after reset.
+        
+        **Warning:** This operation will replace all configuration with default values.
+        Consider backing up your configuration before resetting.
+      operationId: resetConfig
+      tags:
+        - Config
+      responses:
+        '200':
+          description: Configuration reset successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                    example: "Configuration reset to defaults successfully"
+                  config:
+                    type: object
+                    description: Default configuration object
+                    additionalProperties: true
+        '500':
+          description: Server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /v1/core/config/{path}:
+    get:
+      summary: Get configuration section (path parameter)
+      description: |
+        Returns a specific section of the system configuration at the given path.
+        
+        **Path Format:**
+        - Use dots `.` as separators (e.g., `system.max_running_instances`)
+        - Forward slashes `/` with URL encoding (`%2F`) are NOT supported due to Drogon routing limitations
+        
+        **Recommended:** Use query parameter instead: `GET /v1/core/config?path=system/max_running_instances`
+        
+        Example paths: `system.max_running_instances`, `system.web_server`, `gstreamer.decode_pipelines.auto`
+      operationId: getConfigSection
+      tags:
+        - Config
+      parameters:
+        - name: path
+          in: path
+          required: true
+          schema:
+            type: string
+          description: |
+            Configuration path using dots as separators.
+            Examples: `system.max_running_instances`, `system.web_server`, `gstreamer.decode_pipelines.auto`
+            Note: Forward slashes are NOT supported in path parameter (use query parameter instead)
+          example: "system.max_running_instances"
+      responses:
+        '200':
+          description: Configuration section
+          content:
+            application/json:
+              schema:
+                type: object
+                description: Configuration section value (can be object, array, or primitive)
+                additionalProperties: true
+                example:
+                  enabled: true
+                  ip_address: "0.0.0.0"
+                  port: 3546
+        '400':
+          description: Invalid request (empty path)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: Configuration section not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+    patch:
+      summary: Update configuration section (path parameter)
+      description: |
+        Updates a specific section of the system configuration at the given path.
+        
+        **Path Format:**
+        - Use dots `.` as separators (e.g., `system.max_running_instances`)
+        - Forward slashes `/` with URL encoding (`%2F`) are NOT supported
+        
+        **Recommended:** Use query parameter instead: `PATCH /v1/core/config?path=system/max_running_instances`
+        
+        Only the provided fields in the section will be updated.
+        The configuration is saved to the config file after update.
+      operationId: updateConfigSection
+      tags:
+        - Config
+      parameters:
+        - name: path
+          in: path
+          required: true
+          schema:
+            type: string
+          description: |
+            Configuration path using dots as separators.
+            Examples: `system.max_running_instances`, `system.web_server`
+            Note: Forward slashes are NOT supported in path parameter (use query parameter instead)
+          example: "system.max_running_instances"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              description: Configuration section value to update
+              additionalProperties: true
+              example:
+                port: 8080
+      responses:
+        '200':
+          description: Configuration section updated successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                    example: "Configuration section updated successfully"
+                  path:
+                    type: string
+                    example: "system/web_server"
+                  value:
+                    type: object
+                    description: Updated configuration section value
+                    additionalProperties: true
+        '400':
+          description: Invalid request or validation failed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+    delete:
+      summary: Delete configuration section (path parameter)
+      description: |
+        Deletes a specific section of the system configuration at the given path.
+        
+        **Path Format:**
+        - Use dots `.` as separators (e.g., `system.max_running_instances`)
+        - Forward slashes `/` with URL encoding (`%2F`) are NOT supported
+        
+        **Recommended:** Use query parameter instead: `DELETE /v1/core/config?path=system/max_running_instances`
+        
+        The configuration is saved to the config file after deletion.
+      operationId: deleteConfigSection
+      tags:
+        - Config
+      parameters:
+        - name: path
+          in: path
+          required: true
+          schema:
+            type: string
+          description: |
+            Configuration path using dots as separators.
+            Examples: `system.max_running_instances`, `system.web_server`
+            Note: Forward slashes are NOT supported in path parameter (use query parameter instead)
+          example: "system.max_running_instances"
+      responses:
+        '200':
+          description: Configuration section deleted successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                    example: "Configuration section deleted successfully"
+                  path:
+                    type: string
+                    example: "system/web_server"
+        '400':
+          description: Invalid request (empty path)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: Configuration section not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+    options:
+      summary: CORS preflight for config path
+      operationId: configPathOptions
+      tags:
+        - Config
+      parameters:
+        - name: path
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Configuration path
+      responses:
+        '200':
+          description: CORS preflight response
+
   /v1/core/models/upload:
     post:
       summary: Upload a model file
@@ -1922,6 +2435,21 @@ paths:
         
         The instance must exist and be running. If the instance is not found or not running, a 404 error will be returned.
       operationId: getInstanceStatistics
+  /v1/core/instance/{instanceId}/output/stream:
+    get:
+      summary: Get stream output configuration
+      description: |
+        Returns the current stream output configuration for an instance. This endpoint retrieves the stream output settings including whether it is enabled and the configured URI.
+        
+        **Response Format:**
+        - `enabled`: Boolean indicating whether stream output is enabled
+        - `uri`: The configured stream URI (empty string if disabled)
+        
+        The URI can be in one of the following formats:
+        - **RTMP**: `rtmp://host:port/path/stream_key`
+        - **RTSP**: `rtsp://host:port/path/stream_key`
+        - **HLS**: `hls://host:port/path/stream_key`
+      operationId: getStreamOutput
       tags:
         - Instances
       parameters:
@@ -1952,12 +2480,108 @@ paths:
                 source_resolution: "1920x1080"
         '404':
           description: Instance not found or not running
+          description: The unique identifier of the instance
+          example: "a5204fc9-9a59-f80f-fb9f-bf3b42214943"
+      responses:
+        '200':
+          description: Stream output configuration
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StreamOutputResponse'
+              examples:
+                enabled:
+                  summary: Stream output enabled
+                  value:
+                    enabled: true
+                    uri: "rtmp://localhost:1935/live/stream"
+                disabled:
+                  summary: Stream output disabled
+                  value:
+                    enabled: false
+                    uri: ""
+        '404':
+          description: Instance not found
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
         '500':
           description: Server error
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+    post:
+      summary: Configure stream output
+      description: |
+        Configures stream output for an instance. This endpoint allows you to enable or disable stream output and set the URI for the stream.
+        
+        **Supported Stream Types:**
+        - **RTMP**: `rtmp://host:port/path/stream_key` - For RTMP streaming (e.g., to MediaMTX, YouTube Live, etc.)
+        - **RTSP**: `rtsp://host:port/path/stream_key` - For RTSP streaming
+        - **HLS**: `hls://host:port/path/stream_key` - For HLS streaming
+        
+        **Behavior:**
+        - When `enabled` is `true`, the `uri` field is required and must be a valid stream URI
+        - When `enabled` is `false`, stream output is disabled (URI is not required)
+        - If the instance is currently running, it will be automatically restarted to apply the changes
+        - The stream output uses the `rtmp_des_node` in the pipeline
+        
+        **MediaMTX Setup:**
+        - For local streaming, ensure MediaMTX is installed and running: https://github.com/bluenviron/mediamtx
+        - Default MediaMTX RTMP endpoint: `rtmp://localhost:1935/live/stream`
+        - Default MediaMTX RTSP endpoint: `rtsp://localhost:8554/live/stream"
+      operationId: configureStreamOutput
+      tags:
+        - Instances
+      parameters:
+        - name: instanceId
+          in: path
+          required: true
+          schema:
+            type: string
+          description: The unique identifier of the instance
+          example: "a5204fc9-9a59-f80f-fb9f-bf3b42214943"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ConfigureStreamOutputRequest'
+            examples:
+              enableLocalRTMP:
+                summary: Enable local RTMP stream
+                value:
+                  enabled: true
+                  uri: "rtmp://localhost:1935/live/stream"
+              enableRemoteRTMP:
+                summary: Enable remote RTMP stream
+                value:
+                  enabled: true
+                  uri: "rtmp://localhost:1935/live/stream"
+              disableStream:
+                summary: Disable stream output
+                value:
+                  enabled: false
+      responses:
+        '204':
+          description: Successfully configured stream output
+        '400':
+          description: Bad request (invalid input or missing required fields)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: Instance not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal server error
           content:
             application/json:
               schema:
@@ -1965,6 +2589,8 @@ paths:
     options:
       summary: CORS preflight for get statistics
       operationId: getStatisticsOptions
+      summary: CORS preflight for stream output endpoints
+      operationId: streamOutputOptions
       tags:
         - Instances
       responses:
@@ -2700,6 +3326,41 @@ components:
             - For string values: "\"my string\"" (escaped JSON string)
             - For object values: "{\"key\":\"value\"}" (escaped JSON object)
           example: "{\"uri\":\"mqtt://example.com:1883/events\"}"
+
+    ConfigureStreamOutputRequest:
+      type: object
+      required:
+        - enabled
+      properties:
+        enabled:
+          type: boolean
+          description: Indicates whether stream output is enabled
+          example: true
+        uri:
+          type: string
+          format: uri
+          description: |
+            The requested URI for the stream output. Required when enabled is true.
+            Must start with rtmp://, rtsp://, or hls://
+          example: "rtmp://localhost:1935/live/stream"
+
+    StreamOutputResponse:
+      type: object
+      required:
+        - enabled
+        - uri
+      properties:
+        enabled:
+          type: boolean
+          description: Indicates whether stream output is enabled
+          example: true
+        uri:
+          type: string
+          format: uri
+          description: |
+            The configured URI for the stream output. Empty string if disabled.
+            Can be rtmp://, rtsp://, or hls:// format
+          example: "rtmp://localhost:1935/live/stream"
 
     SystemInfoResponse:
       type: object
@@ -3814,6 +4475,8 @@ components:
 tags:
   - name: Core
     description: Core API endpoints for health and version information
+  - name: Config
+    description: System configuration management endpoints (get, create, update, delete)
   - name: Instances
     description: AI instance management endpoints (create, list, start, stop, delete)
   - name: Solutions

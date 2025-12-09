@@ -28,6 +28,7 @@ set(TEST_SOURCES
     test_instance_update.cpp
     test_instance_status_summary.cpp
     test_instance_get_config.cpp
+    test_instance_configure_stream.cpp
     test_solution_handler.cpp
     test_main.cpp
 )
@@ -66,6 +67,8 @@ target_sources(edge_ai_api_tests PRIVATE
     ${CMAKE_SOURCE_DIR}/src/core/pipeline_builder.cpp
     ${CMAKE_SOURCE_DIR}/src/solutions/solution_registry.cpp
     ${CMAKE_SOURCE_DIR}/src/solutions/solution_storage.cpp
+    ${CMAKE_SOURCE_DIR}/src/config/system_config.cpp
+    ${CMAKE_SOURCE_DIR}/src/core/platform_detector.cpp
     ${CMAKE_SOURCE_DIR}/src/models/solution_config.cpp
     ${CMAKE_SOURCE_DIR}/src/models/update_instance_request.cpp
     ${CMAKE_SOURCE_DIR}/src/models/create_instance_request.cpp
@@ -89,12 +92,14 @@ endif()
 # Link OpenCV (required for CVEDIX SDK)
 if(OpenCV_FOUND)
     if(TARGET opencv_core)
+        # CVEDIX SDK requires opencv_dnn module (for cv::dnn::Net)
         target_link_libraries(edge_ai_api_tests PRIVATE 
             opencv_core
             opencv_imgproc
             opencv_imgcodecs
             opencv_videoio
             opencv_highgui
+            opencv_dnn
         )
     else()
         target_link_libraries(edge_ai_api_tests PRIVATE ${OpenCV_LIBRARIES})
