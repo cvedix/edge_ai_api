@@ -336,4 +336,182 @@ TEST_F(InstanceConfigureStreamTest, ConfigureStreamOutput_HLSURI) {
     EXPECT_EQ(response->statusCode(), k204NoContent);
 }
 
+// Test getStreamOutput with enabled stream
+TEST_F(InstanceConfigureStreamTest, GetStreamOutput_Enabled) {
+    std::string instanceId = createTestInstance();
+    
+    // First configure stream output
+    {
+        auto req = HttpRequest::newHttpRequest();
+        req->setPath("/v1/core/instance/" + instanceId + "/output/stream");
+        req->setMethod(Post);
+        
+        Json::Value body;
+        body["enabled"] = true;
+        body["uri"] = "rtmp://localhost:1935/live/stream";
+        req->setBody(body.toStyledString());
+        
+        bool callbackCalled = false;
+        handler_->configureStreamOutput(req, [&](const HttpResponsePtr &resp) {
+            callbackCalled = true;
+        });
+        
+        std::this_thread::sleep_for(std::chrono::milliseconds(200));
+        ASSERT_TRUE(callbackCalled);
+    }
+    
+    // Then get stream output configuration
+    bool callbackCalled = false;
+    HttpResponsePtr response;
+    
+    auto req = HttpRequest::newHttpRequest();
+    req->setPath("/v1/core/instance/" + instanceId + "/output/stream");
+    req->setMethod(Get);
+    
+    handler_->getStreamOutput(req, [&](const HttpResponsePtr &resp) {
+        callbackCalled = true;
+        response = resp;
+    });
+    
+    std::this_thread::sleep_for(std::chrono::milliseconds(200));
+    
+    ASSERT_TRUE(callbackCalled);
+    ASSERT_NE(response, nullptr);
+    EXPECT_EQ(response->statusCode(), k200OK);
+    EXPECT_EQ(response->contentType(), CT_APPLICATION_JSON);
+    
+    // Parse and validate JSON
+    auto json = response->getJsonObject();
+    ASSERT_NE(json, nullptr);
+    EXPECT_TRUE(json->isMember("enabled"));
+    EXPECT_TRUE(json->isMember("uri"));
+    EXPECT_TRUE((*json)["enabled"].asBool());
+    EXPECT_EQ((*json)["uri"].asString(), "rtmp://localhost:1935/live/stream");
+}
+
+// Test getStreamOutput with disabled stream
+TEST_F(InstanceConfigureStreamTest, GetStreamOutput_Disabled) {
+    std::string instanceId = createTestInstance();
+    
+    // Stream output should be disabled by default
+    bool callbackCalled = false;
+    HttpResponsePtr response;
+    
+    auto req = HttpRequest::newHttpRequest();
+    req->setPath("/v1/core/instance/" + instanceId + "/output/stream");
+    req->setMethod(Get);
+    
+    handler_->getStreamOutput(req, [&](const HttpResponsePtr &resp) {
+        callbackCalled = true;
+        response = resp;
+    });
+    
+    std::this_thread::sleep_for(std::chrono::milliseconds(200));
+    
+    ASSERT_TRUE(callbackCalled);
+    ASSERT_NE(response, nullptr);
+    EXPECT_EQ(response->statusCode(), k200OK);
+    
+    // Parse and validate JSON
+    auto json = response->getJsonObject();
+    ASSERT_NE(json, nullptr);
+    EXPECT_TRUE(json->isMember("enabled"));
+    EXPECT_TRUE(json->isMember("uri"));
+    EXPECT_FALSE((*json)["enabled"].asBool());
+    EXPECT_EQ((*json)["uri"].asString(), "");
+}
+
+// Test getStreamOutput with non-existent instance
+TEST_F(InstanceConfigureStreamTest, GetStreamOutput_InstanceNotFound) {
+    bool callbackCalled = false;
+    HttpResponsePtr response;
+    
+    auto req = HttpRequest::newHttpRequest();
+    req->setPath("/v1/core/instance/non-existent-id/output/stream");
+    req->setMethod(Get);
+    
+    handler_->getStreamOutput(req, [&](const HttpResponsePtr &resp) {
+        callbackCalled = true;
+        response = resp;
+    });
+    
+    std::this_thread::sleep_for(std::chrono::milliseconds(200));
+    
+    ASSERT_TRUE(callbackCalled);
+    EXPECT_EQ(response->statusCode(), k404NotFound);
+    
+    auto json = response->getJsonObject();
+    ASSERT_NE(json, nullptr);
+    EXPECT_TRUE(json->isMember("error"));
+}
+
+// Test getStreamOutput after configuring and then disabling
+TEST_F(InstanceConfigureStreamTest, GetStreamOutput_AfterDisable) {
+    std::string instanceId = createTestInstance();
+    
+    // First enable stream
+    {
+        auto req = HttpRequest::newHttpRequest();
+        req->setPath("/v1/core/instance/" + instanceId + "/output/stream");
+        req->setMethod(Post);
+        
+        Json::Value body;
+        body["enabled"] = true;
+        body["uri"] = "rtmp://localhost:1935/live/stream";
+        req->setBody(body.toStyledString());
+        
+        bool callbackCalled = false;
+        handler_->configureStreamOutput(req, [&](const HttpResponsePtr &resp) {
+            callbackCalled = true;
+        });
+        
+        std::this_thread::sleep_for(std::chrono::milliseconds(200));
+        ASSERT_TRUE(callbackCalled);
+    }
+    
+    // Then disable stream
+    {
+        auto req = HttpRequest::newHttpRequest();
+        req->setPath("/v1/core/instance/" + instanceId + "/output/stream");
+        req->setMethod(Post);
+        
+        Json::Value body;
+        body["enabled"] = false;
+        req->setBody(body.toStyledString());
+        
+        bool callbackCalled = false;
+        handler_->configureStreamOutput(req, [&](const HttpResponsePtr &resp) {
+            callbackCalled = true;
+        });
+        
+        std::this_thread::sleep_for(std::chrono::milliseconds(200));
+        ASSERT_TRUE(callbackCalled);
+    }
+    
+    // Finally get stream output - should be disabled
+    bool callbackCalled = false;
+    HttpResponsePtr response;
+    
+    auto req = HttpRequest::newHttpRequest();
+    req->setPath("/v1/core/instance/" + instanceId + "/output/stream");
+    req->setMethod(Get);
+    
+    handler_->getStreamOutput(req, [&](const HttpResponsePtr &resp) {
+        callbackCalled = true;
+        response = resp;
+    });
+    
+    std::this_thread::sleep_for(std::chrono::milliseconds(200));
+    
+    ASSERT_TRUE(callbackCalled);
+    ASSERT_NE(response, nullptr);
+    EXPECT_EQ(response->statusCode(), k200OK);
+    
+    auto json = response->getJsonObject();
+    ASSERT_NE(json, nullptr);
+    EXPECT_TRUE(json->isMember("enabled"));
+    EXPECT_TRUE(json->isMember("uri"));
+    EXPECT_FALSE((*json)["enabled"].asBool());
+}
+
 

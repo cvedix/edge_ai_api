@@ -92,12 +92,14 @@ endif()
 # Link OpenCV (required for CVEDIX SDK)
 if(OpenCV_FOUND)
     if(TARGET opencv_core)
+        # CVEDIX SDK requires opencv_dnn module (for cv::dnn::Net)
         target_link_libraries(edge_ai_api_tests PRIVATE 
             opencv_core
             opencv_imgproc
             opencv_imgcodecs
             opencv_videoio
             opencv_highgui
+            opencv_dnn
         )
     else()
         target_link_libraries(edge_ai_api_tests PRIVATE ${OpenCV_LIBRARIES})
