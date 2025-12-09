@@ -498,6 +498,64 @@ private:
     );
     
     /**
+     * @brief Create YOLOv11 detector node
+     */
+    std::shared_ptr<cvedix_nodes::cvedix_node> createYOLOv11DetectorNode(
+        const std::string& nodeName,
+        const std::map<std::string, std::string>& params,
+        const CreateInstanceRequest& req
+    );
+    
+    /**
+     * @brief Create face swap node
+     */
+    std::shared_ptr<cvedix_nodes::cvedix_node> createFaceSwapNode(
+        const std::string& nodeName,
+        const std::map<std::string, std::string>& params,
+        const CreateInstanceRequest& req
+    );
+    
+    /**
+     * @brief Create InsightFace recognition node
+     */
+    std::shared_ptr<cvedix_nodes::cvedix_node> createInsightFaceRecognitionNode(
+        const std::string& nodeName,
+        const std::map<std::string, std::string>& params,
+        const CreateInstanceRequest& req
+    );
+    
+    /**
+     * @brief Create MLLM analyser node
+     */
+    std::shared_ptr<cvedix_nodes::cvedix_node> createMLLMAnalyserNode(
+        const std::string& nodeName,
+        const std::map<std::string, std::string>& params,
+        const CreateInstanceRequest& req
+    );
+    
+#ifdef CVEDIX_WITH_RKNN
+    /**
+     * @brief Create RKNN YOLOv11 detector node
+     */
+    std::shared_ptr<cvedix_nodes::cvedix_node> createRKNNYOLOv11DetectorNode(
+        const std::string& nodeName,
+        const std::map<std::string, std::string>& params,
+        const CreateInstanceRequest& req
+    );
+#endif
+    
+#ifdef CVEDIX_WITH_TRT
+    /**
+     * @brief Create TensorRT InsightFace recognition node
+     */
+    std::shared_ptr<cvedix_nodes::cvedix_node> createTRTInsightFaceRecognitionNode(
+        const std::string& nodeName,
+        const std::map<std::string, std::string>& params,
+        const CreateInstanceRequest& req
+    );
+#endif
+    
+    /**
      * @brief Map detection sensitivity to threshold value
      * @param sensitivity "Low", "Medium", or "High"
      * @return Threshold value (0.0-1.0)
