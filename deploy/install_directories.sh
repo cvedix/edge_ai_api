@@ -25,6 +25,30 @@ SERVICE_USER="edgeai"
 SERVICE_GROUP="edgeai"
 INSTALL_DIR="/opt/edge_ai_api"
 
+# Permission mode: "standard" (755) or "full" (777)
+# Standard: drwxr-xr-x (như Tabby, google, nvidia)
+# Full: drwxrwxrwx (như cvedix-rt) - cho phép mọi người đọc/ghi
+PERMISSION_MODE="${PERMISSION_MODE:-standard}"
+
+# Parse command line arguments
+while [[ $# -gt 0 ]]; do
+    case $1 in
+        --full-permissions|--full)
+            PERMISSION_MODE="full"
+            shift
+            ;;
+        --standard-permissions|--standard)
+            PERMISSION_MODE="standard"
+            shift
+            ;;
+        *)
+            echo -e "${YELLOW}Unknown option: $1${NC}"
+            echo "Usage: sudo $0 [--full-permissions|--standard-permissions]"
+            exit 1
+            ;;
+    esac
+done
+
 # Load directory configuration
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 DIRS_CONF="$SCRIPT_DIR/directories.conf"
@@ -95,7 +119,29 @@ done
 # Set ownership
 echo -e "${BLUE}Thiết lập quyền sở hữu...${NC}"
 chown -R "$SERVICE_USER:$SERVICE_GROUP" "$INSTALL_DIR"
-chmod 755 "$INSTALL_DIR"  # Base directory should be accessible
+
+# Set base directory permissions based on mode
+if [ "$PERMISSION_MODE" = "full" ]; then
+    chmod 777 "$INSTALL_DIR"  # Full permissions: drwxrwxrwx (như cvedix-rt)
+    echo -e "${YELLOW}⚠${NC} Đang sử dụng FULL PERMISSIONS (777) - mọi người có thể đọc/ghi"
+    echo -e "${YELLOW}⚠${NC} Cảnh báo: Quyền 777 không an toàn cho production!"
+else
+    chmod 755 "$INSTALL_DIR"  # Standard permissions: drwxr-xr-x (như Tabby, google, nvidia)
+    echo -e "${GREEN}✓${NC} Đang sử dụng STANDARD PERMISSIONS (755)"
+fi
+
+# Apply permissions to subdirectories based on mode
+if [ "$PERMISSION_MODE" = "full" ]; then
+    echo -e "${BLUE}Áp dụng quyền 777 cho tất cả thư mục con...${NC}"
+    chmod -R 777 "$INSTALL_DIR"
+else
+    # Keep individual directory permissions from configuration
+    for dir_name in "${!APP_DIRECTORIES[@]}"; do
+        dir_path="$INSTALL_DIR/$dir_name"
+        dir_perms="${APP_DIRECTORIES[$dir_name]}"
+        chmod "$dir_perms" "$dir_path"
+    done
+fi
 
 echo ""
 echo -e "${GREEN}===========================================${NC}"
@@ -113,5 +159,19 @@ echo -e "${YELLOW}Lưu ý:${NC}"
 echo "  - Tất cả thư mục được tạo từ cấu hình tập trung"
 echo "  - Để thêm thư mục mới, chỉ cần cập nhật APP_DIRECTORIES"
 echo "  - Service sẽ tự động có quyền ghi vào các thư mục này"
+echo ""
+if [ "$PERMISSION_MODE" = "full" ]; then
+    echo -e "${YELLOW}Quyền hiện tại: FULL (777)${NC}"
+    echo "  - Tương tự như: cvedix-rt (drwxrwxrwx)"
+    echo "  - Mọi người có thể đọc/ghi vào thư mục"
+else
+    echo -e "${GREEN}Quyền hiện tại: STANDARD (755)${NC}"
+    echo "  - Tương tự như: Tabby, google, nvidia (drwxr-xr-x)"
+    echo "  - Chỉ owner/group có quyền ghi"
+fi
+echo ""
+echo "Để thay đổi quyền sau khi cài đặt:"
+echo "  sudo $0 --full-permissions    # Cấp quyền 777"
+echo "  sudo $0 --standard-permissions # Cấp quyền 755 (mặc định)"
 echo ""
 
