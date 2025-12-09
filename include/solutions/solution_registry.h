@@ -111,5 +111,39 @@ private:
      * @brief Register behavior analysis crossline solution
      */
     void registerBACrosslineSolution();
+    
+    /**
+     * @brief Register YOLOv11 detection solution
+     */
+    void registerYOLOv11DetectionSolution();
+    
+    /**
+     * @brief Register face swap solution
+     */
+    void registerFaceSwapSolution();
+    
+    /**
+     * @brief Register InsightFace recognition solution
+     */
+    void registerInsightFaceRecognitionSolution();
+    
+    /**
+     * @brief Register MLLM analysis solution
+     */
+    void registerMLLMAnalysisSolution();
+    
+#ifdef CVEDIX_WITH_RKNN
+    /**
+     * @brief Register RKNN YOLOv11 detection solution
+     */
+    void registerRKNNYOLOv11DetectionSolution();
+#endif
+    
+#ifdef CVEDIX_WITH_TRT
+    /**
+     * @brief Register TensorRT InsightFace recognition solution
+     */
+    void registerTRTInsightFaceRecognitionSolution();
+#endif
 };
 
