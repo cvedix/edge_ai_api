@@ -15,6 +15,10 @@
 #include <chrono>
 #include <iomanip>
 #include <sstream>
+#include <fstream>
+#include <sys/stat.h>
+#include <unistd.h>
+#include <future>
 
 InstanceRegistry::InstanceRegistry(
     SolutionRegistry& solutionRegistry,
@@ -97,7 +101,7 @@ std::string InstanceRegistry::createInstance(const CreateInstanceRequest& req) {
     
     // Store instance (need lock briefly)
     {
-        std::lock_guard<std::mutex> lock(mutex_);
+        std::unique_lock<std::shared_timed_mutex> lock(mutex_); // Exclusive lock for write operations
         instances_[instanceId] = info;
         if (!pipeline.empty()) {
             pipelines_[instanceId] = pipeline;
@@ -131,14 +135,120 @@ std::string InstanceRegistry::createInstance(const CreateInstanceRequest& req) {
             // This is more reliable than fixed delay as it adapts to model loading time
             waitForModelsReady(pipeline, 2000); // Max 2 seconds
             
+            // Validate model files before starting pipeline
+            // This prevents assertion failures when model files don't exist
+            std::map<std::string, std::string> additionalParams;
+            {
+                std::unique_lock<std::shared_timed_mutex> lock(mutex_); // Exclusive lock for write operations
+                auto instanceIt = instances_.find(instanceId);
+                if (instanceIt != instances_.end()) {
+                    additionalParams = instanceIt->second.additionalParams;
+                }
+            }
+            
+            bool modelValidationFailed = false;
+            std::string missingModelPath;
+            
+            // Check for YuNet face detector node
+            for (const auto& node : pipeline) {
+                auto yunetNode = std::dynamic_pointer_cast<cvedix_nodes::cvedix_yunet_face_detector_node>(node);
+                if (yunetNode) {
+                    // Get model path from additionalParams
+                    std::string modelPath;
+                    auto modelPathIt = additionalParams.find("MODEL_PATH");
+                    if (modelPathIt != additionalParams.end() && !modelPathIt->second.empty()) {
+                        modelPath = modelPathIt->second;
+                    } else {
+                        // Try to get from solution config or use default
+                        modelPath = "/usr/share/cvedix/cvedix_data/models/face/face_detection_yunet_2022mar.onnx";
+                    }
+                    
+                    // Check if model file exists
+                    struct stat modelStat;
+                    if (stat(modelPath.c_str(), &modelStat) != 0) {
+                        std::cerr << "[InstanceRegistry] ========================================" << std::endl;
+                        std::cerr << "[InstanceRegistry] ✗ CRITICAL: YuNet model file not found!" << std::endl;
+                        std::cerr << "[InstanceRegistry] Expected path: " << modelPath << std::endl;
+                        std::cerr << "[InstanceRegistry] ========================================" << std::endl;
+                        std::cerr << "[InstanceRegistry] Cannot auto-start instance - model file validation failed" << std::endl;
+                        std::cerr << "[InstanceRegistry] The pipeline will crash with assertion failure if started without model file" << std::endl;
+                        std::cerr << "[InstanceRegistry] Please ensure the model file exists before starting the instance" << std::endl;
+                        std::cerr << "[InstanceRegistry] ========================================" << std::endl;
+                        modelValidationFailed = true;
+                        missingModelPath = modelPath;
+                        break;
+                    }
+                    
+                    if (!S_ISREG(modelStat.st_mode)) {
+                        std::cerr << "[InstanceRegistry] ✗ CRITICAL: Model path is not a regular file: " << modelPath << std::endl;
+                        std::cerr << "[InstanceRegistry] Cannot auto-start instance - model file validation failed" << std::endl;
+                        modelValidationFailed = true;
+                        missingModelPath = modelPath;
+                        break;
+                    }
+                }
+                
+                // Check for SFace feature encoder node
+                auto sfaceNode = std::dynamic_pointer_cast<cvedix_nodes::cvedix_sface_feature_encoder_node>(node);
+                if (sfaceNode) {
+                    // Get model path from additionalParams
+                    std::string modelPath;
+                    auto modelPathIt = additionalParams.find("SFACE_MODEL_PATH");
+                    if (modelPathIt != additionalParams.end() && !modelPathIt->second.empty()) {
+                        modelPath = modelPathIt->second;
+                    } else {
+                        // Use default path
+                        modelPath = "/home/pnsang/project/edge_ai_sdk/cvedix_data/models/face/face_recognition_sface_2021dec.onnx";
+                    }
+                    
+                    // Check if model file exists
+                    struct stat modelStat;
+                    if (stat(modelPath.c_str(), &modelStat) != 0) {
+                        std::cerr << "[InstanceRegistry] ========================================" << std::endl;
+                        std::cerr << "[InstanceRegistry] ✗ CRITICAL: SFace model file not found!" << std::endl;
+                        std::cerr << "[InstanceRegistry] Expected path: " << modelPath << std::endl;
+                        std::cerr << "[InstanceRegistry] ========================================" << std::endl;
+                        std::cerr << "[InstanceRegistry] Cannot auto-start instance - model file validation failed" << std::endl;
+                        std::cerr << "[InstanceRegistry] The pipeline will crash with assertion failure if started without model file" << std::endl;
+                        std::cerr << "[InstanceRegistry] Please ensure the model file exists before starting the instance" << std::endl;
+                        std::cerr << "[InstanceRegistry] ========================================" << std::endl;
+                        modelValidationFailed = true;
+                        missingModelPath = modelPath;
+                        break;
+                    }
+                    
+                    if (!S_ISREG(modelStat.st_mode)) {
+                        std::cerr << "[InstanceRegistry] ✗ CRITICAL: Model path is not a regular file: " << modelPath << std::endl;
+                        std::cerr << "[InstanceRegistry] Cannot auto-start instance - model file validation failed" << std::endl;
+                        modelValidationFailed = true;
+                        missingModelPath = modelPath;
+                        break;
+                    }
+                }
+            }
+            
+            // If model validation failed, don't start pipeline
+            if (modelValidationFailed) {
+                std::cerr << "[InstanceRegistry] ✗ Cannot auto-start instance - model file validation failed" << std::endl;
+                std::cerr << "[InstanceRegistry] Missing model file: " << missingModelPath << std::endl;
+                std::cerr << "[InstanceRegistry] Instance created but not started - you can start it manually after fixing the model file" << std::endl;
+                return; // Exit thread without starting pipeline
+            }
+            
             try {
                 if (startPipeline(pipeline)) {
-                    // Update running status (need lock briefly)
+                    // Update running status and reset retry counter (need lock briefly)
                     {
-                        std::lock_guard<std::mutex> lock(mutex_);
+                        std::unique_lock<std::shared_timed_mutex> lock(mutex_); // Exclusive lock for write operations
                         auto instanceIt = instances_.find(instanceId);
                         if (instanceIt != instances_.end()) {
                             instanceIt->second.running = true;
+                            // Reset retry counter and tracking when instance starts successfully
+                            instanceIt->second.retryCount = 0;
+                            instanceIt->second.retryLimitReached = false;
+                            instanceIt->second.startTime = std::chrono::steady_clock::now();
+                            instanceIt->second.lastActivityTime = instanceIt->second.startTime;
+                            instanceIt->second.hasReceivedData = false;
                         }
                     } // Release lock
                     std::cerr << "[InstanceRegistry] ========================================" << std::endl;
@@ -191,7 +301,7 @@ bool InstanceRegistry::deleteInstance(const std::string& instanceId) {
     bool instanceExists = false;
     
     {
-        std::lock_guard<std::mutex> lock(mutex_);
+        std::unique_lock<std::shared_timed_mutex> lock(mutex_); // Exclusive lock for write operations
         
         auto it = instances_.find(instanceId);
         if (it == instances_.end()) {
@@ -247,7 +357,7 @@ bool InstanceRegistry::deleteInstance(const std::string& instanceId) {
 }
 
 std::optional<InstanceInfo> InstanceRegistry::getInstance(const std::string& instanceId) const {
-    std::lock_guard<std::mutex> lock(mutex_);
+    std::unique_lock<std::shared_timed_mutex> lock(mutex_); // Exclusive lock for write operations
     auto it = instances_.find(instanceId);
     if (it != instances_.end()) {
         return it->second;
@@ -266,7 +376,7 @@ bool InstanceRegistry::startInstance(const std::string& instanceId, bool skipAut
     
     // Get existing instance info
     {
-        std::lock_guard<std::mutex> lock(mutex_);
+        std::unique_lock<std::shared_timed_mutex> lock(mutex_); // Exclusive lock for write operations
         auto instanceIt = instances_.find(instanceId);
         if (instanceIt == instances_.end()) {
             std::cerr << "[InstanceRegistry] Instance " << instanceId << " not found" << std::endl;
@@ -325,7 +435,7 @@ bool InstanceRegistry::startInstance(const std::string& instanceId, bool skipAut
     // Rebuild pipeline from instance info (this creates a fresh pipeline)
     // Check instance still exists before rebuilding (may have been deleted)
     {
-        std::lock_guard<std::mutex> lock(mutex_);
+        std::unique_lock<std::shared_timed_mutex> lock(mutex_); // Exclusive lock for write operations
         if (instances_.find(instanceId) == instances_.end()) {
             std::cerr << "[InstanceRegistry] ✗ Instance " << instanceId << " was deleted during start operation" << std::endl;
             return false;
@@ -341,7 +451,7 @@ bool InstanceRegistry::startInstance(const std::string& instanceId, bool skipAut
     // Check instance still exists (may have been deleted during rebuild)
     std::vector<std::shared_ptr<cvedix_nodes::cvedix_node>> pipelineCopy;
     {
-        std::lock_guard<std::mutex> lock(mutex_);
+        std::unique_lock<std::shared_timed_mutex> lock(mutex_); // Exclusive lock for write operations
         if (instances_.find(instanceId) == instances_.end()) {
             std::cerr << "[InstanceRegistry] ✗ Instance " << instanceId << " was deleted during rebuild" << std::endl;
             // Cleanup pipeline that was just created
@@ -364,7 +474,7 @@ bool InstanceRegistry::startInstance(const std::string& instanceId, bool skipAut
     
     // Check instance still exists before waiting
     {
-        std::lock_guard<std::mutex> lock(mutex_);
+        std::unique_lock<std::shared_timed_mutex> lock(mutex_); // Exclusive lock for write operations
         if (instances_.find(instanceId) == instances_.end()) {
             std::cerr << "[InstanceRegistry] ✗ Instance " << instanceId << " was deleted before model initialization" << std::endl;
             pipelines_.erase(instanceId);
@@ -378,7 +488,7 @@ bool InstanceRegistry::startInstance(const std::string& instanceId, bool skipAut
         std::cerr << "[InstanceRegistry] ✗ Exception waiting for models: " << e.what() << std::endl;
         // Cleanup pipeline on error
         {
-            std::lock_guard<std::mutex> lock(mutex_);
+            std::unique_lock<std::shared_timed_mutex> lock(mutex_); // Exclusive lock for write operations
             pipelines_.erase(instanceId);
         }
         return false;
@@ -386,7 +496,7 @@ bool InstanceRegistry::startInstance(const std::string& instanceId, bool skipAut
         std::cerr << "[InstanceRegistry] ✗ Unknown exception waiting for models" << std::endl;
         // Cleanup pipeline on error
         {
-            std::lock_guard<std::mutex> lock(mutex_);
+            std::unique_lock<std::shared_timed_mutex> lock(mutex_); // Exclusive lock for write operations
             pipelines_.erase(instanceId);
         }
         return false;
@@ -399,13 +509,176 @@ bool InstanceRegistry::startInstance(const std::string& instanceId, bool skipAut
     
     // Check instance still exists after delay
     {
-        std::lock_guard<std::mutex> lock(mutex_);
+        std::unique_lock<std::shared_timed_mutex> lock(mutex_); // Exclusive lock for write operations
         if (instances_.find(instanceId) == instances_.end()) {
             std::cerr << "[InstanceRegistry] ✗ Instance " << instanceId << " was deleted during stabilization delay" << std::endl;
             pipelines_.erase(instanceId);
             return false;
         }
     } // Release lock
+    
+    // Validate file path for file source nodes BEFORE starting pipeline
+    // This prevents infinite retry loops when file doesn't exist
+    auto fileNode = std::dynamic_pointer_cast<cvedix_nodes::cvedix_file_src_node>(pipelineCopy[0]);
+    if (fileNode) {
+        // Get file path from instance info
+        std::string filePath;
+        {
+            std::unique_lock<std::shared_timed_mutex> lock(mutex_); // Exclusive lock for write operations
+            auto instanceIt = instances_.find(instanceId);
+            if (instanceIt != instances_.end()) {
+                filePath = instanceIt->second.filePath;
+                // Also check additionalParams for FILE_PATH
+                auto filePathIt = instanceIt->second.additionalParams.find("FILE_PATH");
+                if (filePathIt != instanceIt->second.additionalParams.end() && !filePathIt->second.empty()) {
+                    filePath = filePathIt->second;
+                }
+            }
+        }
+        
+        if (!filePath.empty()) {
+            // Check if file exists and is readable
+            struct stat fileStat;
+            if (stat(filePath.c_str(), &fileStat) != 0) {
+                std::cerr << "[InstanceRegistry] ✗ File does not exist or is not accessible: " << filePath << std::endl;
+                std::cerr << "[InstanceRegistry] ✗ Cannot start instance - file validation failed" << std::endl;
+                std::cerr << "[InstanceRegistry] Please check:" << std::endl;
+                std::cerr << "[InstanceRegistry]   1. File path is correct: " << filePath << std::endl;
+                std::cerr << "[InstanceRegistry]   2. File exists and is readable" << std::endl;
+                std::cerr << "[InstanceRegistry]   3. File permissions allow read access" << std::endl;
+                // Cleanup pipeline
+                {
+                    std::unique_lock<std::shared_timed_mutex> lock(mutex_); // Exclusive lock for write operations
+                    pipelines_.erase(instanceId);
+                }
+                return false;
+            }
+            
+            if (!S_ISREG(fileStat.st_mode)) {
+                std::cerr << "[InstanceRegistry] ✗ Path is not a regular file: " << filePath << std::endl;
+                std::cerr << "[InstanceRegistry] ✗ Cannot start instance - file validation failed" << std::endl;
+                // Cleanup pipeline
+                {
+                    std::unique_lock<std::shared_timed_mutex> lock(mutex_); // Exclusive lock for write operations
+                    pipelines_.erase(instanceId);
+                }
+                return false;
+            }
+            
+            std::cerr << "[InstanceRegistry] ✓ File validation passed: " << filePath << std::endl;
+        } else {
+            std::cerr << "[InstanceRegistry] ⚠ Warning: File path is empty for file source node" << std::endl;
+        }
+    }
+    
+    // Validate model files for DNN nodes BEFORE starting pipeline
+    // This prevents assertion failures when model files don't exist
+    std::map<std::string, std::string> additionalParams;
+    {
+        std::unique_lock<std::shared_timed_mutex> lock(mutex_); // Exclusive lock for write operations
+        auto instanceIt = instances_.find(instanceId);
+        if (instanceIt != instances_.end()) {
+            additionalParams = instanceIt->second.additionalParams;
+        }
+    }
+    
+    bool modelValidationFailed = false;
+    std::string missingModelPath;
+    
+    // Check for YuNet face detector node
+    for (const auto& node : pipelineCopy) {
+        auto yunetNode = std::dynamic_pointer_cast<cvedix_nodes::cvedix_yunet_face_detector_node>(node);
+        if (yunetNode) {
+            // Get model path from additionalParams
+            std::string modelPath;
+            auto modelPathIt = additionalParams.find("MODEL_PATH");
+            if (modelPathIt != additionalParams.end() && !modelPathIt->second.empty()) {
+                modelPath = modelPathIt->second;
+            } else {
+                // Try to get from solution config or use default
+                // For now, we'll check if the default path exists
+                modelPath = "/usr/share/cvedix/cvedix_data/models/face/face_detection_yunet_2022mar.onnx";
+            }
+            
+            // Check if model file exists
+            struct stat modelStat;
+            if (stat(modelPath.c_str(), &modelStat) != 0) {
+                std::cerr << "[InstanceRegistry] ========================================" << std::endl;
+                std::cerr << "[InstanceRegistry] ✗ CRITICAL: YuNet model file not found!" << std::endl;
+                std::cerr << "[InstanceRegistry] Expected path: " << modelPath << std::endl;
+                std::cerr << "[InstanceRegistry] ========================================" << std::endl;
+                std::cerr << "[InstanceRegistry] Cannot start instance - model file validation failed" << std::endl;
+                std::cerr << "[InstanceRegistry] The pipeline will crash with assertion failure if started without model file" << std::endl;
+                std::cerr << "[InstanceRegistry] Please ensure the model file exists before starting the instance" << std::endl;
+                std::cerr << "[InstanceRegistry] ========================================" << std::endl;
+                modelValidationFailed = true;
+                missingModelPath = modelPath;
+                break;
+            }
+            
+            if (!S_ISREG(modelStat.st_mode)) {
+                std::cerr << "[InstanceRegistry] ✗ CRITICAL: Model path is not a regular file: " << modelPath << std::endl;
+                std::cerr << "[InstanceRegistry] Cannot start instance - model file validation failed" << std::endl;
+                modelValidationFailed = true;
+                missingModelPath = modelPath;
+                break;
+            }
+            
+            std::cerr << "[InstanceRegistry] ✓ YuNet model file validation passed: " << modelPath << std::endl;
+        }
+        
+        // Check for SFace feature encoder node
+        auto sfaceNode = std::dynamic_pointer_cast<cvedix_nodes::cvedix_sface_feature_encoder_node>(node);
+        if (sfaceNode) {
+            // Get model path from additionalParams
+            std::string modelPath;
+            auto modelPathIt = additionalParams.find("SFACE_MODEL_PATH");
+            if (modelPathIt != additionalParams.end() && !modelPathIt->second.empty()) {
+                modelPath = modelPathIt->second;
+            } else {
+                // Use default path
+                modelPath = "/home/pnsang/project/edge_ai_sdk/cvedix_data/models/face/face_recognition_sface_2021dec.onnx";
+            }
+            
+            // Check if model file exists
+            struct stat modelStat;
+            if (stat(modelPath.c_str(), &modelStat) != 0) {
+                std::cerr << "[InstanceRegistry] ========================================" << std::endl;
+                std::cerr << "[InstanceRegistry] ✗ CRITICAL: SFace model file not found!" << std::endl;
+                std::cerr << "[InstanceRegistry] Expected path: " << modelPath << std::endl;
+                std::cerr << "[InstanceRegistry] ========================================" << std::endl;
+                std::cerr << "[InstanceRegistry] Cannot start instance - model file validation failed" << std::endl;
+                std::cerr << "[InstanceRegistry] The pipeline will crash with assertion failure if started without model file" << std::endl;
+                std::cerr << "[InstanceRegistry] Please ensure the model file exists before starting the instance" << std::endl;
+                std::cerr << "[InstanceRegistry] ========================================" << std::endl;
+                modelValidationFailed = true;
+                missingModelPath = modelPath;
+                break;
+            }
+            
+            if (!S_ISREG(modelStat.st_mode)) {
+                std::cerr << "[InstanceRegistry] ✗ CRITICAL: Model path is not a regular file: " << modelPath << std::endl;
+                std::cerr << "[InstanceRegistry] Cannot start instance - model file validation failed" << std::endl;
+                modelValidationFailed = true;
+                missingModelPath = modelPath;
+                break;
+            }
+            
+            std::cerr << "[InstanceRegistry] ✓ SFace model file validation passed: " << modelPath << std::endl;
+        }
+    }
+    
+    // If model validation failed, cleanup and return false
+    if (modelValidationFailed) {
+        std::cerr << "[InstanceRegistry] ✗ Cannot start instance - model file validation failed" << std::endl;
+        std::cerr << "[InstanceRegistry] Missing model file: " << missingModelPath << std::endl;
+        // Cleanup pipeline
+        {
+            std::unique_lock<std::shared_timed_mutex> lock(mutex_); // Exclusive lock for write operations
+            pipelines_.erase(instanceId);
+        }
+        return false;
+    }
     
     std::cerr << "[InstanceRegistry] ========================================" << std::endl;
     std::cerr << "[InstanceRegistry] Starting pipeline for instance " << instanceId << "..." << std::endl;
@@ -419,7 +692,7 @@ bool InstanceRegistry::startInstance(const std::string& instanceId, bool skipAut
         std::cerr << "[InstanceRegistry] ✗ Exception starting pipeline: " << e.what() << std::endl;
         // Cleanup pipeline on error
         {
-            std::lock_guard<std::mutex> lock(mutex_);
+            std::unique_lock<std::shared_timed_mutex> lock(mutex_); // Exclusive lock for write operations
             pipelines_.erase(instanceId);
         }
         return false;
@@ -427,7 +700,7 @@ bool InstanceRegistry::startInstance(const std::string& instanceId, bool skipAut
         std::cerr << "[InstanceRegistry] ✗ Unknown exception starting pipeline" << std::endl;
         // Cleanup pipeline on error
         {
-            std::lock_guard<std::mutex> lock(mutex_);
+            std::unique_lock<std::shared_timed_mutex> lock(mutex_); // Exclusive lock for write operations
             pipelines_.erase(instanceId);
         }
         return false;
@@ -435,7 +708,7 @@ bool InstanceRegistry::startInstance(const std::string& instanceId, bool skipAut
     
     // Update running status and cleanup on failure
     {
-        std::lock_guard<std::mutex> lock(mutex_);
+        std::unique_lock<std::shared_timed_mutex> lock(mutex_); // Exclusive lock for write operations
         auto instanceIt = instances_.find(instanceId);
         if (instanceIt != instances_.end()) {
             if (started) {
@@ -496,7 +769,7 @@ bool InstanceRegistry::stopInstance(const std::string& instanceId) {
     std::string solutionId;
     
     {
-        std::lock_guard<std::mutex> lock(mutex_);
+        std::unique_lock<std::shared_timed_mutex> lock(mutex_); // Exclusive lock for write operations
         
         auto pipelineIt = pipelines_.find(instanceId);
         if (pipelineIt == pipelines_.end()) {
@@ -578,7 +851,21 @@ bool InstanceRegistry::stopInstance(const std::string& instanceId) {
 }
 
 std::vector<std::string> InstanceRegistry::listInstances() const {
-    std::lock_guard<std::mutex> lock(mutex_);
+    // CRITICAL: Use try_lock_for with timeout to prevent blocking if mutex is held by other operations
+    // This prevents deadlock when called from terminate handler or other critical paths
+    std::shared_lock<std::shared_timed_mutex> lock(mutex_, std::defer_lock);
+    
+    // Try to acquire lock with timeout (1000ms)
+    // If we can't get the lock quickly, return empty vector to prevent deadlock
+    if (!lock.try_lock_for(std::chrono::milliseconds(1000))) {
+        std::cerr << "[InstanceRegistry] WARNING: listInstances() timeout - mutex is locked, returning empty vector" << std::endl;
+        if (isInstanceLoggingEnabled()) {
+            PLOG_WARNING << "[InstanceRegistry] listInstances() timeout after 1000ms - mutex may be locked by another operation";
+        }
+        return {}; // Return empty vector to prevent blocking
+    }
+    
+    // Successfully acquired lock, return list of instance IDs
     std::vector<std::string> result;
     result.reserve(instances_.size());
     for (const auto& pair : instances_) {
@@ -588,12 +875,17 @@ std::vector<std::string> InstanceRegistry::listInstances() const {
 }
 
 std::unordered_map<std::string, InstanceInfo> InstanceRegistry::getAllInstances() const {
-    std::lock_guard<std::mutex> lock(mutex_);
-    return instances_; // Return copy of all instances in one lock acquisition
+    // Use shared_lock (read lock) to allow multiple concurrent readers
+    // This allows multiple API requests to call getAllInstances() simultaneously
+    // Writers (start/stop/update) will use exclusive lock and block readers only when writing
+    std::shared_lock<std::shared_timed_mutex> lock(mutex_);
+    
+    // Return copy of instances - this is fast and doesn't block other readers
+    return instances_;
 }
 
 bool InstanceRegistry::hasInstance(const std::string& instanceId) const {
-    std::lock_guard<std::mutex> lock(mutex_);
+    std::shared_lock<std::shared_timed_mutex> lock(mutex_); // Read lock - allows concurrent readers
     return instances_.find(instanceId) != instances_.end();
 }
 
@@ -603,7 +895,7 @@ bool InstanceRegistry::updateInstance(const std::string& instanceId, const Updat
     bool hasChanges = false;
     
     {
-        std::lock_guard<std::mutex> lock(mutex_);
+        std::unique_lock<std::shared_timed_mutex> lock(mutex_); // Exclusive lock for write operations
         
         auto instanceIt = instances_.find(instanceId);
         if (instanceIt == instances_.end()) {
@@ -847,7 +1139,7 @@ bool InstanceRegistry::updateInstance(const std::string& instanceId, const Updat
     // Check if instance is running and restart it to apply changes
     bool wasRunning = false;
     {
-        std::lock_guard<std::mutex> lock(mutex_);
+        std::unique_lock<std::shared_timed_mutex> lock(mutex_); // Exclusive lock for write operations
         auto instanceIt = instances_.find(instanceId);
         if (instanceIt != instances_.end()) {
             wasRunning = instanceIt->second.running;
@@ -885,7 +1177,7 @@ bool InstanceRegistry::updateInstance(const std::string& instanceId, const Updat
 void InstanceRegistry::loadPersistentInstances() {
     std::vector<std::string> instanceIds = instance_storage_.loadAllInstances();
     
-    std::lock_guard<std::mutex> lock(mutex_);
+    std::unique_lock<std::shared_timed_mutex> lock(mutex_); // Exclusive lock for write operations
     for (const auto& instanceId : instanceIds) {
         auto optInfo = instance_storage_.loadInstance(instanceId);
         if (optInfo.has_value()) {
@@ -1162,6 +1454,12 @@ bool InstanceRegistry::startPipeline(const std::vector<std::shared_ptr<cvedix_no
             std::cerr << "[InstanceRegistry] Starting file source pipeline..." << std::endl;
             std::cerr << "[InstanceRegistry] ========================================" << std::endl;
             
+            // CRITICAL: Validate file exists BEFORE starting to prevent infinite retry loops
+            // Note: File path validation should have been done in startInstance(), but we check again here for safety
+            // This prevents SDK from retrying indefinitely when file doesn't exist
+            // We can't easily get file path from node, so we rely on validation in startInstance()
+            // If we reach here and file doesn't exist, SDK will retry - but validation should have caught it
+            
             // CRITICAL: Delay BEFORE start() to ensure model is fully ready
             // Once fileNode->start() is called, frames are immediately sent to the pipeline
             // If model is not ready, shape mismatch errors will occur
@@ -1289,16 +1587,66 @@ void InstanceRegistry::stopPipeline(const std::vector<std::shared_ptr<cvedix_nod
                 }
                 try {
                     auto stopTime = std::chrono::steady_clock::now();
-                    rtspNode->stop();
-                    auto stopEndTime = std::chrono::steady_clock::now();
-                    auto stopDuration = std::chrono::duration_cast<std::chrono::milliseconds>(stopEndTime - stopTime).count();
-                    std::cerr << "[InstanceRegistry] ✓ RTSP source node stopped in " << stopDuration << "ms" << std::endl;
+                    // CRITICAL: Try stop() first, but if it blocks due to retry loop, use detach_recursively()
+                    // RTSP retry loops can prevent stop() from returning, so we need a fallback
+                    std::cerr << "[InstanceRegistry] Attempting to stop RTSP node (may take time if retry loop is active)..." << std::endl;
+                    
+                    // Try stop() with timeout protection using async
+                    auto stopFuture = std::async(std::launch::async, [rtspNode]() {
+                        try {
+                            rtspNode->stop();
+                            return true;
+                        } catch (...) {
+                            return false;
+                        }
+                    });
+                    
+                    // Wait max 200ms for stop() to complete
+                    // RTSP retry loops can block stop(), so use short timeout and immediately detach
+                    auto stopStatus = stopFuture.wait_for(std::chrono::milliseconds(200));
+                    if (stopStatus == std::future_status::timeout) {
+                        std::cerr << "[InstanceRegistry] ⚠ RTSP stop() timeout (200ms) - retry loop may be blocking" << std::endl;
+                        std::cerr << "[InstanceRegistry] Attempting force stop using detach_recursively()..." << std::endl;
+                        // Force stop using detach - this should break retry loop
+                        try {
+                            rtspNode->detach_recursively();
+                            std::cerr << "[InstanceRegistry] ✓ RTSP node force stopped using detach_recursively()" << std::endl;
+                        } catch (const std::exception& e) {
+                            std::cerr << "[InstanceRegistry] ✗ Exception force stopping RTSP node: " << e.what() << std::endl;
+                        } catch (...) {
+                            std::cerr << "[InstanceRegistry] ✗ Unknown error force stopping RTSP node" << std::endl;
+                        }
+                    } else if (stopStatus == std::future_status::ready) {
+                        try {
+                            if (stopFuture.get()) {
+                                auto stopEndTime = std::chrono::steady_clock::now();
+                                auto stopDuration = std::chrono::duration_cast<std::chrono::milliseconds>(stopEndTime - stopTime).count();
+                                std::cerr << "[InstanceRegistry] ✓ RTSP source node stopped in " << stopDuration << "ms" << std::endl;
+                            }
+                        } catch (...) {
+                            std::cerr << "[InstanceRegistry] ✗ Exception getting stop result" << std::endl;
+                        }
+                    }
                     // Give it a moment to fully stop
                     std::this_thread::sleep_for(std::chrono::milliseconds(100));
                 } catch (const std::exception& e) {
                     std::cerr << "[InstanceRegistry] ✗ Exception stopping RTSP node: " << e.what() << std::endl;
+                    // Try force stop as fallback
+                    try {
+                        rtspNode->detach_recursively();
+                        std::cerr << "[InstanceRegistry] ✓ RTSP node force stopped using detach_recursively() (fallback)" << std::endl;
+                    } catch (...) {
+                        std::cerr << "[InstanceRegistry] ✗ Force stop also failed" << std::endl;
+                    }
                 } catch (...) {
                     std::cerr << "[InstanceRegistry] ✗ Unknown error stopping RTSP node" << std::endl;
+                    // Try force stop as fallback
+                    try {
+                        rtspNode->detach_recursively();
+                        std::cerr << "[InstanceRegistry] ✓ RTSP node force stopped using detach_recursively() (fallback)" << std::endl;
+                    } catch (...) {
+                        std::cerr << "[InstanceRegistry] ✗ Force stop also failed" << std::endl;
+                    }
                 }
             } else {
                 // Try file source node
@@ -1390,7 +1738,7 @@ bool InstanceRegistry::rebuildPipelineFromInstanceInfo(const std::string& instan
     // Get instance info (need lock)
     InstanceInfo info;
     {
-        std::lock_guard<std::mutex> lock(mutex_);
+        std::unique_lock<std::shared_timed_mutex> lock(mutex_); // Exclusive lock for write operations
         auto instanceIt = instances_.find(instanceId);
         if (instanceIt == instances_.end()) {
             return false;
@@ -1462,7 +1810,7 @@ bool InstanceRegistry::rebuildPipelineFromInstanceInfo(const std::string& instan
         if (!pipeline.empty()) {
             // Store pipeline (need lock briefly)
             {
-                std::lock_guard<std::mutex> lock(mutex_);
+                std::unique_lock<std::shared_timed_mutex> lock(mutex_); // Exclusive lock for write operations
                 pipelines_[instanceId] = pipeline;
             } // Release lock
             std::cerr << "[InstanceRegistry] Successfully rebuilt pipeline for instance " << instanceId << std::endl;
@@ -1482,7 +1830,9 @@ bool InstanceRegistry::rebuildPipelineFromInstanceInfo(const std::string& instan
 }
 
 bool InstanceRegistry::hasRTMPOutput(const std::string& instanceId) const {
-    std::lock_guard<std::mutex> lock(mutex_);
+    // CRITICAL: Use shared_lock for read-only operations to allow concurrent readers
+    // This prevents deadlock when multiple threads read instance data simultaneously
+    std::shared_lock<std::shared_timed_mutex> lock(mutex_); // Shared lock for read operations
     
     // Check if instance exists
     auto instanceIt = instances_.find(instanceId);
@@ -1516,7 +1866,7 @@ bool InstanceRegistry::hasRTMPOutput(const std::string& instanceId) const {
 }
 
 std::vector<std::shared_ptr<cvedix_nodes::cvedix_node>> InstanceRegistry::getSourceNodesFromRunningInstances() const {
-    std::lock_guard<std::mutex> lock(mutex_);
+    std::shared_lock<std::shared_timed_mutex> lock(mutex_); // Read lock - allows concurrent readers
     
     std::vector<std::shared_ptr<cvedix_nodes::cvedix_node>> sourceNodes;
     
@@ -1546,8 +1896,144 @@ std::vector<std::shared_ptr<cvedix_nodes::cvedix_node>> InstanceRegistry::getSou
     return sourceNodes;
 }
 
+std::vector<std::shared_ptr<cvedix_nodes::cvedix_node>> InstanceRegistry::getInstanceNodes(const std::string& instanceId) const {
+    std::shared_lock<std::shared_timed_mutex> lock(mutex_); // Read lock - allows concurrent readers
+    
+    // Get pipeline for this instance
+    auto pipelineIt = pipelines_.find(instanceId);
+    if (pipelineIt != pipelines_.end() && !pipelineIt->second.empty()) {
+        return pipelineIt->second; // Return copy of nodes
+    }
+    
+    return {}; // Return empty vector if instance doesn't have pipeline
+}
+
+int InstanceRegistry::checkAndHandleRetryLimits() {
+    // CRITICAL: Collect instances to stop while holding lock, then release lock before calling stopInstance()
+    // This prevents deadlock because stopInstance() needs exclusive lock
+    std::vector<std::string> instancesToStop; // Collect instances to stop while holding lock
+    int stoppedCount = 0;
+    auto now = std::chrono::steady_clock::now();
+    
+    {
+        // Use exclusive lock for write operations (updating retry counts, marking instances as stopped)
+        // This will block readers (getAllInstances) only when actually writing
+        std::unique_lock<std::shared_timed_mutex> lock(mutex_);
+        
+        // Check all running instances
+        for (auto& [instanceId, info] : instances_) {
+            if (!info.running || info.retryLimitReached) {
+                continue; // Skip non-running instances or already stopped due to retry limit
+            }
+            
+            // Check if this is an RTSP instance (has RTSP URL)
+            if (!info.rtspUrl.empty()) {
+                // Get pipeline to check if RTSP node exists
+                auto pipelineIt = pipelines_.find(instanceId);
+                if (pipelineIt != pipelines_.end() && !pipelineIt->second.empty()) {
+                    auto rtspNode = std::dynamic_pointer_cast<cvedix_nodes::cvedix_rtsp_src_node>(pipelineIt->second[0]);
+                    if (rtspNode) {
+                        // Calculate time since instance started
+                        auto timeSinceStart = std::chrono::duration_cast<std::chrono::seconds>(
+                            now - info.startTime).count();
+                        
+                        // Calculate time since last activity (or since start if no activity)
+                        auto timeSinceActivity = std::chrono::duration_cast<std::chrono::seconds>(
+                            now - info.lastActivityTime).count();
+                        
+                        // Only increment retry counter if:
+                        // 1. Instance has been running for at least 30 seconds (give it time to connect)
+                        // 2. AND instance has not received any data yet (hasReceivedData = false)
+                        // 3. OR instance has been running for more than 60 seconds without activity
+                        bool isLikelyRetrying = false;
+                        if (timeSinceStart >= 30) {
+                            if (!info.hasReceivedData) {
+                                // Instance has been running for 30+ seconds without receiving any data
+                                // This indicates it's likely stuck in retry loop
+                                isLikelyRetrying = true;
+                            } else if (timeSinceActivity > 60) {
+                                // Instance received data before but now has been inactive for 60+ seconds
+                                // This might indicate connection was lost and retrying
+                                isLikelyRetrying = true;
+                            }
+                        }
+                        
+                        if (isLikelyRetrying) {
+                            // Increment retry counter only when we detect retry is happening
+                            info.retryCount++;
+                            
+                            std::cerr << "[InstanceRegistry] Instance " << instanceId 
+                                      << " retry detected: count=" << info.retryCount 
+                                      << "/" << info.maxRetryCount 
+                                      << ", running=" << timeSinceStart << "s"
+                                      << ", no_data=" << (!info.hasReceivedData ? "yes" : "no")
+                                      << ", inactive=" << timeSinceActivity << "s" << std::endl;
+                            
+                            // Check if retry limit reached
+                            if (info.retryCount >= info.maxRetryCount) {
+                                info.retryLimitReached = true;
+                                std::cerr << "[InstanceRegistry] ⚠ Instance " << instanceId 
+                                          << " reached retry limit (" << info.maxRetryCount 
+                                          << " retries) after " << timeSinceStart 
+                                          << " seconds - stopping instance" << std::endl;
+                                PLOG_WARNING << "[Instance] Instance " << instanceId 
+                                             << " reached retry limit - stopping";
+                                
+                                // Mark as not running (will be stopped outside lock)
+                                info.running = false;
+                                instancesToStop.push_back(instanceId); // Collect for stopping outside lock
+                                stoppedCount++;
+                            }
+                        } else {
+                            // Check if instance is receiving data (fps > 0 indicates frames are being processed)
+                            if (info.fps > 0) {
+                                // Instance is receiving frames - mark as having received data
+                                if (!info.hasReceivedData) {
+                                    std::cerr << "[InstanceRegistry] Instance " << instanceId 
+                                              << " connection successful - receiving frames (fps=" 
+                                              << std::fixed << std::setprecision(2) << info.fps << ")" << std::endl;
+                                    info.hasReceivedData = true;
+                                }
+                                // Update last activity time when receiving frames
+                                info.lastActivityTime = now;
+                                
+                                // Reset retry counter if instance is successfully receiving data
+                                if (info.retryCount > 0) {
+                                    std::cerr << "[InstanceRegistry] Instance " << instanceId 
+                                              << " connection successful - resetting retry counter" << std::endl;
+                                    info.retryCount = 0;
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    } // CRITICAL: Release lock before calling stopInstance() to avoid deadlock
+    
+    // Stop instances that reached retry limit (do this outside lock to avoid deadlock)
+    // stopInstance() needs exclusive lock, so we must release our lock first
+    for (const auto& instanceId : instancesToStop) {
+        try {
+            stopInstance(instanceId);
+            std::cerr << "[InstanceRegistry] ✓ Stopped instance " << instanceId 
+                      << " due to retry limit" << std::endl;
+        } catch (const std::exception& e) {
+            std::cerr << "[InstanceRegistry] ✗ Failed to stop instance " << instanceId 
+                      << " due to retry limit: " << e.what() << std::endl;
+        } catch (...) {
+            std::cerr << "[InstanceRegistry] ✗ Failed to stop instance " << instanceId 
+                      << " due to retry limit (unknown error)" << std::endl;
+        }
+    }
+    
+    return stoppedCount;
+}
+
 void InstanceRegistry::logProcessingResults(const std::string& instanceId) const {
-    std::lock_guard<std::mutex> lock(mutex_);
+    // CRITICAL: Use shared_lock for read-only operations to allow concurrent readers
+    // This prevents deadlock when multiple threads read instance data simultaneously
+    std::shared_lock<std::shared_timed_mutex> lock(mutex_); // Shared lock for read operations
     
     // Check if instance exists
     auto instanceIt = instances_.find(instanceId);
@@ -1600,8 +2086,10 @@ void InstanceRegistry::logProcessingResults(const std::string& instanceId) const
                   << info.additionalParams.at("FILE_PATH") << std::endl;
     }
     
-    // Log output type
-    if (hasRTMPOutput(instanceId)) {
+    // Log output type - check directly from info instead of calling hasRTMPOutput to avoid deadlock
+    bool hasRTMP = !info.rtmpUrl.empty() || 
+                   info.additionalParams.find("RTMP_URL") != info.additionalParams.end();
+    if (hasRTMP) {
         std::cerr << "[InstanceProcessingLog] Output: RTMP Stream" << std::endl;
         if (!info.rtmpUrl.empty()) {
             std::cerr << "[InstanceProcessingLog] RTMP URL: " << info.rtmpUrl << std::endl;
@@ -1657,7 +2145,7 @@ bool InstanceRegistry::updateInstanceFromConfig(const std::string& instanceId, c
     InstanceInfo currentInfo;
     
     {
-        std::lock_guard<std::mutex> lock(mutex_);
+        std::unique_lock<std::shared_timed_mutex> lock(mutex_); // Exclusive lock for write operations
         
         auto instanceIt = instances_.find(instanceId);
         if (instanceIt == instances_.end()) {
@@ -1728,7 +2216,7 @@ bool InstanceRegistry::updateInstanceFromConfig(const std::string& instanceId, c
     
     // Update instance in registry
     {
-        std::lock_guard<std::mutex> lock(mutex_);
+        std::unique_lock<std::shared_timed_mutex> lock(mutex_); // Exclusive lock for write operations
         auto instanceIt = instances_.find(instanceId);
         if (instanceIt == instances_.end()) {
             std::cerr << "[InstanceRegistry] Instance " << instanceId << " not found during update" << std::endl;
@@ -1817,7 +2305,7 @@ void InstanceRegistry::startLoggingThread(const std::string& instanceId) {
                 
                 // Check if instance still exists and is running
                 {
-                    std::lock_guard<std::mutex> lock(mutex_);
+                    std::unique_lock<std::shared_timed_mutex> lock(mutex_); // Exclusive lock for write operations
                     auto instanceIt = instances_.find(instanceId);
                     if (instanceIt == instances_.end() || !instanceIt->second.running) {
                         // Instance deleted or stopped, exit logging thread
@@ -1828,7 +2316,7 @@ void InstanceRegistry::startLoggingThread(const std::string& instanceId) {
             
             // Log processing results if instance still exists and has no RTMP output
             {
-                std::lock_guard<std::mutex> lock(mutex_);
+                std::unique_lock<std::shared_timed_mutex> lock(mutex_); // Exclusive lock for write operations
                 auto instanceIt = instances_.find(instanceId);
                 if (instanceIt == instances_.end() || !instanceIt->second.running) {
                     // Instance deleted or stopped, exit logging thread
@@ -1888,7 +2376,7 @@ void InstanceRegistry::stopLoggingThread(const std::string& instanceId) {
 }
 
 Json::Value InstanceRegistry::getInstanceConfig(const std::string& instanceId) const {
-    std::lock_guard<std::mutex> lock(mutex_);
+    std::unique_lock<std::shared_timed_mutex> lock(mutex_); // Exclusive lock for write operations
     
     auto it = instances_.find(instanceId);
     if (it == instances_.end()) {
