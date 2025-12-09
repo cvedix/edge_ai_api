@@ -262,5 +262,137 @@ inline std::string resolveDataDir(const char* env_var_name, const std::string& s
     return default_path;
 }
 
+/**
+ * @brief Resolve config file path intelligently with 3-tier fallback
+ * 
+ * Priority:
+ * 1. CONFIG_FILE environment variable (if set) - highest priority
+ * 2. Try paths in order:
+ *    - ./config.json (current directory)
+ *    - /opt/edge_ai_api/config/config.json (production)
+ *    - /etc/edge_ai_api/config.json (system)
+ *    - ~/.config/edge_ai_api/config.json (user config - fallback)
+ *    - ./config.json (last resort)
+ * 
+ * Parent directories will be created automatically if needed.
+ * 
+ * @return Resolved config file path
+ */
+inline std::string resolveConfigPath() {
+    // Priority 1: Environment variable (highest priority)
+    const char* env_config_file = std::getenv("CONFIG_FILE");
+    if (env_config_file && strlen(env_config_file) > 0) {
+        std::string path = std::string(env_config_file);
+        // Create parent directory if needed
+        try {
+            std::filesystem::path filePath(path);
+            if (filePath.has_parent_path()) {
+                std::filesystem::create_directories(filePath.parent_path());
+            }
+            std::cerr << "[EnvConfig] Using config file from CONFIG_FILE: " << path << std::endl;
+            return path;
+        } catch (const std::filesystem::filesystem_error& e) {
+            if (e.code() == std::errc::permission_denied) {
+                std::cerr << "[EnvConfig] ⚠ Cannot create directory for " << path 
+                         << " (permission denied), trying fallback..." << std::endl;
+            } else {
+                std::cerr << "[EnvConfig] ⚠ Error with CONFIG_FILE path " << path 
+                         << ": " << e.what() << ", trying fallback..." << std::endl;
+            }
+        } catch (...) {
+            std::cerr << "[EnvConfig] ⚠ Error with CONFIG_FILE path " << path 
+                     << ", trying fallback..." << std::endl;
+        }
+    }
+    
+    // Priority 2: Try paths in order with fallback pattern
+    // Tier 1: Current directory (always accessible)
+    std::string current_dir_path = "./config.json";
+    if (std::filesystem::exists(current_dir_path)) {
+        std::cerr << "[EnvConfig] ✓ Found existing config file: " << current_dir_path 
+                 << " (current directory)" << std::endl;
+        return current_dir_path;
+    }
+    
+    // Tier 2: Production path (/opt/edge_ai_api/config/config.json)
+    std::string production_path = "/opt/edge_ai_api/config/config.json";
+    if (std::filesystem::exists(production_path)) {
+        std::cerr << "[EnvConfig] ✓ Found existing config file: " << production_path 
+                 << " (production)" << std::endl;
+        return production_path;
+    }
+    
+    // Try to create production directory
+    try {
+        std::filesystem::path filePath(production_path);
+        if (filePath.has_parent_path()) {
+            std::filesystem::create_directories(filePath.parent_path());
+        }
+        std::cerr << "[EnvConfig] ✓ Created directory and will use: " << production_path 
+                 << " (production)" << std::endl;
+        return production_path;
+    } catch (const std::filesystem::filesystem_error& e) {
+        if (e.code() == std::errc::permission_denied) {
+            std::cerr << "[EnvConfig] ⚠ Cannot create " << production_path 
+                     << " (permission denied), trying fallback..." << std::endl;
+        } else {
+            std::cerr << "[EnvConfig] ⚠ Error creating " << production_path 
+                     << ": " << e.what() << ", trying fallback..." << std::endl;
+        }
+    } catch (...) {
+        std::cerr << "[EnvConfig] ⚠ Error with " << production_path << ", trying fallback..." << std::endl;
+    }
+    
+    // Tier 3: System path (/etc/edge_ai_api/config.json)
+    std::string system_path = "/etc/edge_ai_api/config.json";
+    if (std::filesystem::exists(system_path)) {
+        std::cerr << "[EnvConfig] ✓ Found existing config file: " << system_path 
+                 << " (system)" << std::endl;
+        return system_path;
+    }
+    
+    // Try to create system directory
+    try {
+        std::filesystem::path filePath(system_path);
+        if (filePath.has_parent_path()) {
+            std::filesystem::create_directories(filePath.parent_path());
+        }
+        std::cerr << "[EnvConfig] ✓ Created directory and will use: " << system_path 
+                 << " (system)" << std::endl;
+        return system_path;
+    } catch (const std::filesystem::filesystem_error& e) {
+        if (e.code() == std::errc::permission_denied) {
+            std::cerr << "[EnvConfig] ⚠ Cannot create " << system_path 
+                     << " (permission denied), trying fallback..." << std::endl;
+        } else {
+            std::cerr << "[EnvConfig] ⚠ Error creating " << system_path 
+                     << ": " << e.what() << ", trying fallback..." << std::endl;
+        }
+    } catch (...) {
+        std::cerr << "[EnvConfig] ⚠ Error with " << system_path << ", trying fallback..." << std::endl;
+    }
+    
+    // Fallback 1: User config directory (~/.config/edge_ai_api/config.json)
+    const char* home = std::getenv("HOME");
+    if (home) {
+        std::string user_config = std::string(home) + "/.config/edge_ai_api/config.json";
+        try {
+            std::filesystem::path filePath(user_config);
+            if (filePath.has_parent_path()) {
+                std::filesystem::create_directories(filePath.parent_path());
+            }
+            std::cerr << "[EnvConfig] ✓ Using fallback user config: " << user_config << std::endl;
+            return user_config;
+        } catch (...) {
+            std::cerr << "[EnvConfig] ⚠ Cannot create user config directory, using last resort..." << std::endl;
+        }
+    }
+    
+    // Last resort: Current directory (always works)
+    std::cerr << "[EnvConfig] ✓ Using last resort: ./config.json (current directory)" << std::endl;
+    std::cerr << "[EnvConfig] ℹ Note: To use production path, run: sudo mkdir -p /opt/edge_ai_api/config" << std::endl;
+    return "./config.json";
+}
+
 } // namespace EnvConfig
 
