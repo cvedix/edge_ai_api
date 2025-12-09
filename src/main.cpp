@@ -9,6 +9,7 @@
 #include "api/solution_handler.h"
 #include "api/group_handler.h"
 #include "api/config_handler.h"
+#include "api/node_handler.h"
 #include "models/model_upload_handler.h"
 #include "config/system_config.h"
 #include "core/watchdog.h"
@@ -24,6 +25,8 @@
 #include "solutions/solution_storage.h"
 #include "groups/group_registry.h"
 #include "groups/group_storage.h"
+#include "core/node_pool_manager.h"
+#include "core/node_storage.h"
 #include <cvedix/utils/analysis_board/cvedix_analysis_board.h>
 #include <cvedix/nodes/src/cvedix_rtsp_src_node.h>
 #include <cvedix/nodes/src/cvedix_file_src_node.h>
@@ -1403,6 +1406,153 @@ int main(int argc, char* argv[])
         // Initialize default solutions (face_detection, etc.)
         solutionRegistry.initializeDefaultSolutions();
         
+        // Initialize node pool manager and default templates
+        static NodePoolManager& nodePool = NodePoolManager::getInstance();
+        nodePool.initializeDefaultTemplates();
+        PLOG_INFO << "[Main] Node pool manager initialized with default templates";
+        
+        // Initialize node storage and load persisted nodes
+        // Priority: 1. NODES_DIR env var, 2. /opt/edge_ai_api/nodes (with auto-fallback)
+        std::string nodesDir;
+        const char* env_nodes_dir = std::getenv("NODES_DIR");
+        if (env_nodes_dir && strlen(env_nodes_dir) > 0) {
+            nodesDir = std::string(env_nodes_dir);
+            std::cerr << "[Main] Using NODES_DIR from environment: " << nodesDir << std::endl;
+        } else {
+            // Try /opt/edge_ai_api/nodes first, fallback to user directory if needed
+            nodesDir = "/opt/edge_ai_api/nodes";
+            std::cerr << "[Main] Attempting to use: " << nodesDir << std::endl;
+        }
+        
+        // Try to create directory if it doesn't exist
+        // Strategy: Try /opt first, if fails, auto-fallback to user directory
+        bool nodes_directory_ready = false;
+        if (!std::filesystem::exists(nodesDir)) {
+            std::cerr << "[Main] Nodes directory does not exist, attempting to create: " << nodesDir << std::endl;
+            
+            try {
+                // Try to create directory (will create parent dirs if we have permission)
+                bool created = std::filesystem::create_directories(nodesDir);
+                if (created) {
+                    std::cerr << "[Main] ✓ Successfully created nodes directory: " << nodesDir << std::endl;
+                    nodes_directory_ready = true;
+                } else {
+                    // Directory might have been created by another process
+                    if (std::filesystem::exists(nodesDir)) {
+                        std::cerr << "[Main] ✓ Nodes directory exists (created by another process): " << nodesDir << std::endl;
+                        nodes_directory_ready = true;
+                    }
+                }
+            } catch (const std::filesystem::filesystem_error& e) {
+                if (e.code() == std::errc::permission_denied) {
+                    std::cerr << "[Main] ⚠ Cannot create " << nodesDir << " (permission denied)" << std::endl;
+                    
+                    // Auto-fallback: Try user directory (works without sudo)
+                    if (env_nodes_dir == nullptr || strlen(env_nodes_dir) == 0) {
+                        const char* home = std::getenv("HOME");
+                        if (home) {
+                            std::string fallback_path = std::string(home) + "/.local/share/edge_ai_api/nodes";
+                            std::cerr << "[Main] Auto-fallback: Trying user directory: " << fallback_path << std::endl;
+                            try {
+                                std::filesystem::create_directories(fallback_path);
+                                nodesDir = fallback_path;
+                                nodes_directory_ready = true;
+                                std::cerr << "[Main] ✓ Using fallback directory: " << nodesDir << std::endl;
+                                std::cerr << "[Main] ℹ Note: To use /opt/edge_ai_api/nodes, create parent directory:" << std::endl;
+                                std::cerr << "[Main] ℹ   sudo mkdir -p /opt/edge_ai_api && sudo chown $USER:$USER /opt/edge_ai_api" << std::endl;
+                            } catch (const std::exception& fallback_e) {
+                                std::cerr << "[Main] ⚠ Fallback also failed: " << fallback_e.what() << std::endl;
+                                // Last resort: current directory
+                                nodesDir = "./nodes";
+                                try {
+                                    std::filesystem::create_directories(nodesDir);
+                                    nodes_directory_ready = true;
+                                    std::cerr << "[Main] ✓ Using current directory: " << nodesDir << std::endl;
+                                } catch (...) {
+                                    std::cerr << "[Main] ✗ ERROR: Cannot create any nodes directory" << std::endl;
+                                }
+                            }
+                        } else {
+                            // No HOME env var, use current directory
+                            nodesDir = "./nodes";
+                            try {
+                                std::filesystem::create_directories(nodesDir);
+                                nodes_directory_ready = true;
+                                std::cerr << "[Main] ✓ Using current directory: " << nodesDir << std::endl;
+                            } catch (...) {
+                                std::cerr << "[Main] ✗ ERROR: Cannot create nodes directory" << std::endl;
+                            }
+                        }
+                    }
+                } else {
+                    std::cerr << "[Main] ✗ Exception creating " << nodesDir << ": " << e.what() << std::endl;
+                }
+            } catch (const std::exception& e) {
+                std::cerr << "[Main] ✗ Exception creating " << nodesDir << ": " << e.what() << std::endl;
+            }
+        } else {
+            // Check if it's actually a directory
+            if (std::filesystem::is_directory(nodesDir)) {
+                std::cerr << "[Main] ✓ Nodes directory already exists: " << nodesDir << std::endl;
+                nodes_directory_ready = true;
+            } else {
+                std::cerr << "[Main] ✗ ERROR: Path exists but is not a directory: " << nodesDir << std::endl;
+            }
+        }
+        
+        if (nodes_directory_ready) {
+            std::cerr << "[Main] ✓ Nodes directory is ready: " << nodesDir << std::endl;
+        } else {
+            std::cerr << "[Main] ⚠ WARNING: Nodes directory may not be ready" << std::endl;
+        }
+        
+        PLOG_INFO << "[Main] Nodes directory: " << nodesDir;
+        static NodeStorage nodeStorage(nodesDir);
+        
+        // Step 1: Load persisted nodes from storage (if any)
+        size_t loadedFromStorage = nodePool.loadNodesFromStorage(nodeStorage);
+        PLOG_INFO << "[Main] Loaded " << loadedFromStorage << " nodes from storage";
+        
+        // Step 2: Create default nodes from all available templates
+        // This ensures all supported node types have default nodes, not just those from solutions
+        size_t createdFromTemplates = nodePool.createDefaultNodesFromTemplates();
+        PLOG_INFO << "[Main] Created " << createdFromTemplates << " default nodes from templates";
+        
+        // Step 3: Also create nodes from default solutions (for nodes with specific configurations)
+        // This adds nodes with solution-specific parameters
+        size_t createdFromSolutions = nodePool.createNodesFromDefaultSolutions(solutionRegistry);
+        PLOG_INFO << "[Main] Created " << createdFromSolutions << " nodes from default solutions";
+        
+        size_t totalCreated = createdFromTemplates + createdFromSolutions;
+        
+        // Step 4: Load user-created nodes again (in case storage was updated)
+        // This ensures we have all nodes: defaults + user-created
+        size_t loadedUserNodes = nodePool.loadNodesFromStorage(nodeStorage);
+        
+        // Step 5: Get total count for reporting
+        auto stats = nodePool.getStats();
+        std::cerr << "[Main] ========================================" << std::endl;
+        std::cerr << "[Main] Node Pool Status:" << std::endl;
+        std::cerr << "[Main]   Total nodes: " << stats.totalPreConfiguredNodes << std::endl;
+        std::cerr << "[Main]   Available: " << stats.availableNodes << std::endl;
+        std::cerr << "[Main]   In use: " << stats.inUseNodes << std::endl;
+        std::cerr << "[Main]   Default nodes (from templates): " << createdFromTemplates << std::endl;
+        std::cerr << "[Main]   Nodes from solutions: " << createdFromSolutions << std::endl;
+        std::cerr << "[Main]   User-created nodes: " << loadedUserNodes << std::endl;
+        std::cerr << "[Main] ========================================" << std::endl;
+        PLOG_INFO << "[Main] Node pool initialized: " << stats.totalPreConfiguredNodes 
+                  << " total nodes (" << stats.availableNodes << " available, " 
+                  << stats.inUseNodes << " in use)";
+        
+        // Step 6: Save nodes to storage only if we created new nodes
+        if (totalCreated > 0) {
+            if (nodePool.saveNodesToStorage(nodeStorage)) {
+                PLOG_INFO << "[Main] Saved nodes to storage (including " << totalCreated << " new nodes)";
+            } else {
+                PLOG_WARNING << "[Main] Failed to save nodes to storage";
+            }
+        }
+        
         // Initialize solution storage and load custom solutions
         // Default: /var/lib/edge_ai_api/solutions (auto-created if needed)
         std::string solutionsDir = EnvConfig::resolveDataDir("SOLUTIONS_DIR", "solutions");
@@ -1494,6 +1644,7 @@ int main(int argc, char* argv[])
         static InstanceHandler instanceHandler;
         static SolutionHandler solutionHandler;
         static GroupHandler groupHandler;
+        static NodeHandler nodeHandler;
         
         // Initialize model upload handler with configurable directory
         // Default: /var/lib/edge_ai_api/models (auto-created if needed)
