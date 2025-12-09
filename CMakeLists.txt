@@ -270,6 +270,8 @@ set(SOURCES
     src/api/instance_handler.cpp
     src/api/solution_handler.cpp
     src/api/group_handler.cpp
+    src/api/config_handler.cpp
+    src/api/system_info_handler.cpp
     src/models/model_upload_handler.cpp
     src/core/watchdog.cpp
     src/core/health_monitor.cpp
@@ -284,7 +286,9 @@ set(SOURCES
     src/instances/instance_storage.cpp
     src/solutions/solution_storage.cpp
     src/groups/group_storage.cpp
+    src/config/system_config.cpp
     src/core/uuid_generator.cpp
+    src/core/platform_detector.cpp
     src/core/log_manager.cpp
     src/models/create_instance_request.cpp
     src/models/update_instance_request.cpp
@@ -308,6 +312,29 @@ set(SOURCES
 # Create executable
 # ============================================
 add_executable(edge_ai_api ${SOURCES})
+
+# Set RPATH to find OpenCV 4.10 libraries in /usr/local/lib
+# This ensures the executable can find libopencv_*.so.410 at runtime
+# BUILD_WITH_INSTALL_RPATH FALSE: Use BUILD_RPATH when running from build directory
+# BUILD_WITH_INSTALL_RPATH TRUE: Use INSTALL_RPATH when running from build directory
+# Use RPATH (not RUNPATH) so it works even without LD_LIBRARY_PATH
+set(CMAKE_BUILD_RPATH_USE_ORIGIN TRUE)
+set_target_properties(edge_ai_api PROPERTIES
+    INSTALL_RPATH_USE_LINK_PATH TRUE
+    BUILD_WITH_INSTALL_RPATH FALSE
+    BUILD_RPATH_USE_ORIGIN TRUE
+    # Use RPATH instead of RUNPATH (RPATH is always used, RUNPATH only when LD_LIBRARY_PATH is set)
+    SKIP_BUILD_RPATH FALSE
+)
+# Add /usr/local/lib to RPATH for OpenCV 4.10
+# Add build/lib to RPATH for Drogon library (when using FetchContent)
+# Note: RPATH (not RUNPATH) will be used, so it works without LD_LIBRARY_PATH
+set_target_properties(edge_ai_api PROPERTIES
+    INSTALL_RPATH "${CMAKE_INSTALL_PREFIX}/lib;/usr/local/lib"
+    BUILD_RPATH "${CMAKE_BINARY_DIR}/lib;/usr/local/lib"
+)
+# Force use of RPATH instead of RUNPATH
+set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -Wl,--disable-new-dtags")
 
 # ============================================
 # Link libraries
@@ -481,8 +508,26 @@ if(OpenCV_FOUND)
 endif()
 
 # ============================================
+# Fix missing libopencv_freetype.so.410
+# ============================================
+# CVEDIX SDK requires libopencv_freetype.so.410 but OpenCV 4.10 may not have it
+# Copy from OpenCV 4.6 if available (temporary workaround)
+if(EXISTS "/usr/lib/x86_64-linux-gnu/libopencv_freetype.so.4.6.0")
+    set(FREETYPE_410_PATH "${CMAKE_BINARY_DIR}/lib/libopencv_freetype.so.410")
+    add_custom_command(TARGET edge_ai_api POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E make_directory "${CMAKE_BINARY_DIR}/lib"
+        COMMAND ${CMAKE_COMMAND} -E copy_if_different
+            "/usr/lib/x86_64-linux-gnu/libopencv_freetype.so.4.6.0"
+            "${FREETYPE_410_PATH}"
+        COMMENT "Copying libopencv_freetype.so.410 for CVEDIX SDK compatibility"
+    )
+    message(STATUS "✓ Will copy libopencv_freetype.so.410 to build/lib")
+endif()
+
+# ============================================
 # hwinfo - Hardware Information Library
 # ============================================
+# Try submodule first (if available)
 if(EXISTS "${CMAKE_SOURCE_DIR}/third_party/hwinfo/CMakeLists.txt")
     message(STATUS "Adding hwinfo submodule...")
     add_subdirectory(third_party/hwinfo)
@@ -493,10 +538,36 @@ if(EXISTS "${CMAKE_SOURCE_DIR}/third_party/hwinfo/CMakeLists.txt")
     # Define macro to enable SystemInfoHandler in main.cpp
     target_compile_definitions(edge_ai_api PRIVATE ENABLE_SYSTEM_INFO_HANDLER)
     message(STATUS "✓ system_info_handler enabled (hwinfo available)")
+elseif(AUTO_DOWNLOAD_DEPENDENCIES)
+    # Use FetchContent to download hwinfo automatically
+    message(STATUS "hwinfo submodule not found. Downloading via FetchContent...")
+    
+    # Ensure FetchContent is included (may have been included for other dependencies)
+    if(NOT DEFINED FetchContent_MakeAvailable)
+        include(FetchContent)
+    endif()
+    
+    FetchContent_Declare(
+        hwinfo
+        GIT_REPOSITORY https://github.com/lfreist/hwinfo.git
+        GIT_TAG        main
+        GIT_SHALLOW    TRUE
+    )
+    
+    FetchContent_MakeAvailable(hwinfo)
+    
+    target_link_libraries(edge_ai_api PRIVATE lfreist-hwinfo::hwinfo)
+    message(STATUS "✓ hwinfo downloaded and linked to edge_ai_api")
+    # Add system_info_handler if hwinfo is available
+    target_sources(edge_ai_api PRIVATE src/api/system_info_handler.cpp)
+    # Define macro to enable SystemInfoHandler in main.cpp
+    target_compile_definitions(edge_ai_api PRIVATE ENABLE_SYSTEM_INFO_HANDLER)
+    message(STATUS "✓ system_info_handler enabled (hwinfo available)")
 else()
-    message(WARNING "hwinfo submodule not found. System info endpoints will not work.")
-    message(WARNING "Run: git submodule update --init --recursive")
-    message(WARNING "system_info_handler.cpp will not be compiled")
+    message(WARNING "hwinfo not found. System info endpoints will not work.")
+    message(WARNING "Options:")
+    message(WARNING "  1. Initialize submodule: git submodule update --init --recursive")
+    message(WARNING "  2. Enable auto-download: cmake -DAUTO_DOWNLOAD_DEPENDENCIES=ON ..")
 endif()
 
 # Additional libraries (if needed)
