@@ -99,6 +99,12 @@ public:
     std::vector<std::string> listInstances() const;
     
     /**
+     * @brief Get total count of instances
+     * @return Number of instances
+     */
+    int getInstanceCount() const;
+    
+    /**
      * @brief Get all instances info in one lock acquisition (optimized for list operations)
      * @return Map of instance ID to InstanceInfo
      */
