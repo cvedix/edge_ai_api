@@ -1647,8 +1647,104 @@ int main(int argc, char* argv[])
         static NodeHandler nodeHandler;
         
         // Initialize model upload handler with configurable directory
-        // Default: /var/lib/edge_ai_api/models (auto-created if needed)
-        std::string modelsDir = EnvConfig::resolveDataDir("MODELS_DIR", "models");
+        // Priority: 1. MODELS_DIR env var, 2. /opt/edge_ai_api/models (with auto-fallback)
+        std::string modelsDir;
+        const char* env_models_dir = std::getenv("MODELS_DIR");
+        if (env_models_dir && strlen(env_models_dir) > 0) {
+            modelsDir = std::string(env_models_dir);
+            std::cerr << "[Main] Using MODELS_DIR from environment: " << modelsDir << std::endl;
+        } else {
+            // Try /opt/edge_ai_api/models first, fallback to user directory if needed
+            modelsDir = "/opt/edge_ai_api/models";
+            std::cerr << "[Main] Attempting to use: " << modelsDir << std::endl;
+        }
+        
+        // Try to create directory if it doesn't exist
+        // Strategy: Try /opt first, if fails, auto-fallback to user directory
+        bool models_directory_ready = false;
+        if (!std::filesystem::exists(modelsDir)) {
+            std::cerr << "[Main] Models directory does not exist, attempting to create: " << modelsDir << std::endl;
+            
+            try {
+                // Try to create directory (will create parent dirs if we have permission)
+                bool created = std::filesystem::create_directories(modelsDir);
+                if (created) {
+                    std::cerr << "[Main] ✓ Successfully created models directory: " << modelsDir << std::endl;
+                    models_directory_ready = true;
+                } else {
+                    // Directory might have been created by another process
+                    if (std::filesystem::exists(modelsDir)) {
+                        std::cerr << "[Main] ✓ Models directory exists (created by another process): " << modelsDir << std::endl;
+                        models_directory_ready = true;
+                    }
+                }
+            } catch (const std::filesystem::filesystem_error& e) {
+                if (e.code() == std::errc::permission_denied) {
+                    std::cerr << "[Main] ⚠ Cannot create " << modelsDir << " (permission denied)" << std::endl;
+                    
+                    // Auto-fallback: Try user directory (works without sudo)
+                    if (env_models_dir == nullptr || strlen(env_models_dir) == 0) {
+                        const char* home = std::getenv("HOME");
+                        if (home) {
+                            std::string fallback_path = std::string(home) + "/.local/share/edge_ai_api/models";
+                            std::cerr << "[Main] Auto-fallback: Trying user directory: " << fallback_path << std::endl;
+                            try {
+                                std::filesystem::create_directories(fallback_path);
+                                modelsDir = fallback_path;
+                                models_directory_ready = true;
+                                std::cerr << "[Main] ✓ Using fallback directory: " << modelsDir << std::endl;
+                                std::cerr << "[Main] ℹ Note: To use /opt/edge_ai_api/models, create parent directory:" << std::endl;
+                                std::cerr << "[Main] ℹ   sudo mkdir -p /opt/edge_ai_api && sudo chown $USER:$USER /opt/edge_ai_api" << std::endl;
+                            } catch (const std::exception& fallback_e) {
+                                std::cerr << "[Main] ⚠ Fallback also failed: " << fallback_e.what() << std::endl;
+                                // Last resort: current directory
+                                modelsDir = "./models";
+                                try {
+                                    std::filesystem::create_directories(modelsDir);
+                                    models_directory_ready = true;
+                                    std::cerr << "[Main] ✓ Using current directory: " << modelsDir << std::endl;
+                                } catch (...) {
+                                    std::cerr << "[Main] ✗ ERROR: Cannot create any models directory" << std::endl;
+                                }
+                            }
+                        } else {
+                            // No HOME, use current directory
+                            modelsDir = "./models";
+                            try {
+                                std::filesystem::create_directories(modelsDir);
+                                models_directory_ready = true;
+                                std::cerr << "[Main] ✓ Using current directory: " << modelsDir << std::endl;
+                            } catch (...) {
+                                std::cerr << "[Main] ✗ ERROR: Cannot create ./models" << std::endl;
+                            }
+                        }
+                    } else {
+                        // User specified MODELS_DIR but can't create it
+                        std::cerr << "[Main] ✗ ERROR: Cannot create user-specified directory: " << modelsDir << std::endl;
+                        std::cerr << "[Main] ✗ Please check permissions or use a different path" << std::endl;
+                    }
+                } else {
+                    std::cerr << "[Main] ✗ ERROR creating " << modelsDir << ": " << e.what() << std::endl;
+                }
+            } catch (const std::exception& e) {
+                std::cerr << "[Main] ✗ Exception creating " << modelsDir << ": " << e.what() << std::endl;
+            }
+        } else {
+            // Check if it's actually a directory
+            if (std::filesystem::is_directory(modelsDir)) {
+                std::cerr << "[Main] ✓ Models directory already exists: " << modelsDir << std::endl;
+                models_directory_ready = true;
+            } else {
+                std::cerr << "[Main] ✗ ERROR: Path exists but is not a directory: " << modelsDir << std::endl;
+            }
+        }
+        
+        if (models_directory_ready) {
+            std::cerr << "[Main] ✓ Models directory is ready: " << modelsDir << std::endl;
+        } else {
+            std::cerr << "[Main] ⚠ WARNING: Models directory may not be ready" << std::endl;
+        }
+        
         PLOG_INFO << "[Main] Models directory: " << modelsDir;
         ModelUploadHandler::setModelsDirectory(modelsDir);
         static ModelUploadHandler modelUploadHandler;
@@ -1709,6 +1805,7 @@ int main(int argc, char* argv[])
         PLOG_INFO << "[Main] Model upload handler initialized";
         PLOG_INFO << "  POST /v1/core/models/upload - Upload model file";
         PLOG_INFO << "  GET /v1/core/models/list - List uploaded models";
+        PLOG_INFO << "  PUT /v1/core/models/{modelName} - Rename model file";
         PLOG_INFO << "  DELETE /v1/core/models/{modelName} - Delete model file";
         PLOG_INFO << "  Models directory: " << modelsDir;
         

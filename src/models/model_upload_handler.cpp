@@ -20,7 +20,7 @@ std::string ModelUploadHandler::getModelsDirectory() const {
 }
 
 bool ModelUploadHandler::isValidModelFile(const std::string& filename) const {
-    // Allow .onnx, .weights, .cfg, .pt, .pth, .pb, .tflite files
+    // Allow .onnx, .rknn, .weights, .cfg, .pt, .pth, .pb, .tflite files
     std::string lower = filename;
     std::transform(lower.begin(), lower.end(), lower.begin(), ::tolower);
     
@@ -31,6 +31,7 @@ bool ModelUploadHandler::isValidModelFile(const std::string& filename) const {
     };
     
     return hasSuffix(lower, ".onnx") ||
+           hasSuffix(lower, ".rknn") ||
            hasSuffix(lower, ".weights") ||
            hasSuffix(lower, ".cfg") ||
            hasSuffix(lower, ".pt") ||
@@ -54,6 +55,50 @@ std::string ModelUploadHandler::sanitizeFilename(const std::string& filename) co
     return sanitized;
 }
 
+std::string ModelUploadHandler::extractModelName(const HttpRequestPtr &req) const {
+    // Try getParameter first (standard way)
+    std::string modelName = req->getParameter("modelName");
+    
+    // Fallback: extract from path if getParameter doesn't work
+    if (modelName.empty()) {
+        std::string path = req->getPath();
+        size_t modelsPos = path.find("/models/");
+        if (modelsPos != std::string::npos) {
+            size_t start = modelsPos + 8; // length of "/models/"
+            size_t end = path.find("?", start); // Stop at query string if present
+            if (end == std::string::npos) {
+                end = path.length();
+            }
+            modelName = path.substr(start, end - start);
+        }
+    }
+    
+    // URL decode the model name if it contains encoded characters
+    if (!modelName.empty()) {
+        std::string decoded;
+        decoded.reserve(modelName.length());
+        for (size_t i = 0; i < modelName.length(); ++i) {
+            if (modelName[i] == '%' && i + 2 < modelName.length()) {
+                // Try to decode hex value
+                char hex[3] = {modelName[i+1], modelName[i+2], '\0'};
+                char* end;
+                unsigned long value = std::strtoul(hex, &end, 16);
+                if (*end == '\0' && value <= 255) {
+                    decoded += static_cast<char>(value);
+                    i += 2; // Skip the hex digits
+                } else {
+                    decoded += modelName[i]; // Invalid encoding, keep as-is
+                }
+            } else {
+                decoded += modelName[i];
+            }
+        }
+        modelName = decoded;
+    }
+    
+    return modelName;
+}
+
 void ModelUploadHandler::uploadModel(
     const HttpRequestPtr &req,
     std::function<void(const HttpResponsePtr &)> &&callback) {
@@ -61,101 +106,403 @@ void ModelUploadHandler::uploadModel(
     try {
         // Check content type from header
         std::string contentType = req->getHeader("Content-Type");
-        if (contentType.find("multipart/form-data") == std::string::npos &&
-            contentType.find("application/octet-stream") == std::string::npos &&
-            contentType.find("binary") == std::string::npos) {
+        bool isMultipart = contentType.find("multipart/form-data") != std::string::npos;
+        bool isOctetStream = contentType.find("application/octet-stream") != std::string::npos;
+        bool isBinary = contentType.find("binary") != std::string::npos;
+        
+        if (!isMultipart && !isOctetStream && !isBinary) {
             callback(createErrorResponse(400, "Invalid content type", 
                 "Request must be multipart/form-data, application/octet-stream, or contain binary data"));
             return;
         }
         
-        // Get filename from Content-Disposition header or query parameter
         std::string originalFilename;
-        std::string contentDisposition = req->getHeader("Content-Disposition");
+        std::filesystem::path filePath;
+        std::string sanitizedFilename;
         
-        // Try to extract filename from Content-Disposition header
-        if (!contentDisposition.empty()) {
-            size_t filenamePos = contentDisposition.find("filename=");
-            if (filenamePos != std::string::npos) {
-                filenamePos += 9; // length of "filename="
-                if (contentDisposition[filenamePos] == '"') {
-                    filenamePos++; // skip opening quote
-                    size_t endPos = contentDisposition.find('"', filenamePos);
-                    if (endPos != std::string::npos) {
-                        originalFilename = contentDisposition.substr(filenamePos, endPos - filenamePos);
-                    }
+        // Handle multipart/form-data uploads (from curl -F or HTML form)
+        if (isMultipart) {
+            // Parse multipart form data to extract all files
+            // Get boundary from Content-Type header
+            std::string boundary;
+            size_t boundaryPos = contentType.find("boundary=");
+            if (boundaryPos != std::string::npos) {
+                boundaryPos += 9; // length of "boundary="
+                size_t endPos = contentType.find_first_of("; \r\n", boundaryPos);
+                if (endPos != std::string::npos) {
+                    boundary = contentType.substr(boundaryPos, endPos - boundaryPos);
                 } else {
-                    size_t endPos = contentDisposition.find_first_of("; \r\n", filenamePos);
-                    if (endPos != std::string::npos) {
-                        originalFilename = contentDisposition.substr(filenamePos, endPos - filenamePos);
+                    boundary = contentType.substr(boundaryPos);
+                }
+                // Remove quotes if present
+                if (!boundary.empty() && boundary.front() == '"' && boundary.back() == '"') {
+                    boundary = boundary.substr(1, boundary.length() - 2);
+                }
+            }
+            
+            if (boundary.empty()) {
+                callback(createErrorResponse(400, "Invalid multipart request", 
+                    "Could not find boundary in Content-Type header"));
+                return;
+            }
+            
+            // Get request body
+            auto body = req->getBody();
+            if (body.empty()) {
+                callback(createErrorResponse(400, "No file data", 
+                    "Request body is empty. Please include file data."));
+                return;
+            }
+            
+            // Parse multipart body to find all files
+            std::string bodyStr(reinterpret_cast<const char*>(body.data()), body.size());
+            std::string boundaryMarker = "--" + boundary;
+            std::string endBoundary = boundaryMarker + "--";
+            
+            // Ensure models directory exists
+            std::string modelsDir = getModelsDirectory();
+            std::filesystem::path modelsPath(modelsDir);
+            if (!std::filesystem::exists(modelsPath)) {
+                std::filesystem::create_directories(modelsPath);
+            }
+            
+            // Parse all multipart parts
+            Json::Value uploadedFiles(Json::arrayValue);
+            std::vector<std::string> errors;
+            size_t searchPos = 0;
+            int fileCount = 0;
+            
+            // Find first boundary
+            size_t partStart = bodyStr.find(boundaryMarker, searchPos);
+            if (partStart == std::string::npos) {
+                callback(createErrorResponse(400, "Invalid multipart request", 
+                    "Could not find multipart boundary"));
+                return;
+            }
+            
+            // Loop through all parts
+            while (partStart != std::string::npos) {
+                // Move to start of part content (after boundary)
+                partStart += boundaryMarker.length();
+                if (partStart >= bodyStr.length()) break;
+                
+                // Skip \r\n after boundary
+                if (partStart < bodyStr.length() && bodyStr[partStart] == '\r') partStart++;
+                if (partStart < bodyStr.length() && bodyStr[partStart] == '\n') partStart++;
+                
+                // Check if this is the end boundary
+                if (bodyStr.substr(partStart, endBoundary.length() - boundaryMarker.length()) == 
+                    endBoundary.substr(boundaryMarker.length())) {
+                    break;
+                }
+                
+                // Find Content-Disposition header
+                size_t contentDispositionPos = bodyStr.find("Content-Disposition:", partStart);
+                if (contentDispositionPos == std::string::npos || 
+                    contentDispositionPos > partStart + 1024) { // Reasonable header limit
+                    // Move to next boundary
+                    size_t nextBoundary = bodyStr.find(boundaryMarker, partStart);
+                    if (nextBoundary == std::string::npos) break;
+                    partStart = nextBoundary;
+                    continue;
+                }
+                
+                // Look for filename= in Content-Disposition
+                size_t filenamePos = bodyStr.find("filename=", contentDispositionPos);
+                if (filenamePos == std::string::npos || filenamePos > contentDispositionPos + 512) {
+                    // No filename, skip this part
+                    size_t nextBoundary = bodyStr.find(boundaryMarker, partStart);
+                    if (nextBoundary == std::string::npos) break;
+                    partStart = nextBoundary;
+                    continue;
+                }
+                
+                // Extract filename
+                filenamePos += 9; // length of "filename="
+                // Skip whitespace and quotes
+                while (filenamePos < bodyStr.length() && 
+                       (bodyStr[filenamePos] == ' ' || bodyStr[filenamePos] == '"')) {
+                    filenamePos++;
+                }
+                
+                // Find end of filename
+                size_t filenameEnd = filenamePos;
+                while (filenameEnd < bodyStr.length() && 
+                       bodyStr[filenameEnd] != '"' && 
+                       bodyStr[filenameEnd] != '\r' && 
+                       bodyStr[filenameEnd] != '\n' &&
+                       bodyStr[filenameEnd] != ';') {
+                    filenameEnd++;
+                }
+                
+                if (filenameEnd <= filenamePos) {
+                    // Invalid filename, skip
+                    size_t nextBoundary = bodyStr.find(boundaryMarker, partStart);
+                    if (nextBoundary == std::string::npos) break;
+                    partStart = nextBoundary;
+                    continue;
+                }
+                
+                std::string partFilename = bodyStr.substr(filenamePos, filenameEnd - filenamePos);
+                
+                // Validate file extension
+                if (!isValidModelFile(partFilename)) {
+                    errors.push_back("File '" + partFilename + "' has invalid extension");
+                    size_t nextBoundary = bodyStr.find(boundaryMarker, partStart);
+                    if (nextBoundary == std::string::npos) break;
+                    partStart = nextBoundary;
+                    continue;
+                }
+                
+                // Sanitize filename
+                std::string sanitizedPartFilename = sanitizeFilename(partFilename);
+                if (sanitizedPartFilename.empty()) {
+                    errors.push_back("File '" + partFilename + "' contains invalid characters");
+                    size_t nextBoundary = bodyStr.find(boundaryMarker, partStart);
+                    if (nextBoundary == std::string::npos) break;
+                    partStart = nextBoundary;
+                    continue;
+                }
+                
+                // Find the start of file content (after headers and blank line)
+                size_t contentStart = bodyStr.find("\r\n\r\n", contentDispositionPos);
+                if (contentStart == std::string::npos) {
+                    contentStart = bodyStr.find("\n\n", contentDispositionPos);
+                }
+                if (contentStart == std::string::npos) {
+                    errors.push_back("Could not find content for file '" + partFilename + "'");
+                    size_t nextBoundary = bodyStr.find(boundaryMarker, partStart);
+                    if (nextBoundary == std::string::npos) break;
+                    partStart = nextBoundary;
+                    continue;
+                }
+                
+                contentStart += 2; // Skip \r\n or \n
+                if (contentStart < bodyStr.length() && 
+                    (bodyStr[contentStart] == '\r' || bodyStr[contentStart] == '\n')) {
+                    contentStart++;
+                }
+                
+                // Find the end of file content (before next boundary)
+                size_t nextBoundary = bodyStr.find(boundaryMarker, contentStart);
+                size_t contentEnd = (nextBoundary != std::string::npos) ? nextBoundary : bodyStr.length();
+                
+                // Back up to remove trailing \r\n before boundary
+                while (contentEnd > contentStart && 
+                       (bodyStr[contentEnd-1] == '\r' || bodyStr[contentEnd-1] == '\n')) {
+                    contentEnd--;
+                }
+                
+                if (contentEnd <= contentStart) {
+                    errors.push_back("File '" + partFilename + "' has no content");
+                    partStart = nextBoundary;
+                    continue;
+                }
+                
+                // Create full file path - if file exists, add number to name
+                std::filesystem::path partFilePath = modelsPath / sanitizedPartFilename;
+                
+                // If file already exists, find a unique name by adding number
+                std::string finalFilename = sanitizedPartFilename;
+                if (std::filesystem::exists(partFilePath)) {
+                    std::filesystem::path basePath = modelsPath / sanitizedPartFilename;
+                    std::string baseName = basePath.stem().string();
+                    std::string extension = basePath.extension().string();
+                    
+                    int counter = 1;
+                    do {
+                        finalFilename = baseName + "_" + std::to_string(counter) + extension;
+                        partFilePath = modelsPath / finalFilename;
+                        counter++;
+                    } while (std::filesystem::exists(partFilePath) && counter < 10000);
+                    
+                    if (counter >= 10000) {
+                        errors.push_back("Cannot find unique filename for '" + partFilename + "'");
+                        partStart = nextBoundary;
+                        continue;
+                    }
+                }
+                
+                // Save file content
+                try {
+                    std::ofstream outFile(partFilePath, std::ios::binary);
+                    if (!outFile.is_open()) {
+                        errors.push_back("Could not create file '" + finalFilename + "'");
+                        partStart = nextBoundary;
+                        continue;
+                    }
+                    
+                    // Write file content
+                    outFile.write(body.data() + contentStart, contentEnd - contentStart);
+                    outFile.close();
+                    
+                    // Get file size
+                    auto fileSize = std::filesystem::file_size(partFilePath);
+                    
+                    // Add to uploaded files list
+                    Json::Value fileInfo;
+                    fileInfo["filename"] = finalFilename;
+                    fileInfo["originalFilename"] = partFilename;
+                    fileInfo["path"] = std::filesystem::canonical(partFilePath).string();
+                    fileInfo["size"] = static_cast<Json::Int64>(fileSize);
+                    fileInfo["url"] = "/v1/core/models/" + finalFilename;
+                    uploadedFiles.append(fileInfo);
+                    
+                    fileCount++;
+                    std::cerr << "[ModelUploadHandler] Model file uploaded: " << finalFilename 
+                              << " (" << fileSize << " bytes)" << std::endl;
+                    
+                } catch (const std::exception& e) {
+                    errors.push_back("Error saving file '" + partFilename + "': " + std::string(e.what()));
+                }
+                
+                // Move to next boundary
+                partStart = nextBoundary;
+            }
+            
+            // Build response
+            Json::Value response;
+            if (fileCount > 0) {
+                response["success"] = true;
+                response["message"] = "Uploaded " + std::to_string(fileCount) + " model file(s)";
+                response["count"] = fileCount;
+                response["files"] = uploadedFiles;
+                if (!errors.empty()) {
+                    Json::Value errorsJson(Json::arrayValue);
+                    for (const auto& err : errors) {
+                        errorsJson.append(err);
+                    }
+                    response["warnings"] = errorsJson;
+                }
+                
+                auto resp = HttpResponse::newHttpJsonResponse(response);
+                resp->setStatusCode(k201Created);
+                resp->addHeader("Access-Control-Allow-Origin", "*");
+                resp->addHeader("Access-Control-Allow-Methods", "POST, GET, PUT, DELETE, OPTIONS");
+                resp->addHeader("Access-Control-Allow-Headers", "Content-Type, Content-Disposition, Authorization");
+                resp->addHeader("Access-Control-Expose-Headers", "Content-Type, Content-Disposition");
+                resp->addHeader("Access-Control-Max-Age", "3600");
+                
+                callback(resp);
+            } else {
+                // No files uploaded successfully
+                std::string errorMsg = "No files were uploaded successfully";
+                if (!errors.empty()) {
+                    errorMsg += ". Errors: " + errors[0];
+                    for (size_t i = 1; i < errors.size() && i < 3; ++i) {
+                        errorMsg += "; " + errors[i];
+                    }
+                }
+                callback(createErrorResponse(400, "Upload failed", errorMsg));
+            }
+            return;
+            
+        } else {
+            // Handle application/octet-stream or binary uploads
+            // Get filename from Content-Disposition header or query parameter
+            std::string contentDisposition = req->getHeader("Content-Disposition");
+            
+            // Try to extract filename from Content-Disposition header
+            if (!contentDisposition.empty()) {
+                size_t filenamePos = contentDisposition.find("filename=");
+                if (filenamePos != std::string::npos) {
+                    filenamePos += 9; // length of "filename="
+                    if (contentDisposition[filenamePos] == '"') {
+                        filenamePos++; // skip opening quote
+                        size_t endPos = contentDisposition.find('"', filenamePos);
+                        if (endPos != std::string::npos) {
+                            originalFilename = contentDisposition.substr(filenamePos, endPos - filenamePos);
+                        }
                     } else {
-                        originalFilename = contentDisposition.substr(filenamePos);
+                        size_t endPos = contentDisposition.find_first_of("; \r\n", filenamePos);
+                        if (endPos != std::string::npos) {
+                            originalFilename = contentDisposition.substr(filenamePos, endPos - filenamePos);
+                        } else {
+                            originalFilename = contentDisposition.substr(filenamePos);
+                        }
                     }
                 }
             }
+            
+            // If no filename from header, try query parameter
+            if (originalFilename.empty()) {
+                originalFilename = req->getParameter("filename");
+            }
+            
+            // If still no filename, use default
+            if (originalFilename.empty()) {
+                originalFilename = "uploaded_model.onnx";
+            }
+            
+            // Validate file extension
+            if (!isValidModelFile(originalFilename)) {
+                callback(createErrorResponse(400, "Invalid file type", 
+                    "Only model files (.onnx, .weights, .cfg, .pt, .pth, .pb, .tflite) are allowed"));
+                return;
+            }
+            
+            // Sanitize filename
+            sanitizedFilename = sanitizeFilename(originalFilename);
+            if (sanitizedFilename.empty()) {
+                callback(createErrorResponse(400, "Invalid filename", 
+                    "Filename contains invalid characters"));
+                return;
+            }
+            
+            // Ensure models directory exists
+            std::string modelsDir = getModelsDirectory();
+            std::filesystem::path modelsPath(modelsDir);
+            if (!std::filesystem::exists(modelsPath)) {
+                std::filesystem::create_directories(modelsPath);
+            }
+            
+            // Create full file path - if file exists, add number to name
+            filePath = modelsPath / sanitizedFilename;
+            
+            // If file already exists, find a unique name by adding number
+            if (std::filesystem::exists(filePath)) {
+                std::filesystem::path basePath = modelsPath / sanitizedFilename;
+                std::string baseName = basePath.stem().string();  // filename without extension
+                std::string extension = basePath.extension().string();  // .onnx, .pt, etc.
+                
+                int counter = 1;
+                std::string newFilename;
+                do {
+                    newFilename = baseName + "_" + std::to_string(counter) + extension;
+                    filePath = modelsPath / newFilename;
+                    counter++;
+                } while (std::filesystem::exists(filePath) && counter < 10000);  // Safety limit
+                
+                if (counter >= 10000) {
+                    callback(createErrorResponse(500, "Too many files", 
+                        "Cannot find unique filename. Too many files with similar names exist."));
+                    return;
+                }
+                
+                sanitizedFilename = newFilename;
+                std::cerr << "[ModelUploadHandler] File with original name exists, using: " << sanitizedFilename << std::endl;
+            }
+            
+            // Get request body
+            auto body = req->getBody();
+            if (body.empty()) {
+                callback(createErrorResponse(400, "No file data", 
+                    "Request body is empty. Please include file data."));
+                return;
+            }
+            
+            // Save file
+            std::ofstream outFile(filePath, std::ios::binary);
+            if (!outFile.is_open()) {
+                callback(createErrorResponse(500, "File save failed", 
+                    "Could not save uploaded file"));
+                return;
+            }
+            
+            // Write file content from body
+            outFile.write(reinterpret_cast<const char*>(body.data()), body.size());
+            outFile.close();
         }
-        
-        // If no filename from header, try query parameter
-        if (originalFilename.empty()) {
-            originalFilename = req->getParameter("filename");
-        }
-        
-        // If still no filename, use default
-        if (originalFilename.empty()) {
-            originalFilename = "uploaded_model.onnx";
-        }
-        
-        // Validate file extension
-        if (!isValidModelFile(originalFilename)) {
-            callback(createErrorResponse(400, "Invalid file type", 
-                "Only model files (.onnx, .weights, .cfg, .pt, .pth, .pb, .tflite) are allowed"));
-            return;
-        }
-        
-        // Sanitize filename
-        std::string sanitizedFilename = sanitizeFilename(originalFilename);
-        if (sanitizedFilename.empty()) {
-            callback(createErrorResponse(400, "Invalid filename", 
-                "Filename contains invalid characters"));
-            return;
-        }
-        
-        // Ensure models directory exists
-        std::string modelsDir = getModelsDirectory();
-        std::filesystem::path modelsPath(modelsDir);
-        if (!std::filesystem::exists(modelsPath)) {
-            std::filesystem::create_directories(modelsPath);
-        }
-        
-        // Create full file path
-        std::filesystem::path filePath = modelsPath / sanitizedFilename;
-        
-        // Check if file already exists
-        if (std::filesystem::exists(filePath)) {
-            callback(createErrorResponse(409, "File exists", 
-                "A model file with this name already exists. Please delete it first or use a different name."));
-            return;
-        }
-        
-        // Get request body
-        auto body = req->getBody();
-        if (body.empty()) {
-            callback(createErrorResponse(400, "No file data", 
-                "Request body is empty. Please include file data."));
-            return;
-        }
-        
-        // Save file
-        std::ofstream outFile(filePath, std::ios::binary);
-        if (!outFile.is_open()) {
-            callback(createErrorResponse(500, "File save failed", 
-                "Could not save uploaded file"));
-            return;
-        }
-        
-        // Write file content from body
-        outFile.write(reinterpret_cast<const char*>(body.data()), body.size());
-        outFile.close();
         
         // Get file size
         auto fileSize = std::filesystem::file_size(filePath);
@@ -174,7 +521,7 @@ void ModelUploadHandler::uploadModel(
         resp->setStatusCode(k201Created);
         // Add CORS headers for Swagger UI
         resp->addHeader("Access-Control-Allow-Origin", "*");
-        resp->addHeader("Access-Control-Allow-Methods", "POST, GET, DELETE, OPTIONS");
+        resp->addHeader("Access-Control-Allow-Methods", "POST, GET, PUT, DELETE, OPTIONS");
         resp->addHeader("Access-Control-Allow-Headers", "Content-Type, Content-Disposition, Authorization");
         resp->addHeader("Access-Control-Expose-Headers", "Content-Type, Content-Disposition");
         resp->addHeader("Access-Control-Max-Age", "3600");
@@ -213,7 +560,7 @@ void ModelUploadHandler::listModels(
             auto resp = HttpResponse::newHttpJsonResponse(response);
             resp->setStatusCode(k200OK);
             resp->addHeader("Access-Control-Allow-Origin", "*");
-            resp->addHeader("Access-Control-Allow-Methods", "POST, GET, DELETE, OPTIONS");
+            resp->addHeader("Access-Control-Allow-Methods", "POST, GET, PUT, DELETE, OPTIONS");
             resp->addHeader("Access-Control-Allow-Headers", "Content-Type, Authorization");
             callback(resp);
             return;
@@ -250,8 +597,139 @@ void ModelUploadHandler::listModels(
         auto resp = HttpResponse::newHttpJsonResponse(response);
         resp->setStatusCode(k200OK);
         resp->addHeader("Access-Control-Allow-Origin", "*");
-        resp->addHeader("Access-Control-Allow-Methods", "POST, GET, DELETE, OPTIONS");
+        resp->addHeader("Access-Control-Allow-Methods", "POST, GET, PUT, DELETE, OPTIONS");
         resp->addHeader("Access-Control-Allow-Headers", "Content-Type, Authorization");
+        callback(resp);
+        
+    } catch (const std::exception& e) {
+        std::cerr << "[ModelUploadHandler] Exception: " << e.what() << std::endl;
+        callback(createErrorResponse(500, "Internal server error", e.what()));
+    } catch (...) {
+        std::cerr << "[ModelUploadHandler] Unknown exception" << std::endl;
+        callback(createErrorResponse(500, "Internal server error", "Unknown error occurred"));
+    }
+}
+
+void ModelUploadHandler::renameModel(
+    const HttpRequestPtr &req,
+    std::function<void(const HttpResponsePtr &)> &&callback) {
+    
+    try {
+        // Get model name from path parameter
+        std::string modelName = extractModelName(req);
+        if (modelName.empty()) {
+            callback(createErrorResponse(400, "Invalid request", "Model name is required"));
+            return;
+        }
+        
+        // Sanitize source filename
+        std::string sanitizedSourceName = sanitizeFilename(modelName);
+        if (sanitizedSourceName.empty() || sanitizedSourceName != modelName) {
+            callback(createErrorResponse(400, "Invalid filename", "Invalid source model name"));
+            return;
+        }
+        
+        // Parse request body to get new name
+        Json::Value requestJson;
+        try {
+            auto jsonPtr = req->getJsonObject();
+            if (jsonPtr) {
+                requestJson = *jsonPtr;
+            } else {
+                // Try to parse body as JSON
+                auto body = req->getBody();
+                if (!body.empty()) {
+                    Json::Reader reader;
+                    std::string bodyStr(reinterpret_cast<const char*>(body.data()), body.size());
+                    if (!reader.parse(bodyStr, requestJson)) {
+                        callback(createErrorResponse(400, "Invalid JSON", "Request body must be valid JSON"));
+                        return;
+                    }
+                } else {
+                    callback(createErrorResponse(400, "Missing parameter", "New name is required in request body"));
+                    return;
+                }
+            }
+        } catch (const std::exception& e) {
+            callback(createErrorResponse(400, "Invalid request", "Could not parse request body: " + std::string(e.what())));
+            return;
+        }
+        
+        // Get new name from JSON
+        if (!requestJson.isMember("newName") || !requestJson["newName"].isString()) {
+            callback(createErrorResponse(400, "Missing parameter", "newName field is required in request body"));
+            return;
+        }
+        
+        std::string newName = requestJson["newName"].asString();
+        if (newName.empty()) {
+            callback(createErrorResponse(400, "Invalid parameter", "newName cannot be empty"));
+            return;
+        }
+        
+        // Validate new name file extension
+        if (!isValidModelFile(newName)) {
+            callback(createErrorResponse(400, "Invalid file type", 
+                "New name must have a valid model file extension (.onnx, .weights, .cfg, .pt, .pth, .pb, .tflite)"));
+            return;
+        }
+        
+        // Sanitize new filename
+        std::string sanitizedNewName = sanitizeFilename(newName);
+        if (sanitizedNewName.empty() || sanitizedNewName != newName) {
+            callback(createErrorResponse(400, "Invalid filename", "New name contains invalid characters"));
+            return;
+        }
+        
+        // Check if source and destination are the same
+        if (sanitizedSourceName == sanitizedNewName) {
+            callback(createErrorResponse(400, "Invalid request", "New name is the same as current name"));
+            return;
+        }
+        
+        // Build file paths
+        std::string modelsDir = getModelsDirectory();
+        std::filesystem::path sourcePath = std::filesystem::path(modelsDir) / sanitizedSourceName;
+        std::filesystem::path destPath = std::filesystem::path(modelsDir) / sanitizedNewName;
+        
+        // Check if source file exists
+        if (!std::filesystem::exists(sourcePath)) {
+            callback(createErrorResponse(404, "Not found", "Source model file not found"));
+            return;
+        }
+        
+        // Check if destination file already exists
+        if (std::filesystem::exists(destPath)) {
+            callback(createErrorResponse(409, "File exists", 
+                "A model file with the new name already exists. Please delete it first or use a different name."));
+            return;
+        }
+        
+        // Rename file
+        try {
+            std::filesystem::rename(sourcePath, destPath);
+        } catch (const std::filesystem::filesystem_error& e) {
+            callback(createErrorResponse(500, "Rename failed", 
+                "Could not rename model file: " + std::string(e.what())));
+            return;
+        }
+        
+        Json::Value response;
+        response["success"] = true;
+        response["message"] = "Model file renamed successfully";
+        response["oldName"] = sanitizedSourceName;
+        response["newName"] = sanitizedNewName;
+        response["path"] = std::filesystem::canonical(destPath).string();
+        
+        auto resp = HttpResponse::newHttpJsonResponse(response);
+        resp->setStatusCode(k200OK);
+        resp->addHeader("Access-Control-Allow-Origin", "*");
+        resp->addHeader("Access-Control-Allow-Methods", "POST, GET, PUT, DELETE, OPTIONS");
+        resp->addHeader("Access-Control-Allow-Headers", "Content-Type, Authorization");
+        
+        std::cerr << "[ModelUploadHandler] Model file renamed: " << sanitizedSourceName 
+                  << " -> " << sanitizedNewName << std::endl;
+        
         callback(resp);
         
     } catch (const std::exception& e) {
@@ -269,7 +747,7 @@ void ModelUploadHandler::deleteModel(
     
     try {
         // Get model name from path parameter
-        std::string modelName = req->getParameter("modelName");
+        std::string modelName = extractModelName(req);
         if (modelName.empty()) {
             callback(createErrorResponse(400, "Invalid request", "Model name is required"));
             return;
@@ -306,7 +784,7 @@ void ModelUploadHandler::deleteModel(
         auto resp = HttpResponse::newHttpJsonResponse(response);
         resp->setStatusCode(k200OK);
         resp->addHeader("Access-Control-Allow-Origin", "*");
-        resp->addHeader("Access-Control-Allow-Methods", "POST, GET, DELETE, OPTIONS");
+        resp->addHeader("Access-Control-Allow-Methods", "POST, GET, PUT, DELETE, OPTIONS");
         resp->addHeader("Access-Control-Allow-Headers", "Content-Type, Authorization");
         
         std::cerr << "[ModelUploadHandler] Model file deleted: " << sanitizedFilename << std::endl;
@@ -329,7 +807,7 @@ void ModelUploadHandler::handleOptions(
     auto resp = HttpResponse::newHttpResponse();
     resp->setStatusCode(k200OK);
     resp->addHeader("Access-Control-Allow-Origin", "*");
-    resp->addHeader("Access-Control-Allow-Methods", "POST, GET, DELETE, OPTIONS");
+    resp->addHeader("Access-Control-Allow-Methods", "POST, GET, PUT, DELETE, OPTIONS");
     resp->addHeader("Access-Control-Allow-Headers", "Content-Type");
     resp->addHeader("Access-Control-Max-Age", "3600");
     callback(resp);

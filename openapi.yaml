@@ -669,10 +669,16 @@ paths:
             schema:
               type: object
               properties:
+                files:
+                  type: array
+                  items:
+                    type: string
+                    format: binary
+                  description: Model file(s) to upload. Select multiple files to upload at once (.onnx, .rknn, .weights, .cfg, .pt, .pth, .pb, .tflite)
                 file:
                   type: string
                   format: binary
-                  description: Model file to upload (.onnx, .weights, .cfg, .pt, .pth, .pb, .tflite)
+                  description: Single model file to upload (alternative to files array)
           application/octet-stream:
             schema:
               type: string
@@ -680,7 +686,7 @@ paths:
               description: Model file as binary data
       responses:
         '201':
-          description: Model file uploaded successfully
+          description: Model file(s) uploaded successfully
           content:
             application/json:
               schema:
@@ -690,16 +696,29 @@ paths:
                     type: boolean
                   message:
                     type: string
-                  filename:
-                    type: string
-                  originalFilename:
-                    type: string
-                  path:
-                    type: string
-                  size:
+                  count:
                     type: integer
-                  url:
-                    type: string
+                    description: Number of files uploaded successfully
+                  files:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        filename:
+                          type: string
+                        originalFilename:
+                          type: string
+                        path:
+                          type: string
+                        size:
+                          type: integer
+                        url:
+                          type: string
+                  warnings:
+                    type: array
+                    items:
+                      type: string
+                    description: Warnings for files that failed to upload
         '400':
           description: Invalid request
           content:
@@ -769,6 +788,74 @@ paths:
                 $ref: '#/components/schemas/ErrorResponse'
 
   /v1/core/models/{modelName}:
+    put:
+      summary: Rename a model file
+      description: Renames a model file on the server.
+      operationId: renameModel
+      tags:
+        - Models
+      parameters:
+        - name: modelName
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Current name of the model file to rename
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - newName
+              properties:
+                newName:
+                  type: string
+                  description: New name for the model file (must have valid model file extension)
+                  example: "my_model_v2.onnx"
+      responses:
+        '200':
+          description: Model file renamed successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  message:
+                    type: string
+                  oldName:
+                    type: string
+                  newName:
+                    type: string
+                  path:
+                    type: string
+        '400':
+          description: Invalid request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: Model file not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '409':
+          description: New name already exists
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
     delete:
       summary: Delete a model file
       description: Deletes a model file from the server.
