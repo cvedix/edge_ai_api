@@ -106,5 +106,10 @@ private:
      * @brief Register face detection with RTMP streaming solution
      */
     void registerFaceDetectionRTMPSolution();
+    
+    /**
+     * @brief Register behavior analysis crossline solution
+     */
+    void registerBACrosslineSolution();
 };
 
