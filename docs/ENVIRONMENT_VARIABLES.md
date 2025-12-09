@@ -4,6 +4,8 @@
 
 Dự án Edge AI API sử dụng biến môi trường để cấu hình server và các thành phần. C++ sử dụng `std::getenv()` để đọc biến môi trường từ hệ thống.
 
+> **📖 Xem thêm:** [Directory Creation Guide](DIRECTORY_CREATION_GUIDE.md) - Hướng dẫn chi tiết về cách xử lý tạo thư mục tự động với fallback.
+
 ## Cách Sử Dụng
 
 ### Cách 1: Export Trực Tiếp (Đơn giản nhất)
@@ -51,12 +53,30 @@ Environment="API_PORT=8080"
 #### Server Configuration
 | Biến | Mô tả | Mặc định | File sử dụng |
 |------|-------|----------|--------------|
+| `CONFIG_FILE` | Đường dẫn đến file config.json | Tự động tìm: `./config.json` → `/opt/edge_ai_api/config/config.json` → `/etc/edge_ai_api/config.json` | `src/main.cpp` |
 | `API_HOST` | Địa chỉ host để bind server | `0.0.0.0` | `src/main.cpp` |
 | `API_PORT` | Port của HTTP server | `8080` | `src/main.cpp` |
 | `CLIENT_MAX_BODY_SIZE` | Kích thước body tối đa (bytes) | `1048576` (1MB) | `src/main.cpp` |
 | `CLIENT_MAX_MEMORY_BODY_SIZE` | Kích thước memory body tối đa (bytes) | `1048576` (1MB) | `src/main.cpp` |
 | `THREAD_NUM` | Số lượng worker threads (0 = auto, minimum 8 for AI) | `0` | `src/main.cpp` |
 | `LOG_LEVEL` | Mức độ logging (TRACE/DEBUG/INFO/WARN/ERROR) | `INFO` | `src/main.cpp` |
+
+#### Configuration File
+| Biến | Mô tả | Mặc định | File sử dụng |
+|------|-------|----------|--------------|
+| `CONFIG_FILE` | Đường dẫn tuyệt đối đến file config.json | Tự động tìm theo thứ tự:<br/>1. `./config.json` (thư mục hiện tại)<br/>2. `/opt/edge_ai_api/config/config.json`<br/>3. `/etc/edge_ai_api/config.json`<br/>4. Tạo mới `./config.json` | `src/main.cpp` |
+
+**Ví dụ sử dụng CONFIG_FILE:**
+```bash
+# Sử dụng đường dẫn tùy chỉnh
+export CONFIG_FILE="/opt/edge_ai_api/config/config.json"
+./build/edge_ai_api
+
+# Hoặc trong systemd service
+Environment="CONFIG_FILE=/opt/edge_ai_api/config/config.json"
+```
+
+**Lưu ý:** Nếu file không tồn tại, hệ thống sẽ tự động tạo file config mặc định tại đường dẫn đó.
 
 #### Logging Configuration
 | Biến | Mô tả | Mặc định | File sử dụng |
@@ -93,12 +113,13 @@ Environment="API_PORT=8080"
 | Biến | Mô tả | Mặc định | File sử dụng |
 |------|-------|----------|--------------|
 | `SOLUTIONS_DIR` | Thư mục lưu trữ custom solutions | `./solutions` | `src/main.cpp` |
-| `INSTANCES_DIR` | Thư mục lưu trữ instance configurations | `./instances` | `src/main.cpp` |
+| `INSTANCES_DIR` | Thư mục lưu trữ instance configurations | `/opt/edge_ai_api/instances` | `src/main.cpp` |
 | `MODELS_DIR` | Thư mục lưu trữ model files | `./models` | `src/main.cpp` |
 
 **Lưu ý về Storage Directories:**
-- **Development**: Khuyến nghị lưu ở project root (`/path/to/project/solutions`, `/path/to/project/instances`)
-- **Production**: Khuyến nghị lưu ở system data directory (`/var/lib/edge_ai_api/solutions`, `/var/lib/edge_ai_api/instances`)
+- **Default**: `/opt/edge_ai_api/instances` (tự động tạo nếu chưa tồn tại)
+- **Development**: Có thể override bằng biến môi trường `INSTANCES_DIR=./instances` để lưu ở project root
+- **Production**: Khuyến nghị sử dụng mặc định `/opt/edge_ai_api/instances` hoặc `/var/lib/edge_ai_api/instances`
 - **⚠️ Không nên lưu trong `build/` directory** - Dữ liệu có thể bị mất khi clean build
 - Xem chi tiết: [Storage Best Practices](STORAGE_BEST_PRACTICES.md)
 

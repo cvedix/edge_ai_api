@@ -10,7 +10,9 @@
 #endif
 #include "api/solution_handler.h"
 #include "api/group_handler.h"
+#include "api/config_handler.h"
 #include "models/model_upload_handler.h"
+#include "config/system_config.h"
 #include "core/watchdog.h"
 #include "core/health_monitor.h"
 #include "core/env_config.h"
@@ -33,6 +35,7 @@
 #include <csetjmp>
 #include <unistd.h>
 #include <sys/types.h>
+#include <sys/wait.h>
 #include <stdexcept>
 #include <memory>
 #include <thread>
@@ -44,6 +47,8 @@
 #include <future>
 #include <vector>
 #include <fstream>
+#include <unordered_map>
+#include <filesystem>
 
 /**
  * @brief Edge AI API Server
@@ -56,6 +61,10 @@
 // Global flag for graceful shutdown
 static bool g_shutdown = false;
 
+// Timestamp when shutdown was requested (for watchdog)
+static std::chrono::steady_clock::time_point g_shutdown_request_time;
+static std::atomic<bool> g_shutdown_requested{false};
+
 // Global watchdog and health monitor instances
 static std::unique_ptr<Watchdog> g_watchdog;
 static std::unique_ptr<HealthMonitor> g_health_monitor;
@@ -65,6 +74,9 @@ static InstanceRegistry* g_instance_registry = nullptr;
 
 // Flag to prevent multiple handlers from stopping instances simultaneously
 static std::atomic<bool> g_cleanup_in_progress{false};
+
+// Flag to indicate cleanup has been completed (prevents abort after cleanup)
+static std::atomic<bool> g_cleanup_completed{false};
 
 // Flag to indicate force exit requested (bypass SIGABRT recovery)
 static std::atomic<bool> g_force_exit{false};
@@ -107,6 +119,12 @@ void signalHandler(int signal)
             std::cerr << "[SHUTDOWN] Received signal " << signal << ", shutting down gracefully..." << std::endl;
             std::cerr << "[SHUTDOWN] Press Ctrl+C again to force immediate exit" << std::endl;
             g_shutdown = true;
+            g_shutdown_requested = true;
+            g_shutdown_request_time = std::chrono::steady_clock::now();
+            
+            // CRITICAL: Release signal handling lock IMMEDIATELY after setting g_shutdown
+            // This allows subsequent signals to be processed quickly
+            signal_handling.store(false);
             
             // CRITICAL: Call quit() immediately in signal handler (thread-safe in Drogon)
             // This ensures the main event loop exits even if cleanup threads are slow
@@ -114,17 +132,37 @@ void signalHandler(int signal)
                 auto& app = drogon::app();
                 app.quit();
                 // Also try to stop the event loop explicitly
-                app.getLoop()->quit();
+                auto* loop = app.getLoop();
+                if (loop) {
+                    loop->quit();
+                }
             } catch (...) {
                 // Ignore errors - try to exit anyway
             }
+            
+            // CRITICAL: Force exit immediately - RTSP retry loops run in SDK threads and cannot be stopped gracefully
+            // Use a separate thread to force exit after very short delay (50ms)
+            // This ensures we don't wait forever for RTSP retry loops
+            std::thread([]() {
+                std::this_thread::sleep_for(std::chrono::milliseconds(50));
+                if (g_shutdown && !g_force_exit.load()) {
+                    // If still shutting down after 50ms, force exit immediately
+                    std::cerr << "[CRITICAL] Force exit after 50ms - RTSP retry loops blocking shutdown" << std::endl;
+                    std::fflush(stdout);
+                    std::fflush(stderr);
+                    g_force_exit = true;
+                    // Use abort() to force immediate termination - more aggressive than _Exit()
+                    std::abort();
+                }
+            }).detach();
             
             // Stop all instances first (this is critical for clean shutdown)
             // Use a separate thread with timeout to avoid blocking
             std::thread([]() {
                 if (g_instance_registry) {
                     try {
-                        std::cerr << "[SHUTDOWN] Stopping all instances (timeout: 3 seconds)..." << std::endl;
+                        std::cerr << "[SHUTDOWN] Stopping all instances (timeout: 200ms per instance)..." << std::endl;
+                        std::cerr << "[SHUTDOWN] RTSP retry loops may prevent graceful stop - will force exit if timeout" << std::endl;
                         PLOG_INFO << "Stopping all instances before shutdown...";
                         
                         // Get list of instances (with timeout protection)
@@ -136,7 +174,7 @@ void signalHandler(int signal)
                             instances.clear();
                         }
                         
-                        // Stop instances with timeout protection
+                        // Stop instances with shorter timeout - RTSP retry loops can block indefinitely
                         // Use async with timeout to prevent blocking
                         int stopped_count = 0;
                         for (const auto& instanceId : instances) {
@@ -148,7 +186,7 @@ void signalHandler(int signal)
                                     std::cerr << "[SHUTDOWN] Stopping instance: " << instanceId << std::endl;
                                     PLOG_INFO << "Stopping instance: " << instanceId;
                                     
-                                    // Use async with timeout to prevent blocking
+                                    // Use async with shorter timeout (200ms) - RTSP retry loops may block
                                     // Capture instanceId by value and use global registry
                                     auto future = std::async(std::launch::async, [instanceId]() -> bool {
                                         try {
@@ -162,10 +200,12 @@ void signalHandler(int signal)
                                         }
                                     });
                                     
-                                    // Wait with timeout (1 second per instance)
-                                    auto status = future.wait_for(std::chrono::seconds(1));
+                                    // Wait with shorter timeout (200ms per instance)
+                                    // RTSP retry loops can prevent stop() from returning, so we don't wait long
+                                    auto status = future.wait_for(std::chrono::milliseconds(200));
                                     if (status == std::future_status::timeout) {
-                                        std::cerr << "[SHUTDOWN] Warning: Instance " << instanceId << " stop timeout (1s), skipping..." << std::endl;
+                                        std::cerr << "[SHUTDOWN] Warning: Instance " << instanceId << " stop timeout (200ms), skipping..." << std::endl;
+                                        std::cerr << "[SHUTDOWN] RTSP retry loop may be blocking stop() - will force exit" << std::endl;
                                         // Don't wait for it - continue with other instances
                                     } else if (status == std::future_status::ready) {
                                         try {
@@ -213,33 +253,83 @@ void signalHandler(int signal)
                 }
             }).detach();
             
-            // Start shutdown timer thread - force exit after 3 seconds if still running
-            // Give instances time to stop gracefully, but not too long
+            // CRITICAL: Immediately try to force-stop RTSP nodes to break retry loops
+            // This runs synchronously in signal handler context (but in separate thread) to be as fast as possible
+            // RTSP retry loops run in SDK threads and cannot be stopped gracefully, so we must force detach
             std::thread([]() {
-                std::this_thread::sleep_for(std::chrono::seconds(3));
-                if (g_shutdown && !g_force_exit.load()) {
-                    PLOG_WARNING << "Shutdown timeout reached - forcing exit";
-                    std::cerr << "[CRITICAL] Shutdown timeout (3s) - KILLING PROCESS NOW" << std::endl;
-                    std::fflush(stdout);
-                    std::fflush(stderr);
-                    
-                    // Set force exit flag
-                    g_force_exit = true;
-                    
-                    // Unregister all signal handlers to prevent recovery
-                    std::signal(SIGINT, SIG_DFL);
-                    std::signal(SIGTERM, SIG_DFL);
-                    std::signal(SIGABRT, SIG_DFL);
-                    
-                    // Use _exit() immediately - no need to call quit() again
-                    _exit(1);
+                // Run immediately without delay - this is critical to break retry loops
+                if (g_instance_registry) {
+                    try {
+                        std::cerr << "[SHUTDOWN] Force-detaching RTSP nodes immediately..." << std::endl;
+                        // Get all running instances and immediately detach RTSP nodes
+                        auto instances = g_instance_registry->listInstances();
+                        for (const auto& instanceId : instances) {
+                            if (g_force_exit.load()) break;
+                            try {
+                                auto optInfo = g_instance_registry->getInstance(instanceId);
+                                if (optInfo.has_value() && optInfo.value().running) {
+                                    // Get nodes from registry and immediately detach RTSP source nodes
+                                    auto nodes = g_instance_registry->getInstanceNodes(instanceId);
+                                    if (!nodes.empty() && nodes[0]) {
+                                        auto rtspNode = std::dynamic_pointer_cast<cvedix_nodes::cvedix_rtsp_src_node>(nodes[0]);
+                                        if (rtspNode) {
+                                            std::cerr << "[SHUTDOWN] Force-detaching RTSP node for instance: " << instanceId << std::endl;
+                                            try {
+                                                // Force detach immediately - this should break retry loop
+                                                rtspNode->detach_recursively();
+                                                std::cerr << "[SHUTDOWN] ✓ RTSP node detached for instance: " << instanceId << std::endl;
+                                            } catch (const std::exception& e) {
+                                                std::cerr << "[SHUTDOWN] ⚠ Exception detaching RTSP node: " << e.what() << std::endl;
+                                            } catch (...) {
+                                                // Ignore errors - just try to break the retry loop
+                                            }
+                                        }
+                                    }
+                                }
+                            } catch (...) {
+                                // Ignore errors - continue with other instances
+                            }
+                        }
+                    } catch (...) {
+                        // Ignore errors - timeout thread will force exit anyway
+                    }
                 }
+            }).detach();
+            
+            // Start shutdown timer thread - force exit after 100ms if still running
+            // RTSP retry loops may prevent graceful shutdown, so use very short timeout
+            // CRITICAL: This thread MUST run and force exit, even if instances are blocking
+            std::thread([]() {
+                // Use very short timeout - RTSP retry loops can block indefinitely
+                // 100ms is enough to attempt cleanup, but we force exit quickly
+                std::this_thread::sleep_for(std::chrono::milliseconds(100));
+                
+                // Force exit regardless of shutdown state - RTSP retry loops prevent cleanup
+                PLOG_WARNING << "Shutdown timeout reached - forcing exit";
+                std::cerr << "[CRITICAL] Shutdown timeout (100ms) - KILLING PROCESS NOW" << std::endl;
+                std::cerr << "[CRITICAL] RTSP retry loops prevented graceful shutdown - forcing exit" << std::endl;
+                std::fflush(stdout);
+                std::fflush(stderr);
+                
+                // Set force exit flag
+                g_force_exit = true;
+                
+                // Unregister all signal handlers to prevent recovery
+                std::signal(SIGINT, SIG_DFL);
+                std::signal(SIGTERM, SIG_DFL);
+                std::signal(SIGABRT, SIG_DFL);
+                
+                // Use abort() to force immediate termination - more aggressive than _Exit()
+                // This is necessary because RTSP retry loops in SDK threads can block forever
+                // abort() sends SIGABRT which will be caught by our handler and force exit
+                std::abort();
             }).detach();
         } else {
             // Second signal (Ctrl+C again) - force immediate exit
             // This should happen immediately, no delays, no cleanup
             PLOG_WARNING << "Received signal " << signal << " again (" << count << " times) - forcing immediate exit";
             std::cerr << "[CRITICAL] Force exit requested (signal received " << count << " times) - KILLING PROCESS NOW" << std::endl;
+            std::cerr << "[CRITICAL] Bypassing all cleanup - RTSP retry loops will be killed" << std::endl;
             std::fflush(stdout);
             std::fflush(stderr);
             
@@ -251,8 +341,12 @@ void signalHandler(int signal)
             std::signal(SIGTERM, SIG_DFL);
             std::signal(SIGABRT, SIG_DFL);
             
-            // Use _exit() immediately - this bypasses all cleanup and exits immediately
-            _exit(1);
+            // Use abort() to force immediate termination - most aggressive
+            // RTSP retry loops in SDK threads will be killed by OS
+            // abort() sends SIGABRT which will be caught and force exit immediately
+            // No delay, no cleanup - just exit NOW
+            std::abort();
+            // Note: signal_handling lock not released here because we exit immediately
         }
     } else if (signal == SIGABRT) {
         // If force exit was requested, exit immediately without recovery
@@ -260,7 +354,8 @@ void signalHandler(int signal)
             std::cerr << "[CRITICAL] Force exit confirmed - terminating immediately" << std::endl;
             std::fflush(stdout);
             std::fflush(stderr);
-            _exit(1);
+            // Use abort() for most aggressive termination
+            std::abort();
         }
         
         // SIGABRT can be triggered by:
@@ -295,11 +390,36 @@ void signalHandler(int signal)
             if (g_instance_registry) {
                 try {
                     // Get all instances and stop them
+                    // Use async with timeout to prevent blocking if stopInstance() is stuck
                     auto instances = g_instance_registry->listInstances();
                     for (const auto& instanceId : instances) {
                         try {
                             std::cerr << "[RECOVERY] Stopping instance " << instanceId << " due to shape mismatch error..." << std::endl;
-                            g_instance_registry->stopInstance(instanceId);
+                            
+                            // Use async with timeout to prevent deadlock if stopInstance() is blocked
+                            auto future = std::async(std::launch::async, [instanceId]() -> bool {
+                                try {
+                                    if (g_instance_registry) {
+                                        g_instance_registry->stopInstance(instanceId);
+                                        return true;
+                                    }
+                                    return false;
+                                } catch (...) {
+                                    return false;
+                                }
+                            });
+                            
+                            // Wait with timeout (500ms) - if timeout, skip this instance to avoid deadlock
+                            auto status = future.wait_for(std::chrono::milliseconds(500));
+                            if (status == std::future_status::timeout) {
+                                std::cerr << "[RECOVERY] Timeout stopping instance " << instanceId << " (500ms) - skipping to avoid deadlock" << std::endl;
+                            } else if (status == std::future_status::ready) {
+                                try {
+                                    future.get(); // Get result (may throw)
+                                } catch (...) {
+                                    std::cerr << "[RECOVERY] Failed to stop instance " << instanceId << std::endl;
+                                }
+                            }
                         } catch (...) {
                             std::cerr << "[RECOVERY] Failed to stop instance " << instanceId << std::endl;
                         }
@@ -313,10 +433,19 @@ void signalHandler(int signal)
                     std::cerr << "[RECOVERY] Error accessing instance registry" << std::endl;
                 }
             }
+            // Mark cleanup as completed to prevent terminate handler from aborting
+            g_cleanup_completed.store(true);
             // Reset cleanup flag after a delay to allow recovery
             g_cleanup_in_progress.store(false);
         } else {
             std::cerr << "[RECOVERY] Cleanup already in progress (from terminate handler), skipping..." << std::endl;
+            // Wait a bit to see if cleanup completes
+            for (int i = 0; i < 10 && g_cleanup_in_progress.load(); ++i) {
+                std::this_thread::sleep_for(std::chrono::milliseconds(100));
+            }
+            if (!g_cleanup_in_progress.load()) {
+                g_cleanup_completed.store(true);
+            }
         }
         
         // For shape mismatch errors, don't exit - let the application continue
@@ -384,17 +513,41 @@ void terminateHandler()
                     }
                     
                     // Release lock before stopping each instance
-                    // stopInstance now releases lock before calling stopPipeline, so this is safe
+                    // Use async with timeout to prevent blocking if stopInstance() is stuck
                     for (const auto& instanceId : instances) {
                         try {
                             std::cerr << "[RECOVERY] Stopping instance " << instanceId << " due to shape mismatch..." << std::endl;
-                            // stopInstance now releases lock before calling stopPipeline
-                            // This prevents deadlock even if called from terminate handler
-                            g_instance_registry->stopInstance(instanceId);
+                            
+                            // Use async with timeout to prevent deadlock if stopInstance() is blocked
+                            auto future = std::async(std::launch::async, [instanceId]() -> bool {
+                                try {
+                                    if (g_instance_registry) {
+                                        g_instance_registry->stopInstance(instanceId);
+                                        return true;
+                                    }
+                                    return false;
+                                } catch (...) {
+                                    return false;
+                                }
+                            });
+                            
+                            // Wait with timeout (500ms) - if timeout, skip this instance to avoid deadlock
+                            auto status = future.wait_for(std::chrono::milliseconds(500));
+                            if (status == std::future_status::timeout) {
+                                std::cerr << "[RECOVERY] Timeout stopping instance " << instanceId << " (500ms) - skipping to avoid deadlock" << std::endl;
+                            } else if (status == std::future_status::ready) {
+                                try {
+                                    future.get(); // Get result (may throw)
+                                } catch (const std::exception& e) {
+                                    std::cerr << "[RECOVERY] Failed to stop instance " << instanceId << ": " << e.what() << std::endl;
+                                } catch (...) {
+                                    std::cerr << "[RECOVERY] Failed to stop instance " << instanceId << " (unknown error)" << std::endl;
+                                }
+                            }
                         } catch (const std::exception& e) {
-                            std::cerr << "[RECOVERY] Failed to stop instance " << instanceId << ": " << e.what() << std::endl;
+                            std::cerr << "[RECOVERY] Exception stopping instance " << instanceId << ": " << e.what() << std::endl;
                         } catch (...) {
-                            std::cerr << "[RECOVERY] Failed to stop instance " << instanceId << " (unknown error)" << std::endl;
+                            std::cerr << "[RECOVERY] Unknown exception stopping instance " << instanceId << std::endl;
                         }
                     }
                     std::cerr << "[RECOVERY] All instances stopped. Application will continue running." << std::endl;
@@ -408,10 +561,19 @@ void terminateHandler()
                     std::cerr << "[RECOVERY] Error accessing instance registry (unknown error)" << std::endl;
                 }
             }
+            // Mark cleanup as completed to prevent abort
+            g_cleanup_completed.store(true);
             // Reset cleanup flag to allow recovery
             g_cleanup_in_progress.store(false);
         } else {
             std::cerr << "[RECOVERY] Cleanup already in progress (from SIGABRT handler), skipping..." << std::endl;
+            // Wait a bit to see if cleanup completes
+            for (int i = 0; i < 10 && g_cleanup_in_progress.load(); ++i) {
+                std::this_thread::sleep_for(std::chrono::milliseconds(100));
+            }
+            if (!g_cleanup_in_progress.load()) {
+                g_cleanup_completed.store(true);
+            }
         }
         
         // For shape mismatch errors, don't call abort() - just log and return
@@ -447,16 +609,41 @@ void terminateHandler()
                 }
                 
                 // Only try to stop instances if we successfully got the list
+                // Use async with timeout to prevent blocking if stopInstance() is stuck
                 for (const auto& instanceId : instances) {
                     try {
-                        // stopInstance() releases lock before calling stopPipeline, so this should be safe
-                        // But wrap in try-catch to be extra safe
-                        g_instance_registry->stopInstance(instanceId);
+                        // Use async with timeout to prevent deadlock if stopInstance() is blocked
+                        auto future = std::async(std::launch::async, [instanceId]() -> bool {
+                            try {
+                                if (g_instance_registry) {
+                                    g_instance_registry->stopInstance(instanceId);
+                                    return true;
+                                }
+                                return false;
+                            } catch (...) {
+                                return false;
+                            }
+                        });
+                        
+                        // Wait with timeout (500ms) - if timeout, skip this instance to avoid deadlock
+                        auto status = future.wait_for(std::chrono::milliseconds(500));
+                        if (status == std::future_status::timeout) {
+                            std::cerr << "[CRITICAL] Timeout stopping instance " << instanceId << " (500ms) - skipping to avoid deadlock" << std::endl;
+                            // Continue with other instances
+                        } else if (status == std::future_status::ready) {
+                            try {
+                                future.get(); // Get result (may throw)
+                            } catch (const std::exception& e) {
+                                std::cerr << "[CRITICAL] Failed to stop instance " << instanceId << ": " << e.what() << std::endl;
+                            } catch (...) {
+                                std::cerr << "[CRITICAL] Failed to stop instance " << instanceId << " (unknown error)" << std::endl;
+                            }
+                        }
                     } catch (const std::exception& e) {
-                        std::cerr << "[CRITICAL] Failed to stop instance " << instanceId << ": " << e.what() << std::endl;
+                        std::cerr << "[CRITICAL] Exception stopping instance " << instanceId << ": " << e.what() << std::endl;
                         // Continue with other instances
                     } catch (...) {
-                        std::cerr << "[CRITICAL] Failed to stop instance " << instanceId << " (unknown error)" << std::endl;
+                        std::cerr << "[CRITICAL] Unknown exception stopping instance " << instanceId << std::endl;
                         // Continue with other instances
                     }
                 }
@@ -468,29 +655,51 @@ void terminateHandler()
                 // Don't crash - just log and continue to exit
             }
         }
+        // Mark cleanup as completed to prevent abort
+        g_cleanup_completed.store(true);
         g_cleanup_in_progress.store(false);
     } else {
         // Cleanup already in progress - this means we're being called recursively
         // This can happen if an exception occurs during cleanup (e.g., "Resource deadlock avoided")
-        // In this case, don't exit - let the original cleanup finish
+        // OR if SIGABRT handler already started cleanup
+        // In this case, wait for cleanup to finish and then return (don't abort)
         std::cerr << "[CRITICAL] Cleanup already in progress - exception occurred during cleanup" << std::endl;
         std::cerr << "[CRITICAL] Exception: " << error_msg << std::endl;
+        std::cerr << "[CRITICAL] This may be due to assertion failure - SIGABRT handler is cleaning up" << std::endl;
         std::cerr << "[CRITICAL] Waiting for original cleanup to complete..." << std::endl;
         
         // Wait a bit for cleanup to complete (but don't wait forever)
-        // After 5 seconds, give up and exit
-        for (int i = 0; i < 50 && g_cleanup_in_progress.load(); ++i) {
+        // After 2 seconds, give up and return (don't abort - let SIGABRT handler finish)
+        for (int i = 0; i < 20 && g_cleanup_in_progress.load(); ++i) {
             std::this_thread::sleep_for(std::chrono::milliseconds(100));
         }
         
-        if (g_cleanup_in_progress.load()) {
-            std::cerr << "[CRITICAL] Cleanup taking too long - forcing exit" << std::endl;
-            std::_Exit(1);
+        // Check if cleanup completed
+        if (g_cleanup_completed.load() || !g_cleanup_in_progress.load()) {
+            std::cerr << "[CRITICAL] Cleanup completed - returning to allow application to continue" << std::endl;
+            // Don't exit here - SIGABRT handler has already handled cleanup
+            // Returning allows application to continue (non-standard but prevents crash)
+            return;
         } else {
-            std::cerr << "[CRITICAL] Cleanup completed - original handler will handle exit" << std::endl;
-            // Don't exit here - let the original cleanup handler exit
+            std::cerr << "[CRITICAL] Cleanup taking too long, but not aborting - letting SIGABRT handler finish" << std::endl;
+            // Don't abort - let SIGABRT handler finish cleanup
+            // This prevents double-abort when assertion fails
             return;
         }
+    }
+    
+    // Only abort for non-shape-mismatch errors that haven't been handled
+    // But check if cleanup was already done by SIGABRT handler
+    // If so, don't abort - just return
+    if (g_cleanup_completed.load()) {
+        std::cerr << "[CRITICAL] Cleanup already completed by SIGABRT handler - not aborting to prevent double-crash" << std::endl;
+        return;
+    }
+    
+    if (error_msg.find("Resource deadlock avoided") != std::string::npos) {
+        // This is likely from a deadlock during cleanup - don't abort again
+        std::cerr << "[CRITICAL] Deadlock detected during cleanup - not aborting to prevent double-crash" << std::endl;
+        return;
     }
     
     std::cerr << "[CRITICAL] Terminating application due to uncaught exception" << std::endl;
@@ -842,6 +1051,130 @@ void debugAnalysisBoardThread()
 }
 
 /**
+ * @brief Auto-start instances with autoStart flag in a separate thread
+ * This function runs in a separate thread to avoid blocking the main program
+ * if instances fail to start, hang, or crash.
+ */
+void autoStartInstances(InstanceRegistry* instanceRegistry)
+{
+    // Set thread name for debugging
+    #ifdef __GLIBC__
+    pthread_setname_np(pthread_self(), "auto-start");
+    #endif
+    
+    try {
+        PLOG_INFO << "[AutoStart] Thread started - checking for instances with autoStart flag...";
+        
+        // Get all instances (with error handling)
+        std::unordered_map<std::string, InstanceInfo> instancesToCheck;
+        try {
+            instancesToCheck = instanceRegistry->getAllInstances();
+        } catch (const std::exception& e) {
+            PLOG_ERROR << "[AutoStart] Failed to get instances list: " << e.what();
+            return;
+        } catch (...) {
+            PLOG_ERROR << "[AutoStart] Failed to get instances list (unknown error)";
+            return;
+        }
+        
+        // Filter instances with autoStart flag
+        std::vector<std::pair<std::string, InstanceInfo>> instancesToStart;
+        for (const auto& [instanceId, info] : instancesToCheck) {
+            if (info.autoStart) {
+                instancesToStart.push_back({instanceId, info});
+            }
+        }
+        
+        if (instancesToStart.empty()) {
+            PLOG_INFO << "[AutoStart] No instances with autoStart flag found";
+            return;
+        }
+        
+        PLOG_INFO << "[AutoStart] Found " << instancesToStart.size() << " instance(s) to auto-start";
+        
+        int autoStartSuccessCount = 0;
+        int autoStartFailedCount = 0;
+        
+        // Start each instance in sequence (with timeout protection)
+        for (const auto& [instanceId, info] : instancesToStart) {
+            // Check if shutdown was requested
+            if (g_shutdown || g_force_exit.load()) {
+                PLOG_INFO << "[AutoStart] Shutdown requested, stopping auto-start process";
+                break;
+            }
+            
+            PLOG_INFO << "[AutoStart] Auto-starting instance: " << instanceId << " (" << info.displayName << ")";
+            
+            // Start instance with timeout protection using async
+            try {
+                auto future = std::async(std::launch::async, [instanceRegistry, instanceId]() -> bool {
+                    try {
+                        return instanceRegistry->startInstance(instanceId);
+                    } catch (const std::exception& e) {
+                        PLOG_ERROR << "[AutoStart] Exception starting instance " << instanceId << ": " << e.what();
+                        return false;
+                    } catch (...) {
+                        PLOG_ERROR << "[AutoStart] Unknown exception starting instance " << instanceId;
+                        return false;
+                    }
+                });
+                
+                // Wait with timeout (30 seconds per instance)
+                auto status = future.wait_for(std::chrono::seconds(30));
+                if (status == std::future_status::timeout) {
+                    PLOG_WARNING << "[AutoStart] ✗ Timeout starting instance: " << instanceId << " (30s timeout)";
+                    PLOG_WARNING << "[AutoStart] Instance may be hanging - you can start it manually later";
+                    autoStartFailedCount++;
+                } else if (status == std::future_status::ready) {
+                    try {
+                        bool success = future.get();
+                        if (success) {
+                            autoStartSuccessCount++;
+                            PLOG_INFO << "[AutoStart] ✓ Successfully auto-started instance: " << instanceId;
+                        } else {
+                            autoStartFailedCount++;
+                            PLOG_WARNING << "[AutoStart] ✗ Failed to auto-start instance: " << instanceId;
+                            PLOG_WARNING << "[AutoStart] Instance created but not started - you can start it manually later";
+                        }
+                    } catch (const std::exception& e) {
+                        autoStartFailedCount++;
+                        PLOG_ERROR << "[AutoStart] ✗ Exception getting result for instance " << instanceId << ": " << e.what();
+                    } catch (...) {
+                        autoStartFailedCount++;
+                        PLOG_ERROR << "[AutoStart] ✗ Unknown exception getting result for instance " << instanceId;
+                    }
+                }
+            } catch (const std::exception& e) {
+                autoStartFailedCount++;
+                PLOG_ERROR << "[AutoStart] ✗ Exception creating async task for instance " << instanceId << ": " << e.what();
+            } catch (...) {
+                autoStartFailedCount++;
+                PLOG_ERROR << "[AutoStart] ✗ Unknown exception creating async task for instance " << instanceId;
+            }
+            
+            // Small delay between instances to avoid overwhelming the system
+            std::this_thread::sleep_for(std::chrono::milliseconds(500));
+        }
+        
+        // Summary
+        int totalCount = instancesToStart.size();
+        PLOG_INFO << "[AutoStart] Auto-start summary: " << autoStartSuccessCount << "/" << totalCount << " instances started successfully";
+        if (autoStartFailedCount > 0) {
+            PLOG_WARNING << "[AutoStart] " << autoStartFailedCount << " instance(s) failed to start - check logs above for details";
+            PLOG_WARNING << "[AutoStart] Failed instances can be started manually using the startInstance API";
+        }
+    } catch (const std::exception& e) {
+        PLOG_ERROR << "[AutoStart] Fatal error in auto-start thread: " << e.what();
+        PLOG_ERROR << "[AutoStart] Auto-start failed but server continues running";
+    } catch (...) {
+        PLOG_ERROR << "[AutoStart] Fatal error in auto-start thread (unknown exception)";
+        PLOG_ERROR << "[AutoStart] Auto-start failed but server continues running";
+    }
+    
+    PLOG_INFO << "[AutoStart] Thread finished";
+}
+
+/**
  * @brief Validate and parse port number
  */
 uint16_t parsePort(const char* port_str, uint16_t default_port)
@@ -899,6 +1232,8 @@ int main(int argc, char* argv[])
         PLOG_INFO << "Starting REST API server...";
 
         // Register signal handlers for graceful shutdown and crash prevention
+        // CRITICAL: Register BEFORE Drogon initializes to ensure our handler is used
+        // Drogon may register its own handlers, but ours should take precedence
         std::signal(SIGINT, signalHandler);
         std::signal(SIGTERM, signalHandler);
         std::signal(SIGABRT, signalHandler);  // Catch assertion failures (like OpenCV DNN shape mismatch)
@@ -906,9 +1241,25 @@ int main(int argc, char* argv[])
         // Register terminate handler for uncaught exceptions
         std::set_terminate(terminateHandler);
 
-        // Set server configuration from environment variables
-        std::string host = EnvConfig::getString("API_HOST", "0.0.0.0");
-        uint16_t port = static_cast<uint16_t>(EnvConfig::getInt("API_PORT", 8080, 1, 65535));
+        // Load system configuration first (needed for web_server config)
+        // Use intelligent path resolution with 3-tier fallback
+        std::string configPath = EnvConfig::resolveConfigPath();
+        
+        auto& systemConfig = SystemConfig::getInstance();
+        systemConfig.loadConfig(configPath);
+        
+        // Set server configuration from config.json (with env var override)
+        auto webServerConfig = systemConfig.getWebServerConfig();
+        std::string host = EnvConfig::getString("API_HOST", webServerConfig.ipAddress);
+        uint16_t port = static_cast<uint16_t>(EnvConfig::getInt("API_PORT", webServerConfig.port, 1, 65535));
+        
+        // Use config values if env vars not set
+        if (host == webServerConfig.ipAddress && std::getenv("API_HOST") == nullptr) {
+            host = webServerConfig.ipAddress;
+        }
+        if (std::getenv("API_PORT") == nullptr) {
+            port = webServerConfig.port;
+        }
 
         PLOG_INFO << "Server will listen on: " << host << ":" << port;
         PLOG_INFO << "Available endpoints:";
@@ -948,8 +1299,104 @@ int main(int argc, char* argv[])
         static PipelineBuilder pipelineBuilder;
         
         // Initialize instance storage with configurable directory
-        // Default: /var/lib/edge_ai_api/instances (auto-created if needed)
-        std::string instancesDir = EnvConfig::resolveDataDir("INSTANCES_DIR", "instances");
+        // Priority: 1. INSTANCES_DIR env var, 2. /opt/edge_ai_api/instances (with auto-fallback)
+        std::string instancesDir;
+        const char* env_instances_dir = std::getenv("INSTANCES_DIR");
+        if (env_instances_dir && strlen(env_instances_dir) > 0) {
+            instancesDir = std::string(env_instances_dir);
+            std::cerr << "[Main] Using INSTANCES_DIR from environment: " << instancesDir << std::endl;
+        } else {
+            // Try /opt/edge_ai_api/instances first, fallback to user directory if needed
+            instancesDir = "/opt/edge_ai_api/instances";
+            std::cerr << "[Main] Attempting to use: " << instancesDir << std::endl;
+        }
+        
+        // Try to create directory if it doesn't exist
+        // Strategy: Try /opt first, if fails, auto-fallback to user directory
+        bool directory_ready = false;
+        if (!std::filesystem::exists(instancesDir)) {
+            std::cerr << "[Main] Directory does not exist, attempting to create: " << instancesDir << std::endl;
+            
+            try {
+                // Try to create directory (will create parent dirs if we have permission)
+                bool created = std::filesystem::create_directories(instancesDir);
+                if (created) {
+                    std::cerr << "[Main] ✓ Successfully created instances directory: " << instancesDir << std::endl;
+                    directory_ready = true;
+                } else {
+                    // Directory might have been created by another process
+                    if (std::filesystem::exists(instancesDir)) {
+                        std::cerr << "[Main] ✓ Instances directory exists (created by another process): " << instancesDir << std::endl;
+                        directory_ready = true;
+                    }
+                }
+            } catch (const std::filesystem::filesystem_error& e) {
+                if (e.code() == std::errc::permission_denied) {
+                    std::cerr << "[Main] ⚠ Cannot create " << instancesDir << " (permission denied)" << std::endl;
+                    
+                    // Auto-fallback: Try user directory (works without sudo)
+                    if (env_instances_dir == nullptr || strlen(env_instances_dir) == 0) {
+                        const char* home = std::getenv("HOME");
+                        if (home) {
+                            std::string fallback_path = std::string(home) + "/.local/share/edge_ai_api/instances";
+                            std::cerr << "[Main] Auto-fallback: Trying user directory: " << fallback_path << std::endl;
+                            try {
+                                std::filesystem::create_directories(fallback_path);
+                                instancesDir = fallback_path;
+                                directory_ready = true;
+                                std::cerr << "[Main] ✓ Using fallback directory: " << instancesDir << std::endl;
+                                std::cerr << "[Main] ℹ Note: To use /opt/edge_ai_api/instances, create parent directory:" << std::endl;
+                                std::cerr << "[Main] ℹ   sudo mkdir -p /opt/edge_ai_api && sudo chown $USER:$USER /opt/edge_ai_api" << std::endl;
+                            } catch (const std::exception& fallback_e) {
+                                std::cerr << "[Main] ⚠ Fallback also failed: " << fallback_e.what() << std::endl;
+                                // Last resort: current directory
+                                instancesDir = "./instances";
+                                try {
+                                    std::filesystem::create_directories(instancesDir);
+                                    directory_ready = true;
+                                    std::cerr << "[Main] ✓ Using current directory: " << instancesDir << std::endl;
+                                } catch (...) {
+                                    std::cerr << "[Main] ✗ ERROR: Cannot create any instances directory" << std::endl;
+                                }
+                            }
+                        } else {
+                            // No HOME, use current directory
+                            instancesDir = "./instances";
+                            try {
+                                std::filesystem::create_directories(instancesDir);
+                                directory_ready = true;
+                                std::cerr << "[Main] ✓ Using current directory: " << instancesDir << std::endl;
+                            } catch (...) {
+                                std::cerr << "[Main] ✗ ERROR: Cannot create ./instances" << std::endl;
+                            }
+                        }
+                    } else {
+                        // User specified INSTANCES_DIR but can't create it
+                        std::cerr << "[Main] ✗ ERROR: Cannot create user-specified directory: " << instancesDir << std::endl;
+                        std::cerr << "[Main] ✗ Please check permissions or use a different path" << std::endl;
+                    }
+                } else {
+                    std::cerr << "[Main] ✗ ERROR creating " << instancesDir << ": " << e.what() << std::endl;
+                }
+            } catch (const std::exception& e) {
+                std::cerr << "[Main] ✗ Exception creating " << instancesDir << ": " << e.what() << std::endl;
+            }
+        } else {
+            // Check if it's actually a directory
+            if (std::filesystem::is_directory(instancesDir)) {
+                std::cerr << "[Main] ✓ Instances directory already exists: " << instancesDir << std::endl;
+                directory_ready = true;
+            } else {
+                std::cerr << "[Main] ✗ ERROR: Path exists but is not a directory: " << instancesDir << std::endl;
+            }
+        }
+        
+        if (directory_ready) {
+            std::cerr << "[Main] ✓ Instances directory is ready: " << instancesDir << std::endl;
+        } else {
+            std::cerr << "[Main] ⚠ WARNING: Instances directory may not be ready" << std::endl;
+        }
+        
         PLOG_INFO << "[Main] Instances directory: " << instancesDir;
         static InstanceStorage instanceStorage(instancesDir);
         static InstanceRegistry instanceRegistry(solutionRegistry, pipelineBuilder, instanceStorage);
@@ -985,28 +1432,14 @@ int main(int argc, char* argv[])
         // Load persistent instances
         instanceRegistry.loadPersistentInstances();
         
-        // Auto-start instances with autoStart flag
-        PLOG_INFO << "[Main] Checking for instances with autoStart flag...";
-        auto instancesToCheck = instanceRegistry.getAllInstances();
-        int autoStartCount = 0;
-        int autoStartSuccessCount = 0;
-        for (const auto& [instanceId, info] : instancesToCheck) {
-            if (info.autoStart) {
-                autoStartCount++;
-                PLOG_INFO << "[Main] Auto-starting instance: " << instanceId << " (" << info.displayName << ")";
-                if (instanceRegistry.startInstance(instanceId)) {
-                    autoStartSuccessCount++;
-                    PLOG_INFO << "[Main] ✓ Successfully auto-started instance: " << instanceId;
-                } else {
-                    PLOG_WARNING << "[Main] ✗ Failed to auto-start instance: " << instanceId;
-                }
-            }
-        }
-        if (autoStartCount > 0) {
-            PLOG_INFO << "[Main] Auto-start summary: " << autoStartSuccessCount << "/" << autoStartCount << " instances started successfully";
-        } else {
-            PLOG_INFO << "[Main] No instances with autoStart flag found";
-        }
+        // ============================================
+        // AUTO-START FUNCTIONALITY
+        // ============================================
+        // Auto-start will be scheduled to run AFTER the server starts
+        // This ensures the server is ready before instances start
+        // Instances will start in a separate thread to avoid blocking the main program
+        // if instances fail to start, hang, or crash
+        PLOG_INFO << "[Main] Auto-start will run after server is ready";
         
         // Register instance registry and solution registry with handlers
         CreateInstanceHandler::setInstanceRegistry(&instanceRegistry);
@@ -1073,6 +1506,33 @@ int main(int argc, char* argv[])
         ModelUploadHandler::setModelsDirectory(modelsDir);
         static ModelUploadHandler modelUploadHandler;
         
+        // System configuration already loaded above (for web_server config)
+        // Log additional configuration details
+        if (systemConfig.isLoaded()) {
+            int maxInstances = systemConfig.getMaxRunningInstances();
+            if (maxInstances == 0) {
+                PLOG_INFO << "[Main] Max running instances: unlimited";
+            } else {
+                PLOG_INFO << "[Main] Max running instances: " << maxInstances;
+            }
+            
+            // Log decoder priority list
+            auto decoderList = systemConfig.getDecoderPriorityList();
+            if (!decoderList.empty()) {
+                std::string decoderStr;
+                for (size_t i = 0; i < decoderList.size(); ++i) {
+                    if (i > 0) decoderStr += ", ";
+                    decoderStr += decoderList[i];
+                }
+                PLOG_INFO << "[Main] Decoder priority list: " << decoderStr;
+            }
+        } else {
+            PLOG_WARNING << "[Main] System configuration not loaded, using defaults";
+        }
+        
+        // Create config handler instance to register endpoints
+        static ConfigHandler configHandler;
+        
         PLOG_INFO << "[Main] Instance management initialized";
         PLOG_INFO << "  POST /v1/core/instance - Create new instance";
         PLOG_INFO << "  GET /v1/core/instances - List all instances";
@@ -1105,6 +1565,16 @@ int main(int argc, char* argv[])
         PLOG_INFO << "  DELETE /v1/core/models/{modelName} - Delete model file";
         PLOG_INFO << "  Models directory: " << modelsDir;
         
+        PLOG_INFO << "[Main] Configuration management initialized";
+        PLOG_INFO << "  GET /v1/core/config - Get full configuration";
+        PLOG_INFO << "  GET /v1/core/config/{path} - Get configuration section";
+        PLOG_INFO << "  POST /v1/core/config - Create/update configuration (merge)";
+        PLOG_INFO << "  PUT /v1/core/config - Replace entire configuration";
+        PLOG_INFO << "  PATCH /v1/core/config/{path} - Update configuration section";
+        PLOG_INFO << "  DELETE /v1/core/config/{path} - Delete configuration section";
+        PLOG_INFO << "  POST /v1/core/config/reset - Reset configuration to defaults";
+        PLOG_INFO << "  Config file: " << configPath;
+        
         // Note: Infrastructure components (rate limiter, cache, resource manager, etc.)
         // are available but not initialized here since AI processing endpoints are not needed yet.
         // They can be enabled later when needed.
@@ -1134,6 +1604,124 @@ int main(int argc, char* argv[])
             debugThread = std::thread(debugAnalysisBoardThread);
             debugThread.detach(); // Detach so it runs independently
         }
+        
+        // Start retry limit monitoring thread
+        // This thread periodically checks instances stuck in retry loops and stops them
+        std::thread retryMonitorThread([&instanceRegistry]() {
+            #ifdef __GLIBC__
+            pthread_setname_np(pthread_self(), "retry-monitor");
+            #endif
+            
+            PLOG_INFO << "[RetryMonitor] Thread started - monitoring instances for retry limits";
+            
+            while (!g_shutdown && !g_force_exit.load()) {
+                try {
+                    // Check retry limits every 30 seconds
+                    std::this_thread::sleep_for(std::chrono::seconds(30));
+                    
+                    if (g_shutdown || g_force_exit.load()) {
+                        break;
+                    }
+                    
+                    // Check and handle retry limits
+                    int stoppedCount = instanceRegistry.checkAndHandleRetryLimits();
+                    if (stoppedCount > 0) {
+                        PLOG_INFO << "[RetryMonitor] Stopped " << stoppedCount 
+                                  << " instance(s) due to retry limit";
+                    }
+                } catch (const std::exception& e) {
+                    PLOG_WARNING << "[RetryMonitor] Error: " << e.what();
+                } catch (...) {
+                    PLOG_WARNING << "[RetryMonitor] Unknown error";
+                }
+            }
+            
+            PLOG_INFO << "[RetryMonitor] Thread stopped";
+        });
+        retryMonitorThread.detach(); // Detach so it runs independently
+        PLOG_INFO << "[Main] Retry limit monitoring thread started";
+        
+        // CRITICAL: Start shutdown watchdog thread
+        // This thread monitors shutdown state and forces exit if shutdown is stuck
+        // This is necessary because:
+        // 1. RTSP retry loops can prevent normal shutdown
+        // 2. Blocked API requests can block main event loop (e.g., Swagger API calls that hang)
+        // 3. Any other blocking operation can prevent shutdown
+        std::thread shutdownWatchdogThread([]() {
+            #ifdef __GLIBC__
+            pthread_setname_np(pthread_self(), "shutdown-watchdog");
+            #endif
+            
+            PLOG_INFO << "[ShutdownWatchdog] Thread started - monitoring shutdown state";
+            
+            while (!g_force_exit.load()) {
+                try {
+                    // Check every 100ms if shutdown is stuck (faster check for blocked API requests)
+                    std::this_thread::sleep_for(std::chrono::milliseconds(100));
+                    
+                    // If shutdown was requested but process is still running after 300ms, force exit
+                    // Reduced from 500ms to 300ms to handle blocked API requests faster
+                    if (g_shutdown_requested.load() && !g_force_exit.load()) {
+                        auto now = std::chrono::steady_clock::now();
+                        auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(
+                            now - g_shutdown_request_time).count();
+                        
+                        if (elapsed > 300) {
+                            // Shutdown requested but process still running after 300ms
+                            // This could be due to:
+                            // 1. RTSP retry loops blocking shutdown
+                            // 2. Blocked API requests in main event loop
+                            // 3. Any other blocking operation
+                            PLOG_WARNING << "[ShutdownWatchdog] Shutdown stuck for " << elapsed 
+                                        << "ms - forcing exit (blocked API request or RTSP retry loop)";
+                            std::cerr << "[CRITICAL] Shutdown watchdog: Process stuck for " << elapsed 
+                                      << "ms - FORCING EXIT NOW" << std::endl;
+                            std::cerr << "[CRITICAL] Possible causes: blocked API request, RTSP retry loop, or other blocking operation" << std::endl;
+                            std::fflush(stdout);
+                            std::fflush(stderr);
+                            
+                            g_force_exit = true;
+                            
+                            // Unregister signal handlers to prevent recovery
+                            std::signal(SIGINT, SIG_DFL);
+                            std::signal(SIGTERM, SIG_DFL);
+                            std::signal(SIGABRT, SIG_DFL);
+                            
+                            // CRITICAL: Use kill() with SIGKILL to force immediate termination
+                            // SIGKILL cannot be caught or ignored - it will kill the process immediately
+                            // This works even if main event loop is blocked by an API request
+                            kill(getpid(), SIGKILL);
+                            
+                            // If kill() somehow fails (shouldn't happen), use _Exit() as fallback
+                            // _Exit() terminates immediately without calling destructors
+                            std::_Exit(1);
+                        }
+                    }
+                } catch (const std::exception& e) {
+                    PLOG_WARNING << "[ShutdownWatchdog] Error: " << e.what();
+                    // Even if there's an error, try to force exit if shutdown was requested
+                    if (g_shutdown_requested.load() && !g_force_exit.load()) {
+                        std::cerr << "[CRITICAL] Shutdown watchdog error - forcing exit anyway" << std::endl;
+                        g_force_exit = true;
+                        kill(getpid(), SIGKILL);
+                        std::_Exit(1);
+                    }
+                } catch (...) {
+                    PLOG_WARNING << "[ShutdownWatchdog] Unknown error";
+                    // Even if there's an error, try to force exit if shutdown was requested
+                    if (g_shutdown_requested.load() && !g_force_exit.load()) {
+                        std::cerr << "[CRITICAL] Shutdown watchdog unknown error - forcing exit anyway" << std::endl;
+                        g_force_exit = true;
+                        kill(getpid(), SIGKILL);
+                        std::_Exit(1);
+                    }
+                }
+            }
+            
+            PLOG_INFO << "[ShutdownWatchdog] Thread stopped";
+        });
+        shutdownWatchdogThread.detach(); // Detach so it runs independently
+        PLOG_INFO << "[Main] Shutdown watchdog thread started";
 
         // Set HTTP server configuration from environment variables
         size_t max_body_size = EnvConfig::getSizeT("CLIENT_MAX_BODY_SIZE", 1024 * 1024); // Default: 1MB
@@ -1158,12 +1746,19 @@ int main(int argc, char* argv[])
         
         // Use hardware_concurrency if thread_num is 0
         // For AI workloads, recommend 2-4x CPU cores for I/O-bound operations
+        // IMPORTANT: Each API request runs on a separate thread from the pool
+        // This ensures RTSP retry loops don't block other API requests
         unsigned int actual_thread_num = (thread_num == 0) ? std::thread::hardware_concurrency() : thread_num;
         
         // Optimize thread count for AI workloads if auto-detected
-        if (thread_num == 0 && actual_thread_num < 8) {
-            // For AI server, use at least 8 threads even on low-core systems
-            actual_thread_num = std::max(actual_thread_num, 8U);
+        // Use more threads to handle concurrent requests and prevent blocking
+        // RTSP retry loops run in SDK threads and won't block API thread pool
+        if (thread_num == 0) {
+            // For AI server with RTSP/file sources, use at least 16 threads
+            // This ensures API requests are not blocked by instance operations
+            actual_thread_num = std::max(actual_thread_num, 16U);
+            // Cap at reasonable maximum to avoid too many threads
+            actual_thread_num = std::min(actual_thread_num, 64U);
         }
         
         PLOG_INFO << "[Performance] Thread pool size: " << actual_thread_num;
@@ -1200,11 +1795,37 @@ int main(int argc, char* argv[])
         PLOG_INFO << "[Server] Starting HTTP server on " << host << ":" << port;
         PLOG_INFO << "[Server] Access http://" << host << ":" << port << "/v1/swagger to view all APIs";
         
+        // Schedule auto-start to run after server is ready (2 seconds delay)
+        // This runs on the event loop thread but starts instances in a separate thread
+        // to avoid blocking if instances fail to start, hang, or crash
+        auto* loop = app.getLoop();
+        if (loop) {
+            loop->runAfter(2.0, [&instanceRegistry]() {
+                PLOG_INFO << "[Main] Server is ready - starting auto-start process in separate thread";
+                // Start auto-start in a separate thread to avoid blocking the event loop
+                // Even if instances fail, hang, or crash, the main program continues running
+                std::thread autoStartThread([&instanceRegistry]() {
+                    autoStartInstances(&instanceRegistry);
+                });
+                autoStartThread.detach(); // Detach so it runs independently
+            });
+        } else {
+            PLOG_WARNING << "[Main] Event loop not available - auto-start will be skipped";
+        }
+        
+        // CRITICAL: Re-register signal handlers AFTER Drogon setup to ensure they're not overridden
+        // Drogon may register its own handlers during initialization, so we register again here
+        std::signal(SIGINT, signalHandler);
+        std::signal(SIGTERM, signalHandler);
+        std::signal(SIGABRT, signalHandler);
+        PLOG_INFO << "[Main] Signal handlers registered (SIGINT, SIGTERM, SIGABRT)";
+        
         // Suppress HTTPS warning - we're intentionally using HTTP only
         // The warning "You can't use https without cert file or key file" 
         // is expected when HTTPS is not configured, but we only want HTTP
         try {
             // Run server - this blocks until quit() is called
+            // CRITICAL: If app.run() blocks even after quit(), shutdown timer will force exit
             app.run();
             
             // After app.run() returns, ensure we exit cleanly
