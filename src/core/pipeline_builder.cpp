@@ -1,4 +1,6 @@
 #include "core/pipeline_builder.h"
+#include "config/system_config.h"
+#include "core/platform_detector.h"
 #include <cvedix/nodes/src/cvedix_rtsp_src_node.h>
 #include <cvedix/nodes/src/cvedix_file_src_node.h>
 #include <cvedix/nodes/src/cvedix_app_src_node.h>
@@ -90,6 +92,73 @@ namespace fs = std::experimental::filesystem;
 // Static flag to ensure CVEDIX logger is initialized only once
 static std::once_flag cvedix_init_flag;
 
+// Helper function to select decoder from priority list
+static std::string selectDecoderFromPriority(const std::string& defaultDecoder) {
+    try {
+        auto& systemConfig = SystemConfig::getInstance();
+        auto decoderList = systemConfig.getDecoderPriorityList();
+        
+        if (decoderList.empty()) {
+            return defaultDecoder;
+        }
+        
+        // Map decoder priority names to GStreamer decoder names
+        std::map<std::string, std::string> decoderMap = {
+            {"blaize.auto", "avdec_h264"},  // Blaize hardware decoder (fallback to software)
+            {"rockchip", "mppvideodec"},     // Rockchip MPP decoder
+            {"nvidia.1", "nvh264dec"},       // NVIDIA hardware decoder
+            {"intel.1", "qsvh264dec"},       // Intel QuickSync decoder
+            {"software", "avdec_h264"}       // Software decoder
+        };
+        
+        // Try decoders in priority order
+        for (const auto& priorityDecoder : decoderList) {
+            auto it = decoderMap.find(priorityDecoder);
+            if (it != decoderMap.end()) {
+                // Check if decoder is available (simple check - could be enhanced)
+                // For now, return first available in priority order
+                std::cerr << "[PipelineBuilder] Selected decoder from priority: " 
+                         << priorityDecoder << " -> " << it->second << std::endl;
+                return it->second;
+            }
+        }
+        
+        // If no match, return default
+        return defaultDecoder;
+    } catch (...) {
+        // On error, return default
+        return defaultDecoder;
+    }
+}
+
+// Helper function to get GStreamer pipeline from config
+// Note: Currently not used but available for future integration
+[[maybe_unused]] static std::string getGStreamerPipelineForPlatform() {
+    try {
+        auto& systemConfig = SystemConfig::getInstance();
+        std::string platform = PlatformDetector::detectPlatform();
+        std::string pipeline = systemConfig.getGStreamerPipeline(platform);
+        
+        if (!pipeline.empty()) {
+            std::cerr << "[PipelineBuilder] Using GStreamer pipeline from config for platform '" 
+                     << platform << "': " << pipeline << std::endl;
+            return pipeline;
+        }
+        
+        // Fallback to auto if platform-specific not found
+        pipeline = systemConfig.getGStreamerPipeline("auto");
+        if (!pipeline.empty()) {
+            std::cerr << "[PipelineBuilder] Using GStreamer pipeline from config (auto): " 
+                     << pipeline << std::endl;
+            return pipeline;
+        }
+    } catch (...) {
+        // On error, return empty (will use default)
+    }
+    
+    return "";
+}
+
 // Initialize CVEDIX SDK logger (required before creating nodes)
 static void ensureCVEDIXInitialized() {
     std::call_once(cvedix_init_flag, []() {
@@ -118,6 +187,46 @@ static void ensureCVEDIXInitialized() {
             } else {
                 std::cerr << "[PipelineBuilder] Using GST_RTSP_PROTOCOLS=" << rtspProtocols 
                           << " from environment" << std::endl;
+            }
+            
+            // Apply GStreamer plugin ranks from config
+            try {
+                auto& systemConfig = SystemConfig::getInstance();
+                // Get all plugin ranks from config
+                // Note: GStreamer plugin ranks are set via environment variables
+                // Format: GST_PLUGIN_FEATURE_RANK=plugin1:rank1,plugin2:rank2,...
+                std::vector<std::string> pluginRanks;
+                std::vector<std::string> knownPlugins = {
+                    "nvv4l2decoder", "nvjpegdec", "nvjpegenc", "nvvidconv",
+                    "msdkvpp", "vaapipostproc", "vpldec",
+                    "qsv", "qsvh265dec", "qsvh264dec", "qsvh265enc", "qsvh264enc",
+                    "amfh264dec", "amfh265dec", "amfhvp9dec", "amfhav1dec",
+                    "nvh264dec", "nvh265dec", "nvh264enc", "nvh265enc",
+                    "nvvp9dec", "nvvp9enc",
+                    "nvmpeg4videodec", "nvmpeg2videodec", "nvmpegvideodec",
+                    "mpph264enc", "mpph265enc", "mppvp8enc", "mppjpegenc",
+                    "mppvideodec", "mppjpegdec"
+                };
+                
+                for (const auto& plugin : knownPlugins) {
+                    std::string rank = systemConfig.getGStreamerPluginRank(plugin);
+                    if (!rank.empty()) {
+                        pluginRanks.push_back(plugin + ":" + rank);
+                    }
+                }
+                
+                if (!pluginRanks.empty()) {
+                    std::string rankEnv = "";
+                    for (size_t i = 0; i < pluginRanks.size(); ++i) {
+                        if (i > 0) rankEnv += ",";
+                        rankEnv += pluginRanks[i];
+                    }
+                    setenv("GST_PLUGIN_FEATURE_RANK", rankEnv.c_str(), 0);
+                    std::cerr << "[PipelineBuilder] Set GStreamer plugin ranks from config: " 
+                             << pluginRanks.size() << " plugins" << std::endl;
+                }
+            } catch (...) {
+                std::cerr << "[PipelineBuilder] Warning: Failed to apply GStreamer plugin ranks from config" << std::endl;
             }
             
             CVEDIX_SET_LOG_LEVEL(cvedix_utils::cvedix_log_level::INFO);
@@ -2526,7 +2635,9 @@ std::shared_ptr<cvedix_nodes::cvedix_node> PipelineBuilder::createImageSourceNod
         int interval = params.count("interval") ? std::stoi(params.at("interval")) : 1;
         float resizeRatio = params.count("resize_ratio") ? std::stof(params.at("resize_ratio")) : 1.0f;
         bool cycle = params.count("cycle") ? (params.at("cycle") == "true" || params.at("cycle") == "1") : true;
-        std::string gstDecoderName = params.count("gst_decoder_name") ? params.at("gst_decoder_name") : "jpegdec";
+        // Get decoder from config priority list if not specified
+        std::string defaultDecoder = "jpegdec";
+        std::string gstDecoderName = params.count("gst_decoder_name") ? params.at("gst_decoder_name") : selectDecoderFromPriority(defaultDecoder);
         
         // Get from additionalParams if not in params
         if (portOrLocation.empty()) {
@@ -2587,7 +2698,9 @@ std::shared_ptr<cvedix_nodes::cvedix_node> PipelineBuilder::createRTMPSourceNode
         int channelIndex = params.count("channel") ? std::stoi(params.at("channel")) : 0;
         std::string rtmpUrl = params.count("rtmp_url") ? params.at("rtmp_url") : "";
         float resizeRatio = params.count("resize_ratio") ? std::stof(params.at("resize_ratio")) : 1.0f;
-        std::string gstDecoderName = params.count("gst_decoder_name") ? params.at("gst_decoder_name") : "avdec_h264";
+        // Get decoder from config priority list if not specified
+        std::string defaultDecoder = "avdec_h264";
+        std::string gstDecoderName = params.count("gst_decoder_name") ? params.at("gst_decoder_name") : selectDecoderFromPriority(defaultDecoder);
         int skipInterval = params.count("skip_interval") ? std::stoi(params.at("skip_interval")) : 0;
         
         // Get from additionalParams if not in params
@@ -2647,7 +2760,9 @@ std::shared_ptr<cvedix_nodes::cvedix_node> PipelineBuilder::createUDPSourceNode(
         int channelIndex = params.count("channel") ? std::stoi(params.at("channel")) : 0;
         int port = params.count("port") ? std::stoi(params.at("port")) : 6000;
         float resizeRatio = params.count("resize_ratio") ? std::stof(params.at("resize_ratio")) : 1.0f;
-        std::string gstDecoderName = params.count("gst_decoder_name") ? params.at("gst_decoder_name") : "avdec_h264";
+        // Get decoder from config priority list if not specified
+        std::string defaultDecoder = "avdec_h264";
+        std::string gstDecoderName = params.count("gst_decoder_name") ? params.at("gst_decoder_name") : selectDecoderFromPriority(defaultDecoder);
         int skipInterval = params.count("skip_interval") ? std::stoi(params.at("skip_interval")) : 0;
         
         // Get from additionalParams if not in params

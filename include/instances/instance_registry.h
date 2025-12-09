@@ -9,6 +9,7 @@
 #include <unordered_map>
 #include <optional>
 #include <mutex>
+#include <shared_mutex>
 #include <vector>
 #include <memory>
 #include <atomic>
@@ -98,6 +99,12 @@ public:
     std::vector<std::string> listInstances() const;
     
     /**
+     * @brief Get total count of instances
+     * @return Number of instances
+     */
+    int getInstanceCount() const;
+    
+    /**
      * @brief Get all instances info in one lock acquisition (optimized for list operations)
      * @return Map of instance ID to InstanceInfo
      */
@@ -129,6 +136,20 @@ public:
     std::vector<std::shared_ptr<cvedix_nodes::cvedix_node>> getSourceNodesFromRunningInstances() const;
     
     /**
+     * @brief Get pipeline nodes for an instance (for shutdown/force detach)
+     * @param instanceId Instance ID
+     * @return Vector of pipeline nodes if instance exists and has pipeline, empty vector otherwise
+     */
+    std::vector<std::shared_ptr<cvedix_nodes::cvedix_node>> getInstanceNodes(const std::string& instanceId) const;
+    
+    /**
+     * @brief Check and increment retry counter for instances stuck in retry loop
+     * This should be called periodically to monitor instances
+     * @return Number of instances that reached retry limit and were stopped
+     */
+    int checkAndHandleRetryLimits();
+    
+    /**
      * @brief Get instance config as JSON (config format, not state)
      * @param instanceId Instance ID
      * @return JSON config if instance exists, empty JSON otherwise
@@ -140,7 +161,7 @@ private:
     PipelineBuilder& pipeline_builder_;
     InstanceStorage& instance_storage_;
     
-    mutable std::mutex mutex_;
+    mutable std::shared_timed_mutex mutex_; // Use shared_timed_mutex to allow multiple concurrent readers (getAllInstances) while writers (start/stop) are exclusive, and support timeout operations
     std::unordered_map<std::string, InstanceInfo> instances_;
     std::unordered_map<std::string, std::vector<std::shared_ptr<cvedix_nodes::cvedix_node>>> pipelines_;
     

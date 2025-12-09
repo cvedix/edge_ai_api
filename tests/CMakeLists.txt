@@ -67,6 +67,8 @@ target_sources(edge_ai_api_tests PRIVATE
     ${CMAKE_SOURCE_DIR}/src/core/pipeline_builder.cpp
     ${CMAKE_SOURCE_DIR}/src/solutions/solution_registry.cpp
     ${CMAKE_SOURCE_DIR}/src/solutions/solution_storage.cpp
+    ${CMAKE_SOURCE_DIR}/src/config/system_config.cpp
+    ${CMAKE_SOURCE_DIR}/src/core/platform_detector.cpp
     ${CMAKE_SOURCE_DIR}/src/models/solution_config.cpp
     ${CMAKE_SOURCE_DIR}/src/models/update_instance_request.cpp
     ${CMAKE_SOURCE_DIR}/src/models/create_instance_request.cpp
