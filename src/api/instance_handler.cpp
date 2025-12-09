@@ -19,6 +19,8 @@
 #include <json/reader.h>
 #include <json/writer.h>
 #include <sstream>
+#include <unordered_map>
+#include <optional>
 namespace fs = std::filesystem;
 
 InstanceRegistry* InstanceHandler::instance_registry_ = nullptr;
@@ -91,7 +93,41 @@ void InstanceHandler::getStatusSummary(
         }
         
         // Get all instances in one lock acquisition (optimized)
-        auto allInstances = instance_registry_->getAllInstances();
+        // CRITICAL: Use async with timeout to prevent blocking if mutex is held
+        std::unordered_map<std::string, InstanceInfo> allInstances;
+        try {
+            auto future = std::async(std::launch::async, [this]() -> std::unordered_map<std::string, InstanceInfo> {
+                try {
+                    if (instance_registry_) {
+                        return instance_registry_->getAllInstances();
+                    }
+                    return {};
+                } catch (...) {
+                    return {};
+                }
+            });
+            
+            // Wait with timeout (2 seconds) to prevent hanging
+            auto status = future.wait_for(std::chrono::seconds(2));
+            if (status == std::future_status::timeout) {
+                if (isApiLoggingEnabled()) {
+                    PLOG_WARNING << "[API] GET /v1/core/instance/status/summary - Timeout getting instances (2s)";
+                }
+                callback(createErrorResponse(503, "Service Unavailable", 
+                    "Instance registry is busy. Please try again later."));
+                return;
+            } else if (status == std::future_status::ready) {
+                try {
+                    allInstances = future.get();
+                } catch (...) {
+                    callback(createErrorResponse(500, "Internal server error", "Failed to get instances"));
+                    return;
+                }
+            }
+        } catch (...) {
+            callback(createErrorResponse(500, "Internal server error", "Failed to get instances"));
+            return;
+        }
         
         // Count instances by status
         int totalCount = 0;
@@ -177,7 +213,78 @@ void InstanceHandler::listInstances(
         }
         
         // Get all instances in one lock acquisition (optimized)
-        auto allInstances = instance_registry_->getAllInstances();
+        // CRITICAL: Use async with shorter timeout to prevent blocking if mutex is held
+        // Reduced timeout from 2s to 500ms to fail fast when registry is busy
+        std::unordered_map<std::string, InstanceInfo> allInstances;
+        try {
+            auto future = std::async(std::launch::async, [this]() -> std::unordered_map<std::string, InstanceInfo> {
+                try {
+                    if (instance_registry_) {
+                        return instance_registry_->getAllInstances();
+                    }
+                    return {};
+                } catch (const std::exception& e) {
+                    // Log error but return empty map
+                    std::cerr << "[InstanceHandler] Error in getAllInstances: " << e.what() << std::endl;
+                    return {};
+                } catch (...) {
+                    std::cerr << "[InstanceHandler] Unknown error in getAllInstances" << std::endl;
+                    return {};
+                }
+            });
+            
+            // Wait with timeout (2.5 seconds) - slightly longer than getAllInstances() timeout (2s)
+            // This gives enough time for getAllInstances() to complete even if checkAndHandleRetryLimits() is running
+            auto status = future.wait_for(std::chrono::milliseconds(2500));
+            if (status == std::future_status::timeout) {
+                if (isApiLoggingEnabled()) {
+                    PLOG_WARNING << "[API] GET /v1/core/instances - Timeout getting instances (2.5s) - mutex may be locked or operation is slow";
+                }
+                std::cerr << "[InstanceHandler] WARNING: getAllInstances() timeout after 2.5s - registry may be busy (checkAndHandleRetryLimits() may be running)" << std::endl;
+                callback(createErrorResponse(503, "Service Unavailable", 
+                    "Instance registry is busy. Please try again later."));
+                return;
+            } else if (status == std::future_status::ready) {
+                try {
+                    allInstances = future.get();
+                } catch (const std::exception& e) {
+                    if (isApiLoggingEnabled()) {
+                        PLOG_ERROR << "[API] GET /v1/core/instances - Exception getting instances: " << e.what();
+                    }
+                    std::cerr << "[InstanceHandler] Exception getting instances: " << e.what() << std::endl;
+                    callback(createErrorResponse(500, "Internal server error", "Failed to get instances: " + std::string(e.what())));
+                    return;
+                } catch (...) {
+                    if (isApiLoggingEnabled()) {
+                        PLOG_ERROR << "[API] GET /v1/core/instances - Unknown exception getting instances";
+                    }
+                    std::cerr << "[InstanceHandler] Unknown exception getting instances" << std::endl;
+                    callback(createErrorResponse(500, "Internal server error", "Failed to get instances"));
+                    return;
+                }
+            } else {
+                // Should not happen, but handle it
+                if (isApiLoggingEnabled()) {
+                    PLOG_WARNING << "[API] GET /v1/core/instances - Future status is not ready or timeout";
+                }
+                callback(createErrorResponse(500, "Internal server error", "Failed to get instances"));
+                return;
+            }
+        } catch (const std::exception& e) {
+            if (isApiLoggingEnabled()) {
+                PLOG_ERROR << "[API] GET /v1/core/instances - Exception creating async task: " << e.what();
+            }
+            std::cerr << "[InstanceHandler] Exception creating async task: " << e.what() << std::endl;
+            callback(createErrorResponse(500, "Internal server error", "Failed to get instances: " + std::string(e.what())));
+            return;
+        } catch (...) {
+            if (isApiLoggingEnabled()) {
+                PLOG_ERROR << "[API] GET /v1/core/instances - Unknown exception creating async task";
+            }
+            std::cerr << "[InstanceHandler] Unknown exception creating async task" << std::endl;
+            callback(createErrorResponse(500, "Internal server error", "Failed to get instances"));
+            return;
+        }
         
         // Build response with summary information
         Json::Value response;
@@ -276,8 +383,42 @@ void InstanceHandler::getInstance(
             return;
         }
         
-        // Get instance info
-        auto optInfo = instance_registry_->getInstance(instanceId);
+        // Get instance info with timeout protection
+        std::optional<InstanceInfo> optInfo;
+        try {
+            auto future = std::async(std::launch::async, [this, instanceId]() -> std::optional<InstanceInfo> {
+                try {
+                    if (instance_registry_) {
+                        return instance_registry_->getInstance(instanceId);
+                    }
+                    return std::nullopt;
+                } catch (...) {
+                    return std::nullopt;
+                }
+            });
+            
+            // Wait with timeout (1 second) to prevent hanging
+            auto status = future.wait_for(std::chrono::seconds(1));
+            if (status == std::future_status::timeout) {
+                if (isApiLoggingEnabled()) {
+                    PLOG_WARNING << "[API] GET /v1/core/instances/" << instanceId << " - Timeout getting instance (1s)";
+                }
+                callback(createErrorResponse(503, "Service Unavailable", 
+                    "Instance registry is busy. Please try again later."));
+                return;
+            } else if (status == std::future_status::ready) {
+                try {
+                    optInfo = future.get();
+                } catch (...) {
+                    callback(createErrorResponse(500, "Internal server error", "Failed to get instance"));
+                    return;
+                }
+            }
+        } catch (...) {
+            callback(createErrorResponse(500, "Internal server error", "Failed to get instance"));
+            return;
+        }
+        
         if (!optInfo.has_value()) {
             auto end_time = std::chrono::steady_clock::now();
             auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(end_time - start_time);
@@ -353,7 +494,39 @@ void InstanceHandler::startInstance(
         }
         
         // Start instance
-        if (instance_registry_->startInstance(instanceId)) {
+        // Start instance asynchronously to avoid blocking API thread
+        // RTSP retry loops run in SDK threads and won't block this handler
+        // However, startInstance() itself may take time, so we run it async with timeout
+        auto future = std::async(std::launch::async, [this, instanceId]() -> bool {
+            try {
+                return instance_registry_->startInstance(instanceId);
+            } catch (...) {
+                return false;
+            }
+        });
+        
+        // Wait with timeout (30 seconds) to prevent hanging
+        auto status = future.wait_for(std::chrono::seconds(30));
+        bool started = false;
+        if (status == std::future_status::ready) {
+            try {
+                started = future.get();
+            } catch (...) {
+                started = false;
+            }
+        } else {
+            // Timeout - instance start is taking too long
+            if (isApiLoggingEnabled()) {
+                PLOG_WARNING << "[API] POST /v1/core/instances/" << instanceId << "/start - Timeout (30s)";
+            }
+            callback(createErrorResponse(504, "Gateway Timeout", 
+                "Instance start operation timed out after 30 seconds. "
+                "The instance may still be starting in the background. "
+                "Check instance status using GET /v1/core/instances/" + instanceId));
+            return;
+        }
+        
+        if (started) {
             // Get updated instance info
             auto optInfo = instance_registry_->getInstance(instanceId);
             auto end_time = std::chrono::steady_clock::now();
