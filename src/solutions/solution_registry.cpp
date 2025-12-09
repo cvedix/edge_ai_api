@@ -96,6 +96,7 @@ void SolutionRegistry::initializeDefaultSolutions() {
     registerFaceDetectionFileSolution();  // Add face detection with file source
     registerObjectDetectionSolution();  // Add YOLO-based solution
     registerFaceDetectionRTMPSolution();  // Add face detection with RTMP streaming
+    registerBACrosslineSolution();  // Add behavior analysis crossline solution
 }
 
 void SolutionRegistry::registerFaceDetectionSolution() {
@@ -301,6 +302,78 @@ void SolutionRegistry::registerFaceDetectionRTMPSolution() {
     // Default configurations
     config.defaults["detectorMode"] = "SmartDetection";
     config.defaults["detectionSensitivity"] = "Low";
+    config.defaults["sensorModality"] = "RGB";
+    
+    registerSolution(config);
+}
+
+void SolutionRegistry::registerBACrosslineSolution() {
+    SolutionConfig config;
+    config.solutionId = "ba_crossline";
+    config.solutionName = "Behavior Analysis - Crossline Detection";
+    config.solutionType = "behavior_analysis";
+    config.isDefault = true;
+    
+    // File Source Node
+    SolutionConfig::NodeConfig fileSrc;
+    fileSrc.nodeType = "file_src";
+    fileSrc.nodeName = "file_src_{instanceId}";
+    fileSrc.parameters["file_path"] = "${FILE_PATH}";
+    fileSrc.parameters["channel"] = "0";
+    fileSrc.parameters["resize_ratio"] = "0.4";
+    config.pipeline.push_back(fileSrc);
+    
+    // YOLO Detector Node
+    SolutionConfig::NodeConfig yoloDetector;
+    yoloDetector.nodeType = "yolo_detector";
+    yoloDetector.nodeName = "yolo_detector_{instanceId}";
+    yoloDetector.parameters["weights_path"] = "${WEIGHTS_PATH}";
+    yoloDetector.parameters["config_path"] = "${CONFIG_PATH}";
+    yoloDetector.parameters["labels_path"] = "${LABELS_PATH}";
+    config.pipeline.push_back(yoloDetector);
+    
+    // SORT Tracker Node
+    SolutionConfig::NodeConfig sortTrack;
+    sortTrack.nodeType = "sort_track";
+    sortTrack.nodeName = "sort_tracker_{instanceId}";
+    config.pipeline.push_back(sortTrack);
+    
+    // BA Crossline Node
+    SolutionConfig::NodeConfig baCrossline;
+    baCrossline.nodeType = "ba_crossline";
+    baCrossline.nodeName = "ba_crossline_{instanceId}";
+    baCrossline.parameters["line_channel"] = "0";
+    baCrossline.parameters["line_start_x"] = "0";
+    baCrossline.parameters["line_start_y"] = "250";
+    baCrossline.parameters["line_end_x"] = "700";
+    baCrossline.parameters["line_end_y"] = "220";
+    config.pipeline.push_back(baCrossline);
+    
+    // BA Crossline OSD Node
+    SolutionConfig::NodeConfig baCrosslineOSD;
+    baCrosslineOSD.nodeType = "ba_crossline_osd";
+    baCrosslineOSD.nodeName = "osd_{instanceId}";
+    config.pipeline.push_back(baCrosslineOSD);
+    
+    // Screen Destination Node (optional - can be disabled via ENABLE_SCREEN_DES parameter)
+    SolutionConfig::NodeConfig screenDes;
+    screenDes.nodeType = "screen_des";
+    screenDes.nodeName = "screen_des_{instanceId}";
+    screenDes.parameters["channel"] = "0";
+    screenDes.parameters["enabled"] = "${ENABLE_SCREEN_DES}";  // Default: empty (enabled if display available), set to "false" to disable
+    config.pipeline.push_back(screenDes);
+    
+    // RTMP Destination Node
+    SolutionConfig::NodeConfig rtmpDes;
+    rtmpDes.nodeType = "rtmp_des";
+    rtmpDes.nodeName = "rtmp_des_{instanceId}";
+    rtmpDes.parameters["rtmp_url"] = "${RTMP_URL}";
+    rtmpDes.parameters["channel"] = "0";
+    config.pipeline.push_back(rtmpDes);
+    
+    // Default configurations
+    config.defaults["detectorMode"] = "SmartDetection";
+    config.defaults["detectionSensitivity"] = "0.7";
     config.defaults["sensorModality"] = "RGB";
     
     registerSolution(config);
