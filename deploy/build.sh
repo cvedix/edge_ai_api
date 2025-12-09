@@ -21,6 +21,8 @@
 #   --skip-build     Skip build (dùng build có sẵn)
 #   --skip-fixes     Skip các bước fix (libraries, uploads, watchdog)
 #   --no-start       Không tự động start service sau khi deploy
+#   --full-permissions  Cấp quyền 777 (drwxrwxrwx) - như cvedix-rt
+#   --standard-permissions  Cấp quyền 755 (drwxr-xr-x) - như Tabby, google, nvidia (mặc định)
 #
 # ============================================
 
@@ -46,11 +48,31 @@ LIB_DIR="/usr/local/lib"
 SERVICE_NAME="edge-ai-api"
 SERVICE_FILE="${SERVICE_NAME}.service"
 
+# Load directory configuration
+# Source the configuration file if it exists, otherwise use defaults
+DIRS_CONF="$SCRIPT_DIR/directories.conf"
+if [ -f "$DIRS_CONF" ]; then
+    source "$DIRS_CONF"
+else
+    # Fallback: Default directory configuration
+    declare -A APP_DIRECTORIES=(
+        ["instances"]="750"      # Instance configurations (instances.json)
+        ["solutions"]="750"     # Custom solutions
+        ["groups"]="750"        # Group configurations
+        ["models"]="750"        # Uploaded model files
+        ["logs"]="750"          # Application logs
+        ["data"]="750"          # Application data
+        ["config"]="750"        # Configuration files
+        ["uploads"]="755"       # Uploaded files (may need public access)
+    )
+fi
+
 # Flags
 SKIP_DEPS=false
 SKIP_BUILD=false
 SKIP_FIXES=false
 NO_START=false
+PERMISSION_MODE="standard"  # "standard" (755) or "full" (777)
 
 # Parse arguments
 while [[ $# -gt 0 ]]; do
@@ -71,9 +93,17 @@ while [[ $# -gt 0 ]]; do
             NO_START=true
             shift
             ;;
+        --full-permissions|--full)
+            PERMISSION_MODE="full"
+            shift
+            ;;
+        --standard-permissions|--standard)
+            PERMISSION_MODE="standard"
+            shift
+            ;;
         *)
             echo -e "${RED}Unknown option: $1${NC}"
-            echo "Usage: sudo ./build.sh [--skip-deps] [--skip-build] [--skip-fixes] [--no-start]"
+            echo "Usage: sudo ./build.sh [--skip-deps] [--skip-build] [--skip-fixes] [--no-start] [--full-permissions|--standard-permissions]"
             exit 1
             ;;
     esac
@@ -279,13 +309,40 @@ if ! getent group "$SERVICE_GROUP" > /dev/null 2>&1; then
     usermod -a -G "$SERVICE_GROUP" "$SERVICE_USER" 2>/dev/null || true
 fi
 
-# Create installation directory
-mkdir -p "$INSTALL_DIR"/{logs,data,config,uploads}
+# Create installation directory and subdirectories
+echo -e "${BLUE}Tạo thư mục...${NC}"
+mkdir -p "$INSTALL_DIR"
+
+# Create all directories from configuration
+for dir_name in "${!APP_DIRECTORIES[@]}"; do
+    dir_path="$INSTALL_DIR/$dir_name"
+    dir_perms="${APP_DIRECTORIES[$dir_name]}"
+    mkdir -p "$dir_path"
+    chmod "$dir_perms" "$dir_path"
+    echo -e "${GREEN}✓${NC} Đã tạo: $dir_path (permissions: $dir_perms)"
+done
+
+# Set ownership for all directories
 chown -R "$SERVICE_USER:$SERVICE_GROUP" "$INSTALL_DIR"
-chmod 755 "$INSTALL_DIR"
-chmod 750 "$INSTALL_DIR"/{logs,data,config}
-chmod 755 "$INSTALL_DIR"/uploads
-echo -e "${GREEN}✓${NC} Đã tạo thư mục: $INSTALL_DIR"
+
+# Set base directory permissions based on mode
+if [ "$PERMISSION_MODE" = "full" ]; then
+    chmod 777 "$INSTALL_DIR"  # Full permissions: drwxrwxrwx (như cvedix-rt)
+    chmod -R 777 "$INSTALL_DIR"  # Apply to all subdirectories
+    echo -e "${YELLOW}⚠${NC} Đang sử dụng FULL PERMISSIONS (777) - mọi người có thể đọc/ghi"
+    echo -e "${YELLOW}⚠${NC} Cảnh báo: Quyền 777 không an toàn cho production!"
+else
+    chmod 755 "$INSTALL_DIR"  # Standard permissions: drwxr-xr-x (như Tabby, google, nvidia)
+    # Keep individual directory permissions from configuration
+    for dir_name in "${!APP_DIRECTORIES[@]}"; do
+        dir_path="$INSTALL_DIR/$dir_name"
+        dir_perms="${APP_DIRECTORIES[$dir_name]}"
+        chmod "$dir_perms" "$dir_path"
+    done
+    echo -e "${GREEN}✓${NC} Đang sử dụng STANDARD PERMISSIONS (755)"
+fi
+
+echo -e "${GREEN}✓${NC} Đã tạo tất cả thư mục trong: $INSTALL_DIR"
 echo ""
 
 # ============================================
@@ -438,9 +495,22 @@ if [ "$SKIP_FIXES" = false ]; then
         sed -i 's/^WatchdogSec=/#WatchdogSec=/' "$INSTALLED_SERVICE_FILE" 2>/dev/null || true
         sed -i 's/^NotifyAccess=/#NotifyAccess=/' "$INSTALLED_SERVICE_FILE" 2>/dev/null || true
         
-        # Ensure ReadWritePaths includes uploads
-        if ! grep -q "ReadWritePaths.*uploads" "$INSTALLED_SERVICE_FILE"; then
-            sed -i 's|ReadWritePaths=\([^ ]*\)|ReadWritePaths=\1 '"$INSTALL_DIR"'/uploads|g' "$INSTALLED_SERVICE_FILE" 2>/dev/null || true
+        # Generate ReadWritePaths from APP_DIRECTORIES configuration
+        READWRITE_PATHS=""
+        for dir_name in "${!APP_DIRECTORIES[@]}"; do
+            READWRITE_PATHS="$READWRITE_PATHS $INSTALL_DIR/$dir_name"
+        done
+        READWRITE_PATHS=$(echo "$READWRITE_PATHS" | sed 's/^ *//')  # Trim leading spaces
+        
+        # Update ReadWritePaths in service file
+        if grep -q "^ReadWritePaths=" "$INSTALLED_SERVICE_FILE"; then
+            # Replace existing ReadWritePaths
+            sed -i "s|^ReadWritePaths=.*|ReadWritePaths=$READWRITE_PATHS|" "$INSTALLED_SERVICE_FILE"
+            echo -e "${GREEN}✓${NC} Đã cập nhật ReadWritePaths trong service file"
+        else
+            # Add ReadWritePaths if it doesn't exist (before [Install] section)
+            sed -i "/^\[Install\]/i ReadWritePaths=$READWRITE_PATHS" "$INSTALLED_SERVICE_FILE"
+            echo -e "${GREEN}✓${NC} Đã thêm ReadWritePaths vào service file"
         fi
         
         echo -e "${GREEN}✓${NC} Service file đã được cập nhật"
@@ -464,9 +534,25 @@ if [ ! -f "$SERVICE_FILE_PATH" ]; then
     exit 1
 fi
 
-# Update service file paths if needed
+# Generate ReadWritePaths from APP_DIRECTORIES configuration
+READWRITE_PATHS=""
+for dir_name in "${!APP_DIRECTORIES[@]}"; do
+    READWRITE_PATHS="$READWRITE_PATHS $INSTALL_DIR/$dir_name"
+done
+READWRITE_PATHS=$(echo "$READWRITE_PATHS" | sed 's/^ *//')  # Trim leading spaces
+
+# Update service file paths and ReadWritePaths
 SERVICE_TEMP=$(mktemp)
 sed "s|/opt/edge_ai_api|$INSTALL_DIR|g" "$SERVICE_FILE_PATH" > "$SERVICE_TEMP"
+
+# Update ReadWritePaths in service file
+if grep -q "^ReadWritePaths=" "$SERVICE_TEMP"; then
+    # Replace existing ReadWritePaths
+    sed -i "s|^ReadWritePaths=.*|ReadWritePaths=$READWRITE_PATHS|" "$SERVICE_TEMP"
+else
+    # Add ReadWritePaths if it doesn't exist (before [Install] section)
+    sed -i "/^\[Install\]/i ReadWritePaths=$READWRITE_PATHS" "$SERVICE_TEMP"
+fi
 
 # Copy service file
 cp "$SERVICE_TEMP" "/etc/systemd/system/${SERVICE_NAME}.service"

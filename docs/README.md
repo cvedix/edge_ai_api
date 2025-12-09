@@ -64,19 +64,32 @@ Tài liệu hướng dẫn đầy đủ cho Edge AI API project.
 
 9. **[LOGGING.md](LOGGING.md)** - Logging Documentation
 
+10. **[CONFIG_API_GUIDE.md](CONFIG_API_GUIDE.md)** - Hướng dẫn Config API
+    - Tất cả các endpoint Config API
+    - Cấu trúc config.json chi tiết
+    - Cách config ảnh hưởng đến instance
+    - Ví dụ sử dụng và best practices
+    - Xử lý lỗi
+
+11. **[CONFIG_IMPACT_ON_INSTANCES.md](CONFIG_IMPACT_ON_INSTANCES.md)** - Tác động của Config với Instance
+    - max_running_instances và cách hoạt động
+    - Các config khác và tác động của chúng
+    - Luồng hoạt động khi tạo instance
+    - Bảng tóm tắt tác động
+
 ### Node Support & Implementation
 
-10. **[NODE_SUPPORT_STATUS.md](NODE_SUPPORT_STATUS.md)** - Trạng thái hỗ trợ các node types
+12. **[NODE_SUPPORT_STATUS.md](NODE_SUPPORT_STATUS.md)** - Trạng thái hỗ trợ các node types
     - Inference nodes: 23 nodes (100%)
     - Source nodes: 6 nodes (100%)
     - Broker nodes: 12 nodes (100%)
 
-11. **[REQUIREMENT_CHECKLIST.md](REQUIREMENT_CHECKLIST.md)** - Checklist đáp ứng yêu cầu
+13. **[REQUIREMENT_CHECKLIST.md](REQUIREMENT_CHECKLIST.md)** - Checklist đáp ứng yêu cầu
     - Detector (Inference): ✅ 100%
     - Input (Source): ✅ 100%
     - Output (Broker): ✅ 100%
 
-12. **[IMPLEMENTATION_SUMMARY.md](IMPLEMENTATION_SUMMARY.md)** - Tổng kết implementation
+14. **[IMPLEMENTATION_SUMMARY.md](IMPLEMENTATION_SUMMARY.md)** - Tổng kết implementation
     - Tổng số nodes đã hỗ trợ: 41 nodes
     - Example files: 26 files
     - Files đã tạo/cập nhật

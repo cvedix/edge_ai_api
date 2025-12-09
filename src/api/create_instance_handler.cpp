@@ -3,6 +3,7 @@
 #include "instances/instance_registry.h"
 #include "instances/instance_info.h"
 #include "solutions/solution_registry.h"
+#include "config/system_config.h"
 #include "core/logging_flags.h"
 #include "core/logger.h"
 #include <drogon/HttpResponse.h>
@@ -88,6 +89,23 @@ void CreateInstanceHandler::createInstance(
                 }
                 callback(createErrorResponse(400, "Invalid solution", 
                     "Solution not found: " + createReq.solution + ". Please check available solutions using GET /v1/core/solutions"));
+                return;
+            }
+        }
+        
+        // Check max running instances limit
+        auto& systemConfig = SystemConfig::getInstance();
+        int maxInstances = systemConfig.getMaxRunningInstances();
+        if (maxInstances > 0) {
+            int currentCount = instance_registry_->getInstanceCount();
+            if (currentCount >= maxInstances) {
+                if (isApiLoggingEnabled()) {
+                    PLOG_WARNING << "[API] POST /v1/core/instance - Instance limit reached: " 
+                                << currentCount << "/" << maxInstances;
+                }
+                callback(createErrorResponse(429, "Too Many Requests", 
+                    "Maximum instance limit reached: " + std::to_string(maxInstances) + 
+                    ". Current instances: " + std::to_string(currentCount)));
                 return;
             }
         }

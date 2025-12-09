@@ -102,7 +102,7 @@ echo "  LOG_CLEANUP_INTERVAL_HOURS=${LOG_CLEANUP_INTERVAL_HOURS:-24} (default: 2
 
 # Instance Management
 echo "Instance Management:"
-echo "  INSTANCES_DIR=${INSTANCES_DIR:-./instances} (default: ./instances)"
+echo "  INSTANCES_DIR=${INSTANCES_DIR:-/opt/edge_ai_api/instances} (default: /opt/edge_ai_api/instances)"
 echo "  MODELS_DIR=${MODELS_DIR:-./models} (default: ./models)"
 
 # Watchdog & Health Monitor
