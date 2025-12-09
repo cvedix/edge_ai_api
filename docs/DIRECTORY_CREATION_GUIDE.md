@@ -238,25 +238,38 @@ std::string resolveCacheDirectory() {
 
 ### Strategy 1: Script Deploy (Khuyến nghị)
 
+**Với quyền chuẩn (755):**
 ```bash
 #!/bin/bash
-# deploy/setup_directories.sh
+# deploy/install_directories.sh
 
-INSTALL_DIR="/opt/myapp"
-SERVICE_USER="myapp"
+INSTALL_DIR="/opt/edge_ai_api"
+SERVICE_USER="edgeai"
 
 # Create parent directory with sudo (one time)
 sudo mkdir -p "$INSTALL_DIR"
 sudo chown "$SERVICE_USER:$SERVICE_USER" "$INSTALL_DIR"
-sudo chmod 755 "$INSTALL_DIR"
+sudo chmod 755 "$INSTALL_DIR"  # Standard: drwxr-xr-x
 
 # Code can now create subdirectories automatically
+```
+
+**Với quyền đầy đủ (777):**
+```bash
+# Sử dụng script có sẵn với tùy chọn
+sudo ./deploy/install_directories.sh --full-permissions
+
+# Hoặc thủ công
+sudo mkdir -p "$INSTALL_DIR"
+sudo chown "$SERVICE_USER:$SERVICE_USER" "$INSTALL_DIR"
+sudo chmod 777 "$INSTALL_DIR"  # Full: drwxrwxrwx (như cvedix-rt)
 ```
 
 **Ưu điểm:**
 - Tạo parent directory một lần
 - Code tự động tạo subdirectories
 - Không cần sudo khi chạy ứng dụng
+- Có thể chọn quyền 755 (an toàn) hoặc 777 (tiện lợi)
 
 ### Strategy 2: Debian Package postinst
 
@@ -289,6 +302,92 @@ ReadWritePaths=/opt/myapp/data /opt/myapp/logs
 **Ưu điểm:**
 - Service có quyền ghi vào thư mục cụ thể
 - Bảo mật tốt (chỉ cho phép thư mục cần thiết)
+
+## 🔐 Quyền Truy Cập Thư Mục
+
+### So Sánh Các Mức Quyền
+
+Khi cài đặt chương trình với `sudo`, có 2 phương án cấp quyền cho thư mục trong `/opt/`:
+
+#### 1. Quyền Chuẩn (755) - `drwxr-xr-x`
+
+**Ví dụ từ các ứng dụng:**
+```bash
+drwxr-xr-x  4 root root 4096 Oct 30 18:15 Tabby
+drwxr-xr-x  3 root root 4096 Oct 30 17:37 google
+drwxr-xr-x  4 root root 4096 Aug 25 23:30 nvidia
+```
+
+**Đặc điểm:**
+- Owner (root): đọc, ghi, thực thi (rwx)
+- Group: đọc, thực thi (r-x)
+- Others: đọc, thực thi (r-x)
+- **Chỉ owner/group có quyền ghi**
+- **An toàn cho production**
+
+**Cách cài đặt:**
+```bash
+sudo ./deploy/install_directories.sh --standard-permissions
+# hoặc mặc định
+sudo ./deploy/install_directories.sh
+```
+
+#### 2. Quyền Đầy Đủ (777) - `drwxrwxrwx`
+
+**Ví dụ từ ứng dụng:**
+```bash
+drwxrwxrwx 15 root root 4096 Dec  8 11:02 cvedix-rt
+```
+
+**Đặc điểm:**
+- Owner (root): đọc, ghi, thực thi (rwx)
+- Group: đọc, ghi, thực thi (rwx)
+- Others: đọc, ghi, thực thi (rwx)
+- **MỌI NGƯỜI có quyền đọc/ghi**
+- **KHÔNG an toàn cho production**
+- Chỉ nên dùng cho development hoặc môi trường nội bộ
+
+**Cách cài đặt:**
+```bash
+# Cách 1: Khi cài đặt lần đầu
+sudo ./deploy/install_directories.sh --full-permissions
+
+# Cách 2: Cấp quyền cho thư mục đã tồn tại
+sudo ./deploy/set_full_permissions.sh
+```
+
+### Khi Nào Dùng Quyền Nào?
+
+| Tình huống | Quyền khuyến nghị | Lý do |
+|------------|-------------------|-------|
+| **Production** | 755 (standard) | Bảo mật, chỉ owner/group có quyền ghi |
+| **Development** | 777 (full) hoặc 755 | Tùy nhu cầu, 777 tiện hơn nhưng kém an toàn |
+| **Môi trường nội bộ** | 755 hoặc 777 | Tùy yêu cầu bảo mật |
+| **Multi-user system** | 755 | Bảo mật quan trọng |
+
+### Cách Thay Đổi Quyền Sau Khi Cài Đặt
+
+```bash
+# Chuyển từ 755 sang 777
+sudo ./deploy/set_full_permissions.sh
+
+# Chuyển từ 777 về 755
+sudo ./deploy/install_directories.sh --standard-permissions
+```
+
+### Kiểm Tra Quyền Hiện Tại
+
+```bash
+# Xem quyền thư mục chính
+ls -ld /opt/edge_ai_api
+
+# Xem quyền tất cả thư mục con
+ls -la /opt/edge_ai_api
+```
+
+**Kết quả mong đợi:**
+- Quyền 755: `drwxr-xr-x`
+- Quyền 777: `drwxrwxrwx`
 
 ## 📊 So Sánh Các Giải Pháp
 
