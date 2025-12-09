@@ -21,6 +21,8 @@
 #   --skip-build     Skip build (dùng build có sẵn)
 #   --skip-fixes     Skip các bước fix (libraries, uploads, watchdog)
 #   --no-start       Không tự động start service sau khi deploy
+#   --full-permissions  Cấp quyền 777 (drwxrwxrwx) - như cvedix-rt
+#   --standard-permissions  Cấp quyền 755 (drwxr-xr-x) - như Tabby, google, nvidia (mặc định)
 #
 # ============================================
 
@@ -70,6 +72,7 @@ SKIP_DEPS=false
 SKIP_BUILD=false
 SKIP_FIXES=false
 NO_START=false
+PERMISSION_MODE="standard"  # "standard" (755) or "full" (777)
 
 # Parse arguments
 while [[ $# -gt 0 ]]; do
@@ -90,9 +93,17 @@ while [[ $# -gt 0 ]]; do
             NO_START=true
             shift
             ;;
+        --full-permissions|--full)
+            PERMISSION_MODE="full"
+            shift
+            ;;
+        --standard-permissions|--standard)
+            PERMISSION_MODE="standard"
+            shift
+            ;;
         *)
             echo -e "${RED}Unknown option: $1${NC}"
-            echo "Usage: sudo ./build.sh [--skip-deps] [--skip-build] [--skip-fixes] [--no-start]"
+            echo "Usage: sudo ./build.sh [--skip-deps] [--skip-build] [--skip-fixes] [--no-start] [--full-permissions|--standard-permissions]"
             exit 1
             ;;
     esac
@@ -313,7 +324,23 @@ done
 
 # Set ownership for all directories
 chown -R "$SERVICE_USER:$SERVICE_GROUP" "$INSTALL_DIR"
-chmod 755 "$INSTALL_DIR"  # Base directory should be accessible
+
+# Set base directory permissions based on mode
+if [ "$PERMISSION_MODE" = "full" ]; then
+    chmod 777 "$INSTALL_DIR"  # Full permissions: drwxrwxrwx (như cvedix-rt)
+    chmod -R 777 "$INSTALL_DIR"  # Apply to all subdirectories
+    echo -e "${YELLOW}⚠${NC} Đang sử dụng FULL PERMISSIONS (777) - mọi người có thể đọc/ghi"
+    echo -e "${YELLOW}⚠${NC} Cảnh báo: Quyền 777 không an toàn cho production!"
+else
+    chmod 755 "$INSTALL_DIR"  # Standard permissions: drwxr-xr-x (như Tabby, google, nvidia)
+    # Keep individual directory permissions from configuration
+    for dir_name in "${!APP_DIRECTORIES[@]}"; do
+        dir_path="$INSTALL_DIR/$dir_name"
+        dir_perms="${APP_DIRECTORIES[$dir_name]}"
+        chmod "$dir_perms" "$dir_path"
+    done
+    echo -e "${GREEN}✓${NC} Đang sử dụng STANDARD PERMISSIONS (755)"
+fi
 
 echo -e "${GREEN}✓${NC} Đã tạo tất cả thư mục trong: $INSTALL_DIR"
 echo ""
