@@ -271,6 +271,7 @@ set(SOURCES
     src/api/solution_handler.cpp
     src/api/group_handler.cpp
     src/api/config_handler.cpp
+    src/api/node_handler.cpp
     src/api/system_info_handler.cpp
     src/api/log_handler.cpp
     src/models/model_upload_handler.cpp
@@ -287,6 +288,9 @@ set(SOURCES
     src/instances/instance_storage.cpp
     src/solutions/solution_storage.cpp
     src/groups/group_storage.cpp
+    src/core/node_pool_manager.cpp
+    src/core/node_storage.cpp
+    src/core/node_template_registry.cpp
     src/config/system_config.cpp
     src/core/uuid_generator.cpp
     src/core/platform_detector.cpp
@@ -413,16 +417,31 @@ if(CEREAL_INCLUDE_DIR)
     include_directories("${CEREAL_INCLUDE_DIR}")
     
     # Check if system symlink exists (required for CVEDIX SDK)
-    if(NOT EXISTS "/usr/include/cvedix/third_party/cereal")
-        message(WARNING "")
-        message(WARNING "⚠ CVEDIX SDK requires cereal symlink at /usr/include/cvedix/third_party/cereal")
-        message(WARNING "  Run: sudo bash ${CMAKE_SOURCE_DIR}/scripts/fix_cereal_symlink.sh")
-        message(WARNING "  Or manually:")
-        message(WARNING "    sudo mkdir -p /usr/include/cvedix/third_party")
-        message(WARNING "    sudo ln -sf ${CEREAL_INCLUDE_DIR}/cereal /usr/include/cvedix/third_party/cereal")
-        message(WARNING "")
-    else()
+    # Check both /usr/include/cvedix and /opt/cvedix/include/cvedix locations
+    set(CEREAL_SYMLINK_FOUND FALSE)
+    if(EXISTS "/usr/include/cvedix/third_party/cereal")
         message(STATUS "✓ Cereal symlink found at /usr/include/cvedix/third_party/cereal")
+        set(CEREAL_SYMLINK_FOUND TRUE)
+    elseif(EXISTS "/opt/cvedix/include/cvedix/third_party/cereal")
+        message(STATUS "✓ Cereal symlink found at /opt/cvedix/include/cvedix/third_party/cereal")
+        set(CEREAL_SYMLINK_FOUND TRUE)
+    endif()
+    
+    if(NOT CEREAL_SYMLINK_FOUND)
+        message(WARNING "")
+        message(WARNING "⚠ CVEDIX SDK requires cereal symlink")
+        if(EXISTS "/opt/cvedix/include/cvedix")
+            message(WARNING "  For /opt/cvedix installation:")
+            message(WARNING "    sudo mkdir -p /opt/cvedix/include/cvedix/third_party")
+            message(WARNING "    sudo ln -sf ${CEREAL_INCLUDE_DIR}/cereal /opt/cvedix/include/cvedix/third_party/cereal")
+        else()
+            message(WARNING "  For /usr/include installation:")
+            message(WARNING "    Run: sudo bash ${CMAKE_SOURCE_DIR}/scripts/fix_cereal_symlink.sh")
+            message(WARNING "  Or manually:")
+            message(WARNING "    sudo mkdir -p /usr/include/cvedix/third_party")
+            message(WARNING "    sudo ln -sf ${CEREAL_INCLUDE_DIR}/cereal /usr/include/cvedix/third_party/cereal")
+        endif()
+        message(WARNING "")
     endif()
     message(STATUS "✓ Configured cereal paths for CVEDIX SDK")
 else()
@@ -439,8 +458,8 @@ endif()
 #   - Headers: /usr/include/cvedix/
 #   - Libraries: /usr/lib/ (or /usr/lib64/)
 #
-# If CVEDIX SDK is not found, you need to install it system-wide first.
-# The find_package() command will automatically locate it via CMake package config files.
+# CVEDIX SDK may also be installed in /opt/cvedix/ (non-standard location)
+# We check both locations and add /opt/cvedix to CMAKE_PREFIX_PATH if it exists
 #
 # Workaround: Define check_required_components if not available
 # (needed for cvedix-config.cmake which uses this function)
@@ -467,6 +486,16 @@ if(NOT COMMAND check_required_components)
         endforeach()
     endfunction()
 endif()
+
+# Check if CVEDIX SDK is installed in /opt/cvedix (non-standard location)
+if(EXISTS "/opt/cvedix/lib/cmake/cvedix/cvedix-config.cmake")
+    message(STATUS "Found CVEDIX SDK in /opt/cvedix, adding to CMAKE_PREFIX_PATH")
+    list(APPEND CMAKE_PREFIX_PATH "/opt/cvedix")
+    # Also add /opt/cvedix/include to include directories
+    include_directories("/opt/cvedix/include")
+    message(STATUS "✓ Added /opt/cvedix/include to include directories")
+endif()
+
 find_package(cvedix REQUIRED)
 
 # Add cereal include path for CVEDIX SDK
