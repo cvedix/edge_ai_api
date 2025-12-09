@@ -525,6 +525,11 @@ if(EXISTS "${CMAKE_SOURCE_DIR}/third_party/hwinfo/CMakeLists.txt")
     add_subdirectory(third_party/hwinfo)
     target_link_libraries(edge_ai_api PRIVATE lfreist-hwinfo::hwinfo)
     message(STATUS "✓ hwinfo linked to edge_ai_api")
+    # Add system_info_handler if hwinfo is available
+    target_sources(edge_ai_api PRIVATE src/api/system_info_handler.cpp)
+    # Define macro to enable SystemInfoHandler in main.cpp
+    target_compile_definitions(edge_ai_api PRIVATE ENABLE_SYSTEM_INFO_HANDLER)
+    message(STATUS "✓ system_info_handler enabled (hwinfo available)")
 elseif(AUTO_DOWNLOAD_DEPENDENCIES)
     # Use FetchContent to download hwinfo automatically
     message(STATUS "hwinfo submodule not found. Downloading via FetchContent...")
@@ -545,6 +550,11 @@ elseif(AUTO_DOWNLOAD_DEPENDENCIES)
     
     target_link_libraries(edge_ai_api PRIVATE lfreist-hwinfo::hwinfo)
     message(STATUS "✓ hwinfo downloaded and linked to edge_ai_api")
+    # Add system_info_handler if hwinfo is available
+    target_sources(edge_ai_api PRIVATE src/api/system_info_handler.cpp)
+    # Define macro to enable SystemInfoHandler in main.cpp
+    target_compile_definitions(edge_ai_api PRIVATE ENABLE_SYSTEM_INFO_HANDLER)
+    message(STATUS "✓ system_info_handler enabled (hwinfo available)")
 else()
     message(WARNING "hwinfo not found. System info endpoints will not work.")
     message(WARNING "Options:")
