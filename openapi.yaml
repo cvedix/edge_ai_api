@@ -2657,6 +2657,397 @@ paths:
         '200':
           description: CORS preflight response
 
+  /v1/core/nodes:
+    get:
+      summary: List all pre-configured nodes
+      description: |
+        Returns a list of all pre-configured nodes in the node pool.
+        Can be filtered by availability status and category.
+      operationId: listNodes
+      tags:
+        - Node
+      parameters:
+        - name: available
+          in: query
+          required: false
+          schema:
+            type: string
+            enum: ["true", "false", "1", "0"]
+          description: Filter to show only available (not in use) nodes
+          example: "true"
+        - name: category
+          in: query
+          required: false
+          schema:
+            type: string
+            enum: ["source", "detector", "processor", "destination", "broker"]
+          description: Filter nodes by category
+          example: "source"
+      responses:
+        '200':
+          description: List of nodes retrieved successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/NodeListResponse'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+    post:
+      summary: Create a new pre-configured node
+      description: Creates a new pre-configured node from a template with specified parameters
+      operationId: createNode
+      tags:
+        - Node
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateNodeRequest'
+      responses:
+        '201':
+          description: Node created successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/NodeResponse'
+        '400':
+          description: Bad request (missing required fields or invalid parameters)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+    options:
+      summary: CORS preflight for nodes
+      operationId: listNodesOptions
+      tags:
+        - Node
+      responses:
+        '200':
+          description: CORS preflight response
+
+  /v1/core/nodes/{nodeId}:
+    get:
+      summary: Get node details
+      description: Returns detailed information about a specific pre-configured node
+      operationId: getNode
+      tags:
+        - Node
+      parameters:
+        - name: nodeId
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Unique node identifier
+          example: "node_a1b2c3d4"
+      responses:
+        '200':
+          description: Node details retrieved successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/NodeResponse'
+        '404':
+          description: Node not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+    put:
+      summary: Update a node
+      description: |
+        Updates an existing node's parameters. Only nodes that are not currently in use can be updated.
+        Note: Update operation deletes the old node and creates a new one with updated parameters.
+      operationId: updateNode
+      tags:
+        - Node
+      parameters:
+        - name: nodeId
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Unique node identifier
+          example: "node_a1b2c3d4"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateNodeRequest'
+      responses:
+        '200':
+          description: Node updated successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/NodeResponse'
+        '400':
+          description: Bad request (missing parameters field)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: Node not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '409':
+          description: Conflict (node is currently in use)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+    delete:
+      summary: Delete a node
+      description: Deletes a pre-configured node. Only nodes that are not currently in use can be deleted.
+      operationId: deleteNode
+      tags:
+        - Node
+      parameters:
+        - name: nodeId
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Unique node identifier
+          example: "node_a1b2c3d4"
+      responses:
+        '200':
+          description: Node deleted successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                    example: "Node deleted successfully"
+                  nodeId:
+                    type: string
+                    example: "node_a1b2c3d4"
+        '404':
+          description: Node not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '409':
+          description: Conflict (node is currently in use)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+    options:
+      summary: CORS preflight for node
+      operationId: getNodeOptions
+      tags:
+        - Node
+      responses:
+        '200':
+          description: CORS preflight response
+
+  /v1/core/nodes/templates:
+    get:
+      summary: List all node templates
+      description: |
+        Returns a list of all available node templates that can be used to create pre-configured nodes.
+        
+        **Available Node Types:**
+        
+        **Source Nodes:**
+        - `rtsp_src` - RTSP Source
+        - `file_src` - File Source
+        - `app_src` - App Source
+        - `image_src` - Image Source
+        - `rtmp_src` - RTMP Source
+        - `udp_src` - UDP Source
+        
+        **Detector Nodes:**
+        - `yunet_face_detector` - YuNet Face Detector
+        - `yolo_detector` - YOLO Detector
+        - `yolov11_detector` - YOLOv11 Detector
+        - `mask_rcnn_detector` - Mask R-CNN Detector
+        - `openpose_detector` - OpenPose Detector
+        - `enet_seg` - ENet Segmentation
+        - `trt_yolov8_detector` - TensorRT YOLOv8 Detector (requires CVEDIX_WITH_TRT)
+        - `trt_yolov8_seg_detector` - TensorRT YOLOv8 Segmentation (requires CVEDIX_WITH_TRT)
+        - `trt_yolov8_pose_detector` - TensorRT YOLOv8 Pose (requires CVEDIX_WITH_TRT)
+        - `trt_yolov8_classifier` - TensorRT YOLOv8 Classifier (requires CVEDIX_WITH_TRT)
+        - `trt_vehicle_detector` - TensorRT Vehicle Detector (requires CVEDIX_WITH_TRT)
+        - `trt_vehicle_plate_detector` - TensorRT Vehicle Plate Detector (requires CVEDIX_WITH_TRT)
+        - `trt_vehicle_plate_detector_v2` - TensorRT Vehicle Plate Detector v2 (requires CVEDIX_WITH_TRT)
+        - `trt_insight_face_recognition` - TensorRT InsightFace Recognition (requires CVEDIX_WITH_TRT)
+        - `rknn_yolov8_detector` - RKNN YOLOv8 Detector (requires CVEDIX_WITH_RKNN)
+        - `rknn_yolov11_detector` - RKNN YOLOv11 Detector (requires CVEDIX_WITH_RKNN)
+        - `rknn_face_detector` - RKNN Face Detector (requires CVEDIX_WITH_RKNN)
+        - `ppocr_text_detector` - PaddleOCR Text Detector (requires CVEDIX_WITH_PADDLE)
+        - `face_swap` - Face Swap
+        - `insight_face_recognition` - InsightFace Recognition
+        - `mllm_analyser` - MLLM Analyser
+        
+        **Processor Nodes:**
+        - `sface_feature_encoder` - SFace Feature Encoder
+        - `sort_track` - SORT Tracker
+        - `face_osd_v2` - Face OSD v2
+        - `ba_crossline` - BA Crossline
+        - `ba_crossline_osd` - BA Crossline OSD
+        - `classifier` - Classifier
+        - `lane_detector` - Lane Detector
+        - `restoration` - Restoration
+        - `trt_vehicle_feature_encoder` - TensorRT Vehicle Feature Encoder (requires CVEDIX_WITH_TRT)
+        - `trt_vehicle_color_classifier` - TensorRT Vehicle Color Classifier (requires CVEDIX_WITH_TRT)
+        - `trt_vehicle_type_classifier` - TensorRT Vehicle Type Classifier (requires CVEDIX_WITH_TRT)
+        - `trt_vehicle_scanner` - TensorRT Vehicle Scanner (requires CVEDIX_WITH_TRT)
+        
+        **Destination Nodes:**
+        - `file_des` - File Destination
+        - `rtmp_des` - RTMP Destination
+        - `screen_des` - Screen Destination
+        
+        **Broker Nodes:**
+        - `json_console_broker` - JSON Console Broker
+        - `json_enhanced_console_broker` - JSON Enhanced Console Broker
+        - `json_mqtt_broker` - JSON MQTT Broker (requires CVEDIX_WITH_MQTT)
+        - `json_kafka_broker` - JSON Kafka Broker (requires CVEDIX_WITH_KAFKA)
+        - `xml_file_broker` - XML File Broker
+        - `xml_socket_broker` - XML Socket Broker
+        - `msg_broker` - Message Broker
+        - `ba_socket_broker` - BA Socket Broker
+        - `embeddings_socket_broker` - Embeddings Socket Broker
+        - `embeddings_properties_socket_broker` - Embeddings Properties Socket Broker
+        - `plate_socket_broker` - Plate Socket Broker
+        - `expr_socket_broker` - Expression Socket Broker
+        
+        All node templates are automatically imported from CVEDIX SDK nodes available in `/opt/cvedix/include/cvedix/nodes/infers`.
+      operationId: listTemplates
+      tags:
+        - Node
+      responses:
+        '200':
+          description: List of templates retrieved successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TemplateListResponse'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+    options:
+      summary: CORS preflight for templates
+      operationId: listTemplatesOptions
+      tags:
+        - Node
+      responses:
+        '200':
+          description: CORS preflight response
+
+  /v1/core/nodes/templates/{templateId}:
+    get:
+      summary: Get template details
+      description: Returns detailed information about a specific node template
+      operationId: getTemplate
+      tags:
+        - Node
+      parameters:
+        - name: templateId
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Unique template identifier
+          example: "rtsp_src_template"
+      responses:
+        '200':
+          description: Template details retrieved successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TemplateResponse'
+        '404':
+          description: Template not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+    options:
+      summary: CORS preflight for template
+      operationId: getTemplateOptions
+      tags:
+        - Node
+      responses:
+        '200':
+          description: CORS preflight response
+
+  /v1/core/nodes/stats:
+    get:
+      summary: Get node pool statistics
+      description: Returns statistics about the node pool including total templates, total nodes, available nodes, and nodes by category
+      operationId: getNodeStats
+      tags:
+        - Node
+      responses:
+        '200':
+          description: Statistics retrieved successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/NodeStatsResponse'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+    options:
+      summary: CORS preflight for stats
+      operationId: getNodeStatsOptions
+      tags:
+        - Node
+      responses:
+        '200':
+          description: CORS preflight response
+
 components:
   schemas:
     HealthResponse:
@@ -3752,7 +4143,28 @@ components:
             properties:
               nodeType:
                 type: string
-                description: Type of node (e.g., "rtsp_src", "yunet_face_detector", "file_des")
+                description: |
+                  Type of node. Available node types:
+                  
+                  **Source:** rtsp_src, file_src, app_src, image_src, rtmp_src, udp_src
+                  
+                  **Detector:** yunet_face_detector, yolo_detector, yolov11_detector, mask_rcnn_detector, openpose_detector, enet_seg, 
+                  trt_yolov8_detector, trt_yolov8_seg_detector, trt_yolov8_pose_detector, trt_yolov8_classifier, 
+                  trt_vehicle_detector, trt_vehicle_plate_detector, trt_vehicle_plate_detector_v2, trt_insight_face_recognition,
+                  rknn_yolov8_detector, rknn_yolov11_detector, rknn_face_detector, ppocr_text_detector,
+                  face_swap, insight_face_recognition, mllm_analyser
+                  
+                  **Processor:** sface_feature_encoder, sort_track, face_osd_v2, ba_crossline, ba_crossline_osd, classifier, 
+                  lane_detector, restoration, trt_vehicle_feature_encoder, trt_vehicle_color_classifier, 
+                  trt_vehicle_type_classifier, trt_vehicle_scanner
+                  
+                  **Destination:** file_des, rtmp_des, screen_des
+                  
+                  **Broker:** json_console_broker, json_enhanced_console_broker, json_mqtt_broker, json_kafka_broker,
+                  xml_file_broker, xml_socket_broker, msg_broker, ba_socket_broker, embeddings_socket_broker,
+                  embeddings_properties_socket_broker, plate_socket_broker, expr_socket_broker
+                  
+                  See GET /v1/core/nodes/templates for complete list with descriptions.
                 example: "rtsp_src"
               nodeName:
                 type: string
@@ -3937,6 +4349,242 @@ components:
           description: Description of the group
           example: "Updated description"
 
+    NodeResponse:
+      type: object
+      required:
+        - nodeId
+        - templateId
+        - inUse
+        - parameters
+        - createdAt
+      properties:
+        nodeId:
+          type: string
+          description: Unique node identifier
+          example: "node_a1b2c3d4"
+        templateId:
+          type: string
+          description: Template ID used to create this node
+          example: "rtsp_src_template"
+        displayName:
+          type: string
+          description: Human-readable display name from template
+          example: "RTSP Source"
+        nodeType:
+          type: string
+          description: Node type from template
+          example: "rtsp_src"
+        category:
+          type: string
+          description: Node category from template
+          enum: ["source", "detector", "processor", "destination", "broker"]
+          example: "source"
+        description:
+          type: string
+          description: Node description from template
+          example: "Receive video stream from RTSP URL"
+        inUse:
+          type: boolean
+          description: Whether node is currently in use
+          example: false
+        parameters:
+          type: object
+          description: Node configuration parameters
+          additionalProperties:
+            type: string
+          example:
+            rtsp_url: "rtsp://localhost:8554/stream1"
+            channel: "0"
+            resize_ratio: "1.0"
+        createdAt:
+          type: string
+          format: date-time
+          description: Node creation timestamp (ISO 8601 format)
+          example: "2025-01-15T10:30:00Z"
+        message:
+          type: string
+          description: Success message (for create/update operations)
+          example: "Node created successfully"
+        oldNodeId:
+          type: string
+          description: Previous node ID (for update operations)
+          example: "node_old123"
+        newNodeId:
+          type: string
+          description: New node ID (for update operations)
+          example: "node_new456"
+
+    NodeListResponse:
+      type: object
+      required:
+        - nodes
+        - total
+        - available
+        - inUse
+      properties:
+        nodes:
+          type: array
+          description: List of pre-configured nodes
+          items:
+            $ref: '#/components/schemas/NodeResponse'
+        total:
+          type: integer
+          description: Total number of nodes in the list
+          example: 20
+        available:
+          type: integer
+          description: Total number of available (not in use) nodes
+          example: 15
+        inUse:
+          type: integer
+          description: Total number of nodes currently in use
+          example: 5
+
+    CreateNodeRequest:
+      type: object
+      required:
+        - templateId
+      properties:
+        templateId:
+          type: string
+          description: Template ID to use for creating the node
+          example: "rtsp_src_template"
+        parameters:
+          type: object
+          description: Node parameters (must include all required parameters from template)
+          additionalProperties:
+            type: string
+          example:
+            rtsp_url: "rtsp://localhost:8554/stream1"
+            channel: "0"
+            resize_ratio: "1.0"
+
+    UpdateNodeRequest:
+      type: object
+      required:
+        - parameters
+      properties:
+        parameters:
+          type: object
+          description: Updated node parameters
+          additionalProperties:
+            type: string
+          example:
+            rtsp_url: "rtsp://localhost:8554/stream2"
+            channel: "0"
+            resize_ratio: "0.5"
+
+    TemplateResponse:
+      type: object
+      required:
+        - templateId
+        - nodeType
+        - displayName
+        - category
+        - isPreConfigured
+        - defaultParameters
+        - requiredParameters
+        - optionalParameters
+      properties:
+        templateId:
+          type: string
+          description: Unique template identifier
+          example: "rtsp_src_template"
+        nodeType:
+          type: string
+          description: Node type identifier
+          example: "rtsp_src"
+        displayName:
+          type: string
+          description: Human-readable display name
+          example: "RTSP Source"
+        description:
+          type: string
+          description: Template description
+          example: "Receive video stream from RTSP URL"
+        category:
+          type: string
+          description: Node category
+          enum: ["source", "detector", "processor", "destination", "broker"]
+          example: "source"
+        isPreConfigured:
+          type: boolean
+          description: Whether this template creates pre-configured nodes
+          example: false
+        defaultParameters:
+          type: object
+          description: Default parameter values
+          additionalProperties:
+            type: string
+          example:
+            channel: "0"
+            resize_ratio: "1.0"
+        requiredParameters:
+          type: array
+          description: List of required parameter names
+          items:
+            type: string
+          example: ["rtsp_url"]
+        optionalParameters:
+          type: array
+          description: List of optional parameter names
+          items:
+            type: string
+          example: ["channel", "resize_ratio"]
+
+    TemplateListResponse:
+      type: object
+      required:
+        - templates
+        - total
+      properties:
+        templates:
+          type: array
+          description: List of node templates
+          items:
+            $ref: '#/components/schemas/TemplateResponse'
+        total:
+          type: integer
+          description: Total number of templates
+          example: 10
+
+    NodeStatsResponse:
+      type: object
+      required:
+        - totalTemplates
+        - totalPreConfiguredNodes
+        - availableNodes
+        - inUseNodes
+        - nodesByCategory
+      properties:
+        totalTemplates:
+          type: integer
+          description: Total number of node templates
+          example: 10
+        totalPreConfiguredNodes:
+          type: integer
+          description: Total number of pre-configured nodes
+          example: 20
+        availableNodes:
+          type: integer
+          description: Number of available (not in use) nodes
+          example: 15
+        inUseNodes:
+          type: integer
+          description: Number of nodes currently in use
+          example: 5
+        nodesByCategory:
+          type: object
+          description: Count of nodes by category
+          additionalProperties:
+            type: integer
+          example:
+            source: 5
+            detector: 8
+            processor: 4
+            destination: 3
+            broker: 0
+
 tags:
   - name: Core
     description: Core API endpoints for health and version information
@@ -3950,4 +4598,6 @@ tags:
     description: Group management endpoints for organizing instances (create, list, update, delete)
   - name: Models
     description: Model file management endpoints
+  - name: Node
+    description: Node pool management endpoints for pre-configured nodes and templates (create, list, update, delete, templates, stats)
 
