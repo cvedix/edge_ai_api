@@ -310,6 +310,29 @@ set(SOURCES
 # ============================================
 add_executable(edge_ai_api ${SOURCES})
 
+# Set RPATH to find OpenCV 4.10 libraries in /usr/local/lib
+# This ensures the executable can find libopencv_*.so.410 at runtime
+# BUILD_WITH_INSTALL_RPATH FALSE: Use BUILD_RPATH when running from build directory
+# BUILD_WITH_INSTALL_RPATH TRUE: Use INSTALL_RPATH when running from build directory
+# Use RPATH (not RUNPATH) so it works even without LD_LIBRARY_PATH
+set(CMAKE_BUILD_RPATH_USE_ORIGIN TRUE)
+set_target_properties(edge_ai_api PROPERTIES
+    INSTALL_RPATH_USE_LINK_PATH TRUE
+    BUILD_WITH_INSTALL_RPATH FALSE
+    BUILD_RPATH_USE_ORIGIN TRUE
+    # Use RPATH instead of RUNPATH (RPATH is always used, RUNPATH only when LD_LIBRARY_PATH is set)
+    SKIP_BUILD_RPATH FALSE
+)
+# Add /usr/local/lib to RPATH for OpenCV 4.10
+# Add build/lib to RPATH for Drogon library (when using FetchContent)
+# Note: RPATH (not RUNPATH) will be used, so it works without LD_LIBRARY_PATH
+set_target_properties(edge_ai_api PROPERTIES
+    INSTALL_RPATH "${CMAKE_INSTALL_PREFIX}/lib;/usr/local/lib"
+    BUILD_RPATH "${CMAKE_BINARY_DIR}/lib;/usr/local/lib"
+)
+# Force use of RPATH instead of RUNPATH
+set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -Wl,--disable-new-dtags")
+
 # ============================================
 # Link libraries
 # ============================================
@@ -471,6 +494,23 @@ if(OpenCV_FOUND)
         target_link_libraries(edge_ai_api PRIVATE ${OpenCV_LIBRARIES})
     endif()
     message(STATUS "✓ OpenCV linked to edge_ai_api")
+endif()
+
+# ============================================
+# Fix missing libopencv_freetype.so.410
+# ============================================
+# CVEDIX SDK requires libopencv_freetype.so.410 but OpenCV 4.10 may not have it
+# Copy from OpenCV 4.6 if available (temporary workaround)
+if(EXISTS "/usr/lib/x86_64-linux-gnu/libopencv_freetype.so.4.6.0")
+    set(FREETYPE_410_PATH "${CMAKE_BINARY_DIR}/lib/libopencv_freetype.so.410")
+    add_custom_command(TARGET edge_ai_api POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E make_directory "${CMAKE_BINARY_DIR}/lib"
+        COMMAND ${CMAKE_COMMAND} -E copy_if_different
+            "/usr/lib/x86_64-linux-gnu/libopencv_freetype.so.4.6.0"
+            "${FREETYPE_410_PATH}"
+        COMMENT "Copying libopencv_freetype.so.410 for CVEDIX SDK compatibility"
+    )
+    message(STATUS "✓ Will copy libopencv_freetype.so.410 to build/lib")
 endif()
 
 # ============================================
