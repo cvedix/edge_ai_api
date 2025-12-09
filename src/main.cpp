@@ -8,7 +8,9 @@
 #include "api/system_info_handler.h"
 #include "api/solution_handler.h"
 #include "api/group_handler.h"
+#include "api/config_handler.h"
 #include "models/model_upload_handler.h"
+#include "config/system_config.h"
 #include "core/watchdog.h"
 #include "core/health_monitor.h"
 #include "core/env_config.h"
@@ -1237,9 +1239,25 @@ int main(int argc, char* argv[])
         // Register terminate handler for uncaught exceptions
         std::set_terminate(terminateHandler);
 
-        // Set server configuration from environment variables
-        std::string host = EnvConfig::getString("API_HOST", "0.0.0.0");
-        uint16_t port = static_cast<uint16_t>(EnvConfig::getInt("API_PORT", 8080, 1, 65535));
+        // Load system configuration first (needed for web_server config)
+        // Use intelligent path resolution with 3-tier fallback
+        std::string configPath = EnvConfig::resolveConfigPath();
+        
+        auto& systemConfig = SystemConfig::getInstance();
+        systemConfig.loadConfig(configPath);
+        
+        // Set server configuration from config.json (with env var override)
+        auto webServerConfig = systemConfig.getWebServerConfig();
+        std::string host = EnvConfig::getString("API_HOST", webServerConfig.ipAddress);
+        uint16_t port = static_cast<uint16_t>(EnvConfig::getInt("API_PORT", webServerConfig.port, 1, 65535));
+        
+        // Use config values if env vars not set
+        if (host == webServerConfig.ipAddress && std::getenv("API_HOST") == nullptr) {
+            host = webServerConfig.ipAddress;
+        }
+        if (std::getenv("API_PORT") == nullptr) {
+            port = webServerConfig.port;
+        }
 
         PLOG_INFO << "Server will listen on: " << host << ":" << port;
         PLOG_INFO << "Available endpoints:";
@@ -1484,6 +1502,33 @@ int main(int argc, char* argv[])
         ModelUploadHandler::setModelsDirectory(modelsDir);
         static ModelUploadHandler modelUploadHandler;
         
+        // System configuration already loaded above (for web_server config)
+        // Log additional configuration details
+        if (systemConfig.isLoaded()) {
+            int maxInstances = systemConfig.getMaxRunningInstances();
+            if (maxInstances == 0) {
+                PLOG_INFO << "[Main] Max running instances: unlimited";
+            } else {
+                PLOG_INFO << "[Main] Max running instances: " << maxInstances;
+            }
+            
+            // Log decoder priority list
+            auto decoderList = systemConfig.getDecoderPriorityList();
+            if (!decoderList.empty()) {
+                std::string decoderStr;
+                for (size_t i = 0; i < decoderList.size(); ++i) {
+                    if (i > 0) decoderStr += ", ";
+                    decoderStr += decoderList[i];
+                }
+                PLOG_INFO << "[Main] Decoder priority list: " << decoderStr;
+            }
+        } else {
+            PLOG_WARNING << "[Main] System configuration not loaded, using defaults";
+        }
+        
+        // Create config handler instance to register endpoints
+        static ConfigHandler configHandler;
+        
         PLOG_INFO << "[Main] Instance management initialized";
         PLOG_INFO << "  POST /v1/core/instance - Create new instance";
         PLOG_INFO << "  GET /v1/core/instances - List all instances";
@@ -1515,6 +1560,16 @@ int main(int argc, char* argv[])
         PLOG_INFO << "  GET /v1/core/models/list - List uploaded models";
         PLOG_INFO << "  DELETE /v1/core/models/{modelName} - Delete model file";
         PLOG_INFO << "  Models directory: " << modelsDir;
+        
+        PLOG_INFO << "[Main] Configuration management initialized";
+        PLOG_INFO << "  GET /v1/core/config - Get full configuration";
+        PLOG_INFO << "  GET /v1/core/config/{path} - Get configuration section";
+        PLOG_INFO << "  POST /v1/core/config - Create/update configuration (merge)";
+        PLOG_INFO << "  PUT /v1/core/config - Replace entire configuration";
+        PLOG_INFO << "  PATCH /v1/core/config/{path} - Update configuration section";
+        PLOG_INFO << "  DELETE /v1/core/config/{path} - Delete configuration section";
+        PLOG_INFO << "  POST /v1/core/config/reset - Reset configuration to defaults";
+        PLOG_INFO << "  Config file: " << configPath;
         
         // Note: Infrastructure components (rate limiter, cache, resource manager, etc.)
         // are available but not initialized here since AI processing endpoints are not needed yet.

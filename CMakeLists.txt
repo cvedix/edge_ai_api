@@ -270,6 +270,7 @@ set(SOURCES
     src/api/instance_handler.cpp
     src/api/solution_handler.cpp
     src/api/group_handler.cpp
+    src/api/config_handler.cpp
     src/api/system_info_handler.cpp
     src/models/model_upload_handler.cpp
     src/core/watchdog.cpp
@@ -285,7 +286,9 @@ set(SOURCES
     src/instances/instance_storage.cpp
     src/solutions/solution_storage.cpp
     src/groups/group_storage.cpp
+    src/config/system_config.cpp
     src/core/uuid_generator.cpp
+    src/core/platform_detector.cpp
     src/core/log_manager.cpp
     src/models/create_instance_request.cpp
     src/models/update_instance_request.cpp

@@ -874,6 +874,23 @@ std::vector<std::string> InstanceRegistry::listInstances() const {
     return result;
 }
 
+int InstanceRegistry::getInstanceCount() const {
+    // CRITICAL: Use try_lock_for with timeout to prevent blocking if mutex is held by other operations
+    std::shared_lock<std::shared_timed_mutex> lock(mutex_, std::defer_lock);
+    
+    // Try to acquire lock with timeout (1000ms)
+    if (!lock.try_lock_for(std::chrono::milliseconds(1000))) {
+        std::cerr << "[InstanceRegistry] WARNING: getInstanceCount() timeout - mutex is locked, returning 0" << std::endl;
+        if (isInstanceLoggingEnabled()) {
+            PLOG_WARNING << "[InstanceRegistry] getInstanceCount() timeout after 1000ms - mutex may be locked by another operation";
+        }
+        return 0; // Return 0 to prevent blocking
+    }
+    
+    // Successfully acquired lock, return count
+    return static_cast<int>(instances_.size());
+}
+
 std::unordered_map<std::string, InstanceInfo> InstanceRegistry::getAllInstances() const {
     // Use shared_lock (read lock) to allow multiple concurrent readers
     // This allows multiple API requests to call getAllInstances() simultaneously
