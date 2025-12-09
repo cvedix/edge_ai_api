@@ -34,11 +34,13 @@
 // RKNN Inference Nodes
 #ifdef CVEDIX_WITH_RKNN
 #include <cvedix/nodes/infers/cvedix_rknn_yolov8_detector_node.h>
+#include <cvedix/nodes/infers/cvedix_rknn_yolov11_detector_node.h>
 #include <cvedix/nodes/infers/cvedix_rknn_face_detector_node.h>
 #endif
 
 // Other Inference Nodes
 #include <cvedix/nodes/infers/cvedix_yolo_detector_node.h>
+#include <cvedix/nodes/infers/cvedix_yolov11_detector_node.h>
 #include <cvedix/nodes/infers/cvedix_enet_seg_node.h>
 #include <cvedix/nodes/infers/cvedix_mask_rcnn_detector_node.h>
 #include <cvedix/nodes/infers/cvedix_openpose_detector_node.h>
@@ -46,10 +48,20 @@
 // Note: cvedix_feature_encoder_node is abstract - use cvedix_sface_feature_encoder_node or cvedix_trt_vehicle_feature_encoder instead
 // #include <cvedix/nodes/infers/cvedix_feature_encoder_node.h>
 #include <cvedix/nodes/infers/cvedix_lane_detector_node.h>
+#include <cvedix/nodes/infers/cvedix_face_swap_node.h>
+#include <cvedix/nodes/infers/cvedix_insight_face_recognition_node.h>
+#ifdef CVEDIX_WITH_LLM
+#include <cvedix/nodes/infers/cvedix_mllm_analyser_node.h>
+#endif
 #ifdef CVEDIX_WITH_PADDLE
 #include <cvedix/nodes/infers/cvedix_ppocr_text_detector_node.h>
 #endif
 #include <cvedix/nodes/infers/cvedix_restoration_node.h>
+
+// TensorRT Additional Inference Nodes
+#ifdef CVEDIX_WITH_TRT
+#include <cvedix/nodes/infers/cvedix_trt_insight_face_recognition_node.h>
+#endif
 #include <vector>
 
 // Broker Nodes
@@ -577,12 +589,16 @@ std::shared_ptr<cvedix_nodes::cvedix_node> PipelineBuilder::createNode(
             return createTRTVehicleFeatureEncoderNode(nodeName, params, req);
         } else if (nodeConfig.nodeType == "trt_vehicle_scanner") {
             return createTRTVehicleScannerNode(nodeName, params, req);
+        } else if (nodeConfig.nodeType == "trt_insight_face_recognition") {
+            return createTRTInsightFaceRecognitionNode(nodeName, params, req);
         }
 #endif
 #ifdef CVEDIX_WITH_RKNN
         // RKNN nodes
         else if (nodeConfig.nodeType == "rknn_yolov8_detector") {
             return createRKNNYOLOv8DetectorNode(nodeName, params, req);
+        } else if (nodeConfig.nodeType == "rknn_yolov11_detector") {
+            return createRKNNYOLOv11DetectorNode(nodeName, params, req);
         } else if (nodeConfig.nodeType == "rknn_face_detector") {
             return createRKNNFaceDetectorNode(nodeName, params, req);
         }
@@ -590,6 +606,8 @@ std::shared_ptr<cvedix_nodes::cvedix_node> PipelineBuilder::createNode(
         // Other inference nodes
         else if (nodeConfig.nodeType == "yolo_detector") {
             return createYOLODetectorNode(nodeName, params, req);
+        } else if (nodeConfig.nodeType == "yolov11_detector") {
+            return createYOLOv11DetectorNode(nodeName, params, req);
         } else if (nodeConfig.nodeType == "enet_seg") {
             return createENetSegNode(nodeName, params, req);
         } else if (nodeConfig.nodeType == "mask_rcnn_detector") {
@@ -603,6 +621,12 @@ std::shared_ptr<cvedix_nodes::cvedix_node> PipelineBuilder::createNode(
             throw std::runtime_error("feature_encoder node type is not supported. Use 'sface_feature_encoder' or 'trt_vehicle_feature_encoder' instead.");
         } else if (nodeConfig.nodeType == "lane_detector") {
             return createLaneDetectorNode(nodeName, params, req);
+        } else if (nodeConfig.nodeType == "face_swap") {
+            return createFaceSwapNode(nodeName, params, req);
+        } else if (nodeConfig.nodeType == "insight_face_recognition") {
+            return createInsightFaceRecognitionNode(nodeName, params, req);
+        } else if (nodeConfig.nodeType == "mllm_analyser") {
+            return createMLLMAnalyserNode(nodeName, params, req);
 #ifdef CVEDIX_WITH_PADDLE
         } else if (nodeConfig.nodeType == "ppocr_text_detector") {
             return createPaddleOCRTextDetectorNode(nodeName, params, req);
@@ -2694,6 +2718,329 @@ std::shared_ptr<cvedix_nodes::cvedix_node> PipelineBuilder::createRestorationNod
     }
 }
 
+// ========== New Inference Nodes Implementation ==========
+
+std::shared_ptr<cvedix_nodes::cvedix_node> PipelineBuilder::createYOLOv11DetectorNode(
+    const std::string& nodeName,
+    const std::map<std::string, std::string>& params,
+    const CreateInstanceRequest& req) {
+    
+    try {
+        std::string modelPath = params.count("model_path") ? params.at("model_path") : "";
+        
+        if (modelPath.empty()) {
+            auto it = req.additionalParams.find("MODEL_PATH");
+            if (it != req.additionalParams.end() && !it->second.empty()) {
+                modelPath = it->second;
+            }
+        }
+        
+        if (nodeName.empty() || modelPath.empty()) {
+            throw std::invalid_argument("Node name and model path are required");
+        }
+        
+        std::cerr << "[PipelineBuilder] Creating YOLOv11 detector node:" << std::endl;
+        std::cerr << "  Name: '" << nodeName << "'" << std::endl;
+        std::cerr << "  Model path: '" << modelPath << "'" << std::endl;
+        
+        auto node = std::make_shared<cvedix_nodes::cvedix_yolov11_detector_node>(
+            nodeName,
+            modelPath
+        );
+        
+        std::cerr << "[PipelineBuilder] ✓ YOLOv11 detector node created successfully" << std::endl;
+        return node;
+    } catch (const std::exception& e) {
+        std::cerr << "[PipelineBuilder] Exception in createYOLOv11DetectorNode: " << e.what() << std::endl;
+        throw;
+    }
+}
+
+std::shared_ptr<cvedix_nodes::cvedix_node> PipelineBuilder::createFaceSwapNode(
+    const std::string& nodeName,
+    const std::map<std::string, std::string>& params,
+    const CreateInstanceRequest& req) {
+    
+    try {
+        std::string yunetFaceDetectModel = params.count("yunet_face_detect_model") ? params.at("yunet_face_detect_model") : "";
+        std::string buffaloLFaceEncodingModel = params.count("buffalo_l_face_encoding_model") ? params.at("buffalo_l_face_encoding_model") : "";
+        std::string emapFileForEmbeddings = params.count("emap_file_for_embeddings") ? params.at("emap_file_for_embeddings") : "";
+        std::string insightfaceSwapModel = params.count("insightface_swap_model") ? params.at("insightface_swap_model") : "";
+        std::string swapSourceImage = params.count("swap_source_image") ? params.at("swap_source_image") : "";
+        int swapSourceFaceIndex = params.count("swap_source_face_index") ? std::stoi(params.at("swap_source_face_index")) : 0;
+        int minFaceWH = params.count("min_face_w_h") ? std::stoi(params.at("min_face_w_h")) : 50;
+        bool swapOnOSD = params.count("swap_on_osd") ? (params.at("swap_on_osd") == "true" || params.at("swap_on_osd") == "1") : true;
+        bool actAsPrimaryDetector = params.count("act_as_primary_detector") ? (params.at("act_as_primary_detector") == "true" || params.at("act_as_primary_detector") == "1") : false;
+        
+        // Try to get from additionalParams if still empty
+        if (yunetFaceDetectModel.empty()) {
+            auto it = req.additionalParams.find("YUNET_FACE_DETECT_MODEL");
+            if (it != req.additionalParams.end() && !it->second.empty()) {
+                yunetFaceDetectModel = it->second;
+            }
+        }
+        if (buffaloLFaceEncodingModel.empty()) {
+            auto it = req.additionalParams.find("BUFFALO_L_FACE_ENCODING_MODEL");
+            if (it != req.additionalParams.end() && !it->second.empty()) {
+                buffaloLFaceEncodingModel = it->second;
+            }
+        }
+        if (emapFileForEmbeddings.empty()) {
+            auto it = req.additionalParams.find("EMAP_FILE_FOR_EMBEDDINGS");
+            if (it != req.additionalParams.end() && !it->second.empty()) {
+                emapFileForEmbeddings = it->second;
+            }
+        }
+        if (insightfaceSwapModel.empty()) {
+            auto it = req.additionalParams.find("INSIGHTFACE_SWAP_MODEL");
+            if (it != req.additionalParams.end() && !it->second.empty()) {
+                insightfaceSwapModel = it->second;
+            }
+        }
+        if (swapSourceImage.empty()) {
+            auto it = req.additionalParams.find("SWAP_SOURCE_IMAGE");
+            if (it != req.additionalParams.end() && !it->second.empty()) {
+                swapSourceImage = it->second;
+            }
+        }
+        
+        if (nodeName.empty() || yunetFaceDetectModel.empty() || buffaloLFaceEncodingModel.empty() || 
+            emapFileForEmbeddings.empty() || insightfaceSwapModel.empty() || swapSourceImage.empty()) {
+            throw std::invalid_argument("Node name and all model paths are required for face swap node");
+        }
+        
+        std::cerr << "[PipelineBuilder] Creating face swap node:" << std::endl;
+        std::cerr << "  Name: '" << nodeName << "'" << std::endl;
+        std::cerr << "  YUNet face detect model: '" << yunetFaceDetectModel << "'" << std::endl;
+        std::cerr << "  Buffalo L face encoding model: '" << buffaloLFaceEncodingModel << "'" << std::endl;
+        std::cerr << "  EMap file for embeddings: '" << emapFileForEmbeddings << "'" << std::endl;
+        std::cerr << "  InsightFace swap model: '" << insightfaceSwapModel << "'" << std::endl;
+        std::cerr << "  Swap source image: '" << swapSourceImage << "'" << std::endl;
+        
+        auto node = std::make_shared<cvedix_nodes::cvedix_face_swap_node>(
+            nodeName,
+            yunetFaceDetectModel,
+            buffaloLFaceEncodingModel,
+            emapFileForEmbeddings,
+            insightfaceSwapModel,
+            swapSourceImage,
+            swapSourceFaceIndex,
+            minFaceWH,
+            swapOnOSD,
+            actAsPrimaryDetector
+        );
+        
+        std::cerr << "[PipelineBuilder] ✓ Face swap node created successfully" << std::endl;
+        return node;
+    } catch (const std::exception& e) {
+        std::cerr << "[PipelineBuilder] Exception in createFaceSwapNode: " << e.what() << std::endl;
+        throw;
+    }
+}
+
+std::shared_ptr<cvedix_nodes::cvedix_node> PipelineBuilder::createInsightFaceRecognitionNode(
+    const std::string& nodeName,
+    const std::map<std::string, std::string>& params,
+    const CreateInstanceRequest& req) {
+    
+    try {
+        std::string modelPath = params.count("model_path") ? params.at("model_path") : "";
+        
+        if (modelPath.empty()) {
+            auto it = req.additionalParams.find("MODEL_PATH");
+            if (it != req.additionalParams.end() && !it->second.empty()) {
+                modelPath = it->second;
+            }
+        }
+        
+        if (nodeName.empty() || modelPath.empty()) {
+            throw std::invalid_argument("Node name and model path are required");
+        }
+        
+        std::cerr << "[PipelineBuilder] Creating InsightFace recognition node:" << std::endl;
+        std::cerr << "  Name: '" << nodeName << "'" << std::endl;
+        std::cerr << "  Model path: '" << modelPath << "'" << std::endl;
+        
+        auto node = std::make_shared<cvedix_nodes::cvedix_insight_face_recognition_node>(
+            nodeName,
+            modelPath
+        );
+        
+        std::cerr << "[PipelineBuilder] ✓ InsightFace recognition node created successfully" << std::endl;
+        return node;
+    } catch (const std::exception& e) {
+        std::cerr << "[PipelineBuilder] Exception in createInsightFaceRecognitionNode: " << e.what() << std::endl;
+        throw;
+    }
+}
+
+std::shared_ptr<cvedix_nodes::cvedix_node> PipelineBuilder::createMLLMAnalyserNode(
+    const std::string& nodeName,
+    const std::map<std::string, std::string>& params,
+    const CreateInstanceRequest& req) {
+    
+#ifdef CVEDIX_WITH_LLM
+    try {
+        std::string modelName = params.count("model_name") ? params.at("model_name") : "";
+        std::string prompt = params.count("prompt") ? params.at("prompt") : "";
+        std::string apiBaseUrl = params.count("api_base_url") ? params.at("api_base_url") : "";
+        std::string apiKey = params.count("api_key") ? params.at("api_key") : "";
+        
+        // Try to get from additionalParams if still empty
+        if (modelName.empty()) {
+            auto it = req.additionalParams.find("MODEL_NAME");
+            if (it != req.additionalParams.end() && !it->second.empty()) {
+                modelName = it->second;
+            }
+        }
+        if (prompt.empty()) {
+            auto it = req.additionalParams.find("PROMPT");
+            if (it != req.additionalParams.end() && !it->second.empty()) {
+                prompt = it->second;
+            }
+        }
+        if (apiBaseUrl.empty()) {
+            auto it = req.additionalParams.find("API_BASE_URL");
+            if (it != req.additionalParams.end() && !it->second.empty()) {
+                apiBaseUrl = it->second;
+            }
+        }
+        if (apiKey.empty()) {
+            auto it = req.additionalParams.find("API_KEY");
+            if (it != req.additionalParams.end() && !it->second.empty()) {
+                apiKey = it->second;
+            }
+        }
+        
+        // Parse backend type
+        std::string backendTypeStr = params.count("backend_type") ? params.at("backend_type") : "ollama";
+        llmlib::LLMBackendType backendType = llmlib::LLMBackendType::Ollama;
+        if (backendTypeStr == "openai") {
+            backendType = llmlib::LLMBackendType::OpenAI;
+        } else if (backendTypeStr == "anthropic") {
+            backendType = llmlib::LLMBackendType::Anthropic;
+        }
+        
+        if (nodeName.empty() || modelName.empty() || prompt.empty() || apiBaseUrl.empty()) {
+            throw std::invalid_argument("Node name, model name, prompt, and API base URL are required");
+        }
+        
+        std::cerr << "[PipelineBuilder] Creating MLLM analyser node:" << std::endl;
+        std::cerr << "  Name: '" << nodeName << "'" << std::endl;
+        std::cerr << "  Model name: '" << modelName << "'" << std::endl;
+        std::cerr << "  Prompt: '" << prompt << "'" << std::endl;
+        std::cerr << "  API base URL: '" << apiBaseUrl << "'" << std::endl;
+        
+        auto node = std::make_shared<cvedix_nodes::cvedix_mllm_analyser_node>(
+            nodeName,
+            modelName,
+            prompt,
+            apiBaseUrl,
+            apiKey,
+            backendType
+        );
+        
+        std::cerr << "[PipelineBuilder] ✓ MLLM analyser node created successfully" << std::endl;
+        return node;
+    } catch (const std::exception& e) {
+        std::cerr << "[PipelineBuilder] Exception in createMLLMAnalyserNode: " << e.what() << std::endl;
+        throw;
+    }
+#else
+    throw std::runtime_error("MLLM analyser node is not available (CVEDIX_WITH_LLM not defined)");
+#endif
+}
+
+#ifdef CVEDIX_WITH_RKNN
+std::shared_ptr<cvedix_nodes::cvedix_node> PipelineBuilder::createRKNNYOLOv11DetectorNode(
+    const std::string& nodeName,
+    const std::map<std::string, std::string>& params,
+    const CreateInstanceRequest& req) {
+    
+    try {
+        std::string modelPath = params.count("model_path") ? params.at("model_path") : "";
+        float scoreThreshold = params.count("score_threshold") ? std::stof(params.at("score_threshold")) : 0.5f;
+        float nmsThreshold = params.count("nms_threshold") ? std::stof(params.at("nms_threshold")) : 0.5f;
+        int inputWidth = params.count("input_width") ? std::stoi(params.at("input_width")) : 640;
+        int inputHeight = params.count("input_height") ? std::stoi(params.at("input_height")) : 640;
+        int numClasses = params.count("num_classes") ? std::stoi(params.at("num_classes")) : 80;
+        
+        if (modelPath.empty()) {
+            auto it = req.additionalParams.find("MODEL_PATH");
+            if (it != req.additionalParams.end() && !it->second.empty()) {
+                modelPath = it->second;
+            }
+        }
+        
+        if (nodeName.empty() || modelPath.empty()) {
+            throw std::invalid_argument("Node name and model path are required");
+        }
+        
+        std::cerr << "[PipelineBuilder] Creating RKNN YOLOv11 detector node:" << std::endl;
+        std::cerr << "  Name: '" << nodeName << "'" << std::endl;
+        std::cerr << "  Model path: '" << modelPath << "'" << std::endl;
+        std::cerr << "  Score threshold: " << scoreThreshold << std::endl;
+        std::cerr << "  NMS threshold: " << nmsThreshold << std::endl;
+        std::cerr << "  Input size: " << inputWidth << "x" << inputHeight << std::endl;
+        std::cerr << "  Num classes: " << numClasses << std::endl;
+        
+        auto node = std::make_shared<cvedix_nodes::cvedix_rknn_yolov11_detector_node>(
+            nodeName,
+            modelPath,
+            scoreThreshold,
+            nmsThreshold,
+            inputWidth,
+            inputHeight,
+            numClasses
+        );
+        
+        std::cerr << "[PipelineBuilder] ✓ RKNN YOLOv11 detector node created successfully" << std::endl;
+        return node;
+    } catch (const std::exception& e) {
+        std::cerr << "[PipelineBuilder] Exception in createRKNNYOLOv11DetectorNode: " << e.what() << std::endl;
+        throw;
+    }
+}
+#endif // CVEDIX_WITH_RKNN
+
+#ifdef CVEDIX_WITH_TRT
+std::shared_ptr<cvedix_nodes::cvedix_node> PipelineBuilder::createTRTInsightFaceRecognitionNode(
+    const std::string& nodeName,
+    const std::map<std::string, std::string>& params,
+    const CreateInstanceRequest& req) {
+    
+    try {
+        std::string modelPath = params.count("model_path") ? params.at("model_path") : "";
+        
+        if (modelPath.empty()) {
+            auto it = req.additionalParams.find("MODEL_PATH");
+            if (it != req.additionalParams.end() && !it->second.empty()) {
+                modelPath = it->second;
+            }
+        }
+        
+        if (nodeName.empty() || modelPath.empty()) {
+            throw std::invalid_argument("Node name and model path are required");
+        }
+        
+        std::cerr << "[PipelineBuilder] Creating TensorRT InsightFace recognition node:" << std::endl;
+        std::cerr << "  Name: '" << nodeName << "'" << std::endl;
+        std::cerr << "  Model path: '" << modelPath << "'" << std::endl;
+        
+        auto node = std::make_shared<cvedix_nodes::cvedix_trt_insight_face_recognition_node>(
+            nodeName,
+            modelPath
+        );
+        
+        std::cerr << "[PipelineBuilder] ✓ TensorRT InsightFace recognition node created successfully" << std::endl;
+        return node;
+    } catch (const std::exception& e) {
+        std::cerr << "[PipelineBuilder] Exception in createTRTInsightFaceRecognitionNode: " << e.what() << std::endl;
+        throw;
+    }
+}
+#endif // CVEDIX_WITH_TRT
+
 // ========== Source Nodes Implementation ==========
 
 std::shared_ptr<cvedix_nodes::cvedix_node> PipelineBuilder::createAppSourceNode(
@@ -3734,4 +4081,5 @@ std::shared_ptr<cvedix_nodes::cvedix_node> PipelineBuilder::createExpressionSock
     const std::string&, const std::map<std::string, std::string>&, const CreateInstanceRequest&) {
     return nullptr;
 }
+
 
