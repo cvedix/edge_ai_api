@@ -3,7 +3,7 @@
   "group": "demo",
   "solution": "face_detection_rtmp",
   "persistent": true,
-  "autoStart": true,
+  "autoStart": false,
   "detectionSensitivity": "Low",
   "additionalParams": {
     "FILE_PATH": "/home/pnsang/project/edge_ai_sdk/cvedix_data/test_video/face.mp4",
