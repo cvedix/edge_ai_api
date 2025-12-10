@@ -404,8 +404,29 @@ std::vector<std::shared_ptr<cvedix_nodes::cvedix_node>> PipelineBuilder::buildPi
             );
             
             if (fileDesNode && !nodes.empty()) {
-                // Connect to last node in pipeline
-                fileDesNode->attach_to({nodes.back()});
+                // Find the last non-destination node to attach to
+                // Destination nodes (file_des, rtmp_des, screen_des) don't forward frames,
+                // so we need to attach to the source node (usually OSD node)
+                std::shared_ptr<cvedix_nodes::cvedix_node> attachTarget = nullptr;
+                for (int i = static_cast<int>(nodes.size()) - 1; i >= 0; --i) {
+                    auto node = nodes[i];
+                    // Check if this is a destination node
+                    bool isDestNode = std::dynamic_pointer_cast<cvedix_nodes::cvedix_file_des_node>(node) ||
+                                     std::dynamic_pointer_cast<cvedix_nodes::cvedix_rtmp_des_node>(node) ||
+                                     std::dynamic_pointer_cast<cvedix_nodes::cvedix_screen_des_node>(node);
+                    if (!isDestNode) {
+                        attachTarget = node;
+                        break;
+                    }
+                }
+                
+                // Fallback to last node if no non-destination node found
+                if (!attachTarget) {
+                    attachTarget = nodes.back();
+                }
+                
+                // Connect file_des node to the target node
+                fileDesNode->attach_to({attachTarget});
                 nodes.push_back(fileDesNode);
                 std::cerr << "[PipelineBuilder] ✓ Auto-added file_des node for recording to: " << recordPath << std::endl;
             } else {
