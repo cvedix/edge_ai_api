@@ -50,6 +50,7 @@ public:
         ADD_METHOD_TO(InstanceHandler::getConfig, "/v1/core/instance/{instanceId}/config", Get);
         ADD_METHOD_TO(InstanceHandler::setConfig, "/v1/core/instance/{instanceId}/config", Post);
         ADD_METHOD_TO(InstanceHandler::getStatistics, "/v1/core/instance/{instanceId}/statistics", Get);
+        ADD_METHOD_TO(InstanceHandler::getLastFrame, "/v1/core/instances/{instanceId}/frame", Get);
         ADD_METHOD_TO(InstanceHandler::getStreamOutput, "/v1/core/instance/{instanceId}/output/stream", Get);
         ADD_METHOD_TO(InstanceHandler::configureStreamOutput, "/v1/core/instance/{instanceId}/output/stream", Post);
         ADD_METHOD_TO(InstanceHandler::handleOptions, "/v1/core/instances", Options);
@@ -61,6 +62,7 @@ public:
         ADD_METHOD_TO(InstanceHandler::handleOptions, "/v1/core/instance/{instanceId}/input", Options);
         ADD_METHOD_TO(InstanceHandler::handleOptions, "/v1/core/instance/{instanceId}/config", Options);
         ADD_METHOD_TO(InstanceHandler::handleOptions, "/v1/core/instance/{instanceId}/statistics", Options);
+        ADD_METHOD_TO(InstanceHandler::handleOptions, "/v1/core/instances/{instanceId}/frame", Options);
         ADD_METHOD_TO(InstanceHandler::handleOptions, "/v1/core/instance/{instanceId}/output/stream", Options);
         ADD_METHOD_TO(InstanceHandler::handleOptions, "/v1/core/instances/batch/start", Options);
         ADD_METHOD_TO(InstanceHandler::handleOptions, "/v1/core/instances/batch/stop", Options);
@@ -179,6 +181,13 @@ public:
      */
     void getStatistics(const HttpRequestPtr &req,
                       std::function<void(const HttpResponsePtr &)> &&callback);
+    
+    /**
+     * @brief Handle GET /v1/core/instances/{instanceId}/frame
+     * Gets the last frame from a running instance
+     */
+    void getLastFrame(const HttpRequestPtr &req,
+                     std::function<void(const HttpResponsePtr &)> &&callback);
     
     /**
      * @brief Handle GET /v1/core/instance/{instanceId}/output/stream

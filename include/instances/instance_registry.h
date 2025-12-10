@@ -16,6 +16,8 @@
 #include <atomic>
 #include <thread>
 #include <chrono>
+#include <opencv2/opencv.hpp>
+#include <opencv2/imgcodecs.hpp>
 
 // Forward declarations
 namespace cvedix_nodes {
@@ -166,6 +168,13 @@ public:
      */
     std::optional<InstanceStatistics> getInstanceStatistics(const std::string& instanceId);
     
+    /**
+     * @brief Get last frame from instance (cached frame)
+     * @param instanceId Instance ID
+     * @return Base64-encoded JPEG frame string, empty string if no frame available
+     */
+    std::string getLastFrame(const std::string& instanceId) const;
+    
 private:
     SolutionRegistry& solution_registry_;
     PipelineBuilder& pipeline_builder_;
@@ -195,6 +204,38 @@ private:
     
     mutable std::unordered_map<std::string, InstanceStatsTracker> statistics_trackers_;
     
+    // Frame cache per instance
+    struct FrameCache {
+        cv::Mat frame;  // OSD frame (processed frame with overlays)
+        std::chrono::steady_clock::time_point timestamp;
+        bool has_frame = false;
+    };
+    
+    mutable std::unordered_map<std::string, FrameCache> frame_caches_;
+    mutable std::mutex frame_cache_mutex_; // Separate mutex for frame cache to avoid deadlock
+    
+    /**
+     * @brief Update frame cache for an instance
+     * @param instanceId Instance ID
+     * @param frame Frame to cache (will be copied)
+     */
+    void updateFrameCache(const std::string& instanceId, const cv::Mat& frame);
+    
+    /**
+     * @brief Setup frame capture hook for pipeline
+     * @param instanceId Instance ID
+     * @param nodes Pipeline nodes
+     */
+    void setupFrameCaptureHook(const std::string& instanceId, const std::vector<std::shared_ptr<cvedix_nodes::cvedix_node>>& nodes);
+    
+    /**
+     * @brief Encode cv::Mat frame to JPEG base64 string
+     * @param frame Frame to encode
+     * @param jpegQuality JPEG quality (1-100, default 85)
+     * @return Base64-encoded JPEG string
+     */
+    std::string encodeFrameToBase64(const cv::Mat& frame, int jpegQuality = 85) const;
+    
     /**
      * @brief Create InstanceInfo from request
      */
@@ -213,10 +254,11 @@ private:
     
     /**
      * @brief Start pipeline nodes
+     * @param instanceId Instance ID (for frame capture hook setup)
      * @param nodes Pipeline nodes to start
      * @param isRestart If true, this is a restart (use longer delays for model initialization)
      */
-    bool startPipeline(const std::vector<std::shared_ptr<cvedix_nodes::cvedix_node>>& nodes, bool isRestart = false);
+    bool startPipeline(const std::string& instanceId, const std::vector<std::shared_ptr<cvedix_nodes::cvedix_node>>& nodes, bool isRestart = false);
     
     /**
      * @brief Stop and cleanup pipeline nodes

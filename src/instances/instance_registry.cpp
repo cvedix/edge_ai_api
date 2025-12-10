@@ -11,6 +11,11 @@
 #include <cvedix/nodes/infers/cvedix_yunet_face_detector_node.h>
 #include <cvedix/nodes/infers/cvedix_sface_feature_encoder_node.h>
 #include <cvedix/nodes/des/cvedix_rtmp_des_node.h>
+#include <cvedix/nodes/des/cvedix_app_des_node.h>
+#include <cvedix/objects/cvedix_meta.h>
+#include <cvedix/objects/cvedix_frame_meta.h>
+#include <opencv2/opencv.hpp>
+#include <opencv2/imgcodecs.hpp>
 #include <algorithm>
 #include <typeinfo>
 #include <thread>
@@ -21,6 +26,7 @@
 #include <sys/stat.h>
 #include <unistd.h>
 #include <future>
+#include <vector>
 
 InstanceRegistry::InstanceRegistry(
     SolutionRegistry& solutionRegistry,
@@ -239,7 +245,7 @@ std::string InstanceRegistry::createInstance(const CreateInstanceRequest& req) {
             }
             
             try {
-                if (startPipeline(pipeline)) {
+                if (startPipeline(instanceId, pipeline)) {
                     // Update running status, reset retry counter, and initialize statistics tracker (need lock briefly)
                     {
                         std::unique_lock<std::shared_timed_mutex> lock(mutex_); // Exclusive lock for write operations
@@ -398,6 +404,12 @@ bool InstanceRegistry::deleteInstance(const std::string& instanceId) {
     
     // Stop logging thread if exists
     stopLoggingThread(instanceId);
+    
+    // Cleanup frame cache
+    {
+        std::lock_guard<std::mutex> lock(frame_cache_mutex_);
+        frame_caches_.erase(instanceId);
+    }
     
     // Delete from storage (doesn't need lock)
     if (isPersistent) {
@@ -741,7 +753,7 @@ bool InstanceRegistry::startInstance(const std::string& instanceId, bool skipAut
     // Start pipeline (isRestart=true because we rebuilt the pipeline)
     bool started = false;
     try {
-        started = startPipeline(pipelineCopy, true);
+        started = startPipeline(instanceId, pipelineCopy, true);
     } catch (const std::exception& e) {
         std::cerr << "[InstanceRegistry] ✗ Exception starting pipeline: " << e.what() << std::endl;
         // Cleanup pipeline on error
@@ -941,6 +953,12 @@ bool InstanceRegistry::stopInstance(const std::string& instanceId) {
     
     // Stop logging thread if exists
     stopLoggingThread(instanceId);
+    
+    // Cleanup frame cache
+    {
+        std::lock_guard<std::mutex> lock(frame_cache_mutex_);
+        frame_caches_.erase(instanceId);
+    }
     
     std::cerr << "[InstanceRegistry] ✓ Instance " << instanceId << " stopped successfully" << std::endl;
     std::cerr << "[InstanceRegistry] NOTE: All nodes have been destroyed. Pipeline will be rebuilt from scratch when you start this instance again" << std::endl;
@@ -1512,11 +1530,19 @@ void InstanceRegistry::waitForModelsReady(const std::vector<std::shared_ptr<cved
     }
 }
 
-bool InstanceRegistry::startPipeline(const std::vector<std::shared_ptr<cvedix_nodes::cvedix_node>>& nodes, bool isRestart) {
+bool InstanceRegistry::startPipeline(const std::string& instanceId, const std::vector<std::shared_ptr<cvedix_nodes::cvedix_node>>& nodes, bool isRestart) {
+    std::cerr << "[InstanceRegistry] [DEBUG] startPipeline called for instance: " << instanceId << std::endl;
+    std::cerr << "[InstanceRegistry] [DEBUG] Number of nodes: " << nodes.size() << std::endl;
+    
     if (nodes.empty()) {
         std::cerr << "[InstanceRegistry] Cannot start pipeline: no nodes" << std::endl;
         return false;
     }
+    
+    // Setup frame capture hook before starting pipeline
+    std::cerr << "[InstanceRegistry] [DEBUG] About to call setupFrameCaptureHook..." << std::endl;
+    setupFrameCaptureHook(instanceId, nodes);
+    std::cerr << "[InstanceRegistry] [DEBUG] setupFrameCaptureHook completed" << std::endl;
     
     try {
         // Start from the first node (source node)
@@ -1676,6 +1702,9 @@ void InstanceRegistry::stopPipeline(const std::vector<std::shared_ptr<cvedix_nod
     if (nodes.empty()) {
         return;
     }
+    
+    // Note: We can't easily get instanceId from nodes here, so frame cache cleanup
+    // will be handled in stopInstance/deleteInstance methods
     
     try {
         // Check if pipeline contains DNN models (face detector, feature encoder, etc.)
@@ -2708,5 +2737,218 @@ std::optional<InstanceStatistics> InstanceRegistry::getInstanceStatistics(const 
     }
     
     return stats;
+}
+
+// Base64 encoding helper function
+static std::string base64_encode(const unsigned char* data, size_t length) {
+    static const char base64_chars[] = 
+        "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+    
+    std::string encoded;
+    encoded.reserve(((length + 2) / 3) * 4);
+    
+    size_t i = 0;
+    while (i < length) {
+        unsigned char byte1 = data[i++];
+        unsigned char byte2 = (i < length) ? data[i++] : 0;
+        unsigned char byte3 = (i < length) ? data[i++] : 0;
+        
+        unsigned int combined = (byte1 << 16) | (byte2 << 8) | byte3;
+        
+        encoded += base64_chars[(combined >> 18) & 0x3F];
+        encoded += base64_chars[(combined >> 12) & 0x3F];
+        encoded += (i - 2 < length) ? base64_chars[(combined >> 6) & 0x3F] : '=';
+        encoded += (i - 1 < length) ? base64_chars[combined & 0x3F] : '=';
+    }
+    
+    return encoded;
+}
+
+std::string InstanceRegistry::encodeFrameToBase64(const cv::Mat& frame, int jpegQuality) const {
+    if (frame.empty()) {
+        return "";
+    }
+    
+    try {
+        std::vector<uchar> buffer;
+        std::vector<int> params = {cv::IMWRITE_JPEG_QUALITY, jpegQuality};
+        
+        if (!cv::imencode(".jpg", frame, buffer, params)) {
+            std::cerr << "[InstanceRegistry] Failed to encode frame to JPEG" << std::endl;
+            return "";
+        }
+        
+        if (buffer.empty()) {
+            return "";
+        }
+        
+        return base64_encode(buffer.data(), buffer.size());
+    } catch (const std::exception& e) {
+        std::cerr << "[InstanceRegistry] Exception encoding frame to base64: " << e.what() << std::endl;
+        return "";
+    } catch (...) {
+        std::cerr << "[InstanceRegistry] Unknown exception encoding frame to base64" << std::endl;
+        return "";
+    }
+}
+
+void InstanceRegistry::updateFrameCache(const std::string& instanceId, const cv::Mat& frame) {
+    if (frame.empty()) {
+        std::cerr << "[InstanceRegistry] [DEBUG] updateFrameCache: Frame is empty for instance: " << instanceId << std::endl;
+        return;
+    }
+    
+    std::lock_guard<std::mutex> lock(frame_cache_mutex_);
+    
+    FrameCache& cache = frame_caches_[instanceId];
+    frame.copyTo(cache.frame);  // Deep copy
+    cache.timestamp = std::chrono::steady_clock::now();
+    cache.has_frame = true;
+    
+    std::cerr << "[InstanceRegistry] [DEBUG] updateFrameCache: Frame cached successfully for instance: " << instanceId 
+              << " (size: " << frame.cols << "x" << frame.rows << ", channels: " << frame.channels() << ")" << std::endl;
+}
+
+void InstanceRegistry::setupFrameCaptureHook(const std::string& instanceId, 
+                                             const std::vector<std::shared_ptr<cvedix_nodes::cvedix_node>>& nodes) {
+    std::cerr << "[InstanceRegistry] [DEBUG] setupFrameCaptureHook called for instance: " << instanceId << std::endl;
+    std::cerr << "[InstanceRegistry] [DEBUG] Number of nodes: " << nodes.size() << std::endl;
+    
+    if (nodes.empty()) {
+        std::cerr << "[InstanceRegistry] [DEBUG] setupFrameCaptureHook: No nodes, returning" << std::endl;
+        return;
+    }
+    
+    // Log all node types for debugging
+    std::cerr << "[InstanceRegistry] [DEBUG] Node types in pipeline:" << std::endl;
+    for (size_t i = 0; i < nodes.size(); ++i) {
+        std::cerr << "[InstanceRegistry] [DEBUG]   " << (i+1) << ". " << typeid(*nodes[i]).name() << std::endl;
+    }
+    
+    // Find the last node (OSD or destination node)
+    // Try to find app_des_node first (best for capturing frames)
+    // If not found, try RTMP destination node
+    // If not found, try to find OSD node
+    
+    std::shared_ptr<cvedix_nodes::cvedix_app_des_node> appDesNode;
+    std::shared_ptr<cvedix_nodes::cvedix_rtmp_des_node> rtmpDesNode;
+    
+    // Search backwards from the end to find destination or OSD node
+    for (auto it = nodes.rbegin(); it != nodes.rend(); ++it) {
+        auto node = *it;
+        
+        // Try app_des_node first
+        if (!appDesNode) {
+            appDesNode = std::dynamic_pointer_cast<cvedix_nodes::cvedix_app_des_node>(node);
+            if (appDesNode) {
+                std::cerr << "[InstanceRegistry] [DEBUG] Found app_des_node for frame capture: " << instanceId << std::endl;
+                break;
+            }
+        }
+        
+        // Try RTMP destination node
+        if (!rtmpDesNode) {
+            rtmpDesNode = std::dynamic_pointer_cast<cvedix_nodes::cvedix_rtmp_des_node>(node);
+        }
+    }
+    
+    // Setup hook on app_des_node if found
+    if (appDesNode) {
+        std::cerr << "[InstanceRegistry] [DEBUG] Setting up frame capture hook on app_des_node for instance: " << instanceId << std::endl;
+        
+        appDesNode->set_app_des_result_hooker([this, instanceId](std::string node_name, 
+                                                                 std::shared_ptr<cvedix_objects::cvedix_meta> meta) {
+            try {
+                std::cerr << "[InstanceRegistry] [DEBUG] Hook called! node_name: " << node_name 
+                          << ", instanceId: " << instanceId << std::endl;
+                
+                if (!meta) {
+                    std::cerr << "[InstanceRegistry] [DEBUG] Hook: meta is null" << std::endl;
+                    return;
+                }
+                
+                std::cerr << "[InstanceRegistry] [DEBUG] Hook: meta_type = " << static_cast<int>(meta->meta_type) 
+                          << " (FRAME=" << static_cast<int>(cvedix_objects::cvedix_meta_type::FRAME) << ")" << std::endl;
+                
+                if (meta->meta_type == cvedix_objects::cvedix_meta_type::FRAME) {
+                    auto frame_meta = std::dynamic_pointer_cast<cvedix_objects::cvedix_frame_meta>(meta);
+                    if (!frame_meta) {
+                        std::cerr << "[InstanceRegistry] [DEBUG] Hook: Failed to cast to frame_meta" << std::endl;
+                        return;
+                    }
+                    
+                    std::cerr << "[InstanceRegistry] [DEBUG] Hook: Frame meta received!" << std::endl;
+                    std::cerr << "[InstanceRegistry] [DEBUG] Hook: osd_frame.empty() = " << frame_meta->osd_frame.empty() << std::endl;
+                    std::cerr << "[InstanceRegistry] [DEBUG] Hook: frame.empty() = " << frame_meta->frame.empty() << std::endl;
+                    
+                    // Prefer OSD frame (processed with overlays), fallback to original frame
+                    cv::Mat frameToCache;
+                    if (!frame_meta->osd_frame.empty()) {
+                        frameToCache = frame_meta->osd_frame;
+                        std::cerr << "[InstanceRegistry] [DEBUG] Hook: Using OSD frame (size: " 
+                                  << frameToCache.cols << "x" << frameToCache.rows << ")" << std::endl;
+                    } else if (!frame_meta->frame.empty()) {
+                        frameToCache = frame_meta->frame;
+                        std::cerr << "[InstanceRegistry] [DEBUG] Hook: Using original frame (size: " 
+                                  << frameToCache.cols << "x" << frameToCache.rows << ")" << std::endl;
+                    }
+                    
+                    if (!frameToCache.empty()) {
+                        std::cerr << "[InstanceRegistry] [DEBUG] Hook: Calling updateFrameCache..." << std::endl;
+                        updateFrameCache(instanceId, frameToCache);
+                        std::cerr << "[InstanceRegistry] [DEBUG] Hook: updateFrameCache completed!" << std::endl;
+                    } else {
+                        std::cerr << "[InstanceRegistry] [DEBUG] Hook: frameToCache is empty, skipping cache update" << std::endl;
+                    }
+                } else {
+                    std::cerr << "[InstanceRegistry] [DEBUG] Hook: meta_type is not FRAME, ignoring" << std::endl;
+                }
+            } catch (const std::exception& e) {
+                std::cerr << "[InstanceRegistry] [ERROR] Exception in frame capture hook: " << e.what() << std::endl;
+            } catch (...) {
+                std::cerr << "[InstanceRegistry] [ERROR] Unknown exception in frame capture hook" << std::endl;
+            }
+        });
+        
+        std::cerr << "[InstanceRegistry] ✓ Frame capture hook setup completed for instance: " << instanceId << std::endl;
+        return;
+    }
+    
+    // If no app_des_node found, log warning
+    std::cerr << "[InstanceRegistry] ⚠ Warning: No app_des_node found in pipeline for instance: " << instanceId << std::endl;
+    std::cerr << "[InstanceRegistry] [DEBUG] This should not happen if pipeline builder added app_des_node automatically" << std::endl;
+    std::cerr << "[InstanceRegistry] [DEBUG] Please check pipeline builder logs for app_des_node creation" << std::endl;
+    std::cerr << "[InstanceRegistry] Frame capture will not be available. Consider adding app_des_node to pipeline." << std::endl;
+}
+
+std::string InstanceRegistry::getLastFrame(const std::string& instanceId) const {
+    std::lock_guard<std::mutex> lock(frame_cache_mutex_);
+    
+    std::cerr << "[InstanceRegistry] [DEBUG] getLastFrame: Requesting frame for instance: " << instanceId << std::endl;
+    std::cerr << "[InstanceRegistry] [DEBUG] getLastFrame: Total cached instances: " << frame_caches_.size() << std::endl;
+    
+    auto it = frame_caches_.find(instanceId);
+    if (it == frame_caches_.end()) {
+        std::cerr << "[InstanceRegistry] [DEBUG] getLastFrame: No cache entry found for instance: " << instanceId << std::endl;
+        return "";  // No frame cached
+    }
+    
+    if (!it->second.has_frame) {
+        std::cerr << "[InstanceRegistry] [DEBUG] getLastFrame: Cache entry exists but has_frame=false for instance: " << instanceId << std::endl;
+        return "";
+    }
+    
+    if (it->second.frame.empty()) {
+        std::cerr << "[InstanceRegistry] [DEBUG] getLastFrame: Cache entry exists but frame is empty for instance: " << instanceId << std::endl;
+        return "";
+    }
+    
+    std::cerr << "[InstanceRegistry] [DEBUG] getLastFrame: Frame found! Encoding to base64 (size: " 
+              << it->second.frame.cols << "x" << it->second.frame.rows << ")" << std::endl;
+    
+    // Encode frame to base64
+    std::string result = encodeFrameToBase64(it->second.frame, 85);  // Default quality 85%
+    std::cerr << "[InstanceRegistry] [DEBUG] getLastFrame: Encoded frame length: " << result.length() << " chars" << std::endl;
+    return result;
 }
 

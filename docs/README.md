@@ -115,9 +115,19 @@ Tài liệu hướng dẫn đầy đủ cho Edge AI API project.
     - Use cases: monitoring, alerting, dashboard
     - Troubleshooting và best practices
 
+12. **[FRAME_API.md](FRAME_API.md)** - Frame API Documentation
+    - Hướng dẫn sử dụng Frame API endpoint
+    - Lấy khung hình cuối cùng từ instance đang chạy
+    - Endpoint: `/v1/core/instances/{instanceId}/frame`
+    - Frame được encode thành JPEG base64 format
+    - Yêu cầu pipeline có app_des_node
+    - Ví dụ sử dụng với curl, Python, JavaScript, HTML
+    - Use cases: live preview, thumbnail generation, monitoring
+    - Troubleshooting và best practices
+
 ### Node Support & Implementation
 
-12. **[NODE_SUPPORT_STATUS.md](NODE_SUPPORT_STATUS.md)** - Trạng thái hỗ trợ các node types
+13. **[NODE_SUPPORT_STATUS.md](NODE_SUPPORT_STATUS.md)** - Trạng thái hỗ trợ các node types
     - Inference nodes: 23 nodes (100%)
     - Source nodes: 6 nodes (100%)
     - Broker nodes: 12 nodes (100%)

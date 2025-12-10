@@ -1401,6 +1401,53 @@ paths:
         '200':
           description: CORS preflight response
 
+  /v1/core/instances/{instanceId}/frame:
+    get:
+      summary: Get the last frame
+      description: |
+        Lấy khung hình cuối cùng có sẵn từ một phiên bản đang chạy.
+        Frame được encode thành JPEG base64 format.
+      operationId: getLastFrame
+      tags:
+        - Instances
+      parameters:
+        - name: instanceId
+          in: path
+          required: true
+          schema:
+            type: string
+          description: The ID of the running instance
+      responses:
+        '200':
+          description: Successfully retrieved the last frame
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FrameResponse'
+              example:
+                frame: "/9j/4AAQSkZJRgABAQEAYABgAAD..."
+                running: true
+        '404':
+          description: Instance ID not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+    options:
+      summary: CORS preflight for get last frame
+      operationId: getLastFrameOptions
+      tags:
+        - Instances
+      responses:
+        '200':
+          description: CORS preflight response
+
   /v1/core/instances/batch/start:
     post:
       summary: Start multiple instances concurrently
@@ -4472,6 +4519,22 @@ components:
           type: string
           description: Description of the group
           example: "Updated description"
+
+    FrameResponse:
+      type: object
+      description: Response containing the last frame from a running instance
+      required:
+        - frame
+        - running
+      properties:
+        frame:
+          type: string
+          description: The last available frame encoded as JPEG base64
+          example: "/9j/4AAQSkZJRgABAQEAYABgAAD..."
+        running:
+          type: boolean
+          description: Indicates if the instance is running
+          example: true
 
 tags:
   - name: Core
