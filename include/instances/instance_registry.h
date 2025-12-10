@@ -162,8 +162,9 @@ public:
      * @brief Get instance statistics
      * @param instanceId Instance ID
      * @return Statistics info if instance exists and is running, empty optional otherwise
+     * @note This method may update tracker with latest FPS/resolution information
      */
-    std::optional<InstanceStatistics> getInstanceStatistics(const std::string& instanceId) const;
+    std::optional<InstanceStatistics> getInstanceStatistics(const std::string& instanceId);
     
 private:
     SolutionRegistry& solution_registry_;
@@ -181,7 +182,8 @@ private:
     
     // Statistics tracking per instance
     struct InstanceStatsTracker {
-        std::chrono::steady_clock::time_point start_time;
+        std::chrono::steady_clock::time_point start_time;  // For elapsed time calculation
+        std::chrono::system_clock::time_point start_time_system;  // For Unix timestamp
         uint64_t frames_processed = 0;
         uint64_t dropped_frames = 0;
         double last_fps = 0.0;

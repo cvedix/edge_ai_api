@@ -179,6 +179,8 @@ public:
      */
     void getStatistics(const HttpRequestPtr &req,
                       std::function<void(const HttpResponsePtr &)> &&callback);
+    
+    /**
      * @brief Handle GET /v1/core/instance/{instanceId}/output/stream
      * Gets stream output configuration for an instance
      */

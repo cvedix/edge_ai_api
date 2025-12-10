@@ -240,7 +240,7 @@ std::string InstanceRegistry::createInstance(const CreateInstanceRequest& req) {
             
             try {
                 if (startPipeline(pipeline)) {
-                    // Update running status and reset retry counter (need lock briefly)
+                    // Update running status, reset retry counter, and initialize statistics tracker (need lock briefly)
                     {
                         std::unique_lock<std::shared_timed_mutex> lock(mutex_); // Exclusive lock for write operations
                         auto instanceIt = instances_.find(instanceId);
@@ -252,6 +252,55 @@ std::string InstanceRegistry::createInstance(const CreateInstanceRequest& req) {
                             instanceIt->second.startTime = std::chrono::steady_clock::now();
                             instanceIt->second.lastActivityTime = instanceIt->second.startTime;
                             instanceIt->second.hasReceivedData = false;
+                            
+                            // Initialize statistics tracker
+                            InstanceStatsTracker tracker;
+                            tracker.start_time = std::chrono::steady_clock::now();
+                            tracker.start_time_system = std::chrono::system_clock::now();  // For Unix timestamp
+                            tracker.frames_processed = 0;
+                            tracker.dropped_frames = 0;
+                            tracker.last_fps = 0.0;
+                            tracker.last_fps_update = tracker.start_time;
+                            tracker.frame_count_since_last_update = 0;
+                            tracker.resolution = "";
+                            tracker.source_resolution = "";
+                            tracker.format = "BGR";  // Default format for CVEDIX
+                            
+                            // Try to get resolution from source node
+                            auto pipelineIt = pipelines_.find(instanceId);
+                            if (pipelineIt != pipelines_.end() && !pipelineIt->second.empty()) {
+                                auto sourceNode = pipelineIt->second[0];
+                                auto rtspNode = std::dynamic_pointer_cast<cvedix_nodes::cvedix_rtsp_src_node>(sourceNode);
+                                auto fileNode = std::dynamic_pointer_cast<cvedix_nodes::cvedix_file_src_node>(sourceNode);
+                                auto rtmpNode = std::dynamic_pointer_cast<cvedix_nodes::cvedix_rtmp_src_node>(sourceNode);
+                                
+                                try {
+                                    if (rtspNode) {
+                                        // Wait a bit for RTSP to connect and get resolution
+                                        std::this_thread::sleep_for(std::chrono::milliseconds(500));
+                                        auto width = rtspNode->get_original_width();
+                                        auto height = rtspNode->get_original_height();
+                                        if (width > 0 && height > 0) {
+                                            tracker.source_resolution = std::to_string(width) + "x" + std::to_string(height);
+                                            tracker.resolution = tracker.source_resolution;  // Use source resolution as current
+                                        }
+                                    } else if (fileNode) {
+                                        // File source may have similar APIs, try to get resolution
+                                        // Note: CVEDIX file source may not expose these APIs directly
+                                        // We'll leave it empty for now and update when frame is processed
+                                    } else if (rtmpNode) {
+                                        // RTMP source - similar to RTSP
+                                        std::this_thread::sleep_for(std::chrono::milliseconds(500));
+                                        // Check if RTMP source has similar APIs
+                                    }
+                                } catch (const std::exception& e) {
+                                    std::cerr << "[InstanceRegistry] Warning: Could not get resolution from source node: " << e.what() << std::endl;
+                                } catch (...) {
+                                    // Ignore errors - resolution will remain empty
+                                }
+                            }
+                            
+                            statistics_trackers_[instanceId] = tracker;
                         }
                     } // Release lock
                     std::cerr << "[InstanceRegistry] ========================================" << std::endl;
@@ -723,6 +772,7 @@ bool InstanceRegistry::startInstance(const std::string& instanceId, bool skipAut
                 // Initialize statistics tracker
                 InstanceStatsTracker tracker;
                 tracker.start_time = std::chrono::steady_clock::now();
+                tracker.start_time_system = std::chrono::system_clock::now();  // For Unix timestamp
                 tracker.frames_processed = 0;
                 tracker.dropped_frames = 0;
                 tracker.last_fps = 0.0;
@@ -2471,8 +2521,8 @@ Json::Value InstanceRegistry::getInstanceConfig(const std::string& instanceId) c
     return config;
 }
 
-std::optional<InstanceStatistics> InstanceRegistry::getInstanceStatistics(const std::string& instanceId) const {
-    std::lock_guard<std::mutex> lock(mutex_);
+std::optional<InstanceStatistics> InstanceRegistry::getInstanceStatistics(const std::string& instanceId) {
+    std::unique_lock<std::shared_timed_mutex> lock(mutex_);
     
     // Check if instance exists and is running
     auto instanceIt = instances_.find(instanceId);
@@ -2491,7 +2541,7 @@ std::optional<InstanceStatistics> InstanceRegistry::getInstanceStatistics(const 
         return std::nullopt;
     }
     
-    // Get tracker
+    // Get tracker (non-const reference so we can update it)
     auto trackerIt = statistics_trackers_.find(instanceId);
     if (trackerIt == statistics_trackers_.end()) {
         // Tracker not initialized yet, return default statistics
@@ -2500,16 +2550,113 @@ std::optional<InstanceStatistics> InstanceRegistry::getInstanceStatistics(const 
         return stats;
     }
     
-    const InstanceStatsTracker& tracker = trackerIt->second;
+    InstanceStatsTracker& tracker = trackerIt->second;
     
     // Build statistics object
     InstanceStatistics stats;
+    
+    // Get source framerate and resolution from source node FIRST (before calculating stats)
+    // This ensures we have the most up-to-date information
+    auto sourceNode = pipelineIt->second[0];
+    if (!sourceNode) {
+        std::cerr << "[InstanceRegistry] [Statistics] ERROR: Source node is null!" << std::endl;
+        return std::nullopt;
+    }
+    
+    std::cerr << "[InstanceRegistry] [Statistics] Source node type: " << typeid(*sourceNode).name() << std::endl;
+    auto rtspNode = std::dynamic_pointer_cast<cvedix_nodes::cvedix_rtsp_src_node>(sourceNode);
+    auto fileNode = std::dynamic_pointer_cast<cvedix_nodes::cvedix_file_src_node>(sourceNode);
+    auto rtmpNode = std::dynamic_pointer_cast<cvedix_nodes::cvedix_rtmp_src_node>(sourceNode);
+    
+    std::cerr << "[InstanceRegistry] [Statistics] Node casts - rtspNode: " << (rtspNode ? "OK" : "null") 
+              << ", fileNode: " << (fileNode ? "OK" : "null") 
+              << ", rtmpNode: " << (rtmpNode ? "OK" : "null") << std::endl;
+    
+    double sourceFps = 0.0;
+    std::string sourceRes = "";
+    
+    try {
+        if (rtspNode) {
+            // Get source framerate and resolution from RTSP node
+            int fps_int = rtspNode->get_original_fps();
+            // Note: get_original_fps() returns -1 if not available, > 0 if available
+            if (fps_int > 0) {
+                sourceFps = static_cast<double>(fps_int);
+                std::cerr << "[InstanceRegistry] [Statistics] RTSP source FPS: " << sourceFps << std::endl;
+            } else {
+                std::cerr << "[InstanceRegistry] [Statistics] RTSP source FPS not available yet (fps_int=" << fps_int << ")" << std::endl;
+            }
+            
+            auto width = rtspNode->get_original_width();
+            auto height = rtspNode->get_original_height();
+            std::cerr << "[InstanceRegistry] [Statistics] RTSP source resolution: width=" << width << ", height=" << height << std::endl;
+            if (width > 0 && height > 0) {
+                sourceRes = std::to_string(width) + "x" + std::to_string(height);
+                std::cerr << "[InstanceRegistry] [Statistics] RTSP source resolution: " << sourceRes << std::endl;
+            } else {
+                std::cerr << "[InstanceRegistry] [Statistics] RTSP source resolution not available yet" << std::endl;
+            }
+        } else if (fileNode) {
+            std::cerr << "[InstanceRegistry] [Statistics] File source node detected" << std::endl;
+            // File source inherits from cvedix_src_node, so it has get_original_fps/width/height methods
+            int fps_int = fileNode->get_original_fps();
+            if (fps_int > 0) {
+                sourceFps = static_cast<double>(fps_int);
+                std::cerr << "[InstanceRegistry] [Statistics] File source FPS: " << sourceFps << std::endl;
+            } else {
+                std::cerr << "[InstanceRegistry] [Statistics] File source FPS not available yet (fps_int=" << fps_int << ")" << std::endl;
+            }
+            
+            auto width = fileNode->get_original_width();
+            auto height = fileNode->get_original_height();
+            std::cerr << "[InstanceRegistry] [Statistics] File source resolution: width=" << width << ", height=" << height << std::endl;
+            if (width > 0 && height > 0) {
+                sourceRes = std::to_string(width) + "x" + std::to_string(height);
+                std::cerr << "[InstanceRegistry] [Statistics] File source resolution: " << sourceRes << std::endl;
+            } else {
+                std::cerr << "[InstanceRegistry] [Statistics] File source resolution not available yet" << std::endl;
+            }
+        } else if (rtmpNode) {
+            std::cerr << "[InstanceRegistry] [Statistics] RTMP source node detected" << std::endl;
+            // RTMP source - similar to RTSP if APIs are available
+        } else {
+            std::cerr << "[InstanceRegistry] [Statistics] Unknown source node type (not RTSP, File, or RTMP)" << std::endl;
+            std::cerr << "[InstanceRegistry] [Statistics] Source node type: " << typeid(*sourceNode).name() << std::endl;
+        }
+    } catch (const std::exception& e) {
+        // If APIs are not available or throw exceptions, use defaults
+        std::cerr << "[InstanceRegistry] [Statistics] Exception getting source info: " << e.what() << std::endl;
+    } catch (...) {
+        std::cerr << "[InstanceRegistry] [Statistics] Unknown exception getting source info" << std::endl;
+    }
+    
+    // Calculate current FPS: prefer source FPS (most accurate), then info.fps, then tracker.last_fps
+    // Source FPS is the actual processing FPS from the stream
+    double currentFps = 0.0;
+    std::cerr << "[InstanceRegistry] [Statistics] Calculating FPS: sourceFps=" << sourceFps 
+              << ", info.fps=" << info.fps << ", tracker.last_fps=" << tracker.last_fps << std::endl;
+    
+    if (sourceFps > 0.0) {
+        currentFps = sourceFps;  // Use source FPS as primary (most accurate)
+        // Update tracker with latest FPS
+        tracker.last_fps = sourceFps;
+        tracker.last_fps_update = std::chrono::steady_clock::now();
+        std::cerr << "[InstanceRegistry] [Statistics] Using source FPS: " << currentFps << std::endl;
+    } else if (info.fps > 0.0) {
+        currentFps = info.fps;
+        // Update tracker with latest FPS
+        tracker.last_fps = info.fps;
+        tracker.last_fps_update = std::chrono::steady_clock::now();
+        std::cerr << "[InstanceRegistry] [Statistics] Using info.fps: " << currentFps << std::endl;
+    } else {
+        currentFps = tracker.last_fps;
+        std::cerr << "[InstanceRegistry] [Statistics] Using tracker.last_fps: " << currentFps << std::endl;
+    }
     
     // Calculate frames_processed based on FPS and elapsed time
     // This is an estimate since we don't have direct frame count from SDK
     auto now = std::chrono::steady_clock::now();
     auto elapsed_seconds = std::chrono::duration_cast<std::chrono::seconds>(now - tracker.start_time).count();
-    double currentFps = info.fps > 0.0 ? info.fps : tracker.last_fps;
     
     if (currentFps > 0.0 && elapsed_seconds > 0) {
         // Estimate frames processed = FPS * elapsed time
@@ -2521,15 +2668,33 @@ std::optional<InstanceStatistics> InstanceRegistry::getInstanceStatistics(const 
     
     stats.dropped_frames_count = tracker.dropped_frames;
     stats.current_framerate = currentFps;
-    stats.resolution = tracker.resolution;
-    stats.source_resolution = tracker.source_resolution;
+    
+    // Use resolution from source node if available, otherwise use tracker value
+    if (!sourceRes.empty()) {
+        stats.resolution = sourceRes;
+        stats.source_resolution = sourceRes;
+        // Update tracker with latest resolution
+        tracker.resolution = sourceRes;
+        tracker.source_resolution = sourceRes;
+    } else {
+        stats.resolution = tracker.resolution;
+        stats.source_resolution = tracker.source_resolution;
+    }
+    
     stats.format = tracker.format;
     
     // Calculate start_time (Unix timestamp)
-    auto start_time_point = tracker.start_time;
-    auto start_time_since_epoch = start_time_point.time_since_epoch();
+    auto start_time_since_epoch = tracker.start_time_system.time_since_epoch();
     auto start_time_seconds = std::chrono::duration_cast<std::chrono::seconds>(start_time_since_epoch).count();
     stats.start_time = start_time_seconds;
+    
+    // Set source framerate
+    if (sourceFps > 0.0) {
+        stats.source_framerate = sourceFps;
+    } else {
+        // Fallback to current framerate if source FPS not available
+        stats.source_framerate = stats.current_framerate;
+    }
     
     // Calculate latency (average time per frame in milliseconds)
     if (stats.frames_processed > 0 && currentFps > 0.0) {
@@ -2539,52 +2704,10 @@ std::optional<InstanceStatistics> InstanceRegistry::getInstanceStatistics(const 
         stats.latency = 0.0;
     }
     
-    // Get source framerate and resolution from source node
-    auto sourceNode = pipelineIt->second[0];
-    auto rtspNode = std::dynamic_pointer_cast<cvedix_nodes::cvedix_rtsp_src_node>(sourceNode);
-    auto fileNode = std::dynamic_pointer_cast<cvedix_nodes::cvedix_file_src_node>(sourceNode);
-    auto rtmpNode = std::dynamic_pointer_cast<cvedix_nodes::cvedix_rtmp_src_node>(sourceNode);
-    
-    try {
-        if (rtspNode) {
-            // Get source framerate and resolution from RTSP node
-            auto sourceFps = rtspNode->get_original_fps();
-            if (sourceFps > 0.0) {
-                stats.source_framerate = sourceFps;
-            }
-            
-            auto width = rtspNode->get_original_width();
-            auto height = rtspNode->get_original_height();
-            if (width > 0 && height > 0) {
-                std::string sourceRes = std::to_string(width) + "x" + std::to_string(height);
-                if (stats.source_resolution.empty()) {
-                    stats.source_resolution = sourceRes;
-                }
-                if (stats.resolution.empty()) {
-                    stats.resolution = sourceRes;
-                }
-            }
-        } else if (fileNode) {
-            // File source - try to get information if APIs are available
-            // Note: CVEDIX file source may not expose these APIs
-            // For now, use tracker values
-        } else if (rtmpNode) {
-            // RTMP source - similar to RTSP if APIs are available
-            // For now, use tracker values
-        }
-    } catch (const std::exception& e) {
-        // If APIs are not available or throw exceptions, use defaults
-        // This is expected for some node types
-    } catch (...) {
-        // Ignore unknown errors
-    }
-    
-    // Set default values if not available
-    if (stats.source_framerate == 0.0) {
-        stats.source_framerate = stats.current_framerate;  // Use current as fallback
-    }
+    // Set default format if empty
     if (stats.format.empty()) {
         stats.format = "BGR";  // Default format
+        tracker.format = "BGR";
     }
     
     // Queue size - not available from SDK, return 0
