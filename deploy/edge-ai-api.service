@@ -27,7 +27,7 @@ ProtectSystem=true
 ProtectHome=true
 # Allow network access (required for binding ports)
 PrivateNetwork=false
-ReadWritePaths=/opt/edge_ai_api/logs /opt/edge_ai_api/data /opt/edge_ai_api/uploads /opt/edge_ai_api/instances
+ReadWritePaths=/opt/edge_ai_api/logs /opt/edge_ai_api/data /opt/edge_ai_api/uploads /opt/edge_ai_api/instances /mnt/sb1/data
 
 # Watchdog settings (systemd built-in watchdog)
 # NOTE: Disabled because application has its own watchdog implementation
