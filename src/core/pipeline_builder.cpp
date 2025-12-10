@@ -560,18 +560,38 @@ std::shared_ptr<cvedix_nodes::cvedix_node> PipelineBuilder::createNode(
     
     // Create node based on type
     try {
+        // Source nodes - Auto-detect source type for file_src if RTSP_SRC_URL or RTMP_SRC_URL is provided
+        std::string actualNodeType = nodeConfig.nodeType;
+        if (nodeConfig.nodeType == "file_src") {
+            // Check if RTSP_SRC_URL or RTMP_SRC_URL is provided in additionalParams
+            auto rtspIt = req.additionalParams.find("RTSP_SRC_URL");
+            auto rtmpIt = req.additionalParams.find("RTMP_SRC_URL");
+            
+            if (rtspIt != req.additionalParams.end() && !rtspIt->second.empty()) {
+                std::cerr << "[PipelineBuilder] Auto-detected RTSP source from RTSP_SRC_URL parameter, overriding file_src" << std::endl;
+                actualNodeType = "rtsp_src";
+                // Update params to use rtsp_url instead of file_path
+                params["rtsp_url"] = rtspIt->second;
+            } else if (rtmpIt != req.additionalParams.end() && !rtmpIt->second.empty()) {
+                std::cerr << "[PipelineBuilder] Auto-detected RTMP source from RTMP_SRC_URL parameter, overriding file_src" << std::endl;
+                actualNodeType = "rtmp_src";
+                // Update params to use rtmp_url instead of file_path
+                params["rtmp_url"] = rtmpIt->second;
+            }
+        }
+        
         // Source nodes
-        if (nodeConfig.nodeType == "rtsp_src") {
+        if (actualNodeType == "rtsp_src") {
             return createRTSPSourceNode(nodeName, params, req);
-        } else if (nodeConfig.nodeType == "file_src") {
+        } else if (actualNodeType == "file_src") {
             return createFileSourceNode(nodeName, params, req);
-        } else if (nodeConfig.nodeType == "app_src") {
+        } else if (actualNodeType == "app_src") {
             return createAppSourceNode(nodeName, params, req);
-        } else if (nodeConfig.nodeType == "image_src") {
+        } else if (actualNodeType == "image_src") {
             return createImageSourceNode(nodeName, params, req);
-        } else if (nodeConfig.nodeType == "rtmp_src") {
+        } else if (actualNodeType == "rtmp_src") {
             return createRTMPSourceNode(nodeName, params, req);
-        } else if (nodeConfig.nodeType == "udp_src") {
+        } else if (actualNodeType == "udp_src") {
             return createUDPSourceNode(nodeName, params, req);
         }
         // Face detection nodes
@@ -739,10 +759,23 @@ std::shared_ptr<cvedix_nodes::cvedix_node> PipelineBuilder::createRTSPSourceNode
         // resize_ratio must be > 0.0 and <= 1.0
         float resize_ratio = 1.0f; // Default to no resize
         
-        // Check if resize_ratio is specified in params
-        if (params.count("resize_ratio")) {
+        // Priority: additionalParams RESIZE_RATIO > params resize_ratio > params scale > default
+        // This allows runtime override of resize_ratio for RTSP streams
+        auto resizeIt = req.additionalParams.find("RESIZE_RATIO");
+        if (resizeIt != req.additionalParams.end() && !resizeIt->second.empty()) {
+            try {
+                resize_ratio = std::stof(resizeIt->second);
+                std::cerr << "[PipelineBuilder] Using RESIZE_RATIO from additionalParams: " << resize_ratio << std::endl;
+            } catch (const std::exception& e) {
+                std::cerr << "[PipelineBuilder] Warning: Invalid RESIZE_RATIO value '" << resizeIt->second 
+                          << "', using value from params or default" << std::endl;
+            }
+        }
+        
+        // Check if resize_ratio is specified in params (from solution config)
+        if (resize_ratio == 1.0f && params.count("resize_ratio")) {
             resize_ratio = std::stof(params.at("resize_ratio"));
-        } else if (params.count("scale")) {
+        } else if (resize_ratio == 1.0f && params.count("scale")) {
             resize_ratio = std::stof(params.at("scale"));
         }
         
@@ -1112,11 +1145,18 @@ double PipelineBuilder::mapDetectionSensitivity(const std::string& sensitivity) 
 }
 
 std::string PipelineBuilder::getRTSPUrl(const CreateInstanceRequest& req) const {
-    // Get RTSP URL from additionalParams
+    // Get RTSP URL from additionalParams - check both RTSP_URL and RTSP_SRC_URL
     auto it = req.additionalParams.find("RTSP_URL");
     if (it != req.additionalParams.end() && !it->second.empty()) {
-        std::cerr << "[PipelineBuilder] RTSP URL from request additionalParams: '" << it->second << "'" << std::endl;
+        std::cerr << "[PipelineBuilder] RTSP URL from request additionalParams (RTSP_URL): '" << it->second << "'" << std::endl;
         return it->second;
+    }
+    
+    // Also check RTSP_SRC_URL (for consistency with RTMP_SRC_URL)
+    auto srcIt = req.additionalParams.find("RTSP_SRC_URL");
+    if (srcIt != req.additionalParams.end() && !srcIt->second.empty()) {
+        std::cerr << "[PipelineBuilder] RTSP URL from request additionalParams (RTSP_SRC_URL): '" << srcIt->second << "'" << std::endl;
+        return srcIt->second;
     }
     
     // Default or from environment
@@ -1126,9 +1166,16 @@ std::string PipelineBuilder::getRTSPUrl(const CreateInstanceRequest& req) const 
         return std::string(envUrl);
     }
     
+    // Also check RTSP_SRC_URL environment variable
+    const char* envSrcUrl = std::getenv("RTSP_SRC_URL");
+    if (envSrcUrl && strlen(envSrcUrl) > 0) {
+        std::cerr << "[PipelineBuilder] RTSP URL from environment variable (RTSP_SRC_URL): '" << envSrcUrl << "'" << std::endl;
+        return std::string(envSrcUrl);
+    }
+    
     // Default fallback
     std::cerr << "[PipelineBuilder] WARNING: Using default RTSP URL (rtsp://localhost:8554/stream)" << std::endl;
-    std::cerr << "[PipelineBuilder] NOTE: To use custom RTSP URL, provide 'RTSP_URL' in request body or set RTSP_URL environment variable" << std::endl;
+    std::cerr << "[PipelineBuilder] NOTE: To use custom RTSP URL, provide 'RTSP_URL' or 'RTSP_SRC_URL' in request body or set RTSP_URL/RTSP_SRC_URL environment variable" << std::endl;
     return "rtsp://localhost:8554/stream";
 }
 
