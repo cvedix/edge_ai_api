@@ -1,4 +1,5 @@
-#include "models/model_upload_handler.h"
+#include "videos/video_upload_handler.h"
+#include "core/cors_helper.h"
 #include <drogon/HttpResponse.h>
 #include <fstream>
 #include <filesystem>
@@ -9,18 +10,18 @@
 #include <ctime>
 #include <chrono>
 
-std::string ModelUploadHandler::models_dir_ = "./models";
+std::string VideoUploadHandler::videos_dir_ = "./videos";
 
-void ModelUploadHandler::setModelsDirectory(const std::string& dir) {
-    models_dir_ = dir;
+void VideoUploadHandler::setVideosDirectory(const std::string& dir) {
+    videos_dir_ = dir;
 }
 
-std::string ModelUploadHandler::getModelsDirectory() const {
-    return models_dir_;
+std::string VideoUploadHandler::getVideosDirectory() const {
+    return videos_dir_;
 }
 
-bool ModelUploadHandler::isValidModelFile(const std::string& filename) const {
-    // Allow .onnx, .rknn, .weights, .cfg, .pt, .pth, .pb, .tflite files
+bool VideoUploadHandler::isValidVideoFile(const std::string& filename) const {
+    // Allow common video file extensions
     std::string lower = filename;
     std::transform(lower.begin(), lower.end(), lower.begin(), ::tolower);
     
@@ -30,17 +31,42 @@ bool ModelUploadHandler::isValidModelFile(const std::string& filename) const {
         return str.compare(str.length() - suffix.length(), suffix.length(), suffix) == 0;
     };
     
-    return hasSuffix(lower, ".onnx") ||
-           hasSuffix(lower, ".rknn") ||
-           hasSuffix(lower, ".weights") ||
-           hasSuffix(lower, ".cfg") ||
-           hasSuffix(lower, ".pt") ||
-           hasSuffix(lower, ".pth") ||
-           hasSuffix(lower, ".pb") ||
-           hasSuffix(lower, ".tflite");
+    return hasSuffix(lower, ".mp4") ||
+           hasSuffix(lower, ".avi") ||
+           hasSuffix(lower, ".mkv") ||
+           hasSuffix(lower, ".mov") ||
+           hasSuffix(lower, ".flv") ||
+           hasSuffix(lower, ".wmv") ||
+           hasSuffix(lower, ".webm") ||
+           hasSuffix(lower, ".m4v") ||
+           hasSuffix(lower, ".3gp") ||
+           hasSuffix(lower, ".ts") ||
+           hasSuffix(lower, ".m3u8") ||
+           hasSuffix(lower, ".mpg") ||
+           hasSuffix(lower, ".mpeg") ||
+           hasSuffix(lower, ".vob") ||
+           hasSuffix(lower, ".asf") ||
+           hasSuffix(lower, ".rm") ||
+           hasSuffix(lower, ".rmvb") ||
+           hasSuffix(lower, ".ogv") ||
+           hasSuffix(lower, ".divx") ||
+           hasSuffix(lower, ".xvid") ||
+           hasSuffix(lower, ".f4v") ||
+           hasSuffix(lower, ".mts") ||
+           hasSuffix(lower, ".m2ts") ||
+           hasSuffix(lower, ".mxf") ||
+           hasSuffix(lower, ".dv") ||
+           hasSuffix(lower, ".yuv") ||
+           hasSuffix(lower, ".raw") ||
+           hasSuffix(lower, ".h264") ||
+           hasSuffix(lower, ".h265") ||
+           hasSuffix(lower, ".hevc") ||
+           hasSuffix(lower, ".vp8") ||
+           hasSuffix(lower, ".vp9") ||
+           hasSuffix(lower, ".av1");
 }
 
-std::string ModelUploadHandler::sanitizeFilename(const std::string& filename) const {
+std::string VideoUploadHandler::sanitizeFilename(const std::string& filename) const {
     std::string sanitized;
     for (char c : filename) {
         // Allow alphanumeric, dot, dash, underscore
@@ -55,51 +81,51 @@ std::string ModelUploadHandler::sanitizeFilename(const std::string& filename) co
     return sanitized;
 }
 
-std::string ModelUploadHandler::extractModelName(const HttpRequestPtr &req) const {
+std::string VideoUploadHandler::extractVideoName(const HttpRequestPtr &req) const {
     // Try getParameter first (standard way)
-    std::string modelName = req->getParameter("modelName");
+    std::string videoName = req->getParameter("videoName");
     
     // Fallback: extract from path if getParameter doesn't work
-    if (modelName.empty()) {
+    if (videoName.empty()) {
         std::string path = req->getPath();
-        size_t modelsPos = path.find("/models/");
-        if (modelsPos != std::string::npos) {
-            size_t start = modelsPos + 8; // length of "/models/"
+        size_t videosPos = path.find("/videos/");
+        if (videosPos != std::string::npos) {
+            size_t start = videosPos + 8; // length of "/videos/"
             size_t end = path.find("?", start); // Stop at query string if present
             if (end == std::string::npos) {
                 end = path.length();
             }
-            modelName = path.substr(start, end - start);
+            videoName = path.substr(start, end - start);
         }
     }
     
-    // URL decode the model name if it contains encoded characters
-    if (!modelName.empty()) {
+    // URL decode the video name if it contains encoded characters
+    if (!videoName.empty()) {
         std::string decoded;
-        decoded.reserve(modelName.length());
-        for (size_t i = 0; i < modelName.length(); ++i) {
-            if (modelName[i] == '%' && i + 2 < modelName.length()) {
+        decoded.reserve(videoName.length());
+        for (size_t i = 0; i < videoName.length(); ++i) {
+            if (videoName[i] == '%' && i + 2 < videoName.length()) {
                 // Try to decode hex value
-                char hex[3] = {modelName[i+1], modelName[i+2], '\0'};
+                char hex[3] = {videoName[i+1], videoName[i+2], '\0'};
                 char* end;
                 unsigned long value = std::strtoul(hex, &end, 16);
                 if (*end == '\0' && value <= 255) {
                     decoded += static_cast<char>(value);
                     i += 2; // Skip the hex digits
                 } else {
-                    decoded += modelName[i]; // Invalid encoding, keep as-is
+                    decoded += videoName[i]; // Invalid encoding, keep as-is
                 }
             } else {
-                decoded += modelName[i];
+                decoded += videoName[i];
             }
         }
-        modelName = decoded;
+        videoName = decoded;
     }
     
-    return modelName;
+    return videoName;
 }
 
-void ModelUploadHandler::uploadModel(
+void VideoUploadHandler::uploadVideo(
     const HttpRequestPtr &req,
     std::function<void(const HttpResponsePtr &)> &&callback) {
     
@@ -159,11 +185,11 @@ void ModelUploadHandler::uploadModel(
             std::string boundaryMarker = "--" + boundary;
             std::string endBoundary = boundaryMarker + "--";
             
-            // Ensure models directory exists
-            std::string modelsDir = getModelsDirectory();
-            std::filesystem::path modelsPath(modelsDir);
-            if (!std::filesystem::exists(modelsPath)) {
-                std::filesystem::create_directories(modelsPath);
+            // Ensure videos directory exists
+            std::string videosDir = getVideosDirectory();
+            std::filesystem::path videosPath(videosDir);
+            if (!std::filesystem::exists(videosPath)) {
+                std::filesystem::create_directories(videosPath);
             }
             
             // Parse all multipart parts
@@ -246,7 +272,7 @@ void ModelUploadHandler::uploadModel(
                 std::string partFilename = bodyStr.substr(filenamePos, filenameEnd - filenamePos);
                 
                 // Validate file extension
-                if (!isValidModelFile(partFilename)) {
+                if (!isValidVideoFile(partFilename)) {
                     errors.push_back("File '" + partFilename + "' has invalid extension");
                     size_t nextBoundary = bodyStr.find(boundaryMarker, partStart);
                     if (nextBoundary == std::string::npos) break;
@@ -300,19 +326,19 @@ void ModelUploadHandler::uploadModel(
                 }
                 
                 // Create full file path - if file exists, add number to name
-                std::filesystem::path partFilePath = modelsPath / sanitizedPartFilename;
+                std::filesystem::path partFilePath = videosPath / sanitizedPartFilename;
                 
                 // If file already exists, find a unique name by adding number
                 std::string finalFilename = sanitizedPartFilename;
                 if (std::filesystem::exists(partFilePath)) {
-                    std::filesystem::path basePath = modelsPath / sanitizedPartFilename;
+                    std::filesystem::path basePath = videosPath / sanitizedPartFilename;
                     std::string baseName = basePath.stem().string();
                     std::string extension = basePath.extension().string();
                     
                     int counter = 1;
                     do {
                         finalFilename = baseName + "_" + std::to_string(counter) + extension;
-                        partFilePath = modelsPath / finalFilename;
+                        partFilePath = videosPath / finalFilename;
                         counter++;
                     } while (std::filesystem::exists(partFilePath) && counter < 10000);
                     
@@ -345,11 +371,11 @@ void ModelUploadHandler::uploadModel(
                     fileInfo["originalFilename"] = partFilename;
                     fileInfo["path"] = std::filesystem::canonical(partFilePath).string();
                     fileInfo["size"] = static_cast<Json::Int64>(fileSize);
-                    fileInfo["url"] = "/v1/core/models/" + finalFilename;
+                    fileInfo["url"] = "/v1/core/videos/" + finalFilename;
                     uploadedFiles.append(fileInfo);
                     
                     fileCount++;
-                    std::cerr << "[ModelUploadHandler] Model file uploaded: " << finalFilename 
+                    std::cerr << "[VideoUploadHandler] Video file uploaded: " << finalFilename 
                               << " (" << fileSize << " bytes)" << std::endl;
                     
                 } catch (const std::exception& e) {
@@ -364,7 +390,7 @@ void ModelUploadHandler::uploadModel(
             Json::Value response;
             if (fileCount > 0) {
                 response["success"] = true;
-                response["message"] = "Uploaded " + std::to_string(fileCount) + " model file(s)";
+                response["message"] = "Uploaded " + std::to_string(fileCount) + " video file(s)";
                 response["count"] = fileCount;
                 response["files"] = uploadedFiles;
                 if (!errors.empty()) {
@@ -377,11 +403,7 @@ void ModelUploadHandler::uploadModel(
                 
                 auto resp = HttpResponse::newHttpJsonResponse(response);
                 resp->setStatusCode(k201Created);
-                resp->addHeader("Access-Control-Allow-Origin", "*");
-                resp->addHeader("Access-Control-Allow-Methods", "POST, GET, PUT, DELETE, OPTIONS");
-                resp->addHeader("Access-Control-Allow-Headers", "Content-Type, Content-Disposition, Authorization");
-                resp->addHeader("Access-Control-Expose-Headers", "Content-Type, Content-Disposition");
-                resp->addHeader("Access-Control-Max-Age", "3600");
+                CorsHelper::addAllowAllHeaders(resp);
                 
                 callback(resp);
             } else {
@@ -431,13 +453,13 @@ void ModelUploadHandler::uploadModel(
             
             // If still no filename, use default
             if (originalFilename.empty()) {
-                originalFilename = "uploaded_model.onnx";
+                originalFilename = "uploaded_video.mp4";
             }
             
             // Validate file extension
-            if (!isValidModelFile(originalFilename)) {
+            if (!isValidVideoFile(originalFilename)) {
                 callback(createErrorResponse(400, "Invalid file type", 
-                    "Only model files (.onnx, .weights, .cfg, .pt, .pth, .pb, .tflite) are allowed"));
+                    "Only video files (.mp4, .avi, .mkv, .mov, .flv, .wmv, .webm, etc.) are allowed"));
                 return;
             }
             
@@ -449,19 +471,19 @@ void ModelUploadHandler::uploadModel(
                 return;
             }
             
-            // Ensure models directory exists
-            std::string modelsDir = getModelsDirectory();
-            std::filesystem::path modelsPath(modelsDir);
-            if (!std::filesystem::exists(modelsPath)) {
-                std::filesystem::create_directories(modelsPath);
+            // Ensure videos directory exists
+            std::string videosDir = getVideosDirectory();
+            std::filesystem::path videosPath(videosDir);
+            if (!std::filesystem::exists(videosPath)) {
+                std::filesystem::create_directories(videosPath);
             }
             
             // Create full file path - if file exists, add number to name
-            filePath = modelsPath / sanitizedFilename;
+            filePath = videosPath / sanitizedFilename;
             
             // If file already exists, find a unique name by adding number
             if (std::filesystem::exists(filePath)) {
-                std::filesystem::path basePath = modelsPath / sanitizedFilename;
+                std::filesystem::path basePath = videosPath / sanitizedFilename;
                 std::string baseName = basePath.stem().string();  // filename without extension
                 std::string extension = basePath.extension().string();  // .onnx, .pt, etc.
                 
@@ -469,7 +491,7 @@ void ModelUploadHandler::uploadModel(
                 std::string newFilename;
                 do {
                     newFilename = baseName + "_" + std::to_string(counter) + extension;
-                    filePath = modelsPath / newFilename;
+                    filePath = videosPath / newFilename;
                     counter++;
                 } while (std::filesystem::exists(filePath) && counter < 10000);  // Safety limit
                 
@@ -480,7 +502,7 @@ void ModelUploadHandler::uploadModel(
                 }
                 
                 sanitizedFilename = newFilename;
-                std::cerr << "[ModelUploadHandler] File with original name exists, using: " << sanitizedFilename << std::endl;
+                std::cerr << "[VideoUploadHandler] File with original name exists, using: " << sanitizedFilename << std::endl;
             }
             
             // Get request body
@@ -510,70 +532,64 @@ void ModelUploadHandler::uploadModel(
         // Build response
         Json::Value response;
         response["success"] = true;
-        response["message"] = "Model file uploaded successfully";
+        response["message"] = "Video file uploaded successfully";
         response["filename"] = sanitizedFilename;
         response["originalFilename"] = originalFilename;
         response["path"] = std::filesystem::canonical(filePath).string();
         response["size"] = static_cast<Json::Int64>(fileSize);
-        response["url"] = "/v1/core/models/" + sanitizedFilename;
+        response["url"] = "/v1/core/videos/" + sanitizedFilename;
         
         auto resp = HttpResponse::newHttpJsonResponse(response);
         resp->setStatusCode(k201Created);
-        // Add CORS headers for Swagger UI
-        resp->addHeader("Access-Control-Allow-Origin", "*");
-        resp->addHeader("Access-Control-Allow-Methods", "POST, GET, PUT, DELETE, OPTIONS");
-        resp->addHeader("Access-Control-Allow-Headers", "Content-Type, Content-Disposition, Authorization");
-        resp->addHeader("Access-Control-Expose-Headers", "Content-Type, Content-Disposition");
-        resp->addHeader("Access-Control-Max-Age", "3600");
+        // Add CORS headers - ALLOW ALL
+        CorsHelper::addAllowAllHeaders(resp);
         
-        std::cerr << "[ModelUploadHandler] Model file uploaded: " << sanitizedFilename 
+        std::cerr << "[VideoUploadHandler] Video file uploaded: " << sanitizedFilename 
                   << " (" << fileSize << " bytes)" << std::endl;
         
         callback(resp);
         
     } catch (const std::exception& e) {
-        std::cerr << "[ModelUploadHandler] Exception: " << e.what() << std::endl;
+        std::cerr << "[VideoUploadHandler] Exception: " << e.what() << std::endl;
         callback(createErrorResponse(500, "Internal server error", e.what()));
     } catch (...) {
-        std::cerr << "[ModelUploadHandler] Unknown exception" << std::endl;
+        std::cerr << "[VideoUploadHandler] Unknown exception" << std::endl;
         callback(createErrorResponse(500, "Internal server error", "Unknown error occurred"));
     }
 }
 
-void ModelUploadHandler::listModels(
+void VideoUploadHandler::listVideos(
     const HttpRequestPtr & /*req*/,
     std::function<void(const HttpResponsePtr &)> &&callback) {
     
     try {
-        std::string modelsDir = getModelsDirectory();
-        std::filesystem::path modelsPath(modelsDir);
+        std::string videosDir = getVideosDirectory();
+        std::filesystem::path videosPath(videosDir);
         
         Json::Value response;
-        Json::Value models(Json::arrayValue);
+        Json::Value videos(Json::arrayValue);
         
-        if (!std::filesystem::exists(modelsPath)) {
+        if (!std::filesystem::exists(videosPath)) {
             // Return empty list if directory doesn't exist
             response["success"] = true;
-            response["models"] = models;
+            response["videos"] = videos;
             response["count"] = 0;
             
             auto resp = HttpResponse::newHttpJsonResponse(response);
             resp->setStatusCode(k200OK);
-            resp->addHeader("Access-Control-Allow-Origin", "*");
-            resp->addHeader("Access-Control-Allow-Methods", "POST, GET, PUT, DELETE, OPTIONS");
-            resp->addHeader("Access-Control-Allow-Headers", "Content-Type, Authorization");
+            CorsHelper::addAllowAllHeaders(resp);
             callback(resp);
             return;
         }
         
-        // List all model files
+        // List all video files
         int count = 0;
-        for (const auto& entry : std::filesystem::directory_iterator(modelsPath)) {
-            if (entry.is_regular_file() && isValidModelFile(entry.path().filename().string())) {
-                Json::Value model;
-                model["filename"] = entry.path().filename().string();
-                model["path"] = std::filesystem::canonical(entry.path()).string();
-                model["size"] = static_cast<Json::Int64>(std::filesystem::file_size(entry.path()));
+        for (const auto& entry : std::filesystem::directory_iterator(videosPath)) {
+            if (entry.is_regular_file() && isValidVideoFile(entry.path().filename().string())) {
+                Json::Value video;
+                video["filename"] = entry.path().filename().string();
+                video["path"] = std::filesystem::canonical(entry.path()).string();
+                video["size"] = static_cast<Json::Int64>(std::filesystem::file_size(entry.path()));
                 
                 auto modTime = std::filesystem::last_write_time(entry.path());
                 auto sctp = std::chrono::time_point_cast<std::chrono::system_clock::duration>(
@@ -582,50 +598,48 @@ void ModelUploadHandler::listModels(
                 
                 std::stringstream ss;
                 ss << std::put_time(std::localtime(&timeT), "%Y-%m-%d %H:%M:%S");
-                model["modified"] = ss.str();
+                video["modified"] = ss.str();
                 
-                models.append(model);
+                videos.append(video);
                 count++;
             }
         }
         
         response["success"] = true;
-        response["models"] = models;
+        response["videos"] = videos;
         response["count"] = count;
-        response["directory"] = std::filesystem::canonical(modelsPath).string();
+        response["directory"] = std::filesystem::canonical(videosPath).string();
         
         auto resp = HttpResponse::newHttpJsonResponse(response);
         resp->setStatusCode(k200OK);
-        resp->addHeader("Access-Control-Allow-Origin", "*");
-        resp->addHeader("Access-Control-Allow-Methods", "POST, GET, PUT, DELETE, OPTIONS");
-        resp->addHeader("Access-Control-Allow-Headers", "Content-Type, Authorization");
+        CorsHelper::addAllowAllHeaders(resp);
         callback(resp);
         
     } catch (const std::exception& e) {
-        std::cerr << "[ModelUploadHandler] Exception: " << e.what() << std::endl;
+        std::cerr << "[VideoUploadHandler] Exception: " << e.what() << std::endl;
         callback(createErrorResponse(500, "Internal server error", e.what()));
     } catch (...) {
-        std::cerr << "[ModelUploadHandler] Unknown exception" << std::endl;
+        std::cerr << "[VideoUploadHandler] Unknown exception" << std::endl;
         callback(createErrorResponse(500, "Internal server error", "Unknown error occurred"));
     }
 }
 
-void ModelUploadHandler::renameModel(
+void VideoUploadHandler::renameVideo(
     const HttpRequestPtr &req,
     std::function<void(const HttpResponsePtr &)> &&callback) {
     
     try {
-        // Get model name from path parameter
-        std::string modelName = extractModelName(req);
-        if (modelName.empty()) {
-            callback(createErrorResponse(400, "Invalid request", "Model name is required"));
+        // Get video name from path parameter
+        std::string videoName = extractVideoName(req);
+        if (videoName.empty()) {
+            callback(createErrorResponse(400, "Invalid request", "Video name is required"));
             return;
         }
         
         // Sanitize source filename
-        std::string sanitizedSourceName = sanitizeFilename(modelName);
-        if (sanitizedSourceName.empty() || sanitizedSourceName != modelName) {
-            callback(createErrorResponse(400, "Invalid filename", "Invalid source model name"));
+        std::string sanitizedSourceName = sanitizeFilename(videoName);
+        if (sanitizedSourceName.empty() || sanitizedSourceName != videoName) {
+            callback(createErrorResponse(400, "Invalid filename", "Invalid source video name"));
             return;
         }
         
@@ -668,9 +682,9 @@ void ModelUploadHandler::renameModel(
         }
         
         // Validate new name file extension
-        if (!isValidModelFile(newName)) {
+        if (!isValidVideoFile(newName)) {
             callback(createErrorResponse(400, "Invalid file type", 
-                "New name must have a valid model file extension (.onnx, .weights, .cfg, .pt, .pth, .pb, .tflite)"));
+                "New name must have a valid video file extension (.mp4, .avi, .mkv, .mov, etc.)"));
             return;
         }
         
@@ -688,20 +702,20 @@ void ModelUploadHandler::renameModel(
         }
         
         // Build file paths
-        std::string modelsDir = getModelsDirectory();
-        std::filesystem::path sourcePath = std::filesystem::path(modelsDir) / sanitizedSourceName;
-        std::filesystem::path destPath = std::filesystem::path(modelsDir) / sanitizedNewName;
+        std::string videosDir = getVideosDirectory();
+        std::filesystem::path sourcePath = std::filesystem::path(videosDir) / sanitizedSourceName;
+        std::filesystem::path destPath = std::filesystem::path(videosDir) / sanitizedNewName;
         
         // Check if source file exists
         if (!std::filesystem::exists(sourcePath)) {
-            callback(createErrorResponse(404, "Not found", "Source model file not found"));
+            callback(createErrorResponse(404, "Not found", "Source video file not found"));
             return;
         }
         
         // Check if destination file already exists
         if (std::filesystem::exists(destPath)) {
             callback(createErrorResponse(409, "File exists", 
-                "A model file with the new name already exists. Please delete it first or use a different name."));
+                "A video file with the new name already exists. Please delete it first or use a different name."));
             return;
         }
         
@@ -710,110 +724,110 @@ void ModelUploadHandler::renameModel(
             std::filesystem::rename(sourcePath, destPath);
         } catch (const std::filesystem::filesystem_error& e) {
             callback(createErrorResponse(500, "Rename failed", 
-                "Could not rename model file: " + std::string(e.what())));
+                "Could not rename video file: " + std::string(e.what())));
             return;
         }
         
         Json::Value response;
         response["success"] = true;
-        response["message"] = "Model file renamed successfully";
+        response["message"] = "Video file renamed successfully";
         response["oldName"] = sanitizedSourceName;
         response["newName"] = sanitizedNewName;
         response["path"] = std::filesystem::canonical(destPath).string();
         
         auto resp = HttpResponse::newHttpJsonResponse(response);
         resp->setStatusCode(k200OK);
-        resp->addHeader("Access-Control-Allow-Origin", "*");
-        resp->addHeader("Access-Control-Allow-Methods", "POST, GET, PUT, DELETE, OPTIONS");
-        resp->addHeader("Access-Control-Allow-Headers", "Content-Type, Authorization");
+        CorsHelper::addAllowAllHeaders(resp);
         
-        std::cerr << "[ModelUploadHandler] Model file renamed: " << sanitizedSourceName 
+        std::cerr << "[VideoUploadHandler] Video file renamed: " << sanitizedSourceName 
                   << " -> " << sanitizedNewName << std::endl;
         
         callback(resp);
         
     } catch (const std::exception& e) {
-        std::cerr << "[ModelUploadHandler] Exception: " << e.what() << std::endl;
+        std::cerr << "[VideoUploadHandler] Exception: " << e.what() << std::endl;
         callback(createErrorResponse(500, "Internal server error", e.what()));
     } catch (...) {
-        std::cerr << "[ModelUploadHandler] Unknown exception" << std::endl;
+        std::cerr << "[VideoUploadHandler] Unknown exception" << std::endl;
         callback(createErrorResponse(500, "Internal server error", "Unknown error occurred"));
     }
 }
 
-void ModelUploadHandler::deleteModel(
+void VideoUploadHandler::deleteVideo(
     const HttpRequestPtr &req,
     std::function<void(const HttpResponsePtr &)> &&callback) {
     
     try {
-        // Get model name from path parameter
-        std::string modelName = extractModelName(req);
-        if (modelName.empty()) {
-            callback(createErrorResponse(400, "Invalid request", "Model name is required"));
+        // Get video name from path parameter
+        std::string videoName = extractVideoName(req);
+        if (videoName.empty()) {
+            callback(createErrorResponse(400, "Invalid request", "Video name is required"));
             return;
         }
         
         // Sanitize filename
-        std::string sanitizedFilename = sanitizeFilename(modelName);
-        if (sanitizedFilename.empty() || sanitizedFilename != modelName) {
-            callback(createErrorResponse(400, "Invalid filename", "Invalid model name"));
+        std::string sanitizedFilename = sanitizeFilename(videoName);
+        if (sanitizedFilename.empty() || sanitizedFilename != videoName) {
+            callback(createErrorResponse(400, "Invalid filename", "Invalid video name"));
             return;
         }
         
         // Build file path
-        std::string modelsDir = getModelsDirectory();
-        std::filesystem::path filePath = std::filesystem::path(modelsDir) / sanitizedFilename;
+        std::string videosDir = getVideosDirectory();
+        std::filesystem::path filePath = std::filesystem::path(videosDir) / sanitizedFilename;
         
         // Check if file exists
         if (!std::filesystem::exists(filePath)) {
-            callback(createErrorResponse(404, "Not found", "Model file not found"));
+            callback(createErrorResponse(404, "Not found", "Video file not found"));
             return;
         }
         
         // Delete file
         if (!std::filesystem::remove(filePath)) {
-            callback(createErrorResponse(500, "Delete failed", "Could not delete model file"));
+            callback(createErrorResponse(500, "Delete failed", "Could not delete video file"));
             return;
         }
         
         Json::Value response;
         response["success"] = true;
-        response["message"] = "Model file deleted successfully";
+        response["message"] = "Video file deleted successfully";
         response["filename"] = sanitizedFilename;
         
         auto resp = HttpResponse::newHttpJsonResponse(response);
         resp->setStatusCode(k200OK);
-        resp->addHeader("Access-Control-Allow-Origin", "*");
-        resp->addHeader("Access-Control-Allow-Methods", "POST, GET, PUT, DELETE, OPTIONS");
-        resp->addHeader("Access-Control-Allow-Headers", "Content-Type, Authorization");
+        CorsHelper::addAllowAllHeaders(resp);
         
-        std::cerr << "[ModelUploadHandler] Model file deleted: " << sanitizedFilename << std::endl;
+        std::cerr << "[VideoUploadHandler] Video file deleted: " << sanitizedFilename << std::endl;
         
         callback(resp);
         
     } catch (const std::exception& e) {
-        std::cerr << "[ModelUploadHandler] Exception: " << e.what() << std::endl;
+        std::cerr << "[VideoUploadHandler] Exception: " << e.what() << std::endl;
         callback(createErrorResponse(500, "Internal server error", e.what()));
     } catch (...) {
-        std::cerr << "[ModelUploadHandler] Unknown exception" << std::endl;
+        std::cerr << "[VideoUploadHandler] Unknown exception" << std::endl;
         callback(createErrorResponse(500, "Internal server error", "Unknown error occurred"));
     }
 }
 
-void ModelUploadHandler::handleOptions(
-    const HttpRequestPtr & /*req*/,
+void VideoUploadHandler::handleOptions(
+    const HttpRequestPtr &req,
     std::function<void(const HttpResponsePtr &)> &&callback) {
     
-    auto resp = HttpResponse::newHttpResponse();
-    resp->setStatusCode(k200OK);
-    resp->addHeader("Access-Control-Allow-Origin", "*");
-    resp->addHeader("Access-Control-Allow-Methods", "POST, GET, PUT, DELETE, OPTIONS");
-    resp->addHeader("Access-Control-Allow-Headers", "Content-Type");
-    resp->addHeader("Access-Control-Max-Age", "3600");
+    // Debug log to verify handler is called
+    std::cerr << "[VideoUploadHandler] OPTIONS handler called!" << std::endl;
+    std::cerr << "[VideoUploadHandler] Path: " << req->path() << std::endl;
+    std::cerr << "[VideoUploadHandler] Origin: " << req->getHeader("Origin") << std::endl;
+    
+    // Use CORS helper to create "allow all" response
+    auto resp = CorsHelper::createOptionsResponse();
+    
+    std::cerr << "[VideoUploadHandler] OPTIONS response sent with ALLOW ALL headers" << std::endl;
+    
     callback(resp);
 }
 
-HttpResponsePtr ModelUploadHandler::createErrorResponse(
+HttpResponsePtr VideoUploadHandler::createErrorResponse(
     int statusCode,
     const std::string& error,
     const std::string& message) const {
@@ -827,6 +841,9 @@ HttpResponsePtr ModelUploadHandler::createErrorResponse(
     
     auto resp = HttpResponse::newHttpJsonResponse(errorJson);
     resp->setStatusCode(static_cast<HttpStatusCode>(statusCode));
+    
+    // Add CORS headers to error responses - ALLOW ALL
+    CorsHelper::addAllowAllHeaders(resp);
     
     return resp;
 }

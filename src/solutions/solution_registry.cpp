@@ -96,6 +96,21 @@ void SolutionRegistry::initializeDefaultSolutions() {
     registerFaceDetectionFileSolution();  // Add face detection with file source
     registerObjectDetectionSolution();  // Add YOLO-based solution
     registerFaceDetectionRTMPSolution();  // Add face detection with RTMP streaming
+    registerBACrosslineSolution();  // Add behavior analysis crossline solution
+    
+    // Register new node-based solutions
+    registerYOLOv11DetectionSolution();
+    registerFaceSwapSolution();
+    registerInsightFaceRecognitionSolution();
+    registerMLLMAnalysisSolution();
+    
+#ifdef CVEDIX_WITH_RKNN
+    registerRKNNYOLOv11DetectionSolution();
+#endif
+    
+#ifdef CVEDIX_WITH_TRT
+    registerTRTInsightFaceRecognitionSolution();
+#endif
 }
 
 void SolutionRegistry::registerFaceDetectionSolution() {
@@ -306,3 +321,389 @@ void SolutionRegistry::registerFaceDetectionRTMPSolution() {
     registerSolution(config);
 }
 
+void SolutionRegistry::registerBACrosslineSolution() {
+    SolutionConfig config;
+    config.solutionId = "ba_crossline";
+    config.solutionName = "Behavior Analysis - Crossline Detection";
+    config.solutionType = "behavior_analysis";
+    config.isDefault = true;
+    
+    // File Source Node
+    SolutionConfig::NodeConfig fileSrc;
+    fileSrc.nodeType = "file_src";
+    fileSrc.nodeName = "file_src_{instanceId}";
+    fileSrc.parameters["file_path"] = "${FILE_PATH}";
+    fileSrc.parameters["channel"] = "0";
+    fileSrc.parameters["resize_ratio"] = "0.4";
+    config.pipeline.push_back(fileSrc);
+    
+    // YOLO Detector Node
+    SolutionConfig::NodeConfig yoloDetector;
+    yoloDetector.nodeType = "yolo_detector";
+    yoloDetector.nodeName = "yolo_detector_{instanceId}";
+    yoloDetector.parameters["weights_path"] = "${WEIGHTS_PATH}";
+    yoloDetector.parameters["config_path"] = "${CONFIG_PATH}";
+    yoloDetector.parameters["labels_path"] = "${LABELS_PATH}";
+    config.pipeline.push_back(yoloDetector);
+    
+    // SORT Tracker Node
+    SolutionConfig::NodeConfig sortTrack;
+    sortTrack.nodeType = "sort_track";
+    sortTrack.nodeName = "sort_tracker_{instanceId}";
+    config.pipeline.push_back(sortTrack);
+    
+    // BA Crossline Node
+    SolutionConfig::NodeConfig baCrossline;
+    baCrossline.nodeType = "ba_crossline";
+    baCrossline.nodeName = "ba_crossline_{instanceId}";
+    baCrossline.parameters["line_channel"] = "0";
+    baCrossline.parameters["line_start_x"] = "0";
+    baCrossline.parameters["line_start_y"] = "250";
+    baCrossline.parameters["line_end_x"] = "700";
+    baCrossline.parameters["line_end_y"] = "220";
+    config.pipeline.push_back(baCrossline);
+    
+    // BA Crossline OSD Node
+    SolutionConfig::NodeConfig baCrosslineOSD;
+    baCrosslineOSD.nodeType = "ba_crossline_osd";
+    baCrosslineOSD.nodeName = "osd_{instanceId}";
+    config.pipeline.push_back(baCrosslineOSD);
+    
+    // Screen Destination Node (optional - can be disabled via ENABLE_SCREEN_DES parameter)
+    SolutionConfig::NodeConfig screenDes;
+    screenDes.nodeType = "screen_des";
+    screenDes.nodeName = "screen_des_{instanceId}";
+    screenDes.parameters["channel"] = "0";
+    screenDes.parameters["enabled"] = "${ENABLE_SCREEN_DES}";  // Default: empty (enabled if display available), set to "false" to disable
+    config.pipeline.push_back(screenDes);
+    
+    // RTMP Destination Node
+    SolutionConfig::NodeConfig rtmpDes;
+    rtmpDes.nodeType = "rtmp_des";
+    rtmpDes.nodeName = "rtmp_des_{instanceId}";
+    rtmpDes.parameters["rtmp_url"] = "${RTMP_URL}";
+    rtmpDes.parameters["channel"] = "0";
+    config.pipeline.push_back(rtmpDes);
+    
+    // Default configurations
+    config.defaults["detectorMode"] = "SmartDetection";
+    config.defaults["detectionSensitivity"] = "0.7";
+    config.defaults["sensorModality"] = "RGB";
+    
+    registerSolution(config);
+}
+
+
+void SolutionRegistry::registerYOLOv11DetectionSolution() {
+    SolutionConfig config;
+    config.solutionId = "yolov11_detection";
+    config.solutionName = "YOLOv11 Object Detection";
+    config.solutionType = "object_detection";
+    config.isDefault = true;
+    
+    // RTSP Source Node
+    SolutionConfig::NodeConfig rtspSrc;
+    rtspSrc.nodeType = "rtsp_src";
+    rtspSrc.nodeName = "source_{instanceId}";
+    rtspSrc.parameters["rtsp_url"] = "${RTSP_URL}";
+    rtspSrc.parameters["channel"] = "0";
+    rtspSrc.parameters["resize_ratio"] = "1.0";
+    config.pipeline.push_back(rtspSrc);
+    
+    // YOLOv11 Detector Node
+    SolutionConfig::NodeConfig yolov11Detector;
+    yolov11Detector.nodeType = "yolov11_detector";
+    yolov11Detector.nodeName = "detector_{instanceId}";
+    yolov11Detector.parameters["model_path"] = "${MODEL_PATH}";
+    config.pipeline.push_back(yolov11Detector);
+    
+    // File Destination Node
+    SolutionConfig::NodeConfig fileDes;
+    fileDes.nodeType = "file_des";
+    fileDes.nodeName = "destination_{instanceId}";
+    fileDes.parameters["save_dir"] = "${SAVE_DIR}";
+    fileDes.parameters["name_prefix"] = "yolov11_detection";
+    fileDes.parameters["osd"] = "true";
+    config.pipeline.push_back(fileDes);
+    
+    // Default configurations
+    config.defaults["RTSP_URL"] = "rtsp://localhost:8554/stream";
+    config.defaults["MODEL_PATH"] = "/opt/cvedix/models/yolov11/yolov11n.onnx";
+    config.defaults["SAVE_DIR"] = "/tmp/output";
+    config.defaults["detectorMode"] = "SmartDetection";
+    config.defaults["detectionSensitivity"] = "0.7";
+    config.defaults["sensorModality"] = "RGB";
+    
+    registerSolution(config);
+}
+
+void SolutionRegistry::registerFaceSwapSolution() {
+    SolutionConfig config;
+    config.solutionId = "face_swap";
+    config.solutionName = "Face Swap";
+    config.solutionType = "face_processing";
+    config.isDefault = true;
+    
+    // RTSP Source Node
+    SolutionConfig::NodeConfig rtspSrc;
+    rtspSrc.nodeType = "rtsp_src";
+    rtspSrc.nodeName = "source_{instanceId}";
+    rtspSrc.parameters["rtsp_url"] = "${RTSP_URL}";
+    rtspSrc.parameters["channel"] = "0";
+    rtspSrc.parameters["resize_ratio"] = "1.0";
+    config.pipeline.push_back(rtspSrc);
+    
+    // YuNet Face Detector Node (for face detection in face swap)
+    SolutionConfig::NodeConfig faceDetector;
+    faceDetector.nodeType = "yunet_face_detector";
+    faceDetector.nodeName = "face_detector_{instanceId}";
+    faceDetector.parameters["model_path"] = "${FACE_DETECTION_MODEL_PATH}";
+    faceDetector.parameters["score_threshold"] = "0.7";
+    faceDetector.parameters["nms_threshold"] = "0.5";
+    faceDetector.parameters["top_k"] = "50";
+    config.pipeline.push_back(faceDetector);
+    
+    // Face Swap Node
+    SolutionConfig::NodeConfig faceSwap;
+    faceSwap.nodeType = "face_swap";
+    faceSwap.nodeName = "face_swap_{instanceId}";
+    faceSwap.parameters["yunet_face_detect_model"] = "${FACE_DETECTION_MODEL_PATH}";
+    faceSwap.parameters["buffalo_l_face_encoding_model"] = "${BUFFALO_L_FACE_ENCODING_MODEL}";
+    faceSwap.parameters["emap_file_for_embeddings"] = "${EMAP_FILE_FOR_EMBEDDINGS}";
+    faceSwap.parameters["insightface_swap_model"] = "${FACE_SWAP_MODEL_PATH}";
+    faceSwap.parameters["swap_source_image"] = "${SWAP_SOURCE_IMAGE}";
+    faceSwap.parameters["swap_source_face_index"] = "0";
+    faceSwap.parameters["min_face_w_h"] = "50";
+    faceSwap.parameters["swap_on_osd"] = "true";
+    faceSwap.parameters["act_as_primary_detector"] = "false";
+    config.pipeline.push_back(faceSwap);
+    
+    // RTMP Destination Node
+    SolutionConfig::NodeConfig rtmpDes;
+    rtmpDes.nodeType = "rtmp_des";
+    rtmpDes.nodeName = "destination_{instanceId}";
+    rtmpDes.parameters["rtmp_url"] = "${RTMP_URL}";
+    rtmpDes.parameters["channel"] = "0";
+    config.pipeline.push_back(rtmpDes);
+    
+    // Default configurations
+    config.defaults["RTSP_URL"] = "rtsp://localhost:8554/stream";
+    config.defaults["FACE_DETECTION_MODEL_PATH"] = "/opt/cvedix/models/face/yunet.onnx";
+    config.defaults["BUFFALO_L_FACE_ENCODING_MODEL"] = "/opt/cvedix/models/face/buffalo_l.onnx";
+    config.defaults["EMAP_FILE_FOR_EMBEDDINGS"] = "/opt/cvedix/models/face/emap.onnx";
+    config.defaults["FACE_SWAP_MODEL_PATH"] = "/opt/cvedix/models/face/face_swap.onnx";
+    config.defaults["SWAP_SOURCE_IMAGE"] = "/opt/cvedix/models/face/source_face.jpg";
+    config.defaults["RTMP_URL"] = "rtmp://localhost:1935/live/stream";
+    config.defaults["detectorMode"] = "SmartDetection";
+    config.defaults["detectionSensitivity"] = "0.7";
+    config.defaults["sensorModality"] = "RGB";
+    
+    registerSolution(config);
+}
+
+void SolutionRegistry::registerInsightFaceRecognitionSolution() {
+    SolutionConfig config;
+    config.solutionId = "insightface_recognition";
+    config.solutionName = "InsightFace Recognition";
+    config.solutionType = "face_recognition";
+    config.isDefault = true;
+    
+    // RTSP Source Node
+    SolutionConfig::NodeConfig rtspSrc;
+    rtspSrc.nodeType = "rtsp_src";
+    rtspSrc.nodeName = "source_{instanceId}";
+    rtspSrc.parameters["rtsp_url"] = "${RTSP_URL}";
+    rtspSrc.parameters["channel"] = "0";
+    rtspSrc.parameters["resize_ratio"] = "1.0";
+    config.pipeline.push_back(rtspSrc);
+    
+    // YuNet Face Detector Node
+    SolutionConfig::NodeConfig faceDetector;
+    faceDetector.nodeType = "yunet_face_detector";
+    faceDetector.nodeName = "face_detector_{instanceId}";
+    faceDetector.parameters["model_path"] = "${FACE_DETECTION_MODEL_PATH}";
+    faceDetector.parameters["score_threshold"] = "0.7";
+    faceDetector.parameters["nms_threshold"] = "0.5";
+    faceDetector.parameters["top_k"] = "50";
+    config.pipeline.push_back(faceDetector);
+    
+    // InsightFace Recognition Node
+    SolutionConfig::NodeConfig insightFaceRecognition;
+    insightFaceRecognition.nodeType = "insight_face_recognition";
+    insightFaceRecognition.nodeName = "face_recognition_{instanceId}";
+    insightFaceRecognition.parameters["model_path"] = "${FACE_RECOGNITION_MODEL_PATH}";
+    config.pipeline.push_back(insightFaceRecognition);
+    
+    // File Destination Node
+    SolutionConfig::NodeConfig fileDes;
+    fileDes.nodeType = "file_des";
+    fileDes.nodeName = "destination_{instanceId}";
+    fileDes.parameters["save_dir"] = "${SAVE_DIR}";
+    fileDes.parameters["name_prefix"] = "insightface_recognition";
+    fileDes.parameters["osd"] = "true";
+    config.pipeline.push_back(fileDes);
+    
+    // Default configurations
+    config.defaults["RTSP_URL"] = "rtsp://localhost:8554/stream";
+    config.defaults["FACE_DETECTION_MODEL_PATH"] = "/opt/cvedix/models/face/yunet.onnx";
+    config.defaults["FACE_RECOGNITION_MODEL_PATH"] = "/opt/cvedix/models/face/insightface.onnx";
+    config.defaults["SAVE_DIR"] = "/tmp/output";
+    config.defaults["detectorMode"] = "SmartDetection";
+    config.defaults["detectionSensitivity"] = "0.7";
+    config.defaults["sensorModality"] = "RGB";
+    
+    registerSolution(config);
+}
+
+void SolutionRegistry::registerMLLMAnalysisSolution() {
+    SolutionConfig config;
+    config.solutionId = "mllm_analysis";
+    config.solutionName = "MLLM Analysis";
+    config.solutionType = "multimodal_analysis";
+    config.isDefault = true;
+    
+    // RTSP Source Node
+    SolutionConfig::NodeConfig rtspSrc;
+    rtspSrc.nodeType = "rtsp_src";
+    rtspSrc.nodeName = "source_{instanceId}";
+    rtspSrc.parameters["rtsp_url"] = "${RTSP_URL}";
+    rtspSrc.parameters["channel"] = "0";
+    rtspSrc.parameters["resize_ratio"] = "1.0";
+    config.pipeline.push_back(rtspSrc);
+    
+    // MLLM Analyser Node
+    SolutionConfig::NodeConfig mllmAnalyser;
+    mllmAnalyser.nodeType = "mllm_analyser";
+    mllmAnalyser.nodeName = "mllm_analyser_{instanceId}";
+    mllmAnalyser.parameters["model_name"] = "${MODEL_NAME}";
+    mllmAnalyser.parameters["prompt"] = "${PROMPT}";
+    mllmAnalyser.parameters["api_base_url"] = "${API_BASE_URL}";
+    mllmAnalyser.parameters["api_key"] = "${API_KEY}";
+    mllmAnalyser.parameters["backend_type"] = "${BACKEND_TYPE}";
+    config.pipeline.push_back(mllmAnalyser);
+    
+    // JSON Console Broker Node
+    SolutionConfig::NodeConfig jsonBroker;
+    jsonBroker.nodeType = "json_console_broker";
+    jsonBroker.nodeName = "broker_{instanceId}";
+    config.pipeline.push_back(jsonBroker);
+    
+    // Default configurations
+    config.defaults["RTSP_URL"] = "rtsp://localhost:8554/stream";
+    config.defaults["MODEL_NAME"] = "llava";
+    config.defaults["PROMPT"] = "Describe what you see in this image";
+    config.defaults["API_BASE_URL"] = "http://localhost:11434";
+    config.defaults["API_KEY"] = "";
+    config.defaults["BACKEND_TYPE"] = "ollama";
+    config.defaults["detectorMode"] = "SmartDetection";
+    config.defaults["detectionSensitivity"] = "0.7";
+    config.defaults["sensorModality"] = "RGB";
+    
+    registerSolution(config);
+}
+
+#ifdef CVEDIX_WITH_RKNN
+void SolutionRegistry::registerRKNNYOLOv11DetectionSolution() {
+    SolutionConfig config;
+    config.solutionId = "rknn_yolov11_detection";
+    config.solutionName = "RKNN YOLOv11 Object Detection";
+    config.solutionType = "object_detection";
+    config.isDefault = true;
+    
+    // RTSP Source Node
+    SolutionConfig::NodeConfig rtspSrc;
+    rtspSrc.nodeType = "rtsp_src";
+    rtspSrc.nodeName = "source_{instanceId}";
+    rtspSrc.parameters["rtsp_url"] = "${RTSP_URL}";
+    rtspSrc.parameters["channel"] = "0";
+    rtspSrc.parameters["resize_ratio"] = "1.0";
+    config.pipeline.push_back(rtspSrc);
+    
+    // RKNN YOLOv11 Detector Node
+    SolutionConfig::NodeConfig rknnYolov11Detector;
+    rknnYolov11Detector.nodeType = "rknn_yolov11_detector";
+    rknnYolov11Detector.nodeName = "detector_{instanceId}";
+    rknnYolov11Detector.parameters["model_path"] = "${MODEL_PATH}";
+    rknnYolov11Detector.parameters["score_threshold"] = "0.5";
+    rknnYolov11Detector.parameters["nms_threshold"] = "0.5";
+    rknnYolov11Detector.parameters["input_width"] = "640";
+    rknnYolov11Detector.parameters["input_height"] = "640";
+    rknnYolov11Detector.parameters["num_classes"] = "80";
+    config.pipeline.push_back(rknnYolov11Detector);
+    
+    // File Destination Node
+    SolutionConfig::NodeConfig fileDes;
+    fileDes.nodeType = "file_des";
+    fileDes.nodeName = "destination_{instanceId}";
+    fileDes.parameters["save_dir"] = "${SAVE_DIR}";
+    fileDes.parameters["name_prefix"] = "rknn_yolov11_detection";
+    fileDes.parameters["osd"] = "true";
+    config.pipeline.push_back(fileDes);
+    
+    // Default configurations
+    config.defaults["RTSP_URL"] = "rtsp://localhost:8554/stream";
+    config.defaults["MODEL_PATH"] = "/opt/cvedix/models/yolov11/yolov11n.rknn";
+    config.defaults["SAVE_DIR"] = "/tmp/output";
+    config.defaults["detectorMode"] = "SmartDetection";
+    config.defaults["detectionSensitivity"] = "0.7";
+    config.defaults["sensorModality"] = "RGB";
+    
+    registerSolution(config);
+}
+#endif // CVEDIX_WITH_RKNN
+
+#ifdef CVEDIX_WITH_TRT
+void SolutionRegistry::registerTRTInsightFaceRecognitionSolution() {
+    SolutionConfig config;
+    config.solutionId = "trt_insightface_recognition";
+    config.solutionName = "TensorRT InsightFace Recognition";
+    config.solutionType = "face_recognition";
+    config.isDefault = true;
+    
+    // RTSP Source Node
+    SolutionConfig::NodeConfig rtspSrc;
+    rtspSrc.nodeType = "rtsp_src";
+    rtspSrc.nodeName = "source_{instanceId}";
+    rtspSrc.parameters["rtsp_url"] = "${RTSP_URL}";
+    rtspSrc.parameters["channel"] = "0";
+    rtspSrc.parameters["resize_ratio"] = "1.0";
+    config.pipeline.push_back(rtspSrc);
+    
+    // YuNet Face Detector Node
+    SolutionConfig::NodeConfig faceDetector;
+    faceDetector.nodeType = "yunet_face_detector";
+    faceDetector.nodeName = "face_detector_{instanceId}";
+    faceDetector.parameters["model_path"] = "${FACE_DETECTION_MODEL_PATH}";
+    faceDetector.parameters["score_threshold"] = "0.7";
+    faceDetector.parameters["nms_threshold"] = "0.5";
+    faceDetector.parameters["top_k"] = "50";
+    config.pipeline.push_back(faceDetector);
+    
+    // TensorRT InsightFace Recognition Node
+    SolutionConfig::NodeConfig trtInsightFaceRecognition;
+    trtInsightFaceRecognition.nodeType = "trt_insight_face_recognition";
+    trtInsightFaceRecognition.nodeName = "face_recognition_{instanceId}";
+    trtInsightFaceRecognition.parameters["model_path"] = "${FACE_RECOGNITION_MODEL_PATH}";
+    config.pipeline.push_back(trtInsightFaceRecognition);
+    
+    // File Destination Node
+    SolutionConfig::NodeConfig fileDes;
+    fileDes.nodeType = "file_des";
+    fileDes.nodeName = "destination_{instanceId}";
+    fileDes.parameters["save_dir"] = "${SAVE_DIR}";
+    fileDes.parameters["name_prefix"] = "trt_insightface_recognition";
+    fileDes.parameters["osd"] = "true";
+    config.pipeline.push_back(fileDes);
+    
+    // Default configurations
+    config.defaults["RTSP_URL"] = "rtsp://localhost:8554/stream";
+    config.defaults["FACE_DETECTION_MODEL_PATH"] = "/opt/cvedix/models/face/yunet.onnx";
+    config.defaults["FACE_RECOGNITION_MODEL_PATH"] = "/opt/cvedix/models/face/insightface.trt";
+    config.defaults["SAVE_DIR"] = "/tmp/output";
+    config.defaults["detectorMode"] = "SmartDetection";
+    config.defaults["detectionSensitivity"] = "0.7";
+    config.defaults["sensorModality"] = "RGB";
+    
+    registerSolution(config);
+}
+#endif // CVEDIX_WITH_TRT
