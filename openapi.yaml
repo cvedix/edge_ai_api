@@ -2417,7 +2417,7 @@ paths:
     get:
       summary: Get instance statistics
       description: |
-        Returns current real-time statistics for the instance. Statistics include frames processed, framerate, latency, resolution, queue size, and dropped frames count.
+        Returns current real-time statistics for the instance. Statistics include frames processed, framerate, latency, and resolution.
         
         **Note:** Statistics reset to 0 when instance restarts. Statistics are calculated in real-time and are not persisted to storage.
         
@@ -2427,8 +2427,6 @@ paths:
         - `current_framerate`: Current processing FPS
         - `latency`: Average processing latency per frame in milliseconds
         - `start_time`: Instance start time (Unix timestamp in seconds)
-        - `input_queue_size`: Current input queue size (0 if not available)
-        - `dropped_frames_count`: Total number of dropped frames
         - `resolution`: Current processing resolution (e.g., "1280x720")
         - `format`: Frame format (e.g., "BGR")
         - `source_resolution`: Source resolution (e.g., "1920x1080")
@@ -2462,28 +2460,6 @@ paths:
           example: "00000000-0000-0000-0000-000000000000"
       responses:
         '200':
-          description: Statistics information
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/InstanceStatistics'
-              example:
-                frames_processed: 0
-                source_framerate: 0
-                current_framerate: 5
-                latency: 200
-                start_time: 1764900520
-                input_queue_size: 0
-                dropped_frames_count: 22
-                resolution: "1280x720"
-                format: "BGR"
-                source_resolution: "1920x1080"
-        '404':
-          description: Instance not found or not running
-          description: The unique identifier of the instance
-          example: "a5204fc9-9a59-f80f-fb9f-bf3b42214943"
-      responses:
-        '200':
           description: Stream output configuration
           content:
             application/json:
@@ -2507,7 +2483,6 @@ paths:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
         '500':
-          description: Server error
           description: Internal server error
           content:
             application/json:
@@ -2587,8 +2562,6 @@ paths:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
     options:
-      summary: CORS preflight for get statistics
-      operationId: getStatisticsOptions
       summary: CORS preflight for stream output endpoints
       operationId: streamOutputOptions
       tags:
@@ -3998,16 +3971,6 @@ components:
           format: int64
           description: Instance start time (Unix timestamp in seconds)
           example: 1764900520
-        input_queue_size:
-          type: integer
-          format: int64
-          description: Current input queue size (0 if not available from SDK)
-          example: 0
-        dropped_frames_count:
-          type: integer
-          format: int64
-          description: Total number of dropped frames
-          example: 22
         resolution:
           type: string
           description: Current processing resolution (e.g., "1280x720")

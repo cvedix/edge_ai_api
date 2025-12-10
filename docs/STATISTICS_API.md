@@ -29,7 +29,7 @@ Thống kê bao gồm:
 
 **Endpoint:** `GET /v1/core/instance/{instanceId}/statistics`
 
-**Mô tả:** Trả về thống kê thời gian thực của instance bao gồm frames processed, framerate, latency, resolution, queue size, và dropped frames count.
+**Mô tả:** Trả về thống kê thời gian thực của instance bao gồm frames processed, framerate, latency, và resolution.
 
 **Path Parameters:**
 - `instanceId` (required): Unique identifier của instance (UUID format)
@@ -47,8 +47,6 @@ Accept: application/json
   "current_framerate": 25.5,
   "latency": 200.0,
   "start_time": 1764900520,
-  "input_queue_size": 0,
-  "dropped_frames_count": 22,
   "resolution": "1280x720",
   "format": "BGR",
   "source_resolution": "1920x1080"
@@ -93,18 +91,6 @@ Accept: application/json
 - **Mô tả:** Thời gian instance bắt đầu chạy (Unix timestamp, đơn vị: seconds)
 - **Ví dụ:** `1764900520`
 - **Lưu ý:** Có thể convert sang datetime để hiển thị
-
-#### input_queue_size
-- **Type:** `integer` (int64)
-- **Mô tả:** Kích thước queue đầu vào hiện tại
-- **Ví dụ:** `0`
-- **Lưu ý:** Có thể là 0 nếu SDK không cung cấp thông tin này
-
-#### dropped_frames_count
-- **Type:** `integer` (int64)
-- **Mô tả:** Tổng số frames bị drop kể từ khi instance bắt đầu
-- **Ví dụ:** `22`
-- **Lưu ý:** Frames bị drop khi queue đầy hoặc xử lý không kịp
 
 #### resolution
 - **Type:** `string`
@@ -162,7 +148,6 @@ if response.status_code == 200:
     print(f"Current FPS: {stats['current_framerate']}")
     print(f"Latency: {stats['latency']} ms")
     print(f"Resolution: {stats['resolution']}")
-    print(f"Dropped frames: {stats['dropped_frames_count']}")
 else:
     print(f"Error: {response.status_code} - {response.json()}")
 ```
@@ -188,7 +173,6 @@ async function getInstanceStatistics(instanceId) {
         console.log(`Current FPS: ${stats.current_framerate}`);
         console.log(`Latency: ${stats.latency} ms`);
         console.log(`Resolution: ${stats.resolution}`);
-        console.log(`Dropped frames: ${stats.dropped_frames_count}`);
         return stats;
     } else {
         const error = await response.json();
@@ -226,15 +210,12 @@ Tạo script để cảnh báo khi có dropped frames hoặc latency cao:
 import requests
 import time
 
-def check_instance_health(instance_id, threshold_dropped=100, threshold_latency=500):
+def check_instance_health(instance_id, threshold_latency=500):
     url = f"http://192.168.1.188:3546/v1/core/instance/{instance_id}/statistics"
     response = requests.get(url)
     
     if response.status_code == 200:
         stats = response.json()
-        
-        if stats['dropped_frames_count'] > threshold_dropped:
-            print(f"⚠️  Warning: High dropped frames: {stats['dropped_frames_count']}")
         
         if stats['latency'] > threshold_latency:
             print(f"⚠️  Warning: High latency: {stats['latency']} ms")
@@ -263,7 +244,6 @@ setInterval(async () => {
     updateFPSChart(stats.current_framerate);
     updateLatencyChart(stats.latency);
     updateFramesProcessed(stats.frames_processed);
-    updateDroppedFrames(stats.dropped_frames_count);
 }, 2000);
 ```
 
@@ -409,16 +389,6 @@ def get_cached_statistics(instance_id, cache_seconds=2):
 **Giải pháp:**
 - Đây là hành vi bình thường nếu SDK không cung cấp
 - Sử dụng `current_framerate` và `resolution` thay thế
-
-### Vấn đề: input_queue_size luôn là 0
-
-**Nguyên nhân có thể:**
-- CVEDIX SDK không cung cấp API để lấy queue size
-- Queue size không được track
-
-**Giải pháp:**
-- Đây là hành vi bình thường nếu SDK không cung cấp
-- Sử dụng `dropped_frames_count` để đánh giá tình trạng queue
 
 ### Vấn đề: Statistics reset về 0 sau khi restart
 

@@ -185,7 +185,6 @@ private:
         std::chrono::steady_clock::time_point start_time;  // For elapsed time calculation
         std::chrono::system_clock::time_point start_time_system;  // For Unix timestamp
         uint64_t frames_processed = 0;
-        uint64_t dropped_frames = 0;
         double last_fps = 0.0;
         std::chrono::steady_clock::time_point last_fps_update;
         uint64_t frame_count_since_last_update = 0;

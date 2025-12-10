@@ -258,7 +258,6 @@ std::string InstanceRegistry::createInstance(const CreateInstanceRequest& req) {
                             tracker.start_time = std::chrono::steady_clock::now();
                             tracker.start_time_system = std::chrono::system_clock::now();  // For Unix timestamp
                             tracker.frames_processed = 0;
-                            tracker.dropped_frames = 0;
                             tracker.last_fps = 0.0;
                             tracker.last_fps_update = tracker.start_time;
                             tracker.frame_count_since_last_update = 0;
@@ -774,7 +773,6 @@ bool InstanceRegistry::startInstance(const std::string& instanceId, bool skipAut
                 tracker.start_time = std::chrono::steady_clock::now();
                 tracker.start_time_system = std::chrono::system_clock::now();  // For Unix timestamp
                 tracker.frames_processed = 0;
-                tracker.dropped_frames = 0;
                 tracker.last_fps = 0.0;
                 tracker.last_fps_update = tracker.start_time;
                 tracker.frame_count_since_last_update = 0;
@@ -2666,7 +2664,6 @@ std::optional<InstanceStatistics> InstanceRegistry::getInstanceStatistics(const 
         stats.frames_processed = tracker.frames_processed;
     }
     
-    stats.dropped_frames_count = tracker.dropped_frames;
     stats.current_framerate = currentFps;
     
     // Use resolution from source node if available, otherwise use tracker value
@@ -2709,9 +2706,6 @@ std::optional<InstanceStatistics> InstanceRegistry::getInstanceStatistics(const 
         stats.format = "BGR";  // Default format
         tracker.format = "BGR";
     }
-    
-    // Queue size - not available from SDK, return 0
-    stats.input_queue_size = 0;
     
     return stats;
 }
