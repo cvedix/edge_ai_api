@@ -191,7 +191,7 @@ paths:
                     web_server:
                       enabled: true
                       ip_address: "0.0.0.0"
-                      port: 3546
+                      port: 8080
         '500':
           description: Server error
           content:
@@ -495,7 +495,7 @@ paths:
                 example:
                   enabled: true
                   ip_address: "0.0.0.0"
-                  port: 3546
+                  port: 8080
         '400':
           description: Invalid request (empty path)
           content:
@@ -891,6 +891,253 @@ paths:
                 $ref: '#/components/schemas/ErrorResponse'
         '404':
           description: Model file not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /v1/core/videos/upload:
+    post:
+      summary: Upload a video file
+      description: Uploads a video file (MP4, AVI, MKV, etc.) to the server. The file will be saved in the videos directory.
+      operationId: uploadVideo
+      tags:
+        - Video
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              properties:
+                files:
+                  type: array
+                  items:
+                    type: string
+                    format: binary
+                  description: Video file(s) to upload. Select multiple files to upload at once (.mp4, .avi, .mkv, .mov, .flv, .wmv, .webm, etc.)
+                file:
+                  type: string
+                  format: binary
+                  description: Single video file to upload (alternative to files array)
+          application/octet-stream:
+            schema:
+              type: string
+              format: binary
+              description: Video file as binary data
+      responses:
+        '201':
+          description: Video file(s) uploaded successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  message:
+                    type: string
+                  count:
+                    type: integer
+                    description: Number of files uploaded successfully
+                  files:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        filename:
+                          type: string
+                        originalFilename:
+                          type: string
+                        path:
+                          type: string
+                        size:
+                          type: integer
+                        url:
+                          type: string
+                  warnings:
+                    type: array
+                    items:
+                      type: string
+                    description: Warnings for files that failed to upload
+        '400':
+          description: Invalid request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '409':
+          description: File already exists
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+    options:
+      summary: CORS preflight for video upload
+      operationId: uploadVideoOptions
+      tags:
+        - Video
+      responses:
+        '200':
+          description: CORS preflight response
+
+  /v1/core/videos/list:
+    get:
+      summary: List uploaded video files
+      description: Returns a list of all video files that have been uploaded to the server.
+      operationId: listVideos
+      tags:
+        - Video
+      responses:
+        '200':
+          description: List of video files
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  videos:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        filename:
+                          type: string
+                        path:
+                          type: string
+                        size:
+                          type: integer
+                        modified:
+                          type: string
+                  count:
+                    type: integer
+                  directory:
+                    type: string
+        '500':
+          description: Server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /v1/core/videos/{videoName}:
+    put:
+      summary: Rename a video file
+      description: Renames a video file on the server.
+      operationId: renameVideo
+      tags:
+        - Video
+      parameters:
+        - name: videoName
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Current name of the video file to rename
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - newName
+              properties:
+                newName:
+                  type: string
+                  description: New name for the video file (must have valid video file extension)
+                  example: "my_video_v2.mp4"
+      responses:
+        '200':
+          description: Video file renamed successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  message:
+                    type: string
+                  oldName:
+                    type: string
+                  newName:
+                    type: string
+                  path:
+                    type: string
+        '400':
+          description: Invalid request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: Video file not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '409':
+          description: New name already exists
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+    delete:
+      summary: Delete a video file
+      description: Deletes a video file from the server.
+      operationId: deleteVideo
+      tags:
+        - Video
+      parameters:
+        - name: videoName
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Name of the video file to delete
+      responses:
+        '200':
+          description: Video file deleted successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  message:
+                    type: string
+                  filename:
+                    type: string
+        '400':
+          description: Invalid request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: Video file not found
           content:
             application/json:
               schema:

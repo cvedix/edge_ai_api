@@ -244,7 +244,7 @@ void SystemConfig::initializeDefaults() {
     Json::Value webServer(Json::objectValue);
     webServer["enabled"] = true;
     webServer["ip_address"] = "0.0.0.0";
-    webServer["port"] = 3546;
+    webServer["port"] = 8080;
     webServer["name"] = "default";
     Json::Value cors(Json::objectValue);
     cors["enabled"] = false;

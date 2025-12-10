@@ -14,6 +14,7 @@
 #include "api/config_handler.h"
 #include "api/node_handler.h"
 #include "models/model_upload_handler.h"
+#include "videos/video_upload_handler.h"
 #include "config/system_config.h"
 #include "core/watchdog.h"
 #include "core/health_monitor.h"
@@ -30,6 +31,7 @@
 #include "groups/group_storage.h"
 #include "core/node_pool_manager.h"
 #include "core/node_storage.h"
+#include "core/cors_filter.h"
 #include <cvedix/utils/analysis_board/cvedix_analysis_board.h>
 #include <cvedix/nodes/src/cvedix_rtsp_src_node.h>
 #include <cvedix/nodes/src/cvedix_file_src_node.h>
@@ -1758,6 +1760,109 @@ int main(int argc, char* argv[])
         ModelUploadHandler::setModelsDirectory(modelsDir);
         static ModelUploadHandler modelUploadHandler;
         
+        // Initialize video upload handler with configurable directory
+        // Priority: 1. VIDEOS_DIR env var, 2. /opt/edge_ai_api/videos (with auto-fallback)
+        std::string videosDir;
+        const char* env_videos_dir = std::getenv("VIDEOS_DIR");
+        if (env_videos_dir && strlen(env_videos_dir) > 0) {
+            videosDir = std::string(env_videos_dir);
+            std::cerr << "[Main] Using VIDEOS_DIR from environment: " << videosDir << std::endl;
+        } else {
+            // Try /opt/edge_ai_api/videos first, fallback to user directory if needed
+            videosDir = "/opt/edge_ai_api/videos";
+            std::cerr << "[Main] Attempting to use: " << videosDir << std::endl;
+        }
+        
+        // Try to create directory if it doesn't exist
+        // Strategy: Try /opt first, if fails, auto-fallback to user directory
+        bool videos_directory_ready = false;
+        if (!std::filesystem::exists(videosDir)) {
+            std::cerr << "[Main] Videos directory does not exist, attempting to create: " << videosDir << std::endl;
+            
+            try {
+                // Try to create directory (will create parent dirs if we have permission)
+                bool created = std::filesystem::create_directories(videosDir);
+                if (created) {
+                    std::cerr << "[Main] ✓ Successfully created videos directory: " << videosDir << std::endl;
+                    videos_directory_ready = true;
+                } else {
+                    // Directory might have been created by another process
+                    if (std::filesystem::exists(videosDir)) {
+                        std::cerr << "[Main] ✓ Videos directory exists (created by another process): " << videosDir << std::endl;
+                        videos_directory_ready = true;
+                    }
+                }
+            } catch (const std::filesystem::filesystem_error& e) {
+                if (e.code() == std::errc::permission_denied) {
+                    std::cerr << "[Main] ⚠ Cannot create " << videosDir << " (permission denied)" << std::endl;
+                    
+                    // Auto-fallback: Try user directory (works without sudo)
+                    if (env_videos_dir == nullptr || strlen(env_videos_dir) == 0) {
+                        const char* home = std::getenv("HOME");
+                        if (home) {
+                            std::string fallback_path = std::string(home) + "/.local/share/edge_ai_api/videos";
+                            std::cerr << "[Main] Auto-fallback: Trying user directory: " << fallback_path << std::endl;
+                            try {
+                                std::filesystem::create_directories(fallback_path);
+                                videosDir = fallback_path;
+                                videos_directory_ready = true;
+                                std::cerr << "[Main] ✓ Using fallback directory: " << videosDir << std::endl;
+                                std::cerr << "[Main] ℹ Note: To use /opt/edge_ai_api/videos, create parent directory:" << std::endl;
+                                std::cerr << "[Main] ℹ   sudo mkdir -p /opt/edge_ai_api && sudo chown $USER:$USER /opt/edge_ai_api" << std::endl;
+                            } catch (const std::exception& fallback_e) {
+                                std::cerr << "[Main] ⚠ Fallback also failed: " << fallback_e.what() << std::endl;
+                                // Last resort: current directory
+                                videosDir = "./videos";
+                                try {
+                                    std::filesystem::create_directories(videosDir);
+                                    videos_directory_ready = true;
+                                    std::cerr << "[Main] ✓ Using current directory: " << videosDir << std::endl;
+                                } catch (...) {
+                                    std::cerr << "[Main] ✗ ERROR: Cannot create any videos directory" << std::endl;
+                                }
+                            }
+                        } else {
+                            // No HOME, use current directory
+                            videosDir = "./videos";
+                            try {
+                                std::filesystem::create_directories(videosDir);
+                                videos_directory_ready = true;
+                                std::cerr << "[Main] ✓ Using current directory: " << videosDir << std::endl;
+                            } catch (...) {
+                                std::cerr << "[Main] ✗ ERROR: Cannot create ./videos" << std::endl;
+                            }
+                        }
+                    } else {
+                        // User specified VIDEOS_DIR but can't create it
+                        std::cerr << "[Main] ✗ ERROR: Cannot create user-specified directory: " << videosDir << std::endl;
+                        std::cerr << "[Main] ✗ Please check permissions or use a different path" << std::endl;
+                    }
+                } else {
+                    std::cerr << "[Main] ✗ ERROR creating " << videosDir << ": " << e.what() << std::endl;
+                }
+            } catch (const std::exception& e) {
+                std::cerr << "[Main] ✗ Exception creating " << videosDir << ": " << e.what() << std::endl;
+            }
+        } else {
+            // Check if it's actually a directory
+            if (std::filesystem::is_directory(videosDir)) {
+                std::cerr << "[Main] ✓ Videos directory already exists: " << videosDir << std::endl;
+                videos_directory_ready = true;
+            } else {
+                std::cerr << "[Main] ✗ ERROR: Path exists but is not a directory: " << videosDir << std::endl;
+            }
+        }
+        
+        if (videos_directory_ready) {
+            std::cerr << "[Main] ✓ Videos directory is ready: " << videosDir << std::endl;
+        } else {
+            std::cerr << "[Main] ⚠ WARNING: Videos directory may not be ready" << std::endl;
+        }
+        
+        PLOG_INFO << "[Main] Videos directory: " << videosDir;
+        VideoUploadHandler::setVideosDirectory(videosDir);
+        static VideoUploadHandler videoUploadHandler;
+        
         // System configuration already loaded above (for web_server config)
         // Log additional configuration details
         if (systemConfig.isLoaded()) {
@@ -1817,6 +1922,13 @@ int main(int argc, char* argv[])
         PLOG_INFO << "  PUT /v1/core/models/{modelName} - Rename model file";
         PLOG_INFO << "  DELETE /v1/core/models/{modelName} - Delete model file";
         PLOG_INFO << "  Models directory: " << modelsDir;
+        
+        PLOG_INFO << "[Main] Video upload handler initialized";
+        PLOG_INFO << "  POST /v1/core/videos/upload - Upload video file";
+        PLOG_INFO << "  GET /v1/core/videos/list - List uploaded videos";
+        PLOG_INFO << "  PUT /v1/core/videos/{videoName} - Rename video file";
+        PLOG_INFO << "  DELETE /v1/core/videos/{videoName} - Delete video file";
+        PLOG_INFO << "  Videos directory: " << videosDir;
         
         PLOG_INFO << "[Main] Configuration management initialized";
         PLOG_INFO << "  GET /v1/core/config - Get full configuration";
@@ -1977,8 +2089,9 @@ int main(int argc, char* argv[])
         PLOG_INFO << "[Main] Shutdown watchdog thread started";
 
         // Set HTTP server configuration from environment variables
-        size_t max_body_size = EnvConfig::getSizeT("CLIENT_MAX_BODY_SIZE", 1024 * 1024); // Default: 1MB
-        size_t max_memory_body_size = EnvConfig::getSizeT("CLIENT_MAX_MEMORY_BODY_SIZE", 1024 * 1024); // Default: 1MB
+        // Default: 500MB for video uploads (can be overridden via CLIENT_MAX_BODY_SIZE env var)
+        size_t max_body_size = EnvConfig::getSizeT("CLIENT_MAX_BODY_SIZE", 500 * 1024 * 1024); // Default: 500MB
+        size_t max_memory_body_size = EnvConfig::getSizeT("CLIENT_MAX_MEMORY_BODY_SIZE", 100 * 1024 * 1024); // Default: 100MB
         int thread_num = EnvConfig::getInt("THREAD_NUM", 0, 0, 256); // 0 = auto-detect
         std::string log_level_str = EnvConfig::getString("LOG_LEVEL", "INFO");
         
@@ -2024,6 +2137,13 @@ int main(int argc, char* argv[])
             .setClientMaxMemoryBodySize(max_memory_body_size)
             .setLogLevel(log_level)
             .setThreadNum(actual_thread_num);
+        
+        // Register CORS filter to handle OPTIONS preflight requests
+        // This intercepts OPTIONS requests before Drogon's automatic handling
+        // Note: Filter is defined with isAutoCreation=false to allow manual registration
+        auto corsFilter = std::make_shared<CorsFilter>();
+        app.registerFilter(corsFilter);
+        PLOG_INFO << "[Config] CORS filter registered for OPTIONS preflight handling";
         
         // Explicitly disable HTTPS - we only use HTTP
         // With useSSL=false, Drogon will not check for SSL certificates
