@@ -214,6 +214,27 @@ std::string resolveDataDirectory() {
 }
 ```
 
+**Với External Data Directory (/mnt/sb1/data):**
+```cpp
+std::string resolveExternalDataDirectory() {
+    // Priority 1: Environment variable (highest priority)
+    const char* env_external = std::getenv("EXTERNAL_DATA_DIR");
+    if (env_external && strlen(env_external) > 0) {
+        std::string path = std::string(env_external);
+        try {
+            std::filesystem::create_directories(path);
+            return path;
+        } catch (...) {
+            std::cerr << "⚠ Cannot create external data directory: " << path << std::endl;
+        }
+    }
+    
+    // Priority 2: Default external path
+    std::string default_path = "/mnt/sb1/data";
+    return resolveDirectory(default_path);
+}
+```
+
 ### Trường hợp 4: Cache Directory
 
 ```cpp
@@ -265,11 +286,24 @@ sudo chown "$SERVICE_USER:$SERVICE_USER" "$INSTALL_DIR"
 sudo chmod 777 "$INSTALL_DIR"  # Full: drwxrwxrwx (như cvedix-rt)
 ```
 
+**Tạo thư mục dữ liệu ngoài (External Data Directory):**
+```bash
+# Script tự động tạo /mnt/sb1/data với quyền ghi
+sudo ./deploy/install_directories.sh
+
+# Hoặc chỉ định thư mục khác
+sudo EXTERNAL_DATA_DIR=/mnt/other/data ./deploy/install_directories.sh
+
+# Với quyền đầy đủ (777)
+sudo ./deploy/install_directories.sh --full-permissions
+```
+
 **Ưu điểm:**
 - Tạo parent directory một lần
 - Code tự động tạo subdirectories
 - Không cần sudo khi chạy ứng dụng
 - Có thể chọn quyền 755 (an toàn) hoặc 777 (tiện lợi)
+- Hỗ trợ thư mục dữ liệu ngoài (external data directory) như `/mnt/sb1/data`
 
 ### Strategy 2: Debian Package postinst
 
