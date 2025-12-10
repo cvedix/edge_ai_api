@@ -274,10 +274,13 @@ set(SOURCES
     src/api/node_handler.cpp
     src/api/system_info_handler.cpp
     src/models/model_upload_handler.cpp
+    src/videos/video_upload_handler.cpp
     src/core/watchdog.cpp
     src/core/health_monitor.cpp
     src/core/endpoint_monitor.cpp
     src/core/request_middleware.cpp
+    src/core/cors_filter.cpp
+    src/core/cors_helper.cpp
     src/core/ai_processor.cpp
     src/core/ai_watchdog.cpp
     src/instances/instance_registry.cpp
