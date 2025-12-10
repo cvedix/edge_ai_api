@@ -1323,6 +1323,13 @@ void InstanceRegistry::loadPersistentInstances() {
         auto optInfo = instance_storage_.loadInstance(instanceId);
         if (optInfo.has_value()) {
             instances_[instanceId] = optInfo.value();
+            // Reset timing fields when loading from storage
+            // This ensures accurate time calculations when instance starts
+            instances_[instanceId].startTime = std::chrono::steady_clock::now();
+            instances_[instanceId].lastActivityTime = instances_[instanceId].startTime;
+            instances_[instanceId].hasReceivedData = false;
+            instances_[instanceId].retryCount = 0;
+            instances_[instanceId].retryLimitReached = false;
             // Note: Pipelines are not restored from storage
             // They need to be rebuilt if needed
         }
@@ -1374,6 +1381,15 @@ InstanceInfo InstanceRegistry::createInstanceInfo(
     info.loaded = true;
     info.running = false;
     info.fps = 0.0;
+    
+    // Initialize timing fields to current time (will be reset when instance starts)
+    // This prevents incorrect time calculations if instance is checked before starting
+    auto now = std::chrono::steady_clock::now();
+    info.startTime = now;
+    info.lastActivityTime = now;
+    info.hasReceivedData = false;
+    info.retryCount = 0;
+    info.retryLimitReached = false;
     
     // Get version from CVEDIX SDK
     #ifdef CVEDIX_VERSION_STRING
@@ -2152,6 +2168,31 @@ int InstanceRegistry::checkAndHandleRetryLimits() {
                                     std::cerr << "[InstanceRegistry] Instance " << instanceId 
                                               << " connection successful - resetting retry counter" << std::endl;
                                     info.retryCount = 0;
+                                }
+                            } else {
+                                // Debug: Log when RTSP is connected but no frames received
+                                if (timeSinceStart > 5 && timeSinceStart < 35) {
+                                    // Only log once every 5 seconds to avoid spam
+                                    static std::map<std::string, std::chrono::steady_clock::time_point> lastLogTime;
+                                    auto lastLog = lastLogTime.find(instanceId);
+                                    bool shouldLog = false;
+                                    if (lastLog == lastLogTime.end()) {
+                                        shouldLog = true;
+                                        lastLogTime[instanceId] = now;
+                                    } else {
+                                        auto timeSinceLastLog = std::chrono::duration_cast<std::chrono::seconds>(
+                                            now - lastLog->second).count();
+                                        if (timeSinceLastLog >= 5) {
+                                            shouldLog = true;
+                                            lastLogTime[instanceId] = now;
+                                        }
+                                    }
+                                    if (shouldLog) {
+                                        std::cerr << "[InstanceRegistry] Instance " << instanceId 
+                                                  << " RTSP connected but no frames received yet (running=" 
+                                                  << timeSinceStart << "s, fps=" << info.fps 
+                                                  << "). This may be normal - RTSP streams can take 10-30 seconds to stabilize." << std::endl;
+                                    }
                                 }
                             }
                         }
