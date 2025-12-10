@@ -11,7 +11,9 @@
 #include "api/solution_handler.h"
 #include "api/group_handler.h"
 #include "api/config_handler.h"
+#include "api/node_handler.h"
 #include "models/model_upload_handler.h"
+#include "videos/video_upload_handler.h"
 #include "config/system_config.h"
 #include "core/watchdog.h"
 #include "core/health_monitor.h"
@@ -26,6 +28,9 @@
 #include "solutions/solution_storage.h"
 #include "groups/group_registry.h"
 #include "groups/group_storage.h"
+#include "core/node_pool_manager.h"
+#include "core/node_storage.h"
+#include "core/cors_filter.h"
 #include <cvedix/utils/analysis_board/cvedix_analysis_board.h>
 #include <cvedix/nodes/src/cvedix_rtsp_src_node.h>
 #include <cvedix/nodes/src/cvedix_file_src_node.h>
@@ -1407,6 +1412,153 @@ int main(int argc, char* argv[])
         // Initialize default solutions (face_detection, etc.)
         solutionRegistry.initializeDefaultSolutions();
         
+        // Initialize node pool manager and default templates
+        static NodePoolManager& nodePool = NodePoolManager::getInstance();
+        nodePool.initializeDefaultTemplates();
+        PLOG_INFO << "[Main] Node pool manager initialized with default templates";
+        
+        // Initialize node storage and load persisted nodes
+        // Priority: 1. NODES_DIR env var, 2. /opt/edge_ai_api/nodes (with auto-fallback)
+        std::string nodesDir;
+        const char* env_nodes_dir = std::getenv("NODES_DIR");
+        if (env_nodes_dir && strlen(env_nodes_dir) > 0) {
+            nodesDir = std::string(env_nodes_dir);
+            std::cerr << "[Main] Using NODES_DIR from environment: " << nodesDir << std::endl;
+        } else {
+            // Try /opt/edge_ai_api/nodes first, fallback to user directory if needed
+            nodesDir = "/opt/edge_ai_api/nodes";
+            std::cerr << "[Main] Attempting to use: " << nodesDir << std::endl;
+        }
+        
+        // Try to create directory if it doesn't exist
+        // Strategy: Try /opt first, if fails, auto-fallback to user directory
+        bool nodes_directory_ready = false;
+        if (!std::filesystem::exists(nodesDir)) {
+            std::cerr << "[Main] Nodes directory does not exist, attempting to create: " << nodesDir << std::endl;
+            
+            try {
+                // Try to create directory (will create parent dirs if we have permission)
+                bool created = std::filesystem::create_directories(nodesDir);
+                if (created) {
+                    std::cerr << "[Main] ✓ Successfully created nodes directory: " << nodesDir << std::endl;
+                    nodes_directory_ready = true;
+                } else {
+                    // Directory might have been created by another process
+                    if (std::filesystem::exists(nodesDir)) {
+                        std::cerr << "[Main] ✓ Nodes directory exists (created by another process): " << nodesDir << std::endl;
+                        nodes_directory_ready = true;
+                    }
+                }
+            } catch (const std::filesystem::filesystem_error& e) {
+                if (e.code() == std::errc::permission_denied) {
+                    std::cerr << "[Main] ⚠ Cannot create " << nodesDir << " (permission denied)" << std::endl;
+                    
+                    // Auto-fallback: Try user directory (works without sudo)
+                    if (env_nodes_dir == nullptr || strlen(env_nodes_dir) == 0) {
+                        const char* home = std::getenv("HOME");
+                        if (home) {
+                            std::string fallback_path = std::string(home) + "/.local/share/edge_ai_api/nodes";
+                            std::cerr << "[Main] Auto-fallback: Trying user directory: " << fallback_path << std::endl;
+                            try {
+                                std::filesystem::create_directories(fallback_path);
+                                nodesDir = fallback_path;
+                                nodes_directory_ready = true;
+                                std::cerr << "[Main] ✓ Using fallback directory: " << nodesDir << std::endl;
+                                std::cerr << "[Main] ℹ Note: To use /opt/edge_ai_api/nodes, create parent directory:" << std::endl;
+                                std::cerr << "[Main] ℹ   sudo mkdir -p /opt/edge_ai_api && sudo chown $USER:$USER /opt/edge_ai_api" << std::endl;
+                            } catch (const std::exception& fallback_e) {
+                                std::cerr << "[Main] ⚠ Fallback also failed: " << fallback_e.what() << std::endl;
+                                // Last resort: current directory
+                                nodesDir = "./nodes";
+                                try {
+                                    std::filesystem::create_directories(nodesDir);
+                                    nodes_directory_ready = true;
+                                    std::cerr << "[Main] ✓ Using current directory: " << nodesDir << std::endl;
+                                } catch (...) {
+                                    std::cerr << "[Main] ✗ ERROR: Cannot create any nodes directory" << std::endl;
+                                }
+                            }
+                        } else {
+                            // No HOME env var, use current directory
+                            nodesDir = "./nodes";
+                            try {
+                                std::filesystem::create_directories(nodesDir);
+                                nodes_directory_ready = true;
+                                std::cerr << "[Main] ✓ Using current directory: " << nodesDir << std::endl;
+                            } catch (...) {
+                                std::cerr << "[Main] ✗ ERROR: Cannot create nodes directory" << std::endl;
+                            }
+                        }
+                    }
+                } else {
+                    std::cerr << "[Main] ✗ Exception creating " << nodesDir << ": " << e.what() << std::endl;
+                }
+            } catch (const std::exception& e) {
+                std::cerr << "[Main] ✗ Exception creating " << nodesDir << ": " << e.what() << std::endl;
+            }
+        } else {
+            // Check if it's actually a directory
+            if (std::filesystem::is_directory(nodesDir)) {
+                std::cerr << "[Main] ✓ Nodes directory already exists: " << nodesDir << std::endl;
+                nodes_directory_ready = true;
+            } else {
+                std::cerr << "[Main] ✗ ERROR: Path exists but is not a directory: " << nodesDir << std::endl;
+            }
+        }
+        
+        if (nodes_directory_ready) {
+            std::cerr << "[Main] ✓ Nodes directory is ready: " << nodesDir << std::endl;
+        } else {
+            std::cerr << "[Main] ⚠ WARNING: Nodes directory may not be ready" << std::endl;
+        }
+        
+        PLOG_INFO << "[Main] Nodes directory: " << nodesDir;
+        static NodeStorage nodeStorage(nodesDir);
+        
+        // Step 1: Load persisted nodes from storage (if any)
+        size_t loadedFromStorage = nodePool.loadNodesFromStorage(nodeStorage);
+        PLOG_INFO << "[Main] Loaded " << loadedFromStorage << " nodes from storage";
+        
+        // Step 2: Create default nodes from all available templates
+        // This ensures all supported node types have default nodes, not just those from solutions
+        size_t createdFromTemplates = nodePool.createDefaultNodesFromTemplates();
+        PLOG_INFO << "[Main] Created " << createdFromTemplates << " default nodes from templates";
+        
+        // Step 3: Also create nodes from default solutions (for nodes with specific configurations)
+        // This adds nodes with solution-specific parameters
+        size_t createdFromSolutions = nodePool.createNodesFromDefaultSolutions(solutionRegistry);
+        PLOG_INFO << "[Main] Created " << createdFromSolutions << " nodes from default solutions";
+        
+        size_t totalCreated = createdFromTemplates + createdFromSolutions;
+        
+        // Step 4: Load user-created nodes again (in case storage was updated)
+        // This ensures we have all nodes: defaults + user-created
+        size_t loadedUserNodes = nodePool.loadNodesFromStorage(nodeStorage);
+        
+        // Step 5: Get total count for reporting
+        auto stats = nodePool.getStats();
+        std::cerr << "[Main] ========================================" << std::endl;
+        std::cerr << "[Main] Node Pool Status:" << std::endl;
+        std::cerr << "[Main]   Total nodes: " << stats.totalPreConfiguredNodes << std::endl;
+        std::cerr << "[Main]   Available: " << stats.availableNodes << std::endl;
+        std::cerr << "[Main]   In use: " << stats.inUseNodes << std::endl;
+        std::cerr << "[Main]   Default nodes (from templates): " << createdFromTemplates << std::endl;
+        std::cerr << "[Main]   Nodes from solutions: " << createdFromSolutions << std::endl;
+        std::cerr << "[Main]   User-created nodes: " << loadedUserNodes << std::endl;
+        std::cerr << "[Main] ========================================" << std::endl;
+        PLOG_INFO << "[Main] Node pool initialized: " << stats.totalPreConfiguredNodes 
+                  << " total nodes (" << stats.availableNodes << " available, " 
+                  << stats.inUseNodes << " in use)";
+        
+        // Step 6: Save nodes to storage only if we created new nodes
+        if (totalCreated > 0) {
+            if (nodePool.saveNodesToStorage(nodeStorage)) {
+                PLOG_INFO << "[Main] Saved nodes to storage (including " << totalCreated << " new nodes)";
+            } else {
+                PLOG_WARNING << "[Main] Failed to save nodes to storage";
+            }
+        }
+        
         // Initialize solution storage and load custom solutions
         // Default: /var/lib/edge_ai_api/solutions (auto-created if needed)
         std::string solutionsDir = EnvConfig::resolveDataDir("SOLUTIONS_DIR", "solutions");
@@ -1498,13 +1650,213 @@ int main(int argc, char* argv[])
         static InstanceHandler instanceHandler;
         static SolutionHandler solutionHandler;
         static GroupHandler groupHandler;
+        static NodeHandler nodeHandler;
         
         // Initialize model upload handler with configurable directory
-        // Default: /var/lib/edge_ai_api/models (auto-created if needed)
-        std::string modelsDir = EnvConfig::resolveDataDir("MODELS_DIR", "models");
+        // Priority: 1. MODELS_DIR env var, 2. /opt/edge_ai_api/models (with auto-fallback)
+        std::string modelsDir;
+        const char* env_models_dir = std::getenv("MODELS_DIR");
+        if (env_models_dir && strlen(env_models_dir) > 0) {
+            modelsDir = std::string(env_models_dir);
+            std::cerr << "[Main] Using MODELS_DIR from environment: " << modelsDir << std::endl;
+        } else {
+            // Try /opt/edge_ai_api/models first, fallback to user directory if needed
+            modelsDir = "/opt/edge_ai_api/models";
+            std::cerr << "[Main] Attempting to use: " << modelsDir << std::endl;
+        }
+        
+        // Try to create directory if it doesn't exist
+        // Strategy: Try /opt first, if fails, auto-fallback to user directory
+        bool models_directory_ready = false;
+        if (!std::filesystem::exists(modelsDir)) {
+            std::cerr << "[Main] Models directory does not exist, attempting to create: " << modelsDir << std::endl;
+            
+            try {
+                // Try to create directory (will create parent dirs if we have permission)
+                bool created = std::filesystem::create_directories(modelsDir);
+                if (created) {
+                    std::cerr << "[Main] ✓ Successfully created models directory: " << modelsDir << std::endl;
+                    models_directory_ready = true;
+                } else {
+                    // Directory might have been created by another process
+                    if (std::filesystem::exists(modelsDir)) {
+                        std::cerr << "[Main] ✓ Models directory exists (created by another process): " << modelsDir << std::endl;
+                        models_directory_ready = true;
+                    }
+                }
+            } catch (const std::filesystem::filesystem_error& e) {
+                if (e.code() == std::errc::permission_denied) {
+                    std::cerr << "[Main] ⚠ Cannot create " << modelsDir << " (permission denied)" << std::endl;
+                    
+                    // Auto-fallback: Try user directory (works without sudo)
+                    if (env_models_dir == nullptr || strlen(env_models_dir) == 0) {
+                        const char* home = std::getenv("HOME");
+                        if (home) {
+                            std::string fallback_path = std::string(home) + "/.local/share/edge_ai_api/models";
+                            std::cerr << "[Main] Auto-fallback: Trying user directory: " << fallback_path << std::endl;
+                            try {
+                                std::filesystem::create_directories(fallback_path);
+                                modelsDir = fallback_path;
+                                models_directory_ready = true;
+                                std::cerr << "[Main] ✓ Using fallback directory: " << modelsDir << std::endl;
+                                std::cerr << "[Main] ℹ Note: To use /opt/edge_ai_api/models, create parent directory:" << std::endl;
+                                std::cerr << "[Main] ℹ   sudo mkdir -p /opt/edge_ai_api && sudo chown $USER:$USER /opt/edge_ai_api" << std::endl;
+                            } catch (const std::exception& fallback_e) {
+                                std::cerr << "[Main] ⚠ Fallback also failed: " << fallback_e.what() << std::endl;
+                                // Last resort: current directory
+                                modelsDir = "./models";
+                                try {
+                                    std::filesystem::create_directories(modelsDir);
+                                    models_directory_ready = true;
+                                    std::cerr << "[Main] ✓ Using current directory: " << modelsDir << std::endl;
+                                } catch (...) {
+                                    std::cerr << "[Main] ✗ ERROR: Cannot create any models directory" << std::endl;
+                                }
+                            }
+                        } else {
+                            // No HOME, use current directory
+                            modelsDir = "./models";
+                            try {
+                                std::filesystem::create_directories(modelsDir);
+                                models_directory_ready = true;
+                                std::cerr << "[Main] ✓ Using current directory: " << modelsDir << std::endl;
+                            } catch (...) {
+                                std::cerr << "[Main] ✗ ERROR: Cannot create ./models" << std::endl;
+                            }
+                        }
+                    } else {
+                        // User specified MODELS_DIR but can't create it
+                        std::cerr << "[Main] ✗ ERROR: Cannot create user-specified directory: " << modelsDir << std::endl;
+                        std::cerr << "[Main] ✗ Please check permissions or use a different path" << std::endl;
+                    }
+                } else {
+                    std::cerr << "[Main] ✗ ERROR creating " << modelsDir << ": " << e.what() << std::endl;
+                }
+            } catch (const std::exception& e) {
+                std::cerr << "[Main] ✗ Exception creating " << modelsDir << ": " << e.what() << std::endl;
+            }
+        } else {
+            // Check if it's actually a directory
+            if (std::filesystem::is_directory(modelsDir)) {
+                std::cerr << "[Main] ✓ Models directory already exists: " << modelsDir << std::endl;
+                models_directory_ready = true;
+            } else {
+                std::cerr << "[Main] ✗ ERROR: Path exists but is not a directory: " << modelsDir << std::endl;
+            }
+        }
+        
+        if (models_directory_ready) {
+            std::cerr << "[Main] ✓ Models directory is ready: " << modelsDir << std::endl;
+        } else {
+            std::cerr << "[Main] ⚠ WARNING: Models directory may not be ready" << std::endl;
+        }
+        
         PLOG_INFO << "[Main] Models directory: " << modelsDir;
         ModelUploadHandler::setModelsDirectory(modelsDir);
         static ModelUploadHandler modelUploadHandler;
+        
+        // Initialize video upload handler with configurable directory
+        // Priority: 1. VIDEOS_DIR env var, 2. /opt/edge_ai_api/videos (with auto-fallback)
+        std::string videosDir;
+        const char* env_videos_dir = std::getenv("VIDEOS_DIR");
+        if (env_videos_dir && strlen(env_videos_dir) > 0) {
+            videosDir = std::string(env_videos_dir);
+            std::cerr << "[Main] Using VIDEOS_DIR from environment: " << videosDir << std::endl;
+        } else {
+            // Try /opt/edge_ai_api/videos first, fallback to user directory if needed
+            videosDir = "/opt/edge_ai_api/videos";
+            std::cerr << "[Main] Attempting to use: " << videosDir << std::endl;
+        }
+        
+        // Try to create directory if it doesn't exist
+        // Strategy: Try /opt first, if fails, auto-fallback to user directory
+        bool videos_directory_ready = false;
+        if (!std::filesystem::exists(videosDir)) {
+            std::cerr << "[Main] Videos directory does not exist, attempting to create: " << videosDir << std::endl;
+            
+            try {
+                // Try to create directory (will create parent dirs if we have permission)
+                bool created = std::filesystem::create_directories(videosDir);
+                if (created) {
+                    std::cerr << "[Main] ✓ Successfully created videos directory: " << videosDir << std::endl;
+                    videos_directory_ready = true;
+                } else {
+                    // Directory might have been created by another process
+                    if (std::filesystem::exists(videosDir)) {
+                        std::cerr << "[Main] ✓ Videos directory exists (created by another process): " << videosDir << std::endl;
+                        videos_directory_ready = true;
+                    }
+                }
+            } catch (const std::filesystem::filesystem_error& e) {
+                if (e.code() == std::errc::permission_denied) {
+                    std::cerr << "[Main] ⚠ Cannot create " << videosDir << " (permission denied)" << std::endl;
+                    
+                    // Auto-fallback: Try user directory (works without sudo)
+                    if (env_videos_dir == nullptr || strlen(env_videos_dir) == 0) {
+                        const char* home = std::getenv("HOME");
+                        if (home) {
+                            std::string fallback_path = std::string(home) + "/.local/share/edge_ai_api/videos";
+                            std::cerr << "[Main] Auto-fallback: Trying user directory: " << fallback_path << std::endl;
+                            try {
+                                std::filesystem::create_directories(fallback_path);
+                                videosDir = fallback_path;
+                                videos_directory_ready = true;
+                                std::cerr << "[Main] ✓ Using fallback directory: " << videosDir << std::endl;
+                                std::cerr << "[Main] ℹ Note: To use /opt/edge_ai_api/videos, create parent directory:" << std::endl;
+                                std::cerr << "[Main] ℹ   sudo mkdir -p /opt/edge_ai_api && sudo chown $USER:$USER /opt/edge_ai_api" << std::endl;
+                            } catch (const std::exception& fallback_e) {
+                                std::cerr << "[Main] ⚠ Fallback also failed: " << fallback_e.what() << std::endl;
+                                // Last resort: current directory
+                                videosDir = "./videos";
+                                try {
+                                    std::filesystem::create_directories(videosDir);
+                                    videos_directory_ready = true;
+                                    std::cerr << "[Main] ✓ Using current directory: " << videosDir << std::endl;
+                                } catch (...) {
+                                    std::cerr << "[Main] ✗ ERROR: Cannot create any videos directory" << std::endl;
+                                }
+                            }
+                        } else {
+                            // No HOME, use current directory
+                            videosDir = "./videos";
+                            try {
+                                std::filesystem::create_directories(videosDir);
+                                videos_directory_ready = true;
+                                std::cerr << "[Main] ✓ Using current directory: " << videosDir << std::endl;
+                            } catch (...) {
+                                std::cerr << "[Main] ✗ ERROR: Cannot create ./videos" << std::endl;
+                            }
+                        }
+                    } else {
+                        // User specified VIDEOS_DIR but can't create it
+                        std::cerr << "[Main] ✗ ERROR: Cannot create user-specified directory: " << videosDir << std::endl;
+                        std::cerr << "[Main] ✗ Please check permissions or use a different path" << std::endl;
+                    }
+                } else {
+                    std::cerr << "[Main] ✗ ERROR creating " << videosDir << ": " << e.what() << std::endl;
+                }
+            } catch (const std::exception& e) {
+                std::cerr << "[Main] ✗ Exception creating " << videosDir << ": " << e.what() << std::endl;
+            }
+        } else {
+            // Check if it's actually a directory
+            if (std::filesystem::is_directory(videosDir)) {
+                std::cerr << "[Main] ✓ Videos directory already exists: " << videosDir << std::endl;
+                videos_directory_ready = true;
+            } else {
+                std::cerr << "[Main] ✗ ERROR: Path exists but is not a directory: " << videosDir << std::endl;
+            }
+        }
+        
+        if (videos_directory_ready) {
+            std::cerr << "[Main] ✓ Videos directory is ready: " << videosDir << std::endl;
+        } else {
+            std::cerr << "[Main] ⚠ WARNING: Videos directory may not be ready" << std::endl;
+        }
+        
+        PLOG_INFO << "[Main] Videos directory: " << videosDir;
+        VideoUploadHandler::setVideosDirectory(videosDir);
+        static VideoUploadHandler videoUploadHandler;
         
         // System configuration already loaded above (for web_server config)
         // Log additional configuration details
@@ -1562,8 +1914,16 @@ int main(int argc, char* argv[])
         PLOG_INFO << "[Main] Model upload handler initialized";
         PLOG_INFO << "  POST /v1/core/models/upload - Upload model file";
         PLOG_INFO << "  GET /v1/core/models/list - List uploaded models";
+        PLOG_INFO << "  PUT /v1/core/models/{modelName} - Rename model file";
         PLOG_INFO << "  DELETE /v1/core/models/{modelName} - Delete model file";
         PLOG_INFO << "  Models directory: " << modelsDir;
+        
+        PLOG_INFO << "[Main] Video upload handler initialized";
+        PLOG_INFO << "  POST /v1/core/videos/upload - Upload video file";
+        PLOG_INFO << "  GET /v1/core/videos/list - List uploaded videos";
+        PLOG_INFO << "  PUT /v1/core/videos/{videoName} - Rename video file";
+        PLOG_INFO << "  DELETE /v1/core/videos/{videoName} - Delete video file";
+        PLOG_INFO << "  Videos directory: " << videosDir;
         
         PLOG_INFO << "[Main] Configuration management initialized";
         PLOG_INFO << "  GET /v1/core/config - Get full configuration";
@@ -1724,8 +2084,9 @@ int main(int argc, char* argv[])
         PLOG_INFO << "[Main] Shutdown watchdog thread started";
 
         // Set HTTP server configuration from environment variables
-        size_t max_body_size = EnvConfig::getSizeT("CLIENT_MAX_BODY_SIZE", 1024 * 1024); // Default: 1MB
-        size_t max_memory_body_size = EnvConfig::getSizeT("CLIENT_MAX_MEMORY_BODY_SIZE", 1024 * 1024); // Default: 1MB
+        // Default: 500MB for video uploads (can be overridden via CLIENT_MAX_BODY_SIZE env var)
+        size_t max_body_size = EnvConfig::getSizeT("CLIENT_MAX_BODY_SIZE", 500 * 1024 * 1024); // Default: 500MB
+        size_t max_memory_body_size = EnvConfig::getSizeT("CLIENT_MAX_MEMORY_BODY_SIZE", 100 * 1024 * 1024); // Default: 100MB
         int thread_num = EnvConfig::getInt("THREAD_NUM", 0, 0, 256); // 0 = auto-detect
         std::string log_level_str = EnvConfig::getString("LOG_LEVEL", "INFO");
         
@@ -1771,6 +2132,13 @@ int main(int argc, char* argv[])
             .setClientMaxMemoryBodySize(max_memory_body_size)
             .setLogLevel(log_level)
             .setThreadNum(actual_thread_num);
+        
+        // Register CORS filter to handle OPTIONS preflight requests
+        // This intercepts OPTIONS requests before Drogon's automatic handling
+        // Note: Filter is defined with isAutoCreation=false to allow manual registration
+        auto corsFilter = std::make_shared<CorsFilter>();
+        app.registerFilter(corsFilter);
+        PLOG_INFO << "[Config] CORS filter registered for OPTIONS preflight handling";
         
         // Explicitly disable HTTPS - we only use HTTP
         // With useSSL=false, Drogon will not check for SSL certificates
