@@ -1036,12 +1036,8 @@ void InstanceHandler::getLastFrame(
         
         const InstanceInfo& info = optInfo.value();
         
-        std::cerr << "[InstanceHandler] [DEBUG] getLastFrame: Instance found, running=" << info.running << std::endl;
-        
         // Get last frame (empty string if no frame cached)
         std::string frameBase64 = instance_registry_->getLastFrame(instanceId);
-        
-        std::cerr << "[InstanceHandler] [DEBUG] getLastFrame: Frame base64 length=" << frameBase64.length() << std::endl;
         
         // Build JSON response
         Json::Value response;
