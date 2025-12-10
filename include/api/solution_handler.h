@@ -24,11 +24,13 @@ public:
     METHOD_LIST_BEGIN
         ADD_METHOD_TO(SolutionHandler::listSolutions, "/v1/core/solutions", Get);
         ADD_METHOD_TO(SolutionHandler::getSolution, "/v1/core/solutions/{solutionId}", Get);
+        ADD_METHOD_TO(SolutionHandler::getSolutionParameters, "/v1/core/solutions/{solutionId}/parameters", Get);
         ADD_METHOD_TO(SolutionHandler::createSolution, "/v1/core/solutions", Post);
         ADD_METHOD_TO(SolutionHandler::updateSolution, "/v1/core/solutions/{solutionId}", Put);
         ADD_METHOD_TO(SolutionHandler::deleteSolution, "/v1/core/solutions/{solutionId}", Delete);
         ADD_METHOD_TO(SolutionHandler::handleOptions, "/v1/core/solutions", Options);
         ADD_METHOD_TO(SolutionHandler::handleOptions, "/v1/core/solutions/{solutionId}", Options);
+        ADD_METHOD_TO(SolutionHandler::handleOptions, "/v1/core/solutions/{solutionId}/parameters", Options);
     METHOD_LIST_END
     
     /**
@@ -65,6 +67,13 @@ public:
      */
     void deleteSolution(const HttpRequestPtr &req,
                        std::function<void(const HttpResponsePtr &)> &&callback);
+    
+    /**
+     * @brief Handle GET /v1/core/solutions/{solutionId}/parameters
+     * Returns parameter schema for creating an instance with this solution
+     */
+    void getSolutionParameters(const HttpRequestPtr &req,
+                              std::function<void(const HttpResponsePtr &)> &&callback);
     
     /**
      * @brief Handle OPTIONS request for CORS preflight
