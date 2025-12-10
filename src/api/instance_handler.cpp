@@ -1322,19 +1322,15 @@ void InstanceHandler::configureStreamOutput(
                 }
                 
                 // Store RECORD_PATH in AdditionalParams
-                // Also configure local RTMP stream for rtmp_des_node
-                // Use localhost RTMP endpoint for local streaming
-                std::string localRtmpUrl = "rtmp://localhost:1935/live/record_" + instanceId;
-                
+                // Note: We do NOT overwrite RTMP_URL here to preserve the existing stream configuration
+                // The file_des node only needs RECORD_PATH, not RTMP_URL
                 if (!streamConfig.isMember("AdditionalParams")) {
                     streamConfig["AdditionalParams"] = Json::Value(Json::objectValue);
                 }
                 streamConfig["AdditionalParams"]["RECORD_PATH"] = path;
-                streamConfig["AdditionalParams"]["RTMP_URL"] = localRtmpUrl;
                 
                 if (isApiLoggingEnabled()) {
                     PLOG_INFO << "[API] POST /v1/core/instance/" << instanceId << "/output/stream - Configuring record output to path: " << path;
-                    PLOG_INFO << "[API] POST /v1/core/instance/" << instanceId << "/output/stream - Local RTMP stream: " << localRtmpUrl;
                 }
                 
             } else if (hasUri) {
