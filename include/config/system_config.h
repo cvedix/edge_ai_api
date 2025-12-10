@@ -72,7 +72,7 @@ public:
     struct WebServerConfig {
         bool enabled = true;
         std::string ipAddress = "0.0.0.0";
-        uint16_t port = 3546;
+        uint16_t port = 8080;
         std::string name = "default";
         bool corsEnabled = false;
     };
