@@ -297,6 +297,52 @@ std::vector<std::shared_ptr<cvedix_nodes::cvedix_node>> PipelineBuilder::buildPi
         }
     }
     
+    // Auto-add file_des node if RECORD_PATH is set in additionalParams
+    auto recordPathIt = req.additionalParams.find("RECORD_PATH");
+    if (recordPathIt != req.additionalParams.end() && !recordPathIt->second.empty()) {
+        std::string recordPath = recordPathIt->second;
+        std::cerr << "[PipelineBuilder] RECORD_PATH detected: " << recordPath << std::endl;
+        std::cerr << "[PipelineBuilder] Auto-adding file_des node for recording..." << std::endl;
+        
+        try {
+            // Create file_des node config
+            SolutionConfig::NodeConfig fileDesConfig;
+            fileDesConfig.nodeType = "file_des";
+            fileDesConfig.nodeName = "file_des_record_{instanceId}";
+            fileDesConfig.parameters["save_dir"] = recordPath;
+            fileDesConfig.parameters["name_prefix"] = "record";
+            fileDesConfig.parameters["max_duration"] = "10"; // 10 minutes per file
+            fileDesConfig.parameters["osd"] = "true"; // Include OSD overlay
+            
+            // Substitute {instanceId} in node name
+            std::string fileDesNodeName = fileDesConfig.nodeName;
+            size_t pos = fileDesNodeName.find("{instanceId}");
+            while (pos != std::string::npos) {
+                fileDesNodeName.replace(pos, 12, instanceId);
+                pos = fileDesNodeName.find("{instanceId}", pos + instanceId.length());
+            }
+            
+            // Create file_des node
+            auto fileDesNode = createFileDestinationNode(
+                fileDesNodeName,
+                fileDesConfig.parameters,
+                instanceId
+            );
+            
+            if (fileDesNode && !nodes.empty()) {
+                // Connect to last node in pipeline
+                fileDesNode->attach_to({nodes.back()});
+                nodes.push_back(fileDesNode);
+                std::cerr << "[PipelineBuilder] ✓ Auto-added file_des node for recording to: " << recordPath << std::endl;
+            } else {
+                std::cerr << "[PipelineBuilder] ⚠ Failed to create file_des node for recording" << std::endl;
+            }
+        } catch (const std::exception& e) {
+            std::cerr << "[PipelineBuilder] ⚠ Exception auto-adding file_des node: " << e.what() << std::endl;
+            std::cerr << "[PipelineBuilder] ⚠ Recording will not be available, but pipeline will continue" << std::endl;
+        }
+    }
+    
     std::cerr << "[PipelineBuilder] Successfully built pipeline with " << nodes.size() 
               << " nodes" << std::endl;
     return nodes;
