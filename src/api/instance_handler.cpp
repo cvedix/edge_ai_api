@@ -1548,15 +1548,31 @@ void InstanceHandler::getStreamOutput(
             streamUri = info.additionalParams.at("RTMP_URL");
         }
         
-        // Determine if stream output is enabled (has URI)
-        bool enabled = !streamUri.empty();
+        // Get RECORD_PATH if exists (for record output mode)
+        std::string recordPath;
+        if (info.additionalParams.find("RECORD_PATH") != info.additionalParams.end()) {
+            recordPath = info.additionalParams.at("RECORD_PATH");
+        }
+        
+        // Determine if stream output is enabled (has URI or RECORD_PATH)
+        bool enabled = !streamUri.empty() || !recordPath.empty();
         response["enabled"] = enabled;
         
-        // Set URI if enabled
+        // Set URI if enabled (for stream output mode)
         if (enabled) {
-            response["uri"] = streamUri;
+            if (!streamUri.empty()) {
+                response["uri"] = streamUri;
+            } else {
+                response["uri"] = ""; // Empty URI when using record mode
+            }
+            
+            // Set path if exists (for record output mode)
+            if (!recordPath.empty()) {
+                response["path"] = recordPath;
+            }
         } else {
             response["uri"] = ""; // Empty string when disabled
+            response["path"] = ""; // Empty string when disabled
         }
         
         auto end_time = std::chrono::steady_clock::now();
