@@ -1,0 +1,9 @@
+bus
+business_car
+construction_truck
+large_truck
+sedan
+small_truck
+suv
+tanker
+van

@@ -1,0 +1,7 @@
+black
+blue
+grey
+other
+red
+white
+yellow
