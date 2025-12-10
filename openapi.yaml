@@ -2803,18 +2803,24 @@ paths:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
     post:
-      summary: Configure stream output
+      summary: Configure stream/record output
       description: |
-        Configures stream output for an instance. This endpoint allows you to enable or disable stream output and set the URI for the stream.
+        Configures stream or record output for an instance. This endpoint allows you to enable or disable output and set either a stream URI or a local path for recording.
         
-        **Supported Stream Types:**
+        **Record Output Mode (using `path` parameter):**
+        - When `enabled` is `true` and `path` is provided, video will be saved as MP4 files to the specified local directory
+        - The path must exist and have write permissions (will be created if it doesn't exist)
+        - Uses `rtmp_des_node` to push data to local stream
+        - Files are saved in MP4 format to the specified path
+        
+        **Stream Output Mode (using `uri` parameter):**
         - **RTMP**: `rtmp://host:port/path/stream_key` - For RTMP streaming (e.g., to MediaMTX, YouTube Live, etc.)
         - **RTSP**: `rtsp://host:port/path/stream_key` - For RTSP streaming
         - **HLS**: `hls://host:port/path/stream_key` - For HLS streaming
         
         **Behavior:**
-        - When `enabled` is `true`, the `uri` field is required and must be a valid stream URI
-        - When `enabled` is `false`, stream output is disabled (URI is not required)
+        - When `enabled` is `true`, either `path` (for record output) or `uri` (for stream output) field is required
+        - When `enabled` is `false`, output is disabled
         - If the instance is currently running, it will be automatically restarted to apply the changes
         - The stream output uses the `rtmp_des_node` in the pipeline
         
@@ -2840,6 +2846,11 @@ paths:
             schema:
               $ref: '#/components/schemas/ConfigureStreamOutputRequest'
             examples:
+              enableRecordOutput:
+                summary: Enable record output to local path
+                value:
+                  enabled: true
+                  path: "/mnt/sb1/data"
               enableLocalRTMP:
                 summary: Enable local RTMP stream
                 value:
@@ -2851,7 +2862,7 @@ paths:
                   enabled: true
                   uri: "rtmp://anhoidong.datacenter.cvedix.com:1935/live/stream"
               disableStream:
-                summary: Disable stream output
+                summary: Disable stream/record output
                 value:
                   enabled: false
       responses:
@@ -3940,14 +3951,22 @@ components:
       properties:
         enabled:
           type: boolean
-          description: Indicates whether stream output is enabled
+          description: Indicates whether stream/record output is enabled
           example: true
+        path:
+          type: string
+          description: |
+            The requested path to save output video MP4 files. Required when enabled is true and using record output mode.
+            The path must be a directory that exists or can be created, and must have write permissions.
+            Directory will be created automatically if it doesn't exist.
+          example: "/mnt/sb1/data"
         uri:
           type: string
           format: uri
           description: |
-            The requested URI for the stream output. Required when enabled is true.
+            The requested URI for the stream output. Required when enabled is true and using stream output mode.
             Must start with rtmp://, rtsp://, or hls://
+            Either `path` (for record output) or `uri` (for stream output) must be provided when enabled is true.
           example: "rtmp://localhost:1935/live/stream"
 
     StreamOutputResponse:
