@@ -2365,7 +2365,7 @@ paths:
           schema:
             type: string
           description: Unique identifier of the instance (UUID)
-          example: "00000000-0000-0000-0000-000000000000"
+          example: "instanceId"
       requestBody:
         required: true
         content:
@@ -2433,6 +2433,44 @@ paths:
         
         The instance must exist and be running. If the instance is not found or not running, a 404 error will be returned.
       operationId: getInstanceStatistics
+      tags:
+        - Instances
+      parameters:
+        - name: instanceId
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Unique identifier for the instance
+          example: "instanceId"
+      responses:
+        '200':
+          description: Statistics information
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/InstanceStatistics'
+              example:
+                frames_processed: 625
+                source_framerate: 25
+                current_framerate: 25
+                latency: 40
+                start_time: 1765377504
+                resolution: "1280x720"
+                format: "BGR"
+                source_resolution: "1280x720"
+        '404':
+          description: Instance not found or not running
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
   /v1/core/instance/{instanceId}/output/stream:
     get:
       summary: Get stream output configuration
@@ -2457,7 +2495,7 @@ paths:
           schema:
             type: string
           description: Unique identifier for the instance
-          example: "00000000-0000-0000-0000-000000000000"
+          example: "instanceId"
       responses:
         '200':
           description: Stream output configuration
@@ -3950,27 +3988,27 @@ components:
           type: integer
           format: int64
           description: Total number of frames processed since instance started
-          example: 0
+          example: 625
         source_framerate:
           type: number
           format: double
           description: Source framerate (FPS from source stream or file)
-          example: 0
+          example: 25
         current_framerate:
           type: number
           format: double
           description: Current processing framerate (FPS)
-          example: 5
+          example: 25
         latency:
           type: number
           format: double
           description: Average processing latency per frame in milliseconds
-          example: 200
+          example: 40
         start_time:
           type: integer
           format: int64
           description: Instance start time (Unix timestamp in seconds)
-          example: 1764900520
+          example: 1765377504
         resolution:
           type: string
           description: Current processing resolution (e.g., "1280x720")
@@ -3982,7 +4020,7 @@ components:
         source_resolution:
           type: string
           description: Source resolution (e.g., "1920x1080")
-          example: "1920x1080"
+          example: "1280x720"
 
     InstanceOutputResponse:
       type: object
