@@ -191,7 +191,7 @@ paths:
                     web_server:
                       enabled: true
                       ip_address: "0.0.0.0"
-                      port: 3546
+                      port: 8080
         '500':
           description: Server error
           content:
@@ -495,7 +495,7 @@ paths:
                 example:
                   enabled: true
                   ip_address: "0.0.0.0"
-                  port: 3546
+                  port: 8080
         '400':
           description: Invalid request (empty path)
           content:
@@ -669,10 +669,16 @@ paths:
             schema:
               type: object
               properties:
+                files:
+                  type: array
+                  items:
+                    type: string
+                    format: binary
+                  description: Model file(s) to upload. Select multiple files to upload at once (.onnx, .rknn, .weights, .cfg, .pt, .pth, .pb, .tflite)
                 file:
                   type: string
                   format: binary
-                  description: Model file to upload (.onnx, .weights, .cfg, .pt, .pth, .pb, .tflite)
+                  description: Single model file to upload (alternative to files array)
           application/octet-stream:
             schema:
               type: string
@@ -680,7 +686,7 @@ paths:
               description: Model file as binary data
       responses:
         '201':
-          description: Model file uploaded successfully
+          description: Model file(s) uploaded successfully
           content:
             application/json:
               schema:
@@ -690,16 +696,29 @@ paths:
                     type: boolean
                   message:
                     type: string
-                  filename:
-                    type: string
-                  originalFilename:
-                    type: string
-                  path:
-                    type: string
-                  size:
+                  count:
                     type: integer
-                  url:
-                    type: string
+                    description: Number of files uploaded successfully
+                  files:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        filename:
+                          type: string
+                        originalFilename:
+                          type: string
+                        path:
+                          type: string
+                        size:
+                          type: integer
+                        url:
+                          type: string
+                  warnings:
+                    type: array
+                    items:
+                      type: string
+                    description: Warnings for files that failed to upload
         '400':
           description: Invalid request
           content:
@@ -769,6 +788,74 @@ paths:
                 $ref: '#/components/schemas/ErrorResponse'
 
   /v1/core/models/{modelName}:
+    put:
+      summary: Rename a model file
+      description: Renames a model file on the server.
+      operationId: renameModel
+      tags:
+        - Models
+      parameters:
+        - name: modelName
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Current name of the model file to rename
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - newName
+              properties:
+                newName:
+                  type: string
+                  description: New name for the model file (must have valid model file extension)
+                  example: "my_model_v2.onnx"
+      responses:
+        '200':
+          description: Model file renamed successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  message:
+                    type: string
+                  oldName:
+                    type: string
+                  newName:
+                    type: string
+                  path:
+                    type: string
+        '400':
+          description: Invalid request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: Model file not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '409':
+          description: New name already exists
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
     delete:
       summary: Delete a model file
       description: Deletes a model file from the server.
@@ -804,6 +891,253 @@ paths:
                 $ref: '#/components/schemas/ErrorResponse'
         '404':
           description: Model file not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /v1/core/videos/upload:
+    post:
+      summary: Upload a video file
+      description: Uploads a video file (MP4, AVI, MKV, etc.) to the server. The file will be saved in the videos directory.
+      operationId: uploadVideo
+      tags:
+        - Video
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              properties:
+                files:
+                  type: array
+                  items:
+                    type: string
+                    format: binary
+                  description: Video file(s) to upload. Select multiple files to upload at once (.mp4, .avi, .mkv, .mov, .flv, .wmv, .webm, etc.)
+                file:
+                  type: string
+                  format: binary
+                  description: Single video file to upload (alternative to files array)
+          application/octet-stream:
+            schema:
+              type: string
+              format: binary
+              description: Video file as binary data
+      responses:
+        '201':
+          description: Video file(s) uploaded successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  message:
+                    type: string
+                  count:
+                    type: integer
+                    description: Number of files uploaded successfully
+                  files:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        filename:
+                          type: string
+                        originalFilename:
+                          type: string
+                        path:
+                          type: string
+                        size:
+                          type: integer
+                        url:
+                          type: string
+                  warnings:
+                    type: array
+                    items:
+                      type: string
+                    description: Warnings for files that failed to upload
+        '400':
+          description: Invalid request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '409':
+          description: File already exists
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+    options:
+      summary: CORS preflight for video upload
+      operationId: uploadVideoOptions
+      tags:
+        - Video
+      responses:
+        '200':
+          description: CORS preflight response
+
+  /v1/core/videos/list:
+    get:
+      summary: List uploaded video files
+      description: Returns a list of all video files that have been uploaded to the server.
+      operationId: listVideos
+      tags:
+        - Video
+      responses:
+        '200':
+          description: List of video files
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  videos:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        filename:
+                          type: string
+                        path:
+                          type: string
+                        size:
+                          type: integer
+                        modified:
+                          type: string
+                  count:
+                    type: integer
+                  directory:
+                    type: string
+        '500':
+          description: Server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /v1/core/videos/{videoName}:
+    put:
+      summary: Rename a video file
+      description: Renames a video file on the server.
+      operationId: renameVideo
+      tags:
+        - Video
+      parameters:
+        - name: videoName
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Current name of the video file to rename
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - newName
+              properties:
+                newName:
+                  type: string
+                  description: New name for the video file (must have valid video file extension)
+                  example: "my_video_v2.mp4"
+      responses:
+        '200':
+          description: Video file renamed successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  message:
+                    type: string
+                  oldName:
+                    type: string
+                  newName:
+                    type: string
+                  path:
+                    type: string
+        '400':
+          description: Invalid request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: Video file not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '409':
+          description: New name already exists
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+    delete:
+      summary: Delete a video file
+      description: Deletes a video file from the server.
+      operationId: deleteVideo
+      tags:
+        - Video
+      parameters:
+        - name: videoName
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Name of the video file to delete
+      responses:
+        '200':
+          description: Video file deleted successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  message:
+                    type: string
+                  filename:
+                    type: string
+        '400':
+          description: Invalid request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: Video file not found
           content:
             application/json:
               schema:
@@ -2805,6 +3139,589 @@ paths:
         '200':
           description: CORS preflight response
 
+  /v1/core/solutions/{solutionId}/parameters:
+    get:
+      summary: Get solution parameter schema
+      description: |
+        Returns the parameter schema required to create an instance with this solution.
+        This includes:
+        - **Additional Parameters**: Solution-specific parameters extracted from pipeline nodes (e.g., RTSP_URL, MODEL_PATH, FILE_PATH)
+        - **Standard Fields**: Common instance creation fields (name, group, persistent, autoStart, etc.)
+        
+        Parameters marked as required must be provided in the `additionalParams` object when creating an instance.
+        Parameters with default values are optional.
+      operationId: getSolutionParameters
+      tags:
+        - Solutions
+      parameters:
+        - name: solutionId
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Solution ID
+      responses:
+        '200':
+          description: Solution parameter schema
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  solutionId:
+                    type: string
+                    description: Solution ID
+                    example: "face_detection"
+                  solutionName:
+                    type: string
+                    description: Solution display name
+                    example: "Face Detection"
+                  solutionType:
+                    type: string
+                    description: Solution type
+                    example: "face_detection"
+                  additionalParams:
+                    type: object
+                    description: Solution-specific parameters extracted from pipeline nodes
+                    additionalProperties:
+                      type: object
+                      properties:
+                        name:
+                          type: string
+                          description: Parameter name
+                        type:
+                          type: string
+                          description: Parameter type
+                          example: "string"
+                        required:
+                          type: boolean
+                          description: Whether this parameter is required
+                        default:
+                          type: string
+                          description: Default value if available
+                        description:
+                          type: string
+                          description: Parameter description
+                    example:
+                      RTSP_URL:
+                        name: "RTSP_URL"
+                        type: "string"
+                        required: true
+                        description: "URL for rtsp_src node"
+                      MODEL_PATH:
+                        name: "MODEL_PATH"
+                        type: "string"
+                        required: false
+                        default: "./models/default.onnx"
+                        description: "File path for yunet_face_detector node"
+                  requiredAdditionalParams:
+                    type: array
+                    description: List of required additional parameter names
+                    items:
+                      type: string
+                    example: ["RTSP_URL"]
+                  standardFields:
+                    type: object
+                    description: Standard instance creation fields
+                    additionalProperties:
+                      type: object
+                      properties:
+                        type:
+                          type: string
+                          description: Field type
+                        required:
+                          type: boolean
+                          description: Whether this field is required
+                        default:
+                          description: Default value
+                        description:
+                          type: string
+                          description: Field description
+                        pattern:
+                          type: string
+                          description: Validation pattern (for strings)
+                        enum:
+                          type: array
+                          description: Allowed values (for enums)
+                          items:
+                            type: string
+                        minimum:
+                          type: number
+                          description: Minimum value (for numbers)
+                    example:
+                      name:
+                        type: "string"
+                        required: true
+                        description: "Instance name (pattern: ^[A-Za-z0-9 -_]+$)"
+                        pattern: "^[A-Za-z0-9 -_]+$"
+                      group:
+                        type: "string"
+                        required: false
+                        description: "Group name (pattern: ^[A-Za-z0-9 -_]+$)"
+                        pattern: "^[A-Za-z0-9 -_]+$"
+                      persistent:
+                        type: "boolean"
+                        required: false
+                        default: false
+                        description: "Save instance to JSON file"
+                      autoStart:
+                        type: "boolean"
+                        required: false
+                        default: false
+                        description: "Automatically start instance when created"
+                  requiredStandardFields:
+                    type: array
+                    description: List of required standard field names
+                    items:
+                      type: string
+                    example: ["name"]
+              example:
+                solutionId: "face_detection"
+                solutionName: "Face Detection"
+                solutionType: "face_detection"
+                additionalParams:
+                  RTSP_URL:
+                    name: "RTSP_URL"
+                    type: "string"
+                    required: true
+                    description: "URL for rtsp_src node"
+                requiredAdditionalParams:
+                  - "RTSP_URL"
+                standardFields:
+                  name:
+                    type: "string"
+                    required: true
+                    description: "Instance name (pattern: ^[A-Za-z0-9 -_]+$)"
+                    pattern: "^[A-Za-z0-9 -_]+$"
+                  group:
+                    type: "string"
+                    required: false
+                    description: "Group name (pattern: ^[A-Za-z0-9 -_]+$)"
+                    pattern: "^[A-Za-z0-9 -_]+$"
+                  persistent:
+                    type: "boolean"
+                    required: false
+                    default: false
+                    description: "Save instance to JSON file"
+                  autoStart:
+                    type: "boolean"
+                    required: false
+                    default: false
+                    description: "Automatically start instance when created"
+                requiredStandardFields:
+                  - "name"
+        '404':
+          description: Solution not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+    options:
+      summary: CORS preflight for solution parameters
+      operationId: getSolutionParametersOptions
+      tags:
+        - Solutions
+      responses:
+        '200':
+          description: CORS preflight response
+
+  /v1/core/nodes:
+    get:
+      summary: List all pre-configured nodes
+      description: |
+        Returns a list of all pre-configured nodes in the node pool.
+        Can be filtered by availability status and category.
+      operationId: listNodes
+      tags:
+        - Node
+      parameters:
+        - name: available
+          in: query
+          required: false
+          schema:
+            type: string
+            enum: ["true", "false", "1", "0"]
+          description: Filter to show only available (not in use) nodes
+          example: "true"
+        - name: category
+          in: query
+          required: false
+          schema:
+            type: string
+            enum: ["source", "detector", "processor", "destination", "broker"]
+          description: Filter nodes by category
+          example: "source"
+      responses:
+        '200':
+          description: List of nodes retrieved successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/NodeListResponse'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+    post:
+      summary: Create a new pre-configured node
+      description: Creates a new pre-configured node from a template with specified parameters
+      operationId: createNode
+      tags:
+        - Node
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateNodeRequest'
+      responses:
+        '201':
+          description: Node created successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/NodeResponse'
+        '400':
+          description: Bad request (missing required fields or invalid parameters)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+    options:
+      summary: CORS preflight for nodes
+      operationId: listNodesOptions
+      tags:
+        - Node
+      responses:
+        '200':
+          description: CORS preflight response
+
+  /v1/core/nodes/{nodeId}:
+    get:
+      summary: Get node details
+      description: Returns detailed information about a specific pre-configured node
+      operationId: getNode
+      tags:
+        - Node
+      parameters:
+        - name: nodeId
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Unique node identifier
+          example: "node_a1b2c3d4"
+      responses:
+        '200':
+          description: Node details retrieved successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/NodeResponse'
+        '404':
+          description: Node not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+    put:
+      summary: Update a node
+      description: |
+        Updates an existing node's parameters. Only nodes that are not currently in use can be updated.
+        Note: Update operation deletes the old node and creates a new one with updated parameters.
+      operationId: updateNode
+      tags:
+        - Node
+      parameters:
+        - name: nodeId
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Unique node identifier
+          example: "node_a1b2c3d4"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateNodeRequest'
+      responses:
+        '200':
+          description: Node updated successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/NodeResponse'
+        '400':
+          description: Bad request (missing parameters field)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: Node not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '409':
+          description: Conflict (node is currently in use)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+    delete:
+      summary: Delete a node
+      description: Deletes a pre-configured node. Only nodes that are not currently in use can be deleted.
+      operationId: deleteNode
+      tags:
+        - Node
+      parameters:
+        - name: nodeId
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Unique node identifier
+          example: "node_a1b2c3d4"
+      responses:
+        '200':
+          description: Node deleted successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                    example: "Node deleted successfully"
+                  nodeId:
+                    type: string
+                    example: "node_a1b2c3d4"
+        '404':
+          description: Node not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '409':
+          description: Conflict (node is currently in use)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+    options:
+      summary: CORS preflight for node
+      operationId: getNodeOptions
+      tags:
+        - Node
+      responses:
+        '200':
+          description: CORS preflight response
+
+  /v1/core/nodes/templates:
+    get:
+      summary: List all node templates
+      description: |
+        Returns a list of all available node templates that can be used to create pre-configured nodes.
+        
+        **Available Node Types:**
+        
+        **Source Nodes:**
+        - `rtsp_src` - RTSP Source
+        - `file_src` - File Source
+        - `app_src` - App Source
+        - `image_src` - Image Source
+        - `rtmp_src` - RTMP Source
+        - `udp_src` - UDP Source
+        
+        **Detector Nodes:**
+        - `yunet_face_detector` - YuNet Face Detector
+        - `yolo_detector` - YOLO Detector
+        - `yolov11_detector` - YOLOv11 Detector
+        - `mask_rcnn_detector` - Mask R-CNN Detector
+        - `openpose_detector` - OpenPose Detector
+        - `enet_seg` - ENet Segmentation
+        - `trt_yolov8_detector` - TensorRT YOLOv8 Detector (requires CVEDIX_WITH_TRT)
+        - `trt_yolov8_seg_detector` - TensorRT YOLOv8 Segmentation (requires CVEDIX_WITH_TRT)
+        - `trt_yolov8_pose_detector` - TensorRT YOLOv8 Pose (requires CVEDIX_WITH_TRT)
+        - `trt_yolov8_classifier` - TensorRT YOLOv8 Classifier (requires CVEDIX_WITH_TRT)
+        - `trt_vehicle_detector` - TensorRT Vehicle Detector (requires CVEDIX_WITH_TRT)
+        - `trt_vehicle_plate_detector` - TensorRT Vehicle Plate Detector (requires CVEDIX_WITH_TRT)
+        - `trt_vehicle_plate_detector_v2` - TensorRT Vehicle Plate Detector v2 (requires CVEDIX_WITH_TRT)
+        - `trt_insight_face_recognition` - TensorRT InsightFace Recognition (requires CVEDIX_WITH_TRT)
+        - `rknn_yolov8_detector` - RKNN YOLOv8 Detector (requires CVEDIX_WITH_RKNN)
+        - `rknn_yolov11_detector` - RKNN YOLOv11 Detector (requires CVEDIX_WITH_RKNN)
+        - `rknn_face_detector` - RKNN Face Detector (requires CVEDIX_WITH_RKNN)
+        - `ppocr_text_detector` - PaddleOCR Text Detector (requires CVEDIX_WITH_PADDLE)
+        - `face_swap` - Face Swap
+        - `insight_face_recognition` - InsightFace Recognition
+        - `mllm_analyser` - MLLM Analyser
+        
+        **Processor Nodes:**
+        - `sface_feature_encoder` - SFace Feature Encoder
+        - `sort_track` - SORT Tracker
+        - `face_osd_v2` - Face OSD v2
+        - `ba_crossline` - BA Crossline
+        - `ba_crossline_osd` - BA Crossline OSD
+        - `classifier` - Classifier
+        - `lane_detector` - Lane Detector
+        - `restoration` - Restoration
+        - `trt_vehicle_feature_encoder` - TensorRT Vehicle Feature Encoder (requires CVEDIX_WITH_TRT)
+        - `trt_vehicle_color_classifier` - TensorRT Vehicle Color Classifier (requires CVEDIX_WITH_TRT)
+        - `trt_vehicle_type_classifier` - TensorRT Vehicle Type Classifier (requires CVEDIX_WITH_TRT)
+        - `trt_vehicle_scanner` - TensorRT Vehicle Scanner (requires CVEDIX_WITH_TRT)
+        
+        **Destination Nodes:**
+        - `file_des` - File Destination
+        - `rtmp_des` - RTMP Destination
+        - `screen_des` - Screen Destination
+        
+        **Broker Nodes:**
+        - `json_console_broker` - JSON Console Broker
+        - `json_enhanced_console_broker` - JSON Enhanced Console Broker
+        - `json_mqtt_broker` - JSON MQTT Broker (requires CVEDIX_WITH_MQTT)
+        - `json_kafka_broker` - JSON Kafka Broker (requires CVEDIX_WITH_KAFKA)
+        - `xml_file_broker` - XML File Broker
+        - `xml_socket_broker` - XML Socket Broker
+        - `msg_broker` - Message Broker
+        - `ba_socket_broker` - BA Socket Broker
+        - `embeddings_socket_broker` - Embeddings Socket Broker
+        - `embeddings_properties_socket_broker` - Embeddings Properties Socket Broker
+        - `plate_socket_broker` - Plate Socket Broker
+        - `expr_socket_broker` - Expression Socket Broker
+        
+        All node templates are automatically imported from CVEDIX SDK nodes available in `/opt/cvedix/include/cvedix/nodes/infers`.
+      operationId: listTemplates
+      tags:
+        - Node
+      responses:
+        '200':
+          description: List of templates retrieved successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TemplateListResponse'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+    options:
+      summary: CORS preflight for templates
+      operationId: listTemplatesOptions
+      tags:
+        - Node
+      responses:
+        '200':
+          description: CORS preflight response
+
+  /v1/core/nodes/templates/{templateId}:
+    get:
+      summary: Get template details
+      description: Returns detailed information about a specific node template
+      operationId: getTemplate
+      tags:
+        - Node
+      parameters:
+        - name: templateId
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Unique template identifier
+          example: "rtsp_src_template"
+      responses:
+        '200':
+          description: Template details retrieved successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TemplateResponse'
+        '404':
+          description: Template not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+    options:
+      summary: CORS preflight for template
+      operationId: getTemplateOptions
+      tags:
+        - Node
+      responses:
+        '200':
+          description: CORS preflight response
+
+  /v1/core/nodes/stats:
+    get:
+      summary: Get node pool statistics
+      description: Returns statistics about the node pool including total templates, total nodes, available nodes, and nodes by category
+      operationId: getNodeStats
+      tags:
+        - Node
+      responses:
+        '200':
+          description: Statistics retrieved successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/NodeStatsResponse'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+    options:
+      summary: CORS preflight for stats
+      operationId: getNodeStatsOptions
+      tags:
+        - Node
+      responses:
+        '200':
+          description: CORS preflight response
+
 components:
   schemas:
     HealthResponse:
@@ -3943,7 +4860,28 @@ components:
             properties:
               nodeType:
                 type: string
-                description: Type of node (e.g., "rtsp_src", "yunet_face_detector", "file_des")
+                description: |
+                  Type of node. Available node types:
+                  
+                  **Source:** rtsp_src, file_src, app_src, image_src, rtmp_src, udp_src
+                  
+                  **Detector:** yunet_face_detector, yolo_detector, yolov11_detector, mask_rcnn_detector, openpose_detector, enet_seg, 
+                  trt_yolov8_detector, trt_yolov8_seg_detector, trt_yolov8_pose_detector, trt_yolov8_classifier, 
+                  trt_vehicle_detector, trt_vehicle_plate_detector, trt_vehicle_plate_detector_v2, trt_insight_face_recognition,
+                  rknn_yolov8_detector, rknn_yolov11_detector, rknn_face_detector, ppocr_text_detector,
+                  face_swap, insight_face_recognition, mllm_analyser
+                  
+                  **Processor:** sface_feature_encoder, sort_track, face_osd_v2, ba_crossline, ba_crossline_osd, classifier, 
+                  lane_detector, restoration, trt_vehicle_feature_encoder, trt_vehicle_color_classifier, 
+                  trt_vehicle_type_classifier, trt_vehicle_scanner
+                  
+                  **Destination:** file_des, rtmp_des, screen_des
+                  
+                  **Broker:** json_console_broker, json_enhanced_console_broker, json_mqtt_broker, json_kafka_broker,
+                  xml_file_broker, xml_socket_broker, msg_broker, ba_socket_broker, embeddings_socket_broker,
+                  embeddings_properties_socket_broker, plate_socket_broker, expr_socket_broker
+                  
+                  See GET /v1/core/nodes/templates for complete list with descriptions.
                 example: "rtsp_src"
               nodeName:
                 type: string
@@ -4128,6 +5066,242 @@ components:
           description: Description of the group
           example: "Updated description"
 
+    NodeResponse:
+      type: object
+      required:
+        - nodeId
+        - templateId
+        - inUse
+        - parameters
+        - createdAt
+      properties:
+        nodeId:
+          type: string
+          description: Unique node identifier
+          example: "node_a1b2c3d4"
+        templateId:
+          type: string
+          description: Template ID used to create this node
+          example: "rtsp_src_template"
+        displayName:
+          type: string
+          description: Human-readable display name from template
+          example: "RTSP Source"
+        nodeType:
+          type: string
+          description: Node type from template
+          example: "rtsp_src"
+        category:
+          type: string
+          description: Node category from template
+          enum: ["source", "detector", "processor", "destination", "broker"]
+          example: "source"
+        description:
+          type: string
+          description: Node description from template
+          example: "Receive video stream from RTSP URL"
+        inUse:
+          type: boolean
+          description: Whether node is currently in use
+          example: false
+        parameters:
+          type: object
+          description: Node configuration parameters
+          additionalProperties:
+            type: string
+          example:
+            rtsp_url: "rtsp://localhost:8554/stream1"
+            channel: "0"
+            resize_ratio: "1.0"
+        createdAt:
+          type: string
+          format: date-time
+          description: Node creation timestamp (ISO 8601 format)
+          example: "2025-01-15T10:30:00Z"
+        message:
+          type: string
+          description: Success message (for create/update operations)
+          example: "Node created successfully"
+        oldNodeId:
+          type: string
+          description: Previous node ID (for update operations)
+          example: "node_old123"
+        newNodeId:
+          type: string
+          description: New node ID (for update operations)
+          example: "node_new456"
+
+    NodeListResponse:
+      type: object
+      required:
+        - nodes
+        - total
+        - available
+        - inUse
+      properties:
+        nodes:
+          type: array
+          description: List of pre-configured nodes
+          items:
+            $ref: '#/components/schemas/NodeResponse'
+        total:
+          type: integer
+          description: Total number of nodes in the list
+          example: 20
+        available:
+          type: integer
+          description: Total number of available (not in use) nodes
+          example: 15
+        inUse:
+          type: integer
+          description: Total number of nodes currently in use
+          example: 5
+
+    CreateNodeRequest:
+      type: object
+      required:
+        - templateId
+      properties:
+        templateId:
+          type: string
+          description: Template ID to use for creating the node
+          example: "rtsp_src_template"
+        parameters:
+          type: object
+          description: Node parameters (must include all required parameters from template)
+          additionalProperties:
+            type: string
+          example:
+            rtsp_url: "rtsp://localhost:8554/stream1"
+            channel: "0"
+            resize_ratio: "1.0"
+
+    UpdateNodeRequest:
+      type: object
+      required:
+        - parameters
+      properties:
+        parameters:
+          type: object
+          description: Updated node parameters
+          additionalProperties:
+            type: string
+          example:
+            rtsp_url: "rtsp://localhost:8554/stream2"
+            channel: "0"
+            resize_ratio: "0.5"
+
+    TemplateResponse:
+      type: object
+      required:
+        - templateId
+        - nodeType
+        - displayName
+        - category
+        - isPreConfigured
+        - defaultParameters
+        - requiredParameters
+        - optionalParameters
+      properties:
+        templateId:
+          type: string
+          description: Unique template identifier
+          example: "rtsp_src_template"
+        nodeType:
+          type: string
+          description: Node type identifier
+          example: "rtsp_src"
+        displayName:
+          type: string
+          description: Human-readable display name
+          example: "RTSP Source"
+        description:
+          type: string
+          description: Template description
+          example: "Receive video stream from RTSP URL"
+        category:
+          type: string
+          description: Node category
+          enum: ["source", "detector", "processor", "destination", "broker"]
+          example: "source"
+        isPreConfigured:
+          type: boolean
+          description: Whether this template creates pre-configured nodes
+          example: false
+        defaultParameters:
+          type: object
+          description: Default parameter values
+          additionalProperties:
+            type: string
+          example:
+            channel: "0"
+            resize_ratio: "1.0"
+        requiredParameters:
+          type: array
+          description: List of required parameter names
+          items:
+            type: string
+          example: ["rtsp_url"]
+        optionalParameters:
+          type: array
+          description: List of optional parameter names
+          items:
+            type: string
+          example: ["channel", "resize_ratio"]
+
+    TemplateListResponse:
+      type: object
+      required:
+        - templates
+        - total
+      properties:
+        templates:
+          type: array
+          description: List of node templates
+          items:
+            $ref: '#/components/schemas/TemplateResponse'
+        total:
+          type: integer
+          description: Total number of templates
+          example: 10
+
+    NodeStatsResponse:
+      type: object
+      required:
+        - totalTemplates
+        - totalPreConfiguredNodes
+        - availableNodes
+        - inUseNodes
+        - nodesByCategory
+      properties:
+        totalTemplates:
+          type: integer
+          description: Total number of node templates
+          example: 10
+        totalPreConfiguredNodes:
+          type: integer
+          description: Total number of pre-configured nodes
+          example: 20
+        availableNodes:
+          type: integer
+          description: Number of available (not in use) nodes
+          example: 15
+        inUseNodes:
+          type: integer
+          description: Number of nodes currently in use
+          example: 5
+        nodesByCategory:
+          type: object
+          description: Count of nodes by category
+          additionalProperties:
+            type: integer
+          example:
+            source: 5
+            detector: 8
+            processor: 4
+            destination: 3
+            broker: 0
+
 tags:
   - name: Core
     description: Core API endpoints for health and version information
@@ -4141,4 +5315,6 @@ tags:
     description: Group management endpoints for organizing instances (create, list, update, delete)
   - name: Models
     description: Model file management endpoints
+  - name: Node
+    description: Node pool management endpoints for pre-configured nodes and templates (create, list, update, delete, templates, stats)
 

@@ -12,8 +12,14 @@
 #include <cvedix/nodes/osd/cvedix_face_osd_node_v2.h>
 #include <cvedix/nodes/des/cvedix_file_des_node.h>
 #include <cvedix/nodes/des/cvedix_rtmp_des_node.h>
+#include <cvedix/nodes/des/cvedix_screen_des_node.h>
+#include <cvedix/nodes/track/cvedix_sort_track_node.h>
+#include <cvedix/nodes/ba/cvedix_ba_crossline_node.h>
+#include <cvedix/nodes/osd/cvedix_ba_crossline_osd_node.h>
 #include <cvedix/utils/cvedix_utils.h>
 #include <cvedix/objects/shapes/cvedix_size.h>
+#include <cvedix/objects/shapes/cvedix_point.h>
+#include <cvedix/objects/shapes/cvedix_line.h>
 
 // TensorRT Inference Nodes
 #ifdef CVEDIX_WITH_TRT
@@ -33,11 +39,13 @@
 // RKNN Inference Nodes
 #ifdef CVEDIX_WITH_RKNN
 #include <cvedix/nodes/infers/cvedix_rknn_yolov8_detector_node.h>
+#include <cvedix/nodes/infers/cvedix_rknn_yolov11_detector_node.h>
 #include <cvedix/nodes/infers/cvedix_rknn_face_detector_node.h>
 #endif
 
 // Other Inference Nodes
 #include <cvedix/nodes/infers/cvedix_yolo_detector_node.h>
+#include <cvedix/nodes/infers/cvedix_yolov11_detector_node.h>
 #include <cvedix/nodes/infers/cvedix_enet_seg_node.h>
 #include <cvedix/nodes/infers/cvedix_mask_rcnn_detector_node.h>
 #include <cvedix/nodes/infers/cvedix_openpose_detector_node.h>
@@ -45,10 +53,20 @@
 // Note: cvedix_feature_encoder_node is abstract - use cvedix_sface_feature_encoder_node or cvedix_trt_vehicle_feature_encoder instead
 // #include <cvedix/nodes/infers/cvedix_feature_encoder_node.h>
 #include <cvedix/nodes/infers/cvedix_lane_detector_node.h>
+#include <cvedix/nodes/infers/cvedix_face_swap_node.h>
+#include <cvedix/nodes/infers/cvedix_insight_face_recognition_node.h>
+#ifdef CVEDIX_WITH_LLM
+#include <cvedix/nodes/infers/cvedix_mllm_analyser_node.h>
+#endif
 #ifdef CVEDIX_WITH_PADDLE
 #include <cvedix/nodes/infers/cvedix_ppocr_text_detector_node.h>
 #endif
 #include <cvedix/nodes/infers/cvedix_restoration_node.h>
+
+// TensorRT Additional Inference Nodes
+#ifdef CVEDIX_WITH_TRT
+#include <cvedix/nodes/infers/cvedix_trt_insight_face_recognition_node.h>
+#endif
 #include <vector>
 
 // Broker Nodes
@@ -77,6 +95,7 @@
 #include <sstream>
 #include <stdexcept>
 #include <iostream>
+#include <fstream>
 #include <typeinfo>
 #include <exception>
 #include <mutex>
@@ -263,6 +282,7 @@ std::vector<std::shared_ptr<cvedix_nodes::cvedix_node>> PipelineBuilder::buildPi
     std::cerr << "[PipelineBuilder] ========================================" << std::endl;
     
     std::vector<std::shared_ptr<cvedix_nodes::cvedix_node>> nodes;
+    std::vector<std::string> nodeTypes; // Track node types for connection logic
     
     // Build nodes in pipeline order
     for (const auto& nodeConfig : solution.pipeline) {
@@ -273,18 +293,72 @@ std::vector<std::shared_ptr<cvedix_nodes::cvedix_node>> PipelineBuilder::buildPi
             auto node = createNode(nodeConfig, req, instanceId);
             if (node) {
                 nodes.push_back(node);
+                nodeTypes.push_back(nodeConfig.nodeType);
                 
                 // Connect to previous node
                 // attach_to() expects a vector of shared_ptr, not a raw pointer
                 if (nodes.size() > 1) {
-                    node->attach_to({nodes[nodes.size() - 2]});
+                    // Check if current node is a destination node
+                    bool isDestNode = (nodeConfig.nodeType == "file_des" || 
+                                      nodeConfig.nodeType == "rtmp_des" || 
+                                      nodeConfig.nodeType == "screen_des");
+                    
+                    // Find the node to attach to
+                    // If current node is a destination node and previous node is also a destination node,
+                    // attach to the node before the previous one (to allow multiple destinations from same source)
+                    size_t attachIndex = nodes.size() - 2;
+                    if (isDestNode && attachIndex > 0) {
+                        // Check if previous node is also a destination node
+                        bool prevIsDestNode = (nodeTypes[attachIndex] == "file_des" || 
+                                              nodeTypes[attachIndex] == "rtmp_des" || 
+                                              nodeTypes[attachIndex] == "screen_des");
+                        if (prevIsDestNode) {
+                            // Find the last non-destination node
+                            for (int i = static_cast<int>(attachIndex) - 1; i >= 0; --i) {
+                                bool nodeIsDest = (nodeTypes[i] == "file_des" || 
+                                                  nodeTypes[i] == "rtmp_des" || 
+                                                  nodeTypes[i] == "screen_des");
+                                if (!nodeIsDest) {
+                                    attachIndex = i;
+                                    break;
+                                }
+                            }
+                        }
+                    }
+                    
+                    if (attachIndex < nodes.size()) {
+                        node->attach_to({nodes[attachIndex]});
+                    } else {
+                        node->attach_to({nodes[nodes.size() - 2]});
+                    }
                 }
                 std::cerr << "[PipelineBuilder] Successfully created and connected node: " 
                           << nodeConfig.nodeType << std::endl;
             } else {
-                std::cerr << "[PipelineBuilder] Failed to create node: " << nodeConfig.nodeType 
-                          << " (createNode returned nullptr)" << std::endl;
-                throw std::runtime_error("Failed to create node: " + nodeConfig.nodeType);
+                // Check if this is an optional node that can be skipped
+                bool isOptionalNode = (nodeConfig.nodeType == "screen_des" || 
+                                     nodeConfig.nodeType == "json_console_broker" ||
+                                     nodeConfig.nodeType == "json_enhanced_console_broker" ||
+                                     nodeConfig.nodeType == "json_mqtt_broker" ||
+                                     nodeConfig.nodeType == "json_kafka_broker" ||
+                                     nodeConfig.nodeType == "xml_file_broker" ||
+                                     nodeConfig.nodeType == "xml_socket_broker" ||
+                                     nodeConfig.nodeType == "msg_broker" ||
+                                     nodeConfig.nodeType == "ba_socket_broker" ||
+                                     nodeConfig.nodeType == "embeddings_socket_broker" ||
+                                     nodeConfig.nodeType == "embeddings_properties_socket_broker" ||
+                                     nodeConfig.nodeType == "plate_socket_broker" ||
+                                     nodeConfig.nodeType == "expr_socket_broker");
+                
+                if (isOptionalNode) {
+                    std::cerr << "[PipelineBuilder] Skipping optional node: " << nodeConfig.nodeType 
+                              << " (node creation returned nullptr)" << std::endl;
+                    // Continue to next node without throwing exception
+                } else {
+                    std::cerr << "[PipelineBuilder] Failed to create node: " << nodeConfig.nodeType 
+                              << " (createNode returned nullptr)" << std::endl;
+                    throw std::runtime_error("Failed to create node: " + nodeConfig.nodeType);
+                }
             }
         } catch (const std::exception& e) {
             std::cerr << "[PipelineBuilder] Exception creating node " << nodeConfig.nodeType 
@@ -396,6 +470,29 @@ std::shared_ptr<cvedix_nodes::cvedix_node> PipelineBuilder::createNode(
             value = getFilePath(req);
         } else if (value == "${RTMP_URL}") {
             value = getRTMPUrl(req);
+        } else if (value == "${WEIGHTS_PATH}") {
+            auto it = req.additionalParams.find("WEIGHTS_PATH");
+            if (it != req.additionalParams.end() && !it->second.empty()) {
+                value = it->second;
+            }
+        } else if (value == "${CONFIG_PATH}") {
+            auto it = req.additionalParams.find("CONFIG_PATH");
+            if (it != req.additionalParams.end() && !it->second.empty()) {
+                value = it->second;
+            }
+        } else if (value == "${LABELS_PATH}") {
+            auto it = req.additionalParams.find("LABELS_PATH");
+            if (it != req.additionalParams.end() && !it->second.empty()) {
+                value = it->second;
+            }
+        } else if (value == "${ENABLE_SCREEN_DES}") {
+            auto it = req.additionalParams.find("ENABLE_SCREEN_DES");
+            if (it != req.additionalParams.end() && !it->second.empty()) {
+                value = it->second;
+            } else {
+                // Default: empty string means enabled if display available
+                value = "";
+            }
         } else if (param.first == "model_path" && value == "${MODEL_PATH}") {
             // Priority: MODEL_NAME > MODEL_PATH > default
             std::string modelPath;
@@ -557,12 +654,16 @@ std::shared_ptr<cvedix_nodes::cvedix_node> PipelineBuilder::createNode(
             return createTRTVehicleFeatureEncoderNode(nodeName, params, req);
         } else if (nodeConfig.nodeType == "trt_vehicle_scanner") {
             return createTRTVehicleScannerNode(nodeName, params, req);
+        } else if (nodeConfig.nodeType == "trt_insight_face_recognition") {
+            return createTRTInsightFaceRecognitionNode(nodeName, params, req);
         }
 #endif
 #ifdef CVEDIX_WITH_RKNN
         // RKNN nodes
         else if (nodeConfig.nodeType == "rknn_yolov8_detector") {
             return createRKNNYOLOv8DetectorNode(nodeName, params, req);
+        } else if (nodeConfig.nodeType == "rknn_yolov11_detector") {
+            return createRKNNYOLOv11DetectorNode(nodeName, params, req);
         } else if (nodeConfig.nodeType == "rknn_face_detector") {
             return createRKNNFaceDetectorNode(nodeName, params, req);
         }
@@ -570,6 +671,8 @@ std::shared_ptr<cvedix_nodes::cvedix_node> PipelineBuilder::createNode(
         // Other inference nodes
         else if (nodeConfig.nodeType == "yolo_detector") {
             return createYOLODetectorNode(nodeName, params, req);
+        } else if (nodeConfig.nodeType == "yolov11_detector") {
+            return createYOLOv11DetectorNode(nodeName, params, req);
         } else if (nodeConfig.nodeType == "enet_seg") {
             return createENetSegNode(nodeName, params, req);
         } else if (nodeConfig.nodeType == "mask_rcnn_detector") {
@@ -583,12 +686,30 @@ std::shared_ptr<cvedix_nodes::cvedix_node> PipelineBuilder::createNode(
             throw std::runtime_error("feature_encoder node type is not supported. Use 'sface_feature_encoder' or 'trt_vehicle_feature_encoder' instead.");
         } else if (nodeConfig.nodeType == "lane_detector") {
             return createLaneDetectorNode(nodeName, params, req);
+        } else if (nodeConfig.nodeType == "face_swap") {
+            return createFaceSwapNode(nodeName, params, req);
+        } else if (nodeConfig.nodeType == "insight_face_recognition") {
+            return createInsightFaceRecognitionNode(nodeName, params, req);
+        } else if (nodeConfig.nodeType == "mllm_analyser") {
+            return createMLLMAnalyserNode(nodeName, params, req);
 #ifdef CVEDIX_WITH_PADDLE
         } else if (nodeConfig.nodeType == "ppocr_text_detector") {
             return createPaddleOCRTextDetectorNode(nodeName, params, req);
 #endif
         } else if (nodeConfig.nodeType == "restoration") {
             return createRestorationNode(nodeName, params, req);
+        }
+        // Tracking nodes
+        else if (nodeConfig.nodeType == "sort_track") {
+            return createSORTTrackNode(nodeName, params);
+        }
+        // Behavior Analysis nodes
+        else if (nodeConfig.nodeType == "ba_crossline") {
+            return createBACrosslineNode(nodeName, params);
+        }
+        // OSD nodes
+        else if (nodeConfig.nodeType == "ba_crossline_osd") {
+            return createBACrosslineOSDNode(nodeName, params);
         }
         // Broker nodes
         // Temporarily disabled JSON broker nodes due to cereal dependency issue
@@ -634,6 +755,8 @@ std::shared_ptr<cvedix_nodes::cvedix_node> PipelineBuilder::createNode(
             return createFileDestinationNode(nodeName, params, instanceId);
         } else if (nodeConfig.nodeType == "rtmp_des") {
             return createRTMPDestinationNode(nodeName, params, req);
+        } else if (nodeConfig.nodeType == "screen_des") {
+            return createScreenDestinationNode(nodeName, params);
         } else {
             std::cerr << "[PipelineBuilder] Unknown node type: " << nodeConfig.nodeType << std::endl;
             throw std::runtime_error("Unknown node type: " + nodeConfig.nodeType);
@@ -1541,6 +1664,164 @@ std::shared_ptr<cvedix_nodes::cvedix_node> PipelineBuilder::createRTMPDestinatio
     }
 }
 
+std::shared_ptr<cvedix_nodes::cvedix_node> PipelineBuilder::createScreenDestinationNode(
+    const std::string& nodeName,
+    const std::map<std::string, std::string>& params) {
+    
+    try {
+        // Check if screen_des is explicitly disabled via parameter
+        if (params.count("enabled")) {
+            std::string enabledStr = params.at("enabled");
+            // Convert to lowercase for case-insensitive comparison
+            std::transform(enabledStr.begin(), enabledStr.end(), enabledStr.begin(), ::tolower);
+            if (enabledStr == "false" || enabledStr == "0" || enabledStr == "no" || enabledStr == "off") {
+                std::cerr << "[PipelineBuilder] screen_des node skipped: Explicitly disabled via parameter (enabled=false)" << std::endl;
+                return nullptr;
+            }
+        }
+        
+        // Check if display is available
+        const char *display = std::getenv("DISPLAY");
+        const char *wayland = std::getenv("WAYLAND_DISPLAY");
+        
+        if (!display && !wayland) {
+            std::cerr << "[PipelineBuilder] screen_des node skipped: No DISPLAY or WAYLAND_DISPLAY environment variable found" << std::endl;
+            std::cerr << "[PipelineBuilder] NOTE: screen_des requires a display to work. Set DISPLAY or WAYLAND_DISPLAY to enable." << std::endl;
+            return nullptr;
+        }
+        
+        // Additional check for X11 display
+        if (display && display[0] != '\0') {
+            std::string displayStr(display);
+            if (displayStr[0] == ':') {
+                std::string socketPath = "/tmp/.X11-unix/X" + displayStr.substr(1);
+                // Check if X11 socket exists (basic check)
+                std::ifstream socketFile(socketPath);
+                if (!socketFile.good()) {
+                    std::cerr << "[PipelineBuilder] screen_des node skipped: X11 socket not found at " << socketPath << std::endl;
+                    std::cerr << "[PipelineBuilder] NOTE: X server may not be running or accessible" << std::endl;
+                    return nullptr;
+                }
+            }
+        }
+        
+        int channel = params.count("channel") ? std::stoi(params.at("channel")) : 0;
+        
+        if (nodeName.empty()) {
+            throw std::invalid_argument("Node name cannot be empty");
+        }
+        
+        std::cerr << "[PipelineBuilder] Creating screen destination node:" << std::endl;
+        std::cerr << "  Name: '" << nodeName << "'" << std::endl;
+        std::cerr << "  Channel: " << channel << std::endl;
+        
+        auto node = std::make_shared<cvedix_nodes::cvedix_screen_des_node>(
+            nodeName,
+            channel
+        );
+        
+        std::cerr << "[PipelineBuilder] ✓ Screen destination node created successfully" << std::endl;
+        return node;
+    } catch (const std::exception& e) {
+        std::cerr << "[PipelineBuilder] Exception in createScreenDestinationNode: " << e.what() << std::endl;
+        std::cerr << "[PipelineBuilder] screen_des node will be skipped due to error" << std::endl;
+        return nullptr; // Return nullptr instead of throwing to allow pipeline to continue
+    }
+}
+
+std::shared_ptr<cvedix_nodes::cvedix_node> PipelineBuilder::createSORTTrackNode(
+    const std::string& nodeName,
+    const std::map<std::string, std::string>& params) {
+    
+    try {
+        if (nodeName.empty()) {
+            throw std::invalid_argument("Node name cannot be empty");
+        }
+        
+        std::cerr << "[PipelineBuilder] Creating SORT tracker node:" << std::endl;
+        std::cerr << "  Name: '" << nodeName << "'" << std::endl;
+        
+        auto node = std::make_shared<cvedix_nodes::cvedix_sort_track_node>(nodeName);
+        
+        std::cerr << "[PipelineBuilder] ✓ SORT tracker node created successfully" << std::endl;
+        return node;
+    } catch (const std::exception& e) {
+        std::cerr << "[PipelineBuilder] Exception in createSORTTrackNode: " << e.what() << std::endl;
+        throw;
+    }
+}
+
+std::shared_ptr<cvedix_nodes::cvedix_node> PipelineBuilder::createBACrosslineNode(
+    const std::string& nodeName,
+    const std::map<std::string, std::string>& params) {
+    
+    try {
+        if (nodeName.empty()) {
+            throw std::invalid_argument("Node name cannot be empty");
+        }
+        
+        // Parse lines from parameters
+        // Expected format: "channel:start_x,start_y:end_x,end_y" or JSON-like format
+        // For simplicity, we'll support a format like: "0:0,250:700,220"
+        // Or use separate parameters: line_channel, line_start_x, line_start_y, line_end_x, line_end_y
+        std::map<int, cvedix_objects::cvedix_line> lines;
+        
+        // Check if we have line parameters
+        if (params.count("line_channel") && params.count("line_start_x") && 
+            params.count("line_start_y") && params.count("line_end_x") && params.count("line_end_y")) {
+            int channel = std::stoi(params.at("line_channel"));
+            int start_x = std::stoi(params.at("line_start_x"));
+            int start_y = std::stoi(params.at("line_start_y"));
+            int end_x = std::stoi(params.at("line_end_x"));
+            int end_y = std::stoi(params.at("line_end_y"));
+            
+            cvedix_objects::cvedix_point start(start_x, start_y);
+            cvedix_objects::cvedix_point end(end_x, end_y);
+            lines[channel] = cvedix_objects::cvedix_line(start, end);
+        } else {
+            // Default line for channel 0 (from sample)
+            cvedix_objects::cvedix_point start(0, 250);
+            cvedix_objects::cvedix_point end(700, 220);
+            lines[0] = cvedix_objects::cvedix_line(start, end);
+            std::cerr << "[PipelineBuilder] Using default line configuration (channel 0: (0,250) -> (700,220))" << std::endl;
+        }
+        
+        std::cerr << "[PipelineBuilder] Creating BA crossline node:" << std::endl;
+        std::cerr << "  Name: '" << nodeName << "'" << std::endl;
+        std::cerr << "  Lines configured for " << lines.size() << " channel(s)" << std::endl;
+        
+        auto node = std::make_shared<cvedix_nodes::cvedix_ba_crossline_node>(nodeName, lines);
+        
+        std::cerr << "[PipelineBuilder] ✓ BA crossline node created successfully" << std::endl;
+        return node;
+    } catch (const std::exception& e) {
+        std::cerr << "[PipelineBuilder] Exception in createBACrosslineNode: " << e.what() << std::endl;
+        throw;
+    }
+}
+
+std::shared_ptr<cvedix_nodes::cvedix_node> PipelineBuilder::createBACrosslineOSDNode(
+    const std::string& nodeName,
+    const std::map<std::string, std::string>& params) {
+    
+    try {
+        if (nodeName.empty()) {
+            throw std::invalid_argument("Node name cannot be empty");
+        }
+        
+        std::cerr << "[PipelineBuilder] Creating BA crossline OSD node:" << std::endl;
+        std::cerr << "  Name: '" << nodeName << "'" << std::endl;
+        
+        auto node = std::make_shared<cvedix_nodes::cvedix_ba_crossline_osd_node>(nodeName);
+        
+        std::cerr << "[PipelineBuilder] ✓ BA crossline OSD node created successfully" << std::endl;
+        return node;
+    } catch (const std::exception& e) {
+        std::cerr << "[PipelineBuilder] Exception in createBACrosslineOSDNode: " << e.what() << std::endl;
+        throw;
+    }
+}
+
 std::string PipelineBuilder::getFilePath(const CreateInstanceRequest& req) const {
     // Get file path from additionalParams
     auto it = req.additionalParams.find("FILE_PATH");
@@ -2200,8 +2481,21 @@ std::shared_ptr<cvedix_nodes::cvedix_node> PipelineBuilder::createYOLODetectorNo
     const CreateInstanceRequest& req) {
     
     try {
-        std::string modelPath = params.count("model_path") ? params.at("model_path") : "";
-        std::string modelConfigPath = params.count("model_config_path") ? params.at("model_config_path") : "";
+        // Support both naming conventions: weights_path/config_path and model_path/model_config_path
+        std::string modelPath = "";
+        if (params.count("weights_path")) {
+            modelPath = params.at("weights_path");
+        } else if (params.count("model_path")) {
+            modelPath = params.at("model_path");
+        }
+        
+        std::string modelConfigPath = "";
+        if (params.count("config_path")) {
+            modelConfigPath = params.at("config_path");
+        } else if (params.count("model_config_path")) {
+            modelConfigPath = params.at("model_config_path");
+        }
+        
         std::string labelsPath = params.count("labels_path") ? params.at("labels_path") : "";
         int inputWidth = params.count("input_width") ? std::stoi(params.at("input_width")) : 416;
         int inputHeight = params.count("input_height") ? std::stoi(params.at("input_height")) : 416;
@@ -2211,10 +2505,28 @@ std::shared_ptr<cvedix_nodes::cvedix_node> PipelineBuilder::createYOLODetectorNo
         float confidenceThreshold = params.count("confidence_threshold") ? std::stof(params.at("confidence_threshold")) : 0.5f;
         float nmsThreshold = params.count("nms_threshold") ? std::stof(params.at("nms_threshold")) : 0.5f;
         
+        // Try to get from additionalParams if still empty
         if (modelPath.empty()) {
-            auto it = req.additionalParams.find("MODEL_PATH");
+            auto it = req.additionalParams.find("WEIGHTS_PATH");
             if (it != req.additionalParams.end() && !it->second.empty()) {
                 modelPath = it->second;
+            } else {
+                it = req.additionalParams.find("MODEL_PATH");
+                if (it != req.additionalParams.end() && !it->second.empty()) {
+                    modelPath = it->second;
+                }
+            }
+        }
+        if (modelConfigPath.empty()) {
+            auto it = req.additionalParams.find("CONFIG_PATH");
+            if (it != req.additionalParams.end() && !it->second.empty()) {
+                modelConfigPath = it->second;
+            }
+        }
+        if (labelsPath.empty()) {
+            auto it = req.additionalParams.find("LABELS_PATH");
+            if (it != req.additionalParams.end() && !it->second.empty()) {
+                labelsPath = it->second;
             }
         }
         
@@ -2637,6 +2949,329 @@ std::shared_ptr<cvedix_nodes::cvedix_node> PipelineBuilder::createRestorationNod
         throw;
     }
 }
+
+// ========== New Inference Nodes Implementation ==========
+
+std::shared_ptr<cvedix_nodes::cvedix_node> PipelineBuilder::createYOLOv11DetectorNode(
+    const std::string& nodeName,
+    const std::map<std::string, std::string>& params,
+    const CreateInstanceRequest& req) {
+    
+    try {
+        std::string modelPath = params.count("model_path") ? params.at("model_path") : "";
+        
+        if (modelPath.empty()) {
+            auto it = req.additionalParams.find("MODEL_PATH");
+            if (it != req.additionalParams.end() && !it->second.empty()) {
+                modelPath = it->second;
+            }
+        }
+        
+        if (nodeName.empty() || modelPath.empty()) {
+            throw std::invalid_argument("Node name and model path are required");
+        }
+        
+        std::cerr << "[PipelineBuilder] Creating YOLOv11 detector node:" << std::endl;
+        std::cerr << "  Name: '" << nodeName << "'" << std::endl;
+        std::cerr << "  Model path: '" << modelPath << "'" << std::endl;
+        
+        auto node = std::make_shared<cvedix_nodes::cvedix_yolov11_detector_node>(
+            nodeName,
+            modelPath
+        );
+        
+        std::cerr << "[PipelineBuilder] ✓ YOLOv11 detector node created successfully" << std::endl;
+        return node;
+    } catch (const std::exception& e) {
+        std::cerr << "[PipelineBuilder] Exception in createYOLOv11DetectorNode: " << e.what() << std::endl;
+        throw;
+    }
+}
+
+std::shared_ptr<cvedix_nodes::cvedix_node> PipelineBuilder::createFaceSwapNode(
+    const std::string& nodeName,
+    const std::map<std::string, std::string>& params,
+    const CreateInstanceRequest& req) {
+    
+    try {
+        std::string yunetFaceDetectModel = params.count("yunet_face_detect_model") ? params.at("yunet_face_detect_model") : "";
+        std::string buffaloLFaceEncodingModel = params.count("buffalo_l_face_encoding_model") ? params.at("buffalo_l_face_encoding_model") : "";
+        std::string emapFileForEmbeddings = params.count("emap_file_for_embeddings") ? params.at("emap_file_for_embeddings") : "";
+        std::string insightfaceSwapModel = params.count("insightface_swap_model") ? params.at("insightface_swap_model") : "";
+        std::string swapSourceImage = params.count("swap_source_image") ? params.at("swap_source_image") : "";
+        int swapSourceFaceIndex = params.count("swap_source_face_index") ? std::stoi(params.at("swap_source_face_index")) : 0;
+        int minFaceWH = params.count("min_face_w_h") ? std::stoi(params.at("min_face_w_h")) : 50;
+        bool swapOnOSD = params.count("swap_on_osd") ? (params.at("swap_on_osd") == "true" || params.at("swap_on_osd") == "1") : true;
+        bool actAsPrimaryDetector = params.count("act_as_primary_detector") ? (params.at("act_as_primary_detector") == "true" || params.at("act_as_primary_detector") == "1") : false;
+        
+        // Try to get from additionalParams if still empty
+        if (yunetFaceDetectModel.empty()) {
+            auto it = req.additionalParams.find("YUNET_FACE_DETECT_MODEL");
+            if (it != req.additionalParams.end() && !it->second.empty()) {
+                yunetFaceDetectModel = it->second;
+            }
+        }
+        if (buffaloLFaceEncodingModel.empty()) {
+            auto it = req.additionalParams.find("BUFFALO_L_FACE_ENCODING_MODEL");
+            if (it != req.additionalParams.end() && !it->second.empty()) {
+                buffaloLFaceEncodingModel = it->second;
+            }
+        }
+        if (emapFileForEmbeddings.empty()) {
+            auto it = req.additionalParams.find("EMAP_FILE_FOR_EMBEDDINGS");
+            if (it != req.additionalParams.end() && !it->second.empty()) {
+                emapFileForEmbeddings = it->second;
+            }
+        }
+        if (insightfaceSwapModel.empty()) {
+            auto it = req.additionalParams.find("INSIGHTFACE_SWAP_MODEL");
+            if (it != req.additionalParams.end() && !it->second.empty()) {
+                insightfaceSwapModel = it->second;
+            }
+        }
+        if (swapSourceImage.empty()) {
+            auto it = req.additionalParams.find("SWAP_SOURCE_IMAGE");
+            if (it != req.additionalParams.end() && !it->second.empty()) {
+                swapSourceImage = it->second;
+            }
+        }
+        
+        if (nodeName.empty() || yunetFaceDetectModel.empty() || buffaloLFaceEncodingModel.empty() || 
+            emapFileForEmbeddings.empty() || insightfaceSwapModel.empty() || swapSourceImage.empty()) {
+            throw std::invalid_argument("Node name and all model paths are required for face swap node");
+        }
+        
+        std::cerr << "[PipelineBuilder] Creating face swap node:" << std::endl;
+        std::cerr << "  Name: '" << nodeName << "'" << std::endl;
+        std::cerr << "  YUNet face detect model: '" << yunetFaceDetectModel << "'" << std::endl;
+        std::cerr << "  Buffalo L face encoding model: '" << buffaloLFaceEncodingModel << "'" << std::endl;
+        std::cerr << "  EMap file for embeddings: '" << emapFileForEmbeddings << "'" << std::endl;
+        std::cerr << "  InsightFace swap model: '" << insightfaceSwapModel << "'" << std::endl;
+        std::cerr << "  Swap source image: '" << swapSourceImage << "'" << std::endl;
+        
+        auto node = std::make_shared<cvedix_nodes::cvedix_face_swap_node>(
+            nodeName,
+            yunetFaceDetectModel,
+            buffaloLFaceEncodingModel,
+            emapFileForEmbeddings,
+            insightfaceSwapModel,
+            swapSourceImage,
+            swapSourceFaceIndex,
+            minFaceWH,
+            swapOnOSD,
+            actAsPrimaryDetector
+        );
+        
+        std::cerr << "[PipelineBuilder] ✓ Face swap node created successfully" << std::endl;
+        return node;
+    } catch (const std::exception& e) {
+        std::cerr << "[PipelineBuilder] Exception in createFaceSwapNode: " << e.what() << std::endl;
+        throw;
+    }
+}
+
+std::shared_ptr<cvedix_nodes::cvedix_node> PipelineBuilder::createInsightFaceRecognitionNode(
+    const std::string& nodeName,
+    const std::map<std::string, std::string>& params,
+    const CreateInstanceRequest& req) {
+    
+    try {
+        std::string modelPath = params.count("model_path") ? params.at("model_path") : "";
+        
+        if (modelPath.empty()) {
+            auto it = req.additionalParams.find("MODEL_PATH");
+            if (it != req.additionalParams.end() && !it->second.empty()) {
+                modelPath = it->second;
+            }
+        }
+        
+        if (nodeName.empty() || modelPath.empty()) {
+            throw std::invalid_argument("Node name and model path are required");
+        }
+        
+        std::cerr << "[PipelineBuilder] Creating InsightFace recognition node:" << std::endl;
+        std::cerr << "  Name: '" << nodeName << "'" << std::endl;
+        std::cerr << "  Model path: '" << modelPath << "'" << std::endl;
+        
+        auto node = std::make_shared<cvedix_nodes::cvedix_insight_face_recognition_node>(
+            nodeName,
+            modelPath
+        );
+        
+        std::cerr << "[PipelineBuilder] ✓ InsightFace recognition node created successfully" << std::endl;
+        return node;
+    } catch (const std::exception& e) {
+        std::cerr << "[PipelineBuilder] Exception in createInsightFaceRecognitionNode: " << e.what() << std::endl;
+        throw;
+    }
+}
+
+std::shared_ptr<cvedix_nodes::cvedix_node> PipelineBuilder::createMLLMAnalyserNode(
+    const std::string& nodeName,
+    const std::map<std::string, std::string>& params,
+    const CreateInstanceRequest& req) {
+    
+#ifdef CVEDIX_WITH_LLM
+    try {
+        std::string modelName = params.count("model_name") ? params.at("model_name") : "";
+        std::string prompt = params.count("prompt") ? params.at("prompt") : "";
+        std::string apiBaseUrl = params.count("api_base_url") ? params.at("api_base_url") : "";
+        std::string apiKey = params.count("api_key") ? params.at("api_key") : "";
+        
+        // Try to get from additionalParams if still empty
+        if (modelName.empty()) {
+            auto it = req.additionalParams.find("MODEL_NAME");
+            if (it != req.additionalParams.end() && !it->second.empty()) {
+                modelName = it->second;
+            }
+        }
+        if (prompt.empty()) {
+            auto it = req.additionalParams.find("PROMPT");
+            if (it != req.additionalParams.end() && !it->second.empty()) {
+                prompt = it->second;
+            }
+        }
+        if (apiBaseUrl.empty()) {
+            auto it = req.additionalParams.find("API_BASE_URL");
+            if (it != req.additionalParams.end() && !it->second.empty()) {
+                apiBaseUrl = it->second;
+            }
+        }
+        if (apiKey.empty()) {
+            auto it = req.additionalParams.find("API_KEY");
+            if (it != req.additionalParams.end() && !it->second.empty()) {
+                apiKey = it->second;
+            }
+        }
+        
+        // Parse backend type
+        std::string backendTypeStr = params.count("backend_type") ? params.at("backend_type") : "ollama";
+        llmlib::LLMBackendType backendType = llmlib::LLMBackendType::Ollama;
+        if (backendTypeStr == "openai") {
+            backendType = llmlib::LLMBackendType::OpenAI;
+        } else if (backendTypeStr == "anthropic") {
+            backendType = llmlib::LLMBackendType::Anthropic;
+        }
+        
+        if (nodeName.empty() || modelName.empty() || prompt.empty() || apiBaseUrl.empty()) {
+            throw std::invalid_argument("Node name, model name, prompt, and API base URL are required");
+        }
+        
+        std::cerr << "[PipelineBuilder] Creating MLLM analyser node:" << std::endl;
+        std::cerr << "  Name: '" << nodeName << "'" << std::endl;
+        std::cerr << "  Model name: '" << modelName << "'" << std::endl;
+        std::cerr << "  Prompt: '" << prompt << "'" << std::endl;
+        std::cerr << "  API base URL: '" << apiBaseUrl << "'" << std::endl;
+        
+        auto node = std::make_shared<cvedix_nodes::cvedix_mllm_analyser_node>(
+            nodeName,
+            modelName,
+            prompt,
+            apiBaseUrl,
+            apiKey,
+            backendType
+        );
+        
+        std::cerr << "[PipelineBuilder] ✓ MLLM analyser node created successfully" << std::endl;
+        return node;
+    } catch (const std::exception& e) {
+        std::cerr << "[PipelineBuilder] Exception in createMLLMAnalyserNode: " << e.what() << std::endl;
+        throw;
+    }
+#else
+    throw std::runtime_error("MLLM analyser node is not available (CVEDIX_WITH_LLM not defined)");
+#endif
+}
+
+#ifdef CVEDIX_WITH_RKNN
+std::shared_ptr<cvedix_nodes::cvedix_node> PipelineBuilder::createRKNNYOLOv11DetectorNode(
+    const std::string& nodeName,
+    const std::map<std::string, std::string>& params,
+    const CreateInstanceRequest& req) {
+    
+    try {
+        std::string modelPath = params.count("model_path") ? params.at("model_path") : "";
+        float scoreThreshold = params.count("score_threshold") ? std::stof(params.at("score_threshold")) : 0.5f;
+        float nmsThreshold = params.count("nms_threshold") ? std::stof(params.at("nms_threshold")) : 0.5f;
+        int inputWidth = params.count("input_width") ? std::stoi(params.at("input_width")) : 640;
+        int inputHeight = params.count("input_height") ? std::stoi(params.at("input_height")) : 640;
+        int numClasses = params.count("num_classes") ? std::stoi(params.at("num_classes")) : 80;
+        
+        if (modelPath.empty()) {
+            auto it = req.additionalParams.find("MODEL_PATH");
+            if (it != req.additionalParams.end() && !it->second.empty()) {
+                modelPath = it->second;
+            }
+        }
+        
+        if (nodeName.empty() || modelPath.empty()) {
+            throw std::invalid_argument("Node name and model path are required");
+        }
+        
+        std::cerr << "[PipelineBuilder] Creating RKNN YOLOv11 detector node:" << std::endl;
+        std::cerr << "  Name: '" << nodeName << "'" << std::endl;
+        std::cerr << "  Model path: '" << modelPath << "'" << std::endl;
+        std::cerr << "  Score threshold: " << scoreThreshold << std::endl;
+        std::cerr << "  NMS threshold: " << nmsThreshold << std::endl;
+        std::cerr << "  Input size: " << inputWidth << "x" << inputHeight << std::endl;
+        std::cerr << "  Num classes: " << numClasses << std::endl;
+        
+        auto node = std::make_shared<cvedix_nodes::cvedix_rknn_yolov11_detector_node>(
+            nodeName,
+            modelPath,
+            scoreThreshold,
+            nmsThreshold,
+            inputWidth,
+            inputHeight,
+            numClasses
+        );
+        
+        std::cerr << "[PipelineBuilder] ✓ RKNN YOLOv11 detector node created successfully" << std::endl;
+        return node;
+    } catch (const std::exception& e) {
+        std::cerr << "[PipelineBuilder] Exception in createRKNNYOLOv11DetectorNode: " << e.what() << std::endl;
+        throw;
+    }
+}
+#endif // CVEDIX_WITH_RKNN
+
+#ifdef CVEDIX_WITH_TRT
+std::shared_ptr<cvedix_nodes::cvedix_node> PipelineBuilder::createTRTInsightFaceRecognitionNode(
+    const std::string& nodeName,
+    const std::map<std::string, std::string>& params,
+    const CreateInstanceRequest& req) {
+    
+    try {
+        std::string modelPath = params.count("model_path") ? params.at("model_path") : "";
+        
+        if (modelPath.empty()) {
+            auto it = req.additionalParams.find("MODEL_PATH");
+            if (it != req.additionalParams.end() && !it->second.empty()) {
+                modelPath = it->second;
+            }
+        }
+        
+        if (nodeName.empty() || modelPath.empty()) {
+            throw std::invalid_argument("Node name and model path are required");
+        }
+        
+        std::cerr << "[PipelineBuilder] Creating TensorRT InsightFace recognition node:" << std::endl;
+        std::cerr << "  Name: '" << nodeName << "'" << std::endl;
+        std::cerr << "  Model path: '" << modelPath << "'" << std::endl;
+        
+        auto node = std::make_shared<cvedix_nodes::cvedix_trt_insight_face_recognition_node>(
+            nodeName,
+            modelPath
+        );
+        
+        std::cerr << "[PipelineBuilder] ✓ TensorRT InsightFace recognition node created successfully" << std::endl;
+        return node;
+    } catch (const std::exception& e) {
+        std::cerr << "[PipelineBuilder] Exception in createTRTInsightFaceRecognitionNode: " << e.what() << std::endl;
+        throw;
+    }
+}
+#endif // CVEDIX_WITH_TRT
 
 // ========== Source Nodes Implementation ==========
 
@@ -3678,4 +4313,5 @@ std::shared_ptr<cvedix_nodes::cvedix_node> PipelineBuilder::createExpressionSock
     const std::string&, const std::map<std::string, std::string>&, const CreateInstanceRequest&) {
     return nullptr;
 }
+
 
