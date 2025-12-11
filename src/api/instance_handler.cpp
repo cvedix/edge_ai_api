@@ -1022,8 +1022,57 @@ void InstanceHandler::setInstanceInput(
         // Set media_type and uri based on type
         if (type == "RTSP") {
             input["media_type"] = "IP Camera";
-            // Format URI for RTSP: gstreamer:///urisourcebin uri=... ! decodebin ! videoconvert ! video/x-raw, format=NV12 ! appsink drop=true name=cvdsink
-            input["uri"] = "gstreamer:///urisourcebin uri=" + uri + " ! decodebin ! videoconvert ! video/x-raw, format=NV12 ! appsink drop=true name=cvdsink";
+            
+            // Check if user wants to use urisourcebin format (for compatibility/auto-detect decoder)
+            bool useUrisourcebin = false;
+            if (json->isMember("additionalParams") && (*json)["additionalParams"].isObject()) {
+                const Json::Value& additionalParams = (*json)["additionalParams"];
+                if (additionalParams.isMember("USE_URISOURCEBIN") && additionalParams["USE_URISOURCEBIN"].isString()) {
+                    useUrisourcebin = (additionalParams["USE_URISOURCEBIN"].asString() == "true" || additionalParams["USE_URISOURCEBIN"].asString() == "1");
+                }
+            }
+            
+            // Get decoder name from instance additionalParams or request JSON
+            std::string decoderName = "avdec_h264"; // Default decoder
+            
+            // First try to get from request JSON additionalParams
+            if (json->isMember("additionalParams") && (*json)["additionalParams"].isObject()) {
+                const Json::Value& additionalParams = (*json)["additionalParams"];
+                if (additionalParams.isMember("GST_DECODER_NAME") && additionalParams["GST_DECODER_NAME"].isString()) {
+                    decoderName = additionalParams["GST_DECODER_NAME"].asString();
+                    // If decodebin is specified, use urisourcebin format
+                    if (decoderName == "decodebin") {
+                        useUrisourcebin = true;
+                    }
+                }
+            }
+            
+            // If not found in request, try to get from existing instance info
+            if (decoderName == "avdec_h264" && optInfo.has_value()) {
+                const InstanceInfo& info = optInfo.value();
+                auto decoderIt = info.additionalParams.find("GST_DECODER_NAME");
+                if (decoderIt != info.additionalParams.end() && !decoderIt->second.empty()) {
+                    decoderName = decoderIt->second;
+                    if (decoderName == "decodebin") {
+                        useUrisourcebin = true;
+                    }
+                }
+                // Check USE_URISOURCEBIN from instance
+                auto urisourcebinIt = info.additionalParams.find("USE_URISOURCEBIN");
+                if (urisourcebinIt != info.additionalParams.end()) {
+                    useUrisourcebin = (urisourcebinIt->second == "true" || urisourcebinIt->second == "1");
+                }
+            }
+            
+            if (useUrisourcebin) {
+                // Format: gstreamer:///urisourcebin uri=... ! decodebin ! videoconvert ! video/x-raw, format=NV12 ! appsink drop=true name=cvdsink
+                // This format uses decodebin for auto-detection (may help with decoder compatibility issues)
+                input["uri"] = "gstreamer:///urisourcebin uri=" + uri + " ! decodebin ! videoconvert ! video/x-raw, format=NV12 ! appsink drop=true name=cvdsink";
+            } else {
+                // Format: rtspsrc location=... protocols=tcp ! application/x-rtp,media=video ! rtph264depay ! h264parse ! decoder ! videoconvert ! video/x-raw,format=NV12 ! appsink drop=true name=cvdsink
+                // This format matches SDK template structure (with h264parse before decoder)
+                input["uri"] = "rtspsrc location=" + uri + " protocols=tcp ! application/x-rtp,media=video ! rtph264depay ! h264parse ! " + decoderName + " ! videoconvert ! video/x-raw,format=NV12 ! appsink drop=true name=cvdsink";
+            }
         } else if (type == "HLS") {
             input["media_type"] = "IP Camera";
             // For HLS, use the URI directly (hls_src node will handle it)
@@ -1200,18 +1249,33 @@ bool InstanceHandler::parseUpdateRequest(
         const Json::Value& input = json["Input"];
         if (input.isMember("uri") && input["uri"].isString()) {
             std::string uri = input["uri"].asString();
-            // Extract RTSP URL from GStreamer URI
-            size_t rtspPos = uri.find("uri=");
+            // Extract RTSP URL from GStreamer URI - support both old format (uri=) and new format (location=)
+            size_t rtspPos = uri.find("location=");
             if (rtspPos != std::string::npos) {
-                size_t start = rtspPos + 4;
-                size_t end = uri.find(" !", start);
+                // New format: rtspsrc location=...
+                size_t start = rtspPos + 9;
+                size_t end = uri.find(" ", start);
+                if (end == std::string::npos) {
+                    end = uri.find(" !", start);
+                }
                 if (end == std::string::npos) {
                     end = uri.length();
                 }
                 req.additionalParams["RTSP_URL"] = uri.substr(start, end - start);
-            } else if (uri.find("://") == std::string::npos) {
-                // Direct file path
-                req.additionalParams["FILE_PATH"] = uri;
+            } else {
+                // Old format: gstreamer:///urisourcebin uri=...
+                rtspPos = uri.find("uri=");
+                if (rtspPos != std::string::npos) {
+                    size_t start = rtspPos + 4;
+                    size_t end = uri.find(" !", start);
+                    if (end == std::string::npos) {
+                        end = uri.length();
+                    }
+                    req.additionalParams["RTSP_URL"] = uri.substr(start, end - start);
+                } else if (uri.find("://") == std::string::npos) {
+                    // Direct file path
+                    req.additionalParams["FILE_PATH"] = uri;
+                }
             }
         }
         if (input.isMember("media_type") && input["media_type"].isString()) {
@@ -1343,8 +1407,10 @@ bool InstanceHandler::parseUpdateRequest(
         req.additionalParams["FILE_PATH"] = json["FILE_PATH"].asString();
     }
     
-    // Also check for RTMP_URL at top level (for RTMP destination)
-    if (json.isMember("RTMP_URL") && json["RTMP_URL"].isString()) {
+    // Also check for RTMP_DES_URL or RTMP_URL at top level (for RTMP destination)
+    if (json.isMember("RTMP_DES_URL") && json["RTMP_DES_URL"].isString()) {
+        req.additionalParams["RTMP_DES_URL"] = json["RTMP_DES_URL"].asString();
+    } else if (json.isMember("RTMP_URL") && json["RTMP_URL"].isString()) {
         req.additionalParams["RTMP_URL"] = json["RTMP_URL"].asString();
     }
     
@@ -1380,7 +1446,34 @@ Json::Value InstanceHandler::instanceInfoToJson(const InstanceInfo& info) const 
     Json::Value input(Json::objectValue);
     if (!info.rtspUrl.empty()) {
         input["media_type"] = "IP Camera";
-        input["uri"] = "gstreamer:///urisourcebin uri=" + info.rtspUrl + " ! decodebin ! videoconvert ! video/x-raw, format=NV12 ! appsink drop=true name=cvdsink";
+        
+        // Check if user wants to use urisourcebin format (for compatibility/auto-detect decoder)
+        bool useUrisourcebin = false;
+        auto urisourcebinIt = info.additionalParams.find("USE_URISOURCEBIN");
+        if (urisourcebinIt != info.additionalParams.end()) {
+            useUrisourcebin = (urisourcebinIt->second == "true" || urisourcebinIt->second == "1");
+        }
+        
+        // Get decoder name from additionalParams
+        std::string decoderName = "avdec_h264"; // Default decoder
+        auto decoderIt = info.additionalParams.find("GST_DECODER_NAME");
+        if (decoderIt != info.additionalParams.end() && !decoderIt->second.empty()) {
+            decoderName = decoderIt->second;
+            // If decodebin is specified, use urisourcebin format
+            if (decoderName == "decodebin") {
+                useUrisourcebin = true;
+            }
+        }
+        
+        if (useUrisourcebin) {
+            // Format: gstreamer:///urisourcebin uri=... ! decodebin ! videoconvert ! video/x-raw, format=NV12 ! appsink drop=true name=cvdsink
+            // This format uses decodebin for auto-detection (may help with decoder compatibility issues)
+            input["uri"] = "gstreamer:///urisourcebin uri=" + info.rtspUrl + " ! decodebin ! videoconvert ! video/x-raw, format=NV12 ! appsink drop=true name=cvdsink";
+        } else {
+            // Format: rtspsrc location=... protocols=tcp ! application/x-rtp,media=video ! rtph264depay ! h264parse ! decoder ! videoconvert ! video/x-raw,format=NV12 ! appsink drop=true name=cvdsink
+            // This format matches SDK template structure (with h264parse before decoder)
+            input["uri"] = "rtspsrc location=" + info.rtspUrl + " protocols=tcp ! application/x-rtp,media=video ! rtph264depay ! h264parse ! " + decoderName + " ! videoconvert ! video/x-raw,format=NV12 ! appsink drop=true name=cvdsink";
+        }
     } else if (!info.filePath.empty()) {
         input["media_type"] = "File";
         input["uri"] = info.filePath;
@@ -1900,6 +1993,8 @@ void InstanceHandler::getInstanceOutput(
             output["type"] = "RTMP_STREAM";
             if (!info.rtmpUrl.empty()) {
                 output["rtmpUrl"] = info.rtmpUrl;
+            } else if (info.additionalParams.find("RTMP_DES_URL") != info.additionalParams.end()) {
+                output["rtmpUrl"] = info.additionalParams.at("RTMP_DES_URL");
             } else if (info.additionalParams.find("RTMP_URL") != info.additionalParams.end()) {
                 output["rtmpUrl"] = info.additionalParams.at("RTMP_URL");
             }
