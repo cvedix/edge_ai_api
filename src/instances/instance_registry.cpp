@@ -2738,33 +2738,19 @@ std::optional<InstanceStatistics> InstanceRegistry::getInstanceStatistics(const 
         // Use actual frames processed for comparison (more accurate)
         uint64_t actual_processed = (actual_frames_processed > 0) ? actual_frames_processed : calculated_frames_processed;
         
-        std::cerr << "[InstanceRegistry] [Statistics] DEBUG - expected_frames (from sourceFps): " << expected_frames 
-                  << ", actual_processed: " << actual_processed << std::endl;
-        
         // If we processed fewer frames than expected, the difference is dropped frames
         if (expected_frames > actual_processed) {
             uint64_t estimated_dropped = expected_frames - actual_processed;
-            double drop_percentage = (expected_frames > 0) ? (estimated_dropped * 100.0 / expected_frames) : 0.0;
-            
-            std::cerr << "[InstanceRegistry] [Statistics] DEBUG - estimated_dropped: " << estimated_dropped 
-                      << ", drop_percentage: " << drop_percentage << "%" << std::endl;
             
             // Update dropped frames (no threshold check - any difference is significant)
             // Accumulate dropped frames over time
             if (estimated_dropped > tracker.dropped_frames) {
                 tracker.dropped_frames = estimated_dropped;
-                std::cerr << "[InstanceRegistry] [Statistics] DEBUG - Updated dropped_frames to: " << tracker.dropped_frames << std::endl;
             }
-        } else {
-            std::cerr << "[InstanceRegistry] [Statistics] DEBUG - No dropped frames (expected <= actual)" << std::endl;
         }
-    } else {
-        std::cerr << "[InstanceRegistry] [Statistics] DEBUG - Cannot calculate dropped frames: sourceFps=" << sourceFps 
-                  << ", elapsed_seconds=" << elapsed_seconds << std::endl;
     }
     
     stats.dropped_frames_count = tracker.dropped_frames;
-    std::cerr << "[InstanceRegistry] [Statistics] DEBUG - Final dropped_frames_count: " << stats.dropped_frames_count << std::endl;
     // Round current_framerate to nearest integer
     stats.current_framerate = std::round(currentFps);
     
@@ -2812,17 +2798,11 @@ std::optional<InstanceStatistics> InstanceRegistry::getInstanceStatistics(const 
     
     // Queue size - updated via meta_arriving_hooker callback from CVEDIX SDK nodes
     // The hook tracks queue_size when meta arrives at each node's in_queue
-    std::cerr << "[InstanceRegistry] [Statistics] DEBUG - Queue size: current_queue_size=" << tracker.current_queue_size 
-              << ", max_queue_size_seen=" << tracker.max_queue_size_seen << std::endl;
-    
     stats.input_queue_size = static_cast<int64_t>(tracker.current_queue_size);
     if (stats.input_queue_size == 0 && tracker.max_queue_size_seen > 0) {
         // If we've seen queue size before but current is 0, use max as indicator
         stats.input_queue_size = static_cast<int64_t>(tracker.max_queue_size_seen);
-        std::cerr << "[InstanceRegistry] [Statistics] DEBUG - Using max_queue_size_seen: " << stats.input_queue_size << std::endl;
     }
-    
-    std::cerr << "[InstanceRegistry] [Statistics] DEBUG - Final input_queue_size: " << stats.input_queue_size << std::endl;
     
     return stats;
 }
@@ -3013,12 +2993,6 @@ void InstanceRegistry::setupQueueSizeTrackingHook(const std::string& instanceId,
                         // Update max queue size seen (historical maximum)
                         if (queue_size > static_cast<int>(tracker.max_queue_size_seen)) {
                             tracker.max_queue_size_seen = static_cast<size_t>(queue_size);
-                        }
-                        
-                        // Debug logging when queue is getting full (>80% of max 50)
-                        if (queue_size > 40) {
-                            std::cerr << "[InstanceRegistry] [QueueSize] Instance " << instanceId 
-                                      << ", Node: " << node_name << ", Queue size: " << queue_size << std::endl;
                         }
                     }
                 } catch (const std::exception& e) {
