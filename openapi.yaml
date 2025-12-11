@@ -2464,7 +2464,7 @@ paths:
     get:
       summary: Get instance statistics
       description: |
-        Returns current real-time statistics for the instance. Statistics include frames processed, framerate, latency, and resolution.
+        Returns current real-time statistics for the instance. Statistics include frames processed, framerate, latency, resolution, queue size, and dropped frames count.
         
         **Note:** Statistics reset to 0 when instance restarts. Statistics are calculated in real-time and are not persisted to storage.
         
@@ -2474,6 +2474,8 @@ paths:
         - `current_framerate`: Current processing FPS
         - `latency`: Average processing latency per frame in milliseconds
         - `start_time`: Instance start time (Unix timestamp in seconds)
+        - `input_queue_size`: Current input queue size (0 if not available from SDK)
+        - `dropped_frames_count`: Total number of dropped frames (estimated)
         - `resolution`: Current processing resolution (e.g., "1280x720")
         - `format`: Frame format (e.g., "BGR")
         - `source_resolution`: Source resolution (e.g., "1920x1080")
@@ -2503,6 +2505,8 @@ paths:
                 current_framerate: 25
                 latency: 40
                 start_time: 1765377504
+                input_queue_size: 0
+                dropped_frames_count: 0
                 resolution: "1280x720"
                 format: "BGR"
                 source_resolution: "1280x720"
@@ -4056,6 +4060,16 @@ components:
           format: int64
           description: Instance start time (Unix timestamp in seconds)
           example: 1765377504
+        input_queue_size:
+          type: integer
+          format: int64
+          description: Current input queue size (0 if not available from SDK)
+          example: 0
+        dropped_frames_count:
+          type: integer
+          format: int64
+          description: Total number of dropped frames (estimated based on difference between expected and processed frames)
+          example: 0
         resolution:
           type: string
           description: Current processing resolution (e.g., "1280x720")

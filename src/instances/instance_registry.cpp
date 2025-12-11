@@ -1740,7 +1740,7 @@ void InstanceRegistry::stopPipeline(const std::vector<std::shared_ptr<cvedix_nod
                     // Try stop() with timeout protection using async
                     auto stopFuture = std::async(std::launch::async, [rtspNode]() {
                         try {
-                            rtspNode->stop();
+                    rtspNode->stop();
                             return true;
                         } catch (...) {
                             return false;
@@ -1765,9 +1765,9 @@ void InstanceRegistry::stopPipeline(const std::vector<std::shared_ptr<cvedix_nod
                     } else if (stopStatus == std::future_status::ready) {
                         try {
                             if (stopFuture.get()) {
-                                auto stopEndTime = std::chrono::steady_clock::now();
-                                auto stopDuration = std::chrono::duration_cast<std::chrono::milliseconds>(stopEndTime - stopTime).count();
-                                std::cerr << "[InstanceRegistry] ✓ RTSP source node stopped in " << stopDuration << "ms" << std::endl;
+                    auto stopEndTime = std::chrono::steady_clock::now();
+                    auto stopDuration = std::chrono::duration_cast<std::chrono::milliseconds>(stopEndTime - stopTime).count();
+                    std::cerr << "[InstanceRegistry] ✓ RTSP source node stopped in " << stopDuration << "ms" << std::endl;
                             }
                         } catch (...) {
                             std::cerr << "[InstanceRegistry] ✗ Exception getting stop result" << std::endl;
@@ -2652,42 +2652,114 @@ std::optional<InstanceStatistics> InstanceRegistry::getInstanceStatistics(const 
         std::cerr << "[InstanceRegistry] [Statistics] Unknown exception getting source info" << std::endl;
     }
     
-    // Calculate current FPS: prefer source FPS (most accurate), then info.fps, then tracker.last_fps
-    // Source FPS is the actual processing FPS from the stream
+    // Calculate elapsed time first
+    auto now = std::chrono::steady_clock::now();
+    auto elapsed_seconds = std::chrono::duration_cast<std::chrono::seconds>(now - tracker.start_time).count();
+    auto elapsed_seconds_double = std::chrono::duration<double>(now - tracker.start_time).count();
+    
+    // Calculate actual processing FPS based on frames actually processed
+    // This is more accurate than using sourceFps directly
+    double actualProcessingFps = 0.0;
+    if (elapsed_seconds_double > 0.0 && tracker.frames_processed > 0) {
+        // Actual FPS = frames processed / elapsed time
+        actualProcessingFps = static_cast<double>(tracker.frames_processed) / elapsed_seconds_double;
+        std::cerr << "[InstanceRegistry] [Statistics] DEBUG - Calculated actualProcessingFps from frames_processed: " 
+                  << actualProcessingFps << " (frames_processed=" << tracker.frames_processed 
+                  << ", elapsed=" << elapsed_seconds_double << "s)" << std::endl;
+    }
+    
+    // Calculate current FPS: prefer actual processing FPS, then source FPS, then info.fps, then tracker.last_fps
+    // IMPORTANT: Use actual processing FPS if available, otherwise fallback to source FPS
     double currentFps = 0.0;
     std::cerr << "[InstanceRegistry] [Statistics] Calculating FPS: sourceFps=" << sourceFps 
+              << ", actualProcessingFps=" << actualProcessingFps
               << ", info.fps=" << info.fps << ", tracker.last_fps=" << tracker.last_fps << std::endl;
     
-    if (sourceFps > 0.0) {
-        currentFps = sourceFps;  // Use source FPS as primary (most accurate)
-        // Update tracker with latest FPS
+    if (actualProcessingFps > 0.0) {
+        // Use actual processing FPS (most accurate for dropped frames calculation)
+        currentFps = actualProcessingFps;
+        tracker.last_fps = actualProcessingFps;
+        tracker.last_fps_update = now;
+        std::cerr << "[InstanceRegistry] [Statistics] Using actual processing FPS: " << currentFps << std::endl;
+    } else if (sourceFps > 0.0) {
+        // Fallback to source FPS
+        currentFps = sourceFps;
         tracker.last_fps = sourceFps;
-        tracker.last_fps_update = std::chrono::steady_clock::now();
-        std::cerr << "[InstanceRegistry] [Statistics] Using source FPS: " << currentFps << std::endl;
+        tracker.last_fps_update = now;
+        std::cerr << "[InstanceRegistry] [Statistics] Using source FPS (fallback): " << currentFps << std::endl;
     } else if (info.fps > 0.0) {
         currentFps = info.fps;
-        // Update tracker with latest FPS
         tracker.last_fps = info.fps;
-        tracker.last_fps_update = std::chrono::steady_clock::now();
+        tracker.last_fps_update = now;
         std::cerr << "[InstanceRegistry] [Statistics] Using info.fps: " << currentFps << std::endl;
     } else {
         currentFps = tracker.last_fps;
         std::cerr << "[InstanceRegistry] [Statistics] Using tracker.last_fps: " << currentFps << std::endl;
     }
     
-    // Calculate frames_processed based on FPS and elapsed time
-    // This is an estimate since we don't have direct frame count from SDK
-    auto now = std::chrono::steady_clock::now();
-    auto elapsed_seconds = std::chrono::duration_cast<std::chrono::seconds>(now - tracker.start_time).count();
+    // Calculate frames_processed: use actual frames processed if available, otherwise estimate
+    uint64_t actual_frames_processed = tracker.frames_processed;
+    uint64_t calculated_frames_processed = 0;
     
-    if (currentFps > 0.0 && elapsed_seconds > 0) {
+    if (actual_frames_processed > 0) {
+        // Use actual frames processed (most accurate)
+        stats.frames_processed = actual_frames_processed;
+        calculated_frames_processed = actual_frames_processed;
+        std::cerr << "[InstanceRegistry] [Statistics] Using actual frames_processed: " << actual_frames_processed << std::endl;
+    } else if (currentFps > 0.0 && elapsed_seconds > 0) {
         // Estimate frames processed = FPS * elapsed time
-        stats.frames_processed = static_cast<uint64_t>(currentFps * elapsed_seconds);
+        calculated_frames_processed = static_cast<uint64_t>(currentFps * elapsed_seconds);
+        stats.frames_processed = calculated_frames_processed;
+        std::cerr << "[InstanceRegistry] [Statistics] Estimated frames_processed: " << calculated_frames_processed << std::endl;
     } else {
-        // If FPS is not available yet, use tracker value (which starts at 0)
-        stats.frames_processed = tracker.frames_processed;
+        stats.frames_processed = 0;
+        calculated_frames_processed = 0;
     }
     
+    std::cerr << "[InstanceRegistry] [Statistics] DEBUG - elapsed_seconds: " << elapsed_seconds 
+              << ", sourceFps: " << sourceFps << ", actualProcessingFps: " << actualProcessingFps
+              << ", currentFps: " << currentFps 
+              << ", actual_frames_processed: " << actual_frames_processed
+              << ", calculated_frames_processed: " << calculated_frames_processed << std::endl;
+    
+    // Calculate dropped frames: difference between expected frames (from source FPS) and actual processed frames
+    // Expected frames = source FPS * elapsed time
+    // Actual processed frames = actual frames processed (or calculated from actual FPS)
+    // Dropped frames = expected - actual (if expected > actual)
+    if (sourceFps > 0.0 && elapsed_seconds > 0) {
+        uint64_t expected_frames = static_cast<uint64_t>(sourceFps * elapsed_seconds);
+        tracker.expected_frames_from_source = expected_frames;
+        
+        // Use actual frames processed for comparison (more accurate)
+        uint64_t actual_processed = (actual_frames_processed > 0) ? actual_frames_processed : calculated_frames_processed;
+        
+        std::cerr << "[InstanceRegistry] [Statistics] DEBUG - expected_frames (from sourceFps): " << expected_frames 
+                  << ", actual_processed: " << actual_processed << std::endl;
+        
+        // If we processed fewer frames than expected, the difference is dropped frames
+        if (expected_frames > actual_processed) {
+            uint64_t estimated_dropped = expected_frames - actual_processed;
+            double drop_percentage = (expected_frames > 0) ? (estimated_dropped * 100.0 / expected_frames) : 0.0;
+            
+            std::cerr << "[InstanceRegistry] [Statistics] DEBUG - estimated_dropped: " << estimated_dropped 
+                      << ", drop_percentage: " << drop_percentage << "%" << std::endl;
+            
+            // Update dropped frames (no threshold check - any difference is significant)
+            // Accumulate dropped frames over time
+            if (estimated_dropped > tracker.dropped_frames) {
+                tracker.dropped_frames = estimated_dropped;
+                std::cerr << "[InstanceRegistry] [Statistics] DEBUG - Updated dropped_frames to: " << tracker.dropped_frames << std::endl;
+            }
+        } else {
+            std::cerr << "[InstanceRegistry] [Statistics] DEBUG - No dropped frames (expected <= actual)" << std::endl;
+        }
+    } else {
+        std::cerr << "[InstanceRegistry] [Statistics] DEBUG - Cannot calculate dropped frames: sourceFps=" << sourceFps 
+                  << ", elapsed_seconds=" << elapsed_seconds << std::endl;
+    }
+    
+    stats.dropped_frames_count = tracker.dropped_frames;
+    std::cerr << "[InstanceRegistry] [Statistics] DEBUG - Final dropped_frames_count: " << stats.dropped_frames_count << std::endl;
     stats.current_framerate = currentFps;
     
     // Use resolution from source node if available, otherwise use tracker value
@@ -2730,6 +2802,23 @@ std::optional<InstanceStatistics> InstanceRegistry::getInstanceStatistics(const 
         stats.format = "BGR";  // Default format
         tracker.format = "BGR";
     }
+    
+    // Queue size - use current_queue_size from tracker (can be updated via hook callbacks if implemented)
+    // For now, estimate based on max_queue_size_seen if current is 0
+    std::cerr << "[InstanceRegistry] [Statistics] DEBUG - Queue size: current_queue_size=" << tracker.current_queue_size 
+              << ", max_queue_size_seen=" << tracker.max_queue_size_seen << std::endl;
+    
+    stats.input_queue_size = static_cast<int64_t>(tracker.current_queue_size);
+    if (stats.input_queue_size == 0 && tracker.max_queue_size_seen > 0) {
+        // If we've seen queue size before but current is 0, use max as indicator
+        stats.input_queue_size = static_cast<int64_t>(tracker.max_queue_size_seen);
+        std::cerr << "[InstanceRegistry] [Statistics] DEBUG - Using max_queue_size_seen: " << stats.input_queue_size << std::endl;
+    }
+    
+    std::cerr << "[InstanceRegistry] [Statistics] DEBUG - Final input_queue_size: " << stats.input_queue_size << std::endl;
+    
+    // NOTE: input_queue_size will remain 0 until hook callbacks are implemented to track queue size from CVEDIX SDK nodes
+    // Currently, there's no direct API to get queue size from CVEDIX SDK nodes
     
     return stats;
 }
@@ -2845,6 +2934,16 @@ void InstanceRegistry::setupFrameCaptureHook(const std::string& instanceId,
                     auto frame_meta = std::dynamic_pointer_cast<cvedix_objects::cvedix_frame_meta>(meta);
                     if (!frame_meta) {
                         return;
+                    }
+                    
+                    // Update frame counter for statistics
+                    {
+                        std::unique_lock<std::shared_timed_mutex> lock(mutex_);
+                        auto trackerIt = statistics_trackers_.find(instanceId);
+                        if (trackerIt != statistics_trackers_.end()) {
+                            trackerIt->second.frames_processed++;
+                            trackerIt->second.frame_count_since_last_update++;
+                        }
                     }
                     
                     // Prefer OSD frame (processed with overlays), fallback to original frame
