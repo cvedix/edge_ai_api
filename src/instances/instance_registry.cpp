@@ -1168,10 +1168,15 @@ bool InstanceRegistry::updateInstance(const std::string& instanceId, const Updat
                 info.rtspUrl = rtspIt->second;
             }
             
-            // Update RTMP URL if changed
-            auto rtmpIt = req.additionalParams.find("RTMP_URL");
-            if (rtmpIt != req.additionalParams.end() && !rtmpIt->second.empty()) {
-                info.rtmpUrl = rtmpIt->second;
+            // Update RTMP URL if changed - check RTMP_DES_URL first, then RTMP_URL
+            auto rtmpDesIt = req.additionalParams.find("RTMP_DES_URL");
+            if (rtmpDesIt != req.additionalParams.end() && !rtmpDesIt->second.empty()) {
+                info.rtmpUrl = rtmpDesIt->second;
+            } else {
+                auto rtmpIt = req.additionalParams.find("RTMP_URL");
+                if (rtmpIt != req.additionalParams.end() && !rtmpIt->second.empty()) {
+                    info.rtmpUrl = rtmpIt->second;
+                }
             }
             
             // Update FILE_PATH if changed
@@ -1406,15 +1411,37 @@ InstanceInfo InstanceRegistry::createInstanceInfo(
     // Copy all additional parameters from request (MODEL_PATH, SFACE_MODEL_PATH, RESIZE_RATIO, etc.)
     info.additionalParams = req.additionalParams;
     
-    // Extract RTMP URL from request
-    auto rtmpIt = req.additionalParams.find("RTMP_URL");
-    if (rtmpIt != req.additionalParams.end() && !rtmpIt->second.empty()) {
-        info.rtmpUrl = rtmpIt->second;
+    // Extract RTSP URL from request - check RTSP_SRC_URL first, then RTSP_URL
+    // This should be done BEFORE generating RTSP from RTMP to avoid overriding user's input
+    auto rtspSrcIt = req.additionalParams.find("RTSP_SRC_URL");
+    if (rtspSrcIt != req.additionalParams.end() && !rtspSrcIt->second.empty()) {
+        info.rtspUrl = rtspSrcIt->second;
+    } else {
+        auto rtspIt = req.additionalParams.find("RTSP_URL");
+        if (rtspIt != req.additionalParams.end() && !rtspIt->second.empty()) {
+            info.rtspUrl = rtspIt->second;
+        }
+    }
+    
+    // Extract RTMP URL from request - check RTMP_DES_URL first, then RTMP_URL
+    auto rtmpDesIt = req.additionalParams.find("RTMP_DES_URL");
+    if (rtmpDesIt != req.additionalParams.end() && !rtmpDesIt->second.empty()) {
+        info.rtmpUrl = rtmpDesIt->second;
+    } else {
+        auto rtmpIt = req.additionalParams.find("RTMP_URL");
+        if (rtmpIt != req.additionalParams.end() && !rtmpIt->second.empty()) {
+            info.rtmpUrl = rtmpIt->second;
+        }
+    }
+    
+    // Only generate RTSP URL from RTMP URL if RTSP URL is not already set
+    // This prevents overriding user's RTSP_SRC_URL
+    if (info.rtspUrl.empty() && !info.rtmpUrl.empty()) {
         
         // Generate RTSP URL from RTMP URL
         // Pattern: rtmp://host:1935/live/stream_key -> rtsp://host:8554/live/stream_key_0
         // RTMP node automatically adds "_0" suffix to stream key
-        std::string rtmpUrl = rtmpIt->second;
+        std::string rtmpUrl = info.rtmpUrl;
         
         // Replace RTMP protocol and port with RTSP
         size_t protocolPos = rtmpUrl.find("rtmp://");
@@ -1960,8 +1987,10 @@ bool InstanceRegistry::rebuildPipelineFromInstanceInfo(const std::string& instan
     }
     
     // Restore RTMP URL if available (override if not in additionalParams)
-    if (!info.rtmpUrl.empty() && req.additionalParams.find("RTMP_URL") == req.additionalParams.end()) {
-        req.additionalParams["RTMP_URL"] = info.rtmpUrl;
+    if (!info.rtmpUrl.empty() && 
+        req.additionalParams.find("RTMP_DES_URL") == req.additionalParams.end() &&
+        req.additionalParams.find("RTMP_URL") == req.additionalParams.end()) {
+        req.additionalParams["RTMP_DES_URL"] = info.rtmpUrl;
     }
     
     // Restore FILE_PATH if available (override if not in additionalParams)
@@ -2006,8 +2035,12 @@ bool InstanceRegistry::hasRTMPOutput(const std::string& instanceId) const {
         return false;
     }
     
-    // Check if RTMP_URL is in additionalParams
+    // Check if RTMP_DES_URL or RTMP_URL is in additionalParams
     const auto& additionalParams = instanceIt->second.additionalParams;
+    if (additionalParams.find("RTMP_DES_URL") != additionalParams.end() && 
+        !additionalParams.at("RTMP_DES_URL").empty()) {
+        return true;
+    }
     if (additionalParams.find("RTMP_URL") != additionalParams.end() && 
         !additionalParams.at("RTMP_URL").empty()) {
         return true;
@@ -2279,11 +2312,15 @@ void InstanceRegistry::logProcessingResults(const std::string& instanceId) const
     
     // Log output type - check directly from info instead of calling hasRTMPOutput to avoid deadlock
     bool hasRTMP = !info.rtmpUrl.empty() || 
+                   info.additionalParams.find("RTMP_DES_URL") != info.additionalParams.end() ||
                    info.additionalParams.find("RTMP_URL") != info.additionalParams.end();
     if (hasRTMP) {
         std::cerr << "[InstanceProcessingLog] Output: RTMP Stream" << std::endl;
         if (!info.rtmpUrl.empty()) {
             std::cerr << "[InstanceProcessingLog] RTMP URL: " << info.rtmpUrl << std::endl;
+        } else if (info.additionalParams.find("RTMP_DES_URL") != info.additionalParams.end()) {
+            std::cerr << "[InstanceProcessingLog] RTMP URL: " 
+                      << info.additionalParams.at("RTMP_DES_URL") << std::endl;
         } else if (info.additionalParams.find("RTMP_URL") != info.additionalParams.end()) {
             std::cerr << "[InstanceProcessingLog] RTMP URL: " 
                       << info.additionalParams.at("RTMP_URL") << std::endl;
