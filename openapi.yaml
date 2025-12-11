@@ -1149,6 +1149,133 @@ paths:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
 
+  /v1/recognition/recognize:
+    post:
+      summary: Recognize faces from uploaded image
+      description: |
+        Recognizes faces from an uploaded image. The image can be provided as base64-encoded data 
+        in a multipart/form-data request. Returns face detection results including bounding boxes, 
+        landmarks, recognized subjects, and execution times.
+      operationId: recognizeFaces
+      tags:
+        - Recognition
+      parameters:
+        - name: limit
+          in: query
+          required: false
+          schema:
+            type: integer
+            default: 0
+          description: Maximum number of faces to recognize (0 = no limit). Recognizes the largest faces first.
+        - name: prediction_count
+          in: query
+          required: false
+          schema:
+            type: integer
+            default: 1
+          description: Number of predictions to return per face
+        - name: det_prob_threshold
+          in: query
+          required: false
+          schema:
+            type: number
+            format: float
+            default: 0.5
+          description: Detection probability threshold (0.0 to 1.0)
+        - name: face_plugins
+          in: query
+          required: false
+          schema:
+            type: string
+          description: Face plugins to enable (comma-separated)
+        - name: status
+          in: query
+          required: false
+          schema:
+            type: string
+          description: Status filter
+        - name: detect_faces
+          in: query
+          required: false
+          schema:
+            type: boolean
+            default: true
+          description: Whether to detect faces (true) or only recognize existing faces (false)
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required:
+                - file
+              properties:
+                file:
+                  type: string
+                  format: binary
+                  description: Image file as base64-encoded data or binary data
+      responses:
+        '200':
+          description: Face recognition results
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  result:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/FaceRecognitionResult'
+              example:
+                result:
+                  - box:
+                      probability: 1.0
+                      x_max: 1420
+                      y_max: 1368
+                      x_min: 548
+                      y_min: 295
+                    landmarks:
+                      - [814, 713]
+                      - [1104, 829]
+                      - [832, 937]
+                      - [704, 1030]
+                      - [1017, 1133]
+                    subjects:
+                      - similarity: 0.97858
+                        subject: "subject1"
+                    execution_time:
+                      age: 28.0
+                      gender: 26.0
+                      detector: 117.0
+                      calculator: 45.0
+                      mask: 36.0
+        '400':
+          description: Invalid request (missing file, invalid image format, etc.)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          description: Unauthorized (missing or invalid API key)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+    options:
+      summary: CORS preflight for face recognition
+      operationId: recognizeFacesOptions
+      tags:
+        - Recognition
+      responses:
+        '200':
+          description: CORS preflight response
+
   /v1/core/instance/status/summary:
     get:
       summary: Get instance status summary
@@ -5302,6 +5429,112 @@ components:
             destination: 3
             broker: 0
 
+    FaceRecognitionResult:
+      type: object
+      required:
+        - box
+        - landmarks
+        - subjects
+        - execution_time
+      properties:
+        box:
+          type: object
+          required:
+            - probability
+            - x_max
+            - y_max
+            - x_min
+            - y_min
+          properties:
+            probability:
+              type: number
+              format: float
+              description: Detection probability (0.0 to 1.0)
+              example: 1.0
+            x_max:
+              type: integer
+              description: Maximum X coordinate of bounding box
+              example: 1420
+            y_max:
+              type: integer
+              description: Maximum Y coordinate of bounding box
+              example: 1368
+            x_min:
+              type: integer
+              description: Minimum X coordinate of bounding box
+              example: 548
+            y_min:
+              type: integer
+              description: Minimum Y coordinate of bounding box
+              example: 295
+        landmarks:
+          type: array
+          description: Coordinates of face landmarks (5 points)
+          items:
+            type: array
+            items:
+              type: integer
+          example:
+            - [814, 713]
+            - [1104, 829]
+            - [832, 937]
+            - [704, 1030]
+            - [1017, 1133]
+        subjects:
+          type: array
+          description: List of similar subjects ordered by similarity
+          items:
+            type: object
+            required:
+              - similarity
+              - subject
+            properties:
+              similarity:
+                type: number
+                format: float
+                description: Similarity score (0.0 to 1.0)
+                example: 0.97858
+              subject:
+                type: string
+                description: Subject identifier
+                example: "subject1"
+        execution_time:
+          type: object
+          description: Execution time for each plugin (in milliseconds)
+          properties:
+            age:
+              type: number
+              format: float
+              description: Age detection execution time
+              example: 28.0
+            gender:
+              type: number
+              format: float
+              description: Gender detection execution time
+              example: 26.0
+            detector:
+              type: number
+              format: float
+              description: Face detector execution time
+              example: 117.0
+            calculator:
+              type: number
+              format: float
+              description: Feature calculator execution time
+              example: 45.0
+            mask:
+              type: number
+              format: float
+              description: Mask detection execution time
+              example: 36.0
+
+  securitySchemes:
+    ApiKeyAuth:
+      type: apiKey
+      in: header
+      name: x-api-key
+      description: API key for Face Recognition service (created by the user)
+
 tags:
   - name: Core
     description: Core API endpoints for health and version information
@@ -5317,4 +5550,8 @@ tags:
     description: Model file management endpoints
   - name: Node
     description: Node pool management endpoints for pre-configured nodes and templates (create, list, update, delete, templates, stats)
+  - name: Recognition
+    description: Face recognition endpoints for recognizing faces from uploaded images
+  - name: Video
+    description: Video file management endpoints
 

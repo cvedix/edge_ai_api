@@ -12,6 +12,7 @@
 #include "api/group_handler.h"
 #include "api/config_handler.h"
 #include "api/node_handler.h"
+#include "api/recognition_handler.h"
 #include "models/model_upload_handler.h"
 #include "videos/video_upload_handler.h"
 #include "config/system_config.h"
@@ -1857,6 +1858,7 @@ int main(int argc, char* argv[])
         PLOG_INFO << "[Main] Videos directory: " << videosDir;
         VideoUploadHandler::setVideosDirectory(videosDir);
         static VideoUploadHandler videoUploadHandler;
+        static RecognitionHandler recognitionHandler;
         
         // System configuration already loaded above (for web_server config)
         // Log additional configuration details
