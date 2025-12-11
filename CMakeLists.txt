@@ -453,6 +453,101 @@ else()
 endif()
 
 # ============================================
+# cpp-base64 (required by CVEDIX SDK)
+# ============================================
+# CVEDIX SDK expects cpp_base64 at ../../../third_party/cpp_base64 relative to its headers
+# This means it looks for /opt/cvedix/include/cvedix/third_party/cpp_base64/base64.h
+message(STATUS "Checking for cpp-base64 library...")
+
+# Try to find cpp-base64 in system
+find_path(CPP_BASE64_INCLUDE_DIR base64.h
+    PATHS
+        /usr/include
+        /usr/local/include
+        /opt/cvedix/include/cvedix/third_party/cpp_base64
+        ${CMAKE_BINARY_DIR}/_deps/cpp-base64-src
+)
+
+if(NOT CPP_BASE64_INCLUDE_DIR AND AUTO_DOWNLOAD_DEPENDENCIES)
+    message(STATUS "cpp-base64 not found. Downloading headers only...")
+    include(FetchContent)
+    
+    # Download cpp-base64 source without building (header-only library)
+    FetchContent_Declare(
+        cpp-base64
+        GIT_REPOSITORY https://github.com/ReneNyffenegger/cpp-base64.git
+        GIT_TAG        master
+        GIT_SHALLOW    TRUE
+    )
+    
+    # Only fetch, don't configure/build (cpp-base64 is header-only)
+    FetchContent_GetProperties(cpp-base64)
+    if(NOT cpp-base64_POPULATED)
+        FetchContent_Populate(cpp-base64)
+        set(CPP_BASE64_INCLUDE_DIR "${cpp-base64_SOURCE_DIR}" CACHE PATH "cpp-base64 include directory" FORCE)
+        message(STATUS "✓ cpp-base64 headers downloaded to: ${CPP_BASE64_INCLUDE_DIR}")
+    endif()
+endif()
+
+if(CPP_BASE64_INCLUDE_DIR)
+    include_directories(${CPP_BASE64_INCLUDE_DIR})
+    message(STATUS "✓ Found cpp-base64: ${CPP_BASE64_INCLUDE_DIR}")
+    
+    # CVEDIX SDK expects cpp_base64 at ../../../third_party/cpp_base64 relative to /opt/cvedix/include/cvedix/nodes/broker/
+    # This means it looks for /opt/cvedix/include/cvedix/third_party/cpp_base64/base64.h
+    # Create the exact directory structure CVEDIX SDK expects in build directory
+    set(CVEDIX_THIRD_PARTY_DIR "${CMAKE_BINARY_DIR}/cvedix_third_party")
+    set(CVEDIX_CPP_BASE64_DIR "${CVEDIX_THIRD_PARTY_DIR}/cpp_base64")
+    file(MAKE_DIRECTORY "${CVEDIX_THIRD_PARTY_DIR}")
+    
+    # Create symlink: build/cvedix_third_party/cpp_base64 -> cpp-base64 source dir
+    if(NOT EXISTS "${CVEDIX_CPP_BASE64_DIR}")
+        execute_process(
+            COMMAND ${CMAKE_COMMAND} -E create_symlink
+            "${CPP_BASE64_INCLUDE_DIR}"
+            "${CVEDIX_CPP_BASE64_DIR}"
+            RESULT_VARIABLE SYMLINK_RESULT
+            ERROR_QUIET
+        )
+    endif()
+    
+    # Add include path so compiler can resolve ../../../third_party/cpp_base64 from CVEDIX headers
+    # We add the parent directory so the path structure matches what CVEDIX SDK expects
+    include_directories("${CMAKE_BINARY_DIR}")
+    include_directories("${CPP_BASE64_INCLUDE_DIR}")
+    
+    # Check if system symlink exists (required for CVEDIX SDK)
+    # Check both /usr/include/cvedix and /opt/cvedix/include/cvedix locations
+    set(CPP_BASE64_SYMLINK_FOUND FALSE)
+    if(EXISTS "/usr/include/cvedix/third_party/cpp_base64/base64.h")
+        message(STATUS "✓ cpp-base64 symlink found at /usr/include/cvedix/third_party/cpp_base64")
+        set(CPP_BASE64_SYMLINK_FOUND TRUE)
+    elseif(EXISTS "/opt/cvedix/include/cvedix/third_party/cpp_base64/base64.h")
+        message(STATUS "✓ cpp-base64 symlink found at /opt/cvedix/include/cvedix/third_party/cpp_base64")
+        set(CPP_BASE64_SYMLINK_FOUND TRUE)
+    endif()
+    
+    if(NOT CPP_BASE64_SYMLINK_FOUND)
+        message(WARNING "")
+        message(WARNING "⚠ CVEDIX SDK requires cpp-base64 symlink")
+        if(EXISTS "/opt/cvedix/include/cvedix")
+            message(WARNING "  For /opt/cvedix installation:")
+            message(WARNING "    sudo mkdir -p /opt/cvedix/include/cvedix/third_party/cpp_base64")
+            message(WARNING "    sudo ln -sf ${CPP_BASE64_INCLUDE_DIR}/base64.h /opt/cvedix/include/cvedix/third_party/cpp_base64/base64.h")
+        else()
+            message(WARNING "  For /usr/include installation:")
+            message(WARNING "    sudo mkdir -p /usr/include/cvedix/third_party/cpp_base64")
+            message(WARNING "    sudo ln -sf ${CPP_BASE64_INCLUDE_DIR}/base64.h /usr/include/cvedix/third_party/cpp_base64/base64.h")
+        endif()
+        message(WARNING "")
+    endif()
+    message(STATUS "✓ Configured cpp-base64 paths for CVEDIX SDK")
+else()
+    message(WARNING "cpp-base64 not found. CVEDIX SDK enhanced console broker features may not work.")
+    message(WARNING "To install: enable AUTO_DOWNLOAD_DEPENDENCIES or manually download from https://github.com/ReneNyffenegger/cpp-base64")
+endif()
+
+# ============================================
 # CVEDIX SDK (required for AI processing)
 # ============================================
 # CVEDIX SDK is expected to be installed system-wide (not downloaded via FetchContent)
@@ -497,18 +592,58 @@ if(EXISTS "/opt/cvedix/lib/cmake/cvedix/cvedix-config.cmake")
     # Also add /opt/cvedix/include to include directories
     include_directories("/opt/cvedix/include")
     message(STATUS "✓ Added /opt/cvedix/include to include directories")
+    
+    # Create symlink structure for CVEDIX SDK third_party dependencies
+    # CVEDIX SDK headers use relative paths like ../../third_party/cpp_base64/base64.h
+    # We need to create the structure in /opt/cvedix/include/cvedix/third_party/
+    if(CPP_BASE64_INCLUDE_DIR AND NOT EXISTS "/opt/cvedix/include/cvedix/third_party/cpp_base64/base64.h")
+        message(STATUS "Creating cpp_base64 symlink structure for CVEDIX SDK...")
+        execute_process(
+            COMMAND ${CMAKE_COMMAND} -E make_directory "/opt/cvedix/include/cvedix/third_party/cpp_base64"
+            RESULT_VARIABLE MKDIR_RESULT
+            ERROR_QUIET
+        )
+        if(MKDIR_RESULT EQUAL 0)
+            execute_process(
+                COMMAND ${CMAKE_COMMAND} -E create_symlink
+                "${CPP_BASE64_INCLUDE_DIR}/base64.h"
+                "/opt/cvedix/include/cvedix/third_party/cpp_base64/base64.h"
+                RESULT_VARIABLE SYMLINK_RESULT
+                ERROR_QUIET
+            )
+            if(SYMLINK_RESULT EQUAL 0)
+                message(STATUS "✓ Created cpp_base64 symlink in /opt/cvedix/include/cvedix/third_party/cpp_base64/")
+            else()
+                message(WARNING "⚠ Could not create cpp_base64 symlink (may need sudo):")
+                message(WARNING "  sudo mkdir -p /opt/cvedix/include/cvedix/third_party/cpp_base64")
+                message(WARNING "  sudo ln -sf ${CPP_BASE64_INCLUDE_DIR}/base64.h /opt/cvedix/include/cvedix/third_party/cpp_base64/base64.h")
+            endif()
+        else()
+            message(WARNING "⚠ Could not create directory (may need sudo):")
+            message(WARNING "  sudo mkdir -p /opt/cvedix/include/cvedix/third_party/cpp_base64")
+            message(WARNING "  sudo ln -sf ${CPP_BASE64_INCLUDE_DIR}/base64.h /opt/cvedix/include/cvedix/third_party/cpp_base64/base64.h")
+        endif()
+    endif()
 endif()
 
 find_package(cvedix REQUIRED)
 
-# Add cereal include path for CVEDIX SDK
+# Add cereal and cpp-base64 include paths for CVEDIX SDK
 # CVEDIX SDK headers include cereal with relative path ../../../third_party/cereal/cereal.hpp
+# CVEDIX SDK headers include base64 with relative path ../../../third_party/cpp_base64/base64.h
 # We've created the structure in build directory, now add it to include paths
 if(CEREAL_INCLUDE_DIR)
     # Add build directory so compiler can resolve cvedix_third_party/cereal
     target_include_directories(edge_ai_api PRIVATE "${CMAKE_BINARY_DIR}")
     target_include_directories(edge_ai_api PRIVATE "${CEREAL_INCLUDE_DIR}")
     message(STATUS "✓ Added cereal include paths for CVEDIX SDK")
+endif()
+
+if(CPP_BASE64_INCLUDE_DIR)
+    # Add build directory so compiler can resolve cvedix_third_party/cpp_base64
+    target_include_directories(edge_ai_api PRIVATE "${CMAKE_BINARY_DIR}")
+    target_include_directories(edge_ai_api PRIVATE "${CPP_BASE64_INCLUDE_DIR}")
+    message(STATUS "✓ Added cpp-base64 include paths for CVEDIX SDK")
 endif()
 
 target_link_libraries(edge_ai_api PRIVATE cvedix::cvedix_instance_sdk)
@@ -632,6 +767,52 @@ endif()
 # Build time
 # ============================================
 string(TIMESTAMP BUILD_TIME "%Y-%m-%d %H:%M:%S" UTC)
+
+# ============================================
+# CVEDIX SDK Feature Flags
+# ============================================
+# Check if CVEDIX SDK was built with MQTT support
+# This is typically defined in CVEDIX SDK's config file, but we can also enable it here
+option(CVEDIX_WITH_MQTT "Enable MQTT support (requires CVEDIX SDK built with MQTT)" ON)
+
+if(CVEDIX_WITH_MQTT)
+    target_compile_definitions(edge_ai_api PRIVATE CVEDIX_WITH_MQTT)
+    message(STATUS "✓ MQTT support enabled (CVEDIX_WITH_MQTT)")
+    
+    # cvedix_mqtt_client uses libmosquitto, need to link it
+    find_library(MOSQUITTO_LIBRARY
+        NAMES mosquitto
+        PATHS
+            /usr/lib
+            /usr/lib/x86_64-linux-gnu
+            /usr/local/lib
+            /opt/cvedix/lib
+    )
+    
+    if(MOSQUITTO_LIBRARY)
+        target_link_libraries(edge_ai_api PRIVATE ${MOSQUITTO_LIBRARY})
+        message(STATUS "✓ Linked mosquitto library: ${MOSQUITTO_LIBRARY}")
+    else()
+        # Try pkg-config
+        find_package(PkgConfig QUIET)
+        if(PkgConfig_FOUND)
+            pkg_check_modules(MOSQUITTO QUIET mosquitto)
+            if(MOSQUITTO_FOUND)
+                target_link_libraries(edge_ai_api PRIVATE ${MOSQUITTO_LIBRARIES})
+                target_include_directories(edge_ai_api PRIVATE ${MOSQUITTO_INCLUDE_DIRS})
+                message(STATUS "✓ Linked mosquitto library via pkg-config: ${MOSQUITTO_LIBRARIES}")
+            else()
+                message(WARNING "⚠ mosquitto library not found. MQTT features may not work.")
+                message(WARNING "  To install: sudo apt-get install libmosquitto-dev")
+            endif()
+        else()
+            message(WARNING "⚠ mosquitto library not found. MQTT features may not work.")
+            message(WARNING "  To install: sudo apt-get install libmosquitto-dev")
+        endif()
+    endif()
+else()
+    message(STATUS "⚠ MQTT support disabled")
+endif()
 
 # ============================================
 # Compile definitions

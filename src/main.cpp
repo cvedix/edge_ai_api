@@ -1565,7 +1565,7 @@ int main(int argc, char* argv[])
         }
         
         // Initialize solution storage and load custom solutions
-        // Default: /var/lib/edge_ai_api/solutions (auto-created if needed)
+        // Default: /opt/edge_ai_api/solutions (auto-created if needed, with fallback)
         std::string solutionsDir = EnvConfig::resolveDataDir("SOLUTIONS_DIR", "solutions");
         PLOG_INFO << "[Main] Solutions directory: " << solutionsDir;
         static SolutionStorage solutionStorage(solutionsDir);
