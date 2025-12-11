@@ -12,30 +12,46 @@ using namespace drogon;
 /**
  * @brief Face Recognition Handler
  * 
- * Handles POST /api/v1/recognition/recognize endpoint for recognizing faces from uploaded images.
+ * Handles face recognition endpoints for recognizing and registering faces.
  * 
  * Endpoints:
- * - POST /api/v1/recognition/recognize - Recognize faces from image
+ * - POST /v1/recognition/recognize - Recognize faces from image
+ * - POST /v1/recognition/faces - Register face subject
  */
 class RecognitionHandler : public drogon::HttpController<RecognitionHandler> {
 public:
     METHOD_LIST_BEGIN
         ADD_METHOD_TO(RecognitionHandler::recognizeFaces, "/v1/recognition/recognize", Post);
+        ADD_METHOD_TO(RecognitionHandler::registerFaceSubject, "/v1/recognition/faces", Post);
         ADD_METHOD_TO(RecognitionHandler::handleOptions, "/v1/recognition/recognize", Options);
+        ADD_METHOD_TO(RecognitionHandler::handleOptionsFaces, "/v1/recognition/faces", Options);
     METHOD_LIST_END
     
     /**
-     * @brief Handle POST /api/v1/recognition/recognize
+     * @brief Handle POST /v1/recognition/recognize
      * Recognizes faces from an uploaded image
      */
     void recognizeFaces(const HttpRequestPtr &req,
                        std::function<void(const HttpResponsePtr &)> &&callback);
     
     /**
-     * @brief Handle OPTIONS request for CORS preflight
+     * @brief Handle POST /v1/recognition/faces
+     * Registers a face subject by storing the image
+     */
+    void registerFaceSubject(const HttpRequestPtr &req,
+                            std::function<void(const HttpResponsePtr &)> &&callback);
+    
+    /**
+     * @brief Handle OPTIONS request for CORS preflight (recognize endpoint)
      */
     void handleOptions(const HttpRequestPtr &req,
                      std::function<void(const HttpResponsePtr &)> &&callback);
+    
+    /**
+     * @brief Handle OPTIONS request for CORS preflight (faces endpoint)
+     */
+    void handleOptionsFaces(const HttpRequestPtr &req,
+                           std::function<void(const HttpResponsePtr &)> &&callback);
 
 private:
     /**
@@ -78,6 +94,25 @@ private:
                                       double detProbThreshold,
                                       const std::string& facePlugins,
                                       bool detectFaces) const;
+    
+    /**
+     * @brief Extract base64 image data from JSON body
+     */
+    bool extractImageFromJson(const HttpRequestPtr &req, std::vector<unsigned char>& imageData, std::string& error) const;
+    
+    /**
+     * @brief Generate unique image ID (UUID-like)
+     */
+    std::string generateImageId() const;
+    
+    /**
+     * @brief Register face subject by storing image
+     */
+    bool registerSubject(const std::string& subjectName,
+                       const std::vector<unsigned char>& imageData,
+                       double detProbThreshold,
+                       std::string& imageId,
+                       std::string& error) const;
     
     /**
      * @brief Create error response

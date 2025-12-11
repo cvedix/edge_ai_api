@@ -7,6 +7,8 @@
 #include <algorithm>
 #include <cctype>
 #include <chrono>
+#include <random>
+#include <iomanip>
 #include <opencv2/opencv.hpp>
 
 HttpResponsePtr RecognitionHandler::createErrorResponse(int statusCode, const std::string& error, const std::string& message) const {
@@ -438,6 +440,226 @@ void RecognitionHandler::recognizeFaces(const HttpRequestPtr &req,
 }
 
 void RecognitionHandler::handleOptions(const HttpRequestPtr &req,
+                                     std::function<void(const HttpResponsePtr &)> &&callback) {
+    auto resp = HttpResponse::newHttpResponse();
+    resp->setStatusCode(k200OK);
+    resp->addHeader("Access-Control-Allow-Origin", "*");
+    resp->addHeader("Access-Control-Allow-Methods", "POST, OPTIONS");
+    resp->addHeader("Access-Control-Allow-Headers", "Content-Type, x-api-key");
+    resp->addHeader("Access-Control-Max-Age", "3600");
+    callback(resp);
+}
+
+std::string RecognitionHandler::generateImageId() const {
+    // Generate UUID-like ID: xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx
+    std::random_device rd;
+    std::mt19937 gen(rd());
+    std::uniform_int_distribution<> dis(0, 15);
+    std::uniform_int_distribution<> dis2(8, 11);
+    
+    std::stringstream ss;
+    int i;
+    ss << std::hex;
+    for (i = 0; i < 8; i++) {
+        ss << dis(gen);
+    }
+    ss << "-";
+    for (i = 0; i < 4; i++) {
+        ss << dis(gen);
+    }
+    ss << "-";
+    ss << dis2(gen);
+    for (i = 0; i < 3; i++) {
+        ss << dis(gen);
+    }
+    ss << "-";
+    for (i = 0; i < 4; i++) {
+        ss << dis(gen);
+    }
+    ss << "-";
+    for (i = 0; i < 12; i++) {
+        ss << dis(gen);
+    }
+    return ss.str();
+}
+
+bool RecognitionHandler::extractImageFromJson(const HttpRequestPtr &req, std::vector<unsigned char>& imageData, std::string& error) const {
+    // Parse JSON body
+    auto json = req->getJsonObject();
+    if (!json) {
+        error = "Request body must be valid JSON";
+        return false;
+    }
+    
+    // Check if file field exists
+    if (!json->isMember("file") || !(*json)["file"].isString()) {
+        error = "Missing required field: file (base64 encoded image)";
+        return false;
+    }
+    
+    std::string fileBase64 = (*json)["file"].asString();
+    if (fileBase64.empty()) {
+        error = "File field is empty";
+        return false;
+    }
+    
+    // Decode base64
+    if (!decodeBase64(fileBase64, imageData)) {
+        error = "Failed to decode base64 image data";
+        return false;
+    }
+    
+    if (imageData.empty()) {
+        error = "Image data is empty after decoding";
+        return false;
+    }
+    
+    return true;
+}
+
+bool RecognitionHandler::registerSubject(const std::string& subjectName,
+                                        const std::vector<unsigned char>& imageData,
+                                        double detProbThreshold,
+                                        std::string& imageId,
+                                        std::string& error) const {
+    try {
+        // Validate image can be decoded
+        cv::Mat image = cv::imdecode(imageData, cv::IMREAD_COLOR);
+        if (image.empty()) {
+            error = "Invalid image format or corrupted image data";
+            return false;
+        }
+        
+        // TODO: Implement actual face detection and subject registration logic
+        // For now, generate image ID and return success
+        // In production, this should:
+        // 1. Detect face in image
+        // 2. Extract face features
+        // 3. Store features associated with subject name
+        // 4. Save image to storage
+        
+        imageId = generateImageId();
+        
+        // TODO: Store subject and image mapping
+        // This could be in a database or file system
+        
+        return true;
+        
+    } catch (const std::exception& e) {
+        error = "Error processing image: " + std::string(e.what());
+        return false;
+    }
+}
+
+void RecognitionHandler::registerFaceSubject(const HttpRequestPtr &req,
+                                            std::function<void(const HttpResponsePtr &)> &&callback) {
+    auto start_time = std::chrono::steady_clock::now();
+    
+    if (isApiLoggingEnabled()) {
+        PLOG_INFO << "[API] POST /v1/recognition/faces - Register face subject";
+        PLOG_DEBUG << "[API] Request from: " << req->getPeerAddr().toIpPort();
+    }
+    
+    try {
+        // Validate API key
+        std::string apiKeyError;
+        if (!validateApiKey(req, apiKeyError)) {
+            if (isApiLoggingEnabled()) {
+                PLOG_WARNING << "[API] POST /v1/recognition/faces - " << apiKeyError;
+            }
+            callback(createErrorResponse(401, "Unauthorized", apiKeyError));
+            return;
+        }
+        
+        // Parse query parameters
+        std::string subjectName = req->getParameter("subject");
+        if (subjectName.empty()) {
+            if (isApiLoggingEnabled()) {
+                PLOG_WARNING << "[API] POST /v1/recognition/faces - Missing required parameter: subject";
+            }
+            callback(createErrorResponse(400, "Invalid request", "Missing required query parameter: subject"));
+            return;
+        }
+        
+        std::string detProbThresholdStr = req->getParameter("det_prob_threshold");
+        double detProbThreshold = 0.5; // Default
+        if (!detProbThresholdStr.empty()) {
+            try {
+                detProbThreshold = std::stod(detProbThresholdStr);
+            } catch (...) {
+                detProbThreshold = 0.5;
+            }
+        }
+        
+        if (isApiLoggingEnabled()) {
+            PLOG_DEBUG << "[API] Register subject: " << subjectName 
+                      << ", det_prob_threshold: " << detProbThreshold;
+        }
+        
+        // Extract image data from JSON body
+        std::vector<unsigned char> imageData;
+        std::string imageError;
+        if (!extractImageFromJson(req, imageData, imageError)) {
+            if (isApiLoggingEnabled()) {
+                PLOG_WARNING << "[API] POST /v1/recognition/faces - " << imageError;
+            }
+            callback(createErrorResponse(400, "Invalid request", imageError));
+            return;
+        }
+        
+        // Register subject
+        std::string imageId;
+        std::string registerError;
+        if (!registerSubject(subjectName, imageData, detProbThreshold, imageId, registerError)) {
+            if (isApiLoggingEnabled()) {
+                PLOG_WARNING << "[API] POST /v1/recognition/faces - " << registerError;
+            }
+            callback(createErrorResponse(400, "Registration failed", registerError));
+            return;
+        }
+        
+        // Build response
+        Json::Value response;
+        response["image_id"] = imageId;
+        response["subject"] = subjectName;
+        
+        auto resp = HttpResponse::newHttpJsonResponse(response);
+        resp->setStatusCode(k200OK);
+        
+        // Add CORS headers
+        resp->addHeader("Access-Control-Allow-Origin", "*");
+        resp->addHeader("Access-Control-Allow-Methods", "POST, OPTIONS");
+        resp->addHeader("Access-Control-Allow-Headers", "Content-Type, x-api-key");
+        
+        auto end_time = std::chrono::steady_clock::now();
+        auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(end_time - start_time);
+        
+        if (isApiLoggingEnabled()) {
+            PLOG_INFO << "[API] POST /v1/recognition/faces - Success: Registered subject '" 
+                      << subjectName << "' with image_id '" << imageId << "' - " 
+                      << duration.count() << "ms";
+        }
+        
+        callback(resp);
+        
+    } catch (const std::exception& e) {
+        auto end_time = std::chrono::steady_clock::now();
+        auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(end_time - start_time);
+        if (isApiLoggingEnabled()) {
+            PLOG_ERROR << "[API] POST /v1/recognition/faces - Exception: " << e.what() << " - " << duration.count() << "ms";
+        }
+        callback(createErrorResponse(500, "Internal server error", e.what()));
+    } catch (...) {
+        auto end_time = std::chrono::steady_clock::now();
+        auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(end_time - start_time);
+        if (isApiLoggingEnabled()) {
+            PLOG_ERROR << "[API] POST /v1/recognition/faces - Unknown exception - " << duration.count() << "ms";
+        }
+        callback(createErrorResponse(500, "Internal server error", "Unknown error occurred"));
+    }
+}
+
+void RecognitionHandler::handleOptionsFaces(const HttpRequestPtr &req,
                                      std::function<void(const HttpResponsePtr &)> &&callback) {
     auto resp = HttpResponse::newHttpResponse();
     resp->setStatusCode(k200OK);

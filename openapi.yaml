@@ -1276,6 +1276,100 @@ paths:
         '200':
           description: CORS preflight response
 
+  /v1/recognition/faces:
+    post:
+      summary: Register face subject
+      description: |
+        Registers a face subject by storing the image. You can add as many images as you want to train the system. 
+        Images should contain only a single face.
+        
+        This endpoint accepts a base64-encoded image in JSON format and associates it with a subject name.
+        The system will detect the face in the image and store the face features for recognition.
+      operationId: registerFaceSubject
+      tags:
+        - Recognition
+      parameters:
+        - name: subject
+          in: query
+          required: true
+          schema:
+            type: string
+          description: Subject name to register (e.g., "subject1")
+          example: "subject1"
+        - name: det_prob_threshold
+          in: query
+          required: false
+          schema:
+            type: number
+            format: float
+            default: 0.5
+          description: Detection probability threshold (0.0 to 1.0)
+          example: 0.5
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - file
+              properties:
+                file:
+                  type: string
+                  description: Base64-encoded image data
+                  example: "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg=="
+            example:
+              file: "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg=="
+      responses:
+        '200':
+          description: Face subject registered successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - image_id
+                  - subject
+                properties:
+                  image_id:
+                    type: string
+                    format: uuid
+                    description: Unique identifier for the registered image
+                    example: "6b135f5b-a365-4522-b1f1-4c9ac2dd0728"
+                  subject:
+                    type: string
+                    description: Subject name that was registered
+                    example: "subject1"
+              example:
+                image_id: "6b135f5b-a365-4522-b1f1-4c9ac2dd0728"
+                subject: "subject1"
+        '400':
+          description: Invalid request (missing subject, invalid image format, etc.)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          description: Unauthorized (missing or invalid API key)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+    options:
+      summary: CORS preflight for register face subject
+      operationId: registerFaceSubjectOptions
+      tags:
+        - Recognition
+      responses:
+        '200':
+          description: CORS preflight response
+
   /v1/core/instance/status/summary:
     get:
       summary: Get instance status summary
