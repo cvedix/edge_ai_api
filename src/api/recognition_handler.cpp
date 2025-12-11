@@ -664,9 +664,131 @@ void RecognitionHandler::handleOptionsFaces(const HttpRequestPtr &req,
     auto resp = HttpResponse::newHttpResponse();
     resp->setStatusCode(k200OK);
     resp->addHeader("Access-Control-Allow-Origin", "*");
-    resp->addHeader("Access-Control-Allow-Methods", "POST, OPTIONS");
+    resp->addHeader("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
     resp->addHeader("Access-Control-Allow-Headers", "Content-Type, x-api-key");
     resp->addHeader("Access-Control-Max-Age", "3600");
     callback(resp);
+}
+
+Json::Value RecognitionHandler::getFaceSubjects(int page, int size, const std::string& subjectFilter) const {
+    Json::Value result;
+    
+    // TODO: Implement actual face subjects retrieval from storage
+    // For now, return mock data matching the expected format
+    // In production, this should:
+    // 1. Query face subjects from database/storage
+    // 2. Filter by subject if provided
+    // 3. Apply pagination
+    // 4. Return paginated results
+    
+    Json::Value faces(Json::arrayValue);
+    
+    // Mock data - replace with actual database query
+    // Example: Query from storage where subject matches subjectFilter (if provided)
+    // For now, return empty array or mock data
+    
+    // Calculate pagination
+    int totalElements = 0; // TODO: Get actual count from storage
+    int totalPages = (totalElements + size - 1) / size; // Ceiling division
+    
+    result["faces"] = faces;
+    result["page_number"] = page;
+    result["page_size"] = size;
+    result["total_pages"] = totalPages;
+    result["total_elements"] = totalElements;
+    
+    return result;
+}
+
+void RecognitionHandler::listFaceSubjects(const HttpRequestPtr &req,
+                                        std::function<void(const HttpResponsePtr &)> &&callback) {
+    auto start_time = std::chrono::steady_clock::now();
+    
+    if (isApiLoggingEnabled()) {
+        PLOG_INFO << "[API] GET /v1/recognition/faces - List face subjects";
+        PLOG_DEBUG << "[API] Request from: " << req->getPeerAddr().toIpPort();
+    }
+    
+    try {
+        // Validate API key
+        std::string apiKeyError;
+        if (!validateApiKey(req, apiKeyError)) {
+            if (isApiLoggingEnabled()) {
+                PLOG_WARNING << "[API] GET /v1/recognition/faces - " << apiKeyError;
+            }
+            callback(createErrorResponse(401, "Unauthorized", apiKeyError));
+            return;
+        }
+        
+        // Parse query parameters
+        std::string pageStr = req->getParameter("page");
+        std::string sizeStr = req->getParameter("size");
+        std::string subjectFilter = req->getParameter("subject");
+        
+        int page = 0; // Default
+        int size = 20; // Default
+        
+        if (!pageStr.empty()) {
+            try {
+                page = std::stoi(pageStr);
+                if (page < 0) page = 0;
+            } catch (...) {
+                page = 0;
+            }
+        }
+        
+        if (!sizeStr.empty()) {
+            try {
+                size = std::stoi(sizeStr);
+                if (size < 1) size = 20;
+                if (size > 100) size = 100; // Limit max page size
+            } catch (...) {
+                size = 20;
+            }
+        }
+        
+        if (isApiLoggingEnabled()) {
+            PLOG_DEBUG << "[API] List parameters - page: " << page 
+                      << ", size: " << size
+                      << ", subject filter: " << (subjectFilter.empty() ? "all" : subjectFilter);
+        }
+        
+        // Get face subjects
+        Json::Value response = getFaceSubjects(page, size, subjectFilter);
+        
+        auto resp = HttpResponse::newHttpJsonResponse(response);
+        resp->setStatusCode(k200OK);
+        
+        // Add CORS headers
+        resp->addHeader("Access-Control-Allow-Origin", "*");
+        resp->addHeader("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
+        resp->addHeader("Access-Control-Allow-Headers", "Content-Type, x-api-key");
+        
+        auto end_time = std::chrono::steady_clock::now();
+        auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(end_time - start_time);
+        
+        if (isApiLoggingEnabled()) {
+            int totalElements = response.get("total_elements", 0).asInt();
+            PLOG_INFO << "[API] GET /v1/recognition/faces - Success: Found " 
+                      << totalElements << " face(s) - " << duration.count() << "ms";
+        }
+        
+        callback(resp);
+        
+    } catch (const std::exception& e) {
+        auto end_time = std::chrono::steady_clock::now();
+        auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(end_time - start_time);
+        if (isApiLoggingEnabled()) {
+            PLOG_ERROR << "[API] GET /v1/recognition/faces - Exception: " << e.what() << " - " << duration.count() << "ms";
+        }
+        callback(createErrorResponse(500, "Internal server error", e.what()));
+    } catch (...) {
+        auto end_time = std::chrono::steady_clock::now();
+        auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(end_time - start_time);
+        if (isApiLoggingEnabled()) {
+            PLOG_ERROR << "[API] GET /v1/recognition/faces - Unknown exception - " << duration.count() << "ms";
+        }
+        callback(createErrorResponse(500, "Internal server error", "Unknown error occurred"));
+    }
 }
 

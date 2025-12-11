@@ -17,12 +17,14 @@ using namespace drogon;
  * Endpoints:
  * - POST /v1/recognition/recognize - Recognize faces from image
  * - POST /v1/recognition/faces - Register face subject
+ * - GET /v1/recognition/faces - List face subjects
  */
 class RecognitionHandler : public drogon::HttpController<RecognitionHandler> {
 public:
     METHOD_LIST_BEGIN
         ADD_METHOD_TO(RecognitionHandler::recognizeFaces, "/v1/recognition/recognize", Post);
         ADD_METHOD_TO(RecognitionHandler::registerFaceSubject, "/v1/recognition/faces", Post);
+        ADD_METHOD_TO(RecognitionHandler::listFaceSubjects, "/v1/recognition/faces", Get);
         ADD_METHOD_TO(RecognitionHandler::handleOptions, "/v1/recognition/recognize", Options);
         ADD_METHOD_TO(RecognitionHandler::handleOptionsFaces, "/v1/recognition/faces", Options);
     METHOD_LIST_END
@@ -40,6 +42,13 @@ public:
      */
     void registerFaceSubject(const HttpRequestPtr &req,
                             std::function<void(const HttpResponsePtr &)> &&callback);
+    
+    /**
+     * @brief Handle GET /v1/recognition/faces
+     * Lists all saved face subjects with pagination support
+     */
+    void listFaceSubjects(const HttpRequestPtr &req,
+                        std::function<void(const HttpResponsePtr &)> &&callback);
     
     /**
      * @brief Handle OPTIONS request for CORS preflight (recognize endpoint)
@@ -113,6 +122,11 @@ private:
                        double detProbThreshold,
                        std::string& imageId,
                        std::string& error) const;
+    
+    /**
+     * @brief Get list of face subjects with pagination
+     */
+    Json::Value getFaceSubjects(int page, int size, const std::string& subjectFilter) const;
     
     /**
      * @brief Create error response
