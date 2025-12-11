@@ -233,6 +233,13 @@ private:
     void setupFrameCaptureHook(const std::string& instanceId, const std::vector<std::shared_ptr<cvedix_nodes::cvedix_node>>& nodes);
     
     /**
+     * @brief Setup queue size tracking hook for pipeline nodes
+     * @param instanceId Instance ID
+     * @param nodes Pipeline nodes
+     */
+    void setupQueueSizeTrackingHook(const std::string& instanceId, const std::vector<std::shared_ptr<cvedix_nodes::cvedix_node>>& nodes);
+    
+    /**
      * @brief Encode cv::Mat frame to JPEG base64 string
      * @param frame Frame to encode
      * @param jpegQuality JPEG quality (1-100, default 85)

@@ -27,6 +27,7 @@
 #include <unistd.h>
 #include <future>
 #include <vector>
+#include <cmath>
 
 InstanceRegistry::InstanceRegistry(
     SolutionRegistry& solutionRegistry,
@@ -1539,6 +1540,9 @@ bool InstanceRegistry::startPipeline(const std::string& instanceId, const std::v
     // Setup frame capture hook before starting pipeline
     setupFrameCaptureHook(instanceId, nodes);
     
+    // Setup queue size tracking hook before starting pipeline
+    setupQueueSizeTrackingHook(instanceId, nodes);
+    
     try {
         // Start from the first node (source node)
         // The pipeline will start automatically when source node starts
@@ -2568,7 +2572,8 @@ std::optional<InstanceStatistics> InstanceRegistry::getInstanceStatistics(const 
     if (trackerIt == statistics_trackers_.end()) {
         // Tracker not initialized yet, return default statistics
         InstanceStatistics stats;
-        stats.current_framerate = info.fps;
+        // Round current_framerate to nearest integer
+        stats.current_framerate = std::round(info.fps);
         return stats;
     }
     
@@ -2760,7 +2765,8 @@ std::optional<InstanceStatistics> InstanceRegistry::getInstanceStatistics(const 
     
     stats.dropped_frames_count = tracker.dropped_frames;
     std::cerr << "[InstanceRegistry] [Statistics] DEBUG - Final dropped_frames_count: " << stats.dropped_frames_count << std::endl;
-    stats.current_framerate = currentFps;
+    // Round current_framerate to nearest integer
+    stats.current_framerate = std::round(currentFps);
     
     // Use resolution from source node if available, otherwise use tracker value
     if (!sourceRes.empty()) {
@@ -2792,7 +2798,8 @@ std::optional<InstanceStatistics> InstanceRegistry::getInstanceStatistics(const 
     // Calculate latency (average time per frame in milliseconds)
     if (stats.frames_processed > 0 && currentFps > 0.0) {
         // Latency = 1000ms / FPS (average time per frame)
-        stats.latency = 1000.0 / currentFps;
+        // Round latency to nearest integer
+        stats.latency = std::round(1000.0 / currentFps);
     } else {
         stats.latency = 0.0;
     }
@@ -2803,8 +2810,8 @@ std::optional<InstanceStatistics> InstanceRegistry::getInstanceStatistics(const 
         tracker.format = "BGR";
     }
     
-    // Queue size - use current_queue_size from tracker (can be updated via hook callbacks if implemented)
-    // For now, estimate based on max_queue_size_seen if current is 0
+    // Queue size - updated via meta_arriving_hooker callback from CVEDIX SDK nodes
+    // The hook tracks queue_size when meta arrives at each node's in_queue
     std::cerr << "[InstanceRegistry] [Statistics] DEBUG - Queue size: current_queue_size=" << tracker.current_queue_size 
               << ", max_queue_size_seen=" << tracker.max_queue_size_seen << std::endl;
     
@@ -2816,9 +2823,6 @@ std::optional<InstanceStatistics> InstanceRegistry::getInstanceStatistics(const 
     }
     
     std::cerr << "[InstanceRegistry] [Statistics] DEBUG - Final input_queue_size: " << stats.input_queue_size << std::endl;
-    
-    // NOTE: input_queue_size will remain 0 until hook callbacks are implemented to track queue size from CVEDIX SDK nodes
-    // Currently, there's no direct API to get queue size from CVEDIX SDK nodes
     
     return stats;
 }
@@ -2972,6 +2976,65 @@ void InstanceRegistry::setupFrameCaptureHook(const std::string& instanceId,
     // If no app_des_node found, log warning
     std::cerr << "[InstanceRegistry] ⚠ Warning: No app_des_node found in pipeline for instance: " << instanceId << std::endl;
     std::cerr << "[InstanceRegistry] Frame capture will not be available. Consider adding app_des_node to pipeline." << std::endl;
+}
+
+void InstanceRegistry::setupQueueSizeTrackingHook(const std::string& instanceId, 
+                                                  const std::vector<std::shared_ptr<cvedix_nodes::cvedix_node>>& nodes) {
+    if (nodes.empty()) {
+        return;
+    }
+    
+    // Setup meta_arriving_hooker on all nodes to track input queue size
+    // meta_arriving_hooker is called when meta is pushed to in_queue, and provides queue_size parameter
+    // We track the maximum queue size across all nodes (especially inference nodes which are bottlenecks)
+    for (const auto& node : nodes) {
+        if (!node) {
+            continue;
+        }
+        
+        // All CVEDIX nodes inherit from cvedix_meta_hookable, so we can setup hook directly
+        // The hook signature is: void (std::string node_name, int queue_size, std::shared_ptr<cvedix_objects::cvedix_meta> meta)
+        try {
+            node->set_meta_arriving_hooker([this, instanceId](std::string node_name, int queue_size, 
+                                                               std::shared_ptr<cvedix_objects::cvedix_meta> meta) {
+                try {
+                    // Update queue size tracking in statistics tracker
+                    std::unique_lock<std::shared_timed_mutex> lock(mutex_);
+                    auto trackerIt = statistics_trackers_.find(instanceId);
+                    if (trackerIt != statistics_trackers_.end()) {
+                        InstanceStatsTracker& tracker = trackerIt->second;
+                        
+                        // Track the maximum queue size across all nodes
+                        // This gives us the bottleneck queue size (usually inference nodes)
+                        if (queue_size > static_cast<int>(tracker.current_queue_size)) {
+                            tracker.current_queue_size = static_cast<size_t>(queue_size);
+                        }
+                        
+                        // Update max queue size seen (historical maximum)
+                        if (queue_size > static_cast<int>(tracker.max_queue_size_seen)) {
+                            tracker.max_queue_size_seen = static_cast<size_t>(queue_size);
+                        }
+                        
+                        // Debug logging when queue is getting full (>80% of max 50)
+                        if (queue_size > 40) {
+                            std::cerr << "[InstanceRegistry] [QueueSize] Instance " << instanceId 
+                                      << ", Node: " << node_name << ", Queue size: " << queue_size << std::endl;
+                        }
+                    }
+                } catch (const std::exception& e) {
+                    std::cerr << "[InstanceRegistry] [ERROR] Exception in queue size tracking hook: " << e.what() << std::endl;
+                } catch (...) {
+                    std::cerr << "[InstanceRegistry] [ERROR] Unknown exception in queue size tracking hook" << std::endl;
+                }
+            });
+        } catch (const std::exception& e) {
+            std::cerr << "[InstanceRegistry] [WARNING] Failed to setup queue size tracking hook on node: " << e.what() << std::endl;
+        } catch (...) {
+            // Some nodes might not support hooks, ignore silently
+        }
+    }
+    
+    std::cerr << "[InstanceRegistry] ✓ Queue size tracking hook setup completed for instance: " << instanceId << std::endl;
 }
 
 std::string InstanceRegistry::getLastFrame(const std::string& instanceId) const {
