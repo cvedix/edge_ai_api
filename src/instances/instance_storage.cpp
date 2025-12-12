@@ -5,6 +5,7 @@
 #include <filesystem>
 #include <sstream>
 #include <iomanip>
+#include <algorithm>
 
 InstanceStorage::InstanceStorage(const std::string& storage_dir)
     : storage_dir_(storage_dir) {
@@ -410,9 +411,20 @@ Json::Value InstanceStorage::instanceInfoToConfigJson(const InstanceInfo& info, 
             // This format uses decodebin for auto-detection (may help with decoder compatibility issues)
             input["uri"] = "gstreamer:///urisourcebin uri=" + info.rtspUrl + " ! decodebin ! videoconvert ! video/x-raw, format=NV12 ! appsink drop=true name=cvdsink";
         } else {
-            // Format: rtspsrc location=... protocols=tcp ! application/x-rtp,media=video ! rtph264depay ! h264parse ! decoder ! videoconvert ! video/x-raw,format=NV12 ! appsink drop=true name=cvdsink
+            // Format: rtspsrc location=... [protocols=...] ! application/x-rtp,media=video ! rtph264depay ! h264parse ! decoder ! videoconvert ! video/x-raw,format=NV12 ! appsink drop=true name=cvdsink
             // This format matches SDK template structure (with h264parse before decoder)
-            input["uri"] = "rtspsrc location=" + info.rtspUrl + " protocols=tcp ! application/x-rtp,media=video ! rtph264depay ! h264parse ! " + decoderName + " ! videoconvert ! video/x-raw,format=NV12 ! appsink drop=true name=cvdsink";
+            // Get transport protocol from additionalParams if specified
+            std::string protocolsParam = "";
+            auto rtspTransportIt = info.additionalParams.find("RTSP_TRANSPORT");
+            if (rtspTransportIt != info.additionalParams.end() && !rtspTransportIt->second.empty()) {
+                std::string transport = rtspTransportIt->second;
+                std::transform(transport.begin(), transport.end(), transport.begin(), ::tolower);
+                if (transport == "tcp" || transport == "udp") {
+                    protocolsParam = " protocols=" + transport;
+                }
+            }
+            // If no transport specified, don't add protocols parameter - let GStreamer use default
+            input["uri"] = "rtspsrc location=" + info.rtspUrl + protocolsParam + " ! application/x-rtp,media=video ! rtph264depay ! h264parse ! " + decoderName + " ! videoconvert ! video/x-raw,format=NV12 ! appsink drop=true name=cvdsink";
         }
     } else if (!info.filePath.empty()) {
         input["media_type"] = "File";
