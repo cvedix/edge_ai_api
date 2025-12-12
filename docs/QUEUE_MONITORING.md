@@ -1,4 +1,4 @@
-# Giải Pháp: Auto-Clear Queue Trước Khi Đầy
+# Queue Monitoring và Auto-Clear Guide
 
 ## 🎯 Mục Tiêu
 
@@ -139,14 +139,7 @@ Tăng sensitivity:
 zero_fps_count[instanceId] >= 2;  // 20 seconds instead of 30
 ```
 
-## 🎯 Next Steps
-
-1. **Test với video có FPS cao** để verify hoạt động
-2. **Monitor logs** để xem có restart quá nhiều không
-3. **Adjust thresholds** nếu cần
-4. **Enable log parsing** nếu muốn detect warnings trực tiếp từ log file
-
-## 📌 Lưu Ý
+## 📝 Lưu Ý
 
 1. **Restart sẽ mất data**: Khi restart, pipeline sẽ reset → mất frames đang xử lý
 2. **FPS = 0 có thể do nguyên nhân khác**: Không chỉ queue đầy (có thể video hết, RTSP disconnect, etc.)
@@ -187,4 +180,24 @@ curl -X POST http://localhost:8080/v1/core/instances/{instanceId}/start
 # Monitor logs để xem queue monitoring
 tail -f logs/general/*.log | grep -i "QueueMonitor"
 ```
+
+## 🎯 Kết Quả
+
+1. **Proactive Detection**: Phát hiện queue issues trước khi deadlock
+2. **Auto-Recovery**: Tự động restart để clear queue
+3. **Prevent Crash**: Tránh crash do deadlock
+4. **Continuous Operation**: Instance tự động recover
+
+## ⚙️ Configuration Options
+
+Có thể adjust trong code:
+- `zero_fps_count >= 3` → Thay đổi số lần check (3 = 30 giây)
+- `warning_count >= 100` → Thay đổi threshold
+- `setAutoClearThreshold(50.0)` → Thay đổi warning rate threshold
+- `setMonitoringWindow(5)` → Thay đổi monitoring window (giây)
+
+## 📚 Tài Liệu Liên Quan
+
+- [Troubleshooting Guide](./TROUBLESHOOTING.md) - Phân tích các vấn đề crash và deadlock
+- [MQTT Guide](./MQTT_GUIDE.md) - Non-blocking MQTT implementation
 
