@@ -177,6 +177,33 @@ Server cung cấp Swagger UI để test và explore API:
 
 📚 **Xem chi tiết:** [docs/GETTING_STARTED.md](docs/GETTING_STARTED.md) - Hướng dẫn sử dụng Swagger UI
 
+## 🔧 Troubleshooting
+
+### Lỗi CMake khi Build
+
+Nếu gặp lỗi CMake liên quan đến CVEDIX SDK libraries (ví dụ: `libtinyexpr.so` hoặc `libcvedix_instance_sdk.so` không tìm thấy), đây thường là do SDK được cài ở `/opt/cvedix` thay vì `/usr`.
+
+**Giải pháp nhanh:**
+
+Chạy script tự động fix:
+```bash
+./scripts/fix_cvedix_symlinks.sh
+```
+
+Hoặc fix thủ công:
+```bash
+sudo ln -sf /opt/cvedix/lib/libtinyexpr.so /usr/lib/libtinyexpr.so
+sudo ln -sf /opt/cvedix/lib/libcvedix_instance_sdk.so /usr/lib/libcvedix_instance_sdk.so
+```
+
+**Xem chi tiết:** [CMAKE_FIXES.md](docs/CMAKE_FIXES.md)
+
+### Lỗi Compilation: cvedix_yolov11_detector_node.h
+
+Nếu gặp lỗi `cvedix_yolov11_detector_node.h: No such file or directory`, đây đã được fix trong code. Node type `yolov11_detector` không khả dụng trong SDK. Sử dụng `rknn_yolov11_detector` (với RKNN) hoặc `yolo_detector` thay thế.
+
+**Xem chi tiết:** [CMAKE_FIXES.md](docs/CMAKE_FIXES.md)
+
 ## 📚 Tài Liệu
 
 ### Hướng Dẫn Cơ Bản
@@ -193,4 +220,7 @@ Server cung cấp Swagger UI để test và explore API:
 
 ### Deployment
 - [Deploy README](deploy/README.md) - Hướng dẫn triển khai production
+
+### Troubleshooting
+- [CMake Fixes](docs/CMAKE_FIXES.md) - Hướng dẫn fix lỗi CMake thường gặp
 

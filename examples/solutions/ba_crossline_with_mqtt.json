@@ -43,8 +43,8 @@
       "nodeName": "json_mqtt_broker_{instanceId}",
       "parameters": {
         "broke_for": "${BROKE_FOR}",
-        "broking_cache_warn_threshold": "200",
-        "broking_cache_ignore_threshold": "2000"
+        "broking_cache_warn_threshold": "1000",
+        "broking_cache_ignore_threshold": "10000"
       }
     },
     {

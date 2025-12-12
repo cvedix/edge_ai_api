@@ -89,6 +89,34 @@ if(TARGET cvedix::cvedix_instance_sdk)
     message(STATUS "✓ CVEDIX SDK linked to tests")
 endif()
 
+# Link mosquitto library if MQTT support is enabled (required for JSON MQTT broker node)
+if(CVEDIX_WITH_MQTT)
+    find_library(MOSQUITTO_LIBRARY
+        NAMES mosquitto
+        PATHS
+            /usr/lib
+            /usr/lib/x86_64-linux-gnu
+            /usr/local/lib
+            /opt/cvedix/lib
+    )
+    
+    if(MOSQUITTO_LIBRARY)
+        target_link_libraries(edge_ai_api_tests PRIVATE ${MOSQUITTO_LIBRARY})
+        message(STATUS "✓ Linked mosquitto library to tests: ${MOSQUITTO_LIBRARY}")
+    else()
+        # Try pkg-config
+        find_package(PkgConfig QUIET)
+        if(PkgConfig_FOUND)
+            pkg_check_modules(MOSQUITTO QUIET mosquitto)
+            if(MOSQUITTO_FOUND)
+                target_link_libraries(edge_ai_api_tests PRIVATE ${MOSQUITTO_LIBRARIES})
+                target_include_directories(edge_ai_api_tests PRIVATE ${MOSQUITTO_INCLUDE_DIRS})
+                message(STATUS "✓ Linked mosquitto library to tests via pkg-config: ${MOSQUITTO_LIBRARIES}")
+            endif()
+        endif()
+    endif()
+endif()
+
 # Link OpenCV (required for CVEDIX SDK)
 if(OpenCV_FOUND)
     if(TARGET opencv_core)
@@ -126,6 +154,32 @@ target_compile_definitions(edge_ai_api_tests PRIVATE
     BUILD_TIME="Test Build"
     GIT_COMMIT="test"
 )
+
+# Add CVEDIX SDK feature flags (same as main project)
+# Check for GStreamer support
+find_package(PkgConfig QUIET)
+if(PkgConfig_FOUND)
+    pkg_check_modules(GSTREAMER QUIET gstreamer-1.0)
+    if(GSTREAMER_FOUND)
+        target_compile_definitions(edge_ai_api_tests PRIVATE CVEDIX_WITH_GSTREAMER)
+    endif()
+else()
+    find_library(GSTREAMER_LIBRARY
+        NAMES gstreamer-1.0
+        PATHS
+            /usr/lib
+            /usr/lib/x86_64-linux-gnu
+            /usr/local/lib
+    )
+    if(GSTREAMER_LIBRARY)
+        target_compile_definitions(edge_ai_api_tests PRIVATE CVEDIX_WITH_GSTREAMER)
+    endif()
+endif()
+
+# Add MQTT support if enabled
+if(CVEDIX_WITH_MQTT)
+    target_compile_definitions(edge_ai_api_tests PRIVATE CVEDIX_WITH_MQTT)
+endif()
 
 # Enable testing
 enable_testing()

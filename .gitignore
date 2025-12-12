@@ -44,6 +44,8 @@ Thumbs.db
 # Project specific
 task/
 sample/
+samples/
+cvedix_data/
 # Environment files
 .env
 .env.local

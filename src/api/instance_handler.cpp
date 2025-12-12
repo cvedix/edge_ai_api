@@ -842,6 +842,183 @@ void InstanceHandler::deleteInstance(
     }
 }
 
+void InstanceHandler::deleteAllInstances(
+    const HttpRequestPtr &req,
+    std::function<void(const HttpResponsePtr &)> &&callback) {
+    
+    auto start_time = std::chrono::steady_clock::now();
+    
+    if (isApiLoggingEnabled()) {
+        PLOG_INFO << "[API] DELETE /v1/core/instances - Delete all instances";
+        PLOG_DEBUG << "[API] Request from: " << req->getPeerAddr().toIpPort();
+    }
+    
+    try {
+        // Check if registry is set
+        if (!instance_registry_) {
+            if (isApiLoggingEnabled()) {
+                PLOG_ERROR << "[API] DELETE /v1/core/instances - Error: Instance registry not initialized";
+            }
+            callback(createErrorResponse(500, "Internal server error", "Instance registry not initialized"));
+            return;
+        }
+        
+        // Get all instances
+        std::unordered_map<std::string, InstanceInfo> allInstances;
+        try {
+            auto future = std::async(std::launch::async, [this]() -> std::unordered_map<std::string, InstanceInfo> {
+                try {
+                    if (instance_registry_) {
+                        return instance_registry_->getAllInstances();
+                    }
+                    return {};
+                } catch (...) {
+                    return {};
+                }
+            });
+            
+            // Wait with timeout (2.5 seconds)
+            auto status = future.wait_for(std::chrono::milliseconds(2500));
+            if (status == std::future_status::timeout) {
+                if (isApiLoggingEnabled()) {
+                    PLOG_WARNING << "[API] DELETE /v1/core/instances - Timeout getting instances (2.5s)";
+                }
+                callback(createErrorResponse(503, "Service Unavailable", 
+                    "Instance registry is busy. Please try again later."));
+                return;
+            } else if (status == std::future_status::ready) {
+                try {
+                    allInstances = future.get();
+                } catch (const std::exception& e) {
+                    if (isApiLoggingEnabled()) {
+                        PLOG_ERROR << "[API] DELETE /v1/core/instances - Exception getting instances: " << e.what();
+                    }
+                    callback(createErrorResponse(500, "Internal server error", "Failed to get instances: " + std::string(e.what())));
+                    return;
+                } catch (...) {
+                    if (isApiLoggingEnabled()) {
+                        PLOG_ERROR << "[API] DELETE /v1/core/instances - Unknown exception getting instances";
+                    }
+                    callback(createErrorResponse(500, "Internal server error", "Failed to get instances"));
+                    return;
+                }
+            }
+        } catch (const std::exception& e) {
+            if (isApiLoggingEnabled()) {
+                PLOG_ERROR << "[API] DELETE /v1/core/instances - Exception creating async task: " << e.what();
+            }
+            callback(createErrorResponse(500, "Internal server error", "Failed to get instances: " + std::string(e.what())));
+            return;
+        } catch (...) {
+            if (isApiLoggingEnabled()) {
+                PLOG_ERROR << "[API] DELETE /v1/core/instances - Unknown exception creating async task";
+            }
+            callback(createErrorResponse(500, "Internal server error", "Failed to get instances"));
+            return;
+        }
+        
+        // If no instances, return success
+        if (allInstances.empty()) {
+            Json::Value response;
+            response["success"] = true;
+            response["message"] = "No instances to delete";
+            response["total"] = 0;
+            response["deleted"] = 0;
+            response["failed"] = 0;
+            response["results"] = Json::Value(Json::arrayValue);
+            
+            auto end_time = std::chrono::steady_clock::now();
+            auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(end_time - start_time);
+            
+            if (isApiLoggingEnabled()) {
+                PLOG_INFO << "[API] DELETE /v1/core/instances - Success: No instances to delete - " << duration.count() << "ms";
+            }
+            
+            callback(createSuccessResponse(response));
+            return;
+        }
+        
+        // Extract instance IDs
+        std::vector<std::string> instanceIds;
+        for (const auto& [instanceId, info] : allInstances) {
+            instanceIds.push_back(instanceId);
+        }
+        
+        // Execute delete operations concurrently using async
+        std::vector<std::future<std::pair<std::string, bool>>> futures;
+        for (const auto& instanceId : instanceIds) {
+            futures.push_back(std::async(std::launch::async, [this, instanceId]() -> std::pair<std::string, bool> {
+                try {
+                    bool success = instance_registry_->deleteInstance(instanceId);
+                    return {instanceId, success};
+                } catch (...) {
+                    return {instanceId, false};
+                }
+            }));
+        }
+        
+        // Collect results
+        Json::Value response;
+        Json::Value results(Json::arrayValue);
+        int successCount = 0;
+        int failureCount = 0;
+        
+        for (auto& future : futures) {
+            auto [instanceId, success] = future.get();
+            
+            Json::Value result;
+            result["instanceId"] = instanceId;
+            result["success"] = success;
+            
+            if (success) {
+                result["status"] = "deleted";
+                successCount++;
+            } else {
+                result["status"] = "failed";
+                result["error"] = "Could not delete instance. Instance may not exist.";
+                failureCount++;
+            }
+            
+            results.append(result);
+        }
+        
+        response["results"] = results;
+        response["total"] = static_cast<int>(instanceIds.size());
+        response["deleted"] = successCount;
+        response["failed"] = failureCount;
+        response["message"] = "Delete all instances operation completed";
+        response["success"] = (failureCount == 0);
+        
+        auto end_time = std::chrono::steady_clock::now();
+        auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(end_time - start_time);
+        
+        if (isApiLoggingEnabled()) {
+            PLOG_INFO << "[API] DELETE /v1/core/instances - Success: " << successCount 
+                      << " deleted, " << failureCount << " failed out of " 
+                      << instanceIds.size() << " total - " << duration.count() << "ms";
+        }
+        
+        callback(createSuccessResponse(response));
+        
+    } catch (const std::exception& e) {
+        auto end_time = std::chrono::steady_clock::now();
+        auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(end_time - start_time);
+        if (isApiLoggingEnabled()) {
+            PLOG_ERROR << "[API] DELETE /v1/core/instances - Exception: " << e.what() << " - " << duration.count() << "ms";
+        }
+        std::cerr << "[InstanceHandler] Exception in deleteAllInstances: " << e.what() << std::endl;
+        callback(createErrorResponse(500, "Internal server error", e.what()));
+    } catch (...) {
+        auto end_time = std::chrono::steady_clock::now();
+        auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(end_time - start_time);
+        if (isApiLoggingEnabled()) {
+            PLOG_ERROR << "[API] DELETE /v1/core/instances - Unknown exception - " << duration.count() << "ms";
+        }
+        std::cerr << "[InstanceHandler] Unknown exception in deleteAllInstances" << std::endl;
+        callback(createErrorResponse(500, "Internal server error", "Unknown error occurred"));
+    }
+}
+
 void InstanceHandler::getConfig(
     const HttpRequestPtr &req,
     std::function<void(const HttpResponsePtr &)> &&callback) {
@@ -1226,9 +1403,39 @@ void InstanceHandler::setInstanceInput(
                 // This format uses decodebin for auto-detection (may help with decoder compatibility issues)
                 input["uri"] = "gstreamer:///urisourcebin uri=" + uri + " ! decodebin ! videoconvert ! video/x-raw, format=NV12 ! appsink drop=true name=cvdsink";
             } else {
-                // Format: rtspsrc location=... protocols=tcp ! application/x-rtp,media=video ! rtph264depay ! h264parse ! decoder ! videoconvert ! video/x-raw,format=NV12 ! appsink drop=true name=cvdsink
+                // Format: rtspsrc location=... [protocols=...] ! application/x-rtp,media=video ! rtph264depay ! h264parse ! decoder ! videoconvert ! video/x-raw,format=NV12 ! appsink drop=true name=cvdsink
                 // This format matches SDK template structure (with h264parse before decoder)
-                input["uri"] = "rtspsrc location=" + uri + " protocols=tcp ! application/x-rtp,media=video ! rtph264depay ! h264parse ! " + decoderName + " ! videoconvert ! video/x-raw,format=NV12 ! appsink drop=true name=cvdsink";
+                // Get transport protocol from request JSON or instance info
+                std::string protocolsParam = "";
+                std::string rtspTransport = "";
+                
+                // First try request JSON additionalParams
+                if (json->isMember("additionalParams") && (*json)["additionalParams"].isObject()) {
+                    const Json::Value& additionalParams = (*json)["additionalParams"];
+                    if (additionalParams.isMember("RTSP_TRANSPORT") && additionalParams["RTSP_TRANSPORT"].isString()) {
+                        rtspTransport = additionalParams["RTSP_TRANSPORT"].asString();
+                    }
+                }
+                
+                // If not found, try instance info
+                if (rtspTransport.empty() && optInfo.has_value()) {
+                    const InstanceInfo& info = optInfo.value();
+                    auto rtspTransportIt = info.additionalParams.find("RTSP_TRANSPORT");
+                    if (rtspTransportIt != info.additionalParams.end() && !rtspTransportIt->second.empty()) {
+                        rtspTransport = rtspTransportIt->second;
+                    }
+                }
+                
+                // Validate and add protocols parameter
+                if (!rtspTransport.empty()) {
+                    std::transform(rtspTransport.begin(), rtspTransport.end(), rtspTransport.begin(), ::tolower);
+                    if (rtspTransport == "tcp" || rtspTransport == "udp") {
+                        protocolsParam = " protocols=" + rtspTransport;
+                    }
+                }
+                // If no transport specified, don't add protocols parameter - let GStreamer use default
+                
+                input["uri"] = "rtspsrc location=" + uri + protocolsParam + " ! application/x-rtp,media=video ! rtph264depay ! h264parse ! " + decoderName + " ! videoconvert ! video/x-raw,format=NV12 ! appsink drop=true name=cvdsink";
             }
         } else if (type == "HLS") {
             input["media_type"] = "IP Camera";
@@ -1911,9 +2118,20 @@ Json::Value InstanceHandler::instanceInfoToJson(const InstanceInfo& info) const 
             // This format uses decodebin for auto-detection (may help with decoder compatibility issues)
             input["uri"] = "gstreamer:///urisourcebin uri=" + info.rtspUrl + " ! decodebin ! videoconvert ! video/x-raw, format=NV12 ! appsink drop=true name=cvdsink";
         } else {
-            // Format: rtspsrc location=... protocols=tcp ! application/x-rtp,media=video ! rtph264depay ! h264parse ! decoder ! videoconvert ! video/x-raw,format=NV12 ! appsink drop=true name=cvdsink
+            // Format: rtspsrc location=... [protocols=...] ! application/x-rtp,media=video ! rtph264depay ! h264parse ! decoder ! videoconvert ! video/x-raw,format=NV12 ! appsink drop=true name=cvdsink
             // This format matches SDK template structure (with h264parse before decoder)
-            input["uri"] = "rtspsrc location=" + info.rtspUrl + " protocols=tcp ! application/x-rtp,media=video ! rtph264depay ! h264parse ! " + decoderName + " ! videoconvert ! video/x-raw,format=NV12 ! appsink drop=true name=cvdsink";
+            // Get transport protocol from additionalParams if specified
+            std::string protocolsParam = "";
+            auto rtspTransportIt = info.additionalParams.find("RTSP_TRANSPORT");
+            if (rtspTransportIt != info.additionalParams.end() && !rtspTransportIt->second.empty()) {
+                std::string transport = rtspTransportIt->second;
+                std::transform(transport.begin(), transport.end(), transport.begin(), ::tolower);
+                if (transport == "tcp" || transport == "udp") {
+                    protocolsParam = " protocols=" + transport;
+                }
+            }
+            // If no transport specified, don't add protocols parameter - let GStreamer use default
+            input["uri"] = "rtspsrc location=" + info.rtspUrl + protocolsParam + " ! application/x-rtp,media=video ! rtph264depay ! h264parse ! " + decoderName + " ! videoconvert ! video/x-raw,format=NV12 ! appsink drop=true name=cvdsink";
         }
     } else if (!info.filePath.empty()) {
         input["media_type"] = "File";

@@ -285,6 +285,7 @@ set(SOURCES
     src/core/ai_processor.cpp
     src/core/ai_watchdog.cpp
     src/instances/instance_registry.cpp
+    src/instances/queue_monitor.cpp
     src/solutions/solution_registry.cpp
     src/groups/group_registry.cpp
     src/core/pipeline_builder.cpp
@@ -626,6 +627,40 @@ if(EXISTS "/opt/cvedix/lib/cmake/cvedix/cvedix-config.cmake")
     endif()
 endif()
 
+# Fix tinyexpr library path before find_package
+# CVEDIX SDK expects libtinyexpr.so in /usr/lib but it may be in /opt/cvedix/lib
+# Create symlink in build directory to work around this issue
+if(EXISTS "/opt/cvedix/lib/libtinyexpr.so" AND NOT EXISTS "/usr/lib/libtinyexpr.so")
+    # Create a symlink in build directory
+    set(TINYEXPR_BUILD_LIB "${CMAKE_BINARY_DIR}/libtinyexpr.so")
+    if(NOT EXISTS "${TINYEXPR_BUILD_LIB}")
+        execute_process(
+            COMMAND ${CMAKE_COMMAND} -E create_symlink
+            "/opt/cvedix/lib/libtinyexpr.so"
+            "${TINYEXPR_BUILD_LIB}"
+            RESULT_VARIABLE SYMLINK_RESULT
+            ERROR_QUIET
+        )
+        if(SYMLINK_RESULT EQUAL 0)
+            message(STATUS "✓ Created tinyexpr symlink in build directory")
+        endif()
+    endif()
+    # Also try to create symlink in /usr/lib (may require sudo, but try anyway)
+    execute_process(
+        COMMAND ${CMAKE_COMMAND} -E create_symlink
+        "/opt/cvedix/lib/libtinyexpr.so"
+        "/usr/lib/libtinyexpr.so"
+        RESULT_VARIABLE SYMLINK_USR_RESULT
+        ERROR_QUIET
+    )
+    if(SYMLINK_USR_RESULT EQUAL 0)
+        message(STATUS "✓ Created tinyexpr symlink in /usr/lib")
+    else()
+        message(WARNING "⚠ Could not create symlink in /usr/lib (may need sudo):")
+        message(WARNING "  sudo ln -sf /opt/cvedix/lib/libtinyexpr.so /usr/lib/libtinyexpr.so")
+    endif()
+endif()
+
 find_package(cvedix REQUIRED)
 
 # Add cereal and cpp-base64 include paths for CVEDIX SDK
@@ -771,6 +806,35 @@ string(TIMESTAMP BUILD_TIME "%Y-%m-%d %H:%M:%S" UTC)
 # ============================================
 # CVEDIX SDK Feature Flags
 # ============================================
+# Check if CVEDIX SDK was built with GStreamer support
+# GStreamer is required for RTSP, RTMP, Image, and UDP source nodes
+find_package(PkgConfig QUIET)
+if(PkgConfig_FOUND)
+    pkg_check_modules(GSTREAMER QUIET gstreamer-1.0)
+    if(GSTREAMER_FOUND)
+        target_compile_definitions(edge_ai_api PRIVATE CVEDIX_WITH_GSTREAMER)
+        message(STATUS "✓ GStreamer support enabled (CVEDIX_WITH_GSTREAMER)")
+    else()
+        message(WARNING "⚠ GStreamer not found. RTSP/RTMP/Image/UDP source nodes will not be available.")
+        message(WARNING "  To install: sudo apt-get install libgstreamer1.0-dev")
+    endif()
+else()
+    # If pkg-config not available, check for GStreamer libraries directly
+    find_library(GSTREAMER_LIBRARY
+        NAMES gstreamer-1.0
+        PATHS
+            /usr/lib
+            /usr/lib/x86_64-linux-gnu
+            /usr/local/lib
+    )
+    if(GSTREAMER_LIBRARY)
+        target_compile_definitions(edge_ai_api PRIVATE CVEDIX_WITH_GSTREAMER)
+        message(STATUS "✓ GStreamer support enabled (CVEDIX_WITH_GSTREAMER)")
+    else()
+        message(WARNING "⚠ GStreamer not found. RTSP/RTMP/Image/UDP source nodes will not be available.")
+    endif()
+endif()
+
 # Check if CVEDIX SDK was built with MQTT support
 # This is typically defined in CVEDIX SDK's config file, but we can also enable it here
 option(CVEDIX_WITH_MQTT "Enable MQTT support (requires CVEDIX SDK built with MQTT)" ON)
