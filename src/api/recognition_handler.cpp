@@ -11,6 +11,10 @@
 #include <iomanip>
 #include <opencv2/opencv.hpp>
 
+// Static storage members
+std::unordered_map<std::string, std::vector<std::string>> RecognitionHandler::face_subjects_storage_;
+std::mutex RecognitionHandler::storage_mutex_;
+
 HttpResponsePtr RecognitionHandler::createErrorResponse(int statusCode, const std::string& error, const std::string& message) const {
     Json::Value errorResponse;
     errorResponse["error"] = error;
@@ -540,8 +544,8 @@ bool RecognitionHandler::registerSubject(const std::string& subjectName,
         
         imageId = generateImageId();
         
-        // TODO: Store subject and image mapping
-        // This could be in a database or file system
+        // Store subject and image mapping in memory storage
+        addImageToSubject(subjectName, imageId);
         
         return true;
         
@@ -672,24 +676,44 @@ void RecognitionHandler::handleOptionsFaces(const HttpRequestPtr &req,
 
 Json::Value RecognitionHandler::getFaceSubjects(int page, int size, const std::string& subjectFilter) const {
     Json::Value result;
-    
-    // TODO: Implement actual face subjects retrieval from storage
-    // For now, return mock data matching the expected format
-    // In production, this should:
-    // 1. Query face subjects from database/storage
-    // 2. Filter by subject if provided
-    // 3. Apply pagination
-    // 4. Return paginated results
-    
     Json::Value faces(Json::arrayValue);
     
-    // Mock data - replace with actual database query
-    // Example: Query from storage where subject matches subjectFilter (if provided)
-    // For now, return empty array or mock data
+    std::lock_guard<std::mutex> lock(storage_mutex_);
+    
+    // Collect all faces from storage
+    std::vector<std::pair<std::string, std::string>> allFaces; // (subject, imageId)
+    
+    if (subjectFilter.empty()) {
+        // Get all faces from all subjects
+        for (const auto& [subject, imageIds] : face_subjects_storage_) {
+            for (const auto& imageId : imageIds) {
+                allFaces.push_back({subject, imageId});
+            }
+        }
+    } else {
+        // Get faces only from filtered subject
+        auto it = face_subjects_storage_.find(subjectFilter);
+        if (it != face_subjects_storage_.end()) {
+            for (const auto& imageId : it->second) {
+                allFaces.push_back({subjectFilter, imageId});
+            }
+        }
+    }
     
     // Calculate pagination
-    int totalElements = 0; // TODO: Get actual count from storage
-    int totalPages = (totalElements + size - 1) / size; // Ceiling division
+    int totalElements = static_cast<int>(allFaces.size());
+    int totalPages = (totalElements > 0) ? ((totalElements - 1) / size + 1) : 0;
+    
+    // Apply pagination
+    int startIdx = page * size;
+    int endIdx = std::min(startIdx + size, totalElements);
+    
+    for (int i = startIdx; i < endIdx; ++i) {
+        Json::Value face;
+        face["image_id"] = allFaces[i].second;
+        face["subject"] = allFaces[i].first;
+        faces.append(face);
+    }
     
     result["faces"] = faces;
     result["page_number"] = page;
@@ -790,5 +814,530 @@ void RecognitionHandler::listFaceSubjects(const HttpRequestPtr &req,
         }
         callback(createErrorResponse(500, "Internal server error", "Unknown error occurred"));
     }
+}
+
+std::string RecognitionHandler::extractSubjectFromPath(const HttpRequestPtr &req) const {
+    // Try getParameter first (standard way)
+    std::string subject = req->getParameter("subject");
+    
+    // Fallback: extract from path if getParameter doesn't work
+    if (subject.empty()) {
+        std::string path = req->getPath();
+        size_t subjectsPos = path.find("/subjects/");
+        if (subjectsPos != std::string::npos) {
+            size_t start = subjectsPos + 10; // length of "/subjects/"
+            size_t end = path.find("?", start); // Stop at query string if present
+            if (end == std::string::npos) {
+                end = path.length();
+            }
+            subject = path.substr(start, end - start);
+        }
+    }
+    
+    // URL decode the subject name if it contains encoded characters
+    if (!subject.empty()) {
+        std::string decoded;
+        decoded.reserve(subject.length());
+        for (size_t i = 0; i < subject.length(); ++i) {
+            if (subject[i] == '%' && i + 2 < subject.length()) {
+                // Try to decode hex value
+                char hex[3] = {subject[i+1], subject[i+2], '\0'};
+                char* end;
+                unsigned long value = std::strtoul(hex, &end, 16);
+                if (*end == '\0' && value <= 255) {
+                    decoded += static_cast<char>(value);
+                    i += 2; // Skip the hex digits
+                } else {
+                    decoded += subject[i]; // Invalid encoding, keep as-is
+                }
+            } else {
+                decoded += subject[i];
+            }
+        }
+        subject = decoded;
+    }
+    
+    return subject;
+}
+
+bool RecognitionHandler::renameSubjectName(const std::string& oldSubjectName,
+                                          const std::string& newSubjectName,
+                                          std::string& error) const {
+    if (oldSubjectName.empty()) {
+        error = "Old subject name cannot be empty";
+        return false;
+    }
+    
+    if (newSubjectName.empty()) {
+        error = "New subject name cannot be empty";
+        return false;
+    }
+    
+    if (oldSubjectName == newSubjectName) {
+        // No change needed, but this is still considered successful
+        return true;
+    }
+    
+    // Check if old subject exists
+    if (!subjectExists(oldSubjectName)) {
+        error = "Subject '" + oldSubjectName + "' does not exist";
+        return false;
+    }
+    
+    // Check if new subject already exists
+    if (subjectExists(newSubjectName)) {
+        // Merge: move all faces from old subject to new subject
+        mergeSubjects(oldSubjectName, newSubjectName);
+    } else {
+        // Rename: move all faces from old subject to new subject name
+        renameSubjectInStorage(oldSubjectName, newSubjectName);
+    }
+    
+    return true;
+}
+
+void RecognitionHandler::renameSubject(const HttpRequestPtr &req,
+                                      std::function<void(const HttpResponsePtr &)> &&callback) {
+    auto start_time = std::chrono::steady_clock::now();
+    
+    if (isApiLoggingEnabled()) {
+        PLOG_INFO << "[API] PUT /v1/recognition/subjects/{subject} - Rename face subject";
+        PLOG_DEBUG << "[API] Request from: " << req->getPeerAddr().toIpPort();
+    }
+    
+    try {
+        // Validate API key
+        std::string apiKeyError;
+        if (!validateApiKey(req, apiKeyError)) {
+            if (isApiLoggingEnabled()) {
+                PLOG_WARNING << "[API] PUT /v1/recognition/subjects/{subject} - " << apiKeyError;
+            }
+            callback(createErrorResponse(401, "Unauthorized", apiKeyError));
+            return;
+        }
+        
+        // Extract old subject name from URL path
+        std::string oldSubjectName = extractSubjectFromPath(req);
+        if (oldSubjectName.empty()) {
+            if (isApiLoggingEnabled()) {
+                PLOG_WARNING << "[API] PUT /v1/recognition/subjects/{subject} - Missing subject in path";
+            }
+            callback(createErrorResponse(400, "Invalid request", "Missing subject in URL path"));
+            return;
+        }
+        
+        // Parse JSON body
+        auto json = req->getJsonObject();
+        if (!json) {
+            if (isApiLoggingEnabled()) {
+                PLOG_WARNING << "[API] PUT /v1/recognition/subjects/{subject} - Invalid JSON body";
+            }
+            callback(createErrorResponse(400, "Invalid request", "Request body must be valid JSON"));
+            return;
+        }
+        
+        // Validate required field: subject
+        if (!json->isMember("subject") || !(*json)["subject"].isString()) {
+            if (isApiLoggingEnabled()) {
+                PLOG_WARNING << "[API] PUT /v1/recognition/subjects/{subject} - Missing required field: subject";
+            }
+            callback(createErrorResponse(400, "Invalid request", "Missing required field: subject"));
+            return;
+        }
+        
+        std::string newSubjectName = (*json)["subject"].asString();
+        if (newSubjectName.empty()) {
+            if (isApiLoggingEnabled()) {
+                PLOG_WARNING << "[API] PUT /v1/recognition/subjects/{subject} - Subject field is empty";
+            }
+            callback(createErrorResponse(400, "Invalid request", "Subject field cannot be empty"));
+            return;
+        }
+        
+        if (isApiLoggingEnabled()) {
+            PLOG_DEBUG << "[API] Rename subject: '" << oldSubjectName << "' -> '" << newSubjectName << "'";
+        }
+        
+        // Rename/merge subject
+        std::string renameError;
+        bool success = renameSubjectName(oldSubjectName, newSubjectName, renameError);
+        
+        // Build response
+        Json::Value response;
+        response["updated"] = success ? "true" : "false";
+        
+        auto resp = HttpResponse::newHttpJsonResponse(response);
+        resp->setStatusCode(success ? k200OK : k400BadRequest);
+        
+        // Add CORS headers
+        resp->addHeader("Access-Control-Allow-Origin", "*");
+        resp->addHeader("Access-Control-Allow-Methods", "PUT, OPTIONS");
+        resp->addHeader("Access-Control-Allow-Headers", "Content-Type, x-api-key");
+        
+        auto end_time = std::chrono::steady_clock::now();
+        auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(end_time - start_time);
+        
+        if (isApiLoggingEnabled()) {
+            if (success) {
+                PLOG_INFO << "[API] PUT /v1/recognition/subjects/{subject} - Success: Renamed subject '" 
+                          << oldSubjectName << "' to '" << newSubjectName << "' - " 
+                          << duration.count() << "ms";
+            } else {
+                PLOG_WARNING << "[API] PUT /v1/recognition/subjects/{subject} - Failed: " 
+                             << renameError << " - " << duration.count() << "ms";
+            }
+        }
+        
+        callback(resp);
+        
+    } catch (const std::exception& e) {
+        auto end_time = std::chrono::steady_clock::now();
+        auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(end_time - start_time);
+        if (isApiLoggingEnabled()) {
+            PLOG_ERROR << "[API] PUT /v1/recognition/subjects/{subject} - Exception: " << e.what() << " - " << duration.count() << "ms";
+        }
+        callback(createErrorResponse(500, "Internal server error", e.what()));
+    } catch (...) {
+        auto end_time = std::chrono::steady_clock::now();
+        auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(end_time - start_time);
+        if (isApiLoggingEnabled()) {
+            PLOG_ERROR << "[API] PUT /v1/recognition/subjects/{subject} - Unknown exception - " << duration.count() << "ms";
+        }
+        callback(createErrorResponse(500, "Internal server error", "Unknown error occurred"));
+    }
+}
+
+void RecognitionHandler::handleOptionsSubjects(const HttpRequestPtr &req,
+                                              std::function<void(const HttpResponsePtr &)> &&callback) {
+    auto resp = HttpResponse::newHttpResponse();
+    resp->setStatusCode(k200OK);
+    resp->addHeader("Access-Control-Allow-Origin", "*");
+    resp->addHeader("Access-Control-Allow-Methods", "PUT, OPTIONS");
+    resp->addHeader("Access-Control-Allow-Headers", "Content-Type, x-api-key");
+    resp->addHeader("Access-Control-Max-Age", "3600");
+    callback(resp);
+}
+
+bool RecognitionHandler::subjectExists(const std::string& subjectName) const {
+    std::lock_guard<std::mutex> lock(storage_mutex_);
+    auto it = face_subjects_storage_.find(subjectName);
+    return (it != face_subjects_storage_.end() && !it->second.empty());
+}
+
+std::vector<std::string> RecognitionHandler::getSubjectImageIds(const std::string& subjectName) const {
+    std::lock_guard<std::mutex> lock(storage_mutex_);
+    auto it = face_subjects_storage_.find(subjectName);
+    if (it != face_subjects_storage_.end()) {
+        return it->second;
+    }
+    return std::vector<std::string>();
+}
+
+void RecognitionHandler::addImageToSubject(const std::string& subjectName, const std::string& imageId) const {
+    std::lock_guard<std::mutex> lock(storage_mutex_);
+    face_subjects_storage_[subjectName].push_back(imageId);
+}
+
+void RecognitionHandler::removeSubject(const std::string& subjectName) const {
+    std::lock_guard<std::mutex> lock(storage_mutex_);
+    face_subjects_storage_.erase(subjectName);
+}
+
+void RecognitionHandler::mergeSubjects(const std::string& oldSubjectName, const std::string& newSubjectName) const {
+    std::lock_guard<std::mutex> lock(storage_mutex_);
+    
+    auto oldIt = face_subjects_storage_.find(oldSubjectName);
+    if (oldIt == face_subjects_storage_.end() || oldIt->second.empty()) {
+        return; // Nothing to merge
+    }
+    
+    auto newIt = face_subjects_storage_.find(newSubjectName);
+    if (newIt == face_subjects_storage_.end()) {
+        // New subject doesn't exist, create it
+        face_subjects_storage_[newSubjectName] = oldIt->second;
+    } else {
+        // New subject exists, merge: append all image IDs from old to new
+        newIt->second.insert(newIt->second.end(), oldIt->second.begin(), oldIt->second.end());
+    }
+    
+    // Remove old subject
+    face_subjects_storage_.erase(oldIt);
+}
+
+void RecognitionHandler::renameSubjectInStorage(const std::string& oldSubjectName, const std::string& newSubjectName) const {
+    std::lock_guard<std::mutex> lock(storage_mutex_);
+    
+    auto oldIt = face_subjects_storage_.find(oldSubjectName);
+    if (oldIt == face_subjects_storage_.end()) {
+        return; // Subject doesn't exist
+    }
+    
+    // Move all image IDs to new subject name
+    face_subjects_storage_[newSubjectName] = std::move(oldIt->second);
+    
+    // Remove old subject
+    face_subjects_storage_.erase(oldIt);
+}
+
+std::string RecognitionHandler::findSubjectByImageId(const std::string& imageId) const {
+    std::lock_guard<std::mutex> lock(storage_mutex_);
+    
+    for (const auto& [subjectName, imageIds] : face_subjects_storage_) {
+        for (const auto& id : imageIds) {
+            if (id == imageId) {
+                return subjectName;
+            }
+        }
+    }
+    
+    return std::string();
+}
+
+bool RecognitionHandler::removeImageFromSubject(const std::string& subjectName, const std::string& imageId) const {
+    std::lock_guard<std::mutex> lock(storage_mutex_);
+    
+    auto it = face_subjects_storage_.find(subjectName);
+    if (it == face_subjects_storage_.end()) {
+        return false;
+    }
+    
+    auto& imageIds = it->second;
+    auto imageIt = std::find(imageIds.begin(), imageIds.end(), imageId);
+    if (imageIt == imageIds.end()) {
+        return false;
+    }
+    
+    imageIds.erase(imageIt);
+    
+    // Remove subject if it has no more images
+    if (imageIds.empty()) {
+        face_subjects_storage_.erase(it);
+    }
+    
+    return true;
+}
+
+bool RecognitionHandler::deleteImageFromStorage(const std::string& imageId, std::string& subjectName) const {
+    subjectName = findSubjectByImageId(imageId);
+    if (subjectName.empty()) {
+        return false;
+    }
+    
+    return removeImageFromSubject(subjectName, imageId);
+}
+
+void RecognitionHandler::deleteFaceSubject(const HttpRequestPtr &req,
+                                          std::function<void(const HttpResponsePtr &)> &&callback) {
+    auto start_time = std::chrono::steady_clock::now();
+    
+    if (isApiLoggingEnabled()) {
+        PLOG_INFO << "[API] DELETE /v1/recognition/faces/{image_id} - Delete face subject";
+        PLOG_DEBUG << "[API] Request from: " << req->getPeerAddr().toIpPort();
+    }
+    
+    try {
+        // Validate API key
+        std::string apiKeyError;
+        if (!validateApiKey(req, apiKeyError)) {
+            if (isApiLoggingEnabled()) {
+                PLOG_WARNING << "[API] DELETE /v1/recognition/faces/{image_id} - " << apiKeyError;
+            }
+            callback(createErrorResponse(401, "Unauthorized", apiKeyError));
+            return;
+        }
+        
+        // Extract image ID from URL path
+        std::string path = req->getPath();
+        size_t facesPos = path.find("/faces/");
+        if (facesPos == std::string::npos) {
+            if (isApiLoggingEnabled()) {
+                PLOG_WARNING << "[API] DELETE /v1/recognition/faces/{image_id} - Invalid path";
+            }
+            callback(createErrorResponse(400, "Invalid request", "Invalid URL path"));
+            return;
+        }
+        
+        size_t start = facesPos + 7; // length of "/faces/"
+        size_t end = path.find("?", start);
+        if (end == std::string::npos) {
+            end = path.length();
+        }
+        std::string imageId = path.substr(start, end - start);
+        
+        if (imageId.empty()) {
+            if (isApiLoggingEnabled()) {
+                PLOG_WARNING << "[API] DELETE /v1/recognition/faces/{image_id} - Missing image_id in path";
+            }
+            callback(createErrorResponse(400, "Invalid request", "Missing image_id in URL path"));
+            return;
+        }
+        
+        if (isApiLoggingEnabled()) {
+            PLOG_DEBUG << "[API] Delete face subject with image_id: " << imageId;
+        }
+        
+        // Find and delete image from storage
+        std::string subjectName;
+        if (!deleteImageFromStorage(imageId, subjectName)) {
+            if (isApiLoggingEnabled()) {
+                PLOG_WARNING << "[API] DELETE /v1/recognition/faces/{image_id} - Face not found: " << imageId;
+            }
+            callback(createErrorResponse(404, "Not Found", "Face subject with image_id '" + imageId + "' not found"));
+            return;
+        }
+        
+        // Build response
+        Json::Value response;
+        response["image_id"] = imageId;
+        response["subject"] = subjectName;
+        
+        auto resp = HttpResponse::newHttpJsonResponse(response);
+        resp->setStatusCode(k200OK);
+        
+        // Add CORS headers
+        resp->addHeader("Access-Control-Allow-Origin", "*");
+        resp->addHeader("Access-Control-Allow-Methods", "DELETE, OPTIONS");
+        resp->addHeader("Access-Control-Allow-Headers", "Content-Type, x-api-key");
+        
+        auto end_time = std::chrono::steady_clock::now();
+        auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(end_time - start_time);
+        
+        if (isApiLoggingEnabled()) {
+            PLOG_INFO << "[API] DELETE /v1/recognition/faces/{image_id} - Success: Deleted face subject '" 
+                      << imageId << "' (subject: '" << subjectName << "') - " 
+                      << duration.count() << "ms";
+        }
+        
+        callback(resp);
+        
+    } catch (const std::exception& e) {
+        auto end_time = std::chrono::steady_clock::now();
+        auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(end_time - start_time);
+        if (isApiLoggingEnabled()) {
+            PLOG_ERROR << "[API] DELETE /v1/recognition/faces/{image_id} - Exception: " << e.what() << " - " << duration.count() << "ms";
+        }
+        callback(createErrorResponse(500, "Internal server error", e.what()));
+    } catch (...) {
+        auto end_time = std::chrono::steady_clock::now();
+        auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(end_time - start_time);
+        if (isApiLoggingEnabled()) {
+            PLOG_ERROR << "[API] DELETE /v1/recognition/faces/{image_id} - Unknown exception - " << duration.count() << "ms";
+        }
+        callback(createErrorResponse(500, "Internal server error", "Unknown error occurred"));
+    }
+}
+
+void RecognitionHandler::deleteMultipleFaceSubjects(const HttpRequestPtr &req,
+                                                   std::function<void(const HttpResponsePtr &)> &&callback) {
+    auto start_time = std::chrono::steady_clock::now();
+    
+    if (isApiLoggingEnabled()) {
+        PLOG_INFO << "[API] POST /v1/recognition/faces/delete - Delete multiple face subjects";
+        PLOG_DEBUG << "[API] Request from: " << req->getPeerAddr().toIpPort();
+    }
+    
+    try {
+        // Validate API key
+        std::string apiKeyError;
+        if (!validateApiKey(req, apiKeyError)) {
+            if (isApiLoggingEnabled()) {
+                PLOG_WARNING << "[API] POST /v1/recognition/faces/delete - " << apiKeyError;
+            }
+            callback(createErrorResponse(401, "Unauthorized", apiKeyError));
+            return;
+        }
+        
+        // Parse JSON body
+        auto json = req->getJsonObject();
+        if (!json) {
+            if (isApiLoggingEnabled()) {
+                PLOG_WARNING << "[API] POST /v1/recognition/faces/delete - Invalid JSON body";
+            }
+            callback(createErrorResponse(400, "Invalid request", "Request body must be valid JSON"));
+            return;
+        }
+        
+        // Validate that body is an array
+        if (!json->isArray()) {
+            if (isApiLoggingEnabled()) {
+                PLOG_WARNING << "[API] POST /v1/recognition/faces/delete - Request body must be an array of image IDs";
+            }
+            callback(createErrorResponse(400, "Invalid request", "Request body must be an array of image IDs"));
+            return;
+        }
+        
+        // Process each image ID
+        Json::Value deletedFaces(Json::arrayValue);
+        
+        for (const auto& item : *json) {
+            if (!item.isString()) {
+                continue; // Skip invalid entries
+            }
+            
+            std::string imageId = item.asString();
+            if (imageId.empty()) {
+                continue; // Skip empty IDs
+            }
+            
+            std::string subjectName;
+            if (deleteImageFromStorage(imageId, subjectName)) {
+                Json::Value deletedFace;
+                deletedFace["image_id"] = imageId;
+                deletedFace["subject"] = subjectName;
+                deletedFaces.append(deletedFace);
+            }
+            // If not found, ignore it (as per spec: "If some IDs do not exist, they will be ignored")
+        }
+        
+        // Build response
+        Json::Value response;
+        response["deleted"] = deletedFaces;
+        
+        auto resp = HttpResponse::newHttpJsonResponse(response);
+        resp->setStatusCode(k200OK);
+        
+        // Add CORS headers
+        resp->addHeader("Access-Control-Allow-Origin", "*");
+        resp->addHeader("Access-Control-Allow-Methods", "POST, OPTIONS");
+        resp->addHeader("Access-Control-Allow-Headers", "Content-Type, x-api-key");
+        
+        auto end_time = std::chrono::steady_clock::now();
+        auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(end_time - start_time);
+        
+        int deletedCount = deletedFaces.size();
+        if (isApiLoggingEnabled()) {
+            PLOG_INFO << "[API] POST /v1/recognition/faces/delete - Success: Deleted " 
+                      << deletedCount << " face subject(s) - " 
+                      << duration.count() << "ms";
+        }
+        
+        callback(resp);
+        
+    } catch (const std::exception& e) {
+        auto end_time = std::chrono::steady_clock::now();
+        auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(end_time - start_time);
+        if (isApiLoggingEnabled()) {
+            PLOG_ERROR << "[API] POST /v1/recognition/faces/delete - Exception: " << e.what() << " - " << duration.count() << "ms";
+        }
+        callback(createErrorResponse(500, "Internal server error", e.what()));
+    } catch (...) {
+        auto end_time = std::chrono::steady_clock::now();
+        auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(end_time - start_time);
+        if (isApiLoggingEnabled()) {
+            PLOG_ERROR << "[API] POST /v1/recognition/faces/delete - Unknown exception - " << duration.count() << "ms";
+        }
+        callback(createErrorResponse(500, "Internal server error", "Unknown error occurred"));
+    }
+}
+
+void RecognitionHandler::handleOptionsDeleteFaces(const HttpRequestPtr &req,
+                                                  std::function<void(const HttpResponsePtr &)> &&callback) {
+    auto resp = HttpResponse::newHttpResponse();
+    resp->setStatusCode(k200OK);
+    resp->addHeader("Access-Control-Allow-Origin", "*");
+    resp->addHeader("Access-Control-Allow-Methods", "POST, OPTIONS");
+    resp->addHeader("Access-Control-Allow-Headers", "Content-Type, x-api-key");
+    resp->addHeader("Access-Control-Max-Age", "3600");
+    callback(resp);
 }
 

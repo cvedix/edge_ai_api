@@ -1478,6 +1478,224 @@ paths:
         '200':
           description: CORS preflight response
 
+  /v1/recognition/faces/{image_id}:
+    delete:
+      summary: Delete face subject by ID
+      description: |
+        Deletes a face subject by its image ID. If no face is found with the given ID, 
+        a 404 error is returned.
+      operationId: deleteFaceSubject
+      tags:
+        - Recognition
+      security:
+        - ApiKeyAuth: []
+      parameters:
+        - name: image_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+          description: UUID of the face subject to be deleted
+          example: "6b135f5b-a365-4522-b1f1-4c9ac2dd0728"
+      responses:
+        '200':
+          description: Face subject deleted successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - image_id
+                  - subject
+                properties:
+                  image_id:
+                    type: string
+                    format: uuid
+                    description: UUID of the deleted face subject
+                    example: "6b135f5b-a365-4522-b1f1-4c9ac2dd0728"
+                  subject:
+                    type: string
+                    description: Name of the person associated with the deleted face
+                    example: "subject1"
+              example:
+                image_id: "6b135f5b-a365-4522-b1f1-4c9ac2dd0728"
+                subject: "subject1"
+        '400':
+          description: Bad request (missing image_id, etc.)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          description: Unauthorized (missing or invalid API key)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: Face subject not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /v1/recognition/faces/delete:
+    post:
+      summary: Delete multiple face subjects
+      description: |
+        Deletes multiple face subjects by their image IDs. If some IDs do not exist, 
+        they will be ignored. This endpoint is available since version 1.0.
+      operationId: deleteMultipleFaceSubjects
+      tags:
+        - Recognition
+      security:
+        - ApiKeyAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: array
+              items:
+                type: string
+                format: uuid
+              description: Array of image IDs to delete
+            example:
+              - "6b135f5b-a365-4522-b1f1-4c9ac2dd0728"
+              - "7c246g6c-b476-5633-c2g2-5d0bd3ee1839"
+      responses:
+        '200':
+          description: Face subjects deleted successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - deleted
+                properties:
+                  deleted:
+                    type: array
+                    description: Array of deleted face subjects
+                    items:
+                      type: object
+                      required:
+                        - image_id
+                        - subject
+                      properties:
+                        image_id:
+                          type: string
+                          format: uuid
+                          description: UUID of the deleted face subject
+                          example: "6b135f5b-a365-4522-b1f1-4c9ac2dd0728"
+                        subject:
+                          type: string
+                          description: Name of the person associated with the deleted face
+                          example: "subject1"
+              example:
+                deleted:
+                  - image_id: "6b135f5b-a365-4522-b1f1-4c9ac2dd0728"
+                    subject: "subject1"
+                  - image_id: "7c246g6c-b476-5633-c2g2-5d0bd3ee1839"
+                    subject: "subject2"
+        '400':
+          description: Bad request (invalid JSON, not an array, etc.)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          description: Unauthorized (missing or invalid API key)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+    options:
+      summary: CORS preflight for delete multiple face subjects
+      operationId: deleteMultipleFaceSubjectsOptions
+      tags:
+        - Recognition
+      responses:
+        '200':
+          description: CORS preflight response
+
+  /v1/recognition/subjects/{subject}:
+    put:
+      summary: Rename face subject
+      description: |
+        Starting from version 0.6, this endpoint allows renaming an existing subject. 
+        If the new subject name already exists, the subjects are merged. All faces from 
+        the old subject name are reassigned to the subject with the new name, and the 
+        old subject is removed.
+      operationId: renameSubject
+      tags:
+        - Recognition
+      security:
+        - ApiKeyAuth: []
+      parameters:
+        - name: subject
+          in: path
+          required: true
+          schema:
+            type: string
+          description: The current subject name to rename
+          example: "old_subject_name"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RenameSubjectRequest'
+            example:
+              subject: "new_subject_name"
+      responses:
+        '200':
+          description: Subject renamed successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RenameSubjectResponse'
+              example:
+                updated: "true"
+        '400':
+          description: Bad request (missing subject, invalid JSON, etc.)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          description: Unauthorized (missing or invalid API key)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+    options:
+      summary: CORS preflight for rename subject
+      operationId: renameSubjectOptions
+      tags:
+        - Recognition
+      responses:
+        '200':
+          description: CORS preflight response
+
   /v1/core/instance/status/summary:
     get:
       summary: Get instance status summary
@@ -4155,6 +4373,27 @@ components:
         message:
           type: string
           description: Detailed error message
+
+    RenameSubjectRequest:
+      type: object
+      required:
+        - subject
+      properties:
+        subject:
+          type: string
+          description: The new name of the subject. It can be a person's name or any string value.
+          example: "new_subject_name"
+
+    RenameSubjectResponse:
+      type: object
+      required:
+        - updated
+      properties:
+        updated:
+          type: string
+          enum: ["true", "false"]
+          description: Indicates if the operation succeeded (true) or failed (false)
+          example: "true"
 
     SetInputRequest:
       type: object
