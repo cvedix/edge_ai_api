@@ -10,7 +10,7 @@
     "CONFIG_PATH": "/home/cvedix/project/edge_ai_api/cvedix_data/models/det_cls/yolov3-tiny-2022-0721.cfg",
     "LABELS_PATH": "/home/cvedix/project/edge_ai_api/cvedix_data/models/det_cls/yolov3_tiny_5classes.txt",
     "ENABLE_SCREEN_DES": "false",
-    "RESIZE_RATIO": "0.1",
+    "RESIZE_RATIO": "0.05",
     "GST_DECODER_NAME": "avdec_h264",
     "SKIP_INTERVAL": "9",
     "CODEC_TYPE": "h264",

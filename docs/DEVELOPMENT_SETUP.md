@@ -111,6 +111,52 @@ cmake ..
 - Build các dependencies này
 - Mất khoảng 5-10 phút tùy máy và kết nối internet
 
+### Drogon Framework Setup
+
+Project đã được cấu hình để **tự động download và build Drogon Framework** khi build project. Không cần cài đặt thủ công!
+
+#### Cách hoạt động
+
+Khi chạy `cmake ..`, CMake sẽ:
+1. Tự động download Drogon từ GitHub (nếu chưa có)
+2. Build Drogon như một dependency
+3. Link Drogon vào project
+
+**Lần đầu tiên:** Sẽ mất thời gian để download và build Drogon (~5-10 phút tùy máy)
+
+**Các lần sau:** Chỉ build project của bạn, rất nhanh
+
+#### Drogon được lưu ở đâu?
+
+Drogon được download và build trong thư mục `build/_deps/drogon-src/` và `build/_deps/drogon-build/`
+
+#### Tùy chọn cấu hình
+
+**Chọn version Drogon:**
+```bash
+cmake .. -DDROGON_VERSION=v1.9.0
+```
+
+**Tắt FetchContent (Dùng Drogon đã cài sẵn):**
+```bash
+cmake .. -DDROGON_USE_FETCHCONTENT=OFF
+```
+
+#### Dependencies của Drogon
+
+Drogon cần các dependencies sau. CMake sẽ tự động tìm hoặc build:
+
+**Bắt buộc:**
+- **OpenSSL** - Cho HTTPS support
+- **zlib** - Compression
+- **jsoncpp** - JSON parsing (hoặc nlohmann_json)
+- **libuuid** - UUID generation
+
+**Tùy chọn:**
+- **PostgreSQL** - Database support (nếu dùng ORM)
+- **MySQL** - Database support (nếu dùng ORM)
+- **SQLite** - Database support (nếu dùng ORM)
+
 ### Bước 3: Build project
 ```bash
 make -j$(nproc)
@@ -295,6 +341,121 @@ cmake .. --debug-output
 - Các lần build sau sẽ nhanh hơn nhiều
 - Sử dụng `-j$(nproc)` để build song song
 
+### Lỗi CMake với CVEDIX SDK
+
+#### Lỗi thiếu header cvedix_yolov11_detector_node.h
+```
+fatal error: cvedix/nodes/infers/cvedix_yolov11_detector_node.h: No such file or directory
+```
+
+**Nguyên nhân:** File header `cvedix_yolov11_detector_node.h` không tồn tại trong CVEDIX SDK. SDK chỉ cung cấp:
+- `cvedix_yolo_detector_node.h` (YOLO generic)
+- `cvedix_rknn_yolov11_detector_node.h` (YOLOv11 cho RKNN, chỉ khi có `CVEDIX_WITH_RKNN`)
+
+**Giải pháp:** Đã được fix trong code. Khi sử dụng `yolov11_detector`, sẽ nhận được thông báo lỗi hướng dẫn sử dụng `rknn_yolov11_detector` hoặc `yolo_detector` thay thế.
+
+#### Lỗi thiếu libtinyexpr.so hoặc libcvedix_instance_sdk.so
+```
+CMake Error: The imported target "cvedix::tinyexpr" references the file
+   "/usr/lib/libtinyexpr.so"
+but this file does not exist.
+```
+
+**Nguyên nhân:** CVEDIX SDK được cài đặt ở `/opt/cvedix/` (non-standard location) nhưng CMake config tìm thư viện ở `/usr/lib/`. File thực tế nằm ở `/opt/cvedix/lib/`.
+
+**Giải pháp:** Tạo symlink từ `/usr/lib/` đến file thực tế:
+
+```bash
+sudo ln -sf /opt/cvedix/lib/libtinyexpr.so /usr/lib/libtinyexpr.so
+sudo ln -sf /opt/cvedix/lib/libcvedix_instance_sdk.so /usr/lib/libcvedix_instance_sdk.so
+```
+
+**Kiểm tra:**
+```bash
+ls -la /usr/lib/libtinyexpr.so
+ls -la /usr/lib/libcvedix_instance_sdk.so
+# Kết quả mong đợi: lrwxrwxrwx ... -> /opt/cvedix/lib/...
+```
+
+#### Lỗi node types không được tìm thấy (RTSP/RTMP/Image source nodes)
+```
+error: 'cvedix_rtsp_src_node' is not a member of 'cvedix_nodes'
+error: 'cvedix_rtmp_des_node' is not a member of 'cvedix_nodes'
+error: 'cvedix_image_src_node' is not a member of 'cvedix_nodes'
+```
+
+**Nguyên nhân:** Các header files của CVEDIX SDK cho RTSP, RTMP, và Image source nodes được bọc trong điều kiện `#ifdef CVEDIX_WITH_GSTREAMER`. Nếu macro này không được định nghĩa trong quá trình biên dịch, các class này sẽ không được expose.
+
+**Giải pháp:** Đã được fix trong `CMakeLists.txt`. CMake sẽ tự động phát hiện GStreamer và định nghĩa macro `CVEDIX_WITH_GSTREAMER`:
+
+1. **Kiểm tra GStreamer đã được cài đặt:**
+   ```bash
+   pkg-config --exists gstreamer-1.0 && echo "GStreamer found" || echo "GStreamer not found"
+   ```
+
+2. **Cài đặt GStreamer (nếu chưa có):**
+   ```bash
+   # Ubuntu/Debian
+   sudo apt-get install libgstreamer1.0-dev gstreamer1.0-plugins-base gstreamer1.0-plugins-good gstreamer1.0-plugins-bad gstreamer1.0-plugins-ugly
+   ```
+
+3. **Kiểm tra macro đã được định nghĩa trong CMake:**
+   ```bash
+   cd build
+   cmake .. 2>&1 | grep "GStreamer support"
+   # Kết quả mong đợi: -- ✓ GStreamer support enabled (CVEDIX_WITH_GSTREAMER)
+   ```
+
+**Lưu ý:** GStreamer là bắt buộc cho các node types sau:
+- RTSP source (`rtsp_src`)
+- RTMP source (`rtmp_src`)
+- RTMP destination (`rtmp_des`)
+- Image source (`image_src`)
+- UDP source (`udp_src`)
+
+#### Script tự động fix tất cả symlinks
+
+Để tránh phải fix từng file một, bạn có thể chạy script sau để tạo tất cả symlinks cần thiết:
+
+```bash
+#!/bin/bash
+# Script tạo symlinks cho CVEDIX SDK libraries
+
+CVEDIX_LIB_DIR="/opt/cvedix/lib"
+TARGET_LIB_DIR="/usr/lib"
+
+# Danh sách các thư viện cần symlink
+LIBS=(
+    "libtinyexpr.so"
+    "libcvedix_instance_sdk.so"
+)
+
+for lib in "${LIBS[@]}"; do
+    SOURCE="${CVEDIX_LIB_DIR}/${lib}"
+    TARGET="${TARGET_LIB_DIR}/${lib}"
+    
+    if [ -f "$SOURCE" ]; then
+        if [ ! -e "$TARGET" ]; then
+            echo "Creating symlink: $TARGET -> $SOURCE"
+            sudo ln -sf "$SOURCE" "$TARGET"
+        else
+            echo "Symlink already exists: $TARGET"
+        fi
+    else
+        echo "Warning: Source file not found: $SOURCE"
+    fi
+done
+
+echo "Done! Verifying symlinks..."
+ls -la /usr/lib/libtinyexpr.so /usr/lib/libcvedix_instance_sdk.so
+```
+
+Lưu script vào file `scripts/fix_cvedix_symlinks.sh`, chmod +x và chạy:
+```bash
+chmod +x scripts/fix_cvedix_symlinks.sh
+./scripts/fix_cvedix_symlinks.sh
+```
+
 ## 📊 Performance Tuning
 
 ### Tăng số thread
@@ -385,6 +546,5 @@ Nếu tất cả các bước trên thành công, môi trường phát triển �
 
 - [Hướng Dẫn Khởi Động và Sử Dụng](GETTING_STARTED.md)
 - [Hướng Dẫn Phát Triển](DEVELOPMENT_GUIDE.md)
-- [Drogon Setup](DROGON_SETUP.md)
 - [Architecture](architecture.md)
 
