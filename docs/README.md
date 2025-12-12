@@ -37,12 +37,7 @@ Tài liệu hướng dẫn đầy đủ cho Edge AI API project.
 
 ### 📖 Tài Liệu Kỹ Thuật
 
-5. **[DROGON_SETUP.md](DROGON_SETUP.md)** - Hướng dẫn Drogon Framework
-   - Tự động download và build Drogon
-   - Cấu hình dependencies
-   - Troubleshooting
-
-6. **[architecture.md](architecture.md)** - Kiến trúc hệ thống
+5. **[architecture.md](architecture.md)** - Kiến trúc hệ thống
    - System architecture
    - Request flow
    - Component structure
@@ -99,6 +94,42 @@ Tài liệu hướng dẫn đầy đủ cho Edge AI API project.
    - SDK output logging (`--log-sdk-output`)
    - Cấu hình và best practices
    - Troubleshooting logging issues
+
+### 🔧 Troubleshooting & Guides
+
+15. **[TROUBLESHOOTING.md](TROUBLESHOOTING.md)** - Hướng dẫn khắc phục sự cố
+    - Crash analysis - Queue deadlock
+    - Crash analysis - RTSP + MQTT deadlock
+    - MQTT vs RTMP queue crash
+    - MQTT debug guide
+    - RTSP connection issues
+    - RTSP decoder issues
+
+16. **[QUEUE_MONITORING.md](QUEUE_MONITORING.md)** - Queue Monitoring và Auto-Clear
+    - QueueMonitor class
+    - Queue monitoring thread
+    - Cơ chế phát hiện queue issues
+    - Auto-restart instance
+    - Configuration và tuning
+
+17. **[MQTT_GUIDE.md](MQTT_GUIDE.md)** - MQTT Implementation Guide
+    - Non-blocking MQTT publisher
+    - Background thread implementation
+    - MQTT debug guide
+    - CVEDIX JSON MQTT Broker Node API
+    - Troubleshooting
+
+18. **[RTSP_TROUBLESHOOTING.md](RTSP_TROUBLESHOOTING.md)** - RTSP Troubleshooting Guide
+    - RTSP connection timeout
+    - RTSP decoder issues
+    - RTSP error analysis
+    - Giải pháp và workarounds
+
+19. **[RESIZE_RATIO_GUIDE.md](RESIZE_RATIO_GUIDE.md)** - Hướng dẫn RESIZE_RATIO
+    - Bảng so sánh RESIZE_RATIO
+    - Tối ưu cho MQTT vs RTMP
+    - Test strategy
+    - Khuyến nghị cho từng use case
 
 ## 🎯 Quick Start
 
