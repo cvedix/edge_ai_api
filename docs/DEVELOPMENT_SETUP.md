@@ -2,6 +2,84 @@
 
 Tài liệu này hướng dẫn cách thiết lập môi trường phát triển cho Edge AI API project từ đầu.
 
+## 🚀 Setup Tự Động Từ Đầu Đến Cuối (Khuyến Nghị)
+
+Project có script tự động setup và start server từ đầu đến cuối:
+
+### Development Setup (Không cần sudo)
+
+```bash
+# Clone project (nếu chưa có)
+git clone https://github.com/cvedix/edge_ai_api.git
+cd edge_ai_api
+
+# Chạy script setup tự động
+./setup.sh
+```
+
+Script này sẽ tự động:
+- ✅ Kiểm tra prerequisites (OS, CMake version, dependencies)
+- ✅ Cài đặt system dependencies (build-essential, cmake, git, libssl-dev, ...)
+- ✅ Build project với CMake
+- ✅ Tạo file .env từ .env.example (nếu chưa có)
+- ✅ Khởi động server ở development mode
+
+### Production Setup (Cần sudo)
+
+```bash
+# Chạy với quyền sudo để setup production
+sudo ./setup.sh --production
+```
+
+Script này sẽ:
+- ✅ Thực hiện tất cả các bước của development setup
+- ✅ Tạo user và group `edgeai`
+- ✅ Tạo thư mục `/opt/edge_ai_api` với cấu trúc đầy đủ
+- ✅ Cài đặt executable vào `/usr/local/bin/edge_ai_api`
+- ✅ Setup systemd service `edge-ai-api.service`
+- ✅ Enable và start service tự động
+- ✅ Kiểm tra service đang chạy và API endpoint
+
+### Các Tùy Chọn
+
+```bash
+# Bỏ qua cài đặt dependencies (nếu đã cài sẵn)
+./setup.sh --skip-deps
+
+# Bỏ qua build (dùng build có sẵn)
+./setup.sh --skip-build
+
+# Không setup systemd service (chỉ development)
+./setup.sh --no-service
+
+# Không tự động start server sau khi setup
+./setup.sh --no-start
+
+# Xem help
+./setup.sh --help
+```
+
+### Sau Khi Setup
+
+**Development mode:**
+```bash
+# Server sẽ tự động chạy sau khi setup
+# Hoặc chạy lại bằng:
+./scripts/load_env.sh
+```
+
+**Production mode:**
+```bash
+# Kiểm tra service
+sudo systemctl status edge-ai-api
+
+# Xem log
+sudo journalctl -u edge-ai-api -f
+
+# Test API
+curl http://localhost:8080/v1/core/health
+```
+
 ## 📋 Yêu Cầu Hệ Thống
 
 ### Hệ Điều Hành
@@ -63,12 +141,16 @@ cd cmake-3.27.0
 ./bootstrap && make && sudo make install
 ```
 
-## 🚀 Cài Đặt Tự Động (Khuyến Nghị)
+## 🔧 Cài Đặt Thủ Công (Nếu Không Dùng Script Tự Động)
 
-Project có script tự động cài đặt dependencies:
+Nếu bạn muốn setup thủ công từng bước thay vì dùng script tự động:
+
+### Cài Đặt Dependencies
+
+Project có script riêng để cài đặt dependencies:
 
 ```bash
-# Chạy script cài đặt
+# Chạy script cài đặt dependencies
 ./scripts/install_dependencies.sh
 ```
 
@@ -77,7 +159,7 @@ Script này sẽ:
 - Xác minh version CMake
 - Cài đặt các thư viện cần thiết cho Drogon
 
-## 🔧 Cài Đặt Thủ Công
+### Cài Đặt Thủ Công Từng Bước
 
 Nếu không muốn dùng script, có thể cài đặt thủ công theo các bước trên.
 
@@ -521,7 +603,23 @@ docker run -p 8080:8080 edge-ai-api
 
 ## ✅ Xác Minh Setup Thành Công
 
-Sau khi setup xong, chạy các lệnh sau để xác minh:
+### Với Script Tự Động
+
+Nếu bạn đã dùng `./setup.sh`, server sẽ tự động được khởi động. Kiểm tra:
+
+```bash
+# Development mode
+curl http://localhost:8080/v1/core/health
+curl http://localhost:8080/v1/core/version
+
+# Production mode
+sudo systemctl status edge-ai-api
+curl http://localhost:8080/v1/core/health
+```
+
+### Setup Thủ Công
+
+Sau khi setup thủ công, chạy các lệnh sau để xác minh:
 
 ```bash
 # 1. Build project
@@ -541,6 +639,37 @@ curl http://localhost:8080/v1/core/version
 ```
 
 Nếu tất cả các bước trên thành công, môi trường phát triển đã sẵn sàng!
+
+## 📝 Tóm Tắt Nhanh
+
+### Development Setup (Nhanh Nhất)
+
+```bash
+git clone https://github.com/cvedix/edge_ai_api.git
+cd edge_ai_api
+./setup.sh
+# Server sẽ tự động chạy tại http://localhost:8080
+```
+
+### Production Setup
+
+```bash
+git clone https://github.com/cvedix/edge_ai_api.git
+cd edge_ai_api
+sudo ./setup.sh --production
+# Service sẽ tự động chạy và khởi động cùng hệ thống
+```
+
+### Kiểm Tra Sau Setup
+
+```bash
+# Development
+curl http://localhost:8080/v1/core/health
+
+# Production
+sudo systemctl status edge-ai-api
+curl http://localhost:8080/v1/core/health
+```
 
 ## 📚 Tài Liệu Liên Quan
 

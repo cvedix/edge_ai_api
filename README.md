@@ -185,9 +185,16 @@ Nếu gặp lỗi CMake liên quan đến CVEDIX SDK libraries (ví dụ: `libti
 
 **Giải pháp nhanh:**
 
-Chạy script tự động fix:
+Chạy script tự động fix tất cả symlinks (khuyến nghị):
 ```bash
-./scripts/fix_cvedix_symlinks.sh
+sudo ./scripts/fix_all_symlinks.sh
+```
+
+Hoặc fix riêng từng phần nếu cần:
+```bash
+sudo ./scripts/fix_cvedix_symlinks.sh  # Fix libraries only
+sudo ./scripts/fix_cereal_symlink.sh   # Fix cereal only
+sudo ./scripts/fix_cpp_base64_symlink.sh  # Fix base64 only
 ```
 
 Hoặc fix thủ công:
