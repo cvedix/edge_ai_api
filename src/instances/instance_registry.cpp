@@ -346,10 +346,10 @@ bool InstanceRegistry::deleteInstance(const std::string& instanceId) {
     stopLoggingThread(instanceId);
     
     // Delete from storage (doesn't need lock)
-    if (isPersistent) {
-        std::cerr << "[InstanceRegistry] Removing persistent instance from storage..." << std::endl;
-        instance_storage_.deleteInstance(instanceId);
-    }
+    // Always delete from storage since all instances are saved to storage for debugging/inspection
+    // This prevents deleted instances from being reloaded on server restart
+    std::cerr << "[InstanceRegistry] Removing instance from storage..." << std::endl;
+    instance_storage_.deleteInstance(instanceId);
     
     std::cerr << "[InstanceRegistry] ✓ Instance " << instanceId << " deleted successfully" << std::endl;
     std::cerr << "[InstanceRegistry] ========================================" << std::endl;
@@ -713,6 +713,12 @@ bool InstanceRegistry::startInstance(const std::string& instanceId, bool skipAut
         if (instanceIt != instances_.end()) {
             if (started) {
                 instanceIt->second.running = true;
+                // Reset retry counter and tracking when instance starts successfully
+                instanceIt->second.retryCount = 0;
+                instanceIt->second.retryLimitReached = false;
+                instanceIt->second.startTime = std::chrono::steady_clock::now();
+                instanceIt->second.lastActivityTime = instanceIt->second.startTime;
+                instanceIt->second.hasReceivedData = false;
                 std::cerr << "[InstanceRegistry] ✓ Instance " << instanceId << " started successfully" << std::endl;
                 if (isInstanceLoggingEnabled()) {
                     const auto& info = instanceIt->second;
@@ -2008,17 +2014,18 @@ int InstanceRegistry::checkAndHandleRetryLimits() {
                             now - info.lastActivityTime).count();
                         
                         // Only increment retry counter if:
-                        // 1. Instance has been running for at least 30 seconds (give it time to connect)
+                        // 1. Instance has been running for at least 60 seconds (give it more time to connect and stabilize)
                         // 2. AND instance has not received any data yet (hasReceivedData = false)
-                        // 3. OR instance has been running for more than 60 seconds without activity
+                        // 3. OR instance has been running for more than 90 seconds without activity (after receiving data)
+                        // Note: Increased timeout from 30s to 60s to account for RTSP connection time and fps update delay
                         bool isLikelyRetrying = false;
-                        if (timeSinceStart >= 30) {
+                        if (timeSinceStart >= 60) {
                             if (!info.hasReceivedData) {
-                                // Instance has been running for 30+ seconds without receiving any data
+                                // Instance has been running for 60+ seconds without receiving any data
                                 // This indicates it's likely stuck in retry loop
                                 isLikelyRetrying = true;
-                            } else if (timeSinceActivity > 60) {
-                                // Instance received data before but now has been inactive for 60+ seconds
+                            } else if (timeSinceActivity > 90) {
+                                // Instance received data before but now has been inactive for 90+ seconds
                                 // This might indicate connection was lost and retrying
                                 isLikelyRetrying = true;
                             }
@@ -2051,13 +2058,36 @@ int InstanceRegistry::checkAndHandleRetryLimits() {
                                 stoppedCount++;
                             }
                         } else {
-                            // Check if instance is receiving data (fps > 0 indicates frames are being processed)
+                            // Check if instance is receiving data
+                            // Note: fps may not be updated from pipeline, so we use a more lenient approach
+                            // If instance has been running for a while without errors, assume it's working
+                            bool isReceivingData = false;
+                            
+                            // Method 1: Check fps (if available from pipeline)
                             if (info.fps > 0) {
+                                isReceivingData = true;
+                            }
+                            // Method 2: If instance has been running for 45+ seconds without being marked as retrying,
+                            // assume it's working (RTSP connection established, even if fps not updated)
+                            // This gives time for RTSP to connect (10-30s) and stabilize before retry detection starts (60s)
+                            else if (timeSinceStart >= 45 && info.retryCount == 0) {
+                                // Instance has been running for 45+ seconds without retry detection
+                                // This likely means RTSP connection is established and working
+                                // (retry detection only starts at 60s, so 45s is safe)
+                                isReceivingData = true;
+                            }
+                            
+                            if (isReceivingData) {
                                 // Instance is receiving frames - mark as having received data
                                 if (!info.hasReceivedData) {
                                     std::cerr << "[InstanceRegistry] Instance " << instanceId 
-                                              << " connection successful - receiving frames (fps=" 
-                                              << std::fixed << std::setprecision(2) << info.fps << ")" << std::endl;
+                                              << " connection successful - receiving frames";
+                                    if (info.fps > 0) {
+                                        std::cerr << " (fps=" << std::fixed << std::setprecision(2) << info.fps << ")";
+                                    } else {
+                                        std::cerr << " (running for " << timeSinceStart << "s, assumed working)";
+                                    }
+                                    std::cerr << std::endl;
                                     info.hasReceivedData = true;
                                 }
                                 // Update last activity time when receiving frames

@@ -21,6 +21,7 @@ using namespace drogon;
  * - POST /v1/core/instances/{instanceId}/stop - Stop an instance
  * - POST /v1/core/instances/{instanceId}/restart - Restart an instance
  * - DELETE /v1/core/instances/{instanceId} - Delete an instance
+ * - DELETE /v1/core/instances - Delete all instances
  * - POST /v1/core/instances/batch/start - Start multiple instances concurrently
  * - POST /v1/core/instances/batch/stop - Stop multiple instances concurrently
  * - POST /v1/core/instances/batch/restart - Restart multiple instances concurrently
@@ -33,13 +34,16 @@ class InstanceHandler : public drogon::HttpController<InstanceHandler> {
 public:
     METHOD_LIST_BEGIN
         ADD_METHOD_TO(InstanceHandler::getStatusSummary, "/v1/core/instance/status/summary", Get);
+        // Routes for /v1/core/instances (without path parameter) - must come before routes with {instanceId}
         ADD_METHOD_TO(InstanceHandler::listInstances, "/v1/core/instances", Get);
+        ADD_METHOD_TO(InstanceHandler::deleteAllInstances, "/v1/core/instances", Delete);
+        // Routes for /v1/core/instances/{instanceId} (with path parameter)
         ADD_METHOD_TO(InstanceHandler::getInstance, "/v1/core/instances/{instanceId}", Get);
         ADD_METHOD_TO(InstanceHandler::updateInstance, "/v1/core/instances/{instanceId}", Put);
+        ADD_METHOD_TO(InstanceHandler::deleteInstance, "/v1/core/instances/{instanceId}", Delete);
         ADD_METHOD_TO(InstanceHandler::startInstance, "/v1/core/instances/{instanceId}/start", Post);
         ADD_METHOD_TO(InstanceHandler::stopInstance, "/v1/core/instances/{instanceId}/stop", Post);
         ADD_METHOD_TO(InstanceHandler::restartInstance, "/v1/core/instances/{instanceId}/restart", Post);
-        ADD_METHOD_TO(InstanceHandler::deleteInstance, "/v1/core/instances/{instanceId}", Delete);
         ADD_METHOD_TO(InstanceHandler::getInstanceOutput, "/v1/core/instances/{instanceId}/output", Get);
         ADD_METHOD_TO(InstanceHandler::batchStartInstances, "/v1/core/instances/batch/start", Post);
         ADD_METHOD_TO(InstanceHandler::batchStopInstances, "/v1/core/instances/batch/stop", Post);
@@ -116,6 +120,13 @@ public:
      */
     void deleteInstance(const HttpRequestPtr &req,
                        std::function<void(const HttpResponsePtr &)> &&callback);
+    
+    /**
+     * @brief Handle DELETE /v1/core/instances
+     * Deletes all instances
+     */
+    void deleteAllInstances(const HttpRequestPtr &req,
+                           std::function<void(const HttpResponsePtr &)> &&callback);
     
     /**
      * @brief Handle PUT /v1/core/instances/{instanceId}
