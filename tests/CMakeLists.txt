@@ -30,6 +30,14 @@ set(TEST_SOURCES
     test_instance_get_config.cpp
     test_instance_configure_stream.cpp
     test_solution_handler.cpp
+    test_config_handler.cpp
+    test_system_info_handler.cpp
+    test_metrics_handler.cpp
+    test_node_handler.cpp
+    test_node_pool_handler.cpp
+    test_group_handler.cpp
+    test_create_instance_handler.cpp
+    test_ai_handler.cpp
     test_main.cpp
 )
 
@@ -58,6 +66,14 @@ target_sources(edge_ai_api_tests PRIVATE
     ${CMAKE_SOURCE_DIR}/src/api/endpoints_handler.cpp
     ${CMAKE_SOURCE_DIR}/src/api/solution_handler.cpp
     ${CMAKE_SOURCE_DIR}/src/api/instance_handler.cpp
+    ${CMAKE_SOURCE_DIR}/src/api/config_handler.cpp
+    ${CMAKE_SOURCE_DIR}/src/api/system_info_handler.cpp
+    ${CMAKE_SOURCE_DIR}/src/api/metrics_handler.cpp
+    ${CMAKE_SOURCE_DIR}/src/api/node_handler.cpp
+    ${CMAKE_SOURCE_DIR}/src/api/node_pool_handler.cpp
+    ${CMAKE_SOURCE_DIR}/src/api/group_handler.cpp
+    ${CMAKE_SOURCE_DIR}/src/api/create_instance_handler.cpp
+    ${CMAKE_SOURCE_DIR}/src/api/ai_handler.cpp
     ${CMAKE_SOURCE_DIR}/src/core/watchdog.cpp
     ${CMAKE_SOURCE_DIR}/src/core/health_monitor.cpp
     ${CMAKE_SOURCE_DIR}/src/core/endpoint_monitor.cpp
@@ -73,6 +89,14 @@ target_sources(edge_ai_api_tests PRIVATE
     ${CMAKE_SOURCE_DIR}/src/models/update_instance_request.cpp
     ${CMAKE_SOURCE_DIR}/src/models/create_instance_request.cpp
     ${CMAKE_SOURCE_DIR}/src/core/uuid_generator.cpp
+    ${CMAKE_SOURCE_DIR}/src/core/node_pool_manager.cpp
+    ${CMAKE_SOURCE_DIR}/src/groups/group_registry.cpp
+    ${CMAKE_SOURCE_DIR}/src/groups/group_storage.cpp
+    ${CMAKE_SOURCE_DIR}/src/models/group_info.cpp
+    ${CMAKE_SOURCE_DIR}/src/core/priority_queue.cpp
+    ${CMAKE_SOURCE_DIR}/src/core/ai_cache.cpp
+    ${CMAKE_SOURCE_DIR}/src/core/rate_limiter.cpp
+    ${CMAKE_SOURCE_DIR}/src/core/resource_manager.cpp
 )
 
 # Link jsoncpp if available
