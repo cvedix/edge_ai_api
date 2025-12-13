@@ -37,7 +37,7 @@
         "detectorMode": "SmartDetection",
         "detectionSensitivity": "0.6",
         "sensorModality": "RGB",
-        "RTSP_URL": "rtsp://example.com/stream"
+        "RTSP_URL": "rtsp://localhost/stream"
     }
 }
 

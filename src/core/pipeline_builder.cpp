@@ -1518,9 +1518,10 @@ std::string PipelineBuilder::getRTSPUrl(const CreateInstanceRequest& req) const 
         return std::string(envSrcUrl);
     }
     
-    // Default fallback
+    // Default fallback (development only - should be overridden in production)
+    // SECURITY: This is a development default. In production, always provide RTSP_URL via request or environment variable.
     std::cerr << "[PipelineBuilder] WARNING: Using default RTSP URL (rtsp://localhost:8554/stream)" << std::endl;
-    std::cerr << "[PipelineBuilder] NOTE: To use custom RTSP URL, provide 'RTSP_URL' or 'RTSP_SRC_URL' in request body or set RTSP_URL/RTSP_SRC_URL environment variable" << std::endl;
+    std::cerr << "[PipelineBuilder] WARNING: This is a development default. For production, provide 'RTSP_URL' or 'RTSP_SRC_URL' in request body or set RTSP_URL/RTSP_SRC_URL environment variable" << std::endl;
     return "rtsp://localhost:8554/stream";
 }
 
@@ -3723,7 +3724,8 @@ std::shared_ptr<cvedix_nodes::cvedix_node> PipelineBuilder::createRTMPSourceNode
             if (it != req.additionalParams.end() && !it->second.empty()) {
                 rtmpUrl = it->second;
             } else {
-                // Default fake data
+                // Default fallback (development only - should be overridden in production)
+                // SECURITY: This is a development default. In production, always provide RTMP_URL via request or environment variable.
                 rtmpUrl = "rtmp://localhost:1935/live/stream";
             }
         }
