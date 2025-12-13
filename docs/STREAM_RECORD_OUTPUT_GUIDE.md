@@ -319,10 +319,194 @@ Khi bạn cấu hình `path`:
 
 **Lưu ý:** Instance cần được **restart** sau khi cấu hình để `file_des` node được thêm vào pipeline.
 
+## 🔍 Troubleshooting Chi Tiết
+
+### Vấn đề: FPS = 0.0 - Không có frame được xử lý
+
+**Nguyên nhân:**
+- Không có video input hoạt động
+- RTSP stream không accessible
+- File video không đọc được
+- Pipeline không nhận được frame
+
+**Khi FPS = 0, `file_des` node không có gì để lưu → không có file được tạo.**
+
+**Giải pháp:**
+
+#### 1. Kiểm Tra và Fix Video Input
+
+**Nếu dùng RTSP Stream:**
+```bash
+# Test RTSP stream có hoạt động không
+RTSP_URL="rtsp://localhost:8554/live/camera_demo_1_0"
+ffprobe -v error -show_entries stream=codec_name "$RTSP_URL" 2>&1 | head -5
+
+# Hoặc dùng ffplay để xem
+ffplay "$RTSP_URL"
+```
+
+**Nếu RTSP không hoạt động:**
+- Kiểm tra RTSP server có đang chạy không
+- Kiểm tra network connectivity
+- Kiểm tra RTSP URL có đúng không
+- Thử dùng file input thay vì RTSP
+
+**Nếu dùng File Input:**
+```bash
+# Kiểm tra file có tồn tại không
+FILE_PATH="/home/cvedix/project/cvedix_data/test_video/vehicle_count.mp4"
+test -f "$FILE_PATH" && echo "File exists" || echo "File NOT found"
+
+# Kiểm tra file có đọc được không
+ffprobe -v error "$FILE_PATH" 2>&1 | head -5
+```
+
+#### 2. Đảm Bảo Code Đã Được Rebuild
+
+```bash
+cd /home/cvedix/project/edge_ai_api
+cd build
+cmake ..
+make -j$(nproc)
+
+# Restart ứng dụng
+pkill edge_ai_api
+./bin/edge_ai_api
+```
+
+#### 3. Kiểm Tra Log - file_des Node Có Được Tạo Không
+
+```bash
+# Kiểm tra log systemd
+journalctl -u edge-ai-api -n 200 | grep -i "RECORD_PATH\|file_des\|PipelineBuilder"
+
+# Hoặc nếu chạy trực tiếp
+tail -f /path/to/log | grep -i "RECORD_PATH\|file_des"
+```
+
+**Tìm các message quan trọng:**
+- `[PipelineBuilder] RECORD_PATH detected: /mnt/sb1/data` ✓
+- `[PipelineBuilder] Auto-adding file_des node for recording...` ✓
+- `[PipelineBuilder] ✓ Auto-added file_des node for recording to: /mnt/sb1/data` ✓
+
+#### 4. Monitor FPS và Files
+
+```bash
+# Monitor FPS (phải > 0 để có file)
+watch -n 1 'curl -s http://localhost:8080/v1/core/instances | jq ".instances[] | select(.instanceId == \"{instanceId}\") | {fps, running}"'
+
+# Monitor files
+watch -n 1 'ls -lht /mnt/sb1/data | head -10'
+```
+
+### Vấn đề: RECORD_PATH Không Được Phát Hiện
+
+**Triệu chứng:**
+- Log không có message "RECORD_PATH detected"
+- `file_des` node không được tạo
+
+**Nguyên nhân:**
+1. Code chưa được rebuild
+2. `RECORD_PATH` không được lưu vào `AdditionalParams`
+3. Instance chưa được restart sau khi cấu hình
+
+**Giải pháp:**
+```bash
+# 1. Rebuild code
+cd /home/cvedix/project/edge_ai_api/build
+cmake ..
+make -j$(nproc)
+
+# 2. Restart ứng dụng
+pkill edge_ai_api
+./bin/edge_ai_api
+
+# 3. Cấu hình lại và restart instance
+curl -X POST http://localhost:8080/v1/core/instance/{instanceId}/output/stream \
+  -H "Content-Type: application/json" \
+  -d '{"enabled": true, "path": "/mnt/sb1/data"}'
+
+curl -X POST http://localhost:8080/v1/core/instance/{instanceId}/stop
+curl -X POST http://localhost:8080/v1/core/instance/{instanceId}/start
+```
+
+### Vấn đề: file_des Node Tạo Thất Bại
+
+**Triệu chứng:**
+- Log có "RECORD_PATH detected" nhưng không có "Auto-added file_des node"
+- Log có "⚠ Failed to create file_des node"
+
+**Nguyên nhân:**
+1. Thư mục không có quyền ghi
+2. Thư mục không tồn tại
+3. Lỗi khi tạo `cvedix_file_des_node`
+
+**Giải pháp:**
+```bash
+# Fix quyền thư mục
+sudo ./deploy/fix_external_data_permissions.sh --user cvedix --path /mnt/sb1/data
+
+# Kiểm tra log chi tiết
+journalctl -u edge-ai-api -n 200 | grep -i "file_des\|exception\|error"
+```
+
+### Vấn đề: Instance Chạy Nhưng Không Có File
+
+**Triệu chứng:**
+- Instance đang chạy (`running: true`)
+- `file_des` node đã được tạo (có trong log)
+- Nhưng không có file trong thư mục
+
+**Nguyên nhân:**
+1. Không có video input
+2. Pipeline không kết nối đúng
+3. `file_des` node không nhận được frame
+4. FPS = 0 (không có frame được xử lý)
+
+**Giải pháp:**
+```bash
+# 1. Kiểm tra input source
+curl -s http://localhost:8080/v1/core/instance/{instanceId} | jq '.input'
+
+# 2. Kiểm tra FPS
+curl -s http://localhost:8080/v1/core/instance/{instanceId} | jq '.fps'
+
+# 3. Kiểm tra log để xem có frame được xử lý không
+journalctl -u edge-ai-api -n 200 | grep -i "frame\|fps"
+```
+
+## ✅ Checklist Debug
+
+- [ ] Instance đang chạy (`running: true`)
+- [ ] RECORD_PATH đã được cấu hình (có trong output/stream response)
+- [ ] RECORD_PATH có trong AdditionalParams (có trong config)
+- [ ] Thư mục tồn tại và có quyền ghi
+- [ ] Code đã được rebuild (có tính năng auto-add file_des)
+- [ ] Instance đã được restart sau khi cấu hình
+- [ ] Log có message "RECORD_PATH detected"
+- [ ] Log có message "Auto-added file_des node"
+- [ ] Instance có video input (RTSP, file, etc.)
+- [ ] Pipeline đang xử lý frame (FPS > 0)
+- [ ] File MP4 xuất hiện trong thư mục
+
+## 🛠️ Helper Scripts
+
+Sử dụng script helper để debug và quản lý record output:
+
+```bash
+# Quick status check
+./scripts/record_output_helper.sh <instanceId> check
+
+# Detailed debugging
+./scripts/record_output_helper.sh <instanceId> debug
+
+# Restart instance for record
+./scripts/record_output_helper.sh <instanceId> restart
+```
+
 ## 📚 Tài Liệu Tham Khảo
 
-- [OpenAPI Specification](./openapi.yaml) - Chi tiết API endpoints
+- [OpenAPI Specification](../openapi.yaml) - Chi tiết API endpoints
 - [Directory Creation Guide](./DIRECTORY_CREATION_GUIDE.md) - Hướng dẫn tạo thư mục
 - [MediaMTX Documentation](https://github.com/bluenviron/mediamtx) - Stream server
-- [Rebuild and Restart Guide](./REBUILD_AND_RESTART.md) - Hướng dẫn rebuild code
 

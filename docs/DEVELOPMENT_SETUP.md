@@ -671,6 +671,66 @@ sudo systemctl status edge-ai-api
 curl http://localhost:8080/v1/core/health
 ```
 
+## 🔄 Rebuild và Restart Ứng Dụng
+
+Sau khi cập nhật code, bạn cần rebuild và restart ứng dụng:
+
+### Bước 1: Dừng Ứng Dụng Đang Chạy
+
+```bash
+# Tìm process ID
+ps aux | grep edge_ai_api | grep -v grep
+
+# Dừng ứng dụng (thay PID bằng process ID thực tế)
+kill <PID>
+
+# Hoặc nếu chạy trong terminal, dùng Ctrl+C
+
+# Hoặc nếu dùng systemd
+sudo systemctl stop edge-ai-api
+```
+
+### Bước 2: Rebuild
+
+```bash
+cd /home/cvedix/project/edge_ai_api
+
+# Nếu có build directory
+cd build
+cmake ..
+make -j$(nproc)
+
+# Hoặc rebuild từ đầu
+rm -rf build
+mkdir build && cd build
+cmake ..
+make -j$(nproc)
+```
+
+### Bước 3: Restart Ứng Dụng
+
+```bash
+# Development mode - chạy trực tiếp
+cd /home/cvedix/project/edge_ai_api
+./scripts/load_env.sh
+
+# Hoặc chạy trực tiếp
+./build/bin/edge_ai_api
+
+# Production mode - dùng systemd
+sudo systemctl start edge-ai-api
+```
+
+### Bước 4: Kiểm Tra
+
+```bash
+# Test API
+curl http://localhost:8080/v1/core/health
+
+# Hoặc kiểm tra service status
+sudo systemctl status edge-ai-api
+```
+
 ## 📚 Tài Liệu Liên Quan
 
 - [Hướng Dẫn Khởi Động và Sử Dụng](GETTING_STARTED.md)

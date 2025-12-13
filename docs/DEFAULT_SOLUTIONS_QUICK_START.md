@@ -102,8 +102,6 @@ Khi cần thêm default solution mới, có 2 cách:
 
 ### Cách 2: Làm thủ công
 
-Xem hướng dẫn chi tiết: **[HOW_TO_ADD_UPDATE_DEFAULT_SOLUTIONS.md](./HOW_TO_ADD_UPDATE_DEFAULT_SOLUTIONS.md)**
-
 Tóm tắt:
 1. Tạo hàm `register[Name]Solution()` trong `src/solutions/solution_registry.cpp`
 2. Khai báo hàm trong `include/solutions/solution_registry.h`
@@ -158,9 +156,7 @@ cd build && make
 ## 📚 Tài liệu Liên quan
 
 - **[DEFAULT_SOLUTIONS_REFERENCE.md](./DEFAULT_SOLUTIONS_REFERENCE.md)** - Tham khảo chi tiết 4 default solutions
-- **[HOW_TO_ADD_UPDATE_DEFAULT_SOLUTIONS.md](./HOW_TO_ADD_UPDATE_DEFAULT_SOLUTIONS.md)** - Hướng dẫn chi tiết thêm/cập nhật
-- **[SOLUTION_SECURITY.md](./SOLUTION_SECURITY.md)** - Bảo mật default solutions
-- **[default_solutions_backup.json](./default_solutions_backup.json)** - Backup JSON
+- **[DEVELOPMENT_GUIDE.md](./DEVELOPMENT_GUIDE.md)** - Hướng dẫn phát triển và thêm features mới
 
 ---
 
