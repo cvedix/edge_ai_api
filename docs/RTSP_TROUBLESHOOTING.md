@@ -99,9 +99,19 @@ ffprobe rtsp://localhost:8554/mystream
 
 #### Giải pháp 2: Kiểm tra từ client
 
-**Sử dụng script diagnostic:**
+**Sử dụng script helper:**
 ```bash
-./scripts/test_rtsp_connection.sh rtsp://100.76.5.84:8554/mystream
+# Test RTSP connection
+./scripts/rtsp_helper.sh <instanceId> rtsp://100.76.5.84:8554/mystream test
+
+# Check RTSP instance status
+./scripts/rtsp_helper.sh <instanceId> <rtsp_url> check
+
+# Debug RTSP pipeline
+./scripts/rtsp_helper.sh <instanceId> <rtsp_url> debug
+
+# Diagnose RTSP connection
+./scripts/rtsp_helper.sh <instanceId> <rtsp_url> diagnose
 ```
 
 **Kiểm tra thủ công:**

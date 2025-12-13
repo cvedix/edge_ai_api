@@ -592,7 +592,7 @@ ffprobe rtsp://localhost:8554/mystream
 
 **Sử dụng script diagnostic:**
 ```bash
-./scripts/test_rtsp_connection.sh rtsp://100.76.5.84:8554/mystream
+./scripts/rtsp_helper.sh <instanceId> rtsp://100.76.5.84:8554/mystream test
 ```
 
 **Kiểm tra thủ công:**

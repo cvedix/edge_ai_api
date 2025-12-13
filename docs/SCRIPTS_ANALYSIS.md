@@ -19,16 +19,18 @@ Tài liệu này phân tích tất cả các scripts trong project và đề xu�
 - ✅ **`scripts/load_env.sh`** - Load environment variables, được sử dụng nhiều, cần thiết
 - ✅ **`scripts/run_tests.sh`** - Test script, cần thiết
 - ⚠️ **`scripts/install_dependencies.sh`** - Đã tích hợp vào `setup.sh`, có thể giữ lại như helper script độc lập
-- ✅ **`scripts/fix_all_symlinks.sh`** - **MỚI**: Script tổng hợp fix tất cả symlinks (khuyến nghị sử dụng)
+- ✅ **`scripts/fix_all_symlinks.sh`** - Script tổng hợp fix tất cả symlinks (khuyến nghị sử dụng)
 - ⚠️ **`scripts/fix_cvedix_symlinks.sh`** - Đã tích hợp vào `fix_all_symlinks.sh`, giữ lại như helper script
 - ⚠️ **`scripts/fix_cereal_symlink.sh`** - Đã tích hợp vào `fix_all_symlinks.sh`, giữ lại như helper script
 - ⚠️ **`scripts/fix_cpp_base64_symlink.sh`** - Đã tích hợp vào `fix_all_symlinks.sh`, giữ lại như helper script
 - ✅ **`scripts/generate_default_solution_template.sh`** - Utility script, giữ lại
 - ✅ **`scripts/restore_default_solutions.sh`** - Utility script, giữ lại
-- ✅ **`scripts/check_rtsp_instance.sh`** - Debug script, giữ lại
-- ✅ **`scripts/debug_rtsp_pipeline.sh`** - Debug script, giữ lại
-- ✅ **`scripts/diagnose_rtsp.sh`** - Debug script, giữ lại
-- ✅ **`scripts/test_rtsp_connection.sh`** - Test script, giữ lại
+- ✅ **`scripts/record_output_helper.sh`** - **MỚI**: Script tổng hợp cho record output (check, debug, restart)
+- ✅ **`scripts/rtsp_helper.sh`** - **MỚI**: Script tổng hợp cho RTSP (check, debug, diagnose, test)
+- ✅ **`scripts/check_opencv_version.sh`** - Utility script cho OpenCV, giữ lại
+- ✅ **`scripts/create_opencv_cuda_stubs.sh`** - Utility script cho OpenCV CUDA stubs, giữ lại
+- ✅ **`scripts/fix_opencv_symlinks.sh`** - Utility script cho OpenCV symlinks, giữ lại
+- ✅ **`scripts/install_opencv_4.10.sh`** - Utility script cài OpenCV 4.10, giữ lại
 
 ### Scripts Samples
 - ✅ **`samples/build.sh`** - Build script cho samples, cần thiết
@@ -79,10 +81,12 @@ edge_ai_api/
     ├── install_dependencies.sh      # Helper: install deps only
     ├── generate_default_solution_template.sh
     ├── restore_default_solutions.sh
-    ├── check_rtsp_instance.sh
-    ├── debug_rtsp_pipeline.sh
-    ├── diagnose_rtsp.sh
-    └── test_rtsp_connection.sh
+    ├── record_output_helper.sh      # ⭐ Record output helper (check, debug, restart)
+    ├── rtsp_helper.sh               # ⭐ RTSP helper (check, debug, diagnose, test)
+    ├── check_opencv_version.sh       # OpenCV version check
+    ├── create_opencv_cuda_stubs.sh   # OpenCV CUDA stubs
+    ├── fix_opencv_symlinks.sh        # OpenCV symlinks fix
+    └── install_opencv_4.10.sh        # OpenCV 4.10 installation
 ```
 
 ## 📝 Hướng Dẫn Sử Dụng
@@ -109,6 +113,35 @@ sudo ./scripts/fix_cereal_symlink.sh
 sudo ./scripts/fix_cpp_base64_symlink.sh
 ```
 
+### Record Output Helper
+
+```bash
+# Check record output status
+./scripts/record_output_helper.sh <instanceId> check
+
+# Debug record output issues
+./scripts/record_output_helper.sh <instanceId> debug
+
+# Restart instance for record
+./scripts/record_output_helper.sh <instanceId> restart
+```
+
+### RTSP Helper
+
+```bash
+# Check RTSP instance status
+./scripts/rtsp_helper.sh <instanceId> <rtsp_url> check
+
+# Debug RTSP pipeline
+./scripts/rtsp_helper.sh <instanceId> <rtsp_url> debug
+
+# Diagnose RTSP connection
+./scripts/rtsp_helper.sh <instanceId> <rtsp_url> diagnose
+
+# Test RTSP stream
+./scripts/rtsp_helper.sh <instanceId> <rtsp_url> test
+```
+
 ### Install Dependencies (Nếu Cần Dùng Độc Lập)
 
 ```bash
@@ -132,11 +165,16 @@ sudo ./deploy/set_full_permissions.sh  # Nếu cần quyền 777
 
 **Cải thiện đã thực hiện:**
 - ✅ Tạo `scripts/fix_all_symlinks.sh` - Script tổng hợp fix symlinks
+- ✅ Tạo `scripts/record_output_helper.sh` - Gộp 4 scripts record output thành 1
+- ✅ Tạo `scripts/rtsp_helper.sh` - Gộp 4 scripts RTSP thành 1
+- ✅ Gộp `fix_dependencies.sh` vào `install_opencv_4.10.sh`
 - ✅ Tích hợp logic vào `setup.sh` và `deploy/build.sh`
 - ✅ Giữ lại các helper scripts để linh hoạt
 
 **Khuyến nghị:**
 - Sử dụng `setup.sh` cho setup từ đầu
 - Sử dụng `scripts/fix_all_symlinks.sh` khi gặp lỗi symlinks
-- Giữ lại tất cả helper scripts để có thể sử dụng độc lập khi cần
+- Sử dụng `scripts/record_output_helper.sh` cho record output operations
+- Sử dụng `scripts/rtsp_helper.sh` cho RTSP operations
+- Giữ lại các utility scripts (OpenCV, etc.) cho các use case đặc biệt
 
