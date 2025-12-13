@@ -7,6 +7,7 @@
 #include <string>
 #include <functional>
 #include <atomic>
+#include <optional>
 
 /**
  * @brief Priority queue for AI processing requests

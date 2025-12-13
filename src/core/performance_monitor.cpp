@@ -39,15 +39,23 @@ void PerformanceMonitor::recordRequest(const std::string& endpoint,
     }
 }
 
-PerformanceMonitor::EndpointMetrics PerformanceMonitor::getEndpointMetrics(const std::string& endpoint) const {
+PerformanceMonitor::EndpointMetricsSnapshot PerformanceMonitor::getEndpointMetrics(const std::string& endpoint) const {
     std::lock_guard<std::mutex> lock(mutex_);
     
     auto it = endpoint_metrics_.find(endpoint);
     if (it != endpoint_metrics_.end()) {
-        return it->second;
+        const auto& metrics = it->second;
+        EndpointMetricsSnapshot snapshot;
+        snapshot.total_requests = metrics.total_requests.load();
+        snapshot.successful_requests = metrics.successful_requests.load();
+        snapshot.failed_requests = metrics.failed_requests.load();
+        snapshot.avg_latency_ms = metrics.avg_latency_ms.load();
+        snapshot.max_latency_ms = metrics.max_latency_ms.load();
+        snapshot.min_latency_ms = metrics.min_latency_ms.load();
+        return snapshot;
     }
     
-    return EndpointMetrics{};
+    return EndpointMetricsSnapshot{};
 }
 
 Json::Value PerformanceMonitor::getMetricsJSON() const {

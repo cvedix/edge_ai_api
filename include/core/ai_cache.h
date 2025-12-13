@@ -7,6 +7,7 @@
 #include <optional>
 #include <list>
 #include <functional>
+#include <atomic>
 
 /**
  * @brief Cache for AI processing results

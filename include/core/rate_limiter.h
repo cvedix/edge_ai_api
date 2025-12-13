@@ -38,8 +38,9 @@ public:
      * @brief Get remaining tokens for a key
      * @param key Client identifier
      * @return Number of remaining tokens
+     * @note This method may refill tokens, so it's not const
      */
-    size_t getRemainingTokens(const std::string& key) const;
+    size_t getRemainingTokens(const std::string& key);
 
     /**
      * @brief Set adaptive throttling based on system load

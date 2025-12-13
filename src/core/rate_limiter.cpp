@@ -62,7 +62,7 @@ void RateLimiter::reset(const std::string& key) {
     buckets_.erase(key);
 }
 
-size_t RateLimiter::getRemainingTokens(const std::string& key) const {
+size_t RateLimiter::getRemainingTokens(const std::string& key) {
     std::lock_guard<std::mutex> lock(mutex_);
     
     auto it = buckets_.find(key);
@@ -70,8 +70,8 @@ size_t RateLimiter::getRemainingTokens(const std::string& key) const {
         return calculateAdaptiveLimit(max_requests_);
     }
     
-    auto bucket = it->second;
-    refill(const_cast<TokenBucket&>(bucket));
+    auto& bucket = it->second;
+    refill(bucket);
     
     return bucket.tokens;
 }
