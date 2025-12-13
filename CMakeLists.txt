@@ -705,16 +705,24 @@ message(STATUS "✓ CVEDIX SDK linked: cvedix::cvedix_instance_sdk")
 if(OpenCV_FOUND)
     if(TARGET opencv_core)
         # Modern CMake way
+        # CVEDIX SDK requires opencv_dnn module (for cv::dnn::Net)
+        # Only link the modules we actually need (avoid CUDA modules if not built)
         target_link_libraries(edge_ai_api PRIVATE 
             opencv_core
             opencv_imgproc
             opencv_imgcodecs
             opencv_videoio
             opencv_highgui
+            opencv_dnn
         )
+        # Explicitly exclude CUDA modules if they don't exist
+        # This prevents linker errors when CUDA modules are not available
     else()
-        # Fallback to pkg-config libraries
-        target_link_libraries(edge_ai_api PRIVATE ${OpenCV_LIBRARIES})
+        # Fallback to pkg-config libraries, but filter out CUDA modules
+        set(OPENCV_LIBS ${OpenCV_LIBRARIES})
+        # Remove CUDA modules from the list
+        list(FILTER OPENCV_LIBS EXCLUDE REGEX "opencv_cuda")
+        target_link_libraries(edge_ai_api PRIVATE ${OPENCV_LIBS})
     endif()
     message(STATUS "✓ OpenCV linked to edge_ai_api")
 endif()
@@ -745,6 +753,11 @@ if(EXISTS "${CMAKE_SOURCE_DIR}/third_party/hwinfo/CMakeLists.txt")
     add_subdirectory(third_party/hwinfo)
     target_link_libraries(edge_ai_api PRIVATE lfreist-hwinfo::hwinfo)
     message(STATUS "✓ hwinfo linked to edge_ai_api")
+    # Add system_info_handler if hwinfo is available
+    target_sources(edge_ai_api PRIVATE src/api/system_info_handler.cpp)
+    # Define macro to enable SystemInfoHandler in main.cpp
+    target_compile_definitions(edge_ai_api PRIVATE ENABLE_SYSTEM_INFO_HANDLER)
+    message(STATUS "✓ system_info_handler enabled (hwinfo available)")
 elseif(AUTO_DOWNLOAD_DEPENDENCIES)
     # Use FetchContent to download hwinfo automatically
     message(STATUS "hwinfo submodule not found. Downloading via FetchContent...")
@@ -765,6 +778,11 @@ elseif(AUTO_DOWNLOAD_DEPENDENCIES)
     
     target_link_libraries(edge_ai_api PRIVATE lfreist-hwinfo::hwinfo)
     message(STATUS "✓ hwinfo downloaded and linked to edge_ai_api")
+    # Add system_info_handler if hwinfo is available
+    target_sources(edge_ai_api PRIVATE src/api/system_info_handler.cpp)
+    # Define macro to enable SystemInfoHandler in main.cpp
+    target_compile_definitions(edge_ai_api PRIVATE ENABLE_SYSTEM_INFO_HANDLER)
+    message(STATUS "✓ system_info_handler enabled (hwinfo available)")
 else()
     message(WARNING "hwinfo not found. System info endpoints will not work.")
     message(WARNING "Options:")

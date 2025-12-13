@@ -28,6 +28,7 @@ set(TEST_SOURCES
     test_instance_update.cpp
     test_instance_status_summary.cpp
     test_instance_get_config.cpp
+    test_instance_configure_stream.cpp
     test_solution_handler.cpp
     test_config_handler.cpp
     test_system_info_handler.cpp
@@ -144,12 +145,14 @@ endif()
 # Link OpenCV (required for CVEDIX SDK)
 if(OpenCV_FOUND)
     if(TARGET opencv_core)
+        # CVEDIX SDK requires opencv_dnn module (for cv::dnn::Net)
         target_link_libraries(edge_ai_api_tests PRIVATE 
             opencv_core
             opencv_imgproc
             opencv_imgcodecs
             opencv_videoio
             opencv_highgui
+            opencv_dnn
         )
     else()
         target_link_libraries(edge_ai_api_tests PRIVATE ${OpenCV_LIBRARIES})
