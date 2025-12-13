@@ -1,5 +1,5 @@
 {
-  "solutionId": "ba_crossline_with_mqtt",
+  "solutionId": "ba_crossline_with_mqtt_fix",
   "solutionName": "Behavior Analysis - Crossline Detection with MQTT",
   "solutionType": "behavior_analysis",
   "isDefault": false,
@@ -39,8 +39,8 @@
       }
     },
     {
-      "nodeType": "json_mqtt_broker",
-      "nodeName": "json_mqtt_broker_{instanceId}",
+      "nodeType": "json_console_broker",
+      "nodeName": "json_console_broker_{instanceId}",
       "parameters": {
         "broke_for": "${BROKE_FOR}",
         "broking_cache_warn_threshold": "1000",

@@ -168,7 +168,25 @@ private:
     // Thread management for logging threads (prevent memory leaks from detached threads)
     std::unordered_map<std::string, std::atomic<bool>> logging_thread_stop_flags_;
     std::unordered_map<std::string, std::thread> logging_threads_;
+    // Thread management for video loop monitoring threads
+    std::unordered_map<std::string, std::atomic<bool>> video_loop_thread_stop_flags_;
+    std::unordered_map<std::string, std::thread> video_loop_threads_;
     mutable std::mutex thread_mutex_; // Separate mutex for thread management to avoid deadlock
+    
+    // Thread management for MQTT JSON reader threads (prevent memory leaks and segmentation faults)
+    // Use shared_ptr to atomic<bool> to avoid capturing 'this' in thread lambda
+    std::unordered_map<std::string, std::shared_ptr<std::atomic<bool>>> mqtt_thread_stop_flags_;
+    std::unordered_map<std::string, std::thread> mqtt_threads_;
+    std::unordered_map<std::string, int> mqtt_pipe_write_fds_; // Track pipe write FDs to close them on stop
+    std::unordered_map<std::string, int> mqtt_stdout_backups_; // Track stdout backups to restore on stop
+    mutable std::mutex mqtt_thread_mutex_; // Separate mutex for MQTT thread management
+    
+    // Thread management for RTSP connection monitoring and auto-reconnect
+    std::unordered_map<std::string, std::shared_ptr<std::atomic<bool>>> rtsp_monitor_stop_flags_;
+    std::unordered_map<std::string, std::thread> rtsp_monitor_threads_;
+    mutable std::unordered_map<std::string, std::chrono::steady_clock::time_point> rtsp_last_activity_; // Track last frame received time (mutable for const methods)
+    std::unordered_map<std::string, std::atomic<int>> rtsp_reconnect_attempts_; // Track reconnect attempts
+    mutable std::mutex rtsp_monitor_mutex_; // Separate mutex for RTSP monitor thread management
     
     /**
      * @brief Create InstanceInfo from request
@@ -189,9 +207,10 @@ private:
     /**
      * @brief Start pipeline nodes
      * @param nodes Pipeline nodes to start
+     * @param instanceId Instance ID for accessing instance parameters
      * @param isRestart If true, this is a restart (use longer delays for model initialization)
      */
-    bool startPipeline(const std::vector<std::shared_ptr<cvedix_nodes::cvedix_node>>& nodes, bool isRestart = false);
+    bool startPipeline(const std::vector<std::shared_ptr<cvedix_nodes::cvedix_node>>& nodes, const std::string& instanceId, bool isRestart = false);
     
     /**
      * @brief Stop and cleanup pipeline nodes
@@ -220,9 +239,53 @@ private:
     void stopLoggingThread(const std::string& instanceId);
     
     /**
+     * @brief Stop and cleanup MQTT thread for an instance
+     * @param instanceId Instance ID
+     */
+    void stopMqttThread(const std::string& instanceId);
+    
+    /**
      * @brief Start logging thread for an instance (if needed)
      * @param instanceId Instance ID
      */
     void startLoggingThread(const std::string& instanceId);
+    
+    /**
+     * @brief Start video loop monitoring thread for file-based instances
+     * @param instanceId Instance ID
+     */
+    void startVideoLoopThread(const std::string& instanceId);
+    
+    /**
+     * @brief Stop video loop monitoring thread for an instance
+     * @param instanceId Instance ID
+     */
+    void stopVideoLoopThread(const std::string& instanceId);
+    
+    /**
+     * @brief Start RTSP connection monitoring thread for an instance
+     * Monitors RTSP connection status and auto-reconnects if stream is lost
+     * @param instanceId Instance ID
+     */
+    void startRTSPMonitorThread(const std::string& instanceId);
+    
+    /**
+     * @brief Stop RTSP connection monitoring thread for an instance
+     * @param instanceId Instance ID
+     */
+    void stopRTSPMonitorThread(const std::string& instanceId);
+    
+    /**
+     * @brief Update RTSP last activity time (called when frame is received)
+     * @param instanceId Instance ID
+     */
+    void updateRTSPActivity(const std::string& instanceId);
+    
+    /**
+     * @brief Attempt to reconnect RTSP stream for an instance
+     * @param instanceId Instance ID
+     * @return true if reconnection was successful
+     */
+    bool reconnectRTSPStream(const std::string& instanceId);
 };
 

@@ -1,6 +1,8 @@
 #include "core/pipeline_builder.h"
 #include "config/system_config.h"
 #include "core/platform_detector.h"
+#include <cstdlib>  // For setenv
+#include <cstring>  // For strlen
 #include <cvedix/nodes/src/cvedix_rtsp_src_node.h>
 #include <cvedix/nodes/src/cvedix_file_src_node.h>
 #include <cvedix/nodes/src/cvedix_app_src_node.h>
@@ -830,16 +832,19 @@ std::shared_ptr<cvedix_nodes::cvedix_node> PipelineBuilder::createNode(
             return createBACrosslineOSDNode(nodeName, params);
         }
         // Broker nodes
-        // Temporarily disabled JSON broker nodes due to cereal dependency issue
         else if (nodeConfig.nodeType == "json_console_broker") {
-            std::cerr << "[PipelineBuilder] json_console_broker is temporarily disabled due to cereal dependency issue" << std::endl;
-            return nullptr;
+            return createJSONConsoleBrokerNode(nodeName, params, req);
         } else if (nodeConfig.nodeType == "json_enhanced_console_broker") {
             std::cerr << "[PipelineBuilder] json_enhanced_console_broker is temporarily disabled due to cereal dependency issue" << std::endl;
             return nullptr;
         } else if (nodeConfig.nodeType == "json_mqtt_broker") {
 #ifdef CVEDIX_WITH_MQTT
-            return createJSONMQTTBrokerNode(nodeName, params, req);
+            // CRITICAL: cvedix_json_mqtt_broker_node is currently broken and causes crashes
+            // Disabled to prevent application crashes
+            // Use json_console_broker with MQTT publishing in instance_registry instead
+            std::cerr << "[PipelineBuilder] WARNING: json_mqtt_broker_node is DISABLED due to crash issues" << std::endl;
+            std::cerr << "[PipelineBuilder] Use json_console_broker node instead - MQTT will be handled by instance_registry" << std::endl;
+            return nullptr;
 #else
             std::cerr << "[PipelineBuilder] json_mqtt_broker requires CVEDIX_WITH_MQTT to be enabled" << std::endl;
             return nullptr;
@@ -1127,11 +1132,51 @@ std::shared_ptr<cvedix_nodes::cvedix_node> PipelineBuilder::createRTSPSourceNode
             }
         }
         
+        // Configure GStreamer environment variables for unstable streams
+        // These settings help handle network issues and prevent crashes
+        std::cerr << "[PipelineBuilder] Configuring GStreamer for unstable RTSP streams..." << std::endl;
+        
+        // Set buffer and timeout settings to handle unstable streams
+        // rtspsrc buffer-mode: 0=auto, 1=synced, 2=slave
+        // Use synced mode for better stability with unstable streams
+        if (!std::getenv("GST_RTSP_BUFFER_MODE")) {
+            setenv("GST_RTSP_BUFFER_MODE", "1", 0);  // 1 = synced mode
+            std::cerr << "[PipelineBuilder] Set GST_RTSP_BUFFER_MODE=1 (synced mode for unstable streams)" << std::endl;
+        }
+        
+        // Increase buffer size to handle network jitter
+        if (!std::getenv("GST_RTSP_BUFFER_SIZE")) {
+            setenv("GST_RTSP_BUFFER_SIZE", "10485760", 0);  // 10MB buffer
+            std::cerr << "[PipelineBuilder] Set GST_RTSP_BUFFER_SIZE=10485760 (10MB buffer for unstable streams)" << std::endl;
+        }
+        
+        // Increase timeout to handle slow/unstable connections
+        if (!std::getenv("GST_RTSP_TIMEOUT")) {
+            setenv("GST_RTSP_TIMEOUT", "10000000000", 0);  // 10 seconds (in nanoseconds)
+            std::cerr << "[PipelineBuilder] Set GST_RTSP_TIMEOUT=10000000000 (10s timeout)" << std::endl;
+        }
+        
+        // Enable drop-on-latency to prevent buffer overflow
+        if (!std::getenv("GST_RTSP_DROP_ON_LATENCY")) {
+            setenv("GST_RTSP_DROP_ON_LATENCY", "true", 0);
+            std::cerr << "[PipelineBuilder] Set GST_RTSP_DROP_ON_LATENCY=true (drop frames on latency)" << std::endl;
+        }
+        
+        // Set latency to handle network jitter (in nanoseconds)
+        if (!std::getenv("GST_RTSP_LATENCY")) {
+            setenv("GST_RTSP_LATENCY", "2000000000", 0);  // 2 seconds latency
+            std::cerr << "[PipelineBuilder] Set GST_RTSP_LATENCY=2000000000 (2s latency buffer)" << std::endl;
+        }
+        
+        // Disable do-rtsp-keep-alive to reduce connection overhead (may help with unstable streams)
+        // Note: This is a trade-off - keep-alive helps detect disconnections, but can cause issues with unstable streams
+        
         // Create node - wrap in try-catch to catch any assertion failures
         std::shared_ptr<cvedix_nodes::cvedix_rtsp_src_node> node;
         try {
             std::cerr << "[PipelineBuilder] Calling cvedix_rtsp_src_node constructor..." << std::endl;
             std::cerr << "[PipelineBuilder] Current GST_RTSP_PROTOCOLS=" << (std::getenv("GST_RTSP_PROTOCOLS") ? std::getenv("GST_RTSP_PROTOCOLS") : "not set") << std::endl;
+            std::cerr << "[PipelineBuilder] GStreamer RTSP settings configured for unstable streams" << std::endl;
             node = std::make_shared<cvedix_nodes::cvedix_rtsp_src_node>(
                 nodeName,
                 channel,
@@ -3785,9 +3830,6 @@ std::shared_ptr<cvedix_nodes::cvedix_node> PipelineBuilder::createUDPSourceNode(
 
 // ========== Broker Nodes Implementation ==========
 
-// Temporarily disabled JSON broker nodes due to cereal dependency issue
-// TODO: Re-enable after fixing cereal symlink or CVEDIX SDK update
-/*
 std::shared_ptr<cvedix_nodes::cvedix_node> PipelineBuilder::createJSONConsoleBrokerNode(
     const std::string& nodeName,
     const std::map<std::string, std::string>& params,
@@ -3882,48 +3924,6 @@ std::shared_ptr<cvedix_nodes::cvedix_node> PipelineBuilder::createJSONEnhancedCo
     }
 }
 
-#ifdef CVEDIX_WITH_MQTT
-std::shared_ptr<cvedix_nodes::cvedix_node> PipelineBuilder::createJSONMQTTBrokerNode(
-    const std::string& nodeName,
-    const std::map<std::string, std::string>& params,
-    const CreateInstanceRequest& req) {
-    
-    try {
-        std::string brokeForStr = params.count("broke_for") ? params.at("broke_for") : "NORMAL";
-        cvedix_nodes::cvedix_broke_for brokeFor = cvedix_nodes::cvedix_broke_for::NORMAL;
-        
-        if (brokeForStr == "FACE") {
-            brokeFor = cvedix_nodes::cvedix_broke_for::FACE;
-        } else if (brokeForStr == "TEXT") {
-            brokeFor = cvedix_nodes::cvedix_broke_for::TEXT;
-        } else if (brokeForStr == "POSE") {
-            brokeFor = cvedix_nodes::cvedix_broke_for::POSE;
-        }
-        
-        // MQTT broker node requires custom callbacks - use fake/default for now
-        // In real implementation, these should be provided via additionalParams or config
-        std::cerr << "[PipelineBuilder] Creating JSON MQTT broker node:" << std::endl;
-        std::cerr << "  Name: '" << nodeName << "'" << std::endl;
-        std::cerr << "  Broke for: " << brokeForStr << std::endl;
-        std::cerr << "  NOTE: MQTT broker requires custom callbacks - using default implementation" << std::endl;
-        
-        // Create with default/null callbacks (fake data)
-        auto node = std::make_shared<cvedix_nodes::cvedix_json_mqtt_broker_node>(
-            nodeName,
-            brokeFor,
-            nullptr,  // json_transformer (nullptr = use original JSON)
-            nullptr   // mqtt_publisher (nullptr = will need to be set later or use default)
-        );
-        
-        std::cerr << "[PipelineBuilder] ✓ JSON MQTT broker node created successfully" << std::endl;
-        return node;
-    } catch (const std::exception& e) {
-        std::cerr << "[PipelineBuilder] Exception in createJSONMQTTBrokerNode: " << e.what() << std::endl;
-        throw;
-    }
-}
-#endif
-
 #ifdef CVEDIX_WITH_KAFKA
 std::shared_ptr<cvedix_nodes::cvedix_node> PipelineBuilder::createJSONKafkaBrokerNode(
     const std::string& nodeName,
@@ -3988,16 +3988,7 @@ std::shared_ptr<cvedix_nodes::cvedix_node> PipelineBuilder::createJSONKafkaBroke
     }
 }
 #endif
-*/
-// Stub implementations to avoid linker errors
-std::shared_ptr<cvedix_nodes::cvedix_node> PipelineBuilder::createJSONConsoleBrokerNode(
-    const std::string&, const std::map<std::string, std::string>&, const CreateInstanceRequest&) {
-    return nullptr;
-}
-std::shared_ptr<cvedix_nodes::cvedix_node> PipelineBuilder::createJSONEnhancedConsoleBrokerNode(
-    const std::string&, const std::map<std::string, std::string>&, const CreateInstanceRequest&) {
-    return nullptr;
-}
+
 #ifdef CVEDIX_WITH_MQTT
 std::shared_ptr<cvedix_nodes::cvedix_node> PipelineBuilder::createJSONMQTTBrokerNode(
     const std::string& nodeName,
@@ -4140,8 +4131,8 @@ std::shared_ptr<cvedix_nodes::cvedix_node> PipelineBuilder::createJSONMQTTBroker
         // This prevents blocking the node thread when MQTT publish is slow
         struct NonBlockingMQTTPublisher {
             enum {
-                MAX_QUEUE_SIZE = 10000,  // Max messages in queue (increased to handle bursts)
-                PUBLISH_TIMEOUT_MS = 100   // Timeout for each publish attempt
+                MAX_QUEUE_SIZE = 1,  // Only keep 1 message (latest) - drop all old messages immediately
+                PUBLISH_TIMEOUT_MS = 50   // Reduced timeout - fail fast if publish is slow
             };
             
             std::shared_ptr<struct mosquitto> client;
@@ -4174,26 +4165,69 @@ std::shared_ptr<cvedix_nodes::cvedix_node> PipelineBuilder::createJSONMQTTBroker
                             });
                         }
                         
-                        // Process all messages in queue (up to batch size)
-                        size_t batch_size = 0;
-                        const size_t MAX_BATCH = 100;  // Process up to 100 messages per iteration (increased for better throughput)
+                        // CRITICAL: Only process the LATEST message, skip all old messages to prevent backlog
+                        // This ensures we always send the current state, not outdated data
+                        std::string json_data;
+                        bool has_message = false;
                         
-                        while (!message_queue.empty() && batch_size < MAX_BATCH && running.load()) {
-                            std::string json_data = std::move(message_queue.front());
-                            message_queue.pop();
-                            lock.unlock();
+                        if (!message_queue.empty()) {
+                            // Get the LATEST message (most recent) - skip all old messages
+                            // Clear all old messages and only keep/process the newest one
+                            while (message_queue.size() > 1) {
+                                message_queue.pop();  // Drop old messages
+                                dropped_count.fetch_add(1);
+                            }
                             
-                            // Publish with timeout protection
-                            // Note: mosquitto_publish() may block if internal buffer is full,
-                            // but we call mosquitto_loop() regularly to prevent this
+                            // Now queue has only 1 message (the latest)
+                            if (!message_queue.empty()) {
+                                json_data = std::move(message_queue.front());
+                                message_queue.pop();
+                                has_message = true;
+                            }
+                        }
+                        
+                        lock.unlock();
+                        
+                        // Only process if we have a message
+                        if (!has_message || !running.load()) {
+                            continue;
+                        }
+                            
+                            // CRITICAL: Use async with timeout to prevent mosquitto_publish() from blocking indefinitely
+                            // mosquitto_publish() can block if internal buffer is full, causing deadlock
                             auto publish_start = std::chrono::steady_clock::now();
                             
-                            // Call mosquitto_loop() to ensure network I/O happens
-                            // This is important to prevent internal buffer from filling up
-                            mosquitto_loop(client.get(), 0, 1);  // Non-blocking, max 1 packet
+                            // Call mosquitto_loop() BEFORE publish to drain buffer and prevent blocking
+                            mosquitto_loop(client.get(), 0, 50);  // Process up to 50 packets to drain buffer
                             
-                            int result = mosquitto_publish(client.get(), nullptr, topic.c_str(), 
-                                                          json_data.length(), json_data.c_str(), 0, false);
+                            // Wrap mosquitto_publish() in async with timeout to prevent blocking
+                            // Capture json_data by value (copy) since it's moved from queue
+                            std::string json_data_copy = json_data;
+                            std::string topic_copy = topic;  // Copy topic to avoid capture issues
+                            int result = MOSQ_ERR_UNKNOWN;
+                            auto publish_future = std::async(std::launch::async, [this, json_data_copy, topic_copy]() -> int {
+                                return mosquitto_publish(client.get(), nullptr, topic_copy.c_str(), 
+                                                        json_data_copy.length(), json_data_copy.c_str(), 0, false);
+                            });
+                            
+                            // Wait for publish with timeout - if it takes too long, drop the message
+                            auto status = publish_future.wait_for(std::chrono::milliseconds(PUBLISH_TIMEOUT_MS));
+                            if (status == std::future_status::ready) {
+                                result = publish_future.get();
+                            } else {
+                                // Timeout - publish is taking too long, drop message to prevent deadlock
+                                dropped_count.fetch_add(1);
+                                auto publish_duration = std::chrono::duration_cast<std::chrono::milliseconds>(
+                                    std::chrono::steady_clock::now() - publish_start).count();
+                                if (dropped_count.load() % 100 == 0) {
+                                    std::cerr << "[MQTT] Warning: Publish timeout after " << publish_duration 
+                                             << "ms, dropping message to prevent deadlock (dropped: " 
+                                             << dropped_count.load() << ")" << std::endl;
+                                }
+                                // Message dropped, continue to next iteration (lock already unlocked)
+                                continue;
+                            }
+                            
                             auto publish_duration = std::chrono::duration_cast<std::chrono::milliseconds>(
                                 std::chrono::steady_clock::now() - publish_start).count();
                             
@@ -4214,26 +4248,23 @@ std::shared_ptr<cvedix_nodes::cvedix_node> PipelineBuilder::createJSONMQTTBroker
                                 std::cerr << "[MQTT] Publish failed: " << mosquitto_strerror(result) << " (code: " << result << ")" << std::endl;
                             }
                             
-                            // If publish took too long, warn
+                            // If publish took too long (even if successful), warn
                             if (publish_duration > PUBLISH_TIMEOUT_MS) {
-                                std::cerr << "[MQTT] Warning: Publish took " << publish_duration 
-                                         << "ms (threshold: " << PUBLISH_TIMEOUT_MS << "ms)" << std::endl;
+                                if (published_count.load() % 100 == 0) {
+                                    std::cerr << "[MQTT] Warning: Publish took " << publish_duration 
+                                             << "ms (threshold: " << PUBLISH_TIMEOUT_MS << "ms)" << std::endl;
+                                }
                             }
                             
-                            lock.lock();
-                            batch_size++;
-                        }
-                        
-                        if (lock.owns_lock()) {
-                            lock.unlock();
-                        }
+                        // Message processed (or dropped), continue to next iteration
+                        // No need to lock here since we already unlocked above
                         
                         // Call mosquitto_loop() after processing batch to ensure messages are sent
-                        // This is critical to prevent internal buffer from filling up
-                        mosquitto_loop(client.get(), 0, 10);  // Non-blocking, process up to 10 packets
+                        // Process more packets to drain buffer and prevent buildup
+                        mosquitto_loop(client.get(), 0, 100);  // Increased to 100 packets to drain buffer faster
                         
-                        // Small sleep to prevent CPU spinning (reduced for better throughput)
-                        std::this_thread::sleep_for(std::chrono::microseconds(100));
+                        // Longer sleep to prevent CPU spinning and allow network I/O
+                        std::this_thread::sleep_for(std::chrono::milliseconds(10));
                     }
                     
                     std::cerr << "[MQTT] Background publisher thread stopped" << std::endl;
@@ -4262,23 +4293,30 @@ std::shared_ptr<cvedix_nodes::cvedix_node> PipelineBuilder::createJSONMQTTBroker
                          << ", Dropped=" << dropped_count.load() << std::endl;
             }
             
-            // Non-blocking enqueue - drops message if queue is full
+            // Non-blocking enqueue - only keeps the LATEST message, drops all old messages
+            // This ensures we always send current state, not backlog of old data
             void enqueue(const std::string& json_data) {
                 std::lock_guard<std::mutex> lock(queue_mutex);
                 
-                if (message_queue.size() >= MAX_QUEUE_SIZE) {
-                    // Queue full - drop oldest message and add new one (FIFO drop)
-                    if (!message_queue.empty()) {
+                // CRITICAL: Only keep 1 message (the latest) to prevent backlog and deadlock
+                // If queue already has messages, drop them all and only keep the new one
+                if (!message_queue.empty()) {
+                    // Drop all old messages - we only care about the latest state
+                    size_t dropped = message_queue.size();
+                    while (!message_queue.empty()) {
                         message_queue.pop();
-                        int dropped = dropped_count.fetch_add(1) + 1;
-                        // Log warning every 100 dropped messages to avoid spam
-                        if (dropped % 100 == 0) {
-                            std::cerr << "[MQTT] Warning: Publisher queue full, dropped " << dropped 
-                                     << " messages (queue size: " << MAX_QUEUE_SIZE << ")" << std::endl;
-                        }
+                    }
+                    dropped_count.fetch_add(dropped);
+                    
+                    // Log warning occasionally to indicate we're dropping old messages
+                    if (dropped_count.load() % 100 == 0 && dropped > 0) {
+                        std::cerr << "[MQTT] Info: Dropped " << dropped 
+                                 << " old messages, keeping only latest (total dropped: " 
+                                 << dropped_count.load() << ") - sending current state only" << std::endl;
                     }
                 }
                 
+                // Add the new (latest) message
                 message_queue.push(json_data);
                 queue_cv.notify_one();
             }
