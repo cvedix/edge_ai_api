@@ -75,7 +75,7 @@ curl -X POST http://localhost:8080/v1/core/instances \
     "instanceId": "my_instance",
     "solutionId": "face_detection",
     "additionalParams": {
-      "RTSP_URL": "rtsp://example.com/stream",
+      "RTSP_URL": "rtsp://localhost/stream",
       "MODEL_PATH": "/path/to/yunet.onnx"
     }
   }'

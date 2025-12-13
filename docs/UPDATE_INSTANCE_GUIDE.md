@@ -26,7 +26,7 @@ PUT /v1/core/instances/{instanceId}
   "detectorMode": "SmartDetection",
   "detectionSensitivity": "High",
   "additionalParams": {
-    "RTSP_URL": "rtsp://new-url:8554/stream",
+    "RTSP_URL": "rtsp://localhost:8554/stream",
     "MODEL_PATH": "/path/to/model"
   }
 }
@@ -83,7 +83,7 @@ Bạn có thể gửi **toàn bộ hoặc một phần** của JSON config theo 
   },
   "Input": {
     "media_type": "IP Camera",
-    "uri": "gstreamer:///urisourcebin uri=rtsp://new-url:8554/stream ! decodebin ! videoconvert ! video/x-raw, format=NV12 ! appsink drop=true name=cvdsink"
+    "uri": "gstreamer:///urisourcebin uri=rtsp://localhost:8554/stream ! decodebin ! videoconvert ! video/x-raw, format=NV12 ! appsink drop=true name=cvdsink"
   },
   "Output": {
     "JSONExport": {
@@ -96,7 +96,7 @@ Bạn có thể gửi **toàn bộ hoặc một phần** của JSON config theo 
           "fps": 10
         },
         "enabled": true,
-        "uri": "rtsp://new-output:8554/stream"
+        "uri": "rtsp://localhost:8554/stream"
       }
     }
   },
@@ -296,7 +296,7 @@ curl -X PUT http://localhost:8080/v1/core/instances/b9bfa916-34c5-422c-9d7d-3391
   -H "Content-Type: application/json" \
   -d '{
     "Input": {
-      "uri": "gstreamer:///urisourcebin uri=rtsp://new-camera:8554/stream ! decodebin ! videoconvert ! video/x-raw, format=NV12 ! appsink drop=true name=cvdsink"
+      "uri": "gstreamer:///urisourcebin uri=rtsp://localhost:8554/stream ! decodebin ! videoconvert ! video/x-raw, format=NV12 ! appsink drop=true name=cvdsink"
     }
   }'
 ```

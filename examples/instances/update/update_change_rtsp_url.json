@@ -1,6 +1,6 @@
 {
   "additionalParams": {
-    "RTSP_URL": "rtsp://new-server.example.com:8554/live/new_stream"
+    "RTSP_URL": "rtsp://localhost:8554/live/new_stream"
   }
 }
 

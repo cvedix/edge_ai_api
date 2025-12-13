@@ -79,10 +79,24 @@ int main() {
     std::cout << std::endl;
 
     // RTSP / RTMP configuration
+    // SECURITY: Require environment variables - no hardcoded URLs
     const char *env_rtsp = std::getenv("CVEDIX_RTSP_URL");
     const char *env_rtmp = std::getenv("CVEDIX_RTMP_URL");
-    const std::string rtsp_url = env_rtsp ? env_rtsp : "rtsp://localhost:18554/9L02DA3PAJ39B2F";
-    const std::string rtmp_url = env_rtmp ? env_rtmp : "rtmp://localhost:1935/live/camera_traffic_usa_ai";
+    
+    if (!env_rtsp || strlen(env_rtsp) == 0) {
+        std::cerr << "[ERROR] CVEDIX_RTSP_URL environment variable is required" << std::endl;
+        std::cerr << "[ERROR] Please set it before running: export CVEDIX_RTSP_URL=rtsp://your-server:port/stream" << std::endl;
+        return EXIT_FAILURE;
+    }
+    
+    if (!env_rtmp || strlen(env_rtmp) == 0) {
+        std::cerr << "[ERROR] CVEDIX_RTMP_URL environment variable is required" << std::endl;
+        std::cerr << "[ERROR] Please set it before running: export CVEDIX_RTMP_URL=rtmp://your-server:port/live/stream" << std::endl;
+        return EXIT_FAILURE;
+    }
+    
+    const std::string rtsp_url = env_rtsp;
+    const std::string rtmp_url = env_rtmp;
 
     // Chuẩn bị đường dẫn dữ liệu/mô hình
     const std::string weights_path = resolve_path("models/det_cls/yolov3-tiny-2022-0721_best.weights");
