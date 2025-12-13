@@ -44,8 +44,8 @@ TEST_F(MetricsHandlerTest, GetMetricsReturnsPrometheusFormat) {
     // Prometheus metrics should be text/plain
     EXPECT_EQ(response->contentType(), CT_TEXT_PLAIN);
     
-    // Get response body
-    std::string body = response->body();
+    // Get response body (convert string_view to string)
+    std::string body = std::string(response->body());
     EXPECT_FALSE(body.empty());
     
     // Prometheus format should contain at least some metrics
@@ -95,7 +95,7 @@ TEST_F(MetricsHandlerTest, MetricsResponseIsNotEmpty) {
     ASSERT_TRUE(callbackCalled);
     ASSERT_NE(response, nullptr);
     
-    std::string body = response->body();
+    std::string body = std::string(response->body());
     // Even if no custom metrics, should return something (even if empty or just comments)
     // But we'll just check it doesn't crash
     EXPECT_TRUE(true); // If we get here, it didn't crash

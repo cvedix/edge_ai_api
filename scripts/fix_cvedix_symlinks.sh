@@ -1,6 +1,7 @@
 #!/bin/bash
-# Script tự động tạo symlinks cho CVEDIX SDK libraries
-# Giải quyết lỗi CMake khi SDK được cài ở /opt/cvedix thay vì /usr
+# Script to fix CVEDIX SDK library symlinks
+# This script creates symlinks from /usr/lib/ to /opt/cvedix/lib/ for libraries
+# that CMake expects to find in /usr/lib/
 
 set -e
 
@@ -12,13 +13,14 @@ echo "CVEDIX SDK Symlink Fix Script"
 echo "=========================================="
 echo ""
 
-# Kiểm tra thư mục CVEDIX tồn tại
+# Check if CVEDIX directory exists
 if [ ! -d "$CVEDIX_LIB_DIR" ]; then
     echo "❌ Error: CVEDIX library directory not found: $CVEDIX_LIB_DIR"
+    echo "Please ensure cvedix-ai-runtime package is installed."
     exit 1
 fi
 
-# Danh sách các thư viện cần symlink
+# List of libraries to symlink
 LIBS=(
     "libtinyexpr.so"
     "libcvedix_instance_sdk.so"
@@ -92,6 +94,8 @@ if [ $FIXED -gt 0 ] || [ $EXISTS -gt 0 ]; then
         TARGET="${TARGET_LIB_DIR}/${lib}"
         if [ -L "$TARGET" ]; then
             echo "✓ $lib -> $(readlink -f $TARGET)"
+        else
+            echo "✗ $TARGET not found!"
         fi
     done
     echo ""
@@ -99,4 +103,3 @@ if [ $FIXED -gt 0 ] || [ $EXISTS -gt 0 ]; then
 else
     echo "⚠️  No symlinks were created. Please check if CVEDIX SDK is installed correctly."
 fi
-

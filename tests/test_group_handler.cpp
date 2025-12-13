@@ -3,6 +3,9 @@
 #include "groups/group_registry.h"
 #include "groups/group_storage.h"
 #include "instances/instance_registry.h"
+#include "solutions/solution_registry.h"
+#include "core/pipeline_builder.h"
+#include "instances/instance_storage.h"
 #include <drogon/HttpRequest.h>
 #include <drogon/HttpResponse.h>
 #include <json/json.h>
@@ -22,24 +25,34 @@ protected:
         test_storage_dir_ = std::filesystem::temp_directory_path() / "test_groups";
         std::filesystem::create_directories(test_storage_dir_);
         
-        // Create registry and storage instances
-        registry_ = std::make_unique<GroupRegistry>();
+        // Create registry and storage instances (GroupRegistry is singleton)
+        registry_ = &GroupRegistry::getInstance();
         storage_ = std::make_unique<GroupStorage>(test_storage_dir_.string());
         
-        // Create instance registry (minimal setup)
-        instance_registry_ = std::make_unique<InstanceRegistry>();
+        // Create instance registry dependencies
+        solution_registry_ = &SolutionRegistry::getInstance();
+        pipeline_builder_ = std::make_unique<PipelineBuilder>();
+        instance_storage_ = std::make_unique<InstanceStorage>(test_storage_dir_.string());
+        
+        // Create instance registry
+        instance_registry_ = std::make_unique<InstanceRegistry>(
+            *solution_registry_,
+            *pipeline_builder_,
+            *instance_storage_
+        );
         
         // Register with handler
-        GroupHandler::setGroupRegistry(registry_.get());
+        GroupHandler::setGroupRegistry(registry_);
         GroupHandler::setGroupStorage(storage_.get());
         GroupHandler::setInstanceRegistry(instance_registry_.get());
     }
 
     void TearDown() override {
         handler_.reset();
-        registry_.reset();
         storage_.reset();
         instance_registry_.reset();
+        instance_storage_.reset();
+        pipeline_builder_.reset();
         
         // Clean up test storage directory
         if (std::filesystem::exists(test_storage_dir_)) {
@@ -53,9 +66,12 @@ protected:
     }
 
     std::unique_ptr<GroupHandler> handler_;
-    std::unique_ptr<GroupRegistry> registry_;
+    GroupRegistry* registry_;  // Singleton, don't own
     std::unique_ptr<GroupStorage> storage_;
     std::unique_ptr<InstanceRegistry> instance_registry_;
+    SolutionRegistry* solution_registry_;  // Singleton, don't own
+    std::unique_ptr<PipelineBuilder> pipeline_builder_;
+    std::unique_ptr<InstanceStorage> instance_storage_;
     std::filesystem::path test_storage_dir_;
 };
 
