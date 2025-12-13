@@ -25,6 +25,10 @@ SERVICE_USER="edgeai"
 SERVICE_GROUP="edgeai"
 INSTALL_DIR="/opt/edge_ai_api"
 
+# External data directory (có thể override bằng EXTERNAL_DATA_DIR env var)
+# Mặc định: /mnt/sb1/data
+EXTERNAL_DATA_DIR="${EXTERNAL_DATA_DIR:-/mnt/sb1/data}"
+
 # Permission mode: "standard" (755) or "full" (777)
 # Standard: drwxr-xr-x (như Tabby, google, nvidia)
 # Full: drwxrwxrwx (như cvedix-rt) - cho phép mọi người đọc/ghi
@@ -145,6 +149,48 @@ else
     done
 fi
 
+# Create external data directory (e.g., /mnt/sb1/data)
+echo ""
+echo -e "${BLUE}Tạo thư mục dữ liệu ngoài...${NC}"
+if [ -n "$EXTERNAL_DATA_DIR" ] && [ "$EXTERNAL_DATA_DIR" != "" ]; then
+    # Create parent directory if it doesn't exist
+    EXTERNAL_DATA_PARENT=$(dirname "$EXTERNAL_DATA_DIR")
+    if [ ! -d "$EXTERNAL_DATA_PARENT" ]; then
+        mkdir -p "$EXTERNAL_DATA_PARENT"
+        echo -e "${GREEN}✓${NC} Đã tạo thư mục cha: $EXTERNAL_DATA_PARENT"
+    fi
+    
+    # Create the data directory
+    if [ ! -d "$EXTERNAL_DATA_DIR" ]; then
+        mkdir -p "$EXTERNAL_DATA_DIR"
+        echo -e "${GREEN}✓${NC} Đã tạo thư mục: $EXTERNAL_DATA_DIR"
+    else
+        echo -e "${GREEN}✓${NC} Thư mục đã tồn tại: $EXTERNAL_DATA_DIR"
+    fi
+    
+    # Set ownership
+    chown -R "$SERVICE_USER:$SERVICE_GROUP" "$EXTERNAL_DATA_DIR"
+    
+    # Set permissions based on mode
+    if [ "$PERMISSION_MODE" = "full" ]; then
+        chmod 777 "$EXTERNAL_DATA_DIR"
+        echo -e "${GREEN}✓${NC} Đã cấp quyền 777 cho: $EXTERNAL_DATA_DIR"
+    else
+        chmod 755 "$EXTERNAL_DATA_DIR"
+        echo -e "${GREEN}✓${NC} Đã cấp quyền 755 cho: $EXTERNAL_DATA_DIR"
+    fi
+    
+    # Verify write permission
+    if [ -w "$EXTERNAL_DATA_DIR" ]; then
+        echo -e "${GREEN}✓${NC} Xác nhận: Có quyền ghi vào $EXTERNAL_DATA_DIR"
+    else
+        echo -e "${YELLOW}⚠${NC} Cảnh báo: Không có quyền ghi vào $EXTERNAL_DATA_DIR"
+        echo -e "${YELLOW}⚠${NC} Kiểm tra quyền sở hữu và permissions"
+    fi
+else
+    echo -e "${YELLOW}⚠${NC} EXTERNAL_DATA_DIR không được cấu hình, bỏ qua"
+fi
+
 echo ""
 echo -e "${GREEN}===========================================${NC}"
 echo -e "${GREEN}✓ Hoàn tất!${NC}"
@@ -154,6 +200,9 @@ echo "Các thư mục đã được tạo:"
 for dir_name in "${!APP_DIRECTORIES[@]}"; do
     echo "  - $INSTALL_DIR/$dir_name (${APP_DIRECTORIES[$dir_name]})"
 done
+if [ -n "$EXTERNAL_DATA_DIR" ] && [ "$EXTERNAL_DATA_DIR" != "" ]; then
+    echo "  - $EXTERNAL_DATA_DIR (external data directory)"
+fi
 echo ""
 echo "Quyền sở hữu: $SERVICE_USER:$SERVICE_GROUP"
 echo ""
@@ -161,6 +210,10 @@ echo -e "${YELLOW}Lưu ý:${NC}"
 echo "  - Tất cả thư mục được tạo từ cấu hình tập trung"
 echo "  - Để thêm thư mục mới, chỉ cần cập nhật APP_DIRECTORIES"
 echo "  - Service sẽ tự động có quyền ghi vào các thư mục này"
+if [ -n "$EXTERNAL_DATA_DIR" ] && [ "$EXTERNAL_DATA_DIR" != "" ]; then
+    echo "  - Thư mục dữ liệu ngoài: $EXTERNAL_DATA_DIR"
+    echo "  - Để thay đổi, set biến môi trường: EXTERNAL_DATA_DIR=/path/to/data"
+fi
 echo ""
 if [ "$PERMISSION_MODE" = "full" ]; then
     echo -e "${YELLOW}Quyền hiện tại: FULL (777)${NC}"

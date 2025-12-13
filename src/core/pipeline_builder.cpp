@@ -408,6 +408,73 @@ std::vector<std::shared_ptr<cvedix_nodes::cvedix_node>> PipelineBuilder::buildPi
         }
     }
     
+    // Auto-add file_des node if RECORD_PATH is set in additionalParams
+    auto recordPathIt = req.additionalParams.find("RECORD_PATH");
+    if (recordPathIt != req.additionalParams.end() && !recordPathIt->second.empty()) {
+        std::string recordPath = recordPathIt->second;
+        std::cerr << "[PipelineBuilder] RECORD_PATH detected: " << recordPath << std::endl;
+        std::cerr << "[PipelineBuilder] Auto-adding file_des node for recording..." << std::endl;
+        
+        try {
+            // Create file_des node config
+            SolutionConfig::NodeConfig fileDesConfig;
+            fileDesConfig.nodeType = "file_des";
+            fileDesConfig.nodeName = "file_des_record_{instanceId}";
+            fileDesConfig.parameters["save_dir"] = recordPath;
+            fileDesConfig.parameters["name_prefix"] = "record";
+            fileDesConfig.parameters["max_duration"] = "10"; // 10 minutes per file
+            fileDesConfig.parameters["osd"] = "true"; // Include OSD overlay
+            
+            // Substitute {instanceId} in node name
+            std::string fileDesNodeName = fileDesConfig.nodeName;
+            size_t pos = fileDesNodeName.find("{instanceId}");
+            while (pos != std::string::npos) {
+                fileDesNodeName.replace(pos, 12, instanceId);
+                pos = fileDesNodeName.find("{instanceId}", pos + instanceId.length());
+            }
+            
+            // Create file_des node
+            auto fileDesNode = createFileDestinationNode(
+                fileDesNodeName,
+                fileDesConfig.parameters,
+                instanceId
+            );
+            
+            if (fileDesNode && !nodes.empty()) {
+                // Find the last non-destination node to attach to
+                // Destination nodes (file_des, rtmp_des, screen_des) don't forward frames,
+                // so we need to attach to the source node (usually OSD node)
+                std::shared_ptr<cvedix_nodes::cvedix_node> attachTarget = nullptr;
+                for (int i = static_cast<int>(nodes.size()) - 1; i >= 0; --i) {
+                    auto node = nodes[i];
+                    // Check if this is a destination node
+                    bool isDestNode = std::dynamic_pointer_cast<cvedix_nodes::cvedix_file_des_node>(node) ||
+                                     std::dynamic_pointer_cast<cvedix_nodes::cvedix_rtmp_des_node>(node) ||
+                                     std::dynamic_pointer_cast<cvedix_nodes::cvedix_screen_des_node>(node);
+                    if (!isDestNode) {
+                        attachTarget = node;
+                        break;
+                    }
+                }
+                
+                // Fallback to last node if no non-destination node found
+                if (!attachTarget) {
+                    attachTarget = nodes.back();
+                }
+                
+                // Connect file_des node to the target node
+                fileDesNode->attach_to({attachTarget});
+                nodes.push_back(fileDesNode);
+                std::cerr << "[PipelineBuilder] ✓ Auto-added file_des node for recording to: " << recordPath << std::endl;
+            } else {
+                std::cerr << "[PipelineBuilder] ⚠ Failed to create file_des node for recording" << std::endl;
+            }
+        } catch (const std::exception& e) {
+            std::cerr << "[PipelineBuilder] ⚠ Exception auto-adding file_des node: " << e.what() << std::endl;
+            std::cerr << "[PipelineBuilder] ⚠ Recording will not be available, but pipeline will continue" << std::endl;
+        }
+    }
+    
     std::cerr << "[PipelineBuilder] Successfully built pipeline with " << nodes.size() 
               << " nodes" << std::endl;
     return nodes;
