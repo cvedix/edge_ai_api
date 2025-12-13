@@ -21,10 +21,10 @@ protected:
         // Initialize dependencies
         auto queue = std::make_shared<PriorityQueue>();
         auto cache = std::make_shared<AICache>(100); // 100 MB cache
-        auto rate_limiter = std::make_shared<RateLimiter>(100, 60); // 100 requests per 60 seconds
-        auto resource_manager = std::make_shared<ResourceManager>();
+        auto rate_limiter = std::make_shared<RateLimiter>(100, std::chrono::seconds(60)); // 100 requests per 60 seconds
+        auto& resource_manager = ResourceManager::getInstance(); // Singleton
         
-        AIHandler::initialize(queue, cache, rate_limiter, resource_manager, 10); // max 10 concurrent
+        AIHandler::initialize(queue, cache, rate_limiter, std::shared_ptr<ResourceManager>(&resource_manager, [](ResourceManager*){}), 10); // max 10 concurrent
     }
 
     void TearDown() override {
