@@ -401,7 +401,7 @@ if [ "$START_SERVER" = true ]; then
                 echo "Tạo .env từ .env.example..."
                 cp "$PROJECT_ROOT/.env.example" "$PROJECT_ROOT/.env"
                 echo -e "${GREEN}✓${NC} Đã tạo .env file"
-                echo "  Vui lòng chỉnh sửa .env nếu cần, sau đó chạy lại:"
+                echo "  Vui lòng chỉnh sửa .env nếu cần, sau đó chạy:"
                 echo "  ./scripts/load_env.sh"
                 echo ""
                 echo "Hoặc chạy trực tiếp:"

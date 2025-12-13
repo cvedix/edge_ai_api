@@ -170,7 +170,7 @@ Các default solutions được bảo vệ bởi nhiều lớp:
 - ✅ Không thể load từ storage (nếu có ai đó manually edit)
 - ✅ Luôn được load từ code khi khởi động
 
-Xem thêm: [SOLUTION_SECURITY.md](./SOLUTION_SECURITY.md)
+**Lưu ý bảo mật:** Default solutions được load từ code khi khởi động, không thể bị thay đổi từ bên ngoài.
 
 ## Tự động Load Khi Khởi động
 
@@ -185,8 +185,7 @@ Khi ứng dụng khởi động:
 
 ## Thêm/Cập nhật Default Solutions
 
-Khi cần thêm hoặc cập nhật default solutions, xem hướng dẫn chi tiết:
-- **[HOW_TO_ADD_UPDATE_DEFAULT_SOLUTIONS.md](./HOW_TO_ADD_UPDATE_DEFAULT_SOLUTIONS.md)**
+Khi cần thêm hoặc cập nhật default solutions:
 
 Tóm tắt nhanh:
 1. Sửa code trong `src/solutions/solution_registry.cpp`
