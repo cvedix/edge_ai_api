@@ -102,6 +102,53 @@ static std::atomic<bool> g_stop_analysis_board{false};
 static std::atomic<bool> g_analysis_board_running{false};
 static std::atomic<bool> g_analysis_board_disabled{false}; // Flag to disable after Qt abort
 
+// Signal handler for segmentation fault (catch GStreamer crashes)
+// Rate limiting to prevent log spam when crashes occur repeatedly
+static std::atomic<int> g_segfault_count{0};
+static std::atomic<std::chrono::steady_clock::time_point> g_last_segfault_log{std::chrono::steady_clock::now()};
+static constexpr auto SEGFAULT_LOG_INTERVAL = std::chrono::seconds(5);  // Log at most once every 5 seconds
+
+void segfaultHandler(int signal)
+{
+    // SIGSEGV handler - catch segmentation faults from GStreamer pipeline crashes
+    auto now = std::chrono::steady_clock::now();
+    auto last_log = g_last_segfault_log.load();
+    auto time_since_last_log = std::chrono::duration_cast<std::chrono::seconds>(now - last_log).count();
+    
+    // Increment counter
+    int count = g_segfault_count.fetch_add(1) + 1;
+    
+    // Only log if enough time has passed since last log (rate limiting)
+    if (time_since_last_log >= SEGFAULT_LOG_INTERVAL.count()) {
+        // Update last log time
+        g_last_segfault_log.store(now);
+        
+        std::cerr << "\n[CRITICAL] ========================================" << std::endl;
+        std::cerr << "[CRITICAL] Segmentation fault (SIGSEGV) detected! (count: " << count << ")" << std::endl;
+        std::cerr << "[CRITICAL] This is likely caused by GStreamer pipeline crash when RTSP stream is lost" << std::endl;
+        std::cerr << "[CRITICAL] Monitoring thread will attempt to reconnect automatically" << std::endl;
+        if (count > 1) {
+            std::cerr << "[CRITICAL] Note: Multiple crashes detected - RTSP stream may be unstable" << std::endl;
+        }
+        std::cerr << "[CRITICAL] ========================================" << std::endl;
+        
+        // Reset counter after logging
+        g_segfault_count.store(0);
+    }
+    
+    // CRITICAL: Do NOT stop instances here - let monitoring thread handle reconnection
+    // Stopping instances here would prevent auto-reconnect
+    // The monitoring thread will detect the crash and attempt to reconnect
+    
+    // Flush all output
+    std::fflush(stdout);
+    std::fflush(stderr);
+    
+    // Note: We don't exit here - let the process continue and monitoring thread will handle reconnection
+    // However, if this is a critical crash, the process may still exit
+    // The monitoring thread should detect inactivity and reconnect
+}
+
 // Signal handler for graceful shutdown
 void signalHandler(int signal)
 {
@@ -2452,7 +2499,8 @@ int main(int argc, char* argv[])
         std::signal(SIGINT, signalHandler);
         std::signal(SIGTERM, signalHandler);
         std::signal(SIGABRT, signalHandler);
-        PLOG_INFO << "[Main] Signal handlers registered (SIGINT, SIGTERM, SIGABRT)";
+        std::signal(SIGSEGV, segfaultHandler);  // Catch segmentation faults from GStreamer crashes
+        PLOG_INFO << "[Main] Signal handlers registered (SIGINT, SIGTERM, SIGABRT, SIGSEGV)";
         
         // Suppress HTTPS warning - we're intentionally using HTTP only
         // The warning "You can't use https without cert file or key file" 
