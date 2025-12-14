@@ -2,6 +2,84 @@
 
 Tài liệu này hướng dẫn cách thiết lập môi trường phát triển cho Edge AI API project từ đầu.
 
+## 🚀 Setup Tự Động Từ Đầu Đến Cuối (Khuyến Nghị)
+
+Project có script tự động setup và start server từ đầu đến cuối:
+
+### Development Setup (Không cần sudo)
+
+```bash
+# Clone project (nếu chưa có)
+git clone https://github.com/cvedix/edge_ai_api.git
+cd edge_ai_api
+
+# Chạy script setup tự động
+./setup.sh
+```
+
+Script này sẽ tự động:
+- ✅ Kiểm tra prerequisites (OS, CMake version, dependencies)
+- ✅ Cài đặt system dependencies (build-essential, cmake, git, libssl-dev, ...)
+- ✅ Build project với CMake
+- ✅ Tạo file .env từ .env.example (nếu chưa có)
+- ✅ Khởi động server ở development mode
+
+### Production Setup (Cần sudo)
+
+```bash
+# Chạy với quyền sudo để setup production
+sudo ./setup.sh --production
+```
+
+Script này sẽ:
+- ✅ Thực hiện tất cả các bước của development setup
+- ✅ Tạo user và group `edgeai`
+- ✅ Tạo thư mục `/opt/edge_ai_api` với cấu trúc đầy đủ
+- ✅ Cài đặt executable vào `/usr/local/bin/edge_ai_api`
+- ✅ Setup systemd service `edge-ai-api.service`
+- ✅ Enable và start service tự động
+- ✅ Kiểm tra service đang chạy và API endpoint
+
+### Các Tùy Chọn
+
+```bash
+# Bỏ qua cài đặt dependencies (nếu đã cài sẵn)
+./setup.sh --skip-deps
+
+# Bỏ qua build (dùng build có sẵn)
+./setup.sh --skip-build
+
+# Không setup systemd service (chỉ development)
+./setup.sh --no-service
+
+# Không tự động start server sau khi setup
+./setup.sh --no-start
+
+# Xem help
+./setup.sh --help
+```
+
+### Sau Khi Setup
+
+**Development mode:**
+```bash
+# Server sẽ tự động chạy sau khi setup
+# Hoặc chạy lại bằng:
+./scripts/load_env.sh
+```
+
+**Production mode:**
+```bash
+# Kiểm tra service
+sudo systemctl status edge-ai-api
+
+# Xem log
+sudo journalctl -u edge-ai-api -f
+
+# Test API
+curl http://localhost:8080/v1/core/health
+```
+
 ## 📋 Yêu Cầu Hệ Thống
 
 ### Hệ Điều Hành
@@ -63,12 +141,16 @@ cd cmake-3.27.0
 ./bootstrap && make && sudo make install
 ```
 
-## 🚀 Cài Đặt Tự Động (Khuyến Nghị)
+## 🔧 Cài Đặt Thủ Công (Nếu Không Dùng Script Tự Động)
 
-Project có script tự động cài đặt dependencies:
+Nếu bạn muốn setup thủ công từng bước thay vì dùng script tự động:
+
+### Cài Đặt Dependencies
+
+Project có script riêng để cài đặt dependencies:
 
 ```bash
-# Chạy script cài đặt
+# Chạy script cài đặt dependencies
 ./scripts/install_dependencies.sh
 ```
 
@@ -77,7 +159,7 @@ Script này sẽ:
 - Xác minh version CMake
 - Cài đặt các thư viện cần thiết cho Drogon
 
-## 🔧 Cài Đặt Thủ Công
+### Cài Đặt Thủ Công Từng Bước
 
 Nếu không muốn dùng script, có thể cài đặt thủ công theo các bước trên.
 
@@ -110,6 +192,52 @@ cmake ..
 - Tự động download jsoncpp (nếu chưa cài trên system)
 - Build các dependencies này
 - Mất khoảng 5-10 phút tùy máy và kết nối internet
+
+### Drogon Framework Setup
+
+Project đã được cấu hình để **tự động download và build Drogon Framework** khi build project. Không cần cài đặt thủ công!
+
+#### Cách hoạt động
+
+Khi chạy `cmake ..`, CMake sẽ:
+1. Tự động download Drogon từ GitHub (nếu chưa có)
+2. Build Drogon như một dependency
+3. Link Drogon vào project
+
+**Lần đầu tiên:** Sẽ mất thời gian để download và build Drogon (~5-10 phút tùy máy)
+
+**Các lần sau:** Chỉ build project của bạn, rất nhanh
+
+#### Drogon được lưu ở đâu?
+
+Drogon được download và build trong thư mục `build/_deps/drogon-src/` và `build/_deps/drogon-build/`
+
+#### Tùy chọn cấu hình
+
+**Chọn version Drogon:**
+```bash
+cmake .. -DDROGON_VERSION=v1.9.0
+```
+
+**Tắt FetchContent (Dùng Drogon đã cài sẵn):**
+```bash
+cmake .. -DDROGON_USE_FETCHCONTENT=OFF
+```
+
+#### Dependencies của Drogon
+
+Drogon cần các dependencies sau. CMake sẽ tự động tìm hoặc build:
+
+**Bắt buộc:**
+- **OpenSSL** - Cho HTTPS support
+- **zlib** - Compression
+- **jsoncpp** - JSON parsing (hoặc nlohmann_json)
+- **libuuid** - UUID generation
+
+**Tùy chọn:**
+- **PostgreSQL** - Database support (nếu dùng ORM)
+- **MySQL** - Database support (nếu dùng ORM)
+- **SQLite** - Database support (nếu dùng ORM)
 
 ### Bước 3: Build project
 ```bash
@@ -295,6 +423,121 @@ cmake .. --debug-output
 - Các lần build sau sẽ nhanh hơn nhiều
 - Sử dụng `-j$(nproc)` để build song song
 
+### Lỗi CMake với CVEDIX SDK
+
+#### Lỗi thiếu header cvedix_yolov11_detector_node.h
+```
+fatal error: cvedix/nodes/infers/cvedix_yolov11_detector_node.h: No such file or directory
+```
+
+**Nguyên nhân:** File header `cvedix_yolov11_detector_node.h` không tồn tại trong CVEDIX SDK. SDK chỉ cung cấp:
+- `cvedix_yolo_detector_node.h` (YOLO generic)
+- `cvedix_rknn_yolov11_detector_node.h` (YOLOv11 cho RKNN, chỉ khi có `CVEDIX_WITH_RKNN`)
+
+**Giải pháp:** Đã được fix trong code. Khi sử dụng `yolov11_detector`, sẽ nhận được thông báo lỗi hướng dẫn sử dụng `rknn_yolov11_detector` hoặc `yolo_detector` thay thế.
+
+#### Lỗi thiếu libtinyexpr.so hoặc libcvedix_instance_sdk.so
+```
+CMake Error: The imported target "cvedix::tinyexpr" references the file
+   "/usr/lib/libtinyexpr.so"
+but this file does not exist.
+```
+
+**Nguyên nhân:** CVEDIX SDK được cài đặt ở `/opt/cvedix/` (non-standard location) nhưng CMake config tìm thư viện ở `/usr/lib/`. File thực tế nằm ở `/opt/cvedix/lib/`.
+
+**Giải pháp:** Tạo symlink từ `/usr/lib/` đến file thực tế:
+
+```bash
+sudo ln -sf /opt/cvedix/lib/libtinyexpr.so /usr/lib/libtinyexpr.so
+sudo ln -sf /opt/cvedix/lib/libcvedix_instance_sdk.so /usr/lib/libcvedix_instance_sdk.so
+```
+
+**Kiểm tra:**
+```bash
+ls -la /usr/lib/libtinyexpr.so
+ls -la /usr/lib/libcvedix_instance_sdk.so
+# Kết quả mong đợi: lrwxrwxrwx ... -> /opt/cvedix/lib/...
+```
+
+#### Lỗi node types không được tìm thấy (RTSP/RTMP/Image source nodes)
+```
+error: 'cvedix_rtsp_src_node' is not a member of 'cvedix_nodes'
+error: 'cvedix_rtmp_des_node' is not a member of 'cvedix_nodes'
+error: 'cvedix_image_src_node' is not a member of 'cvedix_nodes'
+```
+
+**Nguyên nhân:** Các header files của CVEDIX SDK cho RTSP, RTMP, và Image source nodes được bọc trong điều kiện `#ifdef CVEDIX_WITH_GSTREAMER`. Nếu macro này không được định nghĩa trong quá trình biên dịch, các class này sẽ không được expose.
+
+**Giải pháp:** Đã được fix trong `CMakeLists.txt`. CMake sẽ tự động phát hiện GStreamer và định nghĩa macro `CVEDIX_WITH_GSTREAMER`:
+
+1. **Kiểm tra GStreamer đã được cài đặt:**
+   ```bash
+   pkg-config --exists gstreamer-1.0 && echo "GStreamer found" || echo "GStreamer not found"
+   ```
+
+2. **Cài đặt GStreamer (nếu chưa có):**
+   ```bash
+   # Ubuntu/Debian
+   sudo apt-get install libgstreamer1.0-dev gstreamer1.0-plugins-base gstreamer1.0-plugins-good gstreamer1.0-plugins-bad gstreamer1.0-plugins-ugly
+   ```
+
+3. **Kiểm tra macro đã được định nghĩa trong CMake:**
+   ```bash
+   cd build
+   cmake .. 2>&1 | grep "GStreamer support"
+   # Kết quả mong đợi: -- ✓ GStreamer support enabled (CVEDIX_WITH_GSTREAMER)
+   ```
+
+**Lưu ý:** GStreamer là bắt buộc cho các node types sau:
+- RTSP source (`rtsp_src`)
+- RTMP source (`rtmp_src`)
+- RTMP destination (`rtmp_des`)
+- Image source (`image_src`)
+- UDP source (`udp_src`)
+
+#### Script tự động fix tất cả symlinks
+
+Để tránh phải fix từng file một, bạn có thể chạy script sau để tạo tất cả symlinks cần thiết:
+
+```bash
+#!/bin/bash
+# Script tạo symlinks cho CVEDIX SDK libraries
+
+CVEDIX_LIB_DIR="/opt/cvedix/lib"
+TARGET_LIB_DIR="/usr/lib"
+
+# Danh sách các thư viện cần symlink
+LIBS=(
+    "libtinyexpr.so"
+    "libcvedix_instance_sdk.so"
+)
+
+for lib in "${LIBS[@]}"; do
+    SOURCE="${CVEDIX_LIB_DIR}/${lib}"
+    TARGET="${TARGET_LIB_DIR}/${lib}"
+    
+    if [ -f "$SOURCE" ]; then
+        if [ ! -e "$TARGET" ]; then
+            echo "Creating symlink: $TARGET -> $SOURCE"
+            sudo ln -sf "$SOURCE" "$TARGET"
+        else
+            echo "Symlink already exists: $TARGET"
+        fi
+    else
+        echo "Warning: Source file not found: $SOURCE"
+    fi
+done
+
+echo "Done! Verifying symlinks..."
+ls -la /usr/lib/libtinyexpr.so /usr/lib/libcvedix_instance_sdk.so
+```
+
+Lưu script vào file `scripts/fix_cvedix_symlinks.sh`, chmod +x và chạy:
+```bash
+chmod +x scripts/fix_cvedix_symlinks.sh
+./scripts/fix_cvedix_symlinks.sh
+```
+
 ## 📊 Performance Tuning
 
 ### Tăng số thread
@@ -360,7 +603,23 @@ docker run -p 8080:8080 edge-ai-api
 
 ## ✅ Xác Minh Setup Thành Công
 
-Sau khi setup xong, chạy các lệnh sau để xác minh:
+### Với Script Tự Động
+
+Nếu bạn đã dùng `./setup.sh`, server sẽ tự động được khởi động. Kiểm tra:
+
+```bash
+# Development mode
+curl http://localhost:8080/v1/core/health
+curl http://localhost:8080/v1/core/version
+
+# Production mode
+sudo systemctl status edge-ai-api
+curl http://localhost:8080/v1/core/health
+```
+
+### Setup Thủ Công
+
+Sau khi setup thủ công, chạy các lệnh sau để xác minh:
 
 ```bash
 # 1. Build project
@@ -381,10 +640,100 @@ curl http://localhost:8080/v1/core/version
 
 Nếu tất cả các bước trên thành công, môi trường phát triển đã sẵn sàng!
 
+## 📝 Tóm Tắt Nhanh
+
+### Development Setup (Nhanh Nhất)
+
+```bash
+git clone https://github.com/cvedix/edge_ai_api.git
+cd edge_ai_api
+./setup.sh
+# Server sẽ tự động chạy tại http://localhost:8080
+```
+
+### Production Setup
+
+```bash
+git clone https://github.com/cvedix/edge_ai_api.git
+cd edge_ai_api
+sudo ./setup.sh --production
+# Service sẽ tự động chạy và khởi động cùng hệ thống
+```
+
+### Kiểm Tra Sau Setup
+
+```bash
+# Development
+curl http://localhost:8080/v1/core/health
+
+# Production
+sudo systemctl status edge-ai-api
+curl http://localhost:8080/v1/core/health
+```
+
+## 🔄 Rebuild và Restart Ứng Dụng
+
+Sau khi cập nhật code, bạn cần rebuild và restart ứng dụng:
+
+### Bước 1: Dừng Ứng Dụng Đang Chạy
+
+```bash
+# Tìm process ID
+ps aux | grep edge_ai_api | grep -v grep
+
+# Dừng ứng dụng (thay PID bằng process ID thực tế)
+kill <PID>
+
+# Hoặc nếu chạy trong terminal, dùng Ctrl+C
+
+# Hoặc nếu dùng systemd
+sudo systemctl stop edge-ai-api
+```
+
+### Bước 2: Rebuild
+
+```bash
+cd /home/cvedix/project/edge_ai_api
+
+# Nếu có build directory
+cd build
+cmake ..
+make -j$(nproc)
+
+# Hoặc rebuild từ đầu
+rm -rf build
+mkdir build && cd build
+cmake ..
+make -j$(nproc)
+```
+
+### Bước 3: Restart Ứng Dụng
+
+```bash
+# Development mode - chạy trực tiếp
+cd /home/cvedix/project/edge_ai_api
+./scripts/load_env.sh
+
+# Hoặc chạy trực tiếp
+./build/bin/edge_ai_api
+
+# Production mode - dùng systemd
+sudo systemctl start edge-ai-api
+```
+
+### Bước 4: Kiểm Tra
+
+```bash
+# Test API
+curl http://localhost:8080/v1/core/health
+
+# Hoặc kiểm tra service status
+sudo systemctl status edge-ai-api
+```
+
 ## 📚 Tài Liệu Liên Quan
 
 - [Hướng Dẫn Khởi Động và Sử Dụng](GETTING_STARTED.md)
 - [Hướng Dẫn Phát Triển](DEVELOPMENT_GUIDE.md)
-- [Drogon Setup](DROGON_SETUP.md)
 - [Architecture](architecture.md)
 

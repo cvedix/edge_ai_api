@@ -1251,6 +1251,98 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
+    
+    delete:
+      summary: Delete all instances
+      description: |
+        Deletes all instances in the system. This operation permanently removes all instances and stops their pipelines if running.
+        
+        **Behavior:**
+        - All instances are deleted concurrently for optimal performance
+        - If instances are currently running, they will be stopped first
+        - All instance configurations will be removed from memory
+        - Persistent instance configuration files will be deleted from storage
+        - All resources associated with instances will be released
+        
+        **Response:**
+        - Returns a summary of the deletion operation
+        - Includes detailed results for each instance (success/failure status)
+        - Provides counts of total, deleted, and failed instances
+        
+        **Note:** This operation cannot be undone. Once deleted, instances must be recreated using the create instance endpoint.
+      operationId: deleteAllInstances
+      tags:
+        - Instances
+      responses:
+        '200':
+          description: Delete all instances operation completed
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    description: True if all instances were deleted successfully
+                  message:
+                    type: string
+                    description: Operation status message
+                  total:
+                    type: integer
+                    description: Total number of instances that were attempted to delete
+                  deleted:
+                    type: integer
+                    description: Number of instances successfully deleted
+                  failed:
+                    type: integer
+                    description: Number of instances that failed to delete
+                  results:
+                    type: array
+                    description: Detailed results for each instance
+                    items:
+                      type: object
+                      properties:
+                        instanceId:
+                          type: string
+                          description: Instance ID
+                        success:
+                          type: boolean
+                          description: Whether deletion was successful
+                        status:
+                          type: string
+                          description: Status of deletion (deleted or failed)
+                        error:
+                          type: string
+                          description: Error message if deletion failed
+              example:
+                success: true
+                message: "Delete all instances operation completed"
+                total: 3
+                deleted: 3
+                failed: 0
+                results:
+                  - instanceId: "550e8400-e29b-41d4-a716-446655440000"
+                    success: true
+                    status: "deleted"
+                  - instanceId: "550e8400-e29b-41d4-a716-446655440001"
+                    success: true
+                    status: "deleted"
+                  - instanceId: "550e8400-e29b-41d4-a716-446655440002"
+                    success: true
+                    status: "deleted"
+        '500':
+          description: Server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '503':
+          description: Service unavailable (registry busy)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+    
     options:
       summary: CORS preflight for list instances
       operationId: listInstancesOptions

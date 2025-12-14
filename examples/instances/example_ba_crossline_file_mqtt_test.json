@@ -1,0 +1,21 @@
+{
+  "name": "ba_crossline_file_mqtt_test",
+  "group": "demo",
+  "solution": "ba_crossline_with_mqtt",
+  "autoStart": false,
+  "additionalParams": {
+    "FILE_PATH": "/home/cvedix/project/edge_ai_api/cvedix_data/test_video/vehicle.mp4",
+    "WEIGHTS_PATH": "/home/cvedix/project/edge_ai_api/cvedix_data/models/det_cls/yolov3-tiny-2022-0721_best.weights",
+    "CONFIG_PATH": "/home/cvedix/project/edge_ai_api/cvedix_data/models/det_cls/yolov3-tiny-2022-0721.cfg",
+    "LABELS_PATH": "/home/cvedix/project/edge_ai_api/cvedix_data/models/det_cls/yolov3_tiny_5classes.txt",
+    "ENABLE_SCREEN_DES": "false",
+    "RESIZE_RATIO": "0.1",
+    "BROKE_FOR": "NORMAL",
+    "MQTT_BROKER_URL": "mqtt.goads.com.vn",
+    "MQTT_PORT": "1883",
+    "MQTT_TOPIC": "ba_crossline/events",
+    "MQTT_USERNAME": "",
+    "MQTT_PASSWORD": ""
+  }
+}
+

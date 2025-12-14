@@ -121,7 +121,7 @@ Environment="CONFIG_FILE=/opt/edge_ai_api/config/config.json"
 - **Development**: Có thể override bằng biến môi trường `INSTANCES_DIR=./instances` để lưu ở project root
 - **Production**: Khuyến nghị sử dụng mặc định `/opt/edge_ai_api/instances` hoặc `/var/lib/edge_ai_api/instances`
 - **⚠️ Không nên lưu trong `build/` directory** - Dữ liệu có thể bị mất khi clean build
-- Xem chi tiết: [Storage Best Practices](STORAGE_BEST_PRACTICES.md)
+- Xem chi tiết: [Directory Creation Guide](DIRECTORY_CREATION_GUIDE.md) - Hướng dẫn tạo thư mục tự động với fallback
 
 #### CVEDIX SDK Configuration (Example)
 | Biến | Mô tả | Mặc định | File sử dụng |
@@ -142,7 +142,7 @@ Environment="CONFIG_FILE=/opt/edge_ai_api/config/config.json"
 - **Mặc định sử dụng TCP**: Để tránh vấn đề firewall chặn UDP, hệ thống mặc định sử dụng TCP
 - **UDP nhanh hơn nhưng dễ bị firewall block**: Chỉ dùng UDP khi trong cùng network và firewall cho phép
 - **Cách set**: `export GST_RTSP_PROTOCOLS=tcp` hoặc `export RTSP_TRANSPORT=tcp`
-- Xem thêm: [RTSP Troubleshooting Guide](../docs/RTSP_TROUBLESHOOTING.md)
+- Xem thêm: [RTSP Troubleshooting Guide](./RTSP_TROUBLESHOOTING.md)
 
 ### 📝 Có Thể Implement (Future)
 

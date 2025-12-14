@@ -1654,6 +1654,60 @@ curl -X DELETE http://localhost:8080/v1/core/instance/{instanceId}
 
 ---
 
+## Case Study: Face Detection với RTMP Streaming
+
+### Pipeline
+
+Pipeline bao gồm các node sau (theo thứ tự):
+1. **File Source** - Đọc video từ file
+2. **YuNet Face Detector** - Phát hiện khuôn mặt
+3. **SFace Feature Encoder** - Mã hóa đặc trưng khuôn mặt
+4. **Face OSD v2** - Vẽ overlay lên video
+5. **RTMP Destination** - Stream video ra RTMP server
+
+### Tạo Instance
+
+```bash
+curl -X POST http://localhost:8080/v1/core/instance \
+  -H "Content-Type: application/json" \
+  -d '{
+    "name": "face_detection_demo_1",
+    "group": "demo",
+    "solution": "face_detection_rtmp",
+    "persistent": true,
+    "autoStart": true,
+    "detectionSensitivity": "Low",
+    "additionalParams": {
+      "FILE_PATH": "/path/to/video/face.mp4",
+      "RTMP_URL": "rtmp://server.com:1935/live/camera_demo_1",
+      "MODEL_PATH": "/usr/share/cvedix/cvedix_data/models/face/face_detection_yunet_2022mar.onnx",
+      "SFACE_MODEL_PATH": "/path/to/models/face_recognition_sface_2021dec.onnx",
+      "RESIZE_RATIO": "1.0"
+    }
+  }'
+```
+
+### Các Tham Số
+
+- `FILE_PATH`: Đường dẫn đến file video input (required)
+- `RTMP_URL`: URL RTMP server để stream (required)
+- `MODEL_PATH`: Đường dẫn đến model YuNet face detector (optional)
+- `SFACE_MODEL_PATH`: Đường dẫn đến model SFace encoder (optional)
+- `RESIZE_RATIO`: Tỷ lệ resize video (optional, default: `"0.5"`)
+
+### Lưu Ý Quan Trọng
+
+1. **RTMP URL**: RTMP node tự động thêm suffix `"_0"` vào stream key
+2. **Model Paths**: Nếu không cung cấp, hệ thống sẽ tự động tìm model trong các thư mục mặc định
+3. **Shape Mismatch Error**: Nếu gặp lỗi shape mismatch, re-encode video với resolution cố định:
+   ```bash
+   ffmpeg -i input.mp4 -vf "scale=320:240:force_original_aspect_ratio=decrease,pad=320:240:(ow-iw)/2:(oh-ih)/2" \
+          -c:v libx264 -preset fast -crf 23 -c:a copy output_320x240.mp4
+   ```
+   Sau đó sử dụng `RESIZE_RATIO: "1.0"` trong `additionalParams`.
+
+---
+
 ## Troubleshooting
 
 ### Lỗi: "Solution not found"

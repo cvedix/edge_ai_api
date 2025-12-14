@@ -309,7 +309,7 @@ void SolutionRegistry::registerFaceDetectionRTMPSolution() {
     SolutionConfig::NodeConfig rtmpDes;
     rtmpDes.nodeType = "rtmp_des";
     rtmpDes.nodeName = "rtmp_des_{instanceId}";
-    rtmpDes.parameters["rtmp_url"] = "${RTMP_URL}";
+    rtmpDes.parameters["rtmp_url"] = "${RTMP_DES_URL}";  // Support RTMP_DES_URL (new) and RTMP_URL (backward compatibility via pipeline builder)
     rtmpDes.parameters["channel"] = "0";
     config.pipeline.push_back(rtmpDes);
     
@@ -381,7 +381,7 @@ void SolutionRegistry::registerBACrosslineSolution() {
     SolutionConfig::NodeConfig rtmpDes;
     rtmpDes.nodeType = "rtmp_des";
     rtmpDes.nodeName = "rtmp_des_{instanceId}";
-    rtmpDes.parameters["rtmp_url"] = "${RTMP_URL}";
+    rtmpDes.parameters["rtmp_url"] = "${RTMP_DES_URL}";  // Support RTMP_DES_URL (new) and RTMP_URL (backward compatibility via pipeline builder)
     rtmpDes.parameters["channel"] = "0";
     config.pipeline.push_back(rtmpDes);
     
@@ -482,7 +482,7 @@ void SolutionRegistry::registerFaceSwapSolution() {
     SolutionConfig::NodeConfig rtmpDes;
     rtmpDes.nodeType = "rtmp_des";
     rtmpDes.nodeName = "destination_{instanceId}";
-    rtmpDes.parameters["rtmp_url"] = "${RTMP_URL}";
+    rtmpDes.parameters["rtmp_url"] = "${RTMP_DES_URL}";  // Support RTMP_DES_URL (new) and RTMP_URL (backward compatibility via pipeline builder)
     rtmpDes.parameters["channel"] = "0";
     config.pipeline.push_back(rtmpDes);
     

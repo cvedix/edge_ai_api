@@ -332,8 +332,10 @@ bool CreateInstanceHandler::parseRequest(
         req.additionalParams["FILE_PATH"] = json["FILE_PATH"].asString();
     }
     
-    // Also check for RTMP_URL at top level (for RTMP destination)
-    if (json.isMember("RTMP_URL") && json["RTMP_URL"].isString()) {
+    // Also check for RTMP_DES_URL or RTMP_URL at top level (for RTMP destination)
+    if (json.isMember("RTMP_DES_URL") && json["RTMP_DES_URL"].isString()) {
+        req.additionalParams["RTMP_DES_URL"] = json["RTMP_DES_URL"].asString();
+    } else if (json.isMember("RTMP_URL") && json["RTMP_URL"].isString()) {
         req.additionalParams["RTMP_URL"] = json["RTMP_URL"].asString();
     }
     
