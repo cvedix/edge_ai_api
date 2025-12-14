@@ -9,6 +9,11 @@
 #include <cvedix/nodes/infers/cvedix_yunet_face_detector_node.h>
 #include <cvedix/nodes/infers/cvedix_sface_feature_encoder_node.h>
 #include <cvedix/nodes/des/cvedix_rtmp_des_node.h>
+#include <cvedix/nodes/des/cvedix_app_des_node.h>
+#include <cvedix/objects/cvedix_meta.h>
+#include <cvedix/objects/cvedix_frame_meta.h>
+#include <opencv2/opencv.hpp>
+#include <opencv2/imgcodecs.hpp>
 #include <algorithm>
 #include <typeinfo>
 #include <thread>
@@ -1054,6 +1059,11 @@ bool InstanceRegistry::startInstance(const std::string& instanceId, bool skipAut
                                 auto last_reconnect_attempt = std::chrono::steady_clock::now();
                                 const auto reconnect_cooldown = std::chrono::seconds(5);  // Only try reconnect every 5 seconds
                                 
+                                // Track when we last received JSON for debugging
+                                auto last_json_received_time = std::chrono::steady_clock::now();
+                                auto thread_start_time = std::chrono::steady_clock::now();
+                                const auto json_timeout = std::chrono::seconds(30);  // Warn if no JSON for 30 seconds
+                                
                                 // Track vehicle count for summary messages
                                 int total_vehicles_crossed = 0;  // Cumulative count of vehicles that have crossed the line
                                 std::set<int> tracked_vehicle_ids;  // Track unique vehicle IDs that have crossed
@@ -1064,6 +1074,14 @@ bool InstanceRegistry::startInstance(const std::string& instanceId, bool skipAut
                                 // Use configured rate limit (default: 2000ms = 0.5 messages/second)
                                 auto last_publish_time = std::chrono::steady_clock::now();
                                 const auto min_publish_interval = std::chrono::milliseconds(mqtt_rate_limit_ms);
+                                
+                                // Log thread start for debugging
+                                std::cerr << "[InstanceRegistry] [MQTT] JSON reader thread started, waiting for data from json_console_broker..." << std::endl;
+                                std::cerr << "[InstanceRegistry] [MQTT] NOTE: If no JSON received, check:" << std::endl;
+                                std::cerr << "[InstanceRegistry] [MQTT]   1. RTSP stream is working (FPS > 0)" << std::endl;
+                                std::cerr << "[InstanceRegistry] [MQTT]   2. Pipeline is processing frames" << std::endl;
+                                std::cerr << "[InstanceRegistry] [MQTT]   3. ba_crossline node is detecting objects" << std::endl;
+                                std::cerr << "[InstanceRegistry] [MQTT]   4. json_console_broker broke_for matches data type (NORMAL)" << std::endl;
                                 
                                 while (!stop_flag->load()) {
                                     // CRITICAL: Check stop flag before blocking read to allow quick exit
@@ -1116,9 +1134,35 @@ bool InstanceRegistry::startInstance(const std::string& instanceId, bool skipAut
                                     
                                     int select_result = select(pipefd_read + 1, &readfds, nullptr, nullptr, &timeout);
                                     
-                                    // Check stop flag after select (may have waited up to 100ms)
+                                    // Check stop flag after select (may have waited up to 200ms)
                                     if (stop_flag->load()) {
                                         break;
+                                    }
+                                    
+                                    // Warn if no JSON received for a while (every 30 seconds)
+                                    auto now = std::chrono::steady_clock::now();
+                                    auto time_since_last_json = std::chrono::duration_cast<std::chrono::seconds>(
+                                        now - last_json_received_time).count();
+                                    auto time_since_thread_start = std::chrono::duration_cast<std::chrono::seconds>(
+                                        now - thread_start_time).count();
+                                    
+                                    // Only warn if thread has been running for at least 30 seconds
+                                    if (time_since_thread_start >= 30 && time_since_last_json >= json_timeout.count()) {
+                                        static auto last_warning_time = std::chrono::steady_clock::now() - json_timeout;
+                                        auto time_since_last_warning = std::chrono::duration_cast<std::chrono::seconds>(
+                                            now - last_warning_time).count();
+                                        
+                                        // Only warn every 30 seconds to avoid spam
+                                        if (time_since_last_warning >= 30) {
+                                            std::cerr << "[InstanceRegistry] [MQTT] ⚠ WARNING: No JSON received from json_console_broker for " 
+                                                      << time_since_last_json << " seconds!" << std::endl;
+                                            std::cerr << "[InstanceRegistry] [MQTT] ⚠ This usually means:" << std::endl;
+                                            std::cerr << "[InstanceRegistry] [MQTT]   1. RTSP stream is not working (check FPS > 0)" << std::endl;
+                                            std::cerr << "[InstanceRegistry] [MQTT]   2. Pipeline is not processing frames" << std::endl;
+                                            std::cerr << "[InstanceRegistry] [MQTT]   3. ba_crossline is not detecting objects" << std::endl;
+                                            std::cerr << "[InstanceRegistry] [MQTT]   4. json_console_broker broke_for parameter mismatch" << std::endl;
+                                            last_warning_time = now;
+                                        }
                                     }
                                     
                                     ssize_t n = -1;
@@ -1182,6 +1226,8 @@ bool InstanceRegistry::startInstance(const std::string& instanceId, bool skipAut
                                             if (json_candidate.length() > 10 && 
                                                 json_candidate[0] == '{' && 
                                                 json_candidate.back() == '}') {
+                                                // Update last JSON received time
+                                                last_json_received_time = std::chrono::steady_clock::now();
                                                 // CRITICAL: Parse JSON FIRST before updating latest_json
                                                 // This ensures we always use the most recent data
                                                 std::string summary_str;
@@ -1740,6 +1786,12 @@ bool InstanceRegistry::stopInstance(const std::string& instanceId) {
         pipelines_.erase(pipelineIt);
     } // Release lock here - stopPipeline doesn't need it
     
+    // CRITICAL: Stop RTSP monitor thread NOW (after marking instance as not running)
+    // This prevents race condition where RTSP monitor thread tries to reconnect
+    // while pipeline is being destroyed. We do this AFTER releasing the lock to avoid deadlock,
+    // but BEFORE calling stopPipeline to ensure monitor thread stops before nodes are destroyed.
+    stopRTSPMonitorThread(instanceId);
+    
     std::cerr << "[InstanceRegistry] ========================================" << std::endl;
     std::cerr << "[InstanceRegistry] Stopping instance " << instanceId << "..." << std::endl;
     std::cerr << "[InstanceRegistry] NOTE: All nodes will be fully destroyed to clear OpenCV DNN state" << std::endl;
@@ -1788,8 +1840,8 @@ bool InstanceRegistry::stopInstance(const std::string& instanceId) {
     // This will restore stdout and close pipe write end to signal EOF to thread
     stopMqttThread(instanceId);
     
-    // Stop RTSP monitoring thread if exists
-    stopRTSPMonitorThread(instanceId);
+    // NOTE: RTSP monitor thread was already stopped at the beginning of stopInstance
+    // to prevent race condition with reconnect attempts
     
     std::cerr << "[InstanceRegistry] ✓ Instance " << instanceId << " stopped successfully" << std::endl;
     std::cerr << "[InstanceRegistry] NOTE: All nodes have been destroyed. Pipeline will be rebuilt from scratch when you start this instance again" << std::endl;
@@ -2154,8 +2206,16 @@ bool InstanceRegistry::updateInstance(const std::string& instanceId, const Updat
         
         // Stop instance first
         if (stopInstance(instanceId)) {
-            // Wait a moment for cleanup
-            std::this_thread::sleep_for(std::chrono::milliseconds(500));
+            // CRITICAL: Wait longer for complete cleanup to prevent segmentation faults
+            // GStreamer pipelines, threads (MQTT, RTSP monitor), and OpenCV DNN need time to fully cleanup
+            // Previous 500ms was too short and caused race conditions
+            std::cerr << "[InstanceRegistry] Waiting for complete cleanup (3 seconds)..." << std::endl;
+            std::cerr << "[InstanceRegistry] This ensures:" << std::endl;
+            std::cerr << "[InstanceRegistry]   1. GStreamer pipelines are fully destroyed" << std::endl;
+            std::cerr << "[InstanceRegistry]   2. All threads (MQTT, RTSP monitor) are joined" << std::endl;
+            std::cerr << "[InstanceRegistry]   3. OpenCV DNN state is cleared" << std::endl;
+            std::cerr << "[InstanceRegistry]   4. No race conditions when starting new pipeline" << std::endl;
+            std::this_thread::sleep_for(std::chrono::milliseconds(3000));
             
             // Start instance again (this will rebuild pipeline with new config)
             if (startInstance(instanceId, true)) {
@@ -2445,6 +2505,28 @@ bool InstanceRegistry::startPipeline(const std::vector<std::shared_ptr<cvedix_no
         std::cerr << "[InstanceRegistry] Cannot start pipeline: no nodes" << std::endl;
         return false;
     }
+    
+    // Initialize statistics tracker
+    {
+        std::unique_lock<std::shared_timed_mutex> lock(mutex_);
+        InstanceStatsTracker& tracker = statistics_trackers_[instanceId];
+        tracker.start_time = std::chrono::steady_clock::now();
+        tracker.start_time_system = std::chrono::system_clock::now();
+        tracker.frames_processed = 0;
+        tracker.dropped_frames = 0;
+        tracker.last_fps = 0.0;
+        tracker.last_fps_update = tracker.start_time;
+        tracker.frame_count_since_last_update = 0;
+        tracker.current_queue_size = 0;
+        tracker.max_queue_size_seen = 0;
+        tracker.expected_frames_from_source = 0;
+    }
+    
+    // Setup frame capture hook before starting pipeline
+    setupFrameCaptureHook(instanceId, nodes);
+    
+    // Setup queue size tracking hook before starting pipeline
+    setupQueueSizeTrackingHook(instanceId, nodes);
     
     try {
         // Start from the first node (source node)
@@ -3463,8 +3545,16 @@ bool InstanceRegistry::updateInstanceFromConfig(const std::string& instanceId, c
         
         // Stop instance first
         if (stopInstance(instanceId)) {
-            // Wait a moment for cleanup
-            std::this_thread::sleep_for(std::chrono::milliseconds(500));
+            // CRITICAL: Wait longer for complete cleanup to prevent segmentation faults
+            // GStreamer pipelines, threads (MQTT, RTSP monitor), and OpenCV DNN need time to fully cleanup
+            // Previous 500ms was too short and caused race conditions
+            std::cerr << "[InstanceRegistry] Waiting for complete cleanup (3 seconds)..." << std::endl;
+            std::cerr << "[InstanceRegistry] This ensures:" << std::endl;
+            std::cerr << "[InstanceRegistry]   1. GStreamer pipelines are fully destroyed" << std::endl;
+            std::cerr << "[InstanceRegistry]   2. All threads (MQTT, RTSP monitor) are joined" << std::endl;
+            std::cerr << "[InstanceRegistry]   3. OpenCV DNN state is cleared" << std::endl;
+            std::cerr << "[InstanceRegistry]   4. No race conditions when starting new pipeline" << std::endl;
+            std::this_thread::sleep_for(std::chrono::milliseconds(3000));
             
             // Start instance again (this will rebuild pipeline with new config)
             if (startInstance(instanceId, true)) {
@@ -4055,6 +4145,401 @@ Json::Value InstanceRegistry::getInstanceConfig(const std::string& instanceId) c
     return config;
 }
 
+// Base64 encoding helper function
+static std::string base64_encode(const unsigned char* data, size_t length) {
+    static const char base64_chars[] = 
+        "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+    
+    std::string encoded;
+    encoded.reserve(((length + 2) / 3) * 4);
+    
+    size_t i = 0;
+    while (i < length) {
+        unsigned char byte1 = data[i++];
+        unsigned char byte2 = (i < length) ? data[i++] : 0;
+        unsigned char byte3 = (i < length) ? data[i++] : 0;
+        
+        unsigned int combined = (byte1 << 16) | (byte2 << 8) | byte3;
+        
+        encoded += base64_chars[(combined >> 18) & 0x3F];
+        encoded += base64_chars[(combined >> 12) & 0x3F];
+        encoded += (i - 2 < length) ? base64_chars[(combined >> 6) & 0x3F] : '=';
+        encoded += (i - 1 < length) ? base64_chars[combined & 0x3F] : '=';
+    }
+    
+    return encoded;
+}
+
+std::optional<InstanceStatistics> InstanceRegistry::getInstanceStatistics(const std::string& instanceId) {
+    std::unique_lock<std::shared_timed_mutex> lock(mutex_);
+    
+    // Check if instance exists and is running
+    auto instanceIt = instances_.find(instanceId);
+    if (instanceIt == instances_.end()) {
+        return std::nullopt;
+    }
+    
+    const InstanceInfo& info = instanceIt->second;
+    if (!info.running) {
+        return std::nullopt;
+    }
+    
+    // Get pipeline to access source node
+    auto pipelineIt = pipelines_.find(instanceId);
+    if (pipelineIt == pipelines_.end() || pipelineIt->second.empty()) {
+        return std::nullopt;
+    }
+    
+    // Get tracker (non-const reference so we can update it)
+    auto trackerIt = statistics_trackers_.find(instanceId);
+    if (trackerIt == statistics_trackers_.end()) {
+        // Tracker not initialized yet, return default statistics
+        InstanceStatistics stats;
+        // Round current_framerate to nearest integer
+        stats.current_framerate = std::round(info.fps);
+        return stats;
+    }
+    
+    InstanceStatsTracker& tracker = trackerIt->second;
+    
+    // Build statistics object
+    InstanceStatistics stats;
+    
+    // Get source framerate and resolution from source node FIRST (before calculating stats)
+    // This ensures we have the most up-to-date information
+    auto sourceNode = pipelineIt->second[0];
+    if (!sourceNode) {
+        std::cerr << "[InstanceRegistry] [Statistics] ERROR: Source node is null!" << std::endl;
+        return std::nullopt;
+    }
+    
+    auto rtspNode = std::dynamic_pointer_cast<cvedix_nodes::cvedix_rtsp_src_node>(sourceNode);
+    auto fileNode = std::dynamic_pointer_cast<cvedix_nodes::cvedix_file_src_node>(sourceNode);
+    
+    double sourceFps = 0.0;
+    std::string sourceRes = "";
+    
+    try {
+        if (rtspNode) {
+            // Get source framerate and resolution from RTSP node
+            int fps_int = rtspNode->get_original_fps();
+            if (fps_int > 0) {
+                sourceFps = static_cast<double>(fps_int);
+            }
+            
+            auto width = rtspNode->get_original_width();
+            auto height = rtspNode->get_original_height();
+            if (width > 0 && height > 0) {
+                sourceRes = std::to_string(width) + "x" + std::to_string(height);
+            }
+        } else if (fileNode) {
+            // File source inherits from cvedix_src_node, so it has get_original_fps/width/height methods
+            int fps_int = fileNode->get_original_fps();
+            if (fps_int > 0) {
+                sourceFps = static_cast<double>(fps_int);
+            }
+            
+            auto width = fileNode->get_original_width();
+            auto height = fileNode->get_original_height();
+            if (width > 0 && height > 0) {
+                sourceRes = std::to_string(width) + "x" + std::to_string(height);
+            }
+        }
+    } catch (const std::exception& e) {
+        // If APIs are not available or throw exceptions, use defaults
+    } catch (...) {
+    }
+    
+    // Calculate elapsed time first
+    auto now = std::chrono::steady_clock::now();
+    auto elapsed_seconds = std::chrono::duration_cast<std::chrono::seconds>(now - tracker.start_time).count();
+    auto elapsed_seconds_double = std::chrono::duration<double>(now - tracker.start_time).count();
+    
+    // Calculate actual processing FPS based on frames actually processed
+    double actualProcessingFps = 0.0;
+    if (elapsed_seconds_double > 0.0 && tracker.frames_processed > 0) {
+        actualProcessingFps = static_cast<double>(tracker.frames_processed) / elapsed_seconds_double;
+    }
+    
+    // Calculate current FPS: prefer actual processing FPS, then source FPS, then info.fps, then tracker.last_fps
+    double currentFps = 0.0;
+    if (actualProcessingFps > 0.0) {
+        currentFps = actualProcessingFps;
+        tracker.last_fps = actualProcessingFps;
+        tracker.last_fps_update = now;
+    } else if (sourceFps > 0.0) {
+        currentFps = sourceFps;
+        tracker.last_fps = sourceFps;
+        tracker.last_fps_update = now;
+    } else if (info.fps > 0.0) {
+        currentFps = info.fps;
+        tracker.last_fps = info.fps;
+        tracker.last_fps_update = now;
+    } else {
+        currentFps = tracker.last_fps;
+    }
+    
+    // Calculate frames_processed: use actual frames processed if available, otherwise estimate
+    uint64_t actual_frames_processed = tracker.frames_processed;
+    uint64_t calculated_frames_processed = 0;
+    
+    if (actual_frames_processed > 0) {
+        stats.frames_processed = actual_frames_processed;
+        calculated_frames_processed = actual_frames_processed;
+    } else if (currentFps > 0.0 && elapsed_seconds > 0) {
+        calculated_frames_processed = static_cast<uint64_t>(currentFps * elapsed_seconds);
+        stats.frames_processed = calculated_frames_processed;
+    } else {
+        stats.frames_processed = 0;
+        calculated_frames_processed = 0;
+    }
+    
+    // Calculate dropped frames: difference between expected frames (from source FPS) and actual processed frames
+    if (sourceFps > 0.0 && elapsed_seconds > 0) {
+        uint64_t expected_frames = static_cast<uint64_t>(sourceFps * elapsed_seconds);
+        tracker.expected_frames_from_source = expected_frames;
+        
+        uint64_t actual_processed = (actual_frames_processed > 0) ? actual_frames_processed : calculated_frames_processed;
+        
+        if (expected_frames > actual_processed) {
+            uint64_t estimated_dropped = expected_frames - actual_processed;
+            if (estimated_dropped > tracker.dropped_frames) {
+                tracker.dropped_frames = estimated_dropped;
+            }
+        }
+    }
+    
+    stats.dropped_frames_count = tracker.dropped_frames;
+    stats.current_framerate = std::round(currentFps);
+    
+    // Use resolution from source node if available, otherwise use tracker value
+    if (!sourceRes.empty()) {
+        stats.resolution = sourceRes;
+        stats.source_resolution = sourceRes;
+        tracker.resolution = sourceRes;
+        tracker.source_resolution = sourceRes;
+    } else {
+        stats.resolution = tracker.resolution;
+        stats.source_resolution = tracker.source_resolution;
+    }
+    
+    stats.format = tracker.format;
+    
+    // Calculate start_time (Unix timestamp)
+    auto start_time_since_epoch = tracker.start_time_system.time_since_epoch();
+    auto start_time_seconds = std::chrono::duration_cast<std::chrono::seconds>(start_time_since_epoch).count();
+    stats.start_time = start_time_seconds;
+    
+    // Set source framerate
+    if (sourceFps > 0.0) {
+        stats.source_framerate = sourceFps;
+    } else {
+        stats.source_framerate = stats.current_framerate;
+    }
+    
+    // Calculate latency (average time per frame in milliseconds)
+    if (stats.frames_processed > 0 && currentFps > 0.0) {
+        stats.latency = std::round(1000.0 / currentFps);
+    } else {
+        stats.latency = 0.0;
+    }
+    
+    // Set default format if empty
+    if (stats.format.empty()) {
+        stats.format = "BGR";
+        tracker.format = "BGR";
+    }
+    
+    // Queue size - updated via meta_arriving_hooker callback from CVEDIX SDK nodes
+    stats.input_queue_size = static_cast<int64_t>(tracker.current_queue_size);
+    if (stats.input_queue_size == 0 && tracker.max_queue_size_seen > 0) {
+        stats.input_queue_size = static_cast<int64_t>(tracker.max_queue_size_seen);
+    }
+    
+    return stats;
+}
+
+std::string InstanceRegistry::getLastFrame(const std::string& instanceId) const {
+    std::lock_guard<std::mutex> lock(frame_cache_mutex_);
+    
+    auto it = frame_caches_.find(instanceId);
+    if (it == frame_caches_.end() || !it->second.has_frame || it->second.frame.empty()) {
+        return "";  // No frame cached
+    }
+    
+    // Encode frame to base64
+    return encodeFrameToBase64(it->second.frame, 85);  // Default quality 85%
+}
+
+void InstanceRegistry::updateFrameCache(const std::string& instanceId, const cv::Mat& frame) {
+    if (frame.empty()) {
+        return;
+    }
+    
+    std::lock_guard<std::mutex> lock(frame_cache_mutex_);
+    
+    FrameCache& cache = frame_caches_[instanceId];
+    frame.copyTo(cache.frame);  // Deep copy
+    cache.timestamp = std::chrono::steady_clock::now();
+    cache.has_frame = true;
+}
+
+void InstanceRegistry::setupFrameCaptureHook(const std::string& instanceId, 
+                                             const std::vector<std::shared_ptr<cvedix_nodes::cvedix_node>>& nodes) {
+    if (nodes.empty()) {
+        return;
+    }
+    
+    // Find the last node (OSD or destination node)
+    // Try to find app_des_node first (best for capturing frames)
+    std::shared_ptr<cvedix_nodes::cvedix_app_des_node> appDesNode;
+    std::shared_ptr<cvedix_nodes::cvedix_rtmp_des_node> rtmpDesNode;
+    
+    // Search backwards from the end to find destination or OSD node
+    for (auto it = nodes.rbegin(); it != nodes.rend(); ++it) {
+        auto node = *it;
+        
+        // Try app_des_node first
+        if (!appDesNode) {
+            appDesNode = std::dynamic_pointer_cast<cvedix_nodes::cvedix_app_des_node>(node);
+            if (appDesNode) {
+                break;
+            }
+        }
+        
+        // Try RTMP destination node
+        if (!rtmpDesNode) {
+            rtmpDesNode = std::dynamic_pointer_cast<cvedix_nodes::cvedix_rtmp_des_node>(node);
+        }
+    }
+    
+    // Setup hook on app_des_node if found
+    if (appDesNode) {
+        appDesNode->set_app_des_result_hooker([this, instanceId](std::string node_name, 
+                                                                 std::shared_ptr<cvedix_objects::cvedix_meta> meta) {
+            try {
+                if (!meta) {
+                    return;
+                }
+                
+                if (meta->meta_type == cvedix_objects::cvedix_meta_type::FRAME) {
+                    auto frame_meta = std::dynamic_pointer_cast<cvedix_objects::cvedix_frame_meta>(meta);
+                    if (!frame_meta) {
+                        return;
+                    }
+                    
+                    // Update frame counter for statistics
+                    {
+                        std::unique_lock<std::shared_timed_mutex> lock(mutex_);
+                        auto trackerIt = statistics_trackers_.find(instanceId);
+                        if (trackerIt != statistics_trackers_.end()) {
+                            trackerIt->second.frames_processed++;
+                            trackerIt->second.frame_count_since_last_update++;
+                        }
+                    }
+                    
+                    // Prefer OSD frame (processed with overlays), fallback to original frame
+                    cv::Mat frameToCache;
+                    if (!frame_meta->osd_frame.empty()) {
+                        frameToCache = frame_meta->osd_frame;
+                    } else if (!frame_meta->frame.empty()) {
+                        frameToCache = frame_meta->frame;
+                    }
+                    
+                    if (!frameToCache.empty()) {
+                        updateFrameCache(instanceId, frameToCache);
+                    }
+                }
+            } catch (const std::exception& e) {
+                std::cerr << "[InstanceRegistry] [ERROR] Exception in frame capture hook: " << e.what() << std::endl;
+            } catch (...) {
+                std::cerr << "[InstanceRegistry] [ERROR] Unknown exception in frame capture hook" << std::endl;
+            }
+        });
+        
+        std::cerr << "[InstanceRegistry] ✓ Frame capture hook setup completed for instance: " << instanceId << std::endl;
+        return;
+    }
+    
+    // If no app_des_node found, log warning
+    std::cerr << "[InstanceRegistry] ⚠ Warning: No app_des_node found in pipeline for instance: " << instanceId << std::endl;
+    std::cerr << "[InstanceRegistry] Frame capture will not be available. Consider adding app_des_node to pipeline." << std::endl;
+}
+
+void InstanceRegistry::setupQueueSizeTrackingHook(const std::string& instanceId, 
+                                                  const std::vector<std::shared_ptr<cvedix_nodes::cvedix_node>>& nodes) {
+    if (nodes.empty()) {
+        return;
+    }
+    
+    // Setup meta_arriving_hooker on all nodes to track input queue size
+    for (const auto& node : nodes) {
+        if (!node) {
+            continue;
+        }
+        
+        try {
+            node->set_meta_arriving_hooker([this, instanceId](std::string node_name, int queue_size, 
+                                                               std::shared_ptr<cvedix_objects::cvedix_meta> meta) {
+                try {
+                    // Update queue size tracking in statistics tracker
+                    std::unique_lock<std::shared_timed_mutex> lock(mutex_);
+                    auto trackerIt = statistics_trackers_.find(instanceId);
+                    if (trackerIt != statistics_trackers_.end()) {
+                        InstanceStatsTracker& tracker = trackerIt->second;
+                        
+                        if (queue_size > static_cast<int>(tracker.current_queue_size)) {
+                            tracker.current_queue_size = static_cast<size_t>(queue_size);
+                        }
+                        
+                        if (queue_size > static_cast<int>(tracker.max_queue_size_seen)) {
+                            tracker.max_queue_size_seen = static_cast<size_t>(queue_size);
+                        }
+                    }
+                } catch (const std::exception& e) {
+                    std::cerr << "[InstanceRegistry] [ERROR] Exception in queue size tracking hook: " << e.what() << std::endl;
+                } catch (...) {
+                    std::cerr << "[InstanceRegistry] [ERROR] Unknown exception in queue size tracking hook" << std::endl;
+                }
+            });
+        } catch (const std::exception& e) {
+            // Some nodes might not support hooks, ignore silently
+        } catch (...) {
+            // Some nodes might not support hooks, ignore silently
+        }
+    }
+    
+    std::cerr << "[InstanceRegistry] ✓ Queue size tracking hook setup completed for instance: " << instanceId << std::endl;
+}
+
+std::string InstanceRegistry::encodeFrameToBase64(const cv::Mat& frame, int jpegQuality) const {
+    if (frame.empty()) {
+        return "";
+    }
+    
+    try {
+        std::vector<uchar> buffer;
+        std::vector<int> params = {cv::IMWRITE_JPEG_QUALITY, jpegQuality};
+        
+        if (!cv::imencode(".jpg", frame, buffer, params)) {
+            std::cerr << "[InstanceRegistry] Failed to encode frame to JPEG" << std::endl;
+            return "";
+        }
+        
+        if (buffer.empty()) {
+            return "";
+        }
+        
+        return base64_encode(buffer.data(), buffer.size());
+    } catch (const std::exception& e) {
+        std::cerr << "[InstanceRegistry] Exception encoding frame to base64: " << e.what() << std::endl;
+        return "";
+    } catch (...) {
+        std::cerr << "[InstanceRegistry] Unknown exception encoding frame to base64" << std::endl;
+        return "";
+    }
+}
+
 void InstanceRegistry::startRTSPMonitorThread(const std::string& instanceId) {
     // Stop existing thread if any
     stopRTSPMonitorThread(instanceId);
@@ -4294,8 +4779,11 @@ bool InstanceRegistry::reconnectRTSPStream(const std::string& instanceId) {
     std::cerr << "[InstanceRegistry] [RTSP Reconnect] Attempting to reconnect RTSP stream for instance " << instanceId << std::endl;
     
     try {
-        // Get instance info
+        // CRITICAL: Check if instance exists and is running BEFORE attempting reconnect
+        // This prevents race condition where instance is stopped while monitor thread is trying to reconnect
         InstanceInfo info;
+        bool instanceExists = false;
+        bool instanceRunning = false;
         {
             std::shared_lock<std::shared_timed_mutex> lock(mutex_);
             auto instanceIt = instances_.find(instanceId);
@@ -4303,7 +4791,15 @@ bool InstanceRegistry::reconnectRTSPStream(const std::string& instanceId) {
                 std::cerr << "[InstanceRegistry] [RTSP Reconnect] ✗ Instance not found" << std::endl;
                 return false;
             }
+            instanceExists = true;
+            instanceRunning = instanceIt->second.running;
             info = instanceIt->second;
+        }
+        
+        // CRITICAL: Double-check instance is still running (may have been stopped between checks)
+        if (!instanceRunning) {
+            std::cerr << "[InstanceRegistry] [RTSP Reconnect] ✗ Instance is not running (may have been stopped)" << std::endl;
+            return false;
         }
         
         if (info.rtspUrl.empty()) {
@@ -4311,11 +4807,21 @@ bool InstanceRegistry::reconnectRTSPStream(const std::string& instanceId) {
             return false;
         }
         
-        // Get pipeline nodes
+        // Get pipeline nodes - check again if instance is still running after getting nodes
         auto nodes = getInstanceNodes(instanceId);
         if (nodes.empty()) {
             std::cerr << "[InstanceRegistry] [RTSP Reconnect] ✗ Pipeline not found" << std::endl;
             return false;
+        }
+        
+        // CRITICAL: Verify instance is still running after getting nodes (race condition protection)
+        {
+            std::shared_lock<std::shared_timed_mutex> lock(mutex_);
+            auto instanceIt = instances_.find(instanceId);
+            if (instanceIt == instances_.end() || !instanceIt->second.running) {
+                std::cerr << "[InstanceRegistry] [RTSP Reconnect] ✗ Instance was stopped while getting nodes" << std::endl;
+                return false;
+            }
         }
         
         // Get RTSP node
@@ -4362,11 +4868,40 @@ bool InstanceRegistry::reconnectRTSPStream(const std::string& instanceId) {
         // Wait a moment before restarting
         std::this_thread::sleep_for(std::chrono::milliseconds(1000));
         
+        // CRITICAL: Check again if instance is still running before restarting
+        // Instance may have been stopped during the wait period
+        {
+            std::shared_lock<std::shared_timed_mutex> lock(mutex_);
+            auto instanceIt = instances_.find(instanceId);
+            if (instanceIt == instances_.end() || !instanceIt->second.running) {
+                std::cerr << "[InstanceRegistry] [RTSP Reconnect] ✗ Instance was stopped before restart (aborting reconnect)" << std::endl;
+                return false;
+            }
+        }
+        
+        // CRITICAL: Verify RTSP node is still valid before restarting
+        if (!rtspNode) {
+            std::cerr << "[InstanceRegistry] [RTSP Reconnect] ✗ RTSP node is invalid (may have been destroyed)" << std::endl;
+            return false;
+        }
+        
         std::cerr << "[InstanceRegistry] [RTSP Reconnect] Restarting RTSP node..." << std::endl;
         
         // Restart RTSP node
         try {
             rtspNode->start();
+            
+            // CRITICAL: Final check - verify instance is still running after start()
+            // This prevents updating activity for a stopped instance
+            {
+                std::shared_lock<std::shared_timed_mutex> lock(mutex_);
+                auto instanceIt = instances_.find(instanceId);
+                if (instanceIt == instances_.end() || !instanceIt->second.running) {
+                    std::cerr << "[InstanceRegistry] [RTSP Reconnect] ⚠ Instance was stopped after restart (reconnect may have succeeded but instance is now stopped)" << std::endl;
+                    return false;
+                }
+            }
+            
             std::cerr << "[InstanceRegistry] [RTSP Reconnect] ✓ RTSP node restarted successfully" << std::endl;
             
             // Update activity time

@@ -238,6 +238,7 @@ Nếu gặp lỗi `cvedix_yolov11_detector_node.h: No such file or directory`, �
 - [Create Instance Guide](docs/CREATE_INSTANCE_GUIDE.md) - Tạo và quản lý instances
 - [Update Instance Guide](docs/UPDATE_INSTANCE_GUIDE.md) - Cập nhật cấu hình instances
 - [Logging Guide](docs/LOGGING.md) - Hướng dẫn logging
+- [Frame API Guide](docs/FRAME_API.md) - Lấy khung hình cuối cùng từ instance
 
 ### Deployment
 - [Deploy README](deploy/README.md) - Hướng dẫn triển khai production

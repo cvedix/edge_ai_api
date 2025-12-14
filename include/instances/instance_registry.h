@@ -1,6 +1,7 @@
 #pragma once
 
 #include "instances/instance_info.h"
+#include "instances/instance_statistics.h"
 #include "models/create_instance_request.h"
 #include "solutions/solution_registry.h"
 #include "core/pipeline_builder.h"
@@ -14,6 +15,9 @@
 #include <memory>
 #include <atomic>
 #include <thread>
+#include <chrono>
+#include <opencv2/opencv.hpp>
+#include <opencv2/imgcodecs.hpp>
 
 // Forward declarations
 namespace cvedix_nodes {
@@ -156,6 +160,21 @@ public:
      */
     Json::Value getInstanceConfig(const std::string& instanceId) const;
     
+    /**
+     * @brief Get instance statistics
+     * @param instanceId Instance ID
+     * @return Statistics info if instance exists and is running, empty optional otherwise
+     * @note This method may update tracker with latest FPS/resolution information
+     */
+    std::optional<InstanceStatistics> getInstanceStatistics(const std::string& instanceId);
+    
+    /**
+     * @brief Get last frame from instance (cached frame)
+     * @param instanceId Instance ID
+     * @return Base64-encoded JPEG frame string, empty string if no frame available
+     */
+    std::string getLastFrame(const std::string& instanceId) const;
+    
 private:
     SolutionRegistry& solution_registry_;
     PipelineBuilder& pipeline_builder_;
@@ -187,6 +206,64 @@ private:
     mutable std::unordered_map<std::string, std::chrono::steady_clock::time_point> rtsp_last_activity_; // Track last frame received time (mutable for const methods)
     std::unordered_map<std::string, std::atomic<int>> rtsp_reconnect_attempts_; // Track reconnect attempts
     mutable std::mutex rtsp_monitor_mutex_; // Separate mutex for RTSP monitor thread management
+    
+    // Statistics tracking per instance
+    struct InstanceStatsTracker {
+        std::chrono::steady_clock::time_point start_time;  // For elapsed time calculation
+        std::chrono::system_clock::time_point start_time_system;  // For Unix timestamp
+        uint64_t frames_processed = 0;
+        uint64_t dropped_frames = 0;
+        double last_fps = 0.0;
+        std::chrono::steady_clock::time_point last_fps_update;
+        uint64_t frame_count_since_last_update = 0;
+        std::string resolution;  // Current processing resolution
+        std::string source_resolution;  // Source resolution
+        std::string format;  // Frame format
+        size_t max_queue_size_seen = 0;  // Maximum queue size observed
+        size_t current_queue_size = 0;   // Current queue size (from last hook callback)
+        uint64_t expected_frames_from_source = 0;  // Expected frames based on source FPS
+    };
+    
+    mutable std::unordered_map<std::string, InstanceStatsTracker> statistics_trackers_;
+    
+    // Frame cache per instance
+    struct FrameCache {
+        cv::Mat frame;  // OSD frame (processed frame with overlays)
+        std::chrono::steady_clock::time_point timestamp;
+        bool has_frame = false;
+    };
+    
+    mutable std::unordered_map<std::string, FrameCache> frame_caches_;
+    mutable std::mutex frame_cache_mutex_; // Separate mutex for frame cache to avoid deadlock
+    
+    /**
+     * @brief Update frame cache for an instance
+     * @param instanceId Instance ID
+     * @param frame Frame to cache (will be copied)
+     */
+    void updateFrameCache(const std::string& instanceId, const cv::Mat& frame);
+    
+    /**
+     * @brief Setup frame capture hook for pipeline
+     * @param instanceId Instance ID
+     * @param nodes Pipeline nodes
+     */
+    void setupFrameCaptureHook(const std::string& instanceId, const std::vector<std::shared_ptr<cvedix_nodes::cvedix_node>>& nodes);
+    
+    /**
+     * @brief Setup queue size tracking hook for pipeline nodes
+     * @param instanceId Instance ID
+     * @param nodes Pipeline nodes
+     */
+    void setupQueueSizeTrackingHook(const std::string& instanceId, const std::vector<std::shared_ptr<cvedix_nodes::cvedix_node>>& nodes);
+    
+    /**
+     * @brief Encode cv::Mat frame to JPEG base64 string
+     * @param frame Frame to encode
+     * @param jpegQuality JPEG quality (1-100, default 85)
+     * @return Base64-encoded JPEG string
+     */
+    std::string encodeFrameToBase64(const cv::Mat& frame, int jpegQuality = 85) const;
     
     /**
      * @brief Create InstanceInfo from request

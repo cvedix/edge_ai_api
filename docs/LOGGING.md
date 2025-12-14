@@ -156,6 +156,10 @@ logs/
 - **Disk space monitoring**: Tự động cleanup khi dung lượng đĩa > 85% (có thể cấu hình)
 
 **Xem logs:**
+
+Có 2 cách để xem logs:
+
+**1. Sử dụng Command Line (truyền thống):**
 ```bash
 # Xem log real-time theo category
 tail -f ./logs/api/2025-12-04.log
@@ -174,6 +178,35 @@ tail -f ./logs/general/2025-12-04.log | grep "\[SDKOutput\]"
 # Filter theo instance ID
 tail -f ./logs/api/2025-12-04.log | grep "abc-123"
 ```
+
+**2. Sử dụng REST API (khuyến nghị):**
+
+Edge AI API Server cung cấp các endpoints để truy cập logs qua REST API với nhiều tính năng filtering và querying:
+
+```bash
+# List tất cả log files theo category
+curl -X GET http://localhost:8080/v1/core/logs
+
+# Get logs từ category api
+curl -X GET http://localhost:8080/v1/core/logs/api
+
+# Get logs từ category instance cho một ngày cụ thể
+curl -X GET http://localhost:8080/v1/core/logs/instance/2025-01-15
+
+# Filter theo log level (chỉ ERROR logs)
+curl -X GET "http://localhost:8080/v1/core/logs/api?level=ERROR"
+
+# Get 100 dòng cuối cùng (tail)
+curl -X GET "http://localhost:8080/v1/core/logs/api?tail=100"
+
+# Filter theo time range
+curl -X GET "http://localhost:8080/v1/core/logs/api?from=2025-01-15T10:00:00.000Z&to=2025-01-15T11:00:00.000Z"
+
+# Kết hợp nhiều filters
+curl -X GET "http://localhost:8080/v1/core/logs/api?level=ERROR&tail=50"
+```
+
+**Xem chi tiết:** [LOGS_API.md](LOGS_API.md) - Tài liệu đầy đủ về Logs API endpoints
 
 ## Cấu Hình Logging
 

@@ -105,7 +105,10 @@ static std::atomic<bool> g_analysis_board_disabled{false}; // Flag to disable af
 // Rate limiting to prevent log spam when crashes occur repeatedly
 static std::atomic<int> g_segfault_count{0};
 static std::atomic<std::chrono::steady_clock::time_point> g_last_segfault_log{std::chrono::steady_clock::now()};
+static std::atomic<std::chrono::steady_clock::time_point> g_first_segfault_time{std::chrono::steady_clock::now()};
 static constexpr auto SEGFAULT_LOG_INTERVAL = std::chrono::seconds(5);  // Log at most once every 5 seconds
+static constexpr int MAX_SEGFAULTS_BEFORE_FORCE_EXIT = 10000;  // Force exit if > 10000 crashes
+static constexpr auto SEGFAULT_TIME_WINDOW = std::chrono::minutes(1);  // Reset counter after 1 minute
 
 void segfaultHandler(int signal)
 {
@@ -117,6 +120,66 @@ void segfaultHandler(int signal)
     // Increment counter
     int count = g_segfault_count.fetch_add(1) + 1;
     
+    // Check if we need to reset counter (after time window)
+    auto first_crash = g_first_segfault_time.load();
+    auto time_since_first = std::chrono::duration_cast<std::chrono::minutes>(now - first_crash).count();
+    if (time_since_first >= SEGFAULT_TIME_WINDOW.count()) {
+        // Reset counter if more than 1 minute has passed
+        g_segfault_count.store(1);
+        g_first_segfault_time.store(now);
+        count = 1;
+    }
+    
+    // CRITICAL: Force exit if too many crashes (prevents infinite crash loop)
+    if (count > MAX_SEGFAULTS_BEFORE_FORCE_EXIT) {
+        std::cerr << "\n[CRITICAL] ========================================" << std::endl;
+        std::cerr << "[CRITICAL] Too many segmentation faults (" << count << ") - forcing exit to prevent infinite crash loop" << std::endl;
+        std::cerr << "[CRITICAL] This indicates RTSP stream is completely unstable" << std::endl;
+        std::cerr << "[CRITICAL] Process will exit immediately to prevent system hang" << std::endl;
+        std::cerr << "[CRITICAL] ========================================" << std::endl;
+        std::fflush(stdout);
+        std::fflush(stderr);
+        
+        // Set force exit flag
+        g_force_exit = true;
+        
+        // Try to stop all instances quickly (with timeout)
+        if (g_instance_registry) {
+            std::thread([]() {
+                try {
+                    auto instances = g_instance_registry->listInstances();
+                    for (const auto& instanceId : instances) {
+                        if (g_force_exit.load()) break;
+                        try {
+                            auto optInfo = g_instance_registry->getInstance(instanceId);
+                            if (optInfo.has_value() && optInfo.value().running) {
+                                // Use async with very short timeout (100ms) - just try to stop, don't wait
+                                std::async(std::launch::async, [instanceId]() {
+                                    try {
+                                        if (g_instance_registry) {
+                                            g_instance_registry->stopInstance(instanceId);
+                                        }
+                                    } catch (...) {
+                                        // Ignore errors
+                                    }
+                                });
+                            }
+                        } catch (...) {
+                            // Ignore errors
+                        }
+                    }
+                } catch (...) {
+                    // Ignore errors
+                }
+            }).detach();
+        }
+        
+        // Wait a moment then force exit
+        std::this_thread::sleep_for(std::chrono::milliseconds(500));
+        std::_Exit(1);  // Force exit immediately
+        return;
+    }
+    
     // Only log if enough time has passed since last log (rate limiting)
     if (time_since_last_log >= SEGFAULT_LOG_INTERVAL.count()) {
         // Update last log time
@@ -126,12 +189,15 @@ void segfaultHandler(int signal)
         std::cerr << "[CRITICAL] Segmentation fault (SIGSEGV) detected! (count: " << count << ")" << std::endl;
         std::cerr << "[CRITICAL] This is likely caused by GStreamer pipeline crash when RTSP stream is lost" << std::endl;
         std::cerr << "[CRITICAL] Monitoring thread will attempt to reconnect automatically" << std::endl;
-        if (count > 1) {
+        if (count > 1000) {
+            std::cerr << "[CRITICAL] WARNING: Very high crash count (" << count << ") - consider stopping problematic instances" << std::endl;
+            std::cerr << "[CRITICAL] If crashes continue, process will auto-exit after " << MAX_SEGFAULTS_BEFORE_FORCE_EXIT << " crashes" << std::endl;
+        } else if (count > 1) {
             std::cerr << "[CRITICAL] Note: Multiple crashes detected - RTSP stream may be unstable" << std::endl;
         }
         std::cerr << "[CRITICAL] ========================================" << std::endl;
         
-        // Reset counter after logging
+        // Reset counter after logging (but keep first crash time)
         g_segfault_count.store(0);
     }
     
@@ -383,6 +449,7 @@ void signalHandler(int signal)
             PLOG_WARNING << "Received signal " << signal << " again (" << count << " times) - forcing immediate exit";
             std::cerr << "[CRITICAL] Force exit requested (signal received " << count << " times) - KILLING PROCESS NOW" << std::endl;
             std::cerr << "[CRITICAL] Bypassing all cleanup - RTSP retry loops will be killed" << std::endl;
+            std::cerr << "[CRITICAL] Total segfaults before exit: " << g_segfault_count.load() << std::endl;
             std::fflush(stdout);
             std::fflush(stderr);
             
@@ -393,6 +460,7 @@ void signalHandler(int signal)
             std::signal(SIGINT, SIG_DFL);
             std::signal(SIGTERM, SIG_DFL);
             std::signal(SIGABRT, SIG_DFL);
+            std::signal(SIGSEGV, SIG_DFL);  // Also unregister SIGSEGV handler
             
             // Use abort() to force immediate termination - most aggressive
             // RTSP retry loops in SDK threads will be killed by OS

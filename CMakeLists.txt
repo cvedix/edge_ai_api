@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.14)
-project(edge_ai_api VERSION 1.0.0)
+project(edge_ai_api VERSION 2025.0.1.1)
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -262,6 +262,7 @@ set(SOURCES
     src/api/config_handler.cpp
     src/api/node_handler.cpp
     src/api/system_info_handler.cpp
+    src/api/log_handler.cpp
     src/models/model_upload_handler.cpp
     src/videos/video_upload_handler.cpp
     src/core/watchdog.cpp

@@ -126,6 +126,48 @@ Tài liệu hướng dẫn đầy đủ cho Edge AI API project.
     - Giải pháp và workarounds
     - Best practices cho CMake configuration
 
+10. **[LOGS_API.md](LOGS_API.md)** - Logs API Documentation
+    - Hướng dẫn sử dụng Logs API endpoints
+    - List log files theo category
+    - Get logs với filtering (level, time range, tail)
+    - Ví dụ sử dụng với curl
+    - Use cases và best practices
+
+11. **[STATISTICS_API.md](STATISTICS_API.md)** - Statistics API Documentation
+    - Hướng dẫn sử dụng Statistics API endpoint
+    - Lấy thống kê thời gian thực của instance
+    - Endpoint: `/v1/core/instance/{instanceId}/statistics`
+    - Ví dụ sử dụng với curl, Python, JavaScript
+    - Use cases: monitoring, alerting, dashboard
+    - Troubleshooting và best practices
+
+12. **[FRAME_API.md](FRAME_API.md)** - Frame API Documentation
+    - Hướng dẫn sử dụng Frame API endpoint
+    - Lấy khung hình cuối cùng từ instance đang chạy
+    - Endpoint: `/v1/core/instances/{instanceId}/frame`
+    - Frame được encode thành JPEG base64 format
+    - Yêu cầu pipeline có app_des_node
+    - Ví dụ sử dụng với curl, Python, JavaScript, HTML
+    - Use cases: live preview, thumbnail generation, monitoring
+    - Troubleshooting và best practices
+
+### Node Support & Implementation
+
+13. **[NODE_SUPPORT_STATUS.md](NODE_SUPPORT_STATUS.md)** - Trạng thái hỗ trợ các node types
+    - Inference nodes: 23 nodes (100%)
+    - Source nodes: 6 nodes (100%)
+    - Broker nodes: 12 nodes (100%)
+
+13. **[REQUIREMENT_CHECKLIST.md](REQUIREMENT_CHECKLIST.md)** - Checklist đáp ứng yêu cầu
+    - Detector (Inference): ✅ 100%
+    - Input (Source): ✅ 100%
+    - Output (Broker): ✅ 100%
+
+14. **[IMPLEMENTATION_SUMMARY.md](IMPLEMENTATION_SUMMARY.md)** - Tổng kết implementation
+    - Tổng số nodes đã hỗ trợ: 41 nodes
+    - Example files: 26 files
+    - Files đã tạo/cập nhật
+
 ## 🎯 Quick Start
 
 ### Cho Người Mới

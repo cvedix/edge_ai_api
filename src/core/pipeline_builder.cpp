@@ -15,6 +15,7 @@
 #include <cvedix/nodes/des/cvedix_file_des_node.h>
 #include <cvedix/nodes/des/cvedix_rtmp_des_node.h>
 #include <cvedix/nodes/des/cvedix_screen_des_node.h>
+#include <cvedix/nodes/des/cvedix_app_des_node.h>
 #include <cvedix/nodes/track/cvedix_sort_track_node.h>
 #include <cvedix/nodes/ba/cvedix_ba_crossline_node.h>
 #include <cvedix/nodes/osd/cvedix_ba_crossline_osd_node.h>
@@ -475,6 +476,71 @@ std::vector<std::shared_ptr<cvedix_nodes::cvedix_node>> PipelineBuilder::buildPi
             std::cerr << "[PipelineBuilder] ⚠ Exception auto-adding file_des node: " << e.what() << std::endl;
             std::cerr << "[PipelineBuilder] ⚠ Recording will not be available, but pipeline will continue" << std::endl;
         }
+    }
+    
+    // Check if pipeline has app_des_node for frame capture
+    bool hasAppDesNode = false;
+    for (const auto& node : nodes) {
+        if (std::dynamic_pointer_cast<cvedix_nodes::cvedix_app_des_node>(node)) {
+            hasAppDesNode = true;
+            break;
+        }
+    }
+    
+    // Automatically add app_des_node if not present (for frame capture support)
+    if (!hasAppDesNode && !nodes.empty()) {
+        std::cerr << "[PipelineBuilder] No app_des_node found in pipeline" << std::endl;
+        std::cerr << "[PipelineBuilder] Automatically adding app_des_node for frame capture support..." << std::endl;
+        
+        try {
+            std::string appDesNodeName = "app_des_" + instanceId;
+            std::map<std::string, std::string> appDesParams;
+            appDesParams["channel"] = "0";
+            
+            auto appDesNode = createAppDesNode(appDesNodeName, appDesParams);
+            if (appDesNode) {
+                // Find the last non-DES node to attach app_des_node to
+                // DES nodes (like rtmp_des, file_des) cannot have next nodes
+                // So we need to attach app_des_node to the node before the last DES node
+                std::shared_ptr<cvedix_nodes::cvedix_node> attachTarget = nullptr;
+                
+                // Search backwards to find the last non-DES node
+                for (auto it = nodes.rbegin(); it != nodes.rend(); ++it) {
+                    auto node = *it;
+                    // Check if it's a DES node
+                    bool isDesNode = std::dynamic_pointer_cast<cvedix_nodes::cvedix_rtmp_des_node>(node) != nullptr ||
+                                     std::dynamic_pointer_cast<cvedix_nodes::cvedix_file_des_node>(node) != nullptr ||
+                                     std::dynamic_pointer_cast<cvedix_nodes::cvedix_app_des_node>(node) != nullptr;
+                    
+                    if (!isDesNode) {
+                        attachTarget = node;
+                        std::cerr << "[PipelineBuilder] Found non-DES node to attach app_des_node: " << typeid(*node).name() << std::endl;
+                        break;
+                    }
+                }
+                
+                if (attachTarget) {
+                    // Attach app_des_node to the same node as the last DES node
+                    appDesNode->attach_to({attachTarget});
+                    nodes.push_back(appDesNode);
+                    std::cerr << "[PipelineBuilder] ✓ app_des_node added successfully for frame capture" << std::endl;
+                    std::cerr << "[PipelineBuilder] NOTE: app_des_node attached to same source as other DES nodes (parallel connection)" << std::endl;
+                } else {
+                    std::cerr << "[PipelineBuilder] ⚠ Warning: Could not find suitable node to attach app_des_node" << std::endl;
+                    std::cerr << "[PipelineBuilder] Frame capture will not be available for this instance" << std::endl;
+                }
+            } else {
+                std::cerr << "[PipelineBuilder] ⚠ Warning: Failed to create app_des_node (frame capture will not be available)" << std::endl;
+            }
+        } catch (const std::exception& e) {
+            std::cerr << "[PipelineBuilder] ⚠ Warning: Exception adding app_des_node: " << e.what() << std::endl;
+            std::cerr << "[PipelineBuilder] Frame capture will not be available for this instance" << std::endl;
+        } catch (...) {
+            std::cerr << "[PipelineBuilder] ⚠ Warning: Unknown exception adding app_des_node" << std::endl;
+            std::cerr << "[PipelineBuilder] Frame capture will not be available for this instance" << std::endl;
+        }
+    } else if (hasAppDesNode) {
+        std::cerr << "[PipelineBuilder] ✓ app_des_node found in pipeline (frame capture supported)" << std::endl;
     }
     
     std::cerr << "[PipelineBuilder] Successfully built pipeline with " << nodes.size() 
@@ -2024,6 +2090,40 @@ std::shared_ptr<cvedix_nodes::cvedix_node> PipelineBuilder::createRTMPDestinatio
     } catch (const std::exception& e) {
         std::cerr << "[PipelineBuilder] Exception in createRTMPDestinationNode: " << e.what() << std::endl;
         throw;
+    }
+}
+
+std::shared_ptr<cvedix_nodes::cvedix_node> PipelineBuilder::createAppDesNode(
+    const std::string& nodeName,
+    const std::map<std::string, std::string>& params) {
+    
+    try {
+        // Get channel parameter (default: 0)
+        int channel = params.count("channel") ? std::stoi(params.at("channel")) : 0;
+        
+        // Validate parameters
+        if (nodeName.empty()) {
+            throw std::invalid_argument("Node name cannot be empty");
+        }
+        
+        std::cerr << "[PipelineBuilder] Creating app_des node:" << std::endl;
+        std::cerr << "  Name: '" << nodeName << "'" << std::endl;
+        std::cerr << "  Channel: " << channel << std::endl;
+        std::cerr << "  NOTE: app_des node is used for frame capture via callback hook" << std::endl;
+        
+        auto node = std::make_shared<cvedix_nodes::cvedix_app_des_node>(
+            nodeName,
+            channel
+        );
+        
+        std::cerr << "[PipelineBuilder] ✓ app_des node created successfully" << std::endl;
+        return node;
+    } catch (const std::exception& e) {
+        std::cerr << "[PipelineBuilder] Exception in createAppDesNode: " << e.what() << std::endl;
+        throw;
+    } catch (...) {
+        std::cerr << "[PipelineBuilder] Unknown exception in createAppDesNode" << std::endl;
+        throw std::runtime_error("Unknown error creating app_des node");
     }
 }
 

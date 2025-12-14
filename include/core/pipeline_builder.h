@@ -154,6 +154,14 @@ private:
         const std::map<std::string, std::string>& params
     );
     
+    /**
+     * @brief Create app destination node (for frame capture)
+     */
+    std::shared_ptr<cvedix_nodes::cvedix_node> createAppDesNode(
+        const std::string& nodeName,
+        const std::map<std::string, std::string>& params
+    );
+    
     // ========== Tracking Nodes ==========
     
     /**
