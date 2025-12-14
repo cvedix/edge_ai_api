@@ -6,7 +6,7 @@
   "autoStart": true,
   "detectionSensitivity": "Medium",
   "additionalParams": {
-    "RTSP_URL": "rtsp://localhost:8554/stream",
+    "RTSP_URL": "rtsp://192.168.1.100:8554/stream",
     "MODEL_PATH": "./cvedix_data/models/yolo/yolov3.weights",
     "MODEL_CONFIG_PATH": "./cvedix_data/models/yolo/yolov3.cfg",
     "LABELS_PATH": "./cvedix_data/models/coco_80classes.txt",

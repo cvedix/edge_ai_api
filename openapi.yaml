@@ -2952,7 +2952,7 @@ paths:
                 summary: Enable remote RTMP stream
                 value:
                   enabled: true
-                  uri: "rtmp://localhost:1935/live/stream"
+                  uri: "rtmp://anhoidong.datacenter.cvedix.com:1935/live/stream"
               disableStream:
                 summary: Disable stream/record output
                 value:
@@ -5202,7 +5202,7 @@ components:
           additionalProperties:
             type: string
           example:
-            rtsp_url: "rtsp://localhost:8554/stream1"
+            rtsp_url: "rtsp://192.168.1.100:8554/stream1"
             channel: "0"
             resize_ratio: "1.0"
         createdAt:
@@ -5264,7 +5264,7 @@ components:
           additionalProperties:
             type: string
           example:
-            rtsp_url: "rtsp://localhost:8554/stream1"
+            rtsp_url: "rtsp://192.168.1.100:8554/stream1"
             channel: "0"
             resize_ratio: "1.0"
 
@@ -5279,7 +5279,7 @@ components:
           additionalProperties:
             type: string
           example:
-            rtsp_url: "rtsp://localhost:8554/stream2"
+            rtsp_url: "rtsp://192.168.1.200:8554/stream2"
             channel: "0"
             resize_ratio: "0.5"
 
