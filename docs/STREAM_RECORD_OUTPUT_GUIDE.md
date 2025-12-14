@@ -338,7 +338,7 @@ Khi bạn cấu hình `path`:
 **Nếu dùng RTSP Stream:**
 ```bash
 # Test RTSP stream có hoạt động không
-RTSP_URL="rtsp://localhost:8554/live/camera_demo_1_0"
+RTSP_URL="rtsp://anhoidong.datacenter.cvedix.com:8554/live/camera_demo_1_0"
 ffprobe -v error -show_entries stream=codec_name "$RTSP_URL" 2>&1 | head -5
 
 # Hoặc dùng ffplay để xem

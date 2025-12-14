@@ -238,7 +238,7 @@ Sử dụng solution ID và cung cấp các tham số trong `additionalParams`:
   "solution": "trt_yolov8_detection",
   "autoStart": true,
   "additionalParams": {
-    "RTSP_URL": "rtsp://localhost:8554/stream",
+    "RTSP_URL": "rtsp://192.168.1.100:8554/stream",
     "MODEL_PATH": "./cvedix_data/models/trt/others/yolov8s_v8.5.engine",
     "LABELS_PATH": "./cvedix_data/models/coco_80classes.txt",
     "RTMP_URL": "rtmp://localhost/live/stream"
