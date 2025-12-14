@@ -249,7 +249,7 @@ curl -X POST http://localhost:8080/v1/core/instance \
 POST /v1/core/nodes/preconfigured
 {
   "templateId": "rtsp_src_template",
-  "parameters": {"rtsp_url": "rtsp://camera1/stream"}
+  "parameters": {"rtsp_url": "rtsp://localhost/stream"}
 }
 → node_rtsp_1
 ```
