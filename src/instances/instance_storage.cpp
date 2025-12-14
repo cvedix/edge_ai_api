@@ -5,6 +5,7 @@
 #include <filesystem>
 #include <sstream>
 #include <iomanip>
+#include <algorithm>
 
 InstanceStorage::InstanceStorage(const std::string& storage_dir)
     : storage_dir_(storage_dir) {
@@ -386,7 +387,45 @@ Json::Value InstanceStorage::instanceInfoToConfigJson(const InstanceInfo& info, 
     // Input media_type and uri
     if (!info.rtspUrl.empty()) {
         input["media_type"] = "IP Camera";
-        input["uri"] = "gstreamer:///urisourcebin uri=" + info.rtspUrl + " ! decodebin ! videoconvert ! video/x-raw, format=NV12 ! appsink drop=true name=cvdsink";
+        
+        // Check if user wants to use urisourcebin format (for compatibility/auto-detect decoder)
+        bool useUrisourcebin = false;
+        auto urisourcebinIt = info.additionalParams.find("USE_URISOURCEBIN");
+        if (urisourcebinIt != info.additionalParams.end()) {
+            useUrisourcebin = (urisourcebinIt->second == "true" || urisourcebinIt->second == "1");
+        }
+        
+        // Check if decoder is set to "decodebin" (auto-detect)
+        std::string decoderName = "avdec_h264"; // Default decoder
+        auto decoderIt = info.additionalParams.find("GST_DECODER_NAME");
+        if (decoderIt != info.additionalParams.end() && !decoderIt->second.empty()) {
+            decoderName = decoderIt->second;
+            // If decodebin is specified, use urisourcebin format
+            if (decoderName == "decodebin") {
+                useUrisourcebin = true;
+            }
+        }
+        
+        if (useUrisourcebin) {
+            // Format: gstreamer:///urisourcebin uri=... ! decodebin ! videoconvert ! video/x-raw, format=NV12 ! appsink drop=true name=cvdsink
+            // This format uses decodebin for auto-detection (may help with decoder compatibility issues)
+            input["uri"] = "gstreamer:///urisourcebin uri=" + info.rtspUrl + " ! decodebin ! videoconvert ! video/x-raw, format=NV12 ! appsink drop=true name=cvdsink";
+        } else {
+            // Format: rtspsrc location=... [protocols=...] ! application/x-rtp,media=video ! rtph264depay ! h264parse ! decoder ! videoconvert ! video/x-raw,format=NV12 ! appsink drop=true name=cvdsink
+            // This format matches SDK template structure (with h264parse before decoder)
+            // Get transport protocol from additionalParams if specified
+            std::string protocolsParam = "";
+            auto rtspTransportIt = info.additionalParams.find("RTSP_TRANSPORT");
+            if (rtspTransportIt != info.additionalParams.end() && !rtspTransportIt->second.empty()) {
+                std::string transport = rtspTransportIt->second;
+                std::transform(transport.begin(), transport.end(), transport.begin(), ::tolower);
+                if (transport == "tcp" || transport == "udp") {
+                    protocolsParam = " protocols=" + transport;
+                }
+            }
+            // If no transport specified, don't add protocols parameter - let GStreamer use default
+            input["uri"] = "rtspsrc location=" + info.rtspUrl + protocolsParam + " ! application/x-rtp,media=video ! rtph264depay ! h264parse ! " + decoderName + " ! videoconvert ! video/x-raw,format=NV12 ! appsink drop=true name=cvdsink";
+        }
     } else if (!info.filePath.empty()) {
         input["media_type"] = "File";
         input["uri"] = info.filePath;
@@ -603,21 +642,36 @@ std::optional<InstanceInfo> InstanceStorage::configJsonToInstanceInfo(const Json
             // Extract URI
             if (input.isMember("uri") && input["uri"].isString()) {
                 std::string uri = input["uri"].asString();
-                // Parse RTSP URL from gstreamer URI
-                size_t rtspPos = uri.find("uri=");
+                // Parse RTSP URL from GStreamer URI - support both old format (uri=) and new format (location=)
+                size_t rtspPos = uri.find("location=");
                 if (rtspPos != std::string::npos) {
-                    size_t start = rtspPos + 4;
-                    size_t end = uri.find(" !", start);
+                    // New format: rtspsrc location=...
+                    size_t start = rtspPos + 9;
+                    size_t end = uri.find(" ", start);
+                    if (end == std::string::npos) {
+                        end = uri.find(" !", start);
+                    }
                     if (end == std::string::npos) {
                         end = uri.length();
                     }
                     info.rtspUrl = uri.substr(start, end - start);
-                } else if (uri.find("://") == std::string::npos) {
-                    // Direct file path (no protocol)
-                    info.filePath = uri;
                 } else {
-                    // URL with protocol
-                    info.filePath = uri;
+                    // Old format: gstreamer:///urisourcebin uri=...
+                    rtspPos = uri.find("uri=");
+                    if (rtspPos != std::string::npos) {
+                        size_t start = rtspPos + 4;
+                        size_t end = uri.find(" !", start);
+                        if (end == std::string::npos) {
+                            end = uri.length();
+                        }
+                        info.rtspUrl = uri.substr(start, end - start);
+                    } else if (uri.find("://") == std::string::npos) {
+                        // Direct file path (no protocol)
+                        info.filePath = uri;
+                    } else {
+                        // URL with protocol
+                        info.filePath = uri;
+                    }
                 }
             }
             

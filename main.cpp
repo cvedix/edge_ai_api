@@ -81,8 +81,8 @@ int main() {
     // RTSP / RTMP configuration
     const char *env_rtsp = std::getenv("CVEDIX_RTSP_URL");
     const char *env_rtmp = std::getenv("CVEDIX_RTMP_URL");
-    const std::string rtsp_url = env_rtsp ? env_rtsp : "rtsp://localhost:18554/9L02DA3PAJ39B2F";
-    const std::string rtmp_url = env_rtmp ? env_rtmp : "rtmp://localhost:1935/live/camera_traffic_usa_ai";
+    const std::string rtsp_url = env_rtsp ? env_rtsp : "rtsp://103.147.186.175:18554/9L02DA3PAJ39B2F";
+    const std::string rtmp_url = env_rtmp ? env_rtmp : "rtmp://anhoidong.datacenter.cvedix.com:1935/live/camera_traffic_usa_ai";
 
     // Chuẩn bị đường dẫn dữ liệu/mô hình
     const std::string weights_path = resolve_path("models/det_cls/yolov3-tiny-2022-0721_best.weights");

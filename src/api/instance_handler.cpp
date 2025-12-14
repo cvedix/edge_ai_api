@@ -843,6 +843,183 @@ void InstanceHandler::deleteInstance(
     }
 }
 
+void InstanceHandler::deleteAllInstances(
+    const HttpRequestPtr &req,
+    std::function<void(const HttpResponsePtr &)> &&callback) {
+    
+    auto start_time = std::chrono::steady_clock::now();
+    
+    if (isApiLoggingEnabled()) {
+        PLOG_INFO << "[API] DELETE /v1/core/instances - Delete all instances";
+        PLOG_DEBUG << "[API] Request from: " << req->getPeerAddr().toIpPort();
+    }
+    
+    try {
+        // Check if registry is set
+        if (!instance_registry_) {
+            if (isApiLoggingEnabled()) {
+                PLOG_ERROR << "[API] DELETE /v1/core/instances - Error: Instance registry not initialized";
+            }
+            callback(createErrorResponse(500, "Internal server error", "Instance registry not initialized"));
+            return;
+        }
+        
+        // Get all instances
+        std::unordered_map<std::string, InstanceInfo> allInstances;
+        try {
+            auto future = std::async(std::launch::async, [this]() -> std::unordered_map<std::string, InstanceInfo> {
+                try {
+                    if (instance_registry_) {
+                        return instance_registry_->getAllInstances();
+                    }
+                    return {};
+                } catch (...) {
+                    return {};
+                }
+            });
+            
+            // Wait with timeout (2.5 seconds)
+            auto status = future.wait_for(std::chrono::milliseconds(2500));
+            if (status == std::future_status::timeout) {
+                if (isApiLoggingEnabled()) {
+                    PLOG_WARNING << "[API] DELETE /v1/core/instances - Timeout getting instances (2.5s)";
+                }
+                callback(createErrorResponse(503, "Service Unavailable", 
+                    "Instance registry is busy. Please try again later."));
+                return;
+            } else if (status == std::future_status::ready) {
+                try {
+                    allInstances = future.get();
+                } catch (const std::exception& e) {
+                    if (isApiLoggingEnabled()) {
+                        PLOG_ERROR << "[API] DELETE /v1/core/instances - Exception getting instances: " << e.what();
+                    }
+                    callback(createErrorResponse(500, "Internal server error", "Failed to get instances: " + std::string(e.what())));
+                    return;
+                } catch (...) {
+                    if (isApiLoggingEnabled()) {
+                        PLOG_ERROR << "[API] DELETE /v1/core/instances - Unknown exception getting instances";
+                    }
+                    callback(createErrorResponse(500, "Internal server error", "Failed to get instances"));
+                    return;
+                }
+            }
+        } catch (const std::exception& e) {
+            if (isApiLoggingEnabled()) {
+                PLOG_ERROR << "[API] DELETE /v1/core/instances - Exception creating async task: " << e.what();
+            }
+            callback(createErrorResponse(500, "Internal server error", "Failed to get instances: " + std::string(e.what())));
+            return;
+        } catch (...) {
+            if (isApiLoggingEnabled()) {
+                PLOG_ERROR << "[API] DELETE /v1/core/instances - Unknown exception creating async task";
+            }
+            callback(createErrorResponse(500, "Internal server error", "Failed to get instances"));
+            return;
+        }
+        
+        // If no instances, return success
+        if (allInstances.empty()) {
+            Json::Value response;
+            response["success"] = true;
+            response["message"] = "No instances to delete";
+            response["total"] = 0;
+            response["deleted"] = 0;
+            response["failed"] = 0;
+            response["results"] = Json::Value(Json::arrayValue);
+            
+            auto end_time = std::chrono::steady_clock::now();
+            auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(end_time - start_time);
+            
+            if (isApiLoggingEnabled()) {
+                PLOG_INFO << "[API] DELETE /v1/core/instances - Success: No instances to delete - " << duration.count() << "ms";
+            }
+            
+            callback(createSuccessResponse(response));
+            return;
+        }
+        
+        // Extract instance IDs
+        std::vector<std::string> instanceIds;
+        for (const auto& [instanceId, info] : allInstances) {
+            instanceIds.push_back(instanceId);
+        }
+        
+        // Execute delete operations concurrently using async
+        std::vector<std::future<std::pair<std::string, bool>>> futures;
+        for (const auto& instanceId : instanceIds) {
+            futures.push_back(std::async(std::launch::async, [this, instanceId]() -> std::pair<std::string, bool> {
+                try {
+                    bool success = instance_registry_->deleteInstance(instanceId);
+                    return {instanceId, success};
+                } catch (...) {
+                    return {instanceId, false};
+                }
+            }));
+        }
+        
+        // Collect results
+        Json::Value response;
+        Json::Value results(Json::arrayValue);
+        int successCount = 0;
+        int failureCount = 0;
+        
+        for (auto& future : futures) {
+            auto [instanceId, success] = future.get();
+            
+            Json::Value result;
+            result["instanceId"] = instanceId;
+            result["success"] = success;
+            
+            if (success) {
+                result["status"] = "deleted";
+                successCount++;
+            } else {
+                result["status"] = "failed";
+                result["error"] = "Could not delete instance. Instance may not exist.";
+                failureCount++;
+            }
+            
+            results.append(result);
+        }
+        
+        response["results"] = results;
+        response["total"] = static_cast<int>(instanceIds.size());
+        response["deleted"] = successCount;
+        response["failed"] = failureCount;
+        response["message"] = "Delete all instances operation completed";
+        response["success"] = (failureCount == 0);
+        
+        auto end_time = std::chrono::steady_clock::now();
+        auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(end_time - start_time);
+        
+        if (isApiLoggingEnabled()) {
+            PLOG_INFO << "[API] DELETE /v1/core/instances - Success: " << successCount 
+                      << " deleted, " << failureCount << " failed out of " 
+                      << instanceIds.size() << " total - " << duration.count() << "ms";
+        }
+        
+        callback(createSuccessResponse(response));
+        
+    } catch (const std::exception& e) {
+        auto end_time = std::chrono::steady_clock::now();
+        auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(end_time - start_time);
+        if (isApiLoggingEnabled()) {
+            PLOG_ERROR << "[API] DELETE /v1/core/instances - Exception: " << e.what() << " - " << duration.count() << "ms";
+        }
+        std::cerr << "[InstanceHandler] Exception in deleteAllInstances: " << e.what() << std::endl;
+        callback(createErrorResponse(500, "Internal server error", e.what()));
+    } catch (...) {
+        auto end_time = std::chrono::steady_clock::now();
+        auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(end_time - start_time);
+        if (isApiLoggingEnabled()) {
+            PLOG_ERROR << "[API] DELETE /v1/core/instances - Unknown exception - " << duration.count() << "ms";
+        }
+        std::cerr << "[InstanceHandler] Unknown exception in deleteAllInstances" << std::endl;
+        callback(createErrorResponse(500, "Internal server error", "Unknown error occurred"));
+    }
+}
+
 void InstanceHandler::getConfig(
     const HttpRequestPtr &req,
     std::function<void(const HttpResponsePtr &)> &&callback) {
@@ -1023,8 +1200,87 @@ void InstanceHandler::setInstanceInput(
         // Set media_type and uri based on type
         if (type == "RTSP") {
             input["media_type"] = "IP Camera";
-            // Format URI for RTSP: gstreamer:///urisourcebin uri=... ! decodebin ! videoconvert ! video/x-raw, format=NV12 ! appsink drop=true name=cvdsink
-            input["uri"] = "gstreamer:///urisourcebin uri=" + uri + " ! decodebin ! videoconvert ! video/x-raw, format=NV12 ! appsink drop=true name=cvdsink";
+            
+            // Check if user wants to use urisourcebin format (for compatibility/auto-detect decoder)
+            bool useUrisourcebin = false;
+            if (json->isMember("additionalParams") && (*json)["additionalParams"].isObject()) {
+                const Json::Value& additionalParams = (*json)["additionalParams"];
+                if (additionalParams.isMember("USE_URISOURCEBIN") && additionalParams["USE_URISOURCEBIN"].isString()) {
+                    useUrisourcebin = (additionalParams["USE_URISOURCEBIN"].asString() == "true" || additionalParams["USE_URISOURCEBIN"].asString() == "1");
+                }
+            }
+            
+            // Get decoder name from instance additionalParams or request JSON
+            std::string decoderName = "avdec_h264"; // Default decoder
+            
+            // First try to get from request JSON additionalParams
+            if (json->isMember("additionalParams") && (*json)["additionalParams"].isObject()) {
+                const Json::Value& additionalParams = (*json)["additionalParams"];
+                if (additionalParams.isMember("GST_DECODER_NAME") && additionalParams["GST_DECODER_NAME"].isString()) {
+                    decoderName = additionalParams["GST_DECODER_NAME"].asString();
+                    // If decodebin is specified, use urisourcebin format
+                    if (decoderName == "decodebin") {
+                        useUrisourcebin = true;
+                    }
+                }
+            }
+            
+            // If not found in request, try to get from existing instance info
+            if (decoderName == "avdec_h264" && optInfo.has_value()) {
+                const InstanceInfo& info = optInfo.value();
+                auto decoderIt = info.additionalParams.find("GST_DECODER_NAME");
+                if (decoderIt != info.additionalParams.end() && !decoderIt->second.empty()) {
+                    decoderName = decoderIt->second;
+                    if (decoderName == "decodebin") {
+                        useUrisourcebin = true;
+                    }
+                }
+                // Check USE_URISOURCEBIN from instance
+                auto urisourcebinIt = info.additionalParams.find("USE_URISOURCEBIN");
+                if (urisourcebinIt != info.additionalParams.end()) {
+                    useUrisourcebin = (urisourcebinIt->second == "true" || urisourcebinIt->second == "1");
+                }
+            }
+            
+            if (useUrisourcebin) {
+                // Format: gstreamer:///urisourcebin uri=... ! decodebin ! videoconvert ! video/x-raw, format=NV12 ! appsink drop=true name=cvdsink
+                // This format uses decodebin for auto-detection (may help with decoder compatibility issues)
+                input["uri"] = "gstreamer:///urisourcebin uri=" + uri + " ! decodebin ! videoconvert ! video/x-raw, format=NV12 ! appsink drop=true name=cvdsink";
+            } else {
+                // Format: rtspsrc location=... [protocols=...] ! application/x-rtp,media=video ! rtph264depay ! h264parse ! decoder ! videoconvert ! video/x-raw,format=NV12 ! appsink drop=true name=cvdsink
+                // This format matches SDK template structure (with h264parse before decoder)
+                // Get transport protocol from request JSON or instance info
+                std::string protocolsParam = "";
+                std::string rtspTransport = "";
+                
+                // First try request JSON additionalParams
+                if (json->isMember("additionalParams") && (*json)["additionalParams"].isObject()) {
+                    const Json::Value& additionalParams = (*json)["additionalParams"];
+                    if (additionalParams.isMember("RTSP_TRANSPORT") && additionalParams["RTSP_TRANSPORT"].isString()) {
+                        rtspTransport = additionalParams["RTSP_TRANSPORT"].asString();
+                    }
+                }
+                
+                // If not found, try instance info
+                if (rtspTransport.empty() && optInfo.has_value()) {
+                    const InstanceInfo& info = optInfo.value();
+                    auto rtspTransportIt = info.additionalParams.find("RTSP_TRANSPORT");
+                    if (rtspTransportIt != info.additionalParams.end() && !rtspTransportIt->second.empty()) {
+                        rtspTransport = rtspTransportIt->second;
+                    }
+                }
+                
+                // Validate and add protocols parameter
+                if (!rtspTransport.empty()) {
+                    std::transform(rtspTransport.begin(), rtspTransport.end(), rtspTransport.begin(), ::tolower);
+                    if (rtspTransport == "tcp" || rtspTransport == "udp") {
+                        protocolsParam = " protocols=" + rtspTransport;
+                    }
+                }
+                // If no transport specified, don't add protocols parameter - let GStreamer use default
+                
+                input["uri"] = "rtspsrc location=" + uri + protocolsParam + " ! application/x-rtp,media=video ! rtph264depay ! h264parse ! " + decoderName + " ! videoconvert ! video/x-raw,format=NV12 ! appsink drop=true name=cvdsink";
+            }
         } else if (type == "HLS") {
             input["media_type"] = "IP Camera";
             // For HLS, use the URI directly (hls_src node will handle it)
@@ -1580,18 +1836,33 @@ bool InstanceHandler::parseUpdateRequest(
         const Json::Value& input = json["Input"];
         if (input.isMember("uri") && input["uri"].isString()) {
             std::string uri = input["uri"].asString();
-            // Extract RTSP URL from GStreamer URI
-            size_t rtspPos = uri.find("uri=");
+            // Extract RTSP URL from GStreamer URI - support both old format (uri=) and new format (location=)
+            size_t rtspPos = uri.find("location=");
             if (rtspPos != std::string::npos) {
-                size_t start = rtspPos + 4;
-                size_t end = uri.find(" !", start);
+                // New format: rtspsrc location=...
+                size_t start = rtspPos + 9;
+                size_t end = uri.find(" ", start);
+                if (end == std::string::npos) {
+                    end = uri.find(" !", start);
+                }
                 if (end == std::string::npos) {
                     end = uri.length();
                 }
                 req.additionalParams["RTSP_URL"] = uri.substr(start, end - start);
-            } else if (uri.find("://") == std::string::npos) {
-                // Direct file path
-                req.additionalParams["FILE_PATH"] = uri;
+            } else {
+                // Old format: gstreamer:///urisourcebin uri=...
+                rtspPos = uri.find("uri=");
+                if (rtspPos != std::string::npos) {
+                    size_t start = rtspPos + 4;
+                    size_t end = uri.find(" !", start);
+                    if (end == std::string::npos) {
+                        end = uri.length();
+                    }
+                    req.additionalParams["RTSP_URL"] = uri.substr(start, end - start);
+                } else if (uri.find("://") == std::string::npos) {
+                    // Direct file path
+                    req.additionalParams["FILE_PATH"] = uri;
+                }
             }
         }
         if (input.isMember("media_type") && input["media_type"].isString()) {
@@ -1723,8 +1994,10 @@ bool InstanceHandler::parseUpdateRequest(
         req.additionalParams["FILE_PATH"] = json["FILE_PATH"].asString();
     }
     
-    // Also check for RTMP_URL at top level (for RTMP destination)
-    if (json.isMember("RTMP_URL") && json["RTMP_URL"].isString()) {
+    // Also check for RTMP_DES_URL or RTMP_URL at top level (for RTMP destination)
+    if (json.isMember("RTMP_DES_URL") && json["RTMP_DES_URL"].isString()) {
+        req.additionalParams["RTMP_DES_URL"] = json["RTMP_DES_URL"].asString();
+    } else if (json.isMember("RTMP_URL") && json["RTMP_URL"].isString()) {
         req.additionalParams["RTMP_URL"] = json["RTMP_URL"].asString();
     }
     
@@ -1760,7 +2033,45 @@ Json::Value InstanceHandler::instanceInfoToJson(const InstanceInfo& info) const 
     Json::Value input(Json::objectValue);
     if (!info.rtspUrl.empty()) {
         input["media_type"] = "IP Camera";
-        input["uri"] = "gstreamer:///urisourcebin uri=" + info.rtspUrl + " ! decodebin ! videoconvert ! video/x-raw, format=NV12 ! appsink drop=true name=cvdsink";
+        
+        // Check if user wants to use urisourcebin format (for compatibility/auto-detect decoder)
+        bool useUrisourcebin = false;
+        auto urisourcebinIt = info.additionalParams.find("USE_URISOURCEBIN");
+        if (urisourcebinIt != info.additionalParams.end()) {
+            useUrisourcebin = (urisourcebinIt->second == "true" || urisourcebinIt->second == "1");
+        }
+        
+        // Get decoder name from additionalParams
+        std::string decoderName = "avdec_h264"; // Default decoder
+        auto decoderIt = info.additionalParams.find("GST_DECODER_NAME");
+        if (decoderIt != info.additionalParams.end() && !decoderIt->second.empty()) {
+            decoderName = decoderIt->second;
+            // If decodebin is specified, use urisourcebin format
+            if (decoderName == "decodebin") {
+                useUrisourcebin = true;
+            }
+        }
+        
+        if (useUrisourcebin) {
+            // Format: gstreamer:///urisourcebin uri=... ! decodebin ! videoconvert ! video/x-raw, format=NV12 ! appsink drop=true name=cvdsink
+            // This format uses decodebin for auto-detection (may help with decoder compatibility issues)
+            input["uri"] = "gstreamer:///urisourcebin uri=" + info.rtspUrl + " ! decodebin ! videoconvert ! video/x-raw, format=NV12 ! appsink drop=true name=cvdsink";
+        } else {
+            // Format: rtspsrc location=... [protocols=...] ! application/x-rtp,media=video ! rtph264depay ! h264parse ! decoder ! videoconvert ! video/x-raw,format=NV12 ! appsink drop=true name=cvdsink
+            // This format matches SDK template structure (with h264parse before decoder)
+            // Get transport protocol from additionalParams if specified
+            std::string protocolsParam = "";
+            auto rtspTransportIt = info.additionalParams.find("RTSP_TRANSPORT");
+            if (rtspTransportIt != info.additionalParams.end() && !rtspTransportIt->second.empty()) {
+                std::string transport = rtspTransportIt->second;
+                std::transform(transport.begin(), transport.end(), transport.begin(), ::tolower);
+                if (transport == "tcp" || transport == "udp") {
+                    protocolsParam = " protocols=" + transport;
+                }
+            }
+            // If no transport specified, don't add protocols parameter - let GStreamer use default
+            input["uri"] = "rtspsrc location=" + info.rtspUrl + protocolsParam + " ! application/x-rtp,media=video ! rtph264depay ! h264parse ! " + decoderName + " ! videoconvert ! video/x-raw,format=NV12 ! appsink drop=true name=cvdsink";
+        }
     } else if (!info.filePath.empty()) {
         input["media_type"] = "File";
         input["uri"] = info.filePath;
@@ -2280,6 +2591,8 @@ void InstanceHandler::getInstanceOutput(
             output["type"] = "RTMP_STREAM";
             if (!info.rtmpUrl.empty()) {
                 output["rtmpUrl"] = info.rtmpUrl;
+            } else if (info.additionalParams.find("RTMP_DES_URL") != info.additionalParams.end()) {
+                output["rtmpUrl"] = info.additionalParams.at("RTMP_DES_URL");
             } else if (info.additionalParams.find("RTMP_URL") != info.additionalParams.end()) {
                 output["rtmpUrl"] = info.additionalParams.at("RTMP_URL");
             }

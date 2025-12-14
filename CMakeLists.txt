@@ -3,7 +3,9 @@ project(edge_ai_api VERSION 1.0.0)
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
-set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wall -Wextra")
+
+# Enable position-independent code globally (required for shared libraries)
+set(CMAKE_POSITION_INDEPENDENT_CODE ON)
 
 # ============================================
 # Check System Dependencies
@@ -48,10 +50,7 @@ if(NOT Jsoncpp_FOUND)
         message(STATUS "Jsoncpp not found. Attempting to download using FetchContent...")
         include(FetchContent)
         
-        # Enable position-independent code for jsoncpp (required for shared libraries)
-        # This must be set before FetchContent_MakeAvailable
-        set(CMAKE_POSITION_INDEPENDENT_CODE ON)
-        
+        # CMAKE_POSITION_INDEPENDENT_CODE is already set globally above
         FetchContent_Declare(
             jsoncpp
             GIT_REPOSITORY https://github.com/open-source-parsers/jsoncpp.git
@@ -220,7 +219,6 @@ if(AUTO_DOWNLOAD_DEPENDENCIES)
     
     # Plog is header-only, so we just need to add the include directory
     set(PLOG_INCLUDE_DIR "${CMAKE_BINARY_DIR}/_deps/plog-src/include" CACHE PATH "Plog include directory" FORCE)
-    include_directories(${PLOG_INCLUDE_DIR})
     
     message(STATUS "✓ Plog downloaded and configured successfully")
     message(STATUS "  Include: ${PLOG_INCLUDE_DIR}")
@@ -234,21 +232,12 @@ else()
     )
     
     if(PLOG_INCLUDE_DIR)
-        include_directories(${PLOG_INCLUDE_DIR})
         message(STATUS "✓ Found system Plog: ${PLOG_INCLUDE_DIR}")
     else()
         message(FATAL_ERROR 
             "Plog not found. Please install Plog or enable auto-download:\n"
             "  cmake .. -DAUTO_DOWNLOAD_DEPENDENCIES=ON")
     endif()
-endif()
-
-# ============================================
-# Include directories
-# ============================================
-include_directories(${CMAKE_SOURCE_DIR}/include)
-if(OpenCV_FOUND)
-    include_directories(${OpenCV_INCLUDE_DIRS})
 endif()
 
 # ============================================
@@ -284,6 +273,7 @@ set(SOURCES
     src/core/ai_processor.cpp
     src/core/ai_watchdog.cpp
     src/instances/instance_registry.cpp
+    src/instances/queue_monitor.cpp
     src/solutions/solution_registry.cpp
     src/groups/group_registry.cpp
     src/core/pipeline_builder.cpp
@@ -320,28 +310,24 @@ set(SOURCES
 # ============================================
 add_executable(edge_ai_api ${SOURCES})
 
-# Set RPATH to find OpenCV 4.10 libraries in /usr/local/lib
-# This ensures the executable can find libopencv_*.so.410 at runtime
-# BUILD_WITH_INSTALL_RPATH FALSE: Use BUILD_RPATH when running from build directory
-# BUILD_WITH_INSTALL_RPATH TRUE: Use INSTALL_RPATH when running from build directory
+# Set compile options for this target (modern CMake way)
+target_compile_options(edge_ai_api PRIVATE -Wall -Wextra)
+
+# Set RPATH configuration
 # Use RPATH (not RUNPATH) so it works even without LD_LIBRARY_PATH
-set(CMAKE_BUILD_RPATH_USE_ORIGIN TRUE)
+# This ensures the executable can find libraries at runtime
 set_target_properties(edge_ai_api PROPERTIES
-    INSTALL_RPATH_USE_LINK_PATH TRUE
+    # Use BUILD_RPATH when running from build directory
     BUILD_WITH_INSTALL_RPATH FALSE
     BUILD_RPATH_USE_ORIGIN TRUE
-    # Use RPATH instead of RUNPATH (RPATH is always used, RUNPATH only when LD_LIBRARY_PATH is set)
-    SKIP_BUILD_RPATH FALSE
-)
-# Add /usr/local/lib to RPATH for OpenCV 4.10
-# Add build/lib to RPATH for Drogon library (when using FetchContent)
-# Note: RPATH (not RUNPATH) will be used, so it works without LD_LIBRARY_PATH
-set_target_properties(edge_ai_api PROPERTIES
-    INSTALL_RPATH "${CMAKE_INSTALL_PREFIX}/lib;/usr/local/lib"
+    # RPATH for build directory (Drogon libraries in build/lib)
     BUILD_RPATH "${CMAKE_BINARY_DIR}/lib;/usr/local/lib"
+    # RPATH for installed executable
+    INSTALL_RPATH "${CMAKE_INSTALL_PREFIX}/lib;/usr/local/lib"
+    INSTALL_RPATH_USE_LINK_PATH TRUE
+    # Force use of RPATH instead of RUNPATH
+    LINK_FLAGS "-Wl,--disable-new-dtags"
 )
-# Force use of RPATH instead of RUNPATH
-set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -Wl,--disable-new-dtags")
 
 # ============================================
 # Link libraries
@@ -392,11 +378,10 @@ if(NOT CEREAL_INCLUDE_DIR AND AUTO_DOWNLOAD_DEPENDENCIES)
 endif()
 
 if(CEREAL_INCLUDE_DIR)
-    include_directories(${CEREAL_INCLUDE_DIR})
     message(STATUS "✓ Found Cereal: ${CEREAL_INCLUDE_DIR}")
     
-    # CVEDIX SDK expects cereal at ../../../third_party/cereal relative to /usr/include/cvedix/nodes/broker/cereal_archive/
-    # This means it looks for /usr/include/cvedix/third_party/cereal/cereal.hpp
+    # CVEDIX SDK expects cereal at ../../../third_party/cereal relative to /opt/cvedix/include/cvedix/nodes/broker/cereal_archive/
+    # This means it looks for /opt/cvedix/include/cvedix/third_party/cereal/cereal.hpp
     # Create the exact directory structure CVEDIX SDK expects in build directory
     set(CVEDIX_THIRD_PARTY_DIR "${CMAKE_BINARY_DIR}/cvedix_third_party")
     set(CVEDIX_CEREAL_DIR "${CVEDIX_THIRD_PARTY_DIR}/cereal")
@@ -409,14 +394,14 @@ if(CEREAL_INCLUDE_DIR)
             "${CEREAL_INCLUDE_DIR}/cereal"
             "${CVEDIX_CEREAL_DIR}"
             RESULT_VARIABLE SYMLINK_RESULT
-            ERROR_QUIET
+            ERROR_VARIABLE SYMLINK_ERROR
+            OUTPUT_QUIET
         )
+        if(NOT SYMLINK_RESULT EQUAL 0)
+            message(WARNING "⚠ Failed to create cereal symlink in build directory: ${SYMLINK_ERROR}")
+            message(WARNING "  This may cause compilation errors. Run: sudo ./scripts/fix_all_symlinks.sh")
+        endif()
     endif()
-    
-    # Add include path so compiler can resolve ../../../third_party/cereal from CVEDIX headers
-    # We add the parent directory so the path structure matches what CVEDIX SDK expects
-    include_directories("${CMAKE_BINARY_DIR}")
-    include_directories("${CEREAL_INCLUDE_DIR}")
     
     # Check if system symlink exists (required for CVEDIX SDK)
     # Check both /usr/include/cvedix and /opt/cvedix/include/cvedix locations
@@ -438,7 +423,7 @@ if(CEREAL_INCLUDE_DIR)
             message(WARNING "    sudo ln -sf ${CEREAL_INCLUDE_DIR}/cereal /opt/cvedix/include/cvedix/third_party/cereal")
         else()
             message(WARNING "  For /usr/include installation:")
-            message(WARNING "    Run: sudo bash ${CMAKE_SOURCE_DIR}/scripts/fix_cereal_symlink.sh")
+            message(WARNING "    Run: sudo bash ${CMAKE_SOURCE_DIR}/scripts/fix_all_symlinks.sh")
             message(WARNING "  Or manually:")
             message(WARNING "    sudo mkdir -p /usr/include/cvedix/third_party")
             message(WARNING "    sudo ln -sf ${CEREAL_INCLUDE_DIR}/cereal /usr/include/cvedix/third_party/cereal")
@@ -449,6 +434,100 @@ if(CEREAL_INCLUDE_DIR)
 else()
     message(WARNING "Cereal not found. CVEDIX SDK features may not work.")
     message(WARNING "To install: sudo apt-get install libcereal-dev (if available) or enable AUTO_DOWNLOAD_DEPENDENCIES")
+endif()
+
+# ============================================
+# cpp-base64 (required by CVEDIX SDK)
+# ============================================
+# CVEDIX SDK expects cpp_base64 at ../../../third_party/cpp_base64 relative to its headers
+# This means it looks for /opt/cvedix/include/cvedix/third_party/cpp_base64/base64.h
+message(STATUS "Checking for cpp-base64 library...")
+
+# Try to find cpp-base64 in system
+find_path(CPP_BASE64_INCLUDE_DIR base64.h
+    PATHS
+        /usr/include
+        /usr/local/include
+        /opt/cvedix/include/cvedix/third_party/cpp_base64
+        ${CMAKE_BINARY_DIR}/_deps/cpp-base64-src
+)
+
+if(NOT CPP_BASE64_INCLUDE_DIR AND AUTO_DOWNLOAD_DEPENDENCIES)
+    message(STATUS "cpp-base64 not found. Downloading headers only...")
+    include(FetchContent)
+    
+    # Download cpp-base64 source without building (header-only library)
+    FetchContent_Declare(
+        cpp-base64
+        GIT_REPOSITORY https://github.com/ReneNyffenegger/cpp-base64.git
+        GIT_TAG        master
+        GIT_SHALLOW    TRUE
+    )
+    
+    # Only fetch, don't configure/build (cpp-base64 is header-only)
+    FetchContent_GetProperties(cpp-base64)
+    if(NOT cpp-base64_POPULATED)
+        FetchContent_Populate(cpp-base64)
+        set(CPP_BASE64_INCLUDE_DIR "${cpp-base64_SOURCE_DIR}" CACHE PATH "cpp-base64 include directory" FORCE)
+        message(STATUS "✓ cpp-base64 headers downloaded to: ${CPP_BASE64_INCLUDE_DIR}")
+    endif()
+endif()
+
+if(CPP_BASE64_INCLUDE_DIR)
+    message(STATUS "✓ Found cpp-base64: ${CPP_BASE64_INCLUDE_DIR}")
+    
+    # CVEDIX SDK expects cpp_base64 at ../../../third_party/cpp_base64 relative to /opt/cvedix/include/cvedix/nodes/broker/
+    # This means it looks for /opt/cvedix/include/cvedix/third_party/cpp_base64/base64.h
+    # Create the exact directory structure CVEDIX SDK expects in build directory
+    set(CVEDIX_THIRD_PARTY_DIR "${CMAKE_BINARY_DIR}/cvedix_third_party")
+    set(CVEDIX_CPP_BASE64_DIR "${CVEDIX_THIRD_PARTY_DIR}/cpp_base64")
+    file(MAKE_DIRECTORY "${CVEDIX_THIRD_PARTY_DIR}")
+    
+    # Create symlink: build/cvedix_third_party/cpp_base64 -> cpp-base64 source dir
+    if(NOT EXISTS "${CVEDIX_CPP_BASE64_DIR}")
+        execute_process(
+            COMMAND ${CMAKE_COMMAND} -E create_symlink
+            "${CPP_BASE64_INCLUDE_DIR}"
+            "${CVEDIX_CPP_BASE64_DIR}"
+            RESULT_VARIABLE SYMLINK_RESULT
+            ERROR_VARIABLE SYMLINK_ERROR
+            OUTPUT_QUIET
+        )
+        if(NOT SYMLINK_RESULT EQUAL 0)
+            message(WARNING "⚠ Failed to create cpp-base64 symlink in build directory: ${SYMLINK_ERROR}")
+            message(WARNING "  This may cause compilation errors. Run: sudo ./scripts/fix_all_symlinks.sh")
+        endif()
+    endif()
+    
+    # Check if system symlink exists (required for CVEDIX SDK)
+    # Check both /usr/include/cvedix and /opt/cvedix/include/cvedix locations
+    set(CPP_BASE64_SYMLINK_FOUND FALSE)
+    if(EXISTS "/usr/include/cvedix/third_party/cpp_base64/base64.h")
+        message(STATUS "✓ cpp-base64 symlink found at /usr/include/cvedix/third_party/cpp_base64")
+        set(CPP_BASE64_SYMLINK_FOUND TRUE)
+    elseif(EXISTS "/opt/cvedix/include/cvedix/third_party/cpp_base64/base64.h")
+        message(STATUS "✓ cpp-base64 symlink found at /opt/cvedix/include/cvedix/third_party/cpp_base64")
+        set(CPP_BASE64_SYMLINK_FOUND TRUE)
+    endif()
+    
+    if(NOT CPP_BASE64_SYMLINK_FOUND)
+        message(WARNING "")
+        message(WARNING "⚠ CVEDIX SDK requires cpp-base64 symlink")
+        if(EXISTS "/opt/cvedix/include/cvedix")
+            message(WARNING "  For /opt/cvedix installation:")
+            message(WARNING "    sudo mkdir -p /opt/cvedix/include/cvedix/third_party/cpp_base64")
+            message(WARNING "    sudo ln -sf ${CPP_BASE64_INCLUDE_DIR}/base64.h /opt/cvedix/include/cvedix/third_party/cpp_base64/base64.h")
+        else()
+            message(WARNING "  For /usr/include installation:")
+            message(WARNING "    sudo mkdir -p /usr/include/cvedix/third_party/cpp_base64")
+            message(WARNING "    sudo ln -sf ${CPP_BASE64_INCLUDE_DIR}/base64.h /usr/include/cvedix/third_party/cpp_base64/base64.h")
+        endif()
+        message(WARNING "")
+    endif()
+    message(STATUS "✓ Configured cpp-base64 paths for CVEDIX SDK")
+else()
+    message(WARNING "cpp-base64 not found. CVEDIX SDK enhanced console broker features may not work.")
+    message(WARNING "To install: enable AUTO_DOWNLOAD_DEPENDENCIES or manually download from https://github.com/ReneNyffenegger/cpp-base64")
 endif()
 
 # ============================================
@@ -489,25 +568,134 @@ if(NOT COMMAND check_required_components)
     endfunction()
 endif()
 
-# Check if CVEDIX SDK is installed in /opt/cvedix (non-standard location)
+# Check if CVEDIX SDK is installed in /opt/cvedix (standard location for this project)
 if(EXISTS "/opt/cvedix/lib/cmake/cvedix/cvedix-config.cmake")
     message(STATUS "Found CVEDIX SDK in /opt/cvedix, adding to CMAKE_PREFIX_PATH")
     list(APPEND CMAKE_PREFIX_PATH "/opt/cvedix")
-    # Also add /opt/cvedix/include to include directories
-    include_directories("/opt/cvedix/include")
-    message(STATUS "✓ Added /opt/cvedix/include to include directories")
+    message(STATUS "✓ Added /opt/cvedix to CMAKE_PREFIX_PATH")
+    
+    # Create symlink structure for CVEDIX SDK third_party dependencies
+    # CVEDIX SDK headers use relative paths like ../../third_party/cpp_base64/base64.h
+    # We need to create the structure in /opt/cvedix/include/cvedix/third_party/
+    if(CPP_BASE64_INCLUDE_DIR AND NOT EXISTS "/opt/cvedix/include/cvedix/third_party/cpp_base64/base64.h")
+        message(STATUS "Creating cpp_base64 symlink structure for CVEDIX SDK...")
+        execute_process(
+            COMMAND ${CMAKE_COMMAND} -E make_directory "/opt/cvedix/include/cvedix/third_party/cpp_base64"
+            RESULT_VARIABLE MKDIR_RESULT
+            ERROR_VARIABLE MKDIR_ERROR
+            OUTPUT_QUIET
+        )
+        if(MKDIR_RESULT EQUAL 0)
+            execute_process(
+                COMMAND ${CMAKE_COMMAND} -E create_symlink
+                "${CPP_BASE64_INCLUDE_DIR}/base64.h"
+                "/opt/cvedix/include/cvedix/third_party/cpp_base64/base64.h"
+                RESULT_VARIABLE SYMLINK_RESULT
+                ERROR_VARIABLE SYMLINK_ERROR
+                OUTPUT_QUIET
+            )
+            if(SYMLINK_RESULT EQUAL 0)
+                message(STATUS "✓ Created cpp_base64 symlink in /opt/cvedix/include/cvedix/third_party/cpp_base64/")
+            else()
+                message(WARNING "⚠ Could not create cpp_base64 symlink (may need sudo):")
+                message(WARNING "  Error: ${SYMLINK_ERROR}")
+                message(WARNING "  Run: sudo ./scripts/fix_all_symlinks.sh")
+            endif()
+        else()
+            message(WARNING "⚠ Could not create directory (may need sudo):")
+            message(WARNING "  Error: ${MKDIR_ERROR}")
+            message(WARNING "  Run: sudo ./scripts/fix_all_symlinks.sh")
+        endif()
+    endif()
+endif()
+
+# Fix tinyexpr library path before find_package
+# CVEDIX SDK expects libtinyexpr.so in /usr/lib but it may be in /opt/cvedix/lib
+# Create symlink in build directory to work around this issue
+if(EXISTS "/opt/cvedix/lib/libtinyexpr.so" AND NOT EXISTS "/usr/lib/libtinyexpr.so")
+    # Create a symlink in build directory
+    set(TINYEXPR_BUILD_LIB "${CMAKE_BINARY_DIR}/libtinyexpr.so")
+    if(NOT EXISTS "${TINYEXPR_BUILD_LIB}")
+        execute_process(
+            COMMAND ${CMAKE_COMMAND} -E create_symlink
+            "/opt/cvedix/lib/libtinyexpr.so"
+            "${TINYEXPR_BUILD_LIB}"
+            RESULT_VARIABLE SYMLINK_RESULT
+            ERROR_VARIABLE SYMLINK_ERROR
+            OUTPUT_QUIET
+        )
+        if(SYMLINK_RESULT EQUAL 0)
+            message(STATUS "✓ Created tinyexpr symlink in build directory")
+        else()
+            message(WARNING "⚠ Failed to create tinyexpr symlink in build directory: ${SYMLINK_ERROR}")
+        endif()
+    endif()
+    # Also try to create symlink in /usr/lib (may require sudo, but try anyway)
+    execute_process(
+        COMMAND ${CMAKE_COMMAND} -E create_symlink
+        "/opt/cvedix/lib/libtinyexpr.so"
+        "/usr/lib/libtinyexpr.so"
+        RESULT_VARIABLE SYMLINK_USR_RESULT
+        ERROR_VARIABLE SYMLINK_USR_ERROR
+        OUTPUT_QUIET
+    )
+    if(SYMLINK_USR_RESULT EQUAL 0)
+        message(STATUS "✓ Created tinyexpr symlink in /usr/lib")
+    else()
+        message(WARNING "⚠ Could not create symlink in /usr/lib (may need sudo):")
+        message(WARNING "  Error: ${SYMLINK_USR_ERROR}")
+        message(WARNING "  Run: sudo ./scripts/fix_all_symlinks.sh")
+    endif()
 endif()
 
 find_package(cvedix REQUIRED)
 
-# Add cereal include path for CVEDIX SDK
+# Add all include directories for edge_ai_api target (modern CMake way)
+# Base project include directory
+target_include_directories(edge_ai_api PRIVATE ${CMAKE_SOURCE_DIR}/include)
+
+# OpenCV include directories
+if(OpenCV_FOUND)
+    if(TARGET opencv_core)
+        # Modern CMake way - targets handle includes automatically
+        # But we may still need to add include dirs for pkg-config path
+        if(OpenCV_INCLUDE_DIRS)
+            target_include_directories(edge_ai_api PRIVATE ${OpenCV_INCLUDE_DIRS})
+        endif()
+    else()
+        # Fallback to pkg-config libraries
+        if(OpenCV_INCLUDE_DIRS)
+            target_include_directories(edge_ai_api PRIVATE ${OpenCV_INCLUDE_DIRS})
+        endif()
+    endif()
+endif()
+
+# Plog include directory
+if(PLOG_INCLUDE_DIR)
+    target_include_directories(edge_ai_api PRIVATE ${PLOG_INCLUDE_DIR})
+endif()
+
+# CVEDIX SDK include directory (if installed in /opt/cvedix)
+if(EXISTS "/opt/cvedix/include")
+    target_include_directories(edge_ai_api PRIVATE "/opt/cvedix/include")
+endif()
+
+# Add cereal and cpp-base64 include paths for CVEDIX SDK
 # CVEDIX SDK headers include cereal with relative path ../../../third_party/cereal/cereal.hpp
+# CVEDIX SDK headers include base64 with relative path ../../../third_party/cpp_base64/base64.h
 # We've created the structure in build directory, now add it to include paths
 if(CEREAL_INCLUDE_DIR)
     # Add build directory so compiler can resolve cvedix_third_party/cereal
     target_include_directories(edge_ai_api PRIVATE "${CMAKE_BINARY_DIR}")
     target_include_directories(edge_ai_api PRIVATE "${CEREAL_INCLUDE_DIR}")
     message(STATUS "✓ Added cereal include paths for CVEDIX SDK")
+endif()
+
+if(CPP_BASE64_INCLUDE_DIR)
+    # Add build directory so compiler can resolve cvedix_third_party/cpp_base64
+    # CMAKE_BINARY_DIR is already added above for cereal, so we don't need to add it again
+    target_include_directories(edge_ai_api PRIVATE "${CPP_BASE64_INCLUDE_DIR}")
+    message(STATUS "✓ Added cpp-base64 include paths for CVEDIX SDK")
 endif()
 
 target_link_libraries(edge_ai_api PRIVATE cvedix::cvedix_instance_sdk)
@@ -631,6 +819,81 @@ endif()
 # Build time
 # ============================================
 string(TIMESTAMP BUILD_TIME "%Y-%m-%d %H:%M:%S" UTC)
+
+# ============================================
+# CVEDIX SDK Feature Flags
+# ============================================
+# Check if CVEDIX SDK was built with GStreamer support
+# GStreamer is required for RTSP, RTMP, Image, and UDP source nodes
+find_package(PkgConfig QUIET)
+if(PkgConfig_FOUND)
+    pkg_check_modules(GSTREAMER QUIET gstreamer-1.0)
+    if(GSTREAMER_FOUND)
+        target_compile_definitions(edge_ai_api PRIVATE CVEDIX_WITH_GSTREAMER)
+        message(STATUS "✓ GStreamer support enabled (CVEDIX_WITH_GSTREAMER)")
+    else()
+        message(WARNING "⚠ GStreamer not found. RTSP/RTMP/Image/UDP source nodes will not be available.")
+        message(WARNING "  To install: sudo apt-get install libgstreamer1.0-dev")
+    endif()
+else()
+    # If pkg-config not available, check for GStreamer libraries directly
+    find_library(GSTREAMER_LIBRARY
+        NAMES gstreamer-1.0
+        PATHS
+            /usr/lib
+            /usr/lib/x86_64-linux-gnu
+            /usr/local/lib
+    )
+    if(GSTREAMER_LIBRARY)
+        target_compile_definitions(edge_ai_api PRIVATE CVEDIX_WITH_GSTREAMER)
+        message(STATUS "✓ GStreamer support enabled (CVEDIX_WITH_GSTREAMER)")
+    else()
+        message(WARNING "⚠ GStreamer not found. RTSP/RTMP/Image/UDP source nodes will not be available.")
+    endif()
+endif()
+
+# Check if CVEDIX SDK was built with MQTT support
+# This is typically defined in CVEDIX SDK's config file, but we can also enable it here
+option(CVEDIX_WITH_MQTT "Enable MQTT support (requires CVEDIX SDK built with MQTT)" ON)
+
+if(CVEDIX_WITH_MQTT)
+    target_compile_definitions(edge_ai_api PRIVATE CVEDIX_WITH_MQTT)
+    message(STATUS "✓ MQTT support enabled (CVEDIX_WITH_MQTT)")
+    
+    # cvedix_mqtt_client uses libmosquitto, need to link it
+    find_library(MOSQUITTO_LIBRARY
+        NAMES mosquitto
+        PATHS
+            /usr/lib
+            /usr/lib/x86_64-linux-gnu
+            /usr/local/lib
+            /opt/cvedix/lib
+    )
+    
+    if(MOSQUITTO_LIBRARY)
+        target_link_libraries(edge_ai_api PRIVATE ${MOSQUITTO_LIBRARY})
+        message(STATUS "✓ Linked mosquitto library: ${MOSQUITTO_LIBRARY}")
+    else()
+        # Try pkg-config
+        find_package(PkgConfig QUIET)
+        if(PkgConfig_FOUND)
+            pkg_check_modules(MOSQUITTO QUIET mosquitto)
+            if(MOSQUITTO_FOUND)
+                target_link_libraries(edge_ai_api PRIVATE ${MOSQUITTO_LIBRARIES})
+                target_include_directories(edge_ai_api PRIVATE ${MOSQUITTO_INCLUDE_DIRS})
+                message(STATUS "✓ Linked mosquitto library via pkg-config: ${MOSQUITTO_LIBRARIES}")
+            else()
+                message(WARNING "⚠ mosquitto library not found. MQTT features may not work.")
+                message(WARNING "  To install: sudo apt-get install libmosquitto-dev")
+            endif()
+        else()
+            message(WARNING "⚠ mosquitto library not found. MQTT features may not work.")
+            message(WARNING "  To install: sudo apt-get install libmosquitto-dev")
+        endif()
+    endif()
+else()
+    message(STATUS "⚠ MQTT support disabled")
+endif()
 
 # ============================================
 # Compile definitions

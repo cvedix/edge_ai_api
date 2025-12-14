@@ -95,7 +95,7 @@ void AIHandler::processImage(const HttpRequestPtr &req,
         }
         
         std::string image_data = (*json).get("image", "").asString();
-        std::string config = (*json).get("config", "").asString("");
+        std::string config = (*json).get("config", "").asString();
         std::string priority_str = (*json).get("priority", "medium").asString();
         
         if (image_data.empty()) {

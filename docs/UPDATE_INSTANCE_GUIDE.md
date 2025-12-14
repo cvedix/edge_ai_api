@@ -447,6 +447,117 @@ Các fields sau được **preserve** (giữ nguyên) nếu không có trong upd
 
 3. **Backup trước khi update**: Nếu cần, backup instance config trước khi update.
 
+## 🧪 Test Chức Năng Set Config
+
+API `POST /v1/core/instance/{instanceId}/config` cho phép bạn cập nhật từng field cụ thể trong config của instance mà không cần gửi toàn bộ config.
+
+### Request Body Format
+
+```json
+{
+  "path": "Đường/dẫn/đến/field",
+  "jsonValue": "Giá trị JSON dạng string (phải escape)"
+}
+```
+
+### Lưu ý quan trọng:
+
+1. **`path`**: Đường dẫn đến field cần update, sử dụng `/` để phân cách các level nested
+2. **`jsonValue`**: Phải là một JSON string hợp lệ, được escape đúng cách:
+   - String: `"\"my string\""` (có dấu ngoặc kép bên ngoài và escape bên trong)
+   - Number: `"0.5"` hoặc `"20"` (có thể không cần dấu ngoặc kép)
+   - Boolean: `"true"` hoặc `"false"` (có thể không cần dấu ngoặc kép)
+   - Object: `"{\"key\":\"value\"}"` (JSON object được escape)
+
+### Ví Dụ Test
+
+#### 1. Set DisplayName (String)
+
+```bash
+curl -X POST http://localhost:8080/v1/core/instance/{instanceId}/config \
+  -H "Content-Type: application/json" \
+  -d '{
+    "path": "DisplayName",
+    "jsonValue": "\"face_detection_demo_1_updated\""
+  }'
+```
+
+#### 2. Set Detector Confidence Threshold (Number)
+
+```bash
+curl -X POST http://localhost:8080/v1/core/instance/{instanceId}/config \
+  -H "Content-Type: application/json" \
+  -d '{
+    "path": "Detector/conf_threshold",
+    "jsonValue": "0.5"
+  }'
+```
+
+#### 3. Set AutoStart (Boolean)
+
+```bash
+curl -X POST http://localhost:8080/v1/core/instance/{instanceId}/config \
+  -H "Content-Type: application/json" \
+  -d '{
+    "path": "AutoStart",
+    "jsonValue": "false"
+  }'
+```
+
+#### 4. Set Nested Object (JSON Object)
+
+```bash
+curl -X POST http://localhost:8080/v1/core/instance/{instanceId}/config \
+  -H "Content-Type: application/json" \
+  -d '{
+    "path": "Detector/preset_values/MosaicInference",
+    "jsonValue": "{\"Detector/model_file\":\"pva_det_mosaic_320\",\"Detector/conf_threshold\":0.4}"
+  }'
+```
+
+### Kiểm Tra Config Sau Khi Set
+
+```bash
+# Lấy toàn bộ config của instance
+curl http://localhost:8080/v1/core/instance/{instanceId} | jq '.'
+
+# Hoặc chỉ xem một số field cụ thể
+curl http://localhost:8080/v1/core/instance/{instanceId} | jq '{
+  displayName: .displayName,
+  detector: .detector,
+  solutionManager: .solutionManager
+}'
+```
+
+### Các Trường Hợp Lỗi
+
+#### Instance không tồn tại
+**Response**: HTTP 404
+```json
+{
+  "error": "Instance not found",
+  "message": "Instance not found: {instanceId}"
+}
+```
+
+#### Path hoặc jsonValue thiếu
+**Response**: HTTP 400
+```json
+{
+  "error": "Bad request",
+  "message": "Field 'path' is required and must be a string"
+}
+```
+
+#### jsonValue không phải JSON hợp lệ
+**Response**: HTTP 400
+```json
+{
+  "error": "Bad request",
+  "message": "Field 'jsonValue' must contain valid JSON: {error details}"
+}
+```
+
 4. **Test với instance không chạy**: Test update với instance đã stop trước để tránh ảnh hưởng đến production.
 
 5. **Sử dụng format PascalCase**: Nếu có thể, sử dụng format PascalCase để khớp với format của hệ thống đang sử dụng.

@@ -205,61 +205,107 @@ inline int parseLogLevelInt(const std::string& level_str, int default_level) {
 }
 
 /**
- * @brief Resolve data directory path intelligently
+ * @brief Resolve data directory path intelligently with 3-tier fallback
  * 
  * Priority:
  * 1. Environment variable (if set) - highest priority
- * 2. Use /var/lib/edge_ai_api/{subdir} as default
+ * 2. Use /opt/edge_ai_api/{subdir} as default (production path)
+ * 3. Fallback to ~/.local/share/edge_ai_api/{subdir} (user directory)
+ * 4. Last resort: ./{subdir} (current directory)
  * 
  * Directory will be created automatically if it doesn't exist.
+ * Follows XDG Base Directory Specification for user fallback.
  * 
  * @param env_var_name Environment variable name (e.g., "SOLUTIONS_DIR")
- * @param subdir Subdirectory name under /var/lib/edge_ai_api (e.g., "solutions")
+ * @param subdir Subdirectory name under /opt/edge_ai_api (e.g., "solutions")
  * @return Resolved directory path
  */
 inline std::string resolveDataDir(const char* env_var_name, const std::string& subdir) {
-    // 1. Check environment variable first (highest priority)
+    // Tier 1: Check environment variable first (highest priority)
     const char* env_value = std::getenv(env_var_name);
     if (env_value && strlen(env_value) > 0) {
         std::string path = std::string(env_value);
         // Ensure directory exists
         try {
             std::filesystem::create_directories(path);
-        } catch (...) {
-            // Log error but continue - storage classes will handle creation
-        }
-        return path;
-    }
-    
-    // 2. Use /var/lib/edge_ai_api/{subdir} as default
-    std::string default_path = "/var/lib/edge_ai_api/" + subdir;
-    
-    // Ensure directory exists
-    try {
-        std::filesystem::create_directories(default_path);
-    } catch (const std::exception& e) {
-        // If can't create /var/lib (need root), try user directory as fallback
-        const char* home = std::getenv("HOME");
-        if (home) {
-            std::string fallback_path = std::string(home) + "/.local/share/edge_ai_api/" + subdir;
-            try {
-                std::filesystem::create_directories(fallback_path);
-                std::cerr << "[EnvConfig] Cannot create " << default_path 
-                         << " (permission denied), using " << fallback_path << std::endl;
-                return fallback_path;
-            } catch (...) {
-                // Last resort: use current directory
-                std::cerr << "[EnvConfig] Warning: Cannot create data directories, using current directory" << std::endl;
-                return "./" + subdir;
+            std::cerr << "[EnvConfig] ✓ Using directory from " << env_var_name << ": " << path << std::endl;
+            return path;
+        } catch (const std::filesystem::filesystem_error& e) {
+            if (e.code() == std::errc::permission_denied) {
+                std::cerr << "[EnvConfig] ⚠ Cannot create user-specified directory " << path 
+                         << " (permission denied), trying fallback..." << std::endl;
+            } else {
+                std::cerr << "[EnvConfig] ⚠ Error creating user-specified directory " << path 
+                         << ": " << e.what() << ", trying fallback..." << std::endl;
             }
+            // Fall through to default path
+        } catch (...) {
+            std::cerr << "[EnvConfig] ⚠ Error with user-specified directory " << path 
+                     << ", trying fallback..." << std::endl;
+            // Fall through to default path
         }
-        // Last resort: use current directory
-        std::cerr << "[EnvConfig] Warning: Cannot create " << default_path 
-                 << ", using current directory" << std::endl;
-        return "./" + subdir;
     }
     
-    return default_path;
+    // Tier 2: Use /opt/edge_ai_api/{subdir} as default (production path)
+    std::string default_path = "/opt/edge_ai_api/" + subdir;
+    
+    // Try to create production directory
+    try {
+        if (!std::filesystem::exists(default_path)) {
+            std::filesystem::create_directories(default_path);
+            std::cerr << "[EnvConfig] ✓ Created production directory: " << default_path << std::endl;
+        } else {
+            std::cerr << "[EnvConfig] ✓ Production directory already exists: " << default_path << std::endl;
+        }
+        return default_path;
+    } catch (const std::filesystem::filesystem_error& e) {
+        if (e.code() == std::errc::permission_denied) {
+            std::cerr << "[EnvConfig] ⚠ Cannot create " << default_path 
+                     << " (permission denied), trying fallback..." << std::endl;
+        } else {
+            std::cerr << "[EnvConfig] ⚠ Error creating " << default_path 
+                     << ": " << e.what() << ", trying fallback..." << std::endl;
+        }
+        // Fall through to fallback
+    } catch (const std::exception& e) {
+        std::cerr << "[EnvConfig] ⚠ Exception creating " << default_path 
+                 << ": " << e.what() << ", trying fallback..." << std::endl;
+        // Fall through to fallback
+    }
+    
+    // Tier 3: Fallback to user directory (~/.local/share/edge_ai_api/{subdir})
+    // Follows XDG Base Directory Specification
+    const char* home = std::getenv("HOME");
+    if (home) {
+        std::string fallback_path = std::string(home) + "/.local/share/edge_ai_api/" + subdir;
+        try {
+            std::filesystem::create_directories(fallback_path);
+            std::cerr << "[EnvConfig] ✓ Using fallback user directory: " << fallback_path << std::endl;
+            std::cerr << "[EnvConfig] ℹ Note: To use production path, run: sudo mkdir -p " << default_path 
+                     << " && sudo chown $USER:$USER " << default_path << std::endl;
+            return fallback_path;
+        } catch (const std::exception& e) {
+            std::cerr << "[EnvConfig] ⚠ Cannot create fallback directory " << fallback_path 
+                     << ": " << e.what() << ", using last resort..." << std::endl;
+            // Fall through to last resort
+        }
+    } else {
+        std::cerr << "[EnvConfig] ⚠ HOME environment variable not set, using last resort..." << std::endl;
+    }
+    
+    // Tier 4: Last resort - current directory
+    std::string last_resort = "./" + subdir;
+    try {
+        std::filesystem::create_directories(last_resort);
+        std::cerr << "[EnvConfig] ⚠ Using last resort directory: " << last_resort << std::endl;
+        std::cerr << "[EnvConfig] ℹ Note: To use production path, run: sudo mkdir -p " << default_path 
+                 << " && sudo chown $USER:$USER " << default_path << std::endl;
+        return last_resort;
+    } catch (...) {
+        // Even last resort failed - return anyway, storage classes will handle
+        std::cerr << "[EnvConfig] ⚠⚠ Warning: Cannot create even last resort directory: " << last_resort << std::endl;
+        return last_resort;
+    }
 }
 
 /**

@@ -346,10 +346,10 @@ bool InstanceRegistry::deleteInstance(const std::string& instanceId) {
     stopLoggingThread(instanceId);
     
     // Delete from storage (doesn't need lock)
-    if (isPersistent) {
-        std::cerr << "[InstanceRegistry] Removing persistent instance from storage..." << std::endl;
-        instance_storage_.deleteInstance(instanceId);
-    }
+    // Always delete from storage since all instances are saved to storage for debugging/inspection
+    // This prevents deleted instances from being reloaded on server restart
+    std::cerr << "[InstanceRegistry] Removing instance from storage..." << std::endl;
+    instance_storage_.deleteInstance(instanceId);
     
     std::cerr << "[InstanceRegistry] ✓ Instance " << instanceId << " deleted successfully" << std::endl;
     std::cerr << "[InstanceRegistry] ========================================" << std::endl;
@@ -713,6 +713,12 @@ bool InstanceRegistry::startInstance(const std::string& instanceId, bool skipAut
         if (instanceIt != instances_.end()) {
             if (started) {
                 instanceIt->second.running = true;
+                // Reset retry counter and tracking when instance starts successfully
+                instanceIt->second.retryCount = 0;
+                instanceIt->second.retryLimitReached = false;
+                instanceIt->second.startTime = std::chrono::steady_clock::now();
+                instanceIt->second.lastActivityTime = instanceIt->second.startTime;
+                instanceIt->second.hasReceivedData = false;
                 std::cerr << "[InstanceRegistry] ✓ Instance " << instanceId << " started successfully" << std::endl;
                 if (isInstanceLoggingEnabled()) {
                     const auto& info = instanceIt->second;
@@ -1044,10 +1050,15 @@ bool InstanceRegistry::updateInstance(const std::string& instanceId, const Updat
                 info.rtspUrl = rtspIt->second;
             }
             
-            // Update RTMP URL if changed
-            auto rtmpIt = req.additionalParams.find("RTMP_URL");
-            if (rtmpIt != req.additionalParams.end() && !rtmpIt->second.empty()) {
-                info.rtmpUrl = rtmpIt->second;
+            // Update RTMP URL if changed - check RTMP_DES_URL first, then RTMP_URL
+            auto rtmpDesIt = req.additionalParams.find("RTMP_DES_URL");
+            if (rtmpDesIt != req.additionalParams.end() && !rtmpDesIt->second.empty()) {
+                info.rtmpUrl = rtmpDesIt->second;
+            } else {
+                auto rtmpIt = req.additionalParams.find("RTMP_URL");
+                if (rtmpIt != req.additionalParams.end() && !rtmpIt->second.empty()) {
+                    info.rtmpUrl = rtmpIt->second;
+                }
             }
             
             // Update FILE_PATH if changed
@@ -1199,6 +1210,13 @@ void InstanceRegistry::loadPersistentInstances() {
         auto optInfo = instance_storage_.loadInstance(instanceId);
         if (optInfo.has_value()) {
             instances_[instanceId] = optInfo.value();
+            // Reset timing fields when loading from storage
+            // This ensures accurate time calculations when instance starts
+            instances_[instanceId].startTime = std::chrono::steady_clock::now();
+            instances_[instanceId].lastActivityTime = instances_[instanceId].startTime;
+            instances_[instanceId].hasReceivedData = false;
+            instances_[instanceId].retryCount = 0;
+            instances_[instanceId].retryLimitReached = false;
             // Note: Pipelines are not restored from storage
             // They need to be rebuilt if needed
         }
@@ -1251,6 +1269,15 @@ InstanceInfo InstanceRegistry::createInstanceInfo(
     info.running = false;
     info.fps = 0.0;
     
+    // Initialize timing fields to current time (will be reset when instance starts)
+    // This prevents incorrect time calculations if instance is checked before starting
+    auto now = std::chrono::steady_clock::now();
+    info.startTime = now;
+    info.lastActivityTime = now;
+    info.hasReceivedData = false;
+    info.retryCount = 0;
+    info.retryLimitReached = false;
+    
     // Get version from CVEDIX SDK
     #ifdef CVEDIX_VERSION_STRING
     info.version = CVEDIX_VERSION_STRING;
@@ -1266,15 +1293,37 @@ InstanceInfo InstanceRegistry::createInstanceInfo(
     // Copy all additional parameters from request (MODEL_PATH, SFACE_MODEL_PATH, RESIZE_RATIO, etc.)
     info.additionalParams = req.additionalParams;
     
-    // Extract RTMP URL from request
-    auto rtmpIt = req.additionalParams.find("RTMP_URL");
-    if (rtmpIt != req.additionalParams.end() && !rtmpIt->second.empty()) {
-        info.rtmpUrl = rtmpIt->second;
+    // Extract RTSP URL from request - check RTSP_SRC_URL first, then RTSP_URL
+    // This should be done BEFORE generating RTSP from RTMP to avoid overriding user's input
+    auto rtspSrcIt = req.additionalParams.find("RTSP_SRC_URL");
+    if (rtspSrcIt != req.additionalParams.end() && !rtspSrcIt->second.empty()) {
+        info.rtspUrl = rtspSrcIt->second;
+    } else {
+        auto rtspIt = req.additionalParams.find("RTSP_URL");
+        if (rtspIt != req.additionalParams.end() && !rtspIt->second.empty()) {
+            info.rtspUrl = rtspIt->second;
+        }
+    }
+    
+    // Extract RTMP URL from request - check RTMP_DES_URL first, then RTMP_URL
+    auto rtmpDesIt = req.additionalParams.find("RTMP_DES_URL");
+    if (rtmpDesIt != req.additionalParams.end() && !rtmpDesIt->second.empty()) {
+        info.rtmpUrl = rtmpDesIt->second;
+    } else {
+        auto rtmpIt = req.additionalParams.find("RTMP_URL");
+        if (rtmpIt != req.additionalParams.end() && !rtmpIt->second.empty()) {
+            info.rtmpUrl = rtmpIt->second;
+        }
+    }
+    
+    // Only generate RTSP URL from RTMP URL if RTSP URL is not already set
+    // This prevents overriding user's RTSP_SRC_URL
+    if (info.rtspUrl.empty() && !info.rtmpUrl.empty()) {
         
         // Generate RTSP URL from RTMP URL
         // Pattern: rtmp://host:1935/live/stream_key -> rtsp://host:8554/live/stream_key_0
         // RTMP node automatically adds "_0" suffix to stream key
-        std::string rtmpUrl = rtmpIt->second;
+        std::string rtmpUrl = info.rtmpUrl;
         
         // Replace RTMP protocol and port with RTSP
         size_t protocolPos = rtmpUrl.find("rtmp://");
@@ -1811,8 +1860,10 @@ bool InstanceRegistry::rebuildPipelineFromInstanceInfo(const std::string& instan
     }
     
     // Restore RTMP URL if available (override if not in additionalParams)
-    if (!info.rtmpUrl.empty() && req.additionalParams.find("RTMP_URL") == req.additionalParams.end()) {
-        req.additionalParams["RTMP_URL"] = info.rtmpUrl;
+    if (!info.rtmpUrl.empty() && 
+        req.additionalParams.find("RTMP_DES_URL") == req.additionalParams.end() &&
+        req.additionalParams.find("RTMP_URL") == req.additionalParams.end()) {
+        req.additionalParams["RTMP_DES_URL"] = info.rtmpUrl;
     }
     
     // Restore FILE_PATH if available (override if not in additionalParams)
@@ -1857,8 +1908,12 @@ bool InstanceRegistry::hasRTMPOutput(const std::string& instanceId) const {
         return false;
     }
     
-    // Check if RTMP_URL is in additionalParams
+    // Check if RTMP_DES_URL or RTMP_URL is in additionalParams
     const auto& additionalParams = instanceIt->second.additionalParams;
+    if (additionalParams.find("RTMP_DES_URL") != additionalParams.end() && 
+        !additionalParams.at("RTMP_DES_URL").empty()) {
+        return true;
+    }
     if (additionalParams.find("RTMP_URL") != additionalParams.end() && 
         !additionalParams.at("RTMP_URL").empty()) {
         return true;
@@ -1959,17 +2014,18 @@ int InstanceRegistry::checkAndHandleRetryLimits() {
                             now - info.lastActivityTime).count();
                         
                         // Only increment retry counter if:
-                        // 1. Instance has been running for at least 30 seconds (give it time to connect)
+                        // 1. Instance has been running for at least 60 seconds (give it more time to connect and stabilize)
                         // 2. AND instance has not received any data yet (hasReceivedData = false)
-                        // 3. OR instance has been running for more than 60 seconds without activity
+                        // 3. OR instance has been running for more than 90 seconds without activity (after receiving data)
+                        // Note: Increased timeout from 30s to 60s to account for RTSP connection time and fps update delay
                         bool isLikelyRetrying = false;
-                        if (timeSinceStart >= 30) {
+                        if (timeSinceStart >= 60) {
                             if (!info.hasReceivedData) {
-                                // Instance has been running for 30+ seconds without receiving any data
+                                // Instance has been running for 60+ seconds without receiving any data
                                 // This indicates it's likely stuck in retry loop
                                 isLikelyRetrying = true;
-                            } else if (timeSinceActivity > 60) {
-                                // Instance received data before but now has been inactive for 60+ seconds
+                            } else if (timeSinceActivity > 90) {
+                                // Instance received data before but now has been inactive for 90+ seconds
                                 // This might indicate connection was lost and retrying
                                 isLikelyRetrying = true;
                             }
@@ -2002,13 +2058,36 @@ int InstanceRegistry::checkAndHandleRetryLimits() {
                                 stoppedCount++;
                             }
                         } else {
-                            // Check if instance is receiving data (fps > 0 indicates frames are being processed)
+                            // Check if instance is receiving data
+                            // Note: fps may not be updated from pipeline, so we use a more lenient approach
+                            // If instance has been running for a while without errors, assume it's working
+                            bool isReceivingData = false;
+                            
+                            // Method 1: Check fps (if available from pipeline)
                             if (info.fps > 0) {
+                                isReceivingData = true;
+                            }
+                            // Method 2: If instance has been running for 45+ seconds without being marked as retrying,
+                            // assume it's working (RTSP connection established, even if fps not updated)
+                            // This gives time for RTSP to connect (10-30s) and stabilize before retry detection starts (60s)
+                            else if (timeSinceStart >= 45 && info.retryCount == 0) {
+                                // Instance has been running for 45+ seconds without retry detection
+                                // This likely means RTSP connection is established and working
+                                // (retry detection only starts at 60s, so 45s is safe)
+                                isReceivingData = true;
+                            }
+                            
+                            if (isReceivingData) {
                                 // Instance is receiving frames - mark as having received data
                                 if (!info.hasReceivedData) {
                                     std::cerr << "[InstanceRegistry] Instance " << instanceId 
-                                              << " connection successful - receiving frames (fps=" 
-                                              << std::fixed << std::setprecision(2) << info.fps << ")" << std::endl;
+                                              << " connection successful - receiving frames";
+                                    if (info.fps > 0) {
+                                        std::cerr << " (fps=" << std::fixed << std::setprecision(2) << info.fps << ")";
+                                    } else {
+                                        std::cerr << " (running for " << timeSinceStart << "s, assumed working)";
+                                    }
+                                    std::cerr << std::endl;
                                     info.hasReceivedData = true;
                                 }
                                 // Update last activity time when receiving frames
@@ -2019,6 +2098,31 @@ int InstanceRegistry::checkAndHandleRetryLimits() {
                                     std::cerr << "[InstanceRegistry] Instance " << instanceId 
                                               << " connection successful - resetting retry counter" << std::endl;
                                     info.retryCount = 0;
+                                }
+                            } else {
+                                // Debug: Log when RTSP is connected but no frames received
+                                if (timeSinceStart > 5 && timeSinceStart < 35) {
+                                    // Only log once every 5 seconds to avoid spam
+                                    static std::map<std::string, std::chrono::steady_clock::time_point> lastLogTime;
+                                    auto lastLog = lastLogTime.find(instanceId);
+                                    bool shouldLog = false;
+                                    if (lastLog == lastLogTime.end()) {
+                                        shouldLog = true;
+                                        lastLogTime[instanceId] = now;
+                                    } else {
+                                        auto timeSinceLastLog = std::chrono::duration_cast<std::chrono::seconds>(
+                                            now - lastLog->second).count();
+                                        if (timeSinceLastLog >= 5) {
+                                            shouldLog = true;
+                                            lastLogTime[instanceId] = now;
+                                        }
+                                    }
+                                    if (shouldLog) {
+                                        std::cerr << "[InstanceRegistry] Instance " << instanceId 
+                                                  << " RTSP connected but no frames received yet (running=" 
+                                                  << timeSinceStart << "s, fps=" << info.fps 
+                                                  << "). This may be normal - RTSP streams can take 10-30 seconds to stabilize." << std::endl;
+                                    }
                                 }
                             }
                         }
@@ -2105,11 +2209,15 @@ void InstanceRegistry::logProcessingResults(const std::string& instanceId) const
     
     // Log output type - check directly from info instead of calling hasRTMPOutput to avoid deadlock
     bool hasRTMP = !info.rtmpUrl.empty() || 
+                   info.additionalParams.find("RTMP_DES_URL") != info.additionalParams.end() ||
                    info.additionalParams.find("RTMP_URL") != info.additionalParams.end();
     if (hasRTMP) {
         std::cerr << "[InstanceProcessingLog] Output: RTMP Stream" << std::endl;
         if (!info.rtmpUrl.empty()) {
             std::cerr << "[InstanceProcessingLog] RTMP URL: " << info.rtmpUrl << std::endl;
+        } else if (info.additionalParams.find("RTMP_DES_URL") != info.additionalParams.end()) {
+            std::cerr << "[InstanceProcessingLog] RTMP URL: " 
+                      << info.additionalParams.at("RTMP_DES_URL") << std::endl;
         } else if (info.additionalParams.find("RTMP_URL") != info.additionalParams.end()) {
             std::cerr << "[InstanceProcessingLog] RTMP URL: " 
                       << info.additionalParams.at("RTMP_URL") << std::endl;

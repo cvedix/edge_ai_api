@@ -25,6 +25,7 @@
 #include "solutions/solution_registry.h"
 #include "core/pipeline_builder.h"
 #include "instances/instance_storage.h"
+#include "instances/queue_monitor.h"
 #include "solutions/solution_storage.h"
 #include "groups/group_registry.h"
 #include "groups/group_storage.h"
@@ -382,10 +383,14 @@ void signalHandler(int signal)
             return;
         }
         
-        // SIGABRT is sent when assertion fails (like OpenCV DNN shape mismatch)
-        // For shape mismatch errors, we want to recover instead of crashing
-        std::cerr << "[RECOVERY] Received SIGABRT signal - likely due to OpenCV DNN shape mismatch" << std::endl;
-        std::cerr << "[RECOVERY] This usually happens when model receives frames with inconsistent sizes" << std::endl;
+        // SIGABRT can be triggered by:
+        // 1. OpenCV DNN shape mismatch (recover by stopping instances)
+        // 2. Queue full causing deadlock (recover by stopping instances)
+        // 3. Resource deadlock (mutex locked due to queue full)
+        std::cerr << "[RECOVERY] Received SIGABRT signal - possible causes:" << std::endl;
+        std::cerr << "[RECOVERY]   1. OpenCV DNN shape mismatch (frames with inconsistent sizes)" << std::endl;
+        std::cerr << "[RECOVERY]   2. Queue full causing deadlock (MQTT/processing too slow)" << std::endl;
+        std::cerr << "[RECOVERY]   3. Resource deadlock (mutex locked by blocked threads)" << std::endl;
         std::cerr << "[RECOVERY] Attempting to recover by stopping problematic instances..." << std::endl;
         
         // Check if cleanup is already in progress (from terminate handler)
@@ -395,45 +400,74 @@ void signalHandler(int signal)
             if (g_instance_registry) {
                 try {
                     // Get all instances and stop them
-                    // Use async with timeout to prevent blocking if stopInstance() is stuck
-                    auto instances = g_instance_registry->listInstances();
-                    for (const auto& instanceId : instances) {
-                        try {
-                            std::cerr << "[RECOVERY] Stopping instance " << instanceId << " due to shape mismatch error..." << std::endl;
-                            
-                            // Use async with timeout to prevent deadlock if stopInstance() is blocked
-                            auto future = std::async(std::launch::async, [instanceId]() -> bool {
-                                try {
-                                    if (g_instance_registry) {
-                                        g_instance_registry->stopInstance(instanceId);
-                                        return true;
-                                    }
-                                    return false;
-                                } catch (...) {
-                                    return false;
-                                }
-                            });
-                            
-                            // Wait with timeout (500ms) - if timeout, skip this instance to avoid deadlock
-                            auto status = future.wait_for(std::chrono::milliseconds(500));
-                            if (status == std::future_status::timeout) {
-                                std::cerr << "[RECOVERY] Timeout stopping instance " << instanceId << " (500ms) - skipping to avoid deadlock" << std::endl;
-                            } else if (status == std::future_status::ready) {
-                                try {
-                                    future.get(); // Get result (may throw)
-                                } catch (...) {
-                                    std::cerr << "[RECOVERY] Failed to stop instance " << instanceId << std::endl;
-                                }
-                            }
-                        } catch (...) {
-                            std::cerr << "[RECOVERY] Failed to stop instance " << instanceId << std::endl;
-                        }
+                    // listInstances() has timeout protection - may return empty if mutex is locked
+                    std::vector<std::string> instances;
+                    try {
+                        instances = g_instance_registry->listInstances();
+                    } catch (const std::exception& e) {
+                        std::cerr << "[RECOVERY] Error listing instances: " << e.what() << std::endl;
+                        instances.clear();
+                    } catch (...) {
+                        std::cerr << "[RECOVERY] Unknown error listing instances" << std::endl;
+                        instances.clear();
                     }
-                    std::cerr << "[RECOVERY] All instances stopped. Application will continue running." << std::endl;
+                    
+                    if (instances.empty()) {
+                        std::cerr << "[RECOVERY] WARNING: Cannot list instances (mutex may be locked due to queue full/deadlock)" << std::endl;
+                        std::cerr << "[RECOVERY] This usually means:" << std::endl;
+                        std::cerr << "[RECOVERY]   - Queue is full and threads are blocked" << std::endl;
+                        std::cerr << "[RECOVERY]   - MQTT publish is too slow or network is slow" << std::endl;
+                        std::cerr << "[RECOVERY]   - Processing pipeline cannot keep up with frame rate" << std::endl;
+                        std::cerr << "[RECOVERY] Application will continue, but instances may need manual restart" << std::endl;
+                        std::cerr << "[RECOVERY] Solutions:" << std::endl;
+                        std::cerr << "[RECOVERY]   1. Reduce frame rate (use RESIZE_RATIO or frameRateLimit)" << std::endl;
+                        std::cerr << "[RECOVERY]   2. Check MQTT broker connection and network speed" << std::endl;
+                        std::cerr << "[RECOVERY]   3. Use faster hardware or reduce processing load" << std::endl;
+                    } else {
+                        std::cerr << "[RECOVERY] Found " << instances.size() << " instance(s) to stop" << std::endl;
+                        int stopped_count = 0;
+                        for (const auto& instanceId : instances) {
+                            try {
+                                std::cerr << "[RECOVERY] Stopping instance " << instanceId << "..." << std::endl;
+                                
+                                // Use async with timeout to prevent deadlock if stopInstance() is blocked
+                                auto future = std::async(std::launch::async, [instanceId]() -> bool {
+                                    try {
+                                        if (g_instance_registry) {
+                                            g_instance_registry->stopInstance(instanceId);
+                                            return true;
+                                        }
+                                        return false;
+                                    } catch (...) {
+                                        return false;
+                                    }
+                                });
+                                
+                                // Wait with timeout (1000ms) - if timeout, skip this instance to avoid deadlock
+                                auto status = future.wait_for(std::chrono::milliseconds(1000));
+                                if (status == std::future_status::timeout) {
+                                    std::cerr << "[RECOVERY] Timeout stopping instance " << instanceId 
+                                             << " (1000ms) - instance may be stuck, skipping to avoid deadlock" << std::endl;
+                                } else if (status == std::future_status::ready) {
+                                    try {
+                                        future.get(); // Get result (may throw)
+                                        stopped_count++;
+                                        std::cerr << "[RECOVERY] Successfully stopped instance " << instanceId << std::endl;
+                                    } catch (...) {
+                                        std::cerr << "[RECOVERY] Failed to stop instance " << instanceId << std::endl;
+                                    }
+                                }
+                            } catch (...) {
+                                std::cerr << "[RECOVERY] Exception stopping instance " << instanceId << std::endl;
+                            }
+                        }
+                        std::cerr << "[RECOVERY] Stopped " << stopped_count << " out of " << instances.size() << " instance(s)" << std::endl;
+                    }
+                    std::cerr << "[RECOVERY] Application will continue running." << std::endl;
                     std::cerr << "[RECOVERY] Please check logs above and fix the root cause:" << std::endl;
-                    std::cerr << "[RECOVERY]   1. Ensure video has consistent resolution (re-encode if needed)" << std::endl;
-                    std::cerr << "[RECOVERY]   2. Use YuNet 2023mar model (better dynamic input support)" << std::endl;
-                    std::cerr << "[RECOVERY]   3. Try different RESIZE_RATIO values" << std::endl;
+                    std::cerr << "[RECOVERY]   1. If queue full: Reduce frame rate or check MQTT/network speed" << std::endl;
+                    std::cerr << "[RECOVERY]   2. If shape mismatch: Ensure video has consistent resolution" << std::endl;
+                    std::cerr << "[RECOVERY]   3. Try different RESIZE_RATIO values or use faster hardware" << std::endl;
                 } catch (...) {
                     std::cerr << "[RECOVERY] Error accessing instance registry" << std::endl;
                 }
@@ -702,8 +736,19 @@ void terminateHandler()
     }
     
     if (error_msg.find("Resource deadlock avoided") != std::string::npos) {
-        // This is likely from a deadlock during cleanup - don't abort again
-        std::cerr << "[CRITICAL] Deadlock detected during cleanup - not aborting to prevent double-crash" << std::endl;
+        // This is likely from a deadlock due to queue full or mutex lock
+        // The SIGABRT handler should have already attempted recovery
+        std::cerr << "[CRITICAL] Deadlock detected - likely due to queue full or mutex lock" << std::endl;
+        std::cerr << "[CRITICAL] This usually happens when:" << std::endl;
+        std::cerr << "[CRITICAL]   - Queue is full and threads are blocked" << std::endl;
+        std::cerr << "[CRITICAL]   - MQTT publish is too slow or network is slow" << std::endl;
+        std::cerr << "[CRITICAL]   - Processing cannot keep up with frame rate" << std::endl;
+        std::cerr << "[CRITICAL] SIGABRT handler should have attempted recovery - not aborting to prevent double-crash" << std::endl;
+        
+        // Mark cleanup as completed if not already done
+        if (!g_cleanup_completed.load()) {
+            g_cleanup_completed.store(true);
+        }
         return;
     }
     
@@ -1560,7 +1605,7 @@ int main(int argc, char* argv[])
         }
         
         // Initialize solution storage and load custom solutions
-        // Default: /var/lib/edge_ai_api/solutions (auto-created if needed)
+        // Default: /opt/edge_ai_api/solutions (auto-created if needed, with fallback)
         std::string solutionsDir = EnvConfig::resolveDataDir("SOLUTIONS_DIR", "solutions");
         PLOG_INFO << "[Main] Solutions directory: " << solutionsDir;
         static SolutionStorage solutionStorage(solutionsDir);
@@ -2000,6 +2045,222 @@ int main(int argc, char* argv[])
         });
         retryMonitorThread.detach(); // Detach so it runs independently
         PLOG_INFO << "[Main] Retry limit monitoring thread started";
+        
+        // TEMPORARILY DISABLED: Queue monitoring thread
+        // This thread monitors instance FPS and queue status to proactively prevent deadlock
+        // When FPS drops to 0 or queue warnings are excessive, automatically restart instance
+        /*
+        std::thread queueMonitorThread([&instanceRegistry]() {
+            #ifdef __GLIBC__
+            pthread_setname_np(pthread_self(), "queue-monitor");
+            #endif
+            
+            PLOG_INFO << "[QueueMonitor] Thread started - monitoring queue status and FPS";
+            
+            auto& queueMonitor = QueueMonitor::getInstance();
+            queueMonitor.startMonitoring();
+            queueMonitor.setAutoClearThreshold(20.0);  // 20 warnings per second (reduced for faster response)
+            queueMonitor.setMonitoringWindow(3);  // 3 seconds window (reduced for faster response)
+            
+            // Track FPS history for each instance
+            std::map<std::string, std::vector<double>> fps_history;
+            std::map<std::string, int> zero_fps_count;
+            std::map<std::string, std::chrono::steady_clock::time_point> last_restart_time;
+            
+            while (!g_shutdown && !g_force_exit.load()) {
+                try {
+                    // Check queue status every 1 second (very aggressive to detect issues immediately)
+                    // This is critical to prevent deadlock when queue fills up quickly
+                    std::this_thread::sleep_for(std::chrono::seconds(1));
+                    
+                    if (g_shutdown || g_force_exit.load()) {
+                        break;
+                    }
+                    
+                    // Get all running instances
+                    auto instances = instanceRegistry.listInstances();
+                    for (const auto& instanceId : instances) {
+                        auto optInfo = instanceRegistry.getInstance(instanceId);
+                        if (!optInfo.has_value() || !optInfo.value().running) {
+                            continue;
+                        }
+                        
+                        const auto& info = optInfo.value();
+                        double current_fps = info.fps;
+                        
+                        // CRITICAL: Manually record queue full warnings if FPS = 0
+                        // This helps detect issues even if warnings aren't being recorded elsewhere
+                        // FPS = 0 usually indicates queue is full and processing is blocked
+                        if (current_fps == 0.0 && info.hasReceivedData) {
+                            // Instance was working but now FPS = 0 - likely queue full
+                            queueMonitor.recordQueueFullWarning(instanceId, "fps_zero_detected");
+                        }
+                        
+                        // Calculate time since instance started
+                        auto now = std::chrono::steady_clock::now();
+                        auto time_since_start = std::chrono::duration_cast<std::chrono::seconds>(
+                            now - info.startTime).count();
+                        
+                        // Grace period: Skip FPS checks for instances that just started (15 seconds)
+                        // This prevents false positives when instance is still initializing
+                        const int GRACE_PERIOD_SECONDS = 15;
+                        if (time_since_start < GRACE_PERIOD_SECONDS) {
+                            // Instance is still in grace period - skip FPS checks
+                            continue;
+                        }
+                        
+                        // Prevent restart loops: Don't restart if we just restarted this instance recently (30 seconds)
+                        auto last_restart_it = last_restart_time.find(instanceId);
+                        if (last_restart_it != last_restart_time.end()) {
+                            auto time_since_restart = std::chrono::duration_cast<std::chrono::seconds>(
+                                now - last_restart_it->second).count();
+                            if (time_since_restart < 30) {
+                                // Just restarted recently - skip to prevent restart loop
+                                continue;
+                            }
+                        }
+                        
+                        // Track FPS history (keep last 6 readings = 60 seconds)
+                        auto& history = fps_history[instanceId];
+                        history.push_back(current_fps);
+                        if (history.size() > 6) {
+                            history.erase(history.begin());
+                        }
+                        
+                        // Detect queue full issues:
+                        // 1. FPS = 0 for extended period (9+ seconds = 3 checks) while instance is running
+                        // 2. Excessive queue full warnings
+                        bool should_restart = false;
+                        std::string reason;
+                        
+                        if (current_fps == 0.0) {
+                            zero_fps_count[instanceId]++;
+                            // Record warning when FPS = 0 (indicates possible queue full)
+                            // Extract node name from instance (use first node as indicator)
+                            queueMonitor.recordQueueFullWarning(instanceId, "fps_zero_indicator");
+                            
+                            // If FPS = 0 for 2 checks (2 seconds with 1s interval), restart
+                            // Very aggressive to prevent deadlock - queue full can cause FPS = 0 quickly
+                            // Also check if instance has received data (indicates it was working before)
+                            if (zero_fps_count[instanceId] >= 2 && info.hasReceivedData) {
+                                should_restart = true;
+                                reason = "FPS = 0 for 2+ seconds (possible queue full - restarting immediately)";
+                            }
+                        } else {
+                            zero_fps_count[instanceId] = 0;  // Reset counter if FPS > 0
+                        }
+                        
+                        // Check queue full warnings - restart immediately if too many warnings
+                        // This is critical to prevent deadlock when queue is full
+                        auto stats = queueMonitor.getStats(instanceId);
+                        if (stats && stats->warning_count.load() > 0) {
+                            // EXTREMELY aggressive: restart if 1 warning to prevent deadlock
+                            // Queue full at json_mqtt_broker or yolo_detector indicates processing/MQTT is too slow
+                            // Need to restart IMMEDIATELY before deadlock occurs
+                            // With 1-second check interval, 1 warning = immediate restart
+                            if (stats->warning_count.load() >= 1) {
+                                should_restart = true;
+                                reason = "Queue full warning detected (" + 
+                                        std::to_string(stats->warning_count.load()) + 
+                                        " warnings) - restarting IMMEDIATELY to prevent deadlock";
+                            }
+                        }
+                        
+                        // Also check shouldClearQueue for additional validation
+                        if (!should_restart && queueMonitor.shouldClearQueue(instanceId)) {
+                            if (stats && stats->warning_count.load() >= 10) {  // Reduced from 20 to 10 for faster response
+                                should_restart = true;
+                                reason = "Queue clearing recommended (" + 
+                                        std::to_string(stats->warning_count.load()) + " warnings)";
+                            }
+                        }
+                        
+                        // CRITICAL: If we detect any queue full warnings at all, record them immediately
+                        // This helps detect issues even if warnings aren't being recorded elsewhere
+                        // Check if there are any recent warnings (within last 5 seconds)
+                        if (stats && stats->warning_count.load() > 0) {
+                            auto time_since_last_warning = std::chrono::duration_cast<std::chrono::seconds>(
+                                now - stats->last_warning_time).count();
+                            // If warnings are very recent (within 5 seconds), this is a critical situation
+                            if (time_since_last_warning < 5 && stats->warning_count.load() >= 2) {
+                                // Very recent warnings indicate active queue full issue
+                                // Restart immediately to prevent deadlock
+                                if (!should_restart) {
+                                    should_restart = true;
+                                    reason = "Active queue full warnings detected (" + 
+                                            std::to_string(stats->warning_count.load()) + 
+                                            " warnings in last 5s) - restarting IMMEDIATELY";
+                                }
+                            }
+                        }
+                        
+                        // Restart instance if needed
+                        if (should_restart) {
+                            PLOG_WARNING << "[QueueMonitor] Instance " << instanceId 
+                                       << " needs restart: " << reason;
+                            
+                            try {
+                                PLOG_INFO << "[QueueMonitor] Restarting instance " << instanceId 
+                                         << " to clear queue and prevent deadlock";
+                                
+                                // Stop instance with timeout protection
+                                try {
+                                    instanceRegistry.stopInstance(instanceId);
+                                } catch (const std::exception& e) {
+                                    PLOG_ERROR << "[QueueMonitor] Error stopping instance " 
+                                              << instanceId << ": " << e.what();
+                                    // Continue anyway - instance might already be stopped
+                                } catch (...) {
+                                    PLOG_ERROR << "[QueueMonitor] Unknown error stopping instance " << instanceId;
+                                    // Continue anyway
+                                }
+                                
+                                // Wait longer to ensure cleanup completes
+                                std::this_thread::sleep_for(std::chrono::milliseconds(3000));  // Increased delay
+                                
+                                // Start instance with timeout protection
+                                try {
+                                    instanceRegistry.startInstance(instanceId);
+                                    
+                                    // Record restart time to prevent restart loops
+                                    last_restart_time[instanceId] = std::chrono::steady_clock::now();
+                                    
+                                    // Clear stats after restart
+                                    queueMonitor.clearStats(instanceId);
+                                    zero_fps_count[instanceId] = 0;
+                                    fps_history[instanceId].clear();
+                                    
+                                    PLOG_INFO << "[QueueMonitor] Instance " << instanceId 
+                                             << " restarted successfully";
+                                } catch (const std::exception& e) {
+                                    PLOG_ERROR << "[QueueMonitor] Failed to start instance " 
+                                              << instanceId << ": " << e.what();
+                                    // Don't record restart time if start failed
+                                } catch (...) {
+                                    PLOG_ERROR << "[QueueMonitor] Unknown error starting instance " << instanceId;
+                                }
+                            } catch (const std::exception& e) {
+                                PLOG_ERROR << "[QueueMonitor] Failed to restart instance " 
+                                          << instanceId << ": " << e.what();
+                            } catch (...) {
+                                PLOG_ERROR << "[QueueMonitor] Unknown error during restart of instance " << instanceId;
+                            }
+                        }
+                    }
+                } catch (const std::exception& e) {
+                    PLOG_WARNING << "[QueueMonitor] Error: " << e.what();
+                } catch (...) {
+                    PLOG_WARNING << "[QueueMonitor] Unknown error";
+                }
+            }
+            
+            queueMonitor.stopMonitoring();
+            PLOG_INFO << "[QueueMonitor] Thread stopped";
+        });
+        queueMonitorThread.detach(); // Detach so it runs independently
+        PLOG_INFO << "[Main] Queue monitoring thread started";
+        */
+        PLOG_INFO << "[Main] Queue monitoring thread DISABLED (temporarily)";
         
         // CRITICAL: Start shutdown watchdog thread
         // This thread monitors shutdown state and forces exit if shutdown is stuck

@@ -4,9 +4,25 @@
 > - [docs/DEVELOPMENT_SETUP.md](docs/DEVELOPMENT_SETUP.md) - Hướng dẫn setup và build chi tiết
 > - [docs/GETTING_STARTED.md](docs/GETTING_STARTED.md) - Hướng dẫn sử dụng chi tiết
 
-## 🚀 Build nhanh (3 bước)
+## 🚀 Build nhanh (2 cách)
 
-### Bước 1: Cài đặt dependencies
+### Cách 1: Sử dụng setup.sh (Khuyến Nghị - Tự Động Tất Cả)
+
+```bash
+# Development setup (tự động cài dependencies, build, và chạy server)
+./setup.sh
+
+# Production setup (cần sudo)
+sudo ./setup.sh --production
+```
+
+Script này sẽ tự động làm tất cả: cài dependencies, build project, và khởi động server.
+
+**Xem chi tiết:** [docs/DEVELOPMENT_SETUP.md](docs/DEVELOPMENT_SETUP.md)
+
+### Cách 2: Build thủ công (3 bước)
+
+#### Bước 1: Cài đặt dependencies
 
 ```bash
 # Chạy script tự động (khuyến nghị)
@@ -17,7 +33,7 @@ sudo apt-get update
 sudo apt-get install -y build-essential cmake git libssl-dev zlib1g-dev libjsoncpp-dev uuid-dev pkg-config
 ```
 
-### Bước 2: Build project
+#### Bước 2: Build project
 
 ```bash
 mkdir build && cd build
@@ -25,7 +41,7 @@ cmake ..
 make -j$(nproc)
 ```
 
-### Bước 3: Chạy server
+#### Bước 3: Chạy server
 
 **Cách 1: Sử dụng file .env (Khuyến nghị)**
 

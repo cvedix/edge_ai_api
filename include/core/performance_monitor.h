@@ -41,9 +41,18 @@ public:
                      bool success = true);
 
     /**
-     * @brief Get metrics for an endpoint
+     * @brief Get metrics for an endpoint (read-only snapshot)
      */
-    EndpointMetrics getEndpointMetrics(const std::string& endpoint) const;
+    struct EndpointMetricsSnapshot {
+        uint64_t total_requests;
+        uint64_t successful_requests;
+        uint64_t failed_requests;
+        double avg_latency_ms;
+        double max_latency_ms;
+        double min_latency_ms;
+    };
+    
+    EndpointMetricsSnapshot getEndpointMetrics(const std::string& endpoint) const;
 
     /**
      * @brief Get all metrics as JSON
