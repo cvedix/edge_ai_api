@@ -871,6 +871,8 @@ std::shared_ptr<cvedix_nodes::cvedix_node> PipelineBuilder::createRTSPSourceNode
         std::cerr << "[PipelineBuilder]   Channel: " << channel << std::endl;
         std::cerr << "[PipelineBuilder]   Resize ratio: " << std::fixed << std::setprecision(3) << resize_ratio 
                   << " (type: float, value: " << static_cast<double>(resize_ratio) << ")" << std::endl;
+        std::cerr << "[PipelineBuilder]   NOTE: If you change RESIZE_RATIO, ensure pipeline is fully rebuilt (not just restarted)" << std::endl;
+        std::cerr << "[PipelineBuilder]   NOTE: RESIZE_RATIO affects video dimensions - ensure ba_crossline line coordinates match new resolution" << std::endl;
         std::cerr << "[PipelineBuilder]   Decoder: '" << gstDecoderName << "'" << std::endl;
         std::cerr << "[PipelineBuilder]   Skip interval: " << skipInterval << " (0 = no skip)" << std::endl;
         std::cerr << "[PipelineBuilder]   Codec type: '" << codecType << "' (h264/h265/auto)" << std::endl;
