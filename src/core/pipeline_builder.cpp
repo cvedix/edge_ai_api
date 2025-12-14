@@ -1712,9 +1712,22 @@ std::shared_ptr<cvedix_nodes::cvedix_node> PipelineBuilder::createRTMPDestinatio
     const CreateInstanceRequest& req) {
     
     try {
+        // Helper function to trim whitespace from string
+        auto trim = [](const std::string& str) -> std::string {
+            if (str.empty()) return str;
+            size_t first = str.find_first_not_of(" \t\n\r\f\v");
+            if (first == std::string::npos) return "";
+            size_t last = str.find_last_not_of(" \t\n\r\f\v");
+            return str.substr(first, (last - first + 1));
+        };
+        
         // Get RTMP URL from params or request
         std::string rtmpUrl = params.count("rtmp_url") ? 
             params.at("rtmp_url") : getRTMPUrl(req);
+        
+        // Trim whitespace from RTMP URL to prevent GStreamer pipeline errors
+        rtmpUrl = trim(rtmpUrl);
+        
         int channel = params.count("channel") ? std::stoi(params.at("channel")) : 0;
         
         // Validate parameters
@@ -1794,18 +1807,33 @@ std::string PipelineBuilder::getFilePath(const CreateInstanceRequest& req) const
 }
 
 std::string PipelineBuilder::getRTMPUrl(const CreateInstanceRequest& req) const {
+    // Helper function to trim whitespace from string
+    auto trim = [](const std::string& str) -> std::string {
+        if (str.empty()) return str;
+        size_t first = str.find_first_not_of(" \t\n\r\f\v");
+        if (first == std::string::npos) return "";
+        size_t last = str.find_last_not_of(" \t\n\r\f\v");
+        return str.substr(first, (last - first + 1));
+    };
+    
     // Get RTMP URL from additionalParams - check RTMP_DES_URL first (new format), then RTMP_URL (backward compatibility)
     auto desIt = req.additionalParams.find("RTMP_DES_URL");
     if (desIt != req.additionalParams.end() && !desIt->second.empty()) {
-        std::cerr << "[PipelineBuilder] RTMP URL from request additionalParams (RTMP_DES_URL): '" << desIt->second << "'" << std::endl;
-        return desIt->second;
+        std::string trimmed = trim(desIt->second);
+        std::cerr << "[PipelineBuilder] RTMP URL from request additionalParams (RTMP_DES_URL): '" << trimmed << "'" << std::endl;
+        if (!trimmed.empty()) {
+            return trimmed;
+        }
     }
     
     // Fallback to RTMP_URL for backward compatibility
     auto it = req.additionalParams.find("RTMP_URL");
     if (it != req.additionalParams.end() && !it->second.empty()) {
-        std::cerr << "[PipelineBuilder] RTMP URL from request additionalParams (RTMP_URL): '" << it->second << "'" << std::endl;
-        return it->second;
+        std::string trimmed = trim(it->second);
+        std::cerr << "[PipelineBuilder] RTMP URL from request additionalParams (RTMP_URL): '" << trimmed << "'" << std::endl;
+        if (!trimmed.empty()) {
+            return trimmed;
+        }
     }
     
     // Default fallback

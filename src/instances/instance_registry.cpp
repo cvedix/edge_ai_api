@@ -1169,13 +1169,22 @@ bool InstanceRegistry::updateInstance(const std::string& instanceId, const Updat
             }
             
             // Update RTMP URL if changed - check RTMP_DES_URL first, then RTMP_URL
+            // Helper function to trim whitespace
+            auto trim = [](const std::string& str) -> std::string {
+                if (str.empty()) return str;
+                size_t first = str.find_first_not_of(" \t\n\r\f\v");
+                if (first == std::string::npos) return "";
+                size_t last = str.find_last_not_of(" \t\n\r\f\v");
+                return str.substr(first, (last - first + 1));
+            };
+            
             auto rtmpDesIt = req.additionalParams.find("RTMP_DES_URL");
             if (rtmpDesIt != req.additionalParams.end() && !rtmpDesIt->second.empty()) {
-                info.rtmpUrl = rtmpDesIt->second;
+                info.rtmpUrl = trim(rtmpDesIt->second);
             } else {
                 auto rtmpIt = req.additionalParams.find("RTMP_URL");
                 if (rtmpIt != req.additionalParams.end() && !rtmpIt->second.empty()) {
-                    info.rtmpUrl = rtmpIt->second;
+                    info.rtmpUrl = trim(rtmpIt->second);
                 }
             }
             
@@ -1424,13 +1433,22 @@ InstanceInfo InstanceRegistry::createInstanceInfo(
     }
     
     // Extract RTMP URL from request - check RTMP_DES_URL first, then RTMP_URL
+    // Helper function to trim whitespace
+    auto trim = [](const std::string& str) -> std::string {
+        if (str.empty()) return str;
+        size_t first = str.find_first_not_of(" \t\n\r\f\v");
+        if (first == std::string::npos) return "";
+        size_t last = str.find_last_not_of(" \t\n\r\f\v");
+        return str.substr(first, (last - first + 1));
+    };
+    
     auto rtmpDesIt = req.additionalParams.find("RTMP_DES_URL");
     if (rtmpDesIt != req.additionalParams.end() && !rtmpDesIt->second.empty()) {
-        info.rtmpUrl = rtmpDesIt->second;
+        info.rtmpUrl = trim(rtmpDesIt->second);
     } else {
         auto rtmpIt = req.additionalParams.find("RTMP_URL");
         if (rtmpIt != req.additionalParams.end() && !rtmpIt->second.empty()) {
-            info.rtmpUrl = rtmpIt->second;
+            info.rtmpUrl = trim(rtmpIt->second);
         }
     }
     
