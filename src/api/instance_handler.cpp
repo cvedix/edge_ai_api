@@ -494,65 +494,38 @@ void InstanceHandler::startInstance(
         }
         
         // Start instance
-        // Start instance asynchronously to avoid blocking API thread
-        // RTSP retry loops run in SDK threads and won't block this handler
-        // However, startInstance() itself may take time, so we run it async with timeout
-        auto future = std::async(std::launch::async, [this, instanceId]() -> bool {
+        // OPTIMIZED: Run startInstance() in detached thread to avoid blocking API thread and other instances
+        // This allows multiple instances to start concurrently without blocking each other
+        // The instance will start in background, and status can be checked via GET /v1/core/instances/{id}
+        std::thread startThread([this, instanceId]() {
             try {
-                return instance_registry_->startInstance(instanceId);
+                instance_registry_->startInstance(instanceId);
+            } catch (const std::exception& e) {
+                std::cerr << "[InstanceHandler] Exception starting instance " << instanceId << ": " << e.what() << std::endl;
             } catch (...) {
-                return false;
+                std::cerr << "[InstanceHandler] Unknown exception starting instance " << instanceId << std::endl;
             }
         });
+        startThread.detach(); // Detach thread - instance starts in background
         
-        // Wait with timeout (30 seconds) to prevent hanging
-        auto status = future.wait_for(std::chrono::seconds(30));
-        bool started = false;
-        if (status == std::future_status::ready) {
-            try {
-                started = future.get();
-            } catch (...) {
-                started = false;
-            }
-        } else {
-            // Timeout - instance start is taking too long
-            if (isApiLoggingEnabled()) {
-                PLOG_WARNING << "[API] POST /v1/core/instances/" << instanceId << "/start - Timeout (30s)";
-            }
-            callback(createErrorResponse(504, "Gateway Timeout", 
-                "Instance start operation timed out after 30 seconds. "
-                "The instance may still be starting in the background. "
-                "Check instance status using GET /v1/core/instances/" + instanceId));
-            return;
-        }
-        
-        if (started) {
-            // Get updated instance info
-            auto optInfo = instance_registry_->getInstance(instanceId);
-            auto end_time = std::chrono::steady_clock::now();
-            auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(end_time - start_time);
-            
-            if (optInfo.has_value()) {
-                if (isApiLoggingEnabled()) {
-                    PLOG_INFO << "[API] POST /v1/core/instances/" << instanceId << "/start - Success - " << duration.count() << "ms";
-                }
-                Json::Value response = instanceInfoToJson(optInfo.value());
-                response["message"] = "Instance started successfully";
-                callback(createSuccessResponse(response));
-            } else {
-                if (isApiLoggingEnabled()) {
-                    PLOG_WARNING << "[API] POST /v1/core/instances/" << instanceId << "/start - Started but could not retrieve info - " << duration.count() << "ms";
-                }
-                callback(createErrorResponse(500, "Internal server error", "Instance started but could not retrieve info"));
-            }
-        } else {
+        // Return immediately - instance is starting in background
+        // Client can check status using GET /v1/core/instances/{id}
+        auto optInfo = instance_registry_->getInstance(instanceId);
+        if (optInfo.has_value()) {
             auto end_time = std::chrono::steady_clock::now();
             auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(end_time - start_time);
             if (isApiLoggingEnabled()) {
-                PLOG_WARNING << "[API] POST /v1/core/instances/" << instanceId << "/start - Failed to start - " << duration.count() << "ms";
+                PLOG_INFO << "[API] POST /v1/core/instances/" << instanceId << "/start - Accepted (async) - " << duration.count() << "ms";
             }
-            callback(createErrorResponse(400, "Failed to start", "Could not start instance. Check if instance exists and has a pipeline."));
+            Json::Value response = instanceInfoToJson(optInfo.value());
+            response["message"] = "Instance start request accepted. Instance is starting in background. "
+                                  "Check status using GET /v1/core/instances/" + instanceId;
+            response["status"] = "starting"; // Indicate that instance is starting
+            callback(createSuccessResponse(response, 202)); // 202 Accepted - request accepted but not completed
+        } else {
+            callback(createErrorResponse(404, "Not found", "Instance not found"));
         }
+        return;
         
     } catch (const std::exception& e) {
         auto end_time = std::chrono::steady_clock::now();
@@ -604,34 +577,38 @@ void InstanceHandler::stopInstance(
             return;
         }
         
-        // Stop instance
-        if (instance_registry_->stopInstance(instanceId)) {
-            // Get updated instance info
-            auto optInfo = instance_registry_->getInstance(instanceId);
-            auto end_time = std::chrono::steady_clock::now();
-            auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(end_time - start_time);
-            
-            if (optInfo.has_value()) {
-                if (isApiLoggingEnabled()) {
-                    PLOG_INFO << "[API] POST /v1/core/instances/" << instanceId << "/stop - Success - " << duration.count() << "ms";
-                }
-                Json::Value response = instanceInfoToJson(optInfo.value());
-                response["message"] = "Instance stopped successfully";
-                callback(createSuccessResponse(response));
-            } else {
-                if (isApiLoggingEnabled()) {
-                    PLOG_WARNING << "[API] POST /v1/core/instances/" << instanceId << "/stop - Stopped but could not retrieve info - " << duration.count() << "ms";
-                }
-                callback(createErrorResponse(500, "Internal server error", "Instance stopped but could not retrieve info"));
+        // OPTIMIZED: Run stopInstance() in detached thread to avoid blocking API thread and other instances
+        // This allows multiple instances to stop concurrently without blocking each other
+        // The instance will stop in background, and status can be checked via GET /v1/core/instances/{id}
+        std::thread stopThread([this, instanceId]() {
+            try {
+                instance_registry_->stopInstance(instanceId);
+            } catch (const std::exception& e) {
+                std::cerr << "[InstanceHandler] Exception stopping instance " << instanceId << ": " << e.what() << std::endl;
+            } catch (...) {
+                std::cerr << "[InstanceHandler] Unknown exception stopping instance " << instanceId << std::endl;
             }
-        } else {
+        });
+        stopThread.detach(); // Detach thread - instance stops in background
+        
+        // Return immediately - instance is stopping in background
+        // Client can check status using GET /v1/core/instances/{id}
+        auto optInfo = instance_registry_->getInstance(instanceId);
+        if (optInfo.has_value()) {
             auto end_time = std::chrono::steady_clock::now();
             auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(end_time - start_time);
             if (isApiLoggingEnabled()) {
-                PLOG_WARNING << "[API] POST /v1/core/instances/" << instanceId << "/stop - Failed to stop - " << duration.count() << "ms";
+                PLOG_INFO << "[API] POST /v1/core/instances/" << instanceId << "/stop - Accepted (async) - " << duration.count() << "ms";
             }
-            callback(createErrorResponse(400, "Failed to stop", "Could not stop instance. Check if instance exists."));
+            Json::Value response = instanceInfoToJson(optInfo.value());
+            response["message"] = "Instance stop request accepted. Instance is stopping in background. "
+                                  "Check status using GET /v1/core/instances/" + instanceId;
+            response["status"] = "stopping"; // Indicate that instance is stopping
+            callback(createSuccessResponse(response, 202)); // 202 Accepted - request accepted but not completed
+        } else {
+            callback(createErrorResponse(404, "Not found", "Instance not found"));
         }
+        return;
         
     } catch (const std::exception& e) {
         auto end_time = std::chrono::steady_clock::now();
@@ -671,31 +648,42 @@ void InstanceHandler::restartInstance(
             return;
         }
         
-        // First, stop the instance if it's running
-        auto optInfo = instance_registry_->getInstance(instanceId);
-        if (optInfo.has_value() && optInfo.value().running) {
-            if (!instance_registry_->stopInstance(instanceId)) {
-                callback(createErrorResponse(500, "Failed to restart", "Could not stop instance before restart"));
-                return;
+        // OPTIMIZED: Run restartInstance() in detached thread to avoid blocking API thread and other instances
+        // This allows multiple instances to restart concurrently without blocking each other
+        // The instance will restart in background, and status can be checked via GET /v1/core/instances/{id}
+        std::thread restartThread([this, instanceId]() {
+            try {
+                // First, stop the instance if it's running
+                auto optInfo = instance_registry_->getInstance(instanceId);
+                if (optInfo.has_value() && optInfo.value().running) {
+                    instance_registry_->stopInstance(instanceId);
+                    // Give it a moment to fully stop and cleanup
+                    std::this_thread::sleep_for(std::chrono::milliseconds(500));
+                }
+                
+                // Now start the instance (skip auto-stop since we already stopped it)
+                instance_registry_->startInstance(instanceId, true); // true = skipAutoStop
+            } catch (const std::exception& e) {
+                std::cerr << "[InstanceHandler] Exception restarting instance " << instanceId << ": " << e.what() << std::endl;
+            } catch (...) {
+                std::cerr << "[InstanceHandler] Unknown exception restarting instance " << instanceId << std::endl;
             }
-            // Give it a moment to fully stop and cleanup
-            std::this_thread::sleep_for(std::chrono::milliseconds(500));
-        }
+        });
+        restartThread.detach(); // Detach thread - instance restarts in background
         
-        // Now start the instance (skip auto-stop since we already stopped it)
-        if (instance_registry_->startInstance(instanceId, true)) { // true = skipAutoStop
-            // Get updated instance info
-            optInfo = instance_registry_->getInstance(instanceId);
-            if (optInfo.has_value()) {
-                Json::Value response = instanceInfoToJson(optInfo.value());
-                response["message"] = "Instance restarted successfully";
-                callback(createSuccessResponse(response));
-            } else {
-                callback(createErrorResponse(500, "Internal server error", "Instance restarted but could not retrieve info"));
-            }
+        // Return immediately - instance is restarting in background
+        // Client can check status using GET /v1/core/instances/{id}
+        auto optInfo = instance_registry_->getInstance(instanceId);
+        if (optInfo.has_value()) {
+            Json::Value response = instanceInfoToJson(optInfo.value());
+            response["message"] = "Instance restart request accepted. Instance is restarting in background. "
+                                  "Check status using GET /v1/core/instances/" + instanceId;
+            response["status"] = "restarting"; // Indicate that instance is restarting
+            callback(createSuccessResponse(response, 202)); // 202 Accepted - request accepted but not completed
         } else {
-            callback(createErrorResponse(400, "Failed to restart", "Could not restart instance. Check if instance exists and has a pipeline."));
+            callback(createErrorResponse(404, "Not found", "Instance not found"));
         }
+        return;
         
     } catch (const std::exception& e) {
         std::cerr << "[InstanceHandler] Exception: " << e.what() << std::endl;
@@ -823,16 +811,38 @@ void InstanceHandler::deleteInstance(
             return;
         }
         
-        // Delete instance
-        if (instance_registry_->deleteInstance(instanceId)) {
-            Json::Value response;
-            response["success"] = true;
-            response["message"] = "Instance deleted successfully";
-            response["instanceId"] = instanceId;
-            callback(createSuccessResponse(response));
-        } else {
+        // OPTIMIZED: Run deleteInstance() in detached thread to avoid blocking API thread and other instances
+        // deleteInstance() calls stopPipeline() which can take time (cleanup, DNN state clearing)
+        // This allows multiple instances to be deleted concurrently without blocking each other
+        // The instance will be deleted in background, and status can be checked via GET /v1/core/instances/{id}
+        
+        // Check if instance exists first (before async deletion)
+        auto optInfo = instance_registry_->getInstance(instanceId);
+        if (!optInfo.has_value()) {
             callback(createErrorResponse(404, "Not found", "Instance not found: " + instanceId));
+            return;
         }
+        
+        std::thread deleteThread([this, instanceId]() {
+            try {
+                instance_registry_->deleteInstance(instanceId);
+            } catch (const std::exception& e) {
+                std::cerr << "[InstanceHandler] Exception deleting instance " << instanceId << ": " << e.what() << std::endl;
+            } catch (...) {
+                std::cerr << "[InstanceHandler] Unknown exception deleting instance " << instanceId << std::endl;
+            }
+        });
+        deleteThread.detach(); // Detach thread - instance deletion happens in background
+        
+        // Return immediately - instance is being deleted in background
+        Json::Value response;
+        response["success"] = true;
+        response["message"] = "Instance deletion request accepted. Instance is being deleted in background. "
+                              "Check status using GET /v1/core/instances/" + instanceId;
+        response["instanceId"] = instanceId;
+        response["status"] = "deleting"; // Indicate that instance is being deleted
+        callback(createSuccessResponse(response, 202)); // 202 Accepted - request accepted but not completed
+        return;
         
     } catch (const std::exception& e) {
         std::cerr << "[InstanceHandler] Exception: " << e.what() << std::endl;

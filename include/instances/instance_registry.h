@@ -207,15 +207,26 @@ private:
     std::unordered_map<std::string, std::atomic<int>> rtsp_reconnect_attempts_; // Track reconnect attempts
     mutable std::mutex rtsp_monitor_mutex_; // Separate mutex for RTSP monitor thread management
     
+    // CRITICAL: Read-write lock to allow concurrent start operations but serialize cleanup operations
+    // This allows multiple instances to start simultaneously while preventing conflicts during cleanup
+    // - Multiple start() operations can run concurrently (shared_lock)
+    // - Cleanup operations (stop/detach) need exclusive lock to prevent conflicts
+    mutable std::shared_mutex gstreamer_ops_mutex_;
+    
     // Statistics tracking per instance
+    // PHASE 2 OPTIMIZATION: Use atomic for frequently updated counters to avoid locks in hot path
     struct InstanceStatsTracker {
         std::chrono::steady_clock::time_point start_time;  // For elapsed time calculation
         std::chrono::system_clock::time_point start_time_system;  // For Unix timestamp
-        uint64_t frames_processed = 0;
-        uint64_t dropped_frames = 0;
+        
+        // PHASE 2: Atomic counters - no lock needed for increments
+        std::atomic<uint64_t> frames_processed{0};
+        std::atomic<uint64_t> dropped_frames{0};
+        std::atomic<uint64_t> frame_count_since_last_update{0};
+        
+        // Protected by mutex (updated less frequently)
         double last_fps = 0.0;
         std::chrono::steady_clock::time_point last_fps_update;
-        uint64_t frame_count_since_last_update = 0;
         std::string resolution;  // Current processing resolution
         std::string source_resolution;  // Source resolution
         std::string format;  // Frame format
@@ -227,8 +238,12 @@ private:
     mutable std::unordered_map<std::string, InstanceStatsTracker> statistics_trackers_;
     
     // Frame cache per instance
+    // OPTIMIZATION: Use shared_ptr to avoid deep copy (~6MB per frame)
+    // This eliminates ~180MB/s memory bandwidth usage at 30 FPS
+    using FramePtr = std::shared_ptr<cv::Mat>;
+    
     struct FrameCache {
-        cv::Mat frame;  // OSD frame (processed frame with overlays)
+        FramePtr frame;  // Shared pointer to frame (no copy)
         std::chrono::steady_clock::time_point timestamp;
         bool has_frame = false;
     };
@@ -239,7 +254,7 @@ private:
     /**
      * @brief Update frame cache for an instance
      * @param instanceId Instance ID
-     * @param frame Frame to cache (will be copied)
+     * @param frame Frame to cache (will use shared ownership, no copy)
      */
     void updateFrameCache(const std::string& instanceId, const cv::Mat& frame);
     
