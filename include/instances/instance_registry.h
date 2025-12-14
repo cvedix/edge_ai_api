@@ -361,8 +361,9 @@ private:
     /**
      * @brief Attempt to reconnect RTSP stream for an instance
      * @param instanceId Instance ID
+     * @param stopFlag Optional stop flag to check for early abort (nullptr if not needed)
      * @return true if reconnection was successful
      */
-    bool reconnectRTSPStream(const std::string& instanceId);
+    bool reconnectRTSPStream(const std::string& instanceId, std::shared_ptr<std::atomic<bool>> stopFlag = nullptr);
 };
 

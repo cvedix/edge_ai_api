@@ -1,6 +1,7 @@
 #include "core/rate_limiter.h"
 #include <algorithm>
 #include <cmath>
+#include <vector>
 
 RateLimiter::RateLimiter(size_t max_requests, std::chrono::seconds window)
     : max_requests_(max_requests)
@@ -17,6 +18,18 @@ bool RateLimiter::allow(const std::string& key) {
     if (now - last_cleanup_ > CLEANUP_INTERVAL) {
         cleanupExpiredBuckets();
         last_cleanup_ = now;
+    }
+    
+    // Prevent unbounded growth: if buckets exceed max size, evict oldest
+    if (buckets_.size() >= MAX_BUCKETS) {
+        // First try cleanup expired buckets
+        cleanupExpiredBuckets();
+        
+        // If still too many, evict oldest buckets
+        if (buckets_.size() >= MAX_BUCKETS) {
+            size_t evict_count = MAX_BUCKETS / 2;  // Evict half to make room
+            evictOldestBuckets(evict_count);
+        }
     }
     
     auto& bucket = buckets_[key];
@@ -96,6 +109,36 @@ void RateLimiter::cleanupExpiredBuckets() {
         } else {
             ++it;
         }
+    }
+}
+
+void RateLimiter::evictOldestBuckets(size_t count) {
+    if (buckets_.empty() || count == 0) {
+        return;
+    }
+    
+    // Create vector of pairs (last_refill, key) to sort by age
+    std::vector<std::pair<std::chrono::steady_clock::time_point, std::string>> bucket_ages;
+    bucket_ages.reserve(buckets_.size());
+    
+    for (const auto& [key, bucket] : buckets_) {
+        bucket_ages.emplace_back(bucket.last_refill, key);
+    }
+    
+    // Sort by last_refill (oldest first)
+    std::sort(bucket_ages.begin(), bucket_ages.end(),
+              [](const auto& a, const auto& b) {
+                  return a.first < b.first;
+              });
+    
+    // Evict oldest buckets
+    size_t evicted = 0;
+    for (const auto& [_, key] : bucket_ages) {
+        if (evicted >= count) {
+            break;
+        }
+        buckets_.erase(key);
+        evicted++;
     }
 }
 

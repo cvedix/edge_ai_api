@@ -77,7 +77,9 @@ private:
     
     // Cleanup expired buckets periodically
     void cleanupExpiredBuckets();
+    void evictOldestBuckets(size_t count);  // Evict oldest buckets when size limit exceeded
     std::chrono::steady_clock::time_point last_cleanup_;
     static constexpr std::chrono::seconds CLEANUP_INTERVAL{300}; // 5 minutes
+    static constexpr size_t MAX_BUCKETS = 10000;  // Maximum number of buckets to prevent unbounded growth
 };
 

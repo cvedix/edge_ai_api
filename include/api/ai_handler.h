@@ -79,7 +79,7 @@ private:
     static std::shared_ptr<AICache> cache_;
     static std::shared_ptr<RateLimiter> rate_limiter_;
     static std::shared_ptr<ResourceManager> resource_manager_;
-    static std::counting_semaphore<>* concurrent_semaphore_;
+    static std::unique_ptr<std::counting_semaphore<>> concurrent_semaphore_;  // Fixed: Use smart pointer to prevent memory leak
     static std::atomic<uint64_t> job_counter_;
     static size_t max_concurrent_;
 };

@@ -13,7 +13,7 @@ std::shared_ptr<PriorityQueue> AIHandler::request_queue_;
 std::shared_ptr<AICache> AIHandler::cache_;
 std::shared_ptr<RateLimiter> AIHandler::rate_limiter_;
 std::shared_ptr<ResourceManager> AIHandler::resource_manager_;
-std::counting_semaphore<>* AIHandler::concurrent_semaphore_ = nullptr;
+std::unique_ptr<std::counting_semaphore<>> AIHandler::concurrent_semaphore_;  // Fixed: Use smart pointer to prevent memory leak
 std::atomic<uint64_t> AIHandler::job_counter_{0};
 size_t AIHandler::max_concurrent_ = 4;
 
@@ -30,10 +30,8 @@ void AIHandler::initialize(
     resource_manager_ = resource_manager;
     max_concurrent_ = max_concurrent;
     
-    if (concurrent_semaphore_) {
-        delete concurrent_semaphore_;
-    }
-    concurrent_semaphore_ = new std::counting_semaphore<>(max_concurrent);
+    // Fixed: Use smart pointer - automatically handles cleanup, no memory leak
+    concurrent_semaphore_ = std::make_unique<std::counting_semaphore<>>(max_concurrent);
 }
 
 std::string AIHandler::getClientKey(const HttpRequestPtr &req) const {
