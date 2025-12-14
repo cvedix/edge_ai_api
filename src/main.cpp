@@ -10,7 +10,6 @@
 #endif
 #include "api/solution_handler.h"
 #include "api/group_handler.h"
-#include "api/log_handler.h"
 #include "api/config_handler.h"
 #include "api/node_handler.h"
 #include "models/model_upload_handler.h"
@@ -107,7 +106,6 @@ static std::atomic<bool> g_analysis_board_disabled{false}; // Flag to disable af
 static std::atomic<int> g_segfault_count{0};
 static std::atomic<std::chrono::steady_clock::time_point> g_last_segfault_log{std::chrono::steady_clock::now()};
 static constexpr auto SEGFAULT_LOG_INTERVAL = std::chrono::seconds(5);  // Log at most once every 5 seconds
-static constexpr int MAX_SEGFAULT_COUNT = 100;  // Force exit if too many segfaults occur
 
 void segfaultHandler(int signal)
 {
@@ -118,26 +116,6 @@ void segfaultHandler(int signal)
     
     // Increment counter
     int count = g_segfault_count.fetch_add(1) + 1;
-    
-    // CRITICAL: If too many segfaults occur, force exit immediately
-    // This prevents infinite crash loops that prevent Ctrl+C from working
-    if (count > MAX_SEGFAULT_COUNT) {
-        std::cerr << "\n[CRITICAL] ========================================" << std::endl;
-        std::cerr << "[CRITICAL] Too many segmentation faults (" << count << ") - FORCING EXIT NOW" << std::endl;
-        std::cerr << "[CRITICAL] This prevents infinite crash loops that block Ctrl+C" << std::endl;
-        std::cerr << "[CRITICAL] ========================================" << std::endl;
-        std::fflush(stdout);
-        std::fflush(stderr);
-        
-        // Unregister all signal handlers
-        std::signal(SIGINT, SIG_DFL);
-        std::signal(SIGTERM, SIG_DFL);
-        std::signal(SIGABRT, SIG_DFL);
-        std::signal(SIGSEGV, SIG_DFL);
-        
-        // Force immediate exit
-        std::_Exit(1);
-    }
     
     // Only log if enough time has passed since last log (rate limiting)
     if (time_since_last_log >= SEGFAULT_LOG_INTERVAL.count()) {
@@ -150,9 +128,6 @@ void segfaultHandler(int signal)
         std::cerr << "[CRITICAL] Monitoring thread will attempt to reconnect automatically" << std::endl;
         if (count > 1) {
             std::cerr << "[CRITICAL] Note: Multiple crashes detected - RTSP stream may be unstable" << std::endl;
-        }
-        if (count > MAX_SEGFAULT_COUNT / 2) {
-            std::cerr << "[CRITICAL] WARNING: High crash count - process will exit if crashes continue" << std::endl;
         }
         std::cerr << "[CRITICAL] ========================================" << std::endl;
         
@@ -191,28 +166,6 @@ void signalHandler(int signal)
         
         int count = signal_count.fetch_add(1) + 1;
         
-        // CRITICAL: Check if too many segfaults are occurring - if so, force exit immediately
-        // This prevents Ctrl+C from being blocked by infinite crash loops
-        int segfault_count = g_segfault_count.load();
-        if (segfault_count > MAX_SEGFAULT_COUNT / 2) {
-            std::cerr << "[CRITICAL] Too many segfaults (" << segfault_count << ") - FORCING EXIT NOW" << std::endl;
-            std::cerr << "[CRITICAL] Ctrl+C cannot work properly due to crash loop - exiting immediately" << std::endl;
-            std::fflush(stdout);
-            std::fflush(stderr);
-            
-            // Release lock before exit
-            signal_handling.store(false);
-            
-            // Unregister all signal handlers
-            std::signal(SIGINT, SIG_DFL);
-            std::signal(SIGTERM, SIG_DFL);
-            std::signal(SIGABRT, SIG_DFL);
-            std::signal(SIGSEGV, SIG_DFL);
-            
-            // Force immediate exit
-            std::_Exit(1);
-        }
-        
         if (count == 1) {
             // First signal - attempt graceful shutdown
             PLOG_INFO << "Received signal " << signal << ", shutting down gracefully...";
@@ -241,23 +194,16 @@ void signalHandler(int signal)
             }
             
             // CRITICAL: Force exit immediately - RTSP retry loops run in SDK threads and cannot be stopped gracefully
-            // Use a separate thread to force exit after very short delay (30ms - reduced from 50ms)
+            // Use a separate thread to force exit after very short delay (50ms)
             // This ensures we don't wait forever for RTSP retry loops
             std::thread([]() {
-                std::this_thread::sleep_for(std::chrono::milliseconds(30));
+                std::this_thread::sleep_for(std::chrono::milliseconds(50));
                 if (g_shutdown && !g_force_exit.load()) {
-                    // If still shutting down after 30ms, force exit immediately
-                    std::cerr << "[CRITICAL] Force exit after 30ms - RTSP retry loops blocking shutdown" << std::endl;
+                    // If still shutting down after 50ms, force exit immediately
+                    std::cerr << "[CRITICAL] Force exit after 50ms - RTSP retry loops blocking shutdown" << std::endl;
                     std::fflush(stdout);
                     std::fflush(stderr);
                     g_force_exit = true;
-                    
-                    // Unregister all signal handlers
-                    std::signal(SIGINT, SIG_DFL);
-                    std::signal(SIGTERM, SIG_DFL);
-                    std::signal(SIGABRT, SIG_DFL);
-                    std::signal(SIGSEGV, SIG_DFL);
-                    
                     // Use abort() to force immediate termination - more aggressive than _Exit()
                     std::abort();
                 }
@@ -447,12 +393,12 @@ void signalHandler(int signal)
             std::signal(SIGINT, SIG_DFL);
             std::signal(SIGTERM, SIG_DFL);
             std::signal(SIGABRT, SIG_DFL);
-            std::signal(SIGSEGV, SIG_DFL);
             
-            // Use _Exit() for immediate termination - more reliable than abort() when segfaults are occurring
-            // _Exit() terminates immediately without calling destructors or signal handlers
-            // This is safer when the process is in a crash loop
-            std::_Exit(1);
+            // Use abort() to force immediate termination - most aggressive
+            // RTSP retry loops in SDK threads will be killed by OS
+            // abort() sends SIGABRT which will be caught and force exit immediately
+            // No delay, no cleanup - just exit NOW
+            std::abort();
             // Note: signal_handling lock not released here because we exit immediately
         }
     } else if (signal == SIGABRT) {
@@ -563,47 +509,7 @@ void signalHandler(int signal)
                             }
                         }
                         std::cerr << "[RECOVERY] Stopped " << stopped_count << " out of " << instances.size() << " instance(s)" << std::endl;
-                        
-                        // CRITICAL: Wait for cleanup to complete by checking instance status
-                        // This prevents race conditions with Drogon event loop accessing deleted channels
-                        // Poll with timeout instead of hardcoded delay
-                        std::cerr << "[RECOVERY] Waiting for cleanup to complete..." << std::endl;
-                        const int max_poll_attempts = 50; // 50 * 20ms = 1000ms max
-                        const auto poll_interval = std::chrono::milliseconds(20);
-                        bool all_cleaned = false;
-                        
-                        for (int attempt = 0; attempt < max_poll_attempts; ++attempt) {
-                            // Check if all instances are actually stopped
-                            bool all_stopped = true;
-                            try {
-                                auto current_instances = g_instance_registry->listInstances();
-                                for (const auto& id : current_instances) {
-                                    auto optInfo = g_instance_registry->getInstance(id);
-                                    if (optInfo.has_value() && optInfo.value().running) {
-                                        all_stopped = false;
-                                        break;
-                                    }
-                                }
-                            } catch (...) {
-                                // If we can't check, assume cleanup is done to avoid infinite wait
-                                all_stopped = true;
-                            }
-                            
-                            if (all_stopped) {
-                                all_cleaned = true;
-                                break;
-                            }
-                            
-                            std::this_thread::sleep_for(poll_interval);
-                        }
-                        
-                        if (all_cleaned) {
-                            std::cerr << "[RECOVERY] Cleanup completed - all instances stopped" << std::endl;
-                        } else {
-                            std::cerr << "[RECOVERY] Cleanup timeout - some instances may still be stopping" << std::endl;
-                        }
                     }
-                    
                     std::cerr << "[RECOVERY] Application will continue running." << std::endl;
                     std::cerr << "[RECOVERY] Please check logs above and fix the root cause:" << std::endl;
                     std::cerr << "[RECOVERY]   1. If queue full: Reduce frame rate or check MQTT/network speed" << std::endl;
@@ -615,8 +521,7 @@ void signalHandler(int signal)
             }
             // Mark cleanup as completed to prevent terminate handler from aborting
             g_cleanup_completed.store(true);
-            // Reset cleanup flag to allow recovery
-            // No need to wait - cleanup is already verified by polling above
+            // Reset cleanup flag after a delay to allow recovery
             g_cleanup_in_progress.store(false);
         } else {
             std::cerr << "[RECOVERY] Cleanup already in progress (from terminate handler), skipping..." << std::endl;
@@ -658,9 +563,7 @@ void terminateHandler()
     // Debug: Log exception message to verify it's being captured correctly
     std::cerr << "[DEBUG] Exception message in terminate handler: '" << error_msg << "'" << std::endl;
     
-    // Check if this is an OpenCV DNN shape mismatch error or Drogon assertion failure
-    // Drogon EpollPoller assertion failures can occur when event loop accesses deleted channels
-    // This happens when instances are stopped while HTTP connections are still active
+    // Check if this is an OpenCV DNN shape mismatch error
     bool is_shape_mismatch = (error_msg.find("getMemoryShapes") != std::string::npos ||
                               error_msg.find("eltwise_layer") != std::string::npos ||
                               error_msg.find("Assertion failed") != std::string::npos ||
@@ -668,28 +571,14 @@ void terminateHandler()
                               error_msg.find("inputs[0] = [") != std::string::npos ||
                               error_msg.find("inputs[1] = [") != std::string::npos);
     
-    // Check for Drogon EpollPoller assertion failures
-    bool is_drogon_assertion = (error_msg.find("EpollPoller") != std::string::npos ||
-                                error_msg.find("fillActiveChannels") != std::string::npos ||
-                                error_msg.find("channels_") != std::string::npos ||
-                                error_msg.find("it != channels_.end()") != std::string::npos);
-    
     std::cerr << "[DEBUG] is_shape_mismatch = " << (is_shape_mismatch ? "true" : "false") << std::endl;
-    std::cerr << "[DEBUG] is_drogon_assertion = " << (is_drogon_assertion ? "true" : "false") << std::endl;
     
-    // Handle both shape mismatch and Drogon assertion failures
-    if (is_shape_mismatch || is_drogon_assertion) {
-        if (is_drogon_assertion) {
-            std::cerr << "[RECOVERY] Detected Drogon EpollPoller assertion failure - attempting recovery..." << std::endl;
-            std::cerr << "[RECOVERY] This error occurs when event loop accesses deleted channels during instance cleanup" << std::endl;
-            std::cerr << "[RECOVERY] Exception: " << error_msg << std::endl;
-        } else {
-            std::cerr << "[RECOVERY] Detected OpenCV DNN shape mismatch error - attempting recovery..." << std::endl;
-            std::cerr << "[RECOVERY] This error usually occurs when model receives frames with inconsistent sizes" << std::endl;
-            std::cerr << "[RECOVERY] Exception: " << error_msg << std::endl;
-        }
+    if (is_shape_mismatch) {
+        std::cerr << "[RECOVERY] Detected OpenCV DNN shape mismatch error - attempting recovery..." << std::endl;
+        std::cerr << "[RECOVERY] This error usually occurs when model receives frames with inconsistent sizes" << std::endl;
+        std::cerr << "[RECOVERY] Exception: " << error_msg << std::endl;
         
-        // Try to stop all instances before aborting (common for both cases)
+        // Try to stop all instances before aborting
         // NOTE: Use atomic flag to prevent deadlock if SIGABRT handler is also trying to stop instances
         bool expected = false;
         if (g_cleanup_in_progress.compare_exchange_strong(expected, true)) {
@@ -747,55 +636,11 @@ void terminateHandler()
                             std::cerr << "[RECOVERY] Unknown exception stopping instance " << instanceId << std::endl;
                         }
                     }
-                    
-                    // CRITICAL: Wait for cleanup to complete by checking instance status
-                    // This prevents race conditions with Drogon event loop accessing deleted channels
-                    // Poll with timeout instead of hardcoded delay
-                    std::cerr << "[RECOVERY] Waiting for cleanup to complete..." << std::endl;
-                    const int max_poll_attempts = 50; // 50 * 20ms = 1000ms max
-                    const auto poll_interval = std::chrono::milliseconds(20);
-                    bool all_cleaned = false;
-                    
-                    for (int attempt = 0; attempt < max_poll_attempts; ++attempt) {
-                        // Check if all instances are actually stopped
-                        bool all_stopped = true;
-                        try {
-                            auto current_instances = g_instance_registry->listInstances();
-                            for (const auto& id : current_instances) {
-                                auto optInfo = g_instance_registry->getInstance(id);
-                                if (optInfo.has_value() && optInfo.value().running) {
-                                    all_stopped = false;
-                                    break;
-                                }
-                            }
-                        } catch (...) {
-                            // If we can't check, assume cleanup is done to avoid infinite wait
-                            all_stopped = true;
-                        }
-                        
-                        if (all_stopped) {
-                            all_cleaned = true;
-                            break;
-                        }
-                        
-                        std::this_thread::sleep_for(poll_interval);
-                    }
-                    
-                    if (all_cleaned) {
-                        std::cerr << "[RECOVERY] Cleanup completed - all instances stopped" << std::endl;
-                    } else {
-                        std::cerr << "[RECOVERY] Cleanup timeout - some instances may still be stopping" << std::endl;
-                    }
-                    
                     std::cerr << "[RECOVERY] All instances stopped. Application will continue running." << std::endl;
-                    if (is_drogon_assertion) {
-                        std::cerr << "[RECOVERY] Drogon assertion handled - event loop should stabilize now" << std::endl;
-                    } else {
-                        std::cerr << "[RECOVERY] Please check logs above and fix the root cause:" << std::endl;
-                        std::cerr << "[RECOVERY]   1. Ensure video has consistent resolution (re-encode if needed)" << std::endl;
-                        std::cerr << "[RECOVERY]   2. Use YuNet 2023mar model (better dynamic input support)" << std::endl;
-                        std::cerr << "[RECOVERY]   3. Try different RESIZE_RATIO values" << std::endl;
-                    }
+                    std::cerr << "[RECOVERY] Please check logs above and fix the root cause:" << std::endl;
+                    std::cerr << "[RECOVERY]   1. Ensure video has consistent resolution (re-encode if needed)" << std::endl;
+                    std::cerr << "[RECOVERY]   2. Use YuNet 2023mar model (better dynamic input support)" << std::endl;
+                    std::cerr << "[RECOVERY]   3. Try different RESIZE_RATIO values" << std::endl;
                 } catch (const std::exception& e) {
                     std::cerr << "[RECOVERY] Error accessing instance registry: " << e.what() << std::endl;
                 } catch (...) {
@@ -805,7 +650,6 @@ void terminateHandler()
             // Mark cleanup as completed to prevent abort
             g_cleanup_completed.store(true);
             // Reset cleanup flag to allow recovery
-            // No need to wait - cleanup is already verified by polling above
             g_cleanup_in_progress.store(false);
         } else {
             std::cerr << "[RECOVERY] Cleanup already in progress (from SIGABRT handler), skipping..." << std::endl;
@@ -1535,9 +1379,6 @@ int main(int argc, char* argv[])
         PLOG_INFO << "  GET /openapi.yaml    - OpenAPI spec (all versions)";
         PLOG_INFO << "  GET /v1/openapi.yaml - OpenAPI spec for v1";
         PLOG_INFO << "  GET /v2/openapi.yaml - OpenAPI spec for v2";
-        PLOG_INFO << "  GET /v1/core/logs - List all log files by category";
-        PLOG_INFO << "  GET /v1/core/logs/{category} - Get logs by category (with filtering)";
-        PLOG_INFO << "  GET /v1/core/logs/{category}/{date} - Get logs by category and date (with filtering)";
 
         // Controllers are auto-registered via Drogon's HttpController system
         // when headers are included and METHOD_LIST_BEGIN/END macros are used
@@ -1548,7 +1389,6 @@ int main(int argc, char* argv[])
         static SwaggerHandler swaggerHandler;
 #ifdef ENABLE_SYSTEM_INFO_HANDLER
         static SystemInfoHandler systemInfoHandler;
-        static LogHandler logHandler;
 #endif
         
         // Initialize instance management components

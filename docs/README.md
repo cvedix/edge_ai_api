@@ -37,68 +37,94 @@ Tài liệu hướng dẫn đầy đủ cho Edge AI API project.
 
 ### 📖 Tài Liệu Kỹ Thuật
 
-5. **[DROGON_SETUP.md](DROGON_SETUP.md)** - Hướng dẫn Drogon Framework
-   - Tự động download và build Drogon
-   - Cấu hình dependencies
-   - Troubleshooting
-
-6. **[architecture.md](architecture.md)** - Kiến trúc hệ thống
+5. **[architecture.md](architecture.md)** - Kiến trúc hệ thống
    - System architecture
    - Request flow
    - Component structure
    - API endpoints diagram
 
-7. **[FLOW_DIAGRAM.md](FLOW_DIAGRAM.md)** - Flow Diagram Tổng Quan
+6. **[FLOW_DIAGRAM.md](FLOW_DIAGRAM.md)** - Flow Diagram Tổng Quan
    - Flow tổng quan hệ thống
    - Flow xử lý request chi tiết
    - Flow khởi động server
    - Background services flow
    - Mô tả các component
 
-8. **[HARDWARE_INFO_API.md](HARDWARE_INFO_API.md)** - Hardware Information API
+7. **[HARDWARE_INFO_API.md](HARDWARE_INFO_API.md)** - Hardware Information API
    - Hướng dẫn sử dụng API lấy thông tin phần cứng
    - Endpoints: `/v1/core/system/info` và `/v1/core/system/status`
    - Ví dụ sử dụng với curl, Python, JavaScript
    - Troubleshooting và best practices
    - Chi tiết các thông số có thể lấy được
 
-9. **[LOGGING.md](LOGGING.md)** - Logging Documentation
+8. **[LOGGING.md](LOGGING.md)** - Logging Documentation
+    - Hướng dẫn sử dụng các tính năng logging
+    - API logging (`--log-api`)
+    - Instance execution logging (`--log-instance`)
+    - SDK output logging (`--log-sdk-output`)
+    - Cấu hình và best practices
+    - Troubleshooting logging issues
 
-10. **[CONFIG_API_GUIDE.md](CONFIG_API_GUIDE.md)** - Hướng dẫn Config API
+9. **[CONFIG_API_GUIDE.md](CONFIG_API_GUIDE.md)** - Hướng dẫn Config API
     - Tất cả các endpoint Config API
     - Cấu trúc config.json chi tiết
     - Cách config ảnh hưởng đến instance
     - Ví dụ sử dụng và best practices
     - Xử lý lỗi
 
-11. **[CONFIG_IMPACT_ON_INSTANCES.md](CONFIG_IMPACT_ON_INSTANCES.md)** - Tác động của Config với Instance
-    - max_running_instances và cách hoạt động
-    - Các config khác và tác động của chúng
-    - Luồng hoạt động khi tạo instance
-    - Bảng tóm tắt tác động
+### 🔧 Troubleshooting & Guides
 
-### Node Support & Implementation
+11. **[TROUBLESHOOTING.md](TROUBLESHOOTING.md)** - Hướng dẫn khắc phục sự cố
+    - Crash analysis - Queue deadlock
+    - Crash analysis - RTSP + MQTT deadlock
+    - MQTT vs RTMP queue crash
+    - MQTT debug guide
+    - RTSP connection issues
+    - RTSP decoder issues
 
-12. **[NODE_SUPPORT_STATUS.md](NODE_SUPPORT_STATUS.md)** - Trạng thái hỗ trợ các node types
-    - Inference nodes: 23 nodes (100%)
-    - Source nodes: 6 nodes (100%)
-    - Broker nodes: 12 nodes (100%)
+12. **[QUEUE_MONITORING.md](QUEUE_MONITORING.md)** - Queue Monitoring và Auto-Clear
+    - QueueMonitor class
+    - Queue monitoring thread
+    - Cơ chế phát hiện queue issues
+    - Auto-restart instance
+    - Configuration và tuning
 
-13. **[REQUIREMENT_CHECKLIST.md](REQUIREMENT_CHECKLIST.md)** - Checklist đáp ứng yêu cầu
-    - Detector (Inference): ✅ 100%
-    - Input (Source): ✅ 100%
-    - Output (Broker): ✅ 100%
+13. **[MQTT_GUIDE.md](MQTT_GUIDE.md)** - MQTT Implementation Guide
+    - Non-blocking MQTT publisher
+    - Background thread implementation
+    - MQTT debug guide
+    - CVEDIX JSON MQTT Broker Node API
+    - Troubleshooting
 
-14. **[IMPLEMENTATION_SUMMARY.md](IMPLEMENTATION_SUMMARY.md)** - Tổng kết implementation
-    - Tổng số nodes đã hỗ trợ: 41 nodes
-    - Example files: 26 files
-    - Files đã tạo/cập nhật
-   - Hướng dẫn sử dụng các tính năng logging
-   - API logging (`--log-api`)
-   - Instance execution logging (`--log-instance`)
-   - SDK output logging (`--log-sdk-output`)
-   - Cấu hình và best practices
-   - Troubleshooting logging issues
+14. **[RTSP_TROUBLESHOOTING.md](RTSP_TROUBLESHOOTING.md)** - RTSP Troubleshooting Guide
+    - RTSP connection timeout
+    - RTSP decoder issues
+    - RTSP error analysis
+    - Giải pháp và workarounds
+
+15. **[RESIZE_RATIO_GUIDE.md](RESIZE_RATIO_GUIDE.md)** - Hướng dẫn RESIZE_RATIO
+    - Bảng so sánh RESIZE_RATIO
+    - Tối ưu cho MQTT vs RTMP
+    - Test strategy
+    - Khuyến nghị cho từng use case
+
+### 🛠️ Development Tools & Analysis
+
+16. **[SCRIPTS_ANALYSIS.md](SCRIPTS_ANALYSIS.md)** - Phân tích và tối ưu Scripts
+    - Phân tích tất cả scripts trong project
+    - Đề xuất scripts nào cần giữ lại
+    - Hướng dẫn sử dụng setup.sh và fix_all_symlinks.sh
+    - Cấu trúc scripts đề xuất
+
+17. **[CMAKE_FIXES_APPLIED.md](CMAKE_FIXES_APPLIED.md)** - Các lỗi CMake đã được fix
+    - Danh sách các lỗi CMake đã được giải quyết
+    - Các thay đổi trong CMakeLists.txt
+    - Hướng dẫn sử dụng fix_all_symlinks.sh
+
+18. **[CMAKE_ISSUES_ANALYSIS.md](CMAKE_ISSUES_ANALYSIS.md)** - Phân tích chi tiết các vấn đề CMake
+    - Phân tích nguyên nhân các lỗi CMake
+    - Giải pháp và workarounds
+    - Best practices cho CMake configuration
 
 10. **[LOGS_API.md](LOGS_API.md)** - Logs API Documentation
     - Hướng dẫn sử dụng Logs API endpoints

@@ -43,7 +43,7 @@ Instance `ba_crossline_demo_1` là một pipeline hoàn chỉnh để phát hi�
     "WEIGHTS_PATH": "/home/pnsang/project/edge_ai_sdk/cvedix_data/models/det_cls/yolov3-tiny-2022-0721_best.weights",
     "CONFIG_PATH": "/home/pnsang/project/edge_ai_sdk/cvedix_data/models/det_cls/yolov3-tiny-2022-0721.cfg",
     "LABELS_PATH": "/home/pnsang/project/edge_ai_sdk/cvedix_data/models/det_cls/yolov3_tiny_5classes.txt",
-    "RTMP_URL": "rtmp://localhost:1935/live/camera_demo_1"
+    "RTMP_URL": "rtmp://anhoidong.datacenter.cvedix.com:1935/live/camera_demo_1"
   }
 }
 ```
@@ -196,7 +196,7 @@ curl -X POST http://localhost:8080/v1/core/instances/{instanceId}/stop
 
 Sử dụng VLC hoặc player hỗ trợ RTMP:
 ```
-rtmp://localhost:1935/live/camera_demo_1_0
+rtmp://anhoidong.datacenter.cvedix.com:1935/live/camera_demo_1_0
 ```
 
 ## Tùy chỉnh Cấu hình

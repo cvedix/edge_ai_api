@@ -312,7 +312,7 @@ API `POST /v1/core/instance` cho phép tạo các AI instances với các loại
   "autoStart": true,
   "detectionSensitivity": "Medium",
   "additionalParams": {
-    "RTSP_URL": "rtsp://localhost:8554/stream",
+    "RTSP_URL": "rtsp://192.168.1.100:8554/stream",
     "MODEL_PATH": "./cvedix_data/models/trt/others/yolov8s_v8.5.engine",
     "LABELS_PATH": "./cvedix_data/models/coco_80classes.txt",
     "RTMP_URL": "rtmp://localhost:1935/live/stream"
@@ -511,7 +511,7 @@ curl -X POST http://localhost:8080/v1/core/instance \
   "persistent": true,
   "autoStart": true,
   "additionalParams": {
-    "RTSP_URL": "rtsp://localhost:8554/stream",
+    "RTSP_URL": "rtsp://192.168.1.100:8554/stream",
     "MODEL_PATH": "./cvedix_data/models/yolo/yolov3.weights",
     "MODEL_CONFIG_PATH": "./cvedix_data/models/yolo/yolov3.cfg",
     "LABELS_PATH": "./cvedix_data/models/coco_80classes.txt",
@@ -948,7 +948,7 @@ curl -X POST http://localhost:8080/v1/core/instance \
     "MODEL_PATH": "./cvedix_data/models/face/face_detection_yunet_2022mar.onnx",
     "SFACE_MODEL_PATH": "./cvedix_data/models/face/face_recognition_sface_2021dec.onnx",
     "BROKE_FOR": "FACE",
-    "MQTT_BROKER_URL": "localhost",
+    "MQTT_BROKER_URL": "anhoidong.datacenter.cvedix.com",
     "MQTT_PORT": "1883",
     "MQTT_TOPIC": "events",
     "RTMP_URL": "rtmp://localhost:1935/live/face"
@@ -1480,7 +1480,7 @@ curl -X POST http://localhost:8080/v1/core/instance \
   "autoStart": true,
   "detectionSensitivity": "Medium",
   "additionalParams": {
-    "RTSP_URL": "rtsp://localhost:8554/stream",
+    "RTSP_URL": "rtsp://192.168.1.100:8554/stream",
     "MODEL_PATH": "./cvedix_data/models/face/face_detection_yunet_2022mar.onnx",
     "SFACE_MODEL_PATH": "./cvedix_data/models/face/face_recognition_sface_2021dec.onnx",
     "BROKE_FOR": "FACE",
@@ -1525,7 +1525,7 @@ curl -X POST http://localhost:8080/v1/core/instance \
   "confThreshold": 0.2,
   "detectorThermalModelFile": "pva_det_mosaic_320",
   "additionalParams": {
-    "RTSP_URL": "rtsp://localhost:8554/live/vanphong",
+    "RTSP_URL": "rtsp://192.168.1.106:8554/live/vanphong",
     "MODEL_PATH": "./cvedix_data/models/detection/pva_det_full_frame_512.trt"
   }
 }
@@ -1566,7 +1566,7 @@ curl -X POST http://localhost:8080/v1/core/instance \
     "solution": "trt_yolov8_detection",
     "autoStart": true,
     "additionalParams": {
-      "RTSP_URL": "rtsp://localhost:8554/stream",
+      "RTSP_URL": "rtsp://192.168.1.100:8554/stream",
       "MODEL_PATH": "./models/yolov8.engine"
     }
   }'
@@ -1618,7 +1618,7 @@ kafka-console-consumer --bootstrap-server 192.168.77.87:9092 \
 **Cho MQTT Broker**:
 ```bash
 # Subscribe đến MQTT topic
-mosquitto_sub -h localhost \
+mosquitto_sub -h anhoidong.datacenter.cvedix.com \
   -p 1883 -t events
 ```
 

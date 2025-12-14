@@ -11,7 +11,7 @@
     "ENABLE_SCREEN_DES": "false",
     "RESIZE_RATIO": "0.1",
     "BROKE_FOR": "NORMAL",
-    "MQTT_BROKER_URL": "localhost",
+    "MQTT_BROKER_URL": "mqtt.goads.com.vn",
     "MQTT_PORT": "1883",
     "MQTT_TOPIC": "ba_crossline/events",
     "MQTT_USERNAME": "",

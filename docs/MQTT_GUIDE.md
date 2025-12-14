@@ -144,7 +144,7 @@ MQTT broker node không gửi được messages từ `ba_crossline` node.
 
 #### 1. MQTT Connection
 - ✅ MQTT client được tạo thành công
-- ✅ Kết nối đến broker thành công (`localhost:1883`)
+- ✅ Kết nối đến broker thành công (`mqtt.goads.com.vn:1883`)
 - ✅ Network loop đã start
 
 #### 2. Pipeline Connection
@@ -231,7 +231,7 @@ Nếu `json_mqtt_broker_node` không hoạt động với `ba_crossline`, có th
 
 3. **Kiểm tra MQTT broker:**
    ```bash
-   mosquitto_sub -h localhost -p 1883 -t "ba_crossline/events" -v
+   mosquitto_sub -h mqtt.goads.com.vn -p 1883 -t "ba_crossline/events" -v
    ```
 
 4. **Nếu vẫn không có messages:**

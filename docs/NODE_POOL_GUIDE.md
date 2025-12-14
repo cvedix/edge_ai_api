@@ -66,7 +66,7 @@ Categories: `source`, `detector`, `processor`, `destination`, `broker`
 {
   "templateId": "rtsp_src_template",
   "parameters": {
-    "rtsp_url": "rtsp://localhost:8554/stream1",
+    "rtsp_url": "rtsp://192.168.1.100:8554/stream1",
     "channel": "0",
     "resize_ratio": "1.0"
   }
@@ -97,7 +97,7 @@ Categories: `source`, `detector`, `processor`, `destination`, `broker`
       "displayName": "RTSP Source",
       "category": "source",
       "parameters": {
-        "rtsp_url": "rtsp://localhost:8554/stream1"
+        "rtsp_url": "rtsp://192.168.1.100:8554/stream1"
       },
       "inUse": false,
       "createdAt": "2025-01-15T10:30:00Z"
@@ -143,7 +143,7 @@ Chỉ trả về các nodes chưa được sử dụng.
       "nodeType": "rtsp_src",
       "nodeName": "RTSP Source_{instanceId}",
       "parameters": {
-        "rtsp_url": "rtsp://localhost:8554/stream1"
+        "rtsp_url": "rtsp://192.168.1.100:8554/stream1"
       }
     },
     {
@@ -201,7 +201,7 @@ curl -X POST http://localhost:8080/v1/core/nodes/preconfigured \
   -d '{
     "templateId": "rtsp_src_template",
     "parameters": {
-      "rtsp_url": "rtsp://localhost:8554/stream1"
+      "rtsp_url": "rtsp://192.168.1.100:8554/stream1"
     }
   }'
 ```

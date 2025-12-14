@@ -147,9 +147,37 @@ private:
     );
     
     /**
-     * @brief Create app destination node (for frame capture)
+     * @brief Create screen destination node
      */
-    std::shared_ptr<cvedix_nodes::cvedix_node> createAppDesNode(
+    std::shared_ptr<cvedix_nodes::cvedix_node> createScreenDestinationNode(
+        const std::string& nodeName,
+        const std::map<std::string, std::string>& params
+    );
+    
+    // ========== Tracking Nodes ==========
+    
+    /**
+     * @brief Create SORT tracker node
+     */
+    std::shared_ptr<cvedix_nodes::cvedix_node> createSORTTrackNode(
+        const std::string& nodeName,
+        const std::map<std::string, std::string>& params
+    );
+    
+    // ========== Behavior Analysis Nodes ==========
+    
+    /**
+     * @brief Create BA crossline node
+     */
+    std::shared_ptr<cvedix_nodes::cvedix_node> createBACrosslineNode(
+        const std::string& nodeName,
+        const std::map<std::string, std::string>& params
+    );
+    
+    /**
+     * @brief Create BA crossline OSD node
+     */
+    std::shared_ptr<cvedix_nodes::cvedix_node> createBACrosslineOSDNode(
         const std::string& nodeName,
         const std::map<std::string, std::string>& params
     );
