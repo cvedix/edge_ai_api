@@ -27,19 +27,6 @@ HttpResponsePtr RecognitionHandler::createErrorResponse(int statusCode, const st
     return resp;
 }
 
-bool RecognitionHandler::validateApiKey(const HttpRequestPtr &req, std::string& error) const {
-    std::string apiKey = req->getHeader("x-api-key");
-    if (apiKey.empty()) {
-        error = "Missing x-api-key header";
-        return false;
-    }
-    
-    // TODO: Implement actual API key validation logic
-    // For now, accept any non-empty API key
-    // In production, validate against a database or configuration
-    return true;
-}
-
 bool RecognitionHandler::isBase64(const std::string& str) const {
     if (str.empty()) return false;
     
@@ -635,7 +622,7 @@ void RecognitionHandler::handleOptionsFaces(const HttpRequestPtr &req,
     resp->setStatusCode(k200OK);
     resp->addHeader("Access-Control-Allow-Origin", "*");
     resp->addHeader("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
-    resp->addHeader("Access-Control-Allow-Headers", "Content-Type, x-api-key");
+    resp->addHeader("Access-Control-Allow-Headers", "Content-Type");
     resp->addHeader("Access-Control-Max-Age", "3600");
     callback(resp);
 }
@@ -680,16 +667,6 @@ void RecognitionHandler::listFaceSubjects(const HttpRequestPtr &req,
     }
     
     try {
-        // Validate API key
-        std::string apiKeyError;
-        if (!validateApiKey(req, apiKeyError)) {
-            if (isApiLoggingEnabled()) {
-                PLOG_WARNING << "[API] GET /v1/recognition/faces - " << apiKeyError;
-            }
-            callback(createErrorResponse(401, "Unauthorized", apiKeyError));
-            return;
-        }
-        
         // Parse query parameters
         std::string pageStr = req->getParameter("page");
         std::string sizeStr = req->getParameter("size");
@@ -732,7 +709,7 @@ void RecognitionHandler::listFaceSubjects(const HttpRequestPtr &req,
         // Add CORS headers
         resp->addHeader("Access-Control-Allow-Origin", "*");
         resp->addHeader("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
-        resp->addHeader("Access-Control-Allow-Headers", "Content-Type, x-api-key");
+        resp->addHeader("Access-Control-Allow-Headers", "Content-Type");
         
         auto end_time = std::chrono::steady_clock::now();
         auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(end_time - start_time);

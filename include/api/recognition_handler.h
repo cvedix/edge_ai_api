@@ -64,11 +64,6 @@ public:
 
 private:
     /**
-     * @brief Validate API key from request header
-     */
-    bool validateApiKey(const HttpRequestPtr &req, std::string& error) const;
-    
-    /**
      * @brief Extract base64 image data from multipart form data
      */
     bool extractImageData(const HttpRequestPtr &req, std::vector<unsigned char>& imageData, std::string& error) const;
