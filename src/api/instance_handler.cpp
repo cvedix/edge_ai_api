@@ -1966,10 +1966,24 @@ bool InstanceHandler::parseUpdateRequest(
     }
     
     // Additional parameters (e.g., RTSP_URL, MODEL_PATH, FILE_PATH, RTMP_URL)
+    // Helper function to trim whitespace (especially important for RTMP URLs)
+    auto trim = [](const std::string& str) -> std::string {
+        if (str.empty()) return str;
+        size_t first = str.find_first_not_of(" \t\n\r\f\v");
+        if (first == std::string::npos) return "";
+        size_t last = str.find_last_not_of(" \t\n\r\f\v");
+        return str.substr(first, (last - first + 1));
+    };
+    
     if (json.isMember("additionalParams") && json["additionalParams"].isObject()) {
         for (const auto& key : json["additionalParams"].getMemberNames()) {
             if (json["additionalParams"][key].isString()) {
-                req.additionalParams[key] = json["additionalParams"][key].asString();
+                std::string value = json["additionalParams"][key].asString();
+                // Trim RTMP URLs to prevent GStreamer pipeline errors
+                if (key == "RTMP_URL" || key == "RTMP_DES_URL") {
+                    value = trim(value);
+                }
+                req.additionalParams[key] = value;
             }
         }
     }
@@ -1996,9 +2010,9 @@ bool InstanceHandler::parseUpdateRequest(
     
     // Also check for RTMP_DES_URL or RTMP_URL at top level (for RTMP destination)
     if (json.isMember("RTMP_DES_URL") && json["RTMP_DES_URL"].isString()) {
-        req.additionalParams["RTMP_DES_URL"] = json["RTMP_DES_URL"].asString();
+        req.additionalParams["RTMP_DES_URL"] = trim(json["RTMP_DES_URL"].asString());
     } else if (json.isMember("RTMP_URL") && json["RTMP_URL"].isString()) {
-        req.additionalParams["RTMP_URL"] = json["RTMP_URL"].asString();
+        req.additionalParams["RTMP_URL"] = trim(json["RTMP_URL"].asString());
     }
     
     // Also check for SFACE_MODEL_PATH at top level (for SFace encoder)

@@ -2,7 +2,7 @@
   "name": "minimal_instance",
   "solution": "face_detection",
   "additionalParams": {
-    "RTSP_URL": "rtsp://example.com:8554/live/stream"
+    "RTSP_URL": "rtsp://localhost:8554/live/stream"
   }
 }
 

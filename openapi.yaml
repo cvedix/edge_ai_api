@@ -2676,7 +2676,7 @@ paths:
               $ref: '#/components/schemas/SetInputRequest'
             example:
               type: "Manual"
-              uri: "http://example.com"
+              uri: "http://localhost"
       responses:
         '204':
           description: Input settings updated successfully
@@ -2808,7 +2808,7 @@ paths:
                 summary: Set object value
                 value:
                   path: "Output/handlers/Mqtt"
-                  jsonValue: "{\"uri\":\"mqtt://example.com:1883/events\"}"
+                  jsonValue: "{\"uri\":\"mqtt://localhost:1883/events\"}"
       responses:
         '204':
           description: Config value set successfully
@@ -3051,7 +3051,7 @@ paths:
                 - nodeType: "rtsp_src"
                   nodeName: "source_{instanceId}"
                   parameters:
-                    url: "rtsp://example.com/stream"
+                    url: "rtsp://localhost/stream"
                 - nodeType: "yunet_face_detector"
                   nodeName: "detector_{instanceId}"
                   parameters:
@@ -3061,7 +3061,7 @@ paths:
                   parameters:
                     output_path: "/tmp/output"
               defaults:
-                RTSP_URL: "rtsp://example.com/stream"
+                RTSP_URL: "rtsp://localhost/stream"
       responses:
         '201':
           description: Solution created successfully
@@ -3934,7 +3934,7 @@ components:
           type: string
           format: uri
           description: URI of the input source (must be valid)
-          example: "http://example.com"
+          example: "http://localhost"
 
     InstanceConfig:
       type: object
@@ -4034,7 +4034,7 @@ components:
             A string containing a JSON value or object. Ensure proper escaping for strings or objects.
             - For string values: "\"my string\"" (escaped JSON string)
             - For object values: "{\"key\":\"value\"}" (escaped JSON object)
-          example: "{\"uri\":\"mqtt://example.com:1883/events\"}"
+          example: "{\"uri\":\"mqtt://localhost:1883/events\"}"
 
     ConfigureStreamOutputRequest:
       type: object
@@ -4761,7 +4761,7 @@ components:
             url:
               type: string
               description: RTSP URL (if type is RTSP)
-              example: "rtsp://example.com:8554/live/stream"
+              example: "rtsp://localhost:8554/live/stream"
         output:
           type: object
           description: Output information
@@ -4985,14 +4985,14 @@ components:
                 additionalProperties:
                   type: string
                 example:
-                  url: "rtsp://example.com/stream"
+                  url: "rtsp://localhost/stream"
         defaults:
           type: object
           description: Default parameter values
           additionalProperties:
             type: string
           example:
-            RTSP_URL: "rtsp://example.com/stream"
+            RTSP_URL: "rtsp://localhost/stream"
 
     CreateSolutionRequest:
       type: object

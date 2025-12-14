@@ -16,7 +16,7 @@
   "inputOrientation": 0,
   "inputPixelLimit": 2000000,
   "additionalParams": {
-    "RTSP_URL": "rtsp://example.com:8554/live/camera1",
+    "RTSP_URL": "rtsp://localhost:8554/live/camera1",
     "MODEL_PATH": "/usr/share/cvedix/cvedix_data/models/yolo/yolov8n.onnx"
   }
 }
