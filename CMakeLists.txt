@@ -273,6 +273,7 @@ set(SOURCES
     src/core/cors_helper.cpp
     src/core/ai_processor.cpp
     src/core/ai_watchdog.cpp
+    src/core/backpressure_controller.cpp
     src/instances/instance_registry.cpp
     src/instances/queue_monitor.cpp
     src/solutions/solution_registry.cpp

@@ -107,7 +107,7 @@ static std::atomic<int> g_segfault_count{0};
 static std::atomic<std::chrono::steady_clock::time_point> g_last_segfault_log{std::chrono::steady_clock::now()};
 static std::atomic<std::chrono::steady_clock::time_point> g_first_segfault_time{std::chrono::steady_clock::now()};
 static constexpr auto SEGFAULT_LOG_INTERVAL = std::chrono::seconds(5);  // Log at most once every 5 seconds
-static constexpr int MAX_SEGFAULTS_BEFORE_FORCE_EXIT = 10000;  // Force exit if > 10000 crashes
+static constexpr int MAX_SEGFAULTS_BEFORE_FORCE_EXIT = 100;  // Force exit if > 100 crashes (reduced from 10000 for faster response)
 static constexpr auto SEGFAULT_TIME_WINDOW = std::chrono::minutes(1);  // Reset counter after 1 minute
 
 void segfaultHandler(int signal)
@@ -117,20 +117,24 @@ void segfaultHandler(int signal)
     auto last_log = g_last_segfault_log.load();
     auto time_since_last_log = std::chrono::duration_cast<std::chrono::seconds>(now - last_log).count();
     
-    // Increment counter
-    int count = g_segfault_count.fetch_add(1) + 1;
+    // Increment counter (atomic operation to prevent race conditions)
+    int count = g_segfault_count.fetch_add(1, std::memory_order_relaxed) + 1;
     
     // Check if we need to reset counter (after time window)
-    auto first_crash = g_first_segfault_time.load();
+    auto first_crash = g_first_segfault_time.load(std::memory_order_relaxed);
     auto time_since_first = std::chrono::duration_cast<std::chrono::minutes>(now - first_crash).count();
     if (time_since_first >= SEGFAULT_TIME_WINDOW.count()) {
-        // Reset counter if more than 1 minute has passed
-        g_segfault_count.store(1);
-        g_first_segfault_time.store(now);
+        // Reset counter if more than 1 minute has passed since first crash
+        g_segfault_count.store(1, std::memory_order_relaxed);
+        g_first_segfault_time.store(now, std::memory_order_relaxed);
         count = 1;
+    } else if (count == 1) {
+        // First crash in this window - record the time
+        g_first_segfault_time.store(now, std::memory_order_relaxed);
     }
     
     // CRITICAL: Force exit if too many crashes (prevents infinite crash loop)
+    // FIXED: Check BEFORE logging to prevent counter from being reset incorrectly
     if (count > MAX_SEGFAULTS_BEFORE_FORCE_EXIT) {
         std::cerr << "\n[CRITICAL] ========================================" << std::endl;
         std::cerr << "[CRITICAL] Too many segmentation faults (" << count << ") - forcing exit to prevent infinite crash loop" << std::endl;
@@ -141,7 +145,7 @@ void segfaultHandler(int signal)
         std::fflush(stderr);
         
         // Set force exit flag
-        g_force_exit = true;
+        g_force_exit.store(true, std::memory_order_relaxed);
         
         // Try to stop all instances quickly (with timeout)
         if (g_instance_registry) {
@@ -149,7 +153,7 @@ void segfaultHandler(int signal)
                 try {
                     auto instances = g_instance_registry->listInstances();
                     for (const auto& instanceId : instances) {
-                        if (g_force_exit.load()) break;
+                        if (g_force_exit.load(std::memory_order_relaxed)) break;
                         try {
                             auto optInfo = g_instance_registry->getInstance(instanceId);
                             if (optInfo.has_value() && optInfo.value().running) {
@@ -181,9 +185,11 @@ void segfaultHandler(int signal)
     }
     
     // Only log if enough time has passed since last log (rate limiting)
+    // FIXED: Do NOT reset counter after logging - this was causing the bug
+    // Counter should only reset after time window expires, not after each log
     if (time_since_last_log >= SEGFAULT_LOG_INTERVAL.count()) {
         // Update last log time
-        g_last_segfault_log.store(now);
+        g_last_segfault_log.store(now, std::memory_order_relaxed);
         
         std::cerr << "\n[CRITICAL] ========================================" << std::endl;
         std::cerr << "[CRITICAL] Segmentation fault (SIGSEGV) detected! (count: " << count << ")" << std::endl;
@@ -192,13 +198,17 @@ void segfaultHandler(int signal)
         if (count > 1000) {
             std::cerr << "[CRITICAL] WARNING: Very high crash count (" << count << ") - consider stopping problematic instances" << std::endl;
             std::cerr << "[CRITICAL] If crashes continue, process will auto-exit after " << MAX_SEGFAULTS_BEFORE_FORCE_EXIT << " crashes" << std::endl;
+        } else if (count > 10) {
+            std::cerr << "[CRITICAL] WARNING: Multiple crashes detected (" << count << ") - RTSP stream may be unstable" << std::endl;
+            std::cerr << "[CRITICAL] Consider stopping the problematic instance manually" << std::endl;
         } else if (count > 1) {
-            std::cerr << "[CRITICAL] Note: Multiple crashes detected - RTSP stream may be unstable" << std::endl;
+            std::cerr << "[CRITICAL] Note: Multiple crashes detected (" << count << ") - RTSP stream may be unstable" << std::endl;
         }
         std::cerr << "[CRITICAL] ========================================" << std::endl;
         
-        // Reset counter after logging (but keep first crash time)
-        g_segfault_count.store(0);
+        // FIXED: Do NOT reset counter here - this was the bug!
+        // Counter should only reset after time window expires (checked above)
+        // Resetting here caused race conditions when multiple SIGSEGV occurred quickly
     }
     
     // CRITICAL: Do NOT stop instances here - let monitoring thread handle reconnection

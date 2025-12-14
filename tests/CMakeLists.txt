@@ -91,6 +91,7 @@ target_sources(edge_ai_api_tests PRIVATE
     ${CMAKE_SOURCE_DIR}/src/core/node_template_registry.cpp
     ${CMAKE_SOURCE_DIR}/src/core/node_storage.cpp
     ${CMAKE_SOURCE_DIR}/src/core/performance_monitor.cpp
+    ${CMAKE_SOURCE_DIR}/src/core/backpressure_controller.cpp
     ${CMAKE_SOURCE_DIR}/src/groups/group_registry.cpp
     ${CMAKE_SOURCE_DIR}/src/groups/group_storage.cpp
     ${CMAKE_SOURCE_DIR}/src/models/group_info.cpp

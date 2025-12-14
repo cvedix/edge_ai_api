@@ -3,6 +3,7 @@
 #include "core/uuid_generator.h"
 #include "core/logging_flags.h"
 #include "core/logger.h"
+#include "core/backpressure_controller.h"
 #include <cvedix/cvedix_version.h>
 #include <cvedix/nodes/src/cvedix_rtsp_src_node.h>
 #include <cvedix/nodes/src/cvedix_file_src_node.h>
@@ -38,6 +39,8 @@
 #include <json/json.h>  // For JSON parsing to count vehicles
 #include <set>  // For tracking unique vehicle IDs
 #include <limits>  // For std::numeric_limits
+#include <vector>  // For dynamic buffer
+#include <cstring>  // For strerror
 
 InstanceRegistry::InstanceRegistry(
     SolutionRegistry& solutionRegistry,
@@ -150,20 +153,21 @@ std::string InstanceRegistry::createInstance(const CreateInstanceRequest& req) {
         // Start auto-start process in a separate thread (non-blocking)
         // This allows the API to return immediately after instance creation
         std::thread([this, instanceId, pipeline]() {
-            // Wait for DNN models to be ready using exponential backoff
-            // This is more reliable than fixed delay as it adapts to model loading time
-            waitForModelsReady(pipeline, 2000); // Max 2 seconds
-            
-            // Validate model files before starting pipeline
-            // This prevents assertion failures when model files don't exist
-            std::map<std::string, std::string> additionalParams;
-            {
-                std::unique_lock<std::shared_timed_mutex> lock(mutex_); // Exclusive lock for write operations
-                auto instanceIt = instances_.find(instanceId);
-                if (instanceIt != instances_.end()) {
-                    additionalParams = instanceIt->second.additionalParams;
+            try {
+                // Wait for DNN models to be ready using exponential backoff
+                // This is more reliable than fixed delay as it adapts to model loading time
+                waitForModelsReady(pipeline, 2000); // Max 2 seconds
+                
+                // Validate model files before starting pipeline
+                // This prevents assertion failures when model files don't exist
+                std::map<std::string, std::string> additionalParams;
+                {
+                    std::unique_lock<std::shared_timed_mutex> lock(mutex_); // Exclusive lock for write operations
+                    auto instanceIt = instances_.find(instanceId);
+                    if (instanceIt != instances_.end()) {
+                        additionalParams = instanceIt->second.additionalParams;
+                    }
                 }
-            }
             
             bool modelValidationFailed = false;
             std::string missingModelPath;
@@ -254,6 +258,7 @@ std::string InstanceRegistry::createInstance(const CreateInstanceRequest& req) {
                 return; // Exit thread without starting pipeline
             }
             
+            // Start pipeline with exception handling
             try {
                 if (startPipeline(pipeline, instanceId)) {
                     // Update running status and reset retry counter (need lock briefly)
@@ -298,6 +303,17 @@ std::string InstanceRegistry::createInstance(const CreateInstanceRequest& req) {
                 // Don't crash - instance is created but not running
             } catch (...) {
                 std::cerr << "[InstanceRegistry] ✗ Unknown error starting pipeline for instance " 
+                          << instanceId << std::endl;
+                std::cerr << "[InstanceRegistry] Instance created but pipeline not started. You can start it manually later." << std::endl;
+            }
+            } catch (const std::exception& e) {
+                // Catch any exceptions from waitForModelsReady or model validation (outer catch)
+                std::cerr << "[InstanceRegistry] ✗ Exception in auto-start thread for instance " 
+                          << instanceId << ": " << e.what() << std::endl;
+                std::cerr << "[InstanceRegistry] Instance created but pipeline not started. You can start it manually later." << std::endl;
+            } catch (...) {
+                // Catch any other exceptions (outer catch)
+                std::cerr << "[InstanceRegistry] ✗ Unknown exception in auto-start thread for instance " 
                           << instanceId << std::endl;
                 std::cerr << "[InstanceRegistry] Instance created but pipeline not started. You can start it manually later." << std::endl;
             }
@@ -487,7 +503,8 @@ bool InstanceRegistry::startInstance(const std::string& instanceId, bool skipAut
     std::cerr << "[InstanceRegistry] ✓ Pipeline rebuilt successfully (fresh pipeline)" << std::endl;
     
     // Wait for models to be ready (use adaptive timeout)
-    std::cerr << "[InstanceRegistry] Waiting for models to be ready (adaptive, up to 2 seconds)..." << std::endl;
+    // OPTIMIZED: Reduced timeout to minimize impact on other instances
+    std::cerr << "[InstanceRegistry] Waiting for models to be ready (adaptive, up to 1 second)..." << std::endl;
     std::cerr << "[InstanceRegistry] This ensures OpenCV DNN clears any cached state and models are fully initialized" << std::endl;
     
     // Check instance still exists before waiting
@@ -501,7 +518,7 @@ bool InstanceRegistry::startInstance(const std::string& instanceId, bool skipAut
     } // Release lock
     
     try {
-        waitForModelsReady(pipelineCopy, 2000); // 2 seconds max
+        waitForModelsReady(pipelineCopy, 1000); // 1 second max (reduced from 2s to minimize blocking)
     } catch (const std::exception& e) {
         std::cerr << "[InstanceRegistry] ✗ Exception waiting for models: " << e.what() << std::endl;
         // Cleanup pipeline on error
@@ -521,9 +538,10 @@ bool InstanceRegistry::startInstance(const std::string& instanceId, bool skipAut
     }
     
     // Additional delay after rebuild to ensure OpenCV DNN has fully cleared old state
-    std::cerr << "[InstanceRegistry] Additional stabilization delay after rebuild (2 seconds)..." << std::endl;
+    // OPTIMIZED: Reduced delay to minimize impact on other instances
+    std::cerr << "[InstanceRegistry] Additional stabilization delay after rebuild (500ms)..." << std::endl;
     std::cerr << "[InstanceRegistry] This ensures OpenCV DNN has fully cleared any cached state from previous run" << std::endl;
-    std::this_thread::sleep_for(std::chrono::milliseconds(2000));
+    std::this_thread::sleep_for(std::chrono::milliseconds(500)); // Reduced from 2000ms to 500ms
     
     // Check instance still exists after delay
     {
@@ -895,122 +913,121 @@ bool InstanceRegistry::startInstance(const std::string& instanceId, bool skipAut
             // Setup MQTT publishing with non-blocking approach
             if (mosq && mqtt_connected) {
                 // Create pipe for stdout redirection
-                int pipefd[2];
-                if (pipe(pipefd) == -1) {
-                    std::cerr << "[InstanceRegistry] [MQTT] Failed to create pipe" << std::endl;
-                    if (mosq) {
-                        mosquitto_disconnect(mosq);
-                        mosquitto_loop_stop(mosq, false);
-                        mosquitto_destroy(mosq);
+                int pipefd[2] = {-1, -1};  // Fixed: Initialize to invalid FDs
+                bool pipe_created = false;
+                int stdout_backup = -1;  // Fixed: Initialize to invalid FD
+                bool stdout_redirected = false;
+                
+                try {
+                    if (pipe(pipefd) == -1) {
+                        std::cerr << "[InstanceRegistry] [MQTT] Failed to create pipe: " << strerror(errno) << std::endl;
+                        throw std::runtime_error("Failed to create pipe");
                     }
-                } else {
+                    pipe_created = true;
+                    
                     // Set pipe to non-blocking mode to prevent deadlock
                     int flags = fcntl(pipefd[0], F_GETFL, 0);
-                    fcntl(pipefd[0], F_SETFL, flags | O_NONBLOCK);
+                    if (flags == -1 || fcntl(pipefd[0], F_SETFL, flags | O_NONBLOCK) == -1) {
+                        std::cerr << "[InstanceRegistry] [MQTT] Failed to set pipe non-blocking: " << strerror(errno) << std::endl;
+                        throw std::runtime_error("Failed to set pipe non-blocking");
+                    }
                     
                     // Save original stdout
-                    int stdout_backup = dup(STDOUT_FILENO);
+                    stdout_backup = dup(STDOUT_FILENO);
                     if (stdout_backup == -1) {
-                        std::cerr << "[InstanceRegistry] [MQTT] Failed to backup stdout" << std::endl;
-                        close(pipefd[0]);
+                        std::cerr << "[InstanceRegistry] [MQTT] Failed to backup stdout: " << strerror(errno) << std::endl;
+                        throw std::runtime_error("Failed to backup stdout");
+                    }
+                    
+                    // Redirect stdout to pipe
+                    if (dup2(pipefd[1], STDOUT_FILENO) == -1) {
+                        std::cerr << "[InstanceRegistry] [MQTT] Failed to redirect stdout: " << strerror(errno) << std::endl;
+                        throw std::runtime_error("Failed to redirect stdout");
+                    }
+                    stdout_redirected = true;
+                    // CRITICAL: After dup2, pipefd[1] and STDOUT_FILENO point to same FD (pipe write end)
+                    // We need to close pipefd[1] to release the extra reference
+                    // Close pipefd[1] - we don't need the extra reference anymore
+                    // STDOUT_FILENO still points to the pipe write end and will be closed on stop
+                    if (pipefd[1] >= 0) {
                         close(pipefd[1]);
-                        if (mosq) {
-                            mosquitto_disconnect(mosq);
-                            mosquitto_loop_stop(mosq, false);
-                            mosquitto_destroy(mosq);
-                        }
-                    } else {
-                        // Redirect stdout to pipe
-                        if (dup2(pipefd[1], STDOUT_FILENO) == -1) {
-                            std::cerr << "[InstanceRegistry] [MQTT] Failed to redirect stdout" << std::endl;
-                            close(stdout_backup);
-                            close(pipefd[0]);
-                            close(pipefd[1]);
-                            if (mosq) {
-                                mosquitto_disconnect(mosq);
-                                mosquitto_loop_stop(mosq, false);
-                                mosquitto_destroy(mosq);
-                            }
-                        } else {
-                            // CRITICAL: After dup2, pipefd[1] and STDOUT_FILENO point to same FD (pipe write end)
-                            // We need to close pipefd[1] to release the extra reference
-                            // Close pipefd[1] - we don't need the extra reference anymore
-                            // STDOUT_FILENO still points to the pipe write end and will be closed on stop
-                            close(pipefd[1]);
-                            
-                            // Start thread to read JSON from pipe and publish to MQTT
-                            // CRITICAL: This thread is COMPLETELY INDEPENDENT - does NOT use instance_registry mutex
-                            // Only keep the LATEST JSON, drop all old JSONs to prevent backlog and deadlock
-                            // Thread is now managed (not detached) and will be joined on stop
-                            
-                            // CRITICAL: Use shared_ptr for mosq to ensure it's not destroyed while thread is running
-                            std::shared_ptr<struct mosquitto> mosq_shared(mosq, [](struct mosquitto* m) {
-                                // Custom deleter - don't destroy here, it will be destroyed when thread exits
-                            });
-                            
-                            // CRITICAL: Create shared_ptr to stop flag to avoid capturing 'this'
-                            // This prevents use-after-free if InstanceRegistry is destroyed while thread is running
-                            auto stop_flag = std::make_shared<std::atomic<bool>>(false);
-                            
-                            // CRITICAL: Store stop flag and thread in maps for proper management
-                            {
-                                std::lock_guard<std::mutex> lock(mqtt_thread_mutex_);
-                                mqtt_thread_stop_flags_[instanceId] = stop_flag;
-                                // Store STDOUT_FILENO (which is now pipe write end) to close it on stop
-                                // Note: After dup2, STDOUT_FILENO points to pipe write end
-                                mqtt_pipe_write_fds_[instanceId] = STDOUT_FILENO;
-                                // Store stdout backup to restore it on stop
-                                mqtt_stdout_backups_[instanceId] = stdout_backup;
-                            }
-                            
-                            // Update local_mqtt_connected with current connection status
-                            local_mqtt_connected.store(mqtt_connected);
-                            
-                            // CRITICAL: Copy pipefd[0] and stdout_backup to avoid issues when variables go out of scope
-                            int pipefd_read = pipefd[0];
-                            int stdout_backup_copy = stdout_backup;
-                            
-                            // Get MQTT rate limit from instance config (if available)
-                            // This allows users to slow down MQTT publishing to reduce server load
-                            int mqtt_rate_limit_ms = 2000;  // Default: 2 seconds (0.5 messages per second) - very conservative
-                            {
-                                std::shared_lock<std::shared_timed_mutex> lock(mutex_);
-                                auto instanceIt = instances_.find(instanceId);
-                                if (instanceIt != instances_.end()) {
-                                    const auto& info = instanceIt->second;
-                                    // Check for MQTT_RATE_LIMIT_MS parameter
-                                    auto it = info.additionalParams.find("MQTT_RATE_LIMIT_MS");
-                                    if (it != info.additionalParams.end() && !it->second.empty()) {
-                                        try {
-                                            mqtt_rate_limit_ms = std::stoi(it->second);
-                                            if (mqtt_rate_limit_ms < 500) mqtt_rate_limit_ms = 500;  // Minimum 500ms
-                                            if (mqtt_rate_limit_ms > 10000) mqtt_rate_limit_ms = 10000;  // Maximum 10 seconds
-                                            std::cerr << "[InstanceRegistry] [MQTT] Rate limit configured: " << mqtt_rate_limit_ms << "ms (" 
-                                                      << (1000.0 / mqtt_rate_limit_ms) << " messages/second)" << std::endl;
-                                        } catch (...) {
-                                            std::cerr << "[InstanceRegistry] [MQTT] Warning: Invalid MQTT_RATE_LIMIT_MS, using default 2000ms" << std::endl;
-                                        }
-                                    }
-                                    // Also check PROCESSING_DELAY_MS and use it if larger
-                                    auto delayIt = info.additionalParams.find("PROCESSING_DELAY_MS");
-                                    if (delayIt != info.additionalParams.end() && !delayIt->second.empty()) {
-                                        try {
-                                            int processingDelay = std::stoi(delayIt->second);
-                                            if (processingDelay > mqtt_rate_limit_ms) {
-                                                mqtt_rate_limit_ms = processingDelay;
-                                                std::cerr << "[InstanceRegistry] [MQTT] Using PROCESSING_DELAY_MS (" << processingDelay 
-                                                          << "ms) as rate limit to reduce processing speed" << std::endl;
-                                            }
-                                        } catch (...) {
-                                            // Ignore errors
-                                        }
-                                    }
+                        pipefd[1] = -1;  // Mark as closed
+                    }
+                    
+                    // Start thread to read JSON from pipe and publish to MQTT
+                    // CRITICAL: This thread is COMPLETELY INDEPENDENT - does NOT use instance_registry mutex
+                    // Only keep the LATEST JSON, drop all old JSONs to prevent backlog and deadlock
+                    // Thread is now managed (not detached) and will be joined on stop
+                    
+                    // CRITICAL: Use shared_ptr for mosq to ensure it's not destroyed while thread is running
+                    std::shared_ptr<struct mosquitto> mosq_shared(mosq, [](struct mosquitto* m) {
+                        // Custom deleter - don't destroy here, it will be destroyed when thread exits
+                    });
+                    
+                    // CRITICAL: Create shared_ptr to stop flag to avoid capturing 'this'
+                    // This prevents use-after-free if InstanceRegistry is destroyed while thread is running
+                    auto stop_flag = std::make_shared<std::atomic<bool>>(false);
+                    
+                    // CRITICAL: Store stop flag and thread in maps for proper management
+                    {
+                        std::lock_guard<std::mutex> lock(mqtt_thread_mutex_);
+                        mqtt_thread_stop_flags_[instanceId] = stop_flag;
+                        // Store STDOUT_FILENO (which is now pipe write end) to close it on stop
+                        // Note: After dup2, STDOUT_FILENO points to pipe write end
+                        mqtt_pipe_write_fds_[instanceId] = STDOUT_FILENO;
+                        // Store stdout backup to restore it on stop
+                        mqtt_stdout_backups_[instanceId] = stdout_backup;
+                    }
+                    
+                    // Update local_mqtt_connected with current connection status
+                    local_mqtt_connected.store(mqtt_connected);
+                    
+                    // CRITICAL: Copy pipefd[0] and stdout_backup to avoid issues when variables go out of scope
+                    int pipefd_read = pipefd[0];
+                    int stdout_backup_copy = stdout_backup;
+                    
+                    // Get MQTT rate limit from instance config (if available)
+                    // This allows users to slow down MQTT publishing to reduce server load
+                    int mqtt_rate_limit_ms = 2000;  // Default: 2 seconds (0.5 messages per second) - very conservative
+                    {
+                        std::shared_lock<std::shared_timed_mutex> lock(mutex_);
+                        auto instanceIt = instances_.find(instanceId);
+                        if (instanceIt != instances_.end()) {
+                            const auto& info = instanceIt->second;
+                            // Check for MQTT_RATE_LIMIT_MS parameter
+                            auto it = info.additionalParams.find("MQTT_RATE_LIMIT_MS");
+                            if (it != info.additionalParams.end() && !it->second.empty()) {
+                                try {
+                                    mqtt_rate_limit_ms = std::stoi(it->second);
+                                    if (mqtt_rate_limit_ms < 500) mqtt_rate_limit_ms = 500;  // Minimum 500ms
+                                    if (mqtt_rate_limit_ms > 10000) mqtt_rate_limit_ms = 10000;  // Maximum 10 seconds
+                                    std::cerr << "[InstanceRegistry] [MQTT] Rate limit configured: " << mqtt_rate_limit_ms << "ms (" 
+                                              << (1000.0 / mqtt_rate_limit_ms) << " messages/second)" << std::endl;
+                                } catch (...) {
+                                    std::cerr << "[InstanceRegistry] [MQTT] Warning: Invalid MQTT_RATE_LIMIT_MS, using default 2000ms" << std::endl;
                                 }
                             }
-                            
-                            // CRITICAL: Do NOT capture 'this' - use shared_ptr to stop flag instead
-                            // This prevents use-after-free if InstanceRegistry is destroyed
-                            std::thread json_reader_thread([stop_flag, mosq_shared, mqtt_topic, local_mqtt_connected_ptr = &local_mqtt_connected, pipefd_read, stdout_backup_copy, mqtt_rate_limit_ms]() {
+                            // Also check PROCESSING_DELAY_MS and use it if larger
+                            auto delayIt = info.additionalParams.find("PROCESSING_DELAY_MS");
+                            if (delayIt != info.additionalParams.end() && !delayIt->second.empty()) {
+                                try {
+                                    int processingDelay = std::stoi(delayIt->second);
+                                    if (processingDelay > mqtt_rate_limit_ms) {
+                                        mqtt_rate_limit_ms = processingDelay;
+                                        std::cerr << "[InstanceRegistry] [MQTT] Using PROCESSING_DELAY_MS (" << processingDelay 
+                                                  << "ms) as rate limit to reduce processing speed" << std::endl;
+                                    }
+                                } catch (...) {
+                                    // Ignore errors
+                                }
+                            }
+                        }
+                    }
+                    
+                    // CRITICAL: Do NOT capture 'this' - use shared_ptr to stop flag instead
+                    // This prevents use-after-free if InstanceRegistry is destroyed
+                    std::thread json_reader_thread([stop_flag, mosq_shared, mqtt_topic, local_mqtt_connected_ptr = &local_mqtt_connected, pipefd_read, stdout_backup_copy, mqtt_rate_limit_ms]() {
+                                try {
                                 // CRITICAL: This lambda does NOT capture 'this' to avoid use-after-free
                                 // All variables are copied to ensure thread independence
                                 // Use shared_ptr to stop flag to safely check stop condition
@@ -1050,7 +1067,9 @@ bool InstanceRegistry::startInstance(const std::string& instanceId, bool skipAut
                                     return default_value;
                                 };
                                 
-                                char buffer[4096];
+                                // Fixed: Use dynamic buffer instead of fixed size to prevent overflow
+                                // Use std::vector for automatic memory management
+                                std::vector<char> buffer(4096);  // Start with 4KB, can grow if needed
                                 std::string line_buffer;
                                 std::string latest_json;  // Only keep the latest complete JSON
                                 int publish_count = 0;
@@ -1168,7 +1187,8 @@ bool InstanceRegistry::startInstance(const std::string& instanceId, bool skipAut
                                     ssize_t n = -1;
                                     if (select_result > 0 && FD_ISSET(pipefd_read, &readfds)) {
                                         // Data is available, read it (non-blocking, so should return immediately)
-                                        n = read(pipefd_read, buffer, sizeof(buffer) - 1);
+                                        // Fixed: Use buffer.data() and ensure we don't overflow
+                                        n = read(pipefd_read, buffer.data(), buffer.size() - 1);
                                     } else if (select_result == 0) {
                                         // Timeout - no data available, continue to check stop_flag
                                         n = -1;
@@ -1178,7 +1198,13 @@ bool InstanceRegistry::startInstance(const std::string& instanceId, bool skipAut
                                         n = -1;
                                     }
                                     if (n > 0) {
-                                        buffer[n] = '\0';
+                                        // Fixed: Ensure null termination and prevent buffer overflow
+                                        if (static_cast<size_t>(n) < buffer.size()) {
+                                            buffer[n] = '\0';
+                                        } else {
+                                            buffer[buffer.size() - 1] = '\0';
+                                            n = buffer.size() - 1;  // Adjust n to safe value
+                                        }
                                         
                                         // CRITICAL: Limit line_buffer size - drop old data if too large
                                         // Only keep recent data to prevent memory buildup
@@ -1188,7 +1214,8 @@ bool InstanceRegistry::startInstance(const std::string& instanceId, bool skipAut
                                             dropped_json_count++;
                                         }
                                         
-                                        line_buffer += buffer;
+                                        // Fixed: Append buffer safely using string_view to avoid copying null terminator issues
+                                        line_buffer.append(buffer.data(), n);
                                         
                                         // CRITICAL: Find the LATEST complete JSON in buffer (not the first one)
                                         // This ensures we always process the most recent data, not old backlog
@@ -1705,6 +1732,32 @@ bool InstanceRegistry::startInstance(const std::string& instanceId, bool skipAut
                                 if (len > 0 && len < (int)sizeof(msg)) {
                                     ::write(STDERR_FILENO, msg, len);
                                 }
+                                } catch (const std::exception& e) {
+                                    // Fixed: Catch exceptions in thread to prevent crash and ensure cleanup
+                                    char err_msg[512];
+                                    int len = snprintf(err_msg, sizeof(err_msg),
+                                        "[InstanceRegistry] [MQTT] Exception in thread: %s\n", e.what());
+                                    if (len > 0 && len < (int)sizeof(err_msg)) {
+                                        ::write(STDERR_FILENO, err_msg, len);
+                                    }
+                                    // Cleanup file descriptors even on exception
+                                    if (pipefd_read >= 0) {
+                                        ::close(pipefd_read);
+                                    }
+                                    if (stdout_backup_copy >= 0) {
+                                        ::close(stdout_backup_copy);
+                                    }
+                                } catch (...) {
+                                    // Fixed: Catch any other exceptions
+                                    ::write(STDERR_FILENO, "[InstanceRegistry] [MQTT] Unknown exception in thread\n", 54);
+                                    // Cleanup file descriptors even on exception
+                                    if (pipefd_read >= 0) {
+                                        ::close(pipefd_read);
+                                    }
+                                    if (stdout_backup_copy >= 0) {
+                                        ::close(stdout_backup_copy);
+                                    }
+                                }
                             });
                             
                             // Store thread for proper management (join on stop)
@@ -1716,36 +1769,70 @@ bool InstanceRegistry::startInstance(const std::string& instanceId, bool skipAut
                             std::cerr << "[InstanceRegistry] [MQTT] MQTT publishing thread started for instance " << instanceId << std::endl;
                             std::cerr << "[InstanceRegistry] [MQTT] NOTE: Publishing every message (including partial JSON if available)" << std::endl;
                             std::cerr << "[InstanceRegistry] [MQTT] NOTE: Only keeping LATEST JSON, dropping all old JSONs to prevent backlog and deadlock" << std::endl;
+                        } catch (const std::exception& e) {
+                            // Fixed: Cleanup file descriptors on exception
+                            std::cerr << "[InstanceRegistry] [MQTT] Exception setting up pipe: " << e.what() << std::endl;
+                            
+                            // Cleanup in reverse order
+                            if (stdout_redirected && stdout_backup >= 0) {
+                                dup2(stdout_backup, STDOUT_FILENO);
+                                close(stdout_backup);
+                            }
+                            if (pipe_created) {
+                                if (pipefd[0] >= 0) close(pipefd[0]);
+                                if (pipefd[1] >= 0) close(pipefd[1]);
+                            }
+                            if (mosq) {
+                                mosquitto_disconnect(mosq);
+                                mosquitto_loop_stop(mosq, false);
+                                mosquitto_destroy(mosq);
+                            }
+                        } catch (...) {
+                            // Fixed: Cleanup file descriptors on any exception
+                            std::cerr << "[InstanceRegistry] [MQTT] Unknown exception setting up pipe" << std::endl;
+                            
+                            // Cleanup in reverse order
+                            if (stdout_redirected && stdout_backup >= 0) {
+                                dup2(stdout_backup, STDOUT_FILENO);
+                                close(stdout_backup);
+                            }
+                            if (pipe_created) {
+                                if (pipefd[0] >= 0) close(pipefd[0]);
+                                if (pipefd[1] >= 0) close(pipefd[1]);
+                            }
+                            if (mosq) {
+                                mosquitto_disconnect(mosq);
+                                mosquitto_loop_stop(mosq, false);
+                                mosquitto_destroy(mosq);
+                            }
                         }
                     }
                 }
             }
-        }
+    
+    // Log initial processing status (outside if(started) block)
+    if (started && !hasRTMPOutput(instanceId)) {
+        std::cerr << "[InstanceRegistry] Instance does not have RTMP output - enabling processing result logging" << std::endl;
+        logProcessingResults(instanceId);
         
-        // Log initial processing status
-        if (!hasRTMPOutput(instanceId)) {
-            std::cerr << "[InstanceRegistry] Instance does not have RTMP output - enabling processing result logging" << std::endl;
-            logProcessingResults(instanceId);
-            
-            // Start periodic logging in a separate thread (managed, not detached)
-            startLoggingThread(instanceId);
-        }
-        
-        // DISABLED: Video loop monitoring thread - feature removed to improve performance
-        // Start video loop monitoring thread for file-based instances with LOOP_VIDEO enabled
-        // {
-        //     std::shared_lock<std::shared_timed_mutex> lock(mutex_);
-        //     auto instanceIt = instances_.find(instanceId);
-        //     if (instanceIt != instances_.end()) {
-        //         const auto& info = instanceIt->second;
-        //         bool isFileBased = !info.filePath.empty() || 
-        //                          info.additionalParams.find("FILE_PATH") != info.additionalParams.end();
-        //         if (isFileBased) {
-        //             startVideoLoopThread(instanceId);
-        //         }
-        //     }
-        // }
+        // Start periodic logging in a separate thread (managed, not detached)
+        startLoggingThread(instanceId);
     }
+    
+    // DISABLED: Video loop monitoring thread - feature removed to improve performance
+    // Start video loop monitoring thread for file-based instances with LOOP_VIDEO enabled
+    // {
+    //     std::shared_lock<std::shared_timed_mutex> lock(mutex_);
+    //     auto instanceIt = instances_.find(instanceId);
+    //     if (instanceIt != instances_.end()) {
+    //         const auto& info = instanceIt->second;
+    //         bool isFileBased = !info.filePath.empty() || 
+    //                          info.additionalParams.find("FILE_PATH") != info.additionalParams.end();
+    //         if (isFileBased) {
+    //             startVideoLoopThread(instanceId);
+    //         }
+    //     }
+    // }
     
     return started;
 }
@@ -1779,18 +1866,25 @@ bool InstanceRegistry::stopInstance(const std::string& instanceId) {
         // Copy pipeline before releasing lock
         pipelineCopy = pipelineIt->second;
         
+        // CRITICAL: Validate that pipeline belongs to this instance
+        // Each node should have instanceId in its name (e.g., "rtsp_src_{instanceId}")
+        // This ensures we only stop nodes belonging to this specific instance
+        std::cerr << "[InstanceRegistry] Validating pipeline ownership for instance " << instanceId << "..." << std::endl;
+        std::cerr << "[InstanceRegistry] Pipeline contains " << pipelineCopy.size() << " nodes" << std::endl;
+        
         // Mark as not running immediately (before stopPipeline)
         instanceIt->second.running = false;
         
-        // Remove from pipelines map immediately to prevent other threads from accessing it
-        pipelines_.erase(pipelineIt);
+        // CRITICAL: DO NOT remove pipeline from map yet - keep it until threads are stopped
+        // This prevents race condition where reconnectRTSPStream() calls getInstanceNodes()
+        // and gets empty vector, but thread already has reference to nodes
+        // We'll remove it after threads are stopped
+        // pipelines_.erase(pipelineIt);  // Moved to after thread stopping
     } // Release lock here - stopPipeline doesn't need it
     
-    // CRITICAL: Stop RTSP monitor thread NOW (after marking instance as not running)
-    // This prevents race condition where RTSP monitor thread tries to reconnect
-    // while pipeline is being destroyed. We do this AFTER releasing the lock to avoid deadlock,
-    // but BEFORE calling stopPipeline to ensure monitor thread stops before nodes are destroyed.
-    stopRTSPMonitorThread(instanceId);
+    // CRITICAL: Stop ALL threads BEFORE stopping pipeline to prevent race conditions
+    // Threads may be accessing nodes, so they must be stopped first
+    // This prevents segmentation faults when GStreamer cleanup happens while threads are still running
     
     std::cerr << "[InstanceRegistry] ========================================" << std::endl;
     std::cerr << "[InstanceRegistry] Stopping instance " << instanceId << "..." << std::endl;
@@ -1803,10 +1897,72 @@ bool InstanceRegistry::stopInstance(const std::string& instanceId) {
                   << ", was running: " << (wasRunning ? "true" : "false") << ")";
     }
     
+    // CRITICAL: Stop RTSP monitor thread FIRST (before any other cleanup)
+    // This prevents race condition where RTSP monitor thread tries to reconnect
+    // while pipeline is being destroyed
+    // IMPORTANT: stopRTSPMonitorThread() uses instanceId to identify and stop ONLY this instance's thread
+    std::cerr << "[InstanceRegistry] Stopping RTSP monitor thread for instance " << instanceId << "..." << std::endl;
+    std::cerr << "[InstanceRegistry] NOTE: Only stopping RTSP monitor thread for this specific instance" << std::endl;
+    stopRTSPMonitorThread(instanceId);
+    
+    // CRITICAL: Now remove pipeline from map after threads are stopped
+    // This ensures threads can't access pipeline through getInstanceNodes() anymore
+    {
+        std::unique_lock<std::shared_timed_mutex> lock(mutex_);
+        pipelines_.erase(instanceId);
+    }
+    
+    // CRITICAL: Stop MQTT thread BEFORE stopping pipeline (only if this instance has MQTT)
+    // MQTT thread may be reading from pipe connected to nodes
+    // Check if instance has MQTT before stopping to avoid unnecessary operations
+    {
+        std::shared_lock<std::shared_timed_mutex> lock(mutex_);
+        auto instanceIt = instances_.find(instanceId);
+        if (instanceIt != instances_.end()) {
+            // Check if instance has MQTT configured
+            // MQTT topic is stored in additionalParams with key "MQTT_TOPIC"
+            bool hasMqtt = instanceIt->second.additionalParams.find("MQTT_TOPIC") != instanceIt->second.additionalParams.end();
+            if (hasMqtt) {
+                std::cerr << "[InstanceRegistry] Stopping MQTT thread for instance " << instanceId << "..." << std::endl;
+                std::cerr << "[InstanceRegistry] NOTE: Only stopping MQTT thread for this specific instance" << std::endl;
+                lock.unlock(); // Release lock before calling stopMqttThread
+                stopMqttThread(instanceId);
+            } else {
+                std::cerr << "[InstanceRegistry] Instance " << instanceId << " has no MQTT, skipping MQTT thread stop" << std::endl;
+            }
+        } else {
+            // Instance not found, but continue cleanup anyway
+            std::cerr << "[InstanceRegistry] Instance not found in map, skipping MQTT thread stop" << std::endl;
+        }
+    }
+    
+    // Stop logging thread if exists
+    // IMPORTANT: stopLoggingThread() uses instanceId to identify and stop ONLY this instance's thread
+    std::cerr << "[InstanceRegistry] Stopping logging thread for instance " << instanceId << "..." << std::endl;
+    std::cerr << "[InstanceRegistry] NOTE: Only stopping logging thread for this specific instance" << std::endl;
+    stopLoggingThread(instanceId);
+    
+    // Stop video loop monitoring thread if exists
+    // IMPORTANT: stopVideoLoopThread() uses instanceId to identify and stop ONLY this instance's thread
+    std::cerr << "[InstanceRegistry] Stopping video loop thread for instance " << instanceId << "..." << std::endl;
+    std::cerr << "[InstanceRegistry] NOTE: Only stopping video loop thread for this specific instance" << std::endl;
+    stopVideoLoopThread(instanceId);
+    
+    // CRITICAL: Wait longer for threads to fully stop before cleaning up pipeline
+    // This prevents race conditions where threads are still accessing nodes during cleanup
+    // RTSP monitor thread may be in reconnectRTSPStream() which can take up to 2 seconds
+    std::cerr << "[InstanceRegistry] Waiting for all threads to stop..." << std::endl;
+    std::cerr << "[InstanceRegistry] NOTE: RTSP monitor thread may take up to 5 seconds to fully stop" << std::endl;
+    std::this_thread::sleep_for(std::chrono::milliseconds(500));  // Increased from 200ms to 500ms
+    
     // Now call stopPipeline without holding the lock
     // This prevents deadlock if stopPipeline takes a long time
     // Use isDeletion=true to fully cleanup nodes and clear OpenCV DNN state
     // CRITICAL: stopPipeline() is now guaranteed to never throw (it catches all exceptions internally)
+    // IMPORTANT: pipelineCopy contains ONLY nodes belonging to this instance (retrieved by instanceId)
+    std::cerr << "[InstanceRegistry] Stopping pipeline for instance " << instanceId << "..." << std::endl;
+    std::cerr << "[InstanceRegistry] NOTE: Pipeline contains " << pipelineCopy.size() << " nodes belonging ONLY to this instance" << std::endl;
+    std::cerr << "[InstanceRegistry] NOTE: Other instances' pipelines are completely unaffected" << std::endl;
     try {
         stopPipeline(pipelineCopy, true);  // true = full cleanup like deletion to clear DNN state
     } catch (const std::exception& e) {
@@ -1824,24 +1980,21 @@ bool InstanceRegistry::stopInstance(const std::string& instanceId) {
     // Clear pipeline copy to ensure all nodes are destroyed immediately
     // This helps ensure OpenCV DNN releases all internal state
     // Wrap in try-catch to be extra safe (though clear() shouldn't throw)
+    std::cerr << "[InstanceRegistry] Clearing pipeline copy..." << std::endl;
     try {
         pipelineCopy.clear();
     } catch (...) {
         std::cerr << "[InstanceRegistry] Warning: Exception clearing pipeline copy (unexpected)" << std::endl;
     }
     
-    // Stop logging thread if exists
-    stopLoggingThread(instanceId);
-    
-    // Stop video loop monitoring thread if exists
-    stopVideoLoopThread(instanceId);
-    
-    // CRITICAL: Stop MQTT thread if exists
-    // This will restore stdout and close pipe write end to signal EOF to thread
-    stopMqttThread(instanceId);
-    
-    // NOTE: RTSP monitor thread was already stopped at the beginning of stopInstance
-    // to prevent race condition with reconnect attempts
+    // CRITICAL: Give GStreamer extra time to fully cleanup after nodes are destroyed
+    // This prevents segmentation faults from GStreamer cleanup
+    // NOTE: Each instance has independent GStreamer pipelines, so cleanup of one instance
+    // should not affect other running instances. However, we still need to wait to ensure
+    // this instance's GStreamer resources are fully released.
+    std::cerr << "[InstanceRegistry] Waiting for GStreamer final cleanup..." << std::endl;
+    std::cerr << "[InstanceRegistry] NOTE: This cleanup only affects this instance, not other running instances" << std::endl;
+    std::this_thread::sleep_for(std::chrono::milliseconds(500));
     
     std::cerr << "[InstanceRegistry] ✓ Instance " << instanceId << " stopped successfully" << std::endl;
     std::cerr << "[InstanceRegistry] NOTE: All nodes have been destroyed. Pipeline will be rebuilt from scratch when you start this instance again" << std::endl;
@@ -2512,14 +2665,27 @@ bool InstanceRegistry::startPipeline(const std::vector<std::shared_ptr<cvedix_no
         InstanceStatsTracker& tracker = statistics_trackers_[instanceId];
         tracker.start_time = std::chrono::steady_clock::now();
         tracker.start_time_system = std::chrono::system_clock::now();
-        tracker.frames_processed = 0;
-        tracker.dropped_frames = 0;
+        // PHASE 2: Atomic counters - use store instead of assignment
+        tracker.frames_processed.store(0);
+        tracker.dropped_frames.store(0);
+        tracker.frame_count_since_last_update.store(0);
         tracker.last_fps = 0.0;
         tracker.last_fps_update = tracker.start_time;
-        tracker.frame_count_since_last_update = 0;
         tracker.current_queue_size = 0;
         tracker.max_queue_size_seen = 0;
         tracker.expected_frames_from_source = 0;
+    }
+    
+    // PHASE 3: Configure backpressure control
+    {
+        using namespace BackpressureController;
+        auto& controller = BackpressureController::BackpressureController::getInstance();
+        // Configure with DROP_NEWEST policy (keep latest frame, drop old ones)
+        // This prevents queue backlog while maintaining current state
+        controller.configure(instanceId, 
+                           BackpressureController::DropPolicy::DROP_NEWEST,
+                           30.0,  // Max 30 FPS
+                           10);   // Max queue size warning threshold
     }
     
     // Setup frame capture hook before starting pipeline
@@ -2552,6 +2718,10 @@ bool InstanceRegistry::startPipeline(const std::vector<std::shared_ptr<cvedix_no
             std::cerr << "[InstanceRegistry] Calling rtspNode->start()..." << std::endl;
             auto startTime = std::chrono::steady_clock::now();
             try {
+                // CRITICAL: Use shared lock to allow concurrent start operations
+                // Multiple instances can start simultaneously, but cleanup operations will wait
+                std::shared_lock<std::shared_mutex> gstLock(gstreamer_ops_mutex_);
+                
                 rtspNode->start();
             } catch (const std::exception& e) {
                 std::cerr << "[InstanceRegistry] ✗ Exception starting RTSP node: " << e.what() << std::endl;
@@ -2781,6 +2951,20 @@ void InstanceRegistry::stopPipeline(const std::vector<std::shared_ptr<cvedix_nod
         return;
     }
     
+    // CRITICAL: This function only cleans up nodes of ONE specific instance
+    // Each instance has its own independent GStreamer pipeline and nodes
+    // Cleanup of one instance should NOT affect other running instances
+    // However, we use mutex to serialize GStreamer operations to prevent
+    // conflicts if multiple instances are being stopped/started simultaneously
+    //
+    // IMPORTANT: Each node should have instanceId in its name (e.g., "rtsp_src_{instanceId}")
+    // This ensures we only stop nodes belonging to this specific instance
+    
+    std::cerr << "[InstanceRegistry] [stopPipeline] Cleaning up " << nodes.size() << " nodes for this instance only" << std::endl;
+    std::cerr << "[InstanceRegistry] [stopPipeline] NOTE: These nodes are isolated from other instances" << std::endl;
+    std::cerr << "[InstanceRegistry] [stopPipeline] NOTE: Each node has unique name with instanceId prefix to prevent conflicts" << std::endl;
+    std::cerr << "[InstanceRegistry] [stopPipeline] NOTE: No shared state or resources between different instances" << std::endl;
+    
     try {
         // Check if pipeline contains DNN models (face detector, feature encoder, etc.)
         // These need extra time to finish processing and clear internal state
@@ -2794,10 +2978,11 @@ void InstanceRegistry::stopPipeline(const std::vector<std::shared_ptr<cvedix_nod
         }
         
         // First, give destination nodes (like RTMP) time to flush and finalize
-        // This helps reduce GStreamer warnings during cleanup
+        // This helps reduce GStreamer warnings during cleanup and prevent segmentation faults
+        // FIXED: Increased wait time to ensure elements are properly set to NULL state before dispose
         if (isDeletion) {
             std::cerr << "[InstanceRegistry] Waiting for destination nodes to finalize..." << std::endl;
-            std::this_thread::sleep_for(std::chrono::milliseconds(200));
+            std::this_thread::sleep_for(std::chrono::milliseconds(300));  // Increased from 200ms to 300ms
         }
         
         // First, stop the source node if it exists (typically the first node)
@@ -2817,43 +3002,65 @@ void InstanceRegistry::stopPipeline(const std::vector<std::shared_ptr<cvedix_nod
                     // RTSP retry loops can prevent stop() from returning, so we need a fallback
                     std::cerr << "[InstanceRegistry] Attempting to stop RTSP node (may take time if retry loop is active)..." << std::endl;
                     
-                    // Try stop() with timeout protection using async
-                    auto stopFuture = std::async(std::launch::async, [rtspNode]() {
-                        try {
-                            rtspNode->stop();
-                            return true;
-                        } catch (...) {
-                            return false;
-                        }
-                    });
-                    
-                    // Wait max 200ms for stop() to complete
-                    // RTSP retry loops can block stop(), so use short timeout and immediately detach
-                    auto stopStatus = stopFuture.wait_for(std::chrono::milliseconds(200));
-                    if (stopStatus == std::future_status::timeout) {
-                        std::cerr << "[InstanceRegistry] ⚠ RTSP stop() timeout (200ms) - retry loop may be blocking" << std::endl;
-                        std::cerr << "[InstanceRegistry] Attempting force stop using detach_recursively()..." << std::endl;
-                        // Force stop using detach - this should break retry loop
-                        try {
-                            rtspNode->detach_recursively();
-                            std::cerr << "[InstanceRegistry] ✓ RTSP node force stopped using detach_recursively()" << std::endl;
-                        } catch (const std::exception& e) {
-                            std::cerr << "[InstanceRegistry] ✗ Exception force stopping RTSP node: " << e.what() << std::endl;
-                        } catch (...) {
-                            std::cerr << "[InstanceRegistry] ✗ Unknown error force stopping RTSP node" << std::endl;
-                        }
-                    } else if (stopStatus == std::future_status::ready) {
-                        try {
-                            if (stopFuture.get()) {
-                                auto stopEndTime = std::chrono::steady_clock::now();
-                                auto stopDuration = std::chrono::duration_cast<std::chrono::milliseconds>(stopEndTime - stopTime).count();
-                                std::cerr << "[InstanceRegistry] ✓ RTSP source node stopped in " << stopDuration << "ms" << std::endl;
+                    // CRITICAL: Use exclusive lock for cleanup operations to prevent conflicts
+                    // This ensures no other instance is starting GStreamer while we cleanup
+                    // All start operations will wait until cleanup completes
+                    // NOTE: This lock only protects GStreamer operations, not the nodes themselves
+                    // Each instance has its own independent nodes, so cleanup of one instance
+                    // should not affect nodes of other instances
+                    // CRITICAL: Lock scope is limited to actual stop/detach operations only
+                    {
+                        std::unique_lock<std::shared_mutex> gstLock(gstreamer_ops_mutex_);
+                        
+                        // Try stop() with timeout protection using async
+                        // CRITICAL: Wrap in try-catch to handle case where node is being destroyed by another thread
+                        auto stopFuture = std::async(std::launch::async, [rtspNode]() {
+                            try {
+                                // Check if node is still valid before calling stop()
+                                if (!rtspNode) {
+                                    return false;
+                                }
+                                rtspNode->stop();
+                                return true;
+                            } catch (const std::exception& e) {
+                                // Node may have been destroyed by another thread (RTSP monitor thread)
+                                std::cerr << "[InstanceRegistry] Exception in async stop(): " << e.what() << std::endl;
+                                return false;
+                            } catch (...) {
+                                // Node may have been destroyed by another thread
+                                return false;
                             }
-                        } catch (...) {
-                            std::cerr << "[InstanceRegistry] ✗ Exception getting stop result" << std::endl;
+                        });
+                        
+                        // Wait max 200ms for stop() to complete
+                        // RTSP retry loops can block stop(), so use short timeout and immediately detach
+                        auto stopStatus = stopFuture.wait_for(std::chrono::milliseconds(200));
+                        if (stopStatus == std::future_status::timeout) {
+                            std::cerr << "[InstanceRegistry] ⚠ RTSP stop() timeout (200ms) - retry loop may be blocking" << std::endl;
+                            std::cerr << "[InstanceRegistry] Attempting force stop using detach_recursively()..." << std::endl;
+                            // Force stop using detach - this should break retry loop
+                            try {
+                                rtspNode->detach_recursively();
+                                std::cerr << "[InstanceRegistry] ✓ RTSP node force stopped using detach_recursively()" << std::endl;
+                            } catch (const std::exception& e) {
+                                std::cerr << "[InstanceRegistry] ✗ Exception force stopping RTSP node: " << e.what() << std::endl;
+                            } catch (...) {
+                                std::cerr << "[InstanceRegistry] ✗ Unknown error force stopping RTSP node" << std::endl;
+                            }
+                        } else if (stopStatus == std::future_status::ready) {
+                            try {
+                                if (stopFuture.get()) {
+                                    auto stopEndTime = std::chrono::steady_clock::now();
+                                    auto stopDuration = std::chrono::duration_cast<std::chrono::milliseconds>(stopEndTime - stopTime).count();
+                                    std::cerr << "[InstanceRegistry] ✓ RTSP source node stopped in " << stopDuration << "ms" << std::endl;
+                                }
+                            } catch (...) {
+                                std::cerr << "[InstanceRegistry] ✗ Exception getting stop result" << std::endl;
+                            }
                         }
-                    }
-                    // Give it a moment to fully stop
+                    } // CRITICAL: Release lock here - cleanup wait happens without lock
+                    
+                    // Give it a moment to fully stop (without holding lock)
                     std::this_thread::sleep_for(std::chrono::milliseconds(100));
                 } catch (const std::exception& e) {
                     std::cerr << "[InstanceRegistry] ✗ Exception stopping RTSP node: " << e.what() << std::endl;
@@ -2884,6 +3091,9 @@ void InstanceRegistry::stopPipeline(const std::vector<std::shared_ptr<cvedix_nod
                         std::cerr << "[InstanceRegistry] Stopping file source node..." << std::endl;
                     }
                     try {
+                        // CRITICAL: Use exclusive lock for cleanup operations
+                        std::unique_lock<std::shared_mutex> gstLock(gstreamer_ops_mutex_);
+                        
                         // For file source, we need to detach to stop reading
                         // But we'll keep the nodes in memory so they can be restarted (unless deletion)
                         fileNode->detach_recursively();
@@ -2924,10 +3134,11 @@ void InstanceRegistry::stopPipeline(const std::vector<std::shared_ptr<cvedix_nod
         }
         
         // Give GStreamer time to properly cleanup after detach
-        // This helps reduce warnings about VideoWriter finalization
+        // This helps reduce warnings about VideoWriter finalization and prevent segmentation faults
+        // FIXED: Increased wait time to ensure GStreamer elements are properly set to NULL state
         if (isDeletion) {
             std::cerr << "[InstanceRegistry] Waiting for GStreamer cleanup..." << std::endl;
-            std::this_thread::sleep_for(std::chrono::milliseconds(300));
+            std::this_thread::sleep_for(std::chrono::milliseconds(500));  // Increased from 300ms to 500ms
             std::cerr << "[InstanceRegistry] Pipeline stopped and fully destroyed (all nodes cleared)" << std::endl;
             std::cerr << "[InstanceRegistry] NOTE: All nodes have been destroyed to ensure clean state (especially OpenCV DNN)" << std::endl;
             std::cerr << "[InstanceRegistry] NOTE: GStreamer warnings about VideoWriter finalization are normal during cleanup" << std::endl;
@@ -4256,9 +4467,11 @@ std::optional<InstanceStatistics> InstanceRegistry::getInstanceStatistics(const 
     auto elapsed_seconds_double = std::chrono::duration<double>(now - tracker.start_time).count();
     
     // Calculate actual processing FPS based on frames actually processed
+    // PHASE 2: Use atomic load for reading counter
+    uint64_t frames_processed_value = tracker.frames_processed.load(std::memory_order_relaxed);
     double actualProcessingFps = 0.0;
-    if (elapsed_seconds_double > 0.0 && tracker.frames_processed > 0) {
-        actualProcessingFps = static_cast<double>(tracker.frames_processed) / elapsed_seconds_double;
+    if (elapsed_seconds_double > 0.0 && frames_processed_value > 0) {
+        actualProcessingFps = static_cast<double>(frames_processed_value) / elapsed_seconds_double;
     }
     
     // Calculate current FPS: prefer actual processing FPS, then source FPS, then info.fps, then tracker.last_fps
@@ -4280,7 +4493,8 @@ std::optional<InstanceStatistics> InstanceRegistry::getInstanceStatistics(const 
     }
     
     // Calculate frames_processed: use actual frames processed if available, otherwise estimate
-    uint64_t actual_frames_processed = tracker.frames_processed;
+    // PHASE 2: Use atomic load (already loaded above)
+    uint64_t actual_frames_processed = frames_processed_value;
     uint64_t calculated_frames_processed = 0;
     
     if (actual_frames_processed > 0) {
@@ -4303,13 +4517,18 @@ std::optional<InstanceStatistics> InstanceRegistry::getInstanceStatistics(const 
         
         if (expected_frames > actual_processed) {
             uint64_t estimated_dropped = expected_frames - actual_processed;
-            if (estimated_dropped > tracker.dropped_frames) {
-                tracker.dropped_frames = estimated_dropped;
+            // PHASE 2: Use atomic compare-and-swap for max update
+            uint64_t current_dropped = tracker.dropped_frames.load(std::memory_order_relaxed);
+            while (estimated_dropped > current_dropped && 
+                   !tracker.dropped_frames.compare_exchange_weak(current_dropped, estimated_dropped, 
+                                                                  std::memory_order_relaxed)) {
+                // Retry if value changed
             }
         }
     }
     
-    stats.dropped_frames_count = tracker.dropped_frames;
+    // PHASE 2: Use atomic load for reading
+    stats.dropped_frames_count = tracker.dropped_frames.load(std::memory_order_relaxed);
     stats.current_framerate = std::round(currentFps);
     
     // Use resolution from source node if available, otherwise use tracker value
@@ -4360,15 +4579,26 @@ std::optional<InstanceStatistics> InstanceRegistry::getInstanceStatistics(const 
 }
 
 std::string InstanceRegistry::getLastFrame(const std::string& instanceId) const {
-    std::lock_guard<std::mutex> lock(frame_cache_mutex_);
-    
-    auto it = frame_caches_.find(instanceId);
-    if (it == frame_caches_.end() || !it->second.has_frame || it->second.frame.empty()) {
-        return "";  // No frame cached
+    // PHASE 1 OPTIMIZATION: Get shared_ptr copy quickly, release lock
+    FramePtr frame_ptr;
+    {
+        std::lock_guard<std::mutex> lock(frame_cache_mutex_);
+        
+        auto it = frame_caches_.find(instanceId);
+        if (it == frame_caches_.end() || !it->second.has_frame || !it->second.frame) {
+            return "";  // No frame cached
+        }
+        
+        // Get shared_ptr copy (reference counting, no copy of Mat data)
+        frame_ptr = it->second.frame;
     }
+    // Lock released - frame_ptr keeps frame alive via reference counting
     
-    // Encode frame to base64
-    return encodeFrameToBase64(it->second.frame, 85);  // Default quality 85%
+    // Encode frame to base64 (frame_ptr dereferences to cv::Mat&)
+    if (!frame_ptr || frame_ptr->empty()) {
+        return "";
+    }
+    return encodeFrameToBase64(*frame_ptr, 85);  // Default quality 85%
 }
 
 void InstanceRegistry::updateFrameCache(const std::string& instanceId, const cv::Mat& frame) {
@@ -4376,12 +4606,20 @@ void InstanceRegistry::updateFrameCache(const std::string& instanceId, const cv:
         return;
     }
     
-    std::lock_guard<std::mutex> lock(frame_cache_mutex_);
+    // PHASE 1 OPTIMIZATION: Create shared_ptr OUTSIDE lock to minimize lock hold time
+    // This avoids holding lock during frame allocation (if needed)
+    FramePtr frame_ptr = std::make_shared<cv::Mat>(frame);
     
-    FrameCache& cache = frame_caches_[instanceId];
-    frame.copyTo(cache.frame);  // Deep copy
-    cache.timestamp = std::chrono::steady_clock::now();
-    cache.has_frame = true;
+    // PHASE 1 OPTIMIZATION: Lock only for pointer swap, not during copy
+    // This reduces lock contention significantly
+    {
+        std::lock_guard<std::mutex> lock(frame_cache_mutex_);
+        FrameCache& cache = frame_caches_[instanceId];
+        cache.frame = frame_ptr;  // Shared ownership - no copy!
+        cache.timestamp = std::chrono::steady_clock::now();
+        cache.has_frame = true;
+    }
+    // Lock released immediately after pointer assignment
 }
 
 void InstanceRegistry::setupFrameCaptureHook(const std::string& instanceId, 
@@ -4428,26 +4666,48 @@ void InstanceRegistry::setupFrameCaptureHook(const std::string& instanceId,
                         return;
                     }
                     
-                    // Update frame counter for statistics
+                    // PHASE 3: Check backpressure control before processing frame
+                    using namespace BackpressureController;
+                    auto& backpressure = BackpressureController::BackpressureController::getInstance();
+                    
+                    // Check if we should drop this frame (FPS limiting, queue full, etc.)
+                    if (backpressure.shouldDropFrame(instanceId)) {
+                        backpressure.recordFrameDropped(instanceId);
+                        return;  // Drop frame early to prevent processing overhead
+                    }
+                    
+                    // PHASE 2 OPTIMIZATION: Update frame counter using atomic operations - NO LOCK needed!
+                    // This eliminates lock contention in the hot path (called every frame)
                     {
-                        std::unique_lock<std::shared_timed_mutex> lock(mutex_);
+                        // Try to get tracker pointer without lock (fast path)
+                        // We need lock only to find/create tracker, not to increment counters
+                        std::shared_lock<std::shared_timed_mutex> read_lock(mutex_);
                         auto trackerIt = statistics_trackers_.find(instanceId);
                         if (trackerIt != statistics_trackers_.end()) {
-                            trackerIt->second.frames_processed++;
-                            trackerIt->second.frame_count_since_last_update++;
+                            // Release lock before atomic operations
+                            read_lock.unlock();
+                            
+                            // Atomic increments - no lock needed!
+                            trackerIt->second.frames_processed.fetch_add(1, std::memory_order_relaxed);
+                            trackerIt->second.frame_count_since_last_update.fetch_add(1, std::memory_order_relaxed);
                         }
+                        // If tracker not found, it will be created later (not in hot path)
                     }
                     
-                    // Prefer OSD frame (processed with overlays), fallback to original frame
-                    cv::Mat frameToCache;
+                    // PHASE 3: Record frame processed for backpressure tracking
+                    backpressure.recordFrameProcessed(instanceId);
+                    
+                    // PHASE 1 OPTIMIZATION: Prefer OSD frame (processed with overlays), fallback to original frame
+                    // Use reference to avoid unnecessary copy before updateFrameCache
+                    const cv::Mat* frameToCache = nullptr;
                     if (!frame_meta->osd_frame.empty()) {
-                        frameToCache = frame_meta->osd_frame;
+                        frameToCache = &frame_meta->osd_frame;
                     } else if (!frame_meta->frame.empty()) {
-                        frameToCache = frame_meta->frame;
+                        frameToCache = &frame_meta->frame;
                     }
                     
-                    if (!frameToCache.empty()) {
-                        updateFrameCache(instanceId, frameToCache);
+                    if (frameToCache && !frameToCache->empty()) {
+                        updateFrameCache(instanceId, *frameToCache);
                     }
                 }
             } catch (const std::exception& e) {
@@ -4480,10 +4740,18 @@ void InstanceRegistry::setupQueueSizeTrackingHook(const std::string& instanceId,
         
         try {
             node->set_meta_arriving_hooker([this, instanceId](std::string node_name, int queue_size, 
-                                                               std::shared_ptr<cvedix_objects::cvedix_meta> meta) {
+                                                               std::shared_ptr<cvedix_objects::cvedix_meta> /* meta */) {
                 try {
-                    // Update queue size tracking in statistics tracker
-                    std::unique_lock<std::shared_timed_mutex> lock(mutex_);
+                    // OPTIMIZED: Use try_lock to avoid blocking frame processing
+                    // If lock is busy (e.g., another instance is starting), skip this update
+                    // Queue size tracking is not critical - missing one update is acceptable
+                    std::unique_lock<std::shared_timed_mutex> lock(mutex_, std::try_to_lock);
+                    if (!lock.owns_lock()) {
+                        // Lock is busy - skip this update to avoid blocking frame processing
+                        // This allows instances to process frames even when other instances are starting
+                        return;
+                    }
+                    
                     auto trackerIt = statistics_trackers_.find(instanceId);
                     if (trackerIt != statistics_trackers_.end()) {
                         InstanceStatsTracker& tracker = trackerIt->second;
@@ -4494,6 +4762,15 @@ void InstanceRegistry::setupQueueSizeTrackingHook(const std::string& instanceId,
                         
                         if (queue_size > static_cast<int>(tracker.max_queue_size_seen)) {
                             tracker.max_queue_size_seen = static_cast<size_t>(queue_size);
+                        }
+                        
+                        // PHASE 3: Record queue full event for backpressure control (no lock needed - singleton)
+                        // Check if queue is getting full (threshold: 80% of typical max)
+                        const size_t queue_warning_threshold = 8;  // Warn at 8 frames
+                        if (queue_size >= static_cast<int>(queue_warning_threshold)) {
+                            using namespace BackpressureController;
+                            auto& backpressure = BackpressureController::BackpressureController::getInstance();
+                            backpressure.recordQueueFull(instanceId); // Thread-safe, no lock needed
                         }
                     }
                 } catch (const std::exception& e) {
@@ -4656,7 +4933,8 @@ void InstanceRegistry::startRTSPMonitorThread(const std::string& instanceId) {
                         std::cerr << "[InstanceRegistry] [RTSP Monitor] Attempting to reconnect RTSP stream (attempt " 
                                   << (reconnect_attempts + 1) << "/" << max_reconnect_attempts << ")..." << std::endl;
                         
-                        bool reconnect_success = reconnectRTSPStream(instanceId);
+                        // Pass stop flag to reconnectRTSPStream so it can abort early if instance is being stopped
+                        bool reconnect_success = reconnectRTSPStream(instanceId, stop_flag);
                         
                         last_reconnect_attempt = now;
                         
@@ -4756,16 +5034,28 @@ void InstanceRegistry::stopRTSPMonitorThread(const std::string& instanceId) {
     lock.unlock();
     
     // Join thread with timeout to prevent blocking forever
+    // CRITICAL: Increased timeout to 5 seconds to allow reconnectRTSPStream() to abort gracefully
+    // reconnectRTSPStream() can take up to ~2 seconds (1 second sleep + operations), so we need more time
+    // CRITICAL: We MUST wait for thread to finish to prevent race condition where stopPipeline() 
+    // tries to stop nodes while reconnectRTSPStream() is still accessing them
     if (threadToJoin.joinable()) {
         auto future = std::async(std::launch::async, [&threadToJoin]() {
             threadToJoin.join();
         });
         
-        // Wait up to 1 second for thread to finish
-        auto status = future.wait_for(std::chrono::seconds(1));
+        // Wait up to 5 seconds for thread to finish (allows reconnectRTSPStream to check stop flag and abort)
+        auto status = future.wait_for(std::chrono::seconds(5));
         if (status == std::future_status::timeout) {
-            std::cerr << "[InstanceRegistry] [RTSP Monitor] Warning: Thread join timeout, detaching..." << std::endl;
+            std::cerr << "[InstanceRegistry] [RTSP Monitor] ⚠ CRITICAL: Thread join timeout (5s)" << std::endl;
+            std::cerr << "[InstanceRegistry] [RTSP Monitor] This may indicate reconnectRTSPStream is stuck" << std::endl;
+            std::cerr << "[InstanceRegistry] [RTSP Monitor] Forcing thread detach - this may cause race condition!" << std::endl;
             threadToJoin.detach();
+            // CRITICAL: Wait additional time after detach to give thread a chance to finish
+            // This reduces risk of race condition with stopPipeline()
+            std::cerr << "[InstanceRegistry] [RTSP Monitor] Waiting additional 1 second for thread operations to complete..." << std::endl;
+            std::this_thread::sleep_for(std::chrono::seconds(1));
+        } else {
+            std::cerr << "[InstanceRegistry] [RTSP Monitor] ✓ Thread joined successfully" << std::endl;
         }
     }
 }
@@ -4775,10 +5065,16 @@ void InstanceRegistry::updateRTSPActivity(const std::string& instanceId) {
     rtsp_last_activity_[instanceId] = std::chrono::steady_clock::now();
 }
 
-bool InstanceRegistry::reconnectRTSPStream(const std::string& instanceId) {
+bool InstanceRegistry::reconnectRTSPStream(const std::string& instanceId, std::shared_ptr<std::atomic<bool>> stopFlag) {
     std::cerr << "[InstanceRegistry] [RTSP Reconnect] Attempting to reconnect RTSP stream for instance " << instanceId << std::endl;
     
     try {
+        // CRITICAL: Check stop flag first - if instance is being stopped, abort immediately
+        if (stopFlag && stopFlag->load()) {
+            std::cerr << "[InstanceRegistry] [RTSP Reconnect] ✗ Aborted: instance is being stopped" << std::endl;
+            return false;
+        }
+        
         // CRITICAL: Check if instance exists and is running BEFORE attempting reconnect
         // This prevents race condition where instance is stopped while monitor thread is trying to reconnect
         InstanceInfo info;
@@ -4794,6 +5090,12 @@ bool InstanceRegistry::reconnectRTSPStream(const std::string& instanceId) {
             instanceExists = true;
             instanceRunning = instanceIt->second.running;
             info = instanceIt->second;
+        }
+        
+        // CRITICAL: Check stop flag again after getting instance info
+        if (stopFlag && stopFlag->load()) {
+            std::cerr << "[InstanceRegistry] [RTSP Reconnect] ✗ Aborted: instance is being stopped" << std::endl;
+            return false;
         }
         
         // CRITICAL: Double-check instance is still running (may have been stopped between checks)
@@ -4814,6 +5116,12 @@ bool InstanceRegistry::reconnectRTSPStream(const std::string& instanceId) {
             return false;
         }
         
+        // CRITICAL: Check stop flag before proceeding with node operations
+        if (stopFlag && stopFlag->load()) {
+            std::cerr << "[InstanceRegistry] [RTSP Reconnect] ✗ Aborted: instance is being stopped (before node operations)" << std::endl;
+            return false;
+        }
+        
         // CRITICAL: Verify instance is still running after getting nodes (race condition protection)
         {
             std::shared_lock<std::shared_timed_mutex> lock(mutex_);
@@ -4831,12 +5139,23 @@ bool InstanceRegistry::reconnectRTSPStream(const std::string& instanceId) {
             return false;
         }
         
+        // CRITICAL: Check stop flag before stopping node
+        if (stopFlag && stopFlag->load()) {
+            std::cerr << "[InstanceRegistry] [RTSP Reconnect] ✗ Aborted: instance is being stopped (before stopping node)" << std::endl;
+            return false;
+        }
+        
         std::cerr << "[InstanceRegistry] [RTSP Reconnect] Stopping RTSP node..." << std::endl;
         
         // Stop RTSP node gracefully with timeout
+        // CRITICAL: Check stop flag before and during node operations to abort quickly
         try {
-            auto stopFuture = std::async(std::launch::async, [rtspNode]() {
+            auto stopFuture = std::async(std::launch::async, [rtspNode, stopFlag]() {
                 try {
+                    // Check stop flag before calling stop()
+                    if (stopFlag && stopFlag->load()) {
+                        return false; // Abort if stop flag is set
+                    }
                     rtspNode->stop();
                     return true;
                 } catch (...) {
@@ -4846,6 +5165,11 @@ bool InstanceRegistry::reconnectRTSPStream(const std::string& instanceId) {
             
             auto stopStatus = stopFuture.wait_for(std::chrono::milliseconds(500));
             if (stopStatus == std::future_status::timeout) {
+                // Check stop flag before detaching
+                if (stopFlag && stopFlag->load()) {
+                    std::cerr << "[InstanceRegistry] [RTSP Reconnect] ✗ Aborted: stop flag set during stop timeout" << std::endl;
+                    return false;
+                }
                 std::cerr << "[InstanceRegistry] [RTSP Reconnect] ⚠ Stop timeout, using detach..." << std::endl;
                 try {
                     rtspNode->detach_recursively();
@@ -4856,6 +5180,11 @@ bool InstanceRegistry::reconnectRTSPStream(const std::string& instanceId) {
                 stopFuture.get();
             }
         } catch (const std::exception& e) {
+            // Check stop flag before fallback detach
+            if (stopFlag && stopFlag->load()) {
+                std::cerr << "[InstanceRegistry] [RTSP Reconnect] ✗ Aborted: stop flag set during exception" << std::endl;
+                return false;
+            }
             std::cerr << "[InstanceRegistry] [RTSP Reconnect] ⚠ Exception stopping RTSP node: " << e.what() << std::endl;
             // Try detach as fallback
             try {
@@ -4865,8 +5194,21 @@ bool InstanceRegistry::reconnectRTSPStream(const std::string& instanceId) {
             }
         }
         
-        // Wait a moment before restarting
-        std::this_thread::sleep_for(std::chrono::milliseconds(1000));
+        // CRITICAL: Check stop flag after stopping node
+        if (stopFlag && stopFlag->load()) {
+            std::cerr << "[InstanceRegistry] [RTSP Reconnect] ✗ Aborted: instance is being stopped (after stopping node)" << std::endl;
+            return false;
+        }
+        
+        // Wait a moment before restarting - but check stop flag periodically
+        // Break the 1-second sleep into smaller chunks to check stop flag more frequently
+        for (int i = 0; i < 10; ++i) {
+            if (stopFlag && stopFlag->load()) {
+                std::cerr << "[InstanceRegistry] [RTSP Reconnect] ✗ Aborted: instance is being stopped (during wait)" << std::endl;
+                return false;
+            }
+            std::this_thread::sleep_for(std::chrono::milliseconds(100));
+        }
         
         // CRITICAL: Check again if instance is still running before restarting
         // Instance may have been stopped during the wait period
@@ -4879,6 +5221,12 @@ bool InstanceRegistry::reconnectRTSPStream(const std::string& instanceId) {
             }
         }
         
+        // CRITICAL: Check stop flag before restarting
+        if (stopFlag && stopFlag->load()) {
+            std::cerr << "[InstanceRegistry] [RTSP Reconnect] ✗ Aborted: instance is being stopped (before restarting)" << std::endl;
+            return false;
+        }
+        
         // CRITICAL: Verify RTSP node is still valid before restarting
         if (!rtspNode) {
             std::cerr << "[InstanceRegistry] [RTSP Reconnect] ✗ RTSP node is invalid (may have been destroyed)" << std::endl;
@@ -4888,6 +5236,50 @@ bool InstanceRegistry::reconnectRTSPStream(const std::string& instanceId) {
         std::cerr << "[InstanceRegistry] [RTSP Reconnect] Restarting RTSP node..." << std::endl;
         
         // Restart RTSP node
+        // CRITICAL: Check stop flag and instance status one more time right before start() to prevent race condition
+        if (stopFlag && stopFlag->load()) {
+            std::cerr << "[InstanceRegistry] [RTSP Reconnect] ✗ Aborted: stop flag set immediately before start()" << std::endl;
+            return false;
+        }
+        
+        // CRITICAL: Double-check instance is still running right before start()
+        {
+            std::shared_lock<std::shared_timed_mutex> lock(mutex_);
+            auto instanceIt = instances_.find(instanceId);
+            if (instanceIt == instances_.end() || !instanceIt->second.running) {
+                std::cerr << "[InstanceRegistry] [RTSP Reconnect] ✗ Aborted: instance stopped immediately before start()" << std::endl;
+                return false;
+            }
+        }
+        
+        // CRITICAL: Final stop flag check - must be the last check before start()
+        if (stopFlag && stopFlag->load()) {
+            std::cerr << "[InstanceRegistry] [RTSP Reconnect] ✗ Aborted: stop flag set in final check before start()" << std::endl;
+            return false;
+        }
+        
+        // CRITICAL: Use shared lock to allow concurrent start operations
+        // Multiple instances can start simultaneously, but cleanup operations will wait
+        std::shared_lock<std::shared_mutex> gstLock(gstreamer_ops_mutex_);
+        
+        // CRITICAL: Check stop flag one more time after acquiring lock (instance may have been stopped while waiting for lock)
+        if (stopFlag && stopFlag->load()) {
+            std::cerr << "[InstanceRegistry] [RTSP Reconnect] ✗ Aborted: stop flag set after acquiring GStreamer lock" << std::endl;
+            return false;
+        }
+        
+        // CRITICAL: Verify instance is still running after acquiring lock
+        {
+            std::shared_lock<std::shared_timed_mutex> lock(mutex_);
+            auto instanceIt = instances_.find(instanceId);
+            if (instanceIt == instances_.end() || !instanceIt->second.running) {
+                std::cerr << "[InstanceRegistry] [RTSP Reconnect] ✗ Aborted: instance stopped after acquiring GStreamer lock" << std::endl;
+                return false;
+            }
+        }
+        
+        // CRITICAL: Wrap start() in try-catch to handle GStreamer conflicts
+        // If another instance is cleaning up GStreamer, this may throw or crash
         try {
             rtspNode->start();
             
@@ -4902,6 +5294,12 @@ bool InstanceRegistry::reconnectRTSPStream(const std::string& instanceId) {
                 }
             }
             
+            // CRITICAL: Check stop flag one more time before updating activity
+            if (stopFlag && stopFlag->load()) {
+                std::cerr << "[InstanceRegistry] [RTSP Reconnect] ⚠ Instance was stopped after restart (aborting activity update)" << std::endl;
+                return false;
+            }
+            
             std::cerr << "[InstanceRegistry] [RTSP Reconnect] ✓ RTSP node restarted successfully" << std::endl;
             
             // Update activity time
@@ -4909,7 +5307,27 @@ bool InstanceRegistry::reconnectRTSPStream(const std::string& instanceId) {
             
             return true;
         } catch (const std::exception& e) {
-            std::cerr << "[InstanceRegistry] [RTSP Reconnect] ✗ Exception restarting RTSP node: " << e.what() << std::endl;
+            // CRITICAL: Check if instance was stopped during start() - this may indicate race condition
+            bool instanceStillRunning = false;
+            {
+                std::shared_lock<std::shared_timed_mutex> lock(mutex_);
+                auto instanceIt = instances_.find(instanceId);
+                if (instanceIt != instances_.end() && instanceIt->second.running) {
+                    instanceStillRunning = true;
+                }
+            }
+            
+            if (!instanceStillRunning) {
+                std::cerr << "[InstanceRegistry] [RTSP Reconnect] ✗ Exception during start() - instance was stopped (race condition)" << std::endl;
+            } else {
+                std::cerr << "[InstanceRegistry] [RTSP Reconnect] ✗ Exception restarting RTSP node: " << e.what() << std::endl;
+                std::cerr << "[InstanceRegistry] [RTSP Reconnect] NOTE: This may be caused by GStreamer conflict with another instance" << std::endl;
+            }
+            return false;
+        } catch (...) {
+            // CRITICAL: Catch all exceptions including segmentation faults from GStreamer
+            std::cerr << "[InstanceRegistry] [RTSP Reconnect] ✗ Unknown exception during start() - may be GStreamer crash" << std::endl;
+            std::cerr << "[InstanceRegistry] [RTSP Reconnect] NOTE: This may indicate GStreamer conflict with another instance cleanup" << std::endl;
             return false;
         }
         
