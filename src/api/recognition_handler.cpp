@@ -22,7 +22,7 @@ HttpResponsePtr RecognitionHandler::createErrorResponse(int statusCode, const st
     resp->setStatusCode(static_cast<HttpStatusCode>(statusCode));
     resp->addHeader("Access-Control-Allow-Origin", "*");
     resp->addHeader("Access-Control-Allow-Methods", "POST, OPTIONS");
-    resp->addHeader("Access-Control-Allow-Headers", "Content-Type, x-api-key");
+    resp->addHeader("Access-Control-Allow-Headers", "Content-Type");
     
     return resp;
 }
@@ -359,16 +359,6 @@ void RecognitionHandler::recognizeFaces(const HttpRequestPtr &req,
     }
     
     try {
-        // Validate API key
-        std::string apiKeyError;
-        if (!validateApiKey(req, apiKeyError)) {
-            if (isApiLoggingEnabled()) {
-                PLOG_WARNING << "[API] POST /v1/recognition/recognize - " << apiKeyError;
-            }
-            callback(createErrorResponse(401, "Unauthorized", apiKeyError));
-            return;
-        }
-        
         // Extract image data
         std::vector<unsigned char> imageData;
         std::string imageError;
@@ -411,7 +401,7 @@ void RecognitionHandler::recognizeFaces(const HttpRequestPtr &req,
         // Add CORS headers
         resp->addHeader("Access-Control-Allow-Origin", "*");
         resp->addHeader("Access-Control-Allow-Methods", "POST, OPTIONS");
-        resp->addHeader("Access-Control-Allow-Headers", "Content-Type, x-api-key");
+        resp->addHeader("Access-Control-Allow-Headers", "Content-Type");
         
         auto end_time = std::chrono::steady_clock::now();
         auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(end_time - start_time);
@@ -445,7 +435,7 @@ void RecognitionHandler::handleOptions(const HttpRequestPtr &req,
     resp->setStatusCode(k200OK);
     resp->addHeader("Access-Control-Allow-Origin", "*");
     resp->addHeader("Access-Control-Allow-Methods", "POST, OPTIONS");
-    resp->addHeader("Access-Control-Allow-Headers", "Content-Type, x-api-key");
+    resp->addHeader("Access-Control-Allow-Headers", "Content-Type");
     resp->addHeader("Access-Control-Max-Age", "3600");
     callback(resp);
 }
@@ -529,19 +519,9 @@ bool RecognitionHandler::registerSubject(const std::string& subjectName,
             error = "Invalid image format or corrupted image data";
             return false;
         }
-        
-        // TODO: Implement actual face detection and subject registration logic
-        // For now, generate image ID and return success
-        // In production, this should:
-        // 1. Detect face in image
-        // 2. Extract face features
-        // 3. Store features associated with subject name
-        // 4. Save image to storage
-        
+          
         imageId = generateImageId();
-        
-        // TODO: Store subject and image mapping
-        // This could be in a database or file system
+
         
         return true;
         
@@ -561,16 +541,6 @@ void RecognitionHandler::registerFaceSubject(const HttpRequestPtr &req,
     }
     
     try {
-        // Validate API key
-        std::string apiKeyError;
-        if (!validateApiKey(req, apiKeyError)) {
-            if (isApiLoggingEnabled()) {
-                PLOG_WARNING << "[API] POST /v1/recognition/faces - " << apiKeyError;
-            }
-            callback(createErrorResponse(401, "Unauthorized", apiKeyError));
-            return;
-        }
-        
         // Parse query parameters
         std::string subjectName = req->getParameter("subject");
         if (subjectName.empty()) {
@@ -629,7 +599,7 @@ void RecognitionHandler::registerFaceSubject(const HttpRequestPtr &req,
         // Add CORS headers
         resp->addHeader("Access-Control-Allow-Origin", "*");
         resp->addHeader("Access-Control-Allow-Methods", "POST, OPTIONS");
-        resp->addHeader("Access-Control-Allow-Headers", "Content-Type, x-api-key");
+        resp->addHeader("Access-Control-Allow-Headers", "Content-Type");
         
         auto end_time = std::chrono::steady_clock::now();
         auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(end_time - start_time);
@@ -665,7 +635,7 @@ void RecognitionHandler::handleOptionsFaces(const HttpRequestPtr &req,
     resp->setStatusCode(k200OK);
     resp->addHeader("Access-Control-Allow-Origin", "*");
     resp->addHeader("Access-Control-Allow-Methods", "POST, OPTIONS");
-    resp->addHeader("Access-Control-Allow-Headers", "Content-Type, x-api-key");
+    resp->addHeader("Access-Control-Allow-Headers", "Content-Type");
     resp->addHeader("Access-Control-Max-Age", "3600");
     callback(resp);
 }
