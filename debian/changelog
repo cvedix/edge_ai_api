@@ -1,0 +1,9 @@
+edge-ai-api (2025.0.1.3-Beta) unstable; urgency=medium
+
+  * Beta release with bundled dependencies
+  * Includes all required shared libraries
+  * Systemd service integration
+  * Full CVEDIX SDK support
+
+ -- CVEDIX <support@cvedix.com>  Mon, 01 Jan 2025 12:00:00 +0000
+
