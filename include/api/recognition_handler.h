@@ -105,6 +105,11 @@ private:
     bool extractImageFromJson(const HttpRequestPtr &req, std::vector<unsigned char>& imageData, std::string& error) const;
     
     /**
+     * @brief Extract image data from request (supports both JSON base64 and multipart/form-data)
+     */
+    bool extractImageFromRequest(const HttpRequestPtr &req, std::vector<unsigned char>& imageData, std::string& error) const;
+    
+    /**
      * @brief Generate unique image ID (UUID-like)
      */
     std::string generateImageId() const;

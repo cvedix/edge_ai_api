@@ -9,7 +9,13 @@
 #include <chrono>
 #include <random>
 #include <iomanip>
+#include <filesystem>
+#include <fstream>
+#include <map>
+#include <cmath>
 #include <opencv2/opencv.hpp>
+#include <opencv2/dnn.hpp>
+#include <opencv2/objdetect.hpp>
 
 HttpResponsePtr RecognitionHandler::createErrorResponse(int statusCode, const std::string& error, const std::string& message) const {
     Json::Value errorResponse;
@@ -25,6 +31,460 @@ HttpResponsePtr RecognitionHandler::createErrorResponse(int statusCode, const st
     resp->addHeader("Access-Control-Allow-Headers", "Content-Type");
     
     return resp;
+}
+
+// Helper function: cosine similarity
+static float cosine_similarity(const std::vector<float>& a, const std::vector<float>& b) {
+    if (a.size() != b.size() || a.empty()) return 0.0f;
+    
+    float dot_product = 0.0f;
+    float norm_a = 0.0f;
+    float norm_b = 0.0f;
+    
+    for (size_t i = 0; i < a.size(); i++) {
+        dot_product += a[i] * b[i];
+        norm_a += a[i] * a[i];
+        norm_b += b[i] * b[i];
+    }
+    
+    float denominator = std::sqrt(norm_a) * std::sqrt(norm_b);
+    if (denominator < 1e-6) return 0.0f;
+    
+    return dot_product / denominator;
+}
+
+// Helper function: Average embeddings
+static std::vector<float> average_embeddings(const std::vector<std::vector<float>>& embeddings) {
+    if (embeddings.empty() || embeddings[0].empty()) return std::vector<float>();
+    
+    size_t dim = embeddings[0].size();
+    std::vector<float> avg_embedding(dim, 0.0f);
+    
+    for (const auto& emb : embeddings) {
+        if (emb.size() != dim) continue;
+        for (size_t i = 0; i < dim; i++) {
+            avg_embedding[i] += emb[i];
+        }
+    }
+    
+    float count = static_cast<float>(embeddings.size());
+    for (size_t i = 0; i < dim; i++) {
+        avg_embedding[i] /= count;
+    }
+    
+    // L2 normalize
+    float norm = 0.0f;
+    for (float val : avg_embedding) {
+        norm += val * val;
+    }
+    norm = std::sqrt(norm);
+    if (norm > 1e-6) {
+        for (float& val : avg_embedding) {
+            val /= norm;
+        }
+    }
+    
+    return avg_embedding;
+}
+
+// Helper function: Face alignment using landmarks
+static cv::Mat align_face_using_landmarks(const cv::Mat& image, const cv::Mat& faces, int face_idx) {
+    // YuNet format: (x, y, w, h, re_x, re_y, le_x, le_y, nt_x, nt_y, rcm_x, rcm_y, lcm_x, lcm_y, score)
+    float re_x = faces.at<float>(face_idx, 4);
+    float re_y = faces.at<float>(face_idx, 5);
+    float le_x = faces.at<float>(face_idx, 6);
+    float le_y = faces.at<float>(face_idx, 7);
+    float nt_x = faces.at<float>(face_idx, 8);
+    float nt_y = faces.at<float>(face_idx, 9);
+    float rcm_x = faces.at<float>(face_idx, 10);
+    float rcm_y = faces.at<float>(face_idx, 11);
+    float lcm_x = faces.at<float>(face_idx, 12);
+    float lcm_y = faces.at<float>(face_idx, 13);
+    
+    // Standard face template for 112x112 (InsightFace)
+    float dst[5][2] = {
+        {38.2946f, 51.6963f},  // right eye
+        {73.5318f, 51.5014f},  // left eye
+        {56.0252f, 71.7366f},  // nose tip
+        {41.5493f, 92.3655f},  // right mouth corner
+        {70.7299f, 92.2041f}   // left mouth corner
+    };
+    
+    float src[5][2] = {
+        {re_x, re_y},
+        {le_x, le_y},
+        {nt_x, nt_y},
+        {rcm_x, rcm_y},
+        {lcm_x, lcm_y}
+    };
+    
+    // Compute similarity transform matrix
+    float src_mean[2] = {
+        (src[0][0] + src[1][0] + src[2][0] + src[3][0] + src[4][0]) / 5.0f,
+        (src[0][1] + src[1][1] + src[2][1] + src[3][1] + src[4][1]) / 5.0f
+    };
+    float dst_mean[2] = {56.0262f, 71.9008f};
+    
+    float src_demean[5][2], dst_demean[5][2];
+    for (int i = 0; i < 5; i++) {
+        src_demean[i][0] = src[i][0] - src_mean[0];
+        src_demean[i][1] = src[i][1] - src_mean[1];
+        dst_demean[i][0] = dst[i][0] - dst_mean[0];
+        dst_demean[i][1] = dst[i][1] - dst_mean[1];
+    }
+    
+    double A00 = 0.0, A01 = 0.0, A10 = 0.0, A11 = 0.0;
+    for (int i = 0; i < 5; i++) {
+        A00 += dst_demean[i][0] * src_demean[i][0];
+        A01 += dst_demean[i][0] * src_demean[i][1];
+        A10 += dst_demean[i][1] * src_demean[i][0];
+        A11 += dst_demean[i][1] * src_demean[i][1];
+    }
+    A00 /= 5.0; A01 /= 5.0; A10 /= 5.0; A11 /= 5.0;
+    
+    double detA = A00 * A11 - A01 * A10;
+    double d[2] = {1.0, (detA < 0) ? -1.0 : 1.0};
+    
+    cv::Mat A = (cv::Mat_<double>(2, 2) << A00, A01, A10, A11);
+    cv::Mat s, u, vt;
+    cv::SVD::compute(A, s, u, vt);
+    
+    double smax = std::max(s.at<double>(0), s.at<double>(1));
+    double tol = smax * 2 * FLT_MIN;
+    int rank = 0;
+    if (s.at<double>(0) > tol) rank++;
+    if (s.at<double>(1) > tol) rank++;
+    
+    if (rank == 0) {
+        cv::Mat aligned;
+        cv::resize(image, aligned, cv::Size(112, 112));
+        return aligned;
+    }
+    
+    cv::Mat T = u * cv::Mat::diag(cv::Mat(cv::Vec2d(d[0], d[1]))) * vt;
+    
+    double var1 = 0.0, var2 = 0.0;
+    for (int i = 0; i < 5; i++) {
+        var1 += src_demean[i][0] * src_demean[i][0];
+        var2 += src_demean[i][1] * src_demean[i][1];
+    }
+    var1 /= 5.0;
+    var2 /= 5.0;
+    
+    double scale = 1.0 / (var1 + var2) * (s.at<double>(0) * d[0] + s.at<double>(1) * d[1]);
+    double TS[2] = {
+        T.at<double>(0, 0) * src_mean[0] + T.at<double>(0, 1) * src_mean[1],
+        T.at<double>(1, 0) * src_mean[0] + T.at<double>(1, 1) * src_mean[1]
+    };
+    
+    cv::Mat transform_mat = (cv::Mat_<double>(2, 3) <<
+        T.at<double>(0, 0) * scale, T.at<double>(0, 1) * scale, dst_mean[0] - scale * TS[0],
+        T.at<double>(1, 0) * scale, T.at<double>(1, 1) * scale, dst_mean[1] - scale * TS[1]);
+    
+    cv::Mat aligned;
+    cv::warpAffine(image, aligned, transform_mat, cv::Size(112, 112), cv::INTER_LINEAR);
+    return aligned;
+}
+
+// Helper function: extract embedding from aligned face image
+static std::vector<float> extract_embedding_from_image(
+    const cv::Mat& aligned_face, 
+    const std::string& onnx_model_path) {
+    
+    cv::dnn::Net net = cv::dnn::readNetFromONNX(onnx_model_path);
+    if (net.empty()) {
+        return std::vector<float>();
+    }
+    
+    #ifdef CVEDIX_WITH_CUDA
+    net.setPreferableBackend(cv::dnn::DNN_BACKEND_CUDA);
+    net.setPreferableTarget(cv::dnn::DNN_TARGET_CUDA);
+    #else
+    net.setPreferableBackend(cv::dnn::DNN_BACKEND_OPENCV);
+    net.setPreferableTarget(cv::dnn::DNN_TARGET_CPU);
+    #endif
+    
+    cv::Mat rgb;
+    cv::cvtColor(aligned_face, rgb, cv::COLOR_BGR2RGB);
+    
+    if (rgb.rows != 112 || rgb.cols != 112) {
+        cv::resize(rgb, rgb, cv::Size(112, 112), 0, 0, cv::INTER_LINEAR);
+    }
+    
+    cv::Mat blob;
+    cv::dnn::blobFromImage(rgb, blob, 1.0f / 128.0f,
+                          cv::Size(), cv::Scalar(127.5f, 127.5f, 127.5f),
+                          false, false, CV_32F);
+    
+    net.setInput(blob);
+    std::vector<cv::Mat> outputs;
+    net.forward(outputs, net.getUnconnectedOutLayersNames());
+    
+    if (outputs.empty()) {
+        return std::vector<float>();
+    }
+    
+    const cv::Mat& output = outputs[0];
+    int emb_dim = (output.dims == 2) ? output.size[1] : output.size[0];
+    
+    std::vector<float> embedding(emb_dim);
+    const float* output_ptr = output.ptr<float>();
+    std::copy(output_ptr, output_ptr + emb_dim, embedding.begin());
+    
+    // L2 normalize
+    float norm = 0.0f;
+    for (float val : embedding) {
+        norm += val * val;
+    }
+    norm = std::sqrt(norm);
+    if (norm > 1e-6) {
+        for (float& val : embedding) {
+            val /= norm;
+        }
+    }
+    
+    return embedding;
+}
+
+// Face Database Class
+class FaceDatabase {
+private:
+    std::map<std::string, std::vector<float>> database_;
+    std::string db_file_path_;
+    std::string onnx_model_path_;
+    std::string detector_model_path_;
+    
+    std::string resolve_model_path(const std::string& relative_path) {
+        std::filesystem::path full_path = std::filesystem::path(".") / relative_path;
+        if (std::filesystem::exists(full_path)) return full_path.string();
+        
+        std::filesystem::path current_path = std::filesystem::current_path() / relative_path;
+        if (std::filesystem::exists(current_path)) return current_path.string();
+        if (std::filesystem::exists(relative_path)) return relative_path;
+        
+        return full_path.string();
+    }
+
+    void load_database() {
+        std::ifstream file(db_file_path_);
+        if (!file.is_open()) {
+            std::ofstream create_file(db_file_path_);
+            return;
+        }
+
+        std::string line;
+        while (std::getline(file, line)) {
+            if (line.empty()) continue;
+            size_t pos = line.find('|');
+            if (pos == std::string::npos) continue;
+
+            std::string name = line.substr(0, pos);
+            std::string embedding_str = line.substr(pos + 1);
+            std::vector<float> embedding;
+            std::stringstream ss(embedding_str);
+            std::string value;
+            
+            while (std::getline(ss, value, ',')) {
+                embedding.push_back(std::stof(value));
+            }
+
+            if (!embedding.empty()) {
+                database_[name] = embedding;
+            }
+        }
+    }
+
+    void save_database() {
+        std::ofstream file(db_file_path_);
+        if (!file.is_open()) {
+            return;
+        }
+
+        for (const auto& [name, embedding] : database_) {
+            file << name << "|";
+            for (size_t i = 0; i < embedding.size(); i++) {
+                file << std::fixed << std::setprecision(6) << embedding[i];
+                if (i < embedding.size() - 1) file << ",";
+            }
+            file << "\n";
+        }
+    }
+
+public:
+    FaceDatabase(const std::string& db_path = "./face_database.txt") 
+        : db_file_path_(db_path) {
+        
+        load_database();
+        
+        // Find ONNX model
+        std::vector<std::string> model_paths = {
+            "/home/cvedix/project/cvedix_data/models/face/face_recognition_sface_2021dec.onnx",
+            "/home/cvedix/project/cvedix_data/models/face/face_recognition_sface_2021dec.onnx",
+            "/home/cvedix/project/cvedix_data/models/face/face_recognition_sface_2021dec.onnx"
+        };
+        
+        for (const auto& path : model_paths) {
+            if (std::filesystem::exists(path)) {
+                onnx_model_path_ = path;
+                break;
+            }
+        }
+        
+        // Find detector model (try both with and without _int8 suffix)
+        std::vector<std::string> detector_paths = {
+            "/home/cvedix/project/cvedix_data/models/face/face_detection_yunet_2023mar.onnx",
+            "/home/cvedix/project/cvedix_data/models/face/face_detection_yunet_2023mar_int8.onnx",
+            "./cvedix_data/models/face/face_detection_yunet_2023mar.onnx",
+            "./cvedix_data/models/face/face_detection_yunet_2023mar_int8.onnx",
+            "../cvedix_data/models/face/face_detection_yunet_2023mar.onnx",
+            "../cvedix_data/models/face/face_detection_yunet_2023mar_int8.onnx"
+        };
+        
+        for (const auto& path : detector_paths) {
+            if (std::filesystem::exists(path)) {
+                detector_model_path_ = path;
+                break;
+            }
+        }
+    }
+    
+    bool register_face_from_image(const std::vector<unsigned char>& imageData, 
+                                   const std::string& person_name,
+                                   double detProbThreshold,
+                                   std::string& error_msg) {
+        if (imageData.empty()) {
+            error_msg = "Image data is empty";
+        return false;
+    }
+    
+        cv::Mat image = cv::imdecode(imageData, cv::IMREAD_COLOR);
+        if (image.empty()) {
+            error_msg = "Failed to decode image data. Image may be corrupted or in unsupported format.";
+            return false;
+        }
+        
+        if (isApiLoggingEnabled()) {
+            PLOG_DEBUG << "[FaceDatabase] Decoded image: " << image.cols << "x" << image.rows << " pixels";
+        }
+    
+        if (detector_model_path_.empty()) {
+            error_msg = "Face detector model not found. Please ensure face_detection_yunet_2023mar.onnx or face_detection_yunet_2023mar_int8.onnx exists in cvedix_data/models/face/";
+            return false;
+        }
+
+        cv::Ptr<cv::FaceDetectorYN> face_detector;
+        try {
+            face_detector = cv::FaceDetectorYN::create(
+                detector_model_path_, "", cv::Size(320, 320), 
+                static_cast<float>(detProbThreshold), 0.3f, 5000,
+                cv::dnn::DNN_BACKEND_OPENCV, cv::dnn::DNN_TARGET_CPU);
+        } catch (const std::exception& e) {
+            error_msg = "Failed to create face detector: " + std::string(e.what());
+            return false;
+        }
+        
+        if (face_detector.empty()) {
+            error_msg = "Face detector creation returned empty";
+            return false;
+        }
+
+        face_detector->setInputSize(image.size());
+        cv::Mat faces;
+        try {
+            face_detector->detect(image, faces);
+        } catch (const cv::Exception& e) {
+            error_msg = "Face detection exception: " + std::string(e.what());
+            return false;
+        }
+
+        if (faces.rows == 0 || faces.empty()) {
+            error_msg = "No face detected in image. Please ensure the image contains a clear face. Image size: " 
+                       + std::to_string(image.cols) + "x" + std::to_string(image.rows) 
+                       + ", detection threshold: " + std::to_string(detProbThreshold);
+            return false;
+        }
+        
+        if (isApiLoggingEnabled()) {
+            PLOG_DEBUG << "[FaceDatabase] Detected " << faces.rows << " face(s) in image";
+        }
+
+        float x = faces.at<float>(0, 0), y = faces.at<float>(0, 1);
+        float w = faces.at<float>(0, 2), h = faces.at<float>(0, 3);
+
+        x = std::max(0.0f, std::min(x, (float)(image.cols - 1)));
+        y = std::max(0.0f, std::min(y, (float)(image.rows - 1)));
+        w = std::max(1.0f, std::min(w, (float)(image.cols - x)));
+        h = std::max(1.0f, std::min(h, (float)(image.rows - y)));
+
+        cv::Mat aligned_face;
+        if (faces.cols >= 15) {
+            aligned_face = align_face_using_landmarks(image, faces, 0);
+        } else {
+            cv::Mat face_roi = image(cv::Rect((int)x, (int)y, (int)w, (int)h)).clone();
+            cv::resize(face_roi, aligned_face, cv::Size(112, 112));
+        }
+
+        if (onnx_model_path_.empty()) {
+            error_msg = "Face recognition model not found. Please ensure face_recognition_sface_2021dec.onnx exists in cvedix_data/models/face/";
+            return false;
+        }
+
+        // Data augmentation
+        std::vector<std::vector<float>> embeddings;
+        
+        std::vector<float> emb1 = extract_embedding_from_image(aligned_face, onnx_model_path_);
+        if (!emb1.empty()) embeddings.push_back(emb1);
+        
+        cv::Mat flipped;
+        cv::flip(aligned_face, flipped, 1);
+        std::vector<float> emb2 = extract_embedding_from_image(flipped, onnx_model_path_);
+        if (!emb2.empty()) embeddings.push_back(emb2);
+        
+        cv::Mat bright;
+        aligned_face.convertTo(bright, -1, 1.0, 15);
+        std::vector<float> emb3 = extract_embedding_from_image(bright, onnx_model_path_);
+        if (!emb3.empty()) embeddings.push_back(emb3);
+        
+        cv::Mat dark;
+        aligned_face.convertTo(dark, -1, 1.0, -15);
+        std::vector<float> emb4 = extract_embedding_from_image(dark, onnx_model_path_);
+        if (!emb4.empty()) embeddings.push_back(emb4);
+        
+        cv::Mat contrast;
+        aligned_face.convertTo(contrast, -1, 1.1, 0);
+        std::vector<float> emb5 = extract_embedding_from_image(contrast, onnx_model_path_);
+        if (!emb5.empty()) embeddings.push_back(emb5);
+
+        if (embeddings.empty()) {
+            error_msg = "Failed to extract face embeddings from image";
+            return false;
+        }
+
+        std::vector<float> final_embedding = average_embeddings(embeddings);
+        database_[person_name] = final_embedding;
+        save_database();
+    return true;
+    }
+
+    std::vector<std::pair<std::string, std::vector<float>>> get_all_faces() const {
+        std::vector<std::pair<std::string, std::vector<float>>> result;
+        for (const auto& [name, embedding] : database_) {
+            result.push_back({name, embedding});
+        }
+        return result;
+    }
+
+    size_t size() const { return database_.size(); }
+};
+
+// Global database instance
+static std::unique_ptr<FaceDatabase> g_database;
+
+static FaceDatabase& get_database() {
+    if (!g_database) {
+        g_database = std::make_unique<FaceDatabase>("./face_database.txt");
+    }
+    return *g_database;
 }
 
 bool RecognitionHandler::isBase64(const std::string& str) const {
@@ -114,35 +574,39 @@ bool RecognitionHandler::extractImageData(const HttpRequestPtr &req, std::vector
         return false;
     }
     
-    // Get request body
+    // Get request body as binary data
     auto body = req->getBody();
     if (body.empty()) {
         error = "Request body is empty";
         return false;
     }
     
-    // Parse multipart body to find file field
+    // Convert body to string for parsing headers, but keep binary for file content
     std::string bodyStr(reinterpret_cast<const char*>(body.data()), body.size());
     std::string boundaryMarker = "--" + boundary;
     
-    // Find the part with name="file"
+    // Find the part with name="file" - try different field name variations
     size_t partStart = bodyStr.find(boundaryMarker);
     if (partStart == std::string::npos) {
         error = "Could not find multipart boundary";
         return false;
     }
     
-    // Search for file field
-    size_t fileFieldPos = bodyStr.find("name=\"file\"", partStart);
-    if (fileFieldPos == std::string::npos) {
-        fileFieldPos = bodyStr.find("name='file'", partStart);
-    }
-    if (fileFieldPos == std::string::npos) {
-        fileFieldPos = bodyStr.find("name=file", partStart);
+    // Search for file field - try "file", "image", "photo" as field names
+    size_t fileFieldPos = std::string::npos;
+    std::vector<std::string> fieldNames = {"name=\"file\"", "name='file'", "name=file",
+                                           "name=\"image\"", "name='image'", "name=image",
+                                           "name=\"photo\"", "name='photo'", "name=photo"};
+    
+    for (const auto& fieldName : fieldNames) {
+        fileFieldPos = bodyStr.find(fieldName, partStart);
+        if (fileFieldPos != std::string::npos) {
+            break;
+        }
     }
     
     if (fileFieldPos == std::string::npos) {
-        error = "Could not find 'file' field in multipart form data";
+        error = "Could not find file field in multipart form data. Expected field name: 'file', 'image', or 'photo'";
         return false;
     }
     
@@ -177,18 +641,30 @@ bool RecognitionHandler::extractImageData(const HttpRequestPtr &req, std::vector
         return false;
     }
     
-    std::string fileContent = bodyStr.substr(contentStart, contentEnd - contentStart);
+    // Extract binary data directly from body (not from string to preserve binary data)
+    size_t binaryStart = contentStart;
+    size_t binaryEnd = contentEnd;
     
-    // Check if content is base64 encoded
-    if (isBase64(fileContent)) {
-        // Decode base64
-        if (!decodeBase64(fileContent, imageData)) {
-            error = "Failed to decode base64 image data";
-            return false;
+    // Copy binary data directly
+    imageData.assign(body.begin() + binaryStart, body.begin() + binaryEnd);
+    
+    // Check if the extracted data looks like base64 (text-based)
+    // Only check first 100 bytes to avoid performance issues
+    bool mightBeBase64 = false;
+    if (imageData.size() > 0 && imageData.size() < 10000) {
+        std::string firstBytes(reinterpret_cast<const char*>(imageData.data()), 
+                              std::min(imageData.size(), size_t(100)));
+        mightBeBase64 = isBase64(firstBytes);
+    }
+    
+    if (mightBeBase64) {
+        // Try to decode as base64
+        std::string base64Str(reinterpret_cast<const char*>(imageData.data()), imageData.size());
+        std::vector<unsigned char> decoded;
+        if (decodeBase64(base64Str, decoded) && !decoded.empty()) {
+            imageData = decoded;
         }
-    } else {
-        // Treat as binary data
-        imageData.assign(fileContent.begin(), fileContent.end());
+        // If base64 decode fails, keep original binary data
     }
     
     if (imageData.empty()) {
@@ -480,6 +956,18 @@ bool RecognitionHandler::extractImageFromJson(const HttpRequestPtr &req, std::ve
         return false;
     }
     
+    // Remove data URL prefix if present (e.g., "data:image/jpeg;base64,")
+    size_t commaPos = fileBase64.find(',');
+    if (commaPos != std::string::npos) {
+        std::string prefix = fileBase64.substr(0, commaPos);
+        if (prefix.find("base64") != std::string::npos) {
+            fileBase64 = fileBase64.substr(commaPos + 1);
+            if (isApiLoggingEnabled()) {
+                PLOG_DEBUG << "[RecognitionHandler] Removed data URL prefix from base64 string";
+            }
+        }
+    }
+    
     // Decode base64
     if (!decodeBase64(fileBase64, imageData)) {
         error = "Failed to decode base64 image data";
@@ -492,6 +980,69 @@ bool RecognitionHandler::extractImageFromJson(const HttpRequestPtr &req, std::ve
     }
     
     return true;
+}
+
+bool RecognitionHandler::extractImageFromRequest(const HttpRequestPtr &req, std::vector<unsigned char>& imageData, std::string& error) const {
+    std::string contentType = req->getHeader("Content-Type");
+    
+    if (isApiLoggingEnabled()) {
+        PLOG_DEBUG << "[RecognitionHandler] Content-Type: " << contentType;
+    }
+    
+    // Check if it's JSON (application/json)
+    if (contentType.find("application/json") != std::string::npos) {
+        if (isApiLoggingEnabled()) {
+            PLOG_DEBUG << "[RecognitionHandler] Extracting image from JSON (base64)";
+        }
+        // Try to extract from JSON (base64)
+        if (extractImageFromJson(req, imageData, error)) {
+            if (isApiLoggingEnabled()) {
+                PLOG_DEBUG << "[RecognitionHandler] Successfully extracted image from JSON, size: " << imageData.size() << " bytes";
+            }
+            return true;
+        }
+        return false;
+    }
+    
+    // Check if it's multipart/form-data
+    if (contentType.find("multipart/form-data") != std::string::npos) {
+        if (isApiLoggingEnabled()) {
+            PLOG_DEBUG << "[RecognitionHandler] Extracting image from multipart/form-data";
+        }
+        // Try to extract from multipart (binary or base64)
+        if (extractImageData(req, imageData, error)) {
+            if (isApiLoggingEnabled()) {
+                PLOG_DEBUG << "[RecognitionHandler] Successfully extracted image from multipart, size: " << imageData.size() << " bytes";
+            }
+            return true;
+        }
+        return false;
+    }
+    
+    // Try JSON first (some clients don't set Content-Type correctly)
+    if (isApiLoggingEnabled()) {
+        PLOG_DEBUG << "[RecognitionHandler] Content-Type not recognized, trying JSON first";
+    }
+    if (extractImageFromJson(req, imageData, error)) {
+        if (isApiLoggingEnabled()) {
+            PLOG_DEBUG << "[RecognitionHandler] Successfully extracted image from JSON (fallback), size: " << imageData.size() << " bytes";
+        }
+        return true;
+    }
+    
+    // Try multipart
+    if (isApiLoggingEnabled()) {
+        PLOG_DEBUG << "[RecognitionHandler] Trying multipart/form-data (fallback)";
+    }
+    if (extractImageData(req, imageData, error)) {
+        if (isApiLoggingEnabled()) {
+            PLOG_DEBUG << "[RecognitionHandler] Successfully extracted image from multipart (fallback), size: " << imageData.size() << " bytes";
+        }
+        return true;
+    }
+    
+    error = "Unsupported Content-Type. Expected application/json (with base64) or multipart/form-data (with image file). Received: " + contentType;
+    return false;
 }
 
 bool RecognitionHandler::registerSubject(const std::string& subjectName,
@@ -509,6 +1060,13 @@ bool RecognitionHandler::registerSubject(const std::string& subjectName,
           
         imageId = generateImageId();
 
+        // Register face using FaceDatabase
+        FaceDatabase& db = get_database();
+        std::string dbError;
+        if (!db.register_face_from_image(imageData, subjectName, detProbThreshold, dbError)) {
+            error = "Failed to register face: " + dbError;
+            return false;
+        }
         
         return true;
         
@@ -553,10 +1111,10 @@ void RecognitionHandler::registerFaceSubject(const HttpRequestPtr &req,
                       << ", det_prob_threshold: " << detProbThreshold;
         }
         
-        // Extract image data from JSON body
+        // Extract image data from request (supports both JSON base64 and multipart/form-data)
         std::vector<unsigned char> imageData;
         std::string imageError;
-        if (!extractImageFromJson(req, imageData, imageError)) {
+        if (!extractImageFromRequest(req, imageData, imageError)) {
             if (isApiLoggingEnabled()) {
                 PLOG_WARNING << "[API] POST /v1/recognition/faces - " << imageError;
             }
@@ -630,23 +1188,36 @@ void RecognitionHandler::handleOptionsFaces(const HttpRequestPtr &req,
 Json::Value RecognitionHandler::getFaceSubjects(int page, int size, const std::string& subjectFilter) const {
     Json::Value result;
     
-    // TODO: Implement actual face subjects retrieval from storage
-    // For now, return mock data matching the expected format
-    // In production, this should:
-    // 1. Query face subjects from database/storage
-    // 2. Filter by subject if provided
-    // 3. Apply pagination
-    // 4. Return paginated results
+    FaceDatabase& db = get_database();
+    auto all_faces = db.get_all_faces();
     
-    Json::Value faces(Json::arrayValue);
-    
-    // Mock data - replace with actual database query
-    // Example: Query from storage where subject matches subjectFilter (if provided)
-    // For now, return empty array or mock data
+    // Filter by subject if provided
+    std::vector<std::pair<std::string, std::vector<float>>> filtered_faces;
+    if (subjectFilter.empty()) {
+        filtered_faces = all_faces;
+    } else {
+        for (const auto& [name, embedding] : all_faces) {
+            if (name == subjectFilter) {
+                filtered_faces.push_back({name, embedding});
+            }
+        }
+    }
     
     // Calculate pagination
-    int totalElements = 0; // TODO: Get actual count from storage
+    int totalElements = static_cast<int>(filtered_faces.size());
     int totalPages = (totalElements + size - 1) / size; // Ceiling division
+    
+    // Apply pagination
+    int start_idx = page * size;
+    int end_idx = std::min(start_idx + size, totalElements);
+    
+    Json::Value faces(Json::arrayValue);
+    for (int i = start_idx; i < end_idx; i++) {
+        Json::Value face;
+        face["subject"] = filtered_faces[i].first;
+        // Note: embedding is not included in response for security/performance
+        faces.append(face);
+    }
     
     result["faces"] = faces;
     result["page_number"] = page;
