@@ -4,6 +4,7 @@
 #include <iostream>
 #include <sstream>
 #include <algorithm>
+#include <filesystem>
 
 SystemConfig& SystemConfig::getInstance() {
     static SystemConfig instance;
@@ -291,13 +292,34 @@ bool SystemConfig::validateConfig(const Json::Value& json) const {
 int SystemConfig::getMaxRunningInstances() const {
     std::lock_guard<std::mutex> lock(mutex_);
     
+    int maxInstances = 0; // Default: unlimited
+    bool hasConfigJson = false;
+    
+    // Priority 1: Load from config.json (highest priority)
     if (config_json_.isMember("system") && 
         config_json_["system"].isMember("max_running_instances") &&
         config_json_["system"]["max_running_instances"].isInt()) {
-        return config_json_["system"]["max_running_instances"].asInt();
+        maxInstances = config_json_["system"]["max_running_instances"].asInt();
+        hasConfigJson = true;
     }
     
-    return 0; // Default: unlimited
+    // Priority 2: Fallback to environment variables (only if config.json doesn't have value)
+    // Check MAX_RUNNING_INSTANCES (fallback for max_running_instances)
+    if (!hasConfigJson) {
+        const char* max_instances = std::getenv("MAX_RUNNING_INSTANCES");
+        if (max_instances && strlen(max_instances) > 0) {
+            try {
+                int env_value = std::stoi(max_instances);
+                if (env_value >= 0) {
+                    maxInstances = env_value;
+                }
+            } catch (...) {
+                // Invalid value, keep default
+            }
+        }
+    }
+    
+    return maxInstances;
 }
 
 void SystemConfig::setMaxRunningInstances(int maxInstances) {
@@ -366,9 +388,12 @@ SystemConfig::WebServerConfig SystemConfig::getWebServerConfig() const {
     std::lock_guard<std::mutex> lock(mutex_);
     WebServerConfig config;
     
+    // Priority 1: Load from config.json (highest priority)
+    bool hasConfigJson = false;
     if (config_json_.isMember("system") && 
         config_json_["system"].isMember("web_server")) {
         const auto& ws = config_json_["system"]["web_server"];
+        hasConfigJson = true;
         
         if (ws.isMember("enabled") && ws["enabled"].isBool()) {
             config.enabled = ws["enabled"].asBool();
@@ -385,6 +410,30 @@ SystemConfig::WebServerConfig SystemConfig::getWebServerConfig() const {
         if (ws.isMember("cors") && ws["cors"].isMember("enabled") && 
             ws["cors"]["enabled"].isBool()) {
             config.corsEnabled = ws["cors"]["enabled"].asBool();
+        }
+    }
+    
+    // Priority 2: Fallback to environment variables (only if config.json doesn't have value)
+    // Check API_HOST (fallback for ip_address)
+    if (!hasConfigJson || config.ipAddress.empty()) {
+        const char* api_host = std::getenv("API_HOST");
+        if (api_host && strlen(api_host) > 0) {
+            config.ipAddress = std::string(api_host);
+        }
+    }
+    
+    // Check API_PORT (fallback for port)
+    if (!hasConfigJson || config.port == 0) {
+        const char* api_port = std::getenv("API_PORT");
+        if (api_port && strlen(api_port) > 0) {
+            try {
+                int port_int = std::stoi(api_port);
+                if (port_int >= 1 && port_int <= 65535) {
+                    config.port = static_cast<uint16_t>(port_int);
+                }
+            } catch (...) {
+                // Invalid port, keep existing value
+            }
         }
     }
     
@@ -415,21 +464,45 @@ SystemConfig::LoggingConfig SystemConfig::getLoggingConfig() const {
     std::lock_guard<std::mutex> lock(mutex_);
     LoggingConfig config;
     
+    // Priority 1: Load from config.json (highest priority)
+    bool hasConfigJson = false;
+    bool hasLogLevel = false;
     if (config_json_.isMember("system") && 
         config_json_["system"].isMember("logging")) {
         const auto& log = config_json_["system"]["logging"];
+        hasConfigJson = true;
         
         if (log.isMember("log_file") && log["log_file"].isString()) {
             config.logFile = log["log_file"].asString();
         }
         if (log.isMember("log_level") && log["log_level"].isString()) {
             config.logLevel = log["log_level"].asString();
+            hasLogLevel = true;
         }
         if (log.isMember("max_log_file_size") && log["max_log_file_size"].isInt()) {
             config.maxLogFileSize = static_cast<size_t>(log["max_log_file_size"].asInt());
         }
         if (log.isMember("max_log_files") && log["max_log_files"].isInt()) {
             config.maxLogFiles = log["max_log_files"].asInt();
+        }
+    }
+    
+    // Priority 2: Fallback to environment variables (only if config.json doesn't have value)
+    // Check LOG_LEVEL (fallback for log_level)
+    if (!hasLogLevel) {
+        const char* log_level = std::getenv("LOG_LEVEL");
+        if (log_level && strlen(log_level) > 0) {
+            config.logLevel = std::string(log_level);
+        }
+    }
+    
+    // Check LOG_DIR (override log_file directory if LOG_DIR is set and log_file is relative)
+    const char* log_dir = std::getenv("LOG_DIR");
+    if (log_dir && strlen(log_dir) > 0) {
+        // If log_file is relative, prepend LOG_DIR; if absolute, keep as is
+        if (!std::filesystem::path(config.logFile).is_absolute()) {
+            config.logFile = std::string(log_dir) + "/" + 
+                           std::filesystem::path(config.logFile).filename().string();
         }
     }
     

@@ -1423,18 +1423,10 @@ int main(int argc, char* argv[])
         auto& systemConfig = SystemConfig::getInstance();
         systemConfig.loadConfig(configPath);
         
-        // Set server configuration from config.json (with env var override)
+        // Get server configuration (config.json with env var override handled by SystemConfig)
         auto webServerConfig = systemConfig.getWebServerConfig();
-        std::string host = EnvConfig::getString("API_HOST", webServerConfig.ipAddress);
-        uint16_t port = static_cast<uint16_t>(EnvConfig::getInt("API_PORT", webServerConfig.port, 1, 65535));
-        
-        // Use config values if env vars not set
-        if (host == webServerConfig.ipAddress && std::getenv("API_HOST") == nullptr) {
-            host = webServerConfig.ipAddress;
-        }
-        if (std::getenv("API_PORT") == nullptr) {
-            port = webServerConfig.port;
-        }
+        std::string host = webServerConfig.ipAddress;
+        uint16_t port = webServerConfig.port;
 
         PLOG_INFO << "Server will listen on: " << host << ":" << port;
         PLOG_INFO << "Available endpoints:";
