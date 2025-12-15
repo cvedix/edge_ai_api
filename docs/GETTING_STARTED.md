@@ -187,7 +187,7 @@ curl http://localhost:8080/v1/core/health
   "timestamp": "2024-01-01T00:00:00.000Z",
   "uptime": 3600,
   "service": "edge_ai_api",
-  "version": "1.0.0",
+  "version": "2025.0.1.1",
   "checks": {
     "uptime": true,
     "service": true
@@ -213,7 +213,7 @@ curl http://localhost:8080/v1/core/version
 **Response (200 OK):**
 ```json
 {
-  "version": "1.0.0",
+  "version": "2025.0.1.1",
   "build_time": "2024-01-01 00:00:00",
   "git_commit": "abc1234",
   "service": "edge_ai_api",
@@ -346,6 +346,12 @@ curl -X GET http://localhost:8080/v1/core/endpoints
 
 # OpenAPI spec
 curl -X GET http://localhost:8080/openapi.yaml
+
+# Logs API
+curl -X GET http://localhost:8080/v1/core/logs
+curl -X GET http://localhost:8080/v1/core/logs/api
+curl -X GET http://localhost:8080/v1/core/logs/api/2025-01-15
+curl -X GET "http://localhost:8080/v1/core/logs/api?level=ERROR&tail=100"
 ```
 
 ### Sử dụng httpie (nếu có)
@@ -404,7 +410,9 @@ Server hỗ trợ các tính năng logging chi tiết:
 
 ### Xem Logs
 
-**Log files:**
+Có 2 cách để xem logs:
+
+**1. Sử dụng Command Line:**
 ```bash
 # Xem log real-time
 tail -f ./logs/log.txt
@@ -419,6 +427,29 @@ tail -f ./logs/log.txt | grep "\[SDKOutput\]"
 ```bash
 tail -f server.log
 ```
+
+**2. Sử dụng REST API (khuyến nghị):**
+
+Edge AI API Server cung cấp các endpoints để truy cập logs qua REST API:
+
+```bash
+# List tất cả log files theo category
+curl -X GET http://localhost:8080/v1/core/logs
+
+# Get logs từ category api
+curl -X GET http://localhost:8080/v1/core/logs/api
+
+# Get logs từ category instance cho một ngày cụ thể
+curl -X GET http://localhost:8080/v1/core/logs/instance/2025-01-15
+
+# Filter theo log level (chỉ ERROR logs)
+curl -X GET "http://localhost:8080/v1/core/logs/api?level=ERROR"
+
+# Get 100 dòng cuối cùng (tail)
+curl -X GET "http://localhost:8080/v1/core/logs/api?tail=100"
+```
+
+**Xem chi tiết:** [LOGS_API.md](LOGS_API.md) - Tài liệu đầy đủ về Logs API endpoints
 
 ### Kiểm Tra Server Đang Chạy
 

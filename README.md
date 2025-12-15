@@ -71,22 +71,37 @@ hoặc script tự động triển khai.
 
 ## 🚀 Triển Khai Lên Thiết Bị Thật (Production)
 
-### Tự Động Chạy Khi Khởi Động Thiết Bị
+### Setup Tự Động (Khuyến Nghị)
 
-Để cấu hình project tự động chạy khi mở thiết bị, sử dụng script triển khai:
+Để setup project từ đầu đến cuối, sử dụng script `setup.sh`:
+
+```bash
+# Development setup (không cần sudo)
+./setup.sh
+
+# Production setup (cần sudo)
+sudo ./setup.sh --production
+```
+
+Script này sẽ tự động:
+- ✅ Kiểm tra prerequisites và cài đặt dependencies
+- ✅ Build project với CMake
+- ✅ Tạo user và thư mục cần thiết (production mode)
+- ✅ Cài đặt executable vào hệ thống (production mode)
+- ✅ Cài đặt systemd service (production mode)
+- ✅ Kích hoạt tự động chạy khi khởi động (production mode)
+- ✅ Khởi động service ngay lập tức (production mode)
+
+**Xem chi tiết:** [docs/DEVELOPMENT_SETUP.md](docs/DEVELOPMENT_SETUP.md) - Hướng dẫn setup đầy đủ
+
+### Tự Động Chạy Khi Khởi Động Thiết Bị (Cách Cũ)
+
+Nếu muốn sử dụng script triển khai cũ:
 
 ```bash
 cd /home/ubuntu/project/edge_ai_api
-sudo ./scripts/deploy_production.sh
+sudo ./deploy/build.sh
 ```
-
-Script này sẽ:
-- ✅ Build project (nếu chưa build)
-- ✅ Tạo user và thư mục cần thiết
-- ✅ Cài đặt executable vào hệ thống
-- ✅ Cài đặt systemd service
-- ✅ Kích hoạt tự động chạy khi khởi động
-- ✅ Khởi động service ngay lập tức
 
 ### Kiểm Tra Service
 
@@ -177,6 +192,40 @@ Server cung cấp Swagger UI để test và explore API:
 
 📚 **Xem chi tiết:** [docs/GETTING_STARTED.md](docs/GETTING_STARTED.md) - Hướng dẫn sử dụng Swagger UI
 
+## 🔧 Troubleshooting
+
+### Lỗi CMake khi Build
+
+Nếu gặp lỗi CMake liên quan đến CVEDIX SDK libraries (ví dụ: `libtinyexpr.so` hoặc `libcvedix_instance_sdk.so` không tìm thấy), đây thường là do SDK được cài ở `/opt/cvedix` thay vì `/usr`.
+
+**Giải pháp nhanh:**
+
+Chạy script tự động fix tất cả symlinks (khuyến nghị):
+```bash
+sudo ./scripts/fix_all_symlinks.sh
+```
+
+Hoặc fix riêng từng phần nếu cần:
+```bash
+sudo ./scripts/fix_cvedix_symlinks.sh  # Fix libraries only
+sudo ./scripts/fix_cereal_symlink.sh   # Fix cereal only
+sudo ./scripts/fix_cpp_base64_symlink.sh  # Fix base64 only
+```
+
+Hoặc fix thủ công:
+```bash
+sudo ln -sf /opt/cvedix/lib/libtinyexpr.so /usr/lib/libtinyexpr.so
+sudo ln -sf /opt/cvedix/lib/libcvedix_instance_sdk.so /usr/lib/libcvedix_instance_sdk.so
+```
+
+**Xem chi tiết:** [CMAKE_FIXES_APPLIED.md](docs/CMAKE_FIXES_APPLIED.md) hoặc [CMAKE_ISSUES_ANALYSIS.md](docs/CMAKE_ISSUES_ANALYSIS.md)
+
+### Lỗi Compilation: cvedix_yolov11_detector_node.h
+
+Nếu gặp lỗi `cvedix_yolov11_detector_node.h: No such file or directory`, đây đã được fix trong code. Node type `yolov11_detector` không khả dụng trong SDK. Sử dụng `rknn_yolov11_detector` (với RKNN) hoặc `yolo_detector` thay thế.
+
+**Xem chi tiết:** [CMAKE_FIXES_APPLIED.md](docs/CMAKE_FIXES_APPLIED.md) hoặc [CMAKE_ISSUES_ANALYSIS.md](docs/CMAKE_ISSUES_ANALYSIS.md)
+
 ## 📚 Tài Liệu
 
 ### Hướng Dẫn Cơ Bản
@@ -189,7 +238,13 @@ Server cung cấp Swagger UI để test và explore API:
 - [Create Instance Guide](docs/CREATE_INSTANCE_GUIDE.md) - Tạo và quản lý instances
 - [Update Instance Guide](docs/UPDATE_INSTANCE_GUIDE.md) - Cập nhật cấu hình instances
 - [Logging Guide](docs/LOGGING.md) - Hướng dẫn logging
+- [Frame API Guide](docs/FRAME_API.md) - Lấy khung hình cuối cùng từ instance
 
 ### Deployment
 - [Deploy README](deploy/README.md) - Hướng dẫn triển khai production
+
+### Troubleshooting
+- [CMake Fixes Applied](docs/CMAKE_FIXES_APPLIED.md) - Các lỗi CMake đã được fix
+- [CMake Issues Analysis](docs/CMAKE_ISSUES_ANALYSIS.md) - Phân tích chi tiết các vấn đề CMake
+- [Troubleshooting Guide](docs/TROUBLESHOOTING.md) - Hướng dẫn khắc phục sự cố
 

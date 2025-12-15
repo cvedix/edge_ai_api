@@ -79,8 +79,8 @@ private:
     std::string getGroupFilePath(const std::string& groupId) const;
     
     /**
-     * @brief Ensure storage directory exists
+     * @brief Ensure storage directory exists (with fallback if needed)
      */
-    void ensureStorageDir() const;
+    void ensureStorageDir();
 };
 

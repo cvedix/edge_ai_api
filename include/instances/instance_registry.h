@@ -1,6 +1,7 @@
 #pragma once
 
 #include "instances/instance_info.h"
+#include "instances/instance_statistics.h"
 #include "models/create_instance_request.h"
 #include "solutions/solution_registry.h"
 #include "core/pipeline_builder.h"
@@ -14,6 +15,9 @@
 #include <memory>
 #include <atomic>
 #include <thread>
+#include <chrono>
+#include <opencv2/opencv.hpp>
+#include <opencv2/imgcodecs.hpp>
 
 // Forward declarations
 namespace cvedix_nodes {
@@ -156,6 +160,21 @@ public:
      */
     Json::Value getInstanceConfig(const std::string& instanceId) const;
     
+    /**
+     * @brief Get instance statistics
+     * @param instanceId Instance ID
+     * @return Statistics info if instance exists and is running, empty optional otherwise
+     * @note This method may update tracker with latest FPS/resolution information
+     */
+    std::optional<InstanceStatistics> getInstanceStatistics(const std::string& instanceId);
+    
+    /**
+     * @brief Get last frame from instance (cached frame)
+     * @param instanceId Instance ID
+     * @return Base64-encoded JPEG frame string, empty string if no frame available
+     */
+    std::string getLastFrame(const std::string& instanceId) const;
+    
 private:
     SolutionRegistry& solution_registry_;
     PipelineBuilder& pipeline_builder_;
@@ -168,7 +187,98 @@ private:
     // Thread management for logging threads (prevent memory leaks from detached threads)
     std::unordered_map<std::string, std::atomic<bool>> logging_thread_stop_flags_;
     std::unordered_map<std::string, std::thread> logging_threads_;
+    // Thread management for video loop monitoring threads
+    std::unordered_map<std::string, std::atomic<bool>> video_loop_thread_stop_flags_;
+    std::unordered_map<std::string, std::thread> video_loop_threads_;
     mutable std::mutex thread_mutex_; // Separate mutex for thread management to avoid deadlock
+    
+    // Thread management for MQTT JSON reader threads (prevent memory leaks and segmentation faults)
+    // Use shared_ptr to atomic<bool> to avoid capturing 'this' in thread lambda
+    std::unordered_map<std::string, std::shared_ptr<std::atomic<bool>>> mqtt_thread_stop_flags_;
+    std::unordered_map<std::string, std::thread> mqtt_threads_;
+    std::unordered_map<std::string, int> mqtt_pipe_write_fds_; // Track pipe write FDs to close them on stop
+    std::unordered_map<std::string, int> mqtt_stdout_backups_; // Track stdout backups to restore on stop
+    mutable std::mutex mqtt_thread_mutex_; // Separate mutex for MQTT thread management
+    
+    // Thread management for RTSP connection monitoring and auto-reconnect
+    std::unordered_map<std::string, std::shared_ptr<std::atomic<bool>>> rtsp_monitor_stop_flags_;
+    std::unordered_map<std::string, std::thread> rtsp_monitor_threads_;
+    mutable std::unordered_map<std::string, std::chrono::steady_clock::time_point> rtsp_last_activity_; // Track last frame received time (mutable for const methods)
+    std::unordered_map<std::string, std::atomic<int>> rtsp_reconnect_attempts_; // Track reconnect attempts
+    mutable std::mutex rtsp_monitor_mutex_; // Separate mutex for RTSP monitor thread management
+    
+    // CRITICAL: Read-write lock to allow concurrent start operations but serialize cleanup operations
+    // This allows multiple instances to start simultaneously while preventing conflicts during cleanup
+    // - Multiple start() operations can run concurrently (shared_lock)
+    // - Cleanup operations (stop/detach) need exclusive lock to prevent conflicts
+    mutable std::shared_mutex gstreamer_ops_mutex_;
+    
+    // Statistics tracking per instance
+    // PHASE 2 OPTIMIZATION: Use atomic for frequently updated counters to avoid locks in hot path
+    struct InstanceStatsTracker {
+        std::chrono::steady_clock::time_point start_time;  // For elapsed time calculation
+        std::chrono::system_clock::time_point start_time_system;  // For Unix timestamp
+        
+        // PHASE 2: Atomic counters - no lock needed for increments
+        std::atomic<uint64_t> frames_processed{0};
+        std::atomic<uint64_t> dropped_frames{0};
+        std::atomic<uint64_t> frame_count_since_last_update{0};
+        
+        // Protected by mutex (updated less frequently)
+        double last_fps = 0.0;
+        std::chrono::steady_clock::time_point last_fps_update;
+        std::string resolution;  // Current processing resolution
+        std::string source_resolution;  // Source resolution
+        std::string format;  // Frame format
+        size_t max_queue_size_seen = 0;  // Maximum queue size observed
+        size_t current_queue_size = 0;   // Current queue size (from last hook callback)
+        uint64_t expected_frames_from_source = 0;  // Expected frames based on source FPS
+    };
+    
+    mutable std::unordered_map<std::string, InstanceStatsTracker> statistics_trackers_;
+    
+    // Frame cache per instance
+    // OPTIMIZATION: Use shared_ptr to avoid deep copy (~6MB per frame)
+    // This eliminates ~180MB/s memory bandwidth usage at 30 FPS
+    using FramePtr = std::shared_ptr<cv::Mat>;
+    
+    struct FrameCache {
+        FramePtr frame;  // Shared pointer to frame (no copy)
+        std::chrono::steady_clock::time_point timestamp;
+        bool has_frame = false;
+    };
+    
+    mutable std::unordered_map<std::string, FrameCache> frame_caches_;
+    mutable std::mutex frame_cache_mutex_; // Separate mutex for frame cache to avoid deadlock
+    
+    /**
+     * @brief Update frame cache for an instance
+     * @param instanceId Instance ID
+     * @param frame Frame to cache (will use shared ownership, no copy)
+     */
+    void updateFrameCache(const std::string& instanceId, const cv::Mat& frame);
+    
+    /**
+     * @brief Setup frame capture hook for pipeline
+     * @param instanceId Instance ID
+     * @param nodes Pipeline nodes
+     */
+    void setupFrameCaptureHook(const std::string& instanceId, const std::vector<std::shared_ptr<cvedix_nodes::cvedix_node>>& nodes);
+    
+    /**
+     * @brief Setup queue size tracking hook for pipeline nodes
+     * @param instanceId Instance ID
+     * @param nodes Pipeline nodes
+     */
+    void setupQueueSizeTrackingHook(const std::string& instanceId, const std::vector<std::shared_ptr<cvedix_nodes::cvedix_node>>& nodes);
+    
+    /**
+     * @brief Encode cv::Mat frame to JPEG base64 string
+     * @param frame Frame to encode
+     * @param jpegQuality JPEG quality (1-100, default 85)
+     * @return Base64-encoded JPEG string
+     */
+    std::string encodeFrameToBase64(const cv::Mat& frame, int jpegQuality = 85) const;
     
     /**
      * @brief Create InstanceInfo from request
@@ -189,9 +299,10 @@ private:
     /**
      * @brief Start pipeline nodes
      * @param nodes Pipeline nodes to start
+     * @param instanceId Instance ID for accessing instance parameters
      * @param isRestart If true, this is a restart (use longer delays for model initialization)
      */
-    bool startPipeline(const std::vector<std::shared_ptr<cvedix_nodes::cvedix_node>>& nodes, bool isRestart = false);
+    bool startPipeline(const std::vector<std::shared_ptr<cvedix_nodes::cvedix_node>>& nodes, const std::string& instanceId, bool isRestart = false);
     
     /**
      * @brief Stop and cleanup pipeline nodes
@@ -220,9 +331,54 @@ private:
     void stopLoggingThread(const std::string& instanceId);
     
     /**
+     * @brief Stop and cleanup MQTT thread for an instance
+     * @param instanceId Instance ID
+     */
+    void stopMqttThread(const std::string& instanceId);
+    
+    /**
      * @brief Start logging thread for an instance (if needed)
      * @param instanceId Instance ID
      */
     void startLoggingThread(const std::string& instanceId);
+    
+    /**
+     * @brief Start video loop monitoring thread for file-based instances
+     * @param instanceId Instance ID
+     */
+    void startVideoLoopThread(const std::string& instanceId);
+    
+    /**
+     * @brief Stop video loop monitoring thread for an instance
+     * @param instanceId Instance ID
+     */
+    void stopVideoLoopThread(const std::string& instanceId);
+    
+    /**
+     * @brief Start RTSP connection monitoring thread for an instance
+     * Monitors RTSP connection status and auto-reconnects if stream is lost
+     * @param instanceId Instance ID
+     */
+    void startRTSPMonitorThread(const std::string& instanceId);
+    
+    /**
+     * @brief Stop RTSP connection monitoring thread for an instance
+     * @param instanceId Instance ID
+     */
+    void stopRTSPMonitorThread(const std::string& instanceId);
+    
+    /**
+     * @brief Update RTSP last activity time (called when frame is received)
+     * @param instanceId Instance ID
+     */
+    void updateRTSPActivity(const std::string& instanceId);
+    
+    /**
+     * @brief Attempt to reconnect RTSP stream for an instance
+     * @param instanceId Instance ID
+     * @param stopFlag Optional stop flag to check for early abort (nullptr if not needed)
+     * @return true if reconnection was successful
+     */
+    bool reconnectRTSPStream(const std::string& instanceId, std::shared_ptr<std::atomic<bool>> stopFlag = nullptr);
 };
 

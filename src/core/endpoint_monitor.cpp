@@ -78,10 +78,14 @@ bool EndpointMonitor::isEndpointHealthy(const std::string& endpoint,
         return true; // No data yet, assume healthy
     }
 
-    uint64_t avg_response_time = stats->total_response_time_ms.load() / 
-                                 stats->request_count.load();
-    double error_rate = static_cast<double>(stats->error_count.load()) / 
-                       stats->request_count.load();
+    // ✅ Safe division: request_count is already checked to be > 0 above
+    uint64_t request_count = stats->request_count.load();
+    if (request_count == 0) {
+        return true; // Double-check to prevent division by zero
+    }
+    
+    uint64_t avg_response_time = stats->total_response_time_ms.load() / request_count;
+    double error_rate = static_cast<double>(stats->error_count.load()) / static_cast<double>(request_count);
 
     return (avg_response_time <= max_avg_response_time_ms) && 
            (error_rate <= max_error_rate);

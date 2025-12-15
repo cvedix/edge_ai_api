@@ -309,7 +309,7 @@ void SolutionRegistry::registerFaceDetectionRTMPSolution() {
     SolutionConfig::NodeConfig rtmpDes;
     rtmpDes.nodeType = "rtmp_des";
     rtmpDes.nodeName = "rtmp_des_{instanceId}";
-    rtmpDes.parameters["rtmp_url"] = "${RTMP_URL}";
+    rtmpDes.parameters["rtmp_url"] = "${RTMP_DES_URL}";  // Support RTMP_DES_URL (new) and RTMP_URL (backward compatibility via pipeline builder)
     rtmpDes.parameters["channel"] = "0";
     config.pipeline.push_back(rtmpDes);
     
@@ -381,7 +381,7 @@ void SolutionRegistry::registerBACrosslineSolution() {
     SolutionConfig::NodeConfig rtmpDes;
     rtmpDes.nodeType = "rtmp_des";
     rtmpDes.nodeName = "rtmp_des_{instanceId}";
-    rtmpDes.parameters["rtmp_url"] = "${RTMP_URL}";
+    rtmpDes.parameters["rtmp_url"] = "${RTMP_DES_URL}";  // Support RTMP_DES_URL (new) and RTMP_URL (backward compatibility via pipeline builder)
     rtmpDes.parameters["channel"] = "0";
     config.pipeline.push_back(rtmpDes);
     
@@ -482,11 +482,12 @@ void SolutionRegistry::registerFaceSwapSolution() {
     SolutionConfig::NodeConfig rtmpDes;
     rtmpDes.nodeType = "rtmp_des";
     rtmpDes.nodeName = "destination_{instanceId}";
-    rtmpDes.parameters["rtmp_url"] = "${RTMP_URL}";
+    rtmpDes.parameters["rtmp_url"] = "${RTMP_DES_URL}";  // Support RTMP_DES_URL (new) and RTMP_URL (backward compatibility via pipeline builder)
     rtmpDes.parameters["channel"] = "0";
     config.pipeline.push_back(rtmpDes);
     
-    // Default configurations
+    // Default configurations (development defaults - should be overridden in production)
+    // SECURITY: These are development defaults using localhost. In production, always provide actual URLs via request or environment variables.
     config.defaults["RTSP_URL"] = "rtsp://localhost:8554/stream";
     config.defaults["FACE_DETECTION_MODEL_PATH"] = "/opt/cvedix/models/face/yunet.onnx";
     config.defaults["BUFFALO_L_FACE_ENCODING_MODEL"] = "/opt/cvedix/models/face/buffalo_l.onnx";

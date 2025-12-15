@@ -205,13 +205,13 @@ TEST_F(InstanceUpdateTest, MergeConfigs_UpdateDetectorPartial) {
 TEST_F(InstanceUpdateTest, MergeConfigs_UpdateInputUri) {
     Json::Value existing = createValidConfigJson();
     Json::Value update(Json::objectValue);
-    update["Input"]["uri"] = "gstreamer:///urisourcebin uri=rtsp://new-camera:8554/stream ! decodebin ! videoconvert ! video/x-raw, format=NV12 ! appsink drop=true name=cvdsink";
+    update["Input"]["uri"] = "gstreamer:///urisourcebin uri=rtsp://localhost:8554/stream ! decodebin ! videoconvert ! video/x-raw, format=NV12 ! appsink drop=true name=cvdsink";
     
     std::vector<std::string> preserveKeys;
     bool merged = storage_->mergeConfigs(existing, update, preserveKeys);
     
     EXPECT_TRUE(merged);
-    EXPECT_NE(existing["Input"]["uri"].asString().find("rtsp://new-camera:8554/stream"), std::string::npos);
+    EXPECT_NE(existing["Input"]["uri"].asString().find("rtsp://localhost:8554/stream"), std::string::npos);
     // media_type should remain unchanged
     EXPECT_EQ(existing["Input"]["media_type"].asString(), "IP Camera");
 }

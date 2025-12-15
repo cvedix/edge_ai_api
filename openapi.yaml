@@ -1391,7 +1391,13 @@ paths:
         Registers a face subject by storing the image. You can add as many images as you want to train the system. 
         Images should contain only a single face.
         
-        This endpoint accepts a base64-encoded image in JSON format and associates it with a subject name.
+        This endpoint accepts image data in two formats:
+        1. **Multipart/form-data**: Upload file directly (recommended for file uploads)
+        2. **Application/json**: Send base64-encoded image string
+        
+        Supported image formats: JPEG, JPG, PNG, BMP, GIF, ICO, TIFF, WebP
+        Maximum file size: 5MB
+        
         The system will detect the face in the image and store the face features for recognition.
       operationId: registerFaceSubject
       tags:
@@ -1415,7 +1421,24 @@ paths:
           example: 0.5
       requestBody:
         required: true
+        description: |
+          Image data can be sent in two formats:
+          1. Multipart/form-data: Upload file directly (recommended for file uploads)
+          2. Application/json: Send base64-encoded image string
+          
+          Supported image formats: JPEG, JPG, PNG, BMP, GIF, ICO, TIFF, WebP
+          Maximum file size: 5MB
         content:
+          multipart/form-data:
+            schema:
+              type: object
+              required:
+                - file
+              properties:
+                file:
+                  type: string
+                  format: binary
+                  description: "Image file to upload. Supported formats: JPEG, JPG, PNG, BMP, GIF, ICO, TIFF, WebP. Max size: 5MB"
           application/json:
             schema:
               type: object
@@ -1424,7 +1447,7 @@ paths:
               properties:
                 file:
                   type: string
-                  description: Base64-encoded image data
+                  description: "Base64-encoded image data. Supported formats: JPEG, JPG, PNG, BMP, GIF, ICO, TIFF, WebP. Max size: 5MB"
                   example: "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg=="
             example:
               file: "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg=="
@@ -1798,6 +1821,98 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
+    
+    delete:
+      summary: Delete all instances
+      description: |
+        Deletes all instances in the system. This operation permanently removes all instances and stops their pipelines if running.
+        
+        **Behavior:**
+        - All instances are deleted concurrently for optimal performance
+        - If instances are currently running, they will be stopped first
+        - All instance configurations will be removed from memory
+        - Persistent instance configuration files will be deleted from storage
+        - All resources associated with instances will be released
+        
+        **Response:**
+        - Returns a summary of the deletion operation
+        - Includes detailed results for each instance (success/failure status)
+        - Provides counts of total, deleted, and failed instances
+        
+        **Note:** This operation cannot be undone. Once deleted, instances must be recreated using the create instance endpoint.
+      operationId: deleteAllInstances
+      tags:
+        - Instances
+      responses:
+        '200':
+          description: Delete all instances operation completed
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    description: True if all instances were deleted successfully
+                  message:
+                    type: string
+                    description: Operation status message
+                  total:
+                    type: integer
+                    description: Total number of instances that were attempted to delete
+                  deleted:
+                    type: integer
+                    description: Number of instances successfully deleted
+                  failed:
+                    type: integer
+                    description: Number of instances that failed to delete
+                  results:
+                    type: array
+                    description: Detailed results for each instance
+                    items:
+                      type: object
+                      properties:
+                        instanceId:
+                          type: string
+                          description: Instance ID
+                        success:
+                          type: boolean
+                          description: Whether deletion was successful
+                        status:
+                          type: string
+                          description: Status of deletion (deleted or failed)
+                        error:
+                          type: string
+                          description: Error message if deletion failed
+              example:
+                success: true
+                message: "Delete all instances operation completed"
+                total: 3
+                deleted: 3
+                failed: 0
+                results:
+                  - instanceId: "550e8400-e29b-41d4-a716-446655440000"
+                    success: true
+                    status: "deleted"
+                  - instanceId: "550e8400-e29b-41d4-a716-446655440001"
+                    success: true
+                    status: "deleted"
+                  - instanceId: "550e8400-e29b-41d4-a716-446655440002"
+                    success: true
+                    status: "deleted"
+        '500':
+          description: Server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '503':
+          description: Service unavailable (registry busy)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+    
     options:
       summary: CORS preflight for list instances
       operationId: listInstancesOptions
@@ -2276,6 +2391,69 @@ paths:
     options:
       summary: CORS preflight for get instance output
       operationId: getInstanceOutputOptions
+      tags:
+        - Instances
+      responses:
+        '200':
+          description: CORS preflight response
+
+  /v1/core/instances/{instanceId}/frame:
+    get:
+      summary: Get last frame from instance
+      description: |
+        Returns the last processed frame from a running instance. The frame is encoded as JPEG and returned as a base64-encoded string.
+        
+        **Features:**
+        - Frame is captured from the pipeline after processing (includes OSD/detection overlays)
+        - Frame is automatically cached when pipeline processes new frames
+        - Frame cache is automatically cleaned up when instance stops or is deleted
+        
+        **Important Notes:**
+        - Frame capture only works if the pipeline has an `app_des_node`
+        - If pipeline doesn't have `app_des_node`, frame will be empty string
+        - Instance must be running to have a frame
+        - Frame is cached automatically each time pipeline processes a new frame
+      operationId: getLastFrame
+      tags:
+        - Instances
+      parameters:
+        - name: instanceId
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Instance ID (UUID)
+      responses:
+        '200':
+          description: Last frame retrieved successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LastFrameResponse'
+              example:
+                frame: "/9j/4AAQSkZJRgABAQEAYABgAAD/2wBDAAYEBQYFBAYGBQYHBwYIChAKCgkJChQODwwQFxQYGBcUFhYaHSUfGhsjHBYWICwgIyYnKSopGR8tMC0oMCUoKSj/2wBDAQcHBwoIChMKChMoGhYaKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCj/wAARCAABAAEDASIAAhEBAxEB/8QAFQABAQAAAAAAAAAAAAAAAAAAAAv/xAAUEAEAAAAAAAAAAAAAAAAAAAAA/8QAFQEBAQAAAAAAAAAAAAAAAAAAAAX/xAAUEQEAAAAAAAAAAAAAAAAAAAAA/9oADAMBAAIRAxEAPwCdABmX/9k="
+                running: true
+        '400':
+          description: Invalid request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: Instance not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+    options:
+      summary: CORS preflight for get last frame
+      operationId: getLastFrameOptions
       tags:
         - Instances
       responses:
@@ -3131,7 +3309,7 @@ paths:
               $ref: '#/components/schemas/SetInputRequest'
             example:
               type: "Manual"
-              uri: "http://example.com"
+              uri: "http://localhost"
       responses:
         '204':
           description: Input settings updated successfully
@@ -3263,7 +3441,7 @@ paths:
                 summary: Set object value
                 value:
                   path: "Output/handlers/Mqtt"
-                  jsonValue: "{\"uri\":\"mqtt://example.com:1883/events\"}"
+                  jsonValue: "{\"uri\":\"mqtt://localhost:1883/events\"}"
       responses:
         '204':
           description: Config value set successfully
@@ -3288,6 +3466,86 @@ paths:
     options:
       summary: CORS preflight for set config
       operationId: setConfigOptions
+      tags:
+        - Instances
+      responses:
+        '200':
+          description: CORS preflight response
+
+  /v1/core/instance/{instanceId}/statistics:
+    get:
+      summary: Get instance statistics
+      description: |
+        Returns real-time statistics for a specific instance. Statistics include frames processed, framerate, latency, resolution, and queue information.
+        
+        **Statistics Include:**
+        - Frames processed count
+        - Source framerate (FPS from source)
+        - Current framerate (processing FPS)
+        - Average latency (milliseconds)
+        - Input queue size
+        - Dropped frames count
+        - Resolution and format information
+        - Source resolution
+        
+        **Important Notes:**
+        - Statistics are calculated in real-time
+        - Statistics reset to 0 when instance is restarted
+        - Statistics are not persisted (only calculated when requested)
+        - Instance must be running to get statistics
+      operationId: getStatistics
+      tags:
+        - Instances
+      parameters:
+        - name: instanceId
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Instance ID (UUID)
+          example: "a5204fc9-9a59-f80f-fb9f-bf3b42214943"
+      responses:
+        '200':
+          description: Statistics retrieved successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/InstanceStatisticsResponse'
+              example:
+                frames_processed: 1250
+                source_framerate: 30.0
+                current_framerate: 25.5
+                latency: 200.0
+                start_time: 1764900520
+                input_queue_size: 2
+                dropped_frames_count: 5
+                resolution: "1280x720"
+                format: "BGR"
+                source_resolution: "1920x1080"
+        '404':
+          description: Instance not found or not running
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                error: "Not found"
+                message: "Instance not found or not running: a5204fc9-9a59-f80f-fb9f-bf3b42214943"
+        '400':
+          description: Invalid request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+    options:
+      summary: CORS preflight for get statistics
+      operationId: getStatisticsOptions
       tags:
         - Instances
       responses:
@@ -3506,7 +3764,7 @@ paths:
                 - nodeType: "rtsp_src"
                   nodeName: "source_{instanceId}"
                   parameters:
-                    url: "rtsp://example.com/stream"
+                    url: "rtsp://localhost/stream"
                 - nodeType: "yunet_face_detector"
                   nodeName: "detector_{instanceId}"
                   parameters:
@@ -3516,7 +3774,7 @@ paths:
                   parameters:
                     output_path: "/tmp/output"
               defaults:
-                RTSP_URL: "rtsp://example.com/stream"
+                RTSP_URL: "rtsp://localhost/stream"
       responses:
         '201':
           description: Solution created successfully
@@ -4410,7 +4668,7 @@ components:
           type: string
           format: uri
           description: URI of the input source (must be valid)
-          example: "http://example.com"
+          example: "http://localhost"
 
     InstanceConfig:
       type: object
@@ -4510,7 +4768,7 @@ components:
             A string containing a JSON value or object. Ensure proper escaping for strings or objects.
             - For string values: "\"my string\"" (escaped JSON string)
             - For object values: "{\"key\":\"value\"}" (escaped JSON object)
-          example: "{\"uri\":\"mqtt://example.com:1883/events\"}"
+          example: "{\"uri\":\"mqtt://localhost:1883/events\"}"
 
     ConfigureStreamOutputRequest:
       type: object
@@ -5237,7 +5495,7 @@ components:
             url:
               type: string
               description: RTSP URL (if type is RTSP)
-              example: "rtsp://example.com:8554/live/stream"
+              example: "rtsp://localhost:8554/live/stream"
         output:
           type: object
           description: Output information
@@ -5369,6 +5627,88 @@ components:
               description: Human-readable status message
               example: "Instance is running and processing frames"
 
+    LastFrameResponse:
+      type: object
+      description: Last frame from a running instance
+      required:
+        - frame
+        - running
+      properties:
+        frame:
+          type: string
+          description: |
+            Base64-encoded JPEG frame. Empty string if no frame is available.
+            Frame is captured from pipeline after processing (includes OSD/detection overlays).
+            Frame is automatically cached when pipeline processes new frames.
+          example: "/9j/4AAQSkZJRgABAQEAYABgAAD/2wBDAAYEBQYFBAYGBQYHBwYIChAKCgkJChQODwwQFxQYGBcUFhYaHSUfGhsjHBYWICwgIyYnKSopGR8tMC0oMCUoKSj/2wBDAQcHBwoIChMKChMoGhYaKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCj/wAARCAABAAEDASIAAhEBAxEB/8QAFQABAQAAAAAAAAAAAAAAAAAAAAv/xAAUEAEAAAAAAAAAAAAAAAAAAAAA/8QAFQEBAQAAAAAAAAAAAAAAAAAAAAX/xAAUEQEAAAAAAAAAAAAAAAAAAAAA/9oADAMBAAIRAxEAPwCdABmX/9k="
+        running:
+          type: boolean
+          description: Whether the instance is currently running
+          example: true
+
+    InstanceStatisticsResponse:
+      type: object
+      description: Real-time statistics for an instance
+      required:
+        - frames_processed
+        - source_framerate
+        - current_framerate
+        - latency
+        - start_time
+        - input_queue_size
+        - dropped_frames_count
+        - resolution
+        - format
+        - source_resolution
+      properties:
+        frames_processed:
+          type: integer
+          format: int64
+          description: Total number of frames processed since instance started
+          example: 1250
+        source_framerate:
+          type: number
+          format: double
+          description: Frame rate from source (FPS from RTSP stream or video file)
+          example: 30.0
+        current_framerate:
+          type: number
+          format: double
+          description: Current processing frame rate (FPS being processed)
+          example: 25.5
+        latency:
+          type: number
+          format: double
+          description: Average processing latency per frame (milliseconds)
+          example: 200.0
+        start_time:
+          type: integer
+          format: int64
+          description: Unix timestamp when instance started (seconds)
+          example: 1764900520
+        input_queue_size:
+          type: integer
+          format: int64
+          description: Current size of input queue
+          example: 2
+        dropped_frames_count:
+          type: integer
+          format: int64
+          description: Total number of dropped frames
+          example: 5
+        resolution:
+          type: string
+          description: Current processing resolution (format WIDTHxHEIGHT)
+          example: "1280x720"
+        format:
+          type: string
+          description: Frame format (typically BGR for CVEDIX SDK)
+          example: "BGR"
+        source_resolution:
+          type: string
+          description: Original resolution from source (format WIDTHxHEIGHT)
+          example: "1920x1080"
+
     SolutionSummary:
       type: object
       properties:
@@ -5461,14 +5801,14 @@ components:
                 additionalProperties:
                   type: string
                 example:
-                  url: "rtsp://example.com/stream"
+                  url: "rtsp://localhost/stream"
         defaults:
           type: object
           description: Default parameter values
           additionalProperties:
             type: string
           example:
-            RTSP_URL: "rtsp://example.com/stream"
+            RTSP_URL: "rtsp://localhost/stream"
 
     CreateSolutionRequest:
       type: object

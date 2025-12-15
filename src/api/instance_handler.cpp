@@ -4,6 +4,7 @@
 #include "instances/instance_info.h"
 #include "core/logging_flags.h"
 #include "core/logger.h"
+#include "core/env_config.h"
 #include <drogon/HttpResponse.h>
 #include <sstream>
 #include <thread>
@@ -494,65 +495,38 @@ void InstanceHandler::startInstance(
         }
         
         // Start instance
-        // Start instance asynchronously to avoid blocking API thread
-        // RTSP retry loops run in SDK threads and won't block this handler
-        // However, startInstance() itself may take time, so we run it async with timeout
-        auto future = std::async(std::launch::async, [this, instanceId]() -> bool {
+        // OPTIMIZED: Run startInstance() in detached thread to avoid blocking API thread and other instances
+        // This allows multiple instances to start concurrently without blocking each other
+        // The instance will start in background, and status can be checked via GET /v1/core/instances/{id}
+        std::thread startThread([this, instanceId]() {
             try {
-                return instance_registry_->startInstance(instanceId);
+                instance_registry_->startInstance(instanceId);
+            } catch (const std::exception& e) {
+                std::cerr << "[InstanceHandler] Exception starting instance " << instanceId << ": " << e.what() << std::endl;
             } catch (...) {
-                return false;
+                std::cerr << "[InstanceHandler] Unknown exception starting instance " << instanceId << std::endl;
             }
         });
+        startThread.detach(); // Detach thread - instance starts in background
         
-        // Wait with timeout (30 seconds) to prevent hanging
-        auto status = future.wait_for(std::chrono::seconds(30));
-        bool started = false;
-        if (status == std::future_status::ready) {
-            try {
-                started = future.get();
-            } catch (...) {
-                started = false;
-            }
-        } else {
-            // Timeout - instance start is taking too long
-            if (isApiLoggingEnabled()) {
-                PLOG_WARNING << "[API] POST /v1/core/instances/" << instanceId << "/start - Timeout (30s)";
-            }
-            callback(createErrorResponse(504, "Gateway Timeout", 
-                "Instance start operation timed out after 30 seconds. "
-                "The instance may still be starting in the background. "
-                "Check instance status using GET /v1/core/instances/" + instanceId));
-            return;
-        }
-        
-        if (started) {
-            // Get updated instance info
-            auto optInfo = instance_registry_->getInstance(instanceId);
-            auto end_time = std::chrono::steady_clock::now();
-            auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(end_time - start_time);
-            
-            if (optInfo.has_value()) {
-                if (isApiLoggingEnabled()) {
-                    PLOG_INFO << "[API] POST /v1/core/instances/" << instanceId << "/start - Success - " << duration.count() << "ms";
-                }
-                Json::Value response = instanceInfoToJson(optInfo.value());
-                response["message"] = "Instance started successfully";
-                callback(createSuccessResponse(response));
-            } else {
-                if (isApiLoggingEnabled()) {
-                    PLOG_WARNING << "[API] POST /v1/core/instances/" << instanceId << "/start - Started but could not retrieve info - " << duration.count() << "ms";
-                }
-                callback(createErrorResponse(500, "Internal server error", "Instance started but could not retrieve info"));
-            }
-        } else {
+        // Return immediately - instance is starting in background
+        // Client can check status using GET /v1/core/instances/{id}
+        auto optInfo = instance_registry_->getInstance(instanceId);
+        if (optInfo.has_value()) {
             auto end_time = std::chrono::steady_clock::now();
             auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(end_time - start_time);
             if (isApiLoggingEnabled()) {
-                PLOG_WARNING << "[API] POST /v1/core/instances/" << instanceId << "/start - Failed to start - " << duration.count() << "ms";
+                PLOG_INFO << "[API] POST /v1/core/instances/" << instanceId << "/start - Accepted (async) - " << duration.count() << "ms";
             }
-            callback(createErrorResponse(400, "Failed to start", "Could not start instance. Check if instance exists and has a pipeline."));
+            Json::Value response = instanceInfoToJson(optInfo.value());
+            response["message"] = "Instance start request accepted. Instance is starting in background. "
+                                  "Check status using GET /v1/core/instances/" + instanceId;
+            response["status"] = "starting"; // Indicate that instance is starting
+            callback(createSuccessResponse(response, 202)); // 202 Accepted - request accepted but not completed
+        } else {
+            callback(createErrorResponse(404, "Not found", "Instance not found"));
         }
+        return;
         
     } catch (const std::exception& e) {
         auto end_time = std::chrono::steady_clock::now();
@@ -604,34 +578,38 @@ void InstanceHandler::stopInstance(
             return;
         }
         
-        // Stop instance
-        if (instance_registry_->stopInstance(instanceId)) {
-            // Get updated instance info
-            auto optInfo = instance_registry_->getInstance(instanceId);
-            auto end_time = std::chrono::steady_clock::now();
-            auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(end_time - start_time);
-            
-            if (optInfo.has_value()) {
-                if (isApiLoggingEnabled()) {
-                    PLOG_INFO << "[API] POST /v1/core/instances/" << instanceId << "/stop - Success - " << duration.count() << "ms";
-                }
-                Json::Value response = instanceInfoToJson(optInfo.value());
-                response["message"] = "Instance stopped successfully";
-                callback(createSuccessResponse(response));
-            } else {
-                if (isApiLoggingEnabled()) {
-                    PLOG_WARNING << "[API] POST /v1/core/instances/" << instanceId << "/stop - Stopped but could not retrieve info - " << duration.count() << "ms";
-                }
-                callback(createErrorResponse(500, "Internal server error", "Instance stopped but could not retrieve info"));
+        // OPTIMIZED: Run stopInstance() in detached thread to avoid blocking API thread and other instances
+        // This allows multiple instances to stop concurrently without blocking each other
+        // The instance will stop in background, and status can be checked via GET /v1/core/instances/{id}
+        std::thread stopThread([this, instanceId]() {
+            try {
+                instance_registry_->stopInstance(instanceId);
+            } catch (const std::exception& e) {
+                std::cerr << "[InstanceHandler] Exception stopping instance " << instanceId << ": " << e.what() << std::endl;
+            } catch (...) {
+                std::cerr << "[InstanceHandler] Unknown exception stopping instance " << instanceId << std::endl;
             }
-        } else {
+        });
+        stopThread.detach(); // Detach thread - instance stops in background
+        
+        // Return immediately - instance is stopping in background
+        // Client can check status using GET /v1/core/instances/{id}
+        auto optInfo = instance_registry_->getInstance(instanceId);
+        if (optInfo.has_value()) {
             auto end_time = std::chrono::steady_clock::now();
             auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(end_time - start_time);
             if (isApiLoggingEnabled()) {
-                PLOG_WARNING << "[API] POST /v1/core/instances/" << instanceId << "/stop - Failed to stop - " << duration.count() << "ms";
+                PLOG_INFO << "[API] POST /v1/core/instances/" << instanceId << "/stop - Accepted (async) - " << duration.count() << "ms";
             }
-            callback(createErrorResponse(400, "Failed to stop", "Could not stop instance. Check if instance exists."));
+            Json::Value response = instanceInfoToJson(optInfo.value());
+            response["message"] = "Instance stop request accepted. Instance is stopping in background. "
+                                  "Check status using GET /v1/core/instances/" + instanceId;
+            response["status"] = "stopping"; // Indicate that instance is stopping
+            callback(createSuccessResponse(response, 202)); // 202 Accepted - request accepted but not completed
+        } else {
+            callback(createErrorResponse(404, "Not found", "Instance not found"));
         }
+        return;
         
     } catch (const std::exception& e) {
         auto end_time = std::chrono::steady_clock::now();
@@ -671,31 +649,42 @@ void InstanceHandler::restartInstance(
             return;
         }
         
-        // First, stop the instance if it's running
-        auto optInfo = instance_registry_->getInstance(instanceId);
-        if (optInfo.has_value() && optInfo.value().running) {
-            if (!instance_registry_->stopInstance(instanceId)) {
-                callback(createErrorResponse(500, "Failed to restart", "Could not stop instance before restart"));
-                return;
+        // OPTIMIZED: Run restartInstance() in detached thread to avoid blocking API thread and other instances
+        // This allows multiple instances to restart concurrently without blocking each other
+        // The instance will restart in background, and status can be checked via GET /v1/core/instances/{id}
+        std::thread restartThread([this, instanceId]() {
+            try {
+                // First, stop the instance if it's running
+                auto optInfo = instance_registry_->getInstance(instanceId);
+                if (optInfo.has_value() && optInfo.value().running) {
+                    instance_registry_->stopInstance(instanceId);
+                    // Give it a moment to fully stop and cleanup
+                    std::this_thread::sleep_for(std::chrono::milliseconds(500));
+                }
+                
+                // Now start the instance (skip auto-stop since we already stopped it)
+                instance_registry_->startInstance(instanceId, true); // true = skipAutoStop
+            } catch (const std::exception& e) {
+                std::cerr << "[InstanceHandler] Exception restarting instance " << instanceId << ": " << e.what() << std::endl;
+            } catch (...) {
+                std::cerr << "[InstanceHandler] Unknown exception restarting instance " << instanceId << std::endl;
             }
-            // Give it a moment to fully stop and cleanup
-            std::this_thread::sleep_for(std::chrono::milliseconds(500));
-        }
+        });
+        restartThread.detach(); // Detach thread - instance restarts in background
         
-        // Now start the instance (skip auto-stop since we already stopped it)
-        if (instance_registry_->startInstance(instanceId, true)) { // true = skipAutoStop
-            // Get updated instance info
-            optInfo = instance_registry_->getInstance(instanceId);
-            if (optInfo.has_value()) {
-                Json::Value response = instanceInfoToJson(optInfo.value());
-                response["message"] = "Instance restarted successfully";
-                callback(createSuccessResponse(response));
-            } else {
-                callback(createErrorResponse(500, "Internal server error", "Instance restarted but could not retrieve info"));
-            }
+        // Return immediately - instance is restarting in background
+        // Client can check status using GET /v1/core/instances/{id}
+        auto optInfo = instance_registry_->getInstance(instanceId);
+        if (optInfo.has_value()) {
+            Json::Value response = instanceInfoToJson(optInfo.value());
+            response["message"] = "Instance restart request accepted. Instance is restarting in background. "
+                                  "Check status using GET /v1/core/instances/" + instanceId;
+            response["status"] = "restarting"; // Indicate that instance is restarting
+            callback(createSuccessResponse(response, 202)); // 202 Accepted - request accepted but not completed
         } else {
-            callback(createErrorResponse(400, "Failed to restart", "Could not restart instance. Check if instance exists and has a pipeline."));
+            callback(createErrorResponse(404, "Not found", "Instance not found"));
         }
+        return;
         
     } catch (const std::exception& e) {
         std::cerr << "[InstanceHandler] Exception: " << e.what() << std::endl;
@@ -823,22 +812,221 @@ void InstanceHandler::deleteInstance(
             return;
         }
         
-        // Delete instance
-        if (instance_registry_->deleteInstance(instanceId)) {
-            Json::Value response;
-            response["success"] = true;
-            response["message"] = "Instance deleted successfully";
-            response["instanceId"] = instanceId;
-            callback(createSuccessResponse(response));
-        } else {
+        // OPTIMIZED: Run deleteInstance() in detached thread to avoid blocking API thread and other instances
+        // deleteInstance() calls stopPipeline() which can take time (cleanup, DNN state clearing)
+        // This allows multiple instances to be deleted concurrently without blocking each other
+        // The instance will be deleted in background, and status can be checked via GET /v1/core/instances/{id}
+        
+        // Check if instance exists first (before async deletion)
+        auto optInfo = instance_registry_->getInstance(instanceId);
+        if (!optInfo.has_value()) {
             callback(createErrorResponse(404, "Not found", "Instance not found: " + instanceId));
+            return;
         }
+        
+        std::thread deleteThread([this, instanceId]() {
+            try {
+                instance_registry_->deleteInstance(instanceId);
+            } catch (const std::exception& e) {
+                std::cerr << "[InstanceHandler] Exception deleting instance " << instanceId << ": " << e.what() << std::endl;
+            } catch (...) {
+                std::cerr << "[InstanceHandler] Unknown exception deleting instance " << instanceId << std::endl;
+            }
+        });
+        deleteThread.detach(); // Detach thread - instance deletion happens in background
+        
+        // Return immediately - instance is being deleted in background
+        Json::Value response;
+        response["success"] = true;
+        response["message"] = "Instance deletion request accepted. Instance is being deleted in background. "
+                              "Check status using GET /v1/core/instances/" + instanceId;
+        response["instanceId"] = instanceId;
+        response["status"] = "deleting"; // Indicate that instance is being deleted
+        callback(createSuccessResponse(response, 202)); // 202 Accepted - request accepted but not completed
+        return;
         
     } catch (const std::exception& e) {
         std::cerr << "[InstanceHandler] Exception: " << e.what() << std::endl;
         callback(createErrorResponse(500, "Internal server error", e.what()));
     } catch (...) {
         std::cerr << "[InstanceHandler] Unknown exception" << std::endl;
+        callback(createErrorResponse(500, "Internal server error", "Unknown error occurred"));
+    }
+}
+
+void InstanceHandler::deleteAllInstances(
+    const HttpRequestPtr &req,
+    std::function<void(const HttpResponsePtr &)> &&callback) {
+    
+    auto start_time = std::chrono::steady_clock::now();
+    
+    if (isApiLoggingEnabled()) {
+        PLOG_INFO << "[API] DELETE /v1/core/instances - Delete all instances";
+        PLOG_DEBUG << "[API] Request from: " << req->getPeerAddr().toIpPort();
+    }
+    
+    try {
+        // Check if registry is set
+        if (!instance_registry_) {
+            if (isApiLoggingEnabled()) {
+                PLOG_ERROR << "[API] DELETE /v1/core/instances - Error: Instance registry not initialized";
+            }
+            callback(createErrorResponse(500, "Internal server error", "Instance registry not initialized"));
+            return;
+        }
+        
+        // Get all instances
+        std::unordered_map<std::string, InstanceInfo> allInstances;
+        try {
+            auto future = std::async(std::launch::async, [this]() -> std::unordered_map<std::string, InstanceInfo> {
+                try {
+                    if (instance_registry_) {
+                        return instance_registry_->getAllInstances();
+                    }
+                    return {};
+                } catch (...) {
+                    return {};
+                }
+            });
+            
+            // Wait with timeout (2.5 seconds)
+            auto status = future.wait_for(std::chrono::milliseconds(2500));
+            if (status == std::future_status::timeout) {
+                if (isApiLoggingEnabled()) {
+                    PLOG_WARNING << "[API] DELETE /v1/core/instances - Timeout getting instances (2.5s)";
+                }
+                callback(createErrorResponse(503, "Service Unavailable", 
+                    "Instance registry is busy. Please try again later."));
+                return;
+            } else if (status == std::future_status::ready) {
+                try {
+                    allInstances = future.get();
+                } catch (const std::exception& e) {
+                    if (isApiLoggingEnabled()) {
+                        PLOG_ERROR << "[API] DELETE /v1/core/instances - Exception getting instances: " << e.what();
+                    }
+                    callback(createErrorResponse(500, "Internal server error", "Failed to get instances: " + std::string(e.what())));
+                    return;
+                } catch (...) {
+                    if (isApiLoggingEnabled()) {
+                        PLOG_ERROR << "[API] DELETE /v1/core/instances - Unknown exception getting instances";
+                    }
+                    callback(createErrorResponse(500, "Internal server error", "Failed to get instances"));
+                    return;
+                }
+            }
+        } catch (const std::exception& e) {
+            if (isApiLoggingEnabled()) {
+                PLOG_ERROR << "[API] DELETE /v1/core/instances - Exception creating async task: " << e.what();
+            }
+            callback(createErrorResponse(500, "Internal server error", "Failed to get instances: " + std::string(e.what())));
+            return;
+        } catch (...) {
+            if (isApiLoggingEnabled()) {
+                PLOG_ERROR << "[API] DELETE /v1/core/instances - Unknown exception creating async task";
+            }
+            callback(createErrorResponse(500, "Internal server error", "Failed to get instances"));
+            return;
+        }
+        
+        // If no instances, return success
+        if (allInstances.empty()) {
+            Json::Value response;
+            response["success"] = true;
+            response["message"] = "No instances to delete";
+            response["total"] = 0;
+            response["deleted"] = 0;
+            response["failed"] = 0;
+            response["results"] = Json::Value(Json::arrayValue);
+            
+            auto end_time = std::chrono::steady_clock::now();
+            auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(end_time - start_time);
+            
+            if (isApiLoggingEnabled()) {
+                PLOG_INFO << "[API] DELETE /v1/core/instances - Success: No instances to delete - " << duration.count() << "ms";
+            }
+            
+            callback(createSuccessResponse(response));
+            return;
+        }
+        
+        // Extract instance IDs
+        std::vector<std::string> instanceIds;
+        for (const auto& [instanceId, info] : allInstances) {
+            instanceIds.push_back(instanceId);
+        }
+        
+        // Execute delete operations concurrently using async
+        std::vector<std::future<std::pair<std::string, bool>>> futures;
+        for (const auto& instanceId : instanceIds) {
+            futures.push_back(std::async(std::launch::async, [this, instanceId]() -> std::pair<std::string, bool> {
+                try {
+                    bool success = instance_registry_->deleteInstance(instanceId);
+                    return {instanceId, success};
+                } catch (...) {
+                    return {instanceId, false};
+                }
+            }));
+        }
+        
+        // Collect results
+        Json::Value response;
+        Json::Value results(Json::arrayValue);
+        int successCount = 0;
+        int failureCount = 0;
+        
+        for (auto& future : futures) {
+            auto [instanceId, success] = future.get();
+            
+            Json::Value result;
+            result["instanceId"] = instanceId;
+            result["success"] = success;
+            
+            if (success) {
+                result["status"] = "deleted";
+                successCount++;
+            } else {
+                result["status"] = "failed";
+                result["error"] = "Could not delete instance. Instance may not exist.";
+                failureCount++;
+            }
+            
+            results.append(result);
+        }
+        
+        response["results"] = results;
+        response["total"] = static_cast<int>(instanceIds.size());
+        response["deleted"] = successCount;
+        response["failed"] = failureCount;
+        response["message"] = "Delete all instances operation completed";
+        response["success"] = (failureCount == 0);
+        
+        auto end_time = std::chrono::steady_clock::now();
+        auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(end_time - start_time);
+        
+        if (isApiLoggingEnabled()) {
+            PLOG_INFO << "[API] DELETE /v1/core/instances - Success: " << successCount 
+                      << " deleted, " << failureCount << " failed out of " 
+                      << instanceIds.size() << " total - " << duration.count() << "ms";
+        }
+        
+        callback(createSuccessResponse(response));
+        
+    } catch (const std::exception& e) {
+        auto end_time = std::chrono::steady_clock::now();
+        auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(end_time - start_time);
+        if (isApiLoggingEnabled()) {
+            PLOG_ERROR << "[API] DELETE /v1/core/instances - Exception: " << e.what() << " - " << duration.count() << "ms";
+        }
+        std::cerr << "[InstanceHandler] Exception in deleteAllInstances: " << e.what() << std::endl;
+        callback(createErrorResponse(500, "Internal server error", e.what()));
+    } catch (...) {
+        auto end_time = std::chrono::steady_clock::now();
+        auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(end_time - start_time);
+        if (isApiLoggingEnabled()) {
+            PLOG_ERROR << "[API] DELETE /v1/core/instances - Unknown exception - " << duration.count() << "ms";
+        }
+        std::cerr << "[InstanceHandler] Unknown exception in deleteAllInstances" << std::endl;
         callback(createErrorResponse(500, "Internal server error", "Unknown error occurred"));
     }
 }
@@ -910,6 +1098,163 @@ void InstanceHandler::getConfig(
         auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(end_time - start_time);
         if (isApiLoggingEnabled()) {
             PLOG_ERROR << "[API] GET /v1/core/instance/" << instanceId << "/config - Unknown exception - " << duration.count() << "ms";
+        }
+        callback(createErrorResponse(500, "Internal server error", "Unknown error occurred"));
+    }
+}
+
+void InstanceHandler::getStatistics(
+    const HttpRequestPtr &req,
+    std::function<void(const HttpResponsePtr &)> &&callback) {
+    
+    auto start_time = std::chrono::steady_clock::now();
+    
+    // Get instance ID from path parameter
+    std::string instanceId = extractInstanceId(req);
+    
+    if (isApiLoggingEnabled()) {
+        PLOG_INFO << "[API] GET /v1/core/instance/" << instanceId << "/statistics - Get instance statistics";
+        PLOG_DEBUG << "[API] Request from: " << req->getPeerAddr().toIpPort();
+    }
+    
+    try {
+        // Check if registry is set
+        if (!instance_registry_) {
+            if (isApiLoggingEnabled()) {
+                PLOG_ERROR << "[API] GET /v1/core/instance/" << instanceId << "/statistics - Error: Instance registry not initialized";
+            }
+            callback(createErrorResponse(500, "Internal server error", "Instance registry not initialized"));
+            return;
+        }
+        
+        if (instanceId.empty()) {
+            if (isApiLoggingEnabled()) {
+                PLOG_WARNING << "[API] GET /v1/core/instance/{instanceId}/statistics - Error: Instance ID is empty";
+            }
+            callback(createErrorResponse(400, "Invalid request", "Instance ID is required"));
+            return;
+        }
+        
+        // Get statistics
+        auto optStats = instance_registry_->getInstanceStatistics(instanceId);
+        if (!optStats.has_value()) {
+            auto end_time = std::chrono::steady_clock::now();
+            auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(end_time - start_time);
+            if (isApiLoggingEnabled()) {
+                PLOG_WARNING << "[API] GET /v1/core/instance/" << instanceId << "/statistics - Not found or not running - " << duration.count() << "ms";
+            }
+            callback(createErrorResponse(404, "Not found", "Instance not found or not running: " + instanceId));
+            return;
+        }
+        
+        // Build JSON response
+        Json::Value response = optStats.value().toJson();
+        
+        auto end_time = std::chrono::steady_clock::now();
+        auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(end_time - start_time);
+        
+        if (isApiLoggingEnabled()) {
+            PLOG_INFO << "[API] GET /v1/core/instance/" << instanceId 
+                      << "/statistics - Success - " << duration.count() << "ms";
+        }
+        
+        callback(createSuccessResponse(response));
+        
+    } catch (const std::exception& e) {
+        auto end_time = std::chrono::steady_clock::now();
+        auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(end_time - start_time);
+        if (isApiLoggingEnabled()) {
+            PLOG_ERROR << "[API] GET /v1/core/instance/" << instanceId << "/statistics - Exception: " << e.what() << " - " << duration.count() << "ms";
+        }
+        std::cerr << "[InstanceHandler] Exception in getStatistics: " << e.what() << std::endl;
+        callback(createErrorResponse(500, "Internal server error", e.what()));
+    } catch (...) {
+        auto end_time = std::chrono::steady_clock::now();
+        auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(end_time - start_time);
+        if (isApiLoggingEnabled()) {
+            PLOG_ERROR << "[API] GET /v1/core/instance/" << instanceId << "/statistics - Unknown exception - " << duration.count() << "ms";
+        }
+        std::cerr << "[InstanceHandler] Unknown exception in getStatistics" << std::endl;
+        callback(createErrorResponse(500, "Internal server error", "Unknown error occurred"));
+    }
+}
+
+void InstanceHandler::getLastFrame(
+    const HttpRequestPtr &req,
+    std::function<void(const HttpResponsePtr &)> &&callback) {
+    
+    auto start_time = std::chrono::steady_clock::now();
+    
+    // Get instance ID from path parameter
+    std::string instanceId = extractInstanceId(req);
+    
+    if (isApiLoggingEnabled()) {
+        PLOG_INFO << "[API] GET /v1/core/instances/" << instanceId << "/frame - Get last frame";
+        PLOG_DEBUG << "[API] Request from: " << req->getPeerAddr().toIpPort();
+    }
+    
+    try {
+        // Check if registry is set
+        if (!instance_registry_) {
+            if (isApiLoggingEnabled()) {
+                PLOG_ERROR << "[API] GET /v1/core/instances/" << instanceId << "/frame - Error: Instance registry not initialized";
+            }
+            callback(createErrorResponse(500, "Internal server error", "Instance registry not initialized"));
+            return;
+        }
+        
+        if (instanceId.empty()) {
+            if (isApiLoggingEnabled()) {
+                PLOG_WARNING << "[API] GET /v1/core/instances/{instanceId}/frame - Error: Instance ID is empty";
+            }
+            callback(createErrorResponse(400, "Invalid request", "Instance ID is required"));
+            return;
+        }
+        
+        // Check if instance exists
+        auto optInfo = instance_registry_->getInstance(instanceId);
+        if (!optInfo.has_value()) {
+            auto end_time = std::chrono::steady_clock::now();
+            auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(end_time - start_time);
+            if (isApiLoggingEnabled()) {
+                PLOG_WARNING << "[API] GET /v1/core/instances/" << instanceId << "/frame - Instance not found - " << duration.count() << "ms";
+            }
+            callback(createErrorResponse(404, "Not found", "Instance ID not found: " + instanceId));
+            return;
+        }
+        
+        const InstanceInfo& info = optInfo.value();
+        
+        // Get last frame (empty string if no frame cached)
+        std::string frameBase64 = instance_registry_->getLastFrame(instanceId);
+        
+        // Build JSON response
+        Json::Value response;
+        response["frame"] = frameBase64;
+        response["running"] = info.running;
+        
+        auto end_time = std::chrono::steady_clock::now();
+        auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(end_time - start_time);
+        
+        if (isApiLoggingEnabled()) {
+            PLOG_INFO << "[API] GET /v1/core/instances/" << instanceId << "/frame - Success - " 
+                      << duration.count() << "ms (frame size: " << frameBase64.length() << " chars)";
+        }
+        
+        callback(createSuccessResponse(response));
+        
+    } catch (const std::exception& e) {
+        auto end_time = std::chrono::steady_clock::now();
+        auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(end_time - start_time);
+        if (isApiLoggingEnabled()) {
+            PLOG_ERROR << "[API] GET /v1/core/instances/{instanceId}/frame - Exception: " << e.what() << " - " << duration.count() << "ms";
+        }
+        callback(createErrorResponse(500, "Internal server error", e.what()));
+    } catch (...) {
+        auto end_time = std::chrono::steady_clock::now();
+        auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(end_time - start_time);
+        if (isApiLoggingEnabled()) {
+            PLOG_ERROR << "[API] GET /v1/core/instances/{instanceId}/frame - Unknown exception - " << duration.count() << "ms";
         }
         callback(createErrorResponse(500, "Internal server error", "Unknown error occurred"));
     }
@@ -1023,8 +1368,87 @@ void InstanceHandler::setInstanceInput(
         // Set media_type and uri based on type
         if (type == "RTSP") {
             input["media_type"] = "IP Camera";
-            // Format URI for RTSP: gstreamer:///urisourcebin uri=... ! decodebin ! videoconvert ! video/x-raw, format=NV12 ! appsink drop=true name=cvdsink
-            input["uri"] = "gstreamer:///urisourcebin uri=" + uri + " ! decodebin ! videoconvert ! video/x-raw, format=NV12 ! appsink drop=true name=cvdsink";
+            
+            // Check if user wants to use urisourcebin format (for compatibility/auto-detect decoder)
+            bool useUrisourcebin = false;
+            if (json->isMember("additionalParams") && (*json)["additionalParams"].isObject()) {
+                const Json::Value& additionalParams = (*json)["additionalParams"];
+                if (additionalParams.isMember("USE_URISOURCEBIN") && additionalParams["USE_URISOURCEBIN"].isString()) {
+                    useUrisourcebin = (additionalParams["USE_URISOURCEBIN"].asString() == "true" || additionalParams["USE_URISOURCEBIN"].asString() == "1");
+                }
+            }
+            
+            // Get decoder name from instance additionalParams or request JSON
+            std::string decoderName = "avdec_h264"; // Default decoder
+            
+            // First try to get from request JSON additionalParams
+            if (json->isMember("additionalParams") && (*json)["additionalParams"].isObject()) {
+                const Json::Value& additionalParams = (*json)["additionalParams"];
+                if (additionalParams.isMember("GST_DECODER_NAME") && additionalParams["GST_DECODER_NAME"].isString()) {
+                    decoderName = additionalParams["GST_DECODER_NAME"].asString();
+                    // If decodebin is specified, use urisourcebin format
+                    if (decoderName == "decodebin") {
+                        useUrisourcebin = true;
+                    }
+                }
+            }
+            
+            // If not found in request, try to get from existing instance info
+            if (decoderName == "avdec_h264" && optInfo.has_value()) {
+                const InstanceInfo& info = optInfo.value();
+                auto decoderIt = info.additionalParams.find("GST_DECODER_NAME");
+                if (decoderIt != info.additionalParams.end() && !decoderIt->second.empty()) {
+                    decoderName = decoderIt->second;
+                    if (decoderName == "decodebin") {
+                        useUrisourcebin = true;
+                    }
+                }
+                // Check USE_URISOURCEBIN from instance
+                auto urisourcebinIt = info.additionalParams.find("USE_URISOURCEBIN");
+                if (urisourcebinIt != info.additionalParams.end()) {
+                    useUrisourcebin = (urisourcebinIt->second == "true" || urisourcebinIt->second == "1");
+                }
+            }
+            
+            if (useUrisourcebin) {
+                // Format: gstreamer:///urisourcebin uri=... ! decodebin ! videoconvert ! video/x-raw, format=NV12 ! appsink drop=true name=cvdsink
+                // This format uses decodebin for auto-detection (may help with decoder compatibility issues)
+                input["uri"] = "gstreamer:///urisourcebin uri=" + uri + " ! decodebin ! videoconvert ! video/x-raw, format=NV12 ! appsink drop=true name=cvdsink";
+            } else {
+                // Format: rtspsrc location=... [protocols=...] ! application/x-rtp,media=video ! rtph264depay ! h264parse ! decoder ! videoconvert ! video/x-raw,format=NV12 ! appsink drop=true name=cvdsink
+                // This format matches SDK template structure (with h264parse before decoder)
+                // Get transport protocol from request JSON or instance info
+                std::string protocolsParam = "";
+                std::string rtspTransport = "";
+                
+                // First try request JSON additionalParams
+                if (json->isMember("additionalParams") && (*json)["additionalParams"].isObject()) {
+                    const Json::Value& additionalParams = (*json)["additionalParams"];
+                    if (additionalParams.isMember("RTSP_TRANSPORT") && additionalParams["RTSP_TRANSPORT"].isString()) {
+                        rtspTransport = additionalParams["RTSP_TRANSPORT"].asString();
+                    }
+                }
+                
+                // If not found, try instance info
+                if (rtspTransport.empty() && optInfo.has_value()) {
+                    const InstanceInfo& info = optInfo.value();
+                    auto rtspTransportIt = info.additionalParams.find("RTSP_TRANSPORT");
+                    if (rtspTransportIt != info.additionalParams.end() && !rtspTransportIt->second.empty()) {
+                        rtspTransport = rtspTransportIt->second;
+                    }
+                }
+                
+                // Validate and add protocols parameter
+                if (!rtspTransport.empty()) {
+                    std::transform(rtspTransport.begin(), rtspTransport.end(), rtspTransport.begin(), ::tolower);
+                    if (rtspTransport == "tcp" || rtspTransport == "udp") {
+                        protocolsParam = " protocols=" + rtspTransport;
+                    }
+                }
+                // If no transport specified, don't add protocols parameter - let GStreamer use default
+                
+                input["uri"] = "rtspsrc location=" + uri + protocolsParam + " ! application/x-rtp,media=video ! rtph264depay ! h264parse ! " + decoderName + " ! videoconvert ! video/x-raw,format=NV12 ! appsink drop=true name=cvdsink";
+            }
         } else if (type == "HLS") {
             input["media_type"] = "IP Camera";
             // For HLS, use the URI directly (hls_src node will handle it)
@@ -1277,10 +1701,21 @@ void InstanceHandler::configureStreamOutput(
                 try {
                     fs::path dirPath(path);
                     
-                    // Create directory if it doesn't exist
+                    // Create directory if it doesn't exist (with fallback if needed)
                     if (!fs::exists(dirPath)) {
                         if (isApiLoggingEnabled()) {
                             PLOG_INFO << "[API] POST /v1/core/instance/" << instanceId << "/output/stream - Creating directory: " << path;
+                        }
+                        // Extract subdir from path for fallback
+                        std::string subdir = dirPath.filename().string();
+                        if (subdir.empty()) {
+                            subdir = "output"; // Default fallback subdir
+                        }
+                        std::string resolvedPath = EnvConfig::resolveDirectory(path, subdir);
+                        if (resolvedPath != path) {
+                            // Fallback was used, update path
+                            path = resolvedPath;
+                            dirPath = fs::path(path);
                         }
                         fs::create_directories(dirPath);
                     }
@@ -1580,18 +2015,33 @@ bool InstanceHandler::parseUpdateRequest(
         const Json::Value& input = json["Input"];
         if (input.isMember("uri") && input["uri"].isString()) {
             std::string uri = input["uri"].asString();
-            // Extract RTSP URL from GStreamer URI
-            size_t rtspPos = uri.find("uri=");
+            // Extract RTSP URL from GStreamer URI - support both old format (uri=) and new format (location=)
+            size_t rtspPos = uri.find("location=");
             if (rtspPos != std::string::npos) {
-                size_t start = rtspPos + 4;
-                size_t end = uri.find(" !", start);
+                // New format: rtspsrc location=...
+                size_t start = rtspPos + 9;
+                size_t end = uri.find(" ", start);
+                if (end == std::string::npos) {
+                    end = uri.find(" !", start);
+                }
                 if (end == std::string::npos) {
                     end = uri.length();
                 }
                 req.additionalParams["RTSP_URL"] = uri.substr(start, end - start);
-            } else if (uri.find("://") == std::string::npos) {
-                // Direct file path
-                req.additionalParams["FILE_PATH"] = uri;
+            } else {
+                // Old format: gstreamer:///urisourcebin uri=...
+                rtspPos = uri.find("uri=");
+                if (rtspPos != std::string::npos) {
+                    size_t start = rtspPos + 4;
+                    size_t end = uri.find(" !", start);
+                    if (end == std::string::npos) {
+                        end = uri.length();
+                    }
+                    req.additionalParams["RTSP_URL"] = uri.substr(start, end - start);
+                } else if (uri.find("://") == std::string::npos) {
+                    // Direct file path
+                    req.additionalParams["FILE_PATH"] = uri;
+                }
             }
         }
         if (input.isMember("media_type") && input["media_type"].isString()) {
@@ -1695,10 +2145,24 @@ bool InstanceHandler::parseUpdateRequest(
     }
     
     // Additional parameters (e.g., RTSP_URL, MODEL_PATH, FILE_PATH, RTMP_URL)
+    // Helper function to trim whitespace (especially important for RTMP URLs)
+    auto trim = [](const std::string& str) -> std::string {
+        if (str.empty()) return str;
+        size_t first = str.find_first_not_of(" \t\n\r\f\v");
+        if (first == std::string::npos) return "";
+        size_t last = str.find_last_not_of(" \t\n\r\f\v");
+        return str.substr(first, (last - first + 1));
+    };
+    
     if (json.isMember("additionalParams") && json["additionalParams"].isObject()) {
         for (const auto& key : json["additionalParams"].getMemberNames()) {
             if (json["additionalParams"][key].isString()) {
-                req.additionalParams[key] = json["additionalParams"][key].asString();
+                std::string value = json["additionalParams"][key].asString();
+                // Trim RTMP URLs to prevent GStreamer pipeline errors
+                if (key == "RTMP_URL" || key == "RTMP_DES_URL") {
+                    value = trim(value);
+                }
+                req.additionalParams[key] = value;
             }
         }
     }
@@ -1723,9 +2187,11 @@ bool InstanceHandler::parseUpdateRequest(
         req.additionalParams["FILE_PATH"] = json["FILE_PATH"].asString();
     }
     
-    // Also check for RTMP_URL at top level (for RTMP destination)
-    if (json.isMember("RTMP_URL") && json["RTMP_URL"].isString()) {
-        req.additionalParams["RTMP_URL"] = json["RTMP_URL"].asString();
+    // Also check for RTMP_DES_URL or RTMP_URL at top level (for RTMP destination)
+    if (json.isMember("RTMP_DES_URL") && json["RTMP_DES_URL"].isString()) {
+        req.additionalParams["RTMP_DES_URL"] = trim(json["RTMP_DES_URL"].asString());
+    } else if (json.isMember("RTMP_URL") && json["RTMP_URL"].isString()) {
+        req.additionalParams["RTMP_URL"] = trim(json["RTMP_URL"].asString());
     }
     
     // Also check for SFACE_MODEL_PATH at top level (for SFace encoder)
@@ -1760,7 +2226,45 @@ Json::Value InstanceHandler::instanceInfoToJson(const InstanceInfo& info) const 
     Json::Value input(Json::objectValue);
     if (!info.rtspUrl.empty()) {
         input["media_type"] = "IP Camera";
-        input["uri"] = "gstreamer:///urisourcebin uri=" + info.rtspUrl + " ! decodebin ! videoconvert ! video/x-raw, format=NV12 ! appsink drop=true name=cvdsink";
+        
+        // Check if user wants to use urisourcebin format (for compatibility/auto-detect decoder)
+        bool useUrisourcebin = false;
+        auto urisourcebinIt = info.additionalParams.find("USE_URISOURCEBIN");
+        if (urisourcebinIt != info.additionalParams.end()) {
+            useUrisourcebin = (urisourcebinIt->second == "true" || urisourcebinIt->second == "1");
+        }
+        
+        // Get decoder name from additionalParams
+        std::string decoderName = "avdec_h264"; // Default decoder
+        auto decoderIt = info.additionalParams.find("GST_DECODER_NAME");
+        if (decoderIt != info.additionalParams.end() && !decoderIt->second.empty()) {
+            decoderName = decoderIt->second;
+            // If decodebin is specified, use urisourcebin format
+            if (decoderName == "decodebin") {
+                useUrisourcebin = true;
+            }
+        }
+        
+        if (useUrisourcebin) {
+            // Format: gstreamer:///urisourcebin uri=... ! decodebin ! videoconvert ! video/x-raw, format=NV12 ! appsink drop=true name=cvdsink
+            // This format uses decodebin for auto-detection (may help with decoder compatibility issues)
+            input["uri"] = "gstreamer:///urisourcebin uri=" + info.rtspUrl + " ! decodebin ! videoconvert ! video/x-raw, format=NV12 ! appsink drop=true name=cvdsink";
+        } else {
+            // Format: rtspsrc location=... [protocols=...] ! application/x-rtp,media=video ! rtph264depay ! h264parse ! decoder ! videoconvert ! video/x-raw,format=NV12 ! appsink drop=true name=cvdsink
+            // This format matches SDK template structure (with h264parse before decoder)
+            // Get transport protocol from additionalParams if specified
+            std::string protocolsParam = "";
+            auto rtspTransportIt = info.additionalParams.find("RTSP_TRANSPORT");
+            if (rtspTransportIt != info.additionalParams.end() && !rtspTransportIt->second.empty()) {
+                std::string transport = rtspTransportIt->second;
+                std::transform(transport.begin(), transport.end(), transport.begin(), ::tolower);
+                if (transport == "tcp" || transport == "udp") {
+                    protocolsParam = " protocols=" + transport;
+                }
+            }
+            // If no transport specified, don't add protocols parameter - let GStreamer use default
+            input["uri"] = "rtspsrc location=" + info.rtspUrl + protocolsParam + " ! application/x-rtp,media=video ! rtph264depay ! h264parse ! " + decoderName + " ! videoconvert ! video/x-raw,format=NV12 ! appsink drop=true name=cvdsink";
+        }
     } else if (!info.filePath.empty()) {
         input["media_type"] = "File";
         input["uri"] = info.filePath;
@@ -2280,6 +2784,8 @@ void InstanceHandler::getInstanceOutput(
             output["type"] = "RTMP_STREAM";
             if (!info.rtmpUrl.empty()) {
                 output["rtmpUrl"] = info.rtmpUrl;
+            } else if (info.additionalParams.find("RTMP_DES_URL") != info.additionalParams.end()) {
+                output["rtmpUrl"] = info.additionalParams.at("RTMP_DES_URL");
             } else if (info.additionalParams.find("RTMP_URL") != info.additionalParams.end()) {
                 output["rtmpUrl"] = info.additionalParams.at("RTMP_URL");
             }

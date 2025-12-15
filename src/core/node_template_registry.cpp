@@ -5,7 +5,7 @@
 // This maps node types to their metadata (category, required/optional params, etc.)
 const std::map<std::string, NodeTemplateRegistry::NodeTypeMetadata> NodeTemplateRegistry::nodeTypeMetadata = {
     // ========== SOURCE NODES ==========
-    {"rtsp_src", {"source", {"rtsp_url"}, {"channel", "resize_ratio"}, "RTSP Source", "Receive video stream from RTSP URL"}},
+    {"rtsp_src", {"source", {"rtsp_url"}, {"channel", "resize_ratio", "gst_decoder_name", "skip_interval", "codec_type"}, "RTSP Source", "Receive video stream from RTSP URL"}},
     {"file_src", {"source", {"file_path"}, {"channel", "resize_ratio"}, "File Source", "Read video from file"}},
     {"app_src", {"source", {}, {"channel"}, "App Source", "Receive video frames from application"}},
     {"image_src", {"source", {"port_or_location"}, {"interval", "resize_ratio", "cycle"}, "Image Source", "Read images from file or UDP port"}},

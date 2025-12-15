@@ -107,11 +107,6 @@ public:
 
 private:
     /**
-     * @brief Validate API key from request header
-     */
-    bool validateApiKey(const HttpRequestPtr &req, std::string& error) const;
-    
-    /**
      * @brief Extract base64 image data from multipart form data
      */
     bool extractImageData(const HttpRequestPtr &req, std::vector<unsigned char>& imageData, std::string& error) const;
@@ -151,6 +146,23 @@ private:
      * @brief Extract base64 image data from JSON body
      */
     bool extractImageFromJson(const HttpRequestPtr &req, std::vector<unsigned char>& imageData, std::string& error) const;
+    
+    /**
+     * @brief Validate image format and size
+     * Supported formats: jpeg, jpg, ico, png, bmp, gif, tif, tiff, webp
+     * Max size: 5MB
+     */
+    bool validateImageFormatAndSize(const std::vector<unsigned char>& imageData, std::string& error) const;
+    
+    /**
+     * @brief Encode binary data to base64 string
+     */
+    std::string encodeBase64(const std::vector<unsigned char>& data) const;
+    
+    /**
+     * @brief Extract image data from request (supports both JSON base64 and multipart/form-data)
+     */
+    bool extractImageFromRequest(const HttpRequestPtr &req, std::vector<unsigned char>& imageData, std::string& error) const;
     
     /**
      * @brief Generate unique image ID (UUID-like)

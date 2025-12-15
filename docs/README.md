@@ -37,68 +37,112 @@ Tài liệu hướng dẫn đầy đủ cho Edge AI API project.
 
 ### 📖 Tài Liệu Kỹ Thuật
 
-5. **[DROGON_SETUP.md](DROGON_SETUP.md)** - Hướng dẫn Drogon Framework
-   - Tự động download và build Drogon
-   - Cấu hình dependencies
-   - Troubleshooting
-
-6. **[architecture.md](architecture.md)** - Kiến trúc hệ thống
+5. **[architecture.md](architecture.md)** - Kiến trúc hệ thống
    - System architecture
    - Request flow
    - Component structure
    - API endpoints diagram
 
-7. **[FLOW_DIAGRAM.md](FLOW_DIAGRAM.md)** - Flow Diagram Tổng Quan
+6. **[FLOW_DIAGRAM.md](FLOW_DIAGRAM.md)** - Flow Diagram Tổng Quan
    - Flow tổng quan hệ thống
    - Flow xử lý request chi tiết
    - Flow khởi động server
    - Background services flow
    - Mô tả các component
 
-8. **[HARDWARE_INFO_API.md](HARDWARE_INFO_API.md)** - Hardware Information API
+7. **[HARDWARE_INFO_API.md](HARDWARE_INFO_API.md)** - Hardware Information API
    - Hướng dẫn sử dụng API lấy thông tin phần cứng
    - Endpoints: `/v1/core/system/info` và `/v1/core/system/status`
    - Ví dụ sử dụng với curl, Python, JavaScript
    - Troubleshooting và best practices
    - Chi tiết các thông số có thể lấy được
 
-9. **[LOGGING.md](LOGGING.md)** - Logging Documentation
+8. **[LOGGING.md](LOGGING.md)** - Logging Documentation
+    - Hướng dẫn sử dụng các tính năng logging
+    - API logging (`--log-api`)
+    - Instance execution logging (`--log-instance`)
+    - SDK output logging (`--log-sdk-output`)
+    - Cấu hình và best practices
+    - Troubleshooting logging issues
 
-10. **[CONFIG_API_GUIDE.md](CONFIG_API_GUIDE.md)** - Hướng dẫn Config API
+9. **[CONFIG_API_GUIDE.md](CONFIG_API_GUIDE.md)** - Hướng dẫn Config API
     - Tất cả các endpoint Config API
     - Cấu trúc config.json chi tiết
     - Cách config ảnh hưởng đến instance
     - Ví dụ sử dụng và best practices
     - Xử lý lỗi
 
-11. **[CONFIG_IMPACT_ON_INSTANCES.md](CONFIG_IMPACT_ON_INSTANCES.md)** - Tác động của Config với Instance
-    - max_running_instances và cách hoạt động
-    - Các config khác và tác động của chúng
-    - Luồng hoạt động khi tạo instance
-    - Bảng tóm tắt tác động
+10. **[LOGS_API.md](LOGS_API.md)** - Logs API Documentation
+    - Hướng dẫn sử dụng Logs API endpoints
+    - List log files theo category
+    - Get logs với filtering (level, time range, tail)
+    - Ví dụ sử dụng với curl
+    - Use cases và best practices
 
-### Node Support & Implementation
+11. **[STATISTICS_API.md](STATISTICS_API.md)** - Statistics API Documentation
+    - Hướng dẫn sử dụng Statistics API endpoint
+    - Lấy thống kê thời gian thực của instance
+    - Endpoint: `/v1/core/instance/{instanceId}/statistics`
+    - Ví dụ sử dụng với curl, Python, JavaScript
+    - Use cases: monitoring, alerting, dashboard
+    - Troubleshooting và best practices
 
-12. **[NODE_SUPPORT_STATUS.md](NODE_SUPPORT_STATUS.md)** - Trạng thái hỗ trợ các node types
-    - Inference nodes: 23 nodes (100%)
-    - Source nodes: 6 nodes (100%)
-    - Broker nodes: 12 nodes (100%)
+12. **[FRAME_API.md](FRAME_API.md)** - Frame API Documentation
+    - Hướng dẫn sử dụng Frame API endpoint
+    - Lấy khung hình cuối cùng từ instance đang chạy
+    - Endpoint: `/v1/core/instances/{instanceId}/frame`
+    - Frame được encode thành JPEG base64 format
+    - Yêu cầu pipeline có app_des_node
+    - Ví dụ sử dụng với curl, Python, JavaScript, HTML
+    - Use cases: live preview, thumbnail generation, monitoring
+    - Troubleshooting và best practices
 
-13. **[REQUIREMENT_CHECKLIST.md](REQUIREMENT_CHECKLIST.md)** - Checklist đáp ứng yêu cầu
-    - Detector (Inference): ✅ 100%
-    - Input (Source): ✅ 100%
-    - Output (Broker): ✅ 100%
+### 🔧 Troubleshooting & Guides
 
-14. **[IMPLEMENTATION_SUMMARY.md](IMPLEMENTATION_SUMMARY.md)** - Tổng kết implementation
-    - Tổng số nodes đã hỗ trợ: 41 nodes
-    - Example files: 26 files
-    - Files đã tạo/cập nhật
-   - Hướng dẫn sử dụng các tính năng logging
-   - API logging (`--log-api`)
-   - Instance execution logging (`--log-instance`)
-   - SDK output logging (`--log-sdk-output`)
-   - Cấu hình và best practices
-   - Troubleshooting logging issues
+13. **[QUEUE_MONITORING.md](QUEUE_MONITORING.md)** - Queue Monitoring và Auto-Clear
+    - QueueMonitor class
+    - Queue monitoring thread
+    - Cơ chế phát hiện queue issues
+    - Auto-restart instance
+    - Configuration và tuning
+
+14. **[MQTT_GUIDE.md](MQTT_GUIDE.md)** - MQTT Implementation Guide
+    - Non-blocking MQTT publisher
+    - Background thread implementation
+    - MQTT debug guide
+    - CVEDIX JSON MQTT Broker Node API
+    - Troubleshooting
+
+15. **[ENVIRONMENT_VARIABLES.md](ENVIRONMENT_VARIABLES.md)** - Environment Variables Documentation
+    - Danh sách đầy đủ các biến môi trường
+    - Cách sử dụng .env file
+    - Cấu hình server, logging, storage
+    - Performance tuning
+
+16. **[DIRECTORY_CREATION_GUIDE.md](DIRECTORY_CREATION_GUIDE.md)** - Directory Creation Guide
+    - Hướng dẫn tạo thư mục tự động với fallback
+    - Cấu trúc thư mục production
+    - Xử lý quyền truy cập
+
+### ⚡ Performance Optimization
+
+17. **[OPTIMIZATION_README.md](OPTIMIZATION_README.md)** - Performance Optimization Overview
+    - Tổng quan về các optimizations đã thực hiện
+    - Kết quả cải thiện performance
+    - Links đến các tài liệu chi tiết
+
+18. **[OPTIMIZATION_COMPLETE_REPORT.md](OPTIMIZATION_COMPLETE_REPORT.md)** - Báo Cáo Tổng Hợp Optimization
+    - Tổng hợp tất cả 3 phases optimization
+    - Kết quả chi tiết và metrics
+    - Code changes và impact
+
+### 🛠️ Development Tools & Analysis
+
+19. **[SCRIPTS_ANALYSIS.md](SCRIPTS_ANALYSIS.md)** - Phân tích và tối ưu Scripts
+    - Phân tích tất cả scripts trong project
+    - Đề xuất scripts nào cần giữ lại
+    - Hướng dẫn sử dụng setup.sh và fix_all_symlinks.sh
+    - Cấu trúc scripts đề xuất
 
 ## 🎯 Quick Start
 

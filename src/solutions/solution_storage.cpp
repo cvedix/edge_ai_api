@@ -1,4 +1,5 @@
 #include "solutions/solution_storage.h"
+#include "core/env_config.h"
 #include <json/json.h>
 #include <fstream>
 #include <iostream>
@@ -10,19 +11,25 @@ SolutionStorage::SolutionStorage(const std::string& storage_dir)
     ensureStorageDir();
 }
 
-void SolutionStorage::ensureStorageDir() const {
-    try {
-        if (!std::filesystem::exists(storage_dir_)) {
-            std::cerr << "[SolutionStorage] Creating storage directory: " << storage_dir_ << std::endl;
-            std::filesystem::create_directories(storage_dir_);
-            std::cerr << "[SolutionStorage] Storage directory created successfully" << std::endl;
-        } else {
-            std::cerr << "[SolutionStorage] Storage directory already exists: " << storage_dir_ << std::endl;
-        }
-    } catch (const std::exception& e) {
-        std::cerr << "[SolutionStorage] Error creating storage directory: " << e.what() << std::endl;
-        throw;
+void SolutionStorage::ensureStorageDir() {
+    // Extract subdir name from storage_dir_ for fallback
+    std::filesystem::path path(storage_dir_);
+    std::string subdir = path.filename().string();
+    if (subdir.empty()) {
+        subdir = "solutions"; // Default fallback subdir
     }
+    
+    // Use resolveDirectory with 3-tier fallback strategy
+    std::string resolved_dir = EnvConfig::resolveDirectory(storage_dir_, subdir);
+    
+    // Update storage_dir_ if fallback was used
+    if (resolved_dir != storage_dir_) {
+        std::cerr << "[SolutionStorage] ⚠ Storage directory changed from " << storage_dir_ 
+                  << " to " << resolved_dir << " (fallback)" << std::endl;
+        storage_dir_ = resolved_dir;
+    }
+    
+    // Don't throw - let the application continue even if directory creation failed
 }
 
 std::string SolutionStorage::getSolutionsFilePath() const {
@@ -32,32 +39,49 @@ std::string SolutionStorage::getSolutionsFilePath() const {
 Json::Value SolutionStorage::loadSolutionsFile() const {
     Json::Value root(Json::objectValue);
     
-    try {
-        std::string filepath = getSolutionsFilePath();
+    // Extract subdir for checking all tiers
+    std::filesystem::path path(storage_dir_);
+    std::string subdir = path.filename().string();
+    if (subdir.empty()) {
+        subdir = "solutions";
+    }
+    
+    // Get all possible directories in priority order
+    std::vector<std::string> allDirs = EnvConfig::getAllPossibleDirectories(subdir);
+    
+    // Try to load from all tiers, merge data (later tiers override earlier ones)
+    for (const auto& dir : allDirs) {
+        std::string filepath = dir + "/solutions.json";
         if (!std::filesystem::exists(filepath)) {
-            return root; // Return empty object if file doesn't exist
+            continue; // Skip if file doesn't exist
         }
         
-        std::ifstream file(filepath);
-        if (!file.is_open()) {
-            return root;
+        try {
+            std::ifstream file(filepath);
+            if (!file.is_open()) {
+                continue;
+            }
+            
+            Json::CharReaderBuilder builder;
+            std::string errors;
+            Json::Value tierData(Json::objectValue);
+            if (Json::parseFromStream(builder, file, &tierData, &errors)) {
+                // Merge data: later tiers override earlier ones
+                for (const auto& key : tierData.getMemberNames()) {
+                    root[key] = tierData[key];
+                }
+                std::cerr << "[SolutionStorage] Loaded data from tier: " << dir << std::endl;
+            }
+        } catch (const std::exception& e) {
+            // Continue to next tier
+            continue;
         }
-        
-        Json::CharReaderBuilder builder;
-        std::string errors;
-        if (!Json::parseFromStream(builder, file, &root, &errors)) {
-            std::cerr << "[SolutionStorage] Failed to parse solutions file: " << errors << std::endl;
-            return Json::Value(Json::objectValue); // Return empty on parse error
-        }
-    } catch (const std::exception& e) {
-        std::cerr << "[SolutionStorage] Exception loading solutions file: " << e.what() << std::endl;
-        return Json::Value(Json::objectValue);
     }
     
     return root;
 }
 
-bool SolutionStorage::saveSolutionsFile(const Json::Value& solutions) const {
+bool SolutionStorage::saveSolutionsFile(const Json::Value& solutions) {
     try {
         ensureStorageDir();
         

@@ -106,9 +106,9 @@ private:
     std::string storage_dir_;
     
     /**
-     * @brief Ensure storage directory exists
+     * @brief Ensure storage directory exists (with fallback if needed)
      */
-    void ensureStorageDir() const;
+    void ensureStorageDir();
     
     /**
      * @brief Get file path for instances.json
@@ -123,6 +123,6 @@ private:
     /**
      * @brief Save entire instances.json file
      */
-    bool saveInstancesFile(const Json::Value& instances) const;
+    bool saveInstancesFile(const Json::Value& instances);
 };
 

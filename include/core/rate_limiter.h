@@ -38,8 +38,9 @@ public:
      * @brief Get remaining tokens for a key
      * @param key Client identifier
      * @return Number of remaining tokens
+     * @note This method may refill tokens, so it's not const
      */
-    size_t getRemainingTokens(const std::string& key) const;
+    size_t getRemainingTokens(const std::string& key);
 
     /**
      * @brief Set adaptive throttling based on system load
@@ -76,7 +77,9 @@ private:
     
     // Cleanup expired buckets periodically
     void cleanupExpiredBuckets();
+    void evictOldestBuckets(size_t count);  // Evict oldest buckets when size limit exceeded
     std::chrono::steady_clock::time_point last_cleanup_;
     static constexpr std::chrono::seconds CLEANUP_INTERVAL{300}; // 5 minutes
+    static constexpr size_t MAX_BUCKETS = 10000;  // Maximum number of buckets to prevent unbounded growth
 };
 

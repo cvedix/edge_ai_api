@@ -1,4 +1,5 @@
 #include "core/log_manager.h"
+#include "core/env_config.h"
 #include <iostream>
 #include <sstream>
 #include <iomanip>
@@ -200,14 +201,28 @@ uint64_t LogManager::getDirectorySize(const std::string& dir_path) {
 
 void LogManager::createDirectories() {
     try {
-        // Create base directory
+        // Resolve base directory with fallback if needed
+        base_dir_ = EnvConfig::resolveDirectory(base_dir_, "logs");
+        
+        // Create base directory (already resolved, but ensure it exists)
         fs::create_directories(base_dir_);
         
-        // Create category directories
-        fs::create_directories(getCategoryDir(Category::API));
-        fs::create_directories(getCategoryDir(Category::INSTANCE));
-        fs::create_directories(getCategoryDir(Category::SDK_OUTPUT));
-        fs::create_directories(getCategoryDir(Category::GENERAL));
+        // Create category directories (with fallback if needed)
+        std::string apiDir = getCategoryDir(Category::API);
+        apiDir = EnvConfig::resolveDirectory(apiDir, "logs/api");
+        fs::create_directories(apiDir);
+        
+        std::string instanceDir = getCategoryDir(Category::INSTANCE);
+        instanceDir = EnvConfig::resolveDirectory(instanceDir, "logs/instance");
+        fs::create_directories(instanceDir);
+        
+        std::string sdkDir = getCategoryDir(Category::SDK_OUTPUT);
+        sdkDir = EnvConfig::resolveDirectory(sdkDir, "logs/sdk_output");
+        fs::create_directories(sdkDir);
+        
+        std::string generalDir = getCategoryDir(Category::GENERAL);
+        generalDir = EnvConfig::resolveDirectory(generalDir, "logs/general");
+        fs::create_directories(generalDir);
     } catch (const std::exception& e) {
         std::cerr << "[LogManager] Warning: Failed to create log directories: " << e.what() << std::endl;
     }
@@ -357,5 +372,57 @@ int LogManager::getFileAgeDays(const fs::path& file_path) {
     } catch (const std::exception& e) {
         return -1; // Error
     }
+}
+
+std::vector<std::pair<std::string, uint64_t>> LogManager::listLogFiles(Category category) {
+    std::vector<std::pair<std::string, uint64_t>> files;
+    
+    try {
+        std::string category_dir = getCategoryDir(category);
+        
+        if (!fs::exists(category_dir)) {
+            std::cerr << "[LogManager] Directory does not exist: " << category_dir << std::endl;
+            return files;
+        }
+        
+        if (!fs::is_directory(category_dir)) {
+            std::cerr << "[LogManager] Path is not a directory: " << category_dir << std::endl;
+            return files;
+        }
+        
+        // Iterate through all files in the category directory
+        int file_count = 0;
+        for (const auto& entry : fs::directory_iterator(category_dir)) {
+            file_count++;
+            if (fs::is_regular_file(entry)) {
+                std::string filename = entry.path().filename().string();
+                
+                // Check if file matches log format: YYYY-MM-DD.log (14 characters total)
+                if (filename.length() == 14 && filename.substr(10) == ".log") {
+                    std::string date_str = filename.substr(0, 10);
+                    
+                    // Validate date format (basic check)
+                    if (date_str.length() == 10 && date_str[4] == '-' && date_str[7] == '-') {
+                        try {
+                            uint64_t file_size = fs::file_size(entry.path());
+                            files.push_back({date_str, file_size});
+                        } catch (const std::exception& e) {
+                            std::cerr << "[LogManager] Error getting file size for " << filename << ": " << e.what() << std::endl;
+                        }
+                    }
+                }
+            }
+        }
+        
+        // Sort by date (newest first)
+        std::sort(files.begin(), files.end(), [](const auto& a, const auto& b) {
+            return a.first > b.first; // Reverse order (newest first)
+        });
+        
+    } catch (const std::exception& e) {
+        std::cerr << "[LogManager] Error listing log files: " << e.what() << std::endl;
+    }
+    
+    return files;
 }
 

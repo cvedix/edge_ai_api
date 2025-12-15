@@ -6,48 +6,79 @@
 void PerformanceMonitor::recordRequest(const std::string& endpoint,
                                       std::chrono::milliseconds latency,
                                       bool success) {
-    std::lock_guard<std::mutex> lock(mutex_);
+    // PHASE 2 OPTIMIZATION: Lock only to find/create metrics entry, then release
+    EndpointMetrics* metrics_ptr = nullptr;
+    {
+        std::lock_guard<std::mutex> lock(mutex_);
+        metrics_ptr = &endpoint_metrics_[endpoint];
+    }
+    // Lock released - now update atomic counters without lock
     
-    auto& metrics = endpoint_metrics_[endpoint];
-    
-    metrics.total_requests++;
+    // Update counters using atomic operations (no lock needed)
+    metrics_ptr->total_requests.fetch_add(1, std::memory_order_relaxed);
     if (success) {
-        metrics.successful_requests++;
+        metrics_ptr->successful_requests.fetch_add(1, std::memory_order_relaxed);
     } else {
-        metrics.failed_requests++;
+        metrics_ptr->failed_requests.fetch_add(1, std::memory_order_relaxed);
     }
     
     // Update latency statistics
     uint64_t latency_ms = latency.count();
-    metrics.total_latency_ms += latency_ms;
+    metrics_ptr->total_latency_ms.fetch_add(latency_ms, std::memory_order_relaxed);
     
-    // Calculate average
-    if (metrics.total_requests > 0) {
-        metrics.avg_latency_ms = 
-            static_cast<double>(metrics.total_latency_ms) / metrics.total_requests;
+    // Calculate average (need to read current values)
+    uint64_t total = metrics_ptr->total_requests.load(std::memory_order_relaxed);
+    uint64_t total_latency = metrics_ptr->total_latency_ms.load(std::memory_order_relaxed);
+    if (total > 0) {
+        double new_avg = static_cast<double>(total_latency) / total;
+        // Use compare-and-swap loop for atomic update
+        double current_avg = metrics_ptr->avg_latency_ms.load(std::memory_order_relaxed);
+        while (!metrics_ptr->avg_latency_ms.compare_exchange_weak(current_avg, new_avg, 
+                                                                 std::memory_order_relaxed)) {
+            // Recalculate if value changed
+            total = metrics_ptr->total_requests.load(std::memory_order_relaxed);
+            total_latency = metrics_ptr->total_latency_ms.load(std::memory_order_relaxed);
+            if (total > 0) {
+                new_avg = static_cast<double>(total_latency) / total;
+            } else {
+                break;
+            }
+        }
     }
     
-    // Update min/max
-    double current_min = metrics.min_latency_ms.load();
-    if (latency_ms < current_min) {
-        metrics.min_latency_ms = latency_ms;
+    // Update min/max using compare-and-swap
+    double current_min = metrics_ptr->min_latency_ms.load(std::memory_order_relaxed);
+    while (latency_ms < current_min && 
+           !metrics_ptr->min_latency_ms.compare_exchange_weak(current_min, static_cast<double>(latency_ms),
+                                                              std::memory_order_relaxed)) {
+        // Retry if value changed
     }
     
-    double current_max = metrics.max_latency_ms.load();
-    if (latency_ms > current_max) {
-        metrics.max_latency_ms = latency_ms;
+    double current_max = metrics_ptr->max_latency_ms.load(std::memory_order_relaxed);
+    while (latency_ms > current_max && 
+           !metrics_ptr->max_latency_ms.compare_exchange_weak(current_max, static_cast<double>(latency_ms),
+                                                              std::memory_order_relaxed)) {
+        // Retry if value changed
     }
 }
 
-PerformanceMonitor::EndpointMetrics PerformanceMonitor::getEndpointMetrics(const std::string& endpoint) const {
+PerformanceMonitor::EndpointMetricsSnapshot PerformanceMonitor::getEndpointMetrics(const std::string& endpoint) const {
     std::lock_guard<std::mutex> lock(mutex_);
     
     auto it = endpoint_metrics_.find(endpoint);
     if (it != endpoint_metrics_.end()) {
-        return it->second;
+        const auto& metrics = it->second;
+        EndpointMetricsSnapshot snapshot;
+        snapshot.total_requests = metrics.total_requests.load();
+        snapshot.successful_requests = metrics.successful_requests.load();
+        snapshot.failed_requests = metrics.failed_requests.load();
+        snapshot.avg_latency_ms = metrics.avg_latency_ms.load();
+        snapshot.max_latency_ms = metrics.max_latency_ms.load();
+        snapshot.min_latency_ms = metrics.min_latency_ms.load();
+        return snapshot;
     }
     
-    return EndpointMetrics{};
+    return EndpointMetricsSnapshot{};
 }
 
 Json::Value PerformanceMonitor::getMetricsJSON() const {
@@ -138,8 +169,11 @@ PerformanceMonitor::OverallStats PerformanceMonitor::getOverallStats() const {
         total_count += metrics.total_requests.load();
     }
     
+    // ✅ Safe division: check total_count before dividing
     if (total_count > 0) {
-        stats.avg_latency_ms = total_latency / total_count;
+        stats.avg_latency_ms = total_latency / static_cast<double>(total_count);
+    } else {
+        stats.avg_latency_ms = 0.0;
     }
     
     stats.throughput_rps = calculateThroughput();
@@ -152,7 +186,8 @@ double PerformanceMonitor::calculateThroughput() const {
     auto elapsed = std::chrono::duration_cast<std::chrono::seconds>(
         now - start_time_).count();
     
-    if (elapsed == 0) {
+    // ✅ Safe division: check elapsed before dividing
+    if (elapsed <= 0) {
         return 0.0;
     }
     
@@ -161,7 +196,7 @@ double PerformanceMonitor::calculateThroughput() const {
         total += metrics.total_requests.load();
     }
     
-    return static_cast<double>(total) / elapsed;
+    return static_cast<double>(total) / static_cast<double>(elapsed);
 }
 
 void PerformanceMonitor::reset() {
