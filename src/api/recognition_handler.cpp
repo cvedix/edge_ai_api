@@ -19,6 +19,7 @@
 
 // Static storage members
 std::unordered_map<std::string, std::vector<std::string>> RecognitionHandler::face_subjects_storage_;
+std::unordered_map<std::string, std::string> RecognitionHandler::image_id_to_subject_;
 std::mutex RecognitionHandler::storage_mutex_;
 
 HttpResponsePtr RecognitionHandler::createErrorResponse(int statusCode, const std::string& error, const std::string& message) const {
@@ -1840,6 +1841,13 @@ bool RecognitionHandler::registerSubject(const std::string& subjectName,
             return false;
         }
         
+        // Store image_id -> subject_name mapping
+        {
+            std::lock_guard<std::mutex> lock(storage_mutex_);
+            image_id_to_subject_[imageId] = subjectName;
+            face_subjects_storage_[subjectName].push_back(imageId);
+        }
+        
         return true;
         
     } catch (const std::exception& e) {
@@ -1960,23 +1968,30 @@ void RecognitionHandler::handleOptionsFaces(const HttpRequestPtr &req,
 Json::Value RecognitionHandler::getFaceSubjects(int page, int size, const std::string& subjectFilter) const {
     Json::Value result;
     
-    FaceDatabase& db = get_database();
-    auto all_faces = db.get_all_faces();
+    // Collect all image_id -> subject mappings
+    std::vector<std::pair<std::string, std::string>> all_faces; // (image_id, subject)
     
-    // Filter by subject if provided
-    std::vector<std::pair<std::string, std::vector<float>>> filtered_faces;
-    if (subjectFilter.empty()) {
-        filtered_faces = all_faces;
-    } else {
-        for (const auto& [name, embedding] : all_faces) {
-            if (name == subjectFilter) {
-                filtered_faces.push_back({name, embedding});
+    {
+        std::lock_guard<std::mutex> lock(storage_mutex_);
+        
+        if (subjectFilter.empty()) {
+            // Get all faces
+            for (const auto& [imageId, subjectName] : image_id_to_subject_) {
+                all_faces.push_back({imageId, subjectName});
+            }
+        } else {
+            // Get faces only from filtered subject
+            auto it = face_subjects_storage_.find(subjectFilter);
+            if (it != face_subjects_storage_.end()) {
+                for (const auto& imageId : it->second) {
+                    all_faces.push_back({imageId, subjectFilter});
+                }
             }
         }
     }
     
     // Calculate pagination
-    int totalElements = static_cast<int>(filtered_faces.size());
+    int totalElements = static_cast<int>(all_faces.size());
     int totalPages = (totalElements + size - 1) / size; // Ceiling division
     
     // Apply pagination
@@ -1986,8 +2001,8 @@ Json::Value RecognitionHandler::getFaceSubjects(int page, int size, const std::s
     Json::Value faces(Json::arrayValue);
     for (int i = start_idx; i < end_idx; i++) {
         Json::Value face;
-        face["subject"] = filtered_faces[i].first;
-        // Note: embedding is not included in response for security/performance
+        face["image_id"] = all_faces[i].first;
+        face["subject"] = all_faces[i].second;
         faces.append(face);
     }
     
@@ -2144,19 +2159,147 @@ bool RecognitionHandler::renameSubjectName(const std::string& oldSubjectName,
         return true;
     }
     
-    // Check if old subject exists
-    if (!subjectExists(oldSubjectName)) {
-        error = "Subject '" + oldSubjectName + "' does not exist";
+    // Check if old subject exists in FaceDatabase
+    FaceDatabase& db = get_database();
+    const auto& db_map = db.get_database();
+    auto db_old_it = db_map.find(oldSubjectName);
+    
+    // Check if old subject exists in storage
+    std::lock_guard<std::mutex> lock(storage_mutex_);
+    auto oldIt = face_subjects_storage_.find(oldSubjectName);
+    
+    // Subject must exist in at least one place
+    if (db_old_it == db_map.end() && (oldIt == face_subjects_storage_.end() || oldIt->second.empty())) {
+        error = "Subject '" + oldSubjectName + "' not found in face database";
         return false;
     }
     
-    // Check if new subject already exists
-    if (subjectExists(newSubjectName)) {
-        // Merge: move all faces from old subject to new subject
-        mergeSubjects(oldSubjectName, newSubjectName);
-    } else {
-        // Rename: move all faces from old subject to new subject name
-        renameSubjectInStorage(oldSubjectName, newSubjectName);
+    // Update FaceDatabase: rename subject in database file
+    if (db_old_it != db_map.end()) {
+        // Check if new subject already exists in database
+        auto db_new_it = db_map.find(newSubjectName);
+        bool need_merge = (db_new_it != db_map.end());
+        std::vector<float> old_embedding = db_old_it->second;
+        std::vector<float> new_embedding;
+        if (need_merge) {
+            new_embedding = db_new_it->second;
+        }
+        
+        // Reload database file to modify it
+        std::string db_path = db.get_database_path();
+        std::ifstream in_file(db_path);
+        std::map<std::string, std::vector<float>> updated_faces;
+        
+        if (in_file.is_open()) {
+            std::string line;
+            while (std::getline(in_file, line)) {
+                if (line.empty()) continue;
+                size_t pos = line.find('|');
+                if (pos == std::string::npos) continue;
+                
+                std::string name = line.substr(0, pos);
+                std::string embedding_str = line.substr(pos + 1);
+                
+                // Trim name
+                name.erase(0, name.find_first_not_of(" \t"));
+                name.erase(name.find_last_not_of(" \t") + 1);
+                
+                if (name.empty()) continue;
+                
+                std::vector<float> embedding;
+                std::stringstream ss(embedding_str);
+                std::string value;
+                
+                while (std::getline(ss, value, ',')) {
+                    value.erase(0, value.find_first_not_of(" \t\r\n"));
+                    value.erase(value.find_last_not_of(" \t\r\n") + 1);
+                    if (value.empty()) continue;
+                    try {
+                        embedding.push_back(std::stof(value));
+                    } catch (...) {
+                        break;
+                    }
+                }
+                
+                if (!embedding.empty()) {
+                    if (name == oldSubjectName) {
+                        // Skip old subject - will be renamed to new name
+                        continue;
+                    } else if (name == newSubjectName && need_merge) {
+                        // Merge embeddings: average old and new
+                        if (old_embedding.size() == embedding.size()) {
+                            std::vector<float> merged_embedding(embedding.size());
+                            for (size_t i = 0; i < embedding.size(); i++) {
+                                merged_embedding[i] = (old_embedding[i] + embedding[i]) / 2.0f;
+                            }
+                            // L2 normalize
+                            float norm = 0.0f;
+                            for (float val : merged_embedding) {
+                                norm += val * val;
+                            }
+                            norm = std::sqrt(norm);
+                            if (norm > 1e-6) {
+                                for (float& val : merged_embedding) {
+                                    val /= norm;
+                                }
+                            }
+                            updated_faces[newSubjectName] = merged_embedding;
+                        } else {
+                            // Size mismatch, keep existing
+                            updated_faces[newSubjectName] = embedding;
+                        }
+                    } else {
+                        // Keep other subjects as-is
+                        updated_faces[name] = embedding;
+                    }
+                }
+            }
+            in_file.close();
+            
+            // If not merging, add old subject with new name
+            if (!need_merge) {
+                updated_faces[newSubjectName] = old_embedding;
+            }
+            
+            // Save updated database
+            std::ofstream out_file(db_path, std::ios::out | std::ios::trunc);
+            if (out_file.is_open()) {
+                for (const auto& [name, embedding] : updated_faces) {
+                    out_file << name << "|";
+                    for (size_t i = 0; i < embedding.size(); i++) {
+                        out_file << std::fixed << std::setprecision(6) << embedding[i];
+                        if (i < embedding.size() - 1) out_file << ",";
+                    }
+                    out_file << "\n";
+                }
+                out_file.close();
+            }
+        }
+    }
+    
+    // Update storage mappings
+    if (oldIt != face_subjects_storage_.end() && !oldIt->second.empty()) {
+        // Update all image_id mappings
+        for (const auto& imageId : oldIt->second) {
+            image_id_to_subject_[imageId] = newSubjectName;
+        }
+        
+        // Merge subjects if new subject already exists
+        auto newIt = face_subjects_storage_.find(newSubjectName);
+        if (newIt != face_subjects_storage_.end()) {
+            // Merge: add all image IDs from old subject to new subject
+            newIt->second.insert(newIt->second.end(), oldIt->second.begin(), oldIt->second.end());
+        } else {
+            // Create new subject with old subject's image IDs
+            face_subjects_storage_[newSubjectName] = oldIt->second;
+        }
+        
+        // Remove old subject
+        face_subjects_storage_.erase(oldIt);
+    } else if (db_old_it != db_map.end()) {
+        // Subject exists in database but not in storage - create entry in storage
+        // This can happen if subject was registered before storage tracking was added
+        face_subjects_storage_[newSubjectName] = std::vector<std::string>();
     }
     
     return true;
@@ -2220,7 +2363,16 @@ void RecognitionHandler::renameSubject(const HttpRequestPtr &req,
         
         // Build response
         Json::Value response;
-        response["updated"] = success ? "true" : "false";
+        if (success) {
+            response["updated"] = "true";
+            response["old_subject"] = oldSubjectName;
+            response["new_subject"] = newSubjectName;
+            response["message"] = "Subject renamed successfully";
+        } else {
+            response["updated"] = "false";
+            response["error"] = renameError;
+            response["old_subject"] = oldSubjectName;
+        }
         
         auto resp = HttpResponse::newHttpJsonResponse(response);
         resp->setStatusCode(success ? k200OK : k400BadRequest);
@@ -2338,12 +2490,9 @@ void RecognitionHandler::renameSubjectInStorage(const std::string& oldSubjectNam
 std::string RecognitionHandler::findSubjectByImageId(const std::string& imageId) const {
     std::lock_guard<std::mutex> lock(storage_mutex_);
     
-    for (const auto& [subjectName, imageIds] : face_subjects_storage_) {
-        for (const auto& id : imageIds) {
-            if (id == imageId) {
-                return subjectName;
-            }
-        }
+    auto it = image_id_to_subject_.find(imageId);
+    if (it != image_id_to_subject_.end()) {
+        return it->second;
     }
     
     return std::string();
@@ -2374,12 +2523,34 @@ bool RecognitionHandler::removeImageFromSubject(const std::string& subjectName, 
 }
 
 bool RecognitionHandler::deleteImageFromStorage(const std::string& imageId, std::string& subjectName) const {
-    subjectName = findSubjectByImageId(imageId);
-    if (subjectName.empty()) {
+    std::lock_guard<std::mutex> lock(storage_mutex_);
+    
+    auto it = image_id_to_subject_.find(imageId);
+    if (it == image_id_to_subject_.end()) {
         return false;
     }
     
-    return removeImageFromSubject(subjectName, imageId);
+    subjectName = it->second;
+    
+    // Remove from image_id_to_subject_
+    image_id_to_subject_.erase(it);
+    
+    // Remove from face_subjects_storage_
+    auto subjectIt = face_subjects_storage_.find(subjectName);
+    if (subjectIt != face_subjects_storage_.end()) {
+        auto& imageIds = subjectIt->second;
+        auto imageIt = std::find(imageIds.begin(), imageIds.end(), imageId);
+        if (imageIt != imageIds.end()) {
+            imageIds.erase(imageIt);
+            
+            // Remove subject if it has no more images
+            if (imageIds.empty()) {
+                face_subjects_storage_.erase(subjectIt);
+            }
+        }
+    }
+    
+    return true;
 }
 
 void RecognitionHandler::deleteFaceSubject(const HttpRequestPtr &req,
@@ -2392,7 +2563,7 @@ void RecognitionHandler::deleteFaceSubject(const HttpRequestPtr &req,
     }
     
     try {
-        // Extract image ID from URL path
+        // Extract identifier from URL path (can be image_id or subject name)
         std::string path = req->getPath();
         size_t facesPos = path.find("/faces/");
         if (facesPos == std::string::npos) {
@@ -2408,34 +2579,83 @@ void RecognitionHandler::deleteFaceSubject(const HttpRequestPtr &req,
         if (end == std::string::npos) {
             end = path.length();
         }
-        std::string imageId = path.substr(start, end - start);
+        std::string identifier = path.substr(start, end - start);
         
-        if (imageId.empty()) {
+        if (identifier.empty()) {
             if (isApiLoggingEnabled()) {
-                PLOG_WARNING << "[API] DELETE /v1/recognition/faces/{image_id} - Missing image_id in path";
+                PLOG_WARNING << "[API] DELETE /v1/recognition/faces/{image_id} - Missing identifier in path";
             }
-            callback(createErrorResponse(400, "Invalid request", "Missing image_id in URL path"));
+            callback(createErrorResponse(400, "Invalid request", "Missing identifier in URL path"));
             return;
         }
         
         if (isApiLoggingEnabled()) {
-            PLOG_DEBUG << "[API] Delete face subject with image_id: " << imageId;
+            PLOG_DEBUG << "[API] Delete face subject with identifier: " << identifier;
         }
         
-        // Find and delete image from storage
+        std::lock_guard<std::mutex> lock(storage_mutex_);
+        
+        // Check if identifier is an image_id or subject name
         std::string subjectName;
-        if (!deleteImageFromStorage(imageId, subjectName)) {
-            if (isApiLoggingEnabled()) {
-                PLOG_WARNING << "[API] DELETE /v1/recognition/faces/{image_id} - Face not found: " << imageId;
+        std::vector<std::string> deletedImageIds;
+        
+        auto imageIt = image_id_to_subject_.find(identifier);
+        if (imageIt != image_id_to_subject_.end()) {
+            // It's an image_id
+            subjectName = imageIt->second;
+            deletedImageIds.push_back(identifier);
+            image_id_to_subject_.erase(imageIt);
+            
+            // Remove from face_subjects_storage_
+            auto subjectIt = face_subjects_storage_.find(subjectName);
+            if (subjectIt != face_subjects_storage_.end()) {
+                auto& imageIds = subjectIt->second;
+                auto idIt = std::find(imageIds.begin(), imageIds.end(), identifier);
+                if (idIt != imageIds.end()) {
+                    imageIds.erase(idIt);
+                    if (imageIds.empty()) {
+                        face_subjects_storage_.erase(subjectIt);
+                    }
+                }
             }
-            callback(createErrorResponse(404, "Not Found", "Face subject with image_id '" + imageId + "' not found"));
-            return;
+        } else {
+            // Check if it's a subject name
+            auto subjectIt = face_subjects_storage_.find(identifier);
+            if (subjectIt != face_subjects_storage_.end()) {
+                // It's a subject name - delete all images for this subject
+                subjectName = identifier;
+                deletedImageIds = subjectIt->second;
+                
+                // Remove all image_id mappings
+                for (const auto& imageId : deletedImageIds) {
+                    image_id_to_subject_.erase(imageId);
+                }
+                
+                // Remove subject
+                face_subjects_storage_.erase(subjectIt);
+            } else {
+                if (isApiLoggingEnabled()) {
+                    PLOG_WARNING << "[API] DELETE /v1/recognition/faces/{image_id} - Face not found: " << identifier;
+                }
+                callback(createErrorResponse(404, "Not Found", "Face subject with identifier '" + identifier + "' not found"));
+                return;
+            }
         }
         
         // Build response
         Json::Value response;
-        response["image_id"] = imageId;
-        response["subject"] = subjectName;
+        if (deletedImageIds.size() == 1) {
+            response["image_id"] = deletedImageIds[0];
+            response["subject"] = subjectName;
+        } else {
+            response["subject"] = subjectName;
+            response["deleted_count"] = static_cast<int>(deletedImageIds.size());
+            Json::Value imageIds(Json::arrayValue);
+            for (const auto& id : deletedImageIds) {
+                imageIds.append(id);
+            }
+            response["image_ids"] = imageIds;
+        }
         
         auto resp = HttpResponse::newHttpJsonResponse(response);
         resp->setStatusCode(k200OK);
@@ -2449,9 +2669,15 @@ void RecognitionHandler::deleteFaceSubject(const HttpRequestPtr &req,
         auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(end_time - start_time);
         
         if (isApiLoggingEnabled()) {
-            PLOG_INFO << "[API] DELETE /v1/recognition/faces/{image_id} - Success: Deleted face subject '" 
-                      << imageId << "' (subject: '" << subjectName << "') - " 
-                      << duration.count() << "ms";
+            if (deletedImageIds.size() == 1) {
+                PLOG_INFO << "[API] DELETE /v1/recognition/faces/{image_id} - Success: Deleted face subject '" 
+                          << deletedImageIds[0] << "' (subject: '" << subjectName << "') - " 
+                          << duration.count() << "ms";
+            } else {
+                PLOG_INFO << "[API] DELETE /v1/recognition/faces/{image_id} - Success: Deleted " 
+                          << deletedImageIds.size() << " face(s) for subject '" << subjectName << "' - " 
+                          << duration.count() << "ms";
+            }
         }
         
         callback(resp);
@@ -2566,12 +2792,81 @@ void RecognitionHandler::deleteMultipleFaceSubjects(const HttpRequestPtr &req,
     }
 }
 
+void RecognitionHandler::deleteAllFaceSubjects(const HttpRequestPtr &req,
+                                              std::function<void(const HttpResponsePtr &)> &&callback) {
+    auto start_time = std::chrono::steady_clock::now();
+    
+    if (isApiLoggingEnabled()) {
+        PLOG_INFO << "[API] DELETE /v1/recognition/faces/all - Delete all face subjects";
+        PLOG_DEBUG << "[API] Request from: " << req->getPeerAddr().toIpPort();
+    }
+    
+    try {
+        std::lock_guard<std::mutex> lock(storage_mutex_);
+        
+        int deletedCount = static_cast<int>(image_id_to_subject_.size());
+        
+        // Clear all storage
+        image_id_to_subject_.clear();
+        face_subjects_storage_.clear();
+        
+        // Build response
+        Json::Value response;
+        response["deleted_count"] = deletedCount;
+        response["message"] = "All face subjects deleted successfully";
+        
+        auto resp = HttpResponse::newHttpJsonResponse(response);
+        resp->setStatusCode(k200OK);
+        
+        // Add CORS headers
+        resp->addHeader("Access-Control-Allow-Origin", "*");
+        resp->addHeader("Access-Control-Allow-Methods", "DELETE, OPTIONS");
+        resp->addHeader("Access-Control-Allow-Headers", "Content-Type, x-api-key");
+        
+        auto end_time = std::chrono::steady_clock::now();
+        auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(end_time - start_time);
+        
+        if (isApiLoggingEnabled()) {
+            PLOG_INFO << "[API] DELETE /v1/recognition/faces/all - Success: Deleted " 
+                      << deletedCount << " face subject(s) - " << duration.count() << "ms";
+        }
+        
+        callback(resp);
+        
+    } catch (const std::exception& e) {
+        auto end_time = std::chrono::steady_clock::now();
+        auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(end_time - start_time);
+        if (isApiLoggingEnabled()) {
+            PLOG_ERROR << "[API] DELETE /v1/recognition/faces/all - Exception: " << e.what() << " - " << duration.count() << "ms";
+        }
+        callback(createErrorResponse(500, "Internal server error", e.what()));
+    } catch (...) {
+        auto end_time = std::chrono::steady_clock::now();
+        auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(end_time - start_time);
+        if (isApiLoggingEnabled()) {
+            PLOG_ERROR << "[API] DELETE /v1/recognition/faces/all - Unknown exception - " << duration.count() << "ms";
+        }
+        callback(createErrorResponse(500, "Internal server error", "Unknown error occurred"));
+    }
+}
+
 void RecognitionHandler::handleOptionsDeleteFaces(const HttpRequestPtr &req,
                                                   std::function<void(const HttpResponsePtr &)> &&callback) {
     auto resp = HttpResponse::newHttpResponse();
     resp->setStatusCode(k200OK);
     resp->addHeader("Access-Control-Allow-Origin", "*");
     resp->addHeader("Access-Control-Allow-Methods", "POST, OPTIONS");
+    resp->addHeader("Access-Control-Allow-Headers", "Content-Type, x-api-key");
+    resp->addHeader("Access-Control-Max-Age", "3600");
+    callback(resp);
+}
+
+void RecognitionHandler::handleOptionsDeleteAll(const HttpRequestPtr &req,
+                                                std::function<void(const HttpResponsePtr &)> &&callback) {
+    auto resp = HttpResponse::newHttpResponse();
+    resp->setStatusCode(k200OK);
+    resp->addHeader("Access-Control-Allow-Origin", "*");
+    resp->addHeader("Access-Control-Allow-Methods", "DELETE, OPTIONS");
     resp->addHeader("Access-Control-Allow-Headers", "Content-Type, x-api-key");
     resp->addHeader("Access-Control-Max-Age", "3600");
     callback(resp);

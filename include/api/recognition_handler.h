@@ -32,10 +32,12 @@ public:
         ADD_METHOD_TO(RecognitionHandler::listFaceSubjects, "/v1/recognition/faces", Get);
         ADD_METHOD_TO(RecognitionHandler::deleteFaceSubject, "/v1/recognition/faces/{image_id}", Delete);
         ADD_METHOD_TO(RecognitionHandler::deleteMultipleFaceSubjects, "/v1/recognition/faces/delete", Post);
+        ADD_METHOD_TO(RecognitionHandler::deleteAllFaceSubjects, "/v1/recognition/faces/all", Delete);
         ADD_METHOD_TO(RecognitionHandler::renameSubject, "/v1/recognition/subjects/{subject}", Put);
         ADD_METHOD_TO(RecognitionHandler::handleOptions, "/v1/recognition/recognize", Options);
         ADD_METHOD_TO(RecognitionHandler::handleOptionsFaces, "/v1/recognition/faces", Options);
         ADD_METHOD_TO(RecognitionHandler::handleOptionsDeleteFaces, "/v1/recognition/faces/delete", Options);
+        ADD_METHOD_TO(RecognitionHandler::handleOptionsDeleteAll, "/v1/recognition/faces/all", Options);
         ADD_METHOD_TO(RecognitionHandler::handleOptionsSubjects, "/v1/recognition/subjects/{subject}", Options);
     METHOD_LIST_END
     
@@ -75,6 +77,13 @@ public:
                                    std::function<void(const HttpResponsePtr &)> &&callback);
     
     /**
+     * @brief Handle DELETE /v1/recognition/faces/all
+     * Deletes all face subjects
+     */
+    void deleteAllFaceSubjects(const HttpRequestPtr &req,
+                               std::function<void(const HttpResponsePtr &)> &&callback);
+    
+    /**
      * @brief Handle PUT /v1/recognition/subjects/{subject}
      * Renames an existing subject. If the new subject name already exists, subjects are merged.
      */
@@ -104,6 +113,12 @@ public:
      */
     void handleOptionsDeleteFaces(const HttpRequestPtr &req,
                                  std::function<void(const HttpResponsePtr &)> &&callback);
+    
+    /**
+     * @brief Handle OPTIONS request for CORS preflight (delete all faces endpoint)
+     */
+    void handleOptionsDeleteAll(const HttpRequestPtr &req,
+                               std::function<void(const HttpResponsePtr &)> &&callback);
 
 private:
     /**
@@ -259,6 +274,8 @@ private:
     
     // Static storage for face subjects: subject name -> vector of image IDs
     static std::unordered_map<std::string, std::vector<std::string>> face_subjects_storage_;
+    // Static storage for image ID mapping: image_id -> subject_name
+    static std::unordered_map<std::string, std::string> image_id_to_subject_;
     static std::mutex storage_mutex_;
 };
 
