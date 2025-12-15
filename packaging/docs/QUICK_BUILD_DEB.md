@@ -16,9 +16,13 @@ Script sẽ tự động kiểm tra và báo lỗi nếu thiếu. Cài đặt v�
 
 ```bash
 sudo apt-get update
-sudo apt-get install -y build-essential cmake git debhelper dpkg-dev \
-    libssl-dev zlib1g-dev libjsoncpp-dev uuid-dev pkg-config \
-    libopencv-dev libgstreamer1.0-dev libgstreamer-plugins-base1.0-dev \
+sudo apt-get install -y \
+    build-essential cmake git \
+    debhelper dpkg-dev \
+    libssl-dev zlib1g-dev \
+    libjsoncpp-dev uuid-dev pkg-config \
+    libopencv-dev \
+    libgstreamer1.0-dev libgstreamer-plugins-base1.0-dev \
     libmosquitto-dev
 ```
 

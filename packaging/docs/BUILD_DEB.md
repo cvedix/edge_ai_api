@@ -30,19 +30,12 @@ sudo systemctl start edge-ai-api
 ```bash
 sudo apt-get update
 sudo apt-get install -y \
-    build-essential \
-    cmake \
-    git \
-    debhelper \
-    dpkg-dev \
-    libssl-dev \
-    zlib1g-dev \
-    libjsoncpp-dev \
-    uuid-dev \
-    pkg-config \
+    build-essential cmake git \
+    debhelper dpkg-dev \
+    libssl-dev zlib1g-dev \
+    libjsoncpp-dev uuid-dev pkg-config \
     libopencv-dev \
-    libgstreamer1.0-dev \
-    libgstreamer-plugins-base1.0-dev \
+    libgstreamer1.0-dev libgstreamer-plugins-base1.0-dev \
     libmosquitto-dev
 ```
 
