@@ -4,7 +4,18 @@
 
 Dự án Edge AI API sử dụng biến môi trường để cấu hình server và các thành phần. C++ sử dụng `std::getenv()` để đọc biến môi trường từ hệ thống.
 
-> **📖 Xem thêm:** [Directory Creation Guide](DIRECTORY_CREATION_GUIDE.md) - Hướng dẫn chi tiết về cách xử lý tạo thư mục tự động với fallback.
+> **📖 Xem thêm:** 
+> - [Unified Configuration Approach](CONFIG_UNIFIED_APPROACH.md) - **Cách tiếp cận thống nhất** giữa config.json và env vars
+> - [Directory Creation Guide](DIRECTORY_CREATION_GUIDE.md) - Hướng dẫn chi tiết về cách xử lý tạo thư mục tự động với fallback
+
+## ⚡ Unified Configuration
+
+**config.json có ưu tiên cao hơn biến môi trường** - Xem chi tiết tại [CONFIG_UNIFIED_APPROACH.md](CONFIG_UNIFIED_APPROACH.md)
+
+Ví dụ:
+- `config.json` có `port: 8080` → Server chạy trên port 8080 (ưu tiên)
+- Set `API_PORT=9000` nhưng config.json có port → Vẫn dùng port 8080 từ config.json
+- Nếu `config.json` không có port → Mới dùng `API_PORT=9000` (fallback)
 
 ## Cách Sử Dụng
 
@@ -54,12 +65,13 @@ Environment="API_PORT=8080"
 | Biến | Mô tả | Mặc định | File sử dụng |
 |------|-------|----------|--------------|
 | `CONFIG_FILE` | Đường dẫn đến file config.json | Tự động tìm: `./config.json` → `/opt/edge_ai_api/config/config.json` → `/etc/edge_ai_api/config.json` | `src/main.cpp` |
-| `API_HOST` | Địa chỉ host để bind server | `0.0.0.0` | `src/main.cpp` |
-| `API_PORT` | Port của HTTP server | `8080` | `src/main.cpp` |
+| `API_HOST` | Địa chỉ host để bind server | Override từ `config.json["system"]["web_server"]["ip_address"]` | `src/config/system_config.cpp` |
+| `API_PORT` | Port của HTTP server | Override từ `config.json["system"]["web_server"]["port"]` | `src/config/system_config.cpp` |
 | `CLIENT_MAX_BODY_SIZE` | Kích thước body tối đa (bytes) | `1048576` (1MB) | `src/main.cpp` |
 | `CLIENT_MAX_MEMORY_BODY_SIZE` | Kích thước memory body tối đa (bytes) | `1048576` (1MB) | `src/main.cpp` |
 | `THREAD_NUM` | Số lượng worker threads (0 = auto, minimum 8 for AI) | `0` | `src/main.cpp` |
-| `LOG_LEVEL` | Mức độ logging (TRACE/DEBUG/INFO/WARN/ERROR) | `INFO` | `src/main.cpp` |
+| `LOG_LEVEL` | Mức độ logging (TRACE/DEBUG/INFO/WARN/ERROR) | Override từ `config.json["system"]["logging"]["log_level"]` | `src/config/system_config.cpp` |
+| `MAX_RUNNING_INSTANCES` | Số lượng instances tối đa (0 = unlimited) | Override từ `config.json["system"]["max_running_instances"]` | `src/config/system_config.cpp` |
 
 #### Configuration File
 | Biến | Mô tả | Mặc định | File sử dụng |
@@ -81,7 +93,7 @@ Environment="CONFIG_FILE=/opt/edge_ai_api/config/config.json"
 #### Logging Configuration
 | Biến | Mô tả | Mặc định | File sử dụng |
 |------|-------|----------|--------------|
-| `LOG_DIR` | Thư mục lưu log files | `./logs` | `src/core/log_manager.cpp` |
+| `LOG_DIR` | Thư mục lưu log files | Override thư mục của `config.json["system"]["logging"]["log_file"]` | `src/config/system_config.cpp` |
 | `LOG_RETENTION_DAYS` | Số ngày giữ logs (tự động xóa sau thời gian này) | `30` | `src/core/log_manager.cpp` |
 | `LOG_MAX_DISK_USAGE_PERCENT` | Ngưỡng dung lượng đĩa để trigger cleanup (%) | `85` | `src/core/log_manager.cpp` |
 | `LOG_CLEANUP_INTERVAL_HOURS` | Khoảng thời gian kiểm tra và cleanup (giờ) | `24` | `src/core/log_manager.cpp` |

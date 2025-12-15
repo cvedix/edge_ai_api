@@ -43,9 +43,9 @@ private:
     std::string storage_dir_;
     
     /**
-     * @brief Ensure storage directory exists
+     * @brief Ensure storage directory exists (with fallback if needed)
      */
-    void ensureStorageDir() const;
+    void ensureStorageDir();
     
     /**
      * @brief Get nodes file path
@@ -60,7 +60,7 @@ private:
     /**
      * @brief Save nodes file
      */
-    bool saveNodesFile(const Json::Value& nodes) const;
+    bool saveNodesFile(const Json::Value& nodes);
     
     /**
      * @brief Convert PreConfiguredNode to JSON

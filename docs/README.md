@@ -72,60 +72,6 @@ Tài liệu hướng dẫn đầy đủ cho Edge AI API project.
     - Ví dụ sử dụng và best practices
     - Xử lý lỗi
 
-### 🔧 Troubleshooting & Guides
-
-11. **[TROUBLESHOOTING.md](TROUBLESHOOTING.md)** - Hướng dẫn khắc phục sự cố
-    - Crash analysis - Queue deadlock
-    - Crash analysis - RTSP + MQTT deadlock
-    - MQTT vs RTMP queue crash
-    - MQTT debug guide
-    - RTSP connection issues
-    - RTSP decoder issues
-
-12. **[QUEUE_MONITORING.md](QUEUE_MONITORING.md)** - Queue Monitoring và Auto-Clear
-    - QueueMonitor class
-    - Queue monitoring thread
-    - Cơ chế phát hiện queue issues
-    - Auto-restart instance
-    - Configuration và tuning
-
-13. **[MQTT_GUIDE.md](MQTT_GUIDE.md)** - MQTT Implementation Guide
-    - Non-blocking MQTT publisher
-    - Background thread implementation
-    - MQTT debug guide
-    - CVEDIX JSON MQTT Broker Node API
-    - Troubleshooting
-
-14. **[RTSP_TROUBLESHOOTING.md](RTSP_TROUBLESHOOTING.md)** - RTSP Troubleshooting Guide
-    - RTSP connection timeout
-    - RTSP decoder issues
-    - RTSP error analysis
-    - Giải pháp và workarounds
-
-15. **[RESIZE_RATIO_GUIDE.md](RESIZE_RATIO_GUIDE.md)** - Hướng dẫn RESIZE_RATIO
-    - Bảng so sánh RESIZE_RATIO
-    - Tối ưu cho MQTT vs RTMP
-    - Test strategy
-    - Khuyến nghị cho từng use case
-
-### 🛠️ Development Tools & Analysis
-
-16. **[SCRIPTS_ANALYSIS.md](SCRIPTS_ANALYSIS.md)** - Phân tích và tối ưu Scripts
-    - Phân tích tất cả scripts trong project
-    - Đề xuất scripts nào cần giữ lại
-    - Hướng dẫn sử dụng setup.sh và fix_all_symlinks.sh
-    - Cấu trúc scripts đề xuất
-
-17. **[CMAKE_FIXES_APPLIED.md](CMAKE_FIXES_APPLIED.md)** - Các lỗi CMake đã được fix
-    - Danh sách các lỗi CMake đã được giải quyết
-    - Các thay đổi trong CMakeLists.txt
-    - Hướng dẫn sử dụng fix_all_symlinks.sh
-
-18. **[CMAKE_ISSUES_ANALYSIS.md](CMAKE_ISSUES_ANALYSIS.md)** - Phân tích chi tiết các vấn đề CMake
-    - Phân tích nguyên nhân các lỗi CMake
-    - Giải pháp và workarounds
-    - Best practices cho CMake configuration
-
 10. **[LOGS_API.md](LOGS_API.md)** - Logs API Documentation
     - Hướng dẫn sử dụng Logs API endpoints
     - List log files theo category
@@ -151,22 +97,52 @@ Tài liệu hướng dẫn đầy đủ cho Edge AI API project.
     - Use cases: live preview, thumbnail generation, monitoring
     - Troubleshooting và best practices
 
-### Node Support & Implementation
+### 🔧 Troubleshooting & Guides
 
-13. **[NODE_SUPPORT_STATUS.md](NODE_SUPPORT_STATUS.md)** - Trạng thái hỗ trợ các node types
-    - Inference nodes: 23 nodes (100%)
-    - Source nodes: 6 nodes (100%)
-    - Broker nodes: 12 nodes (100%)
+13. **[QUEUE_MONITORING.md](QUEUE_MONITORING.md)** - Queue Monitoring và Auto-Clear
+    - QueueMonitor class
+    - Queue monitoring thread
+    - Cơ chế phát hiện queue issues
+    - Auto-restart instance
+    - Configuration và tuning
 
-13. **[REQUIREMENT_CHECKLIST.md](REQUIREMENT_CHECKLIST.md)** - Checklist đáp ứng yêu cầu
-    - Detector (Inference): ✅ 100%
-    - Input (Source): ✅ 100%
-    - Output (Broker): ✅ 100%
+14. **[MQTT_GUIDE.md](MQTT_GUIDE.md)** - MQTT Implementation Guide
+    - Non-blocking MQTT publisher
+    - Background thread implementation
+    - MQTT debug guide
+    - CVEDIX JSON MQTT Broker Node API
+    - Troubleshooting
 
-14. **[IMPLEMENTATION_SUMMARY.md](IMPLEMENTATION_SUMMARY.md)** - Tổng kết implementation
-    - Tổng số nodes đã hỗ trợ: 41 nodes
-    - Example files: 26 files
-    - Files đã tạo/cập nhật
+15. **[ENVIRONMENT_VARIABLES.md](ENVIRONMENT_VARIABLES.md)** - Environment Variables Documentation
+    - Danh sách đầy đủ các biến môi trường
+    - Cách sử dụng .env file
+    - Cấu hình server, logging, storage
+    - Performance tuning
+
+16. **[DIRECTORY_CREATION_GUIDE.md](DIRECTORY_CREATION_GUIDE.md)** - Directory Creation Guide
+    - Hướng dẫn tạo thư mục tự động với fallback
+    - Cấu trúc thư mục production
+    - Xử lý quyền truy cập
+
+### ⚡ Performance Optimization
+
+17. **[OPTIMIZATION_README.md](OPTIMIZATION_README.md)** - Performance Optimization Overview
+    - Tổng quan về các optimizations đã thực hiện
+    - Kết quả cải thiện performance
+    - Links đến các tài liệu chi tiết
+
+18. **[OPTIMIZATION_COMPLETE_REPORT.md](OPTIMIZATION_COMPLETE_REPORT.md)** - Báo Cáo Tổng Hợp Optimization
+    - Tổng hợp tất cả 3 phases optimization
+    - Kết quả chi tiết và metrics
+    - Code changes và impact
+
+### 🛠️ Development Tools & Analysis
+
+19. **[SCRIPTS_ANALYSIS.md](SCRIPTS_ANALYSIS.md)** - Phân tích và tối ưu Scripts
+    - Phân tích tất cả scripts trong project
+    - Đề xuất scripts nào cần giữ lại
+    - Hướng dẫn sử dụng setup.sh và fix_all_symlinks.sh
+    - Cấu trúc scripts đề xuất
 
 ## 🎯 Quick Start
 

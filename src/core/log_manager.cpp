@@ -1,4 +1,5 @@
 #include "core/log_manager.h"
+#include "core/env_config.h"
 #include <iostream>
 #include <sstream>
 #include <iomanip>
@@ -200,14 +201,28 @@ uint64_t LogManager::getDirectorySize(const std::string& dir_path) {
 
 void LogManager::createDirectories() {
     try {
-        // Create base directory
+        // Resolve base directory with fallback if needed
+        base_dir_ = EnvConfig::resolveDirectory(base_dir_, "logs");
+        
+        // Create base directory (already resolved, but ensure it exists)
         fs::create_directories(base_dir_);
         
-        // Create category directories
-        fs::create_directories(getCategoryDir(Category::API));
-        fs::create_directories(getCategoryDir(Category::INSTANCE));
-        fs::create_directories(getCategoryDir(Category::SDK_OUTPUT));
-        fs::create_directories(getCategoryDir(Category::GENERAL));
+        // Create category directories (with fallback if needed)
+        std::string apiDir = getCategoryDir(Category::API);
+        apiDir = EnvConfig::resolveDirectory(apiDir, "logs/api");
+        fs::create_directories(apiDir);
+        
+        std::string instanceDir = getCategoryDir(Category::INSTANCE);
+        instanceDir = EnvConfig::resolveDirectory(instanceDir, "logs/instance");
+        fs::create_directories(instanceDir);
+        
+        std::string sdkDir = getCategoryDir(Category::SDK_OUTPUT);
+        sdkDir = EnvConfig::resolveDirectory(sdkDir, "logs/sdk_output");
+        fs::create_directories(sdkDir);
+        
+        std::string generalDir = getCategoryDir(Category::GENERAL);
+        generalDir = EnvConfig::resolveDirectory(generalDir, "logs/general");
+        fs::create_directories(generalDir);
     } catch (const std::exception& e) {
         std::cerr << "[LogManager] Warning: Failed to create log directories: " << e.what() << std::endl;
     }

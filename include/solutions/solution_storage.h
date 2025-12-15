@@ -64,9 +64,9 @@ private:
     std::string storage_dir_;
     
     /**
-     * @brief Ensure storage directory exists
+     * @brief Ensure storage directory exists (with fallback if needed)
      */
-    void ensureStorageDir() const;
+    void ensureStorageDir();
     
     /**
      * @brief Get solutions file path
@@ -81,7 +81,7 @@ private:
     /**
      * @brief Save solutions file
      */
-    bool saveSolutionsFile(const Json::Value& solutions) const;
+    bool saveSolutionsFile(const Json::Value& solutions);
     
     /**
      * @brief Convert SolutionConfig to JSON

@@ -1,6 +1,7 @@
 #include "core/pipeline_builder.h"
 #include "config/system_config.h"
 #include "core/platform_detector.h"
+#include "core/env_config.h"
 #include <cstdlib>  // For setenv
 #include <cstring>  // For strlen
 #include <cvedix/nodes/src/cvedix_rtsp_src_node.h>
@@ -1458,8 +1459,20 @@ std::shared_ptr<cvedix_nodes::cvedix_node> PipelineBuilder::createFileDestinatio
         }
         
         // Ensure save directory exists (required by cvedix_file_des_node)
-        // Use experimental::filesystem to match CVEDIX SDK
+        // Use resolveDirectory with fallback if needed
+        std::string resolvedSaveDir = saveDir;
         fs::path saveDirPath(saveDir);
+        std::string subdir = saveDirPath.filename().string();
+        if (subdir.empty()) {
+            subdir = "output"; // Default fallback subdir
+        }
+        resolvedSaveDir = EnvConfig::resolveDirectory(saveDir, subdir);
+        if (resolvedSaveDir != saveDir) {
+            std::cerr << "[PipelineBuilder] ⚠ Save directory changed from " << saveDir 
+                      << " to " << resolvedSaveDir << " (fallback)" << std::endl;
+            saveDir = resolvedSaveDir;
+            saveDirPath = fs::path(saveDir);
+        }
         if (!fs::exists(saveDirPath)) {
             std::cerr << "[PipelineBuilder] Creating save directory: " << saveDir << std::endl;
             fs::create_directories(saveDirPath);

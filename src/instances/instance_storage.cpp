@@ -1,4 +1,5 @@
 #include "instances/instance_storage.h"
+#include "core/env_config.h"
 #include <json/json.h>
 #include <fstream>
 #include <iostream>
@@ -6,56 +7,29 @@
 #include <sstream>
 #include <iomanip>
 #include <algorithm>
+#include <vector>
 
 InstanceStorage::InstanceStorage(const std::string& storage_dir)
     : storage_dir_(storage_dir) {
     ensureStorageDir();
 }
 
-void InstanceStorage::ensureStorageDir() const {
-    try {
-        // Check if directory already exists
-        if (std::filesystem::exists(storage_dir_)) {
-            if (std::filesystem::is_directory(storage_dir_)) {
-                std::cerr << "[InstanceStorage] Storage directory already exists: " << storage_dir_ << std::endl;
-                return;
-            } else {
-                std::cerr << "[InstanceStorage] Warning: Path exists but is not a directory: " << storage_dir_ << std::endl;
-                return;
-            }
-        }
-        
-        // Directory doesn't exist, try to create it
-        std::cerr << "[InstanceStorage] Creating storage directory: " << storage_dir_ << std::endl;
-        
-        // create_directories creates all parent directories too
-        // It returns true if directory was created, false if it already existed
-        bool created = std::filesystem::create_directories(storage_dir_);
-        
-        if (created) {
-            std::cerr << "[InstanceStorage] Storage directory created successfully: " << storage_dir_ << std::endl;
-        } else {
-            // Directory was created by another process between check and create
-            if (std::filesystem::exists(storage_dir_)) {
-                std::cerr << "[InstanceStorage] Storage directory already exists (created by another process): " << storage_dir_ << std::endl;
-            } else {
-                std::cerr << "[InstanceStorage] Warning: create_directories returned false but directory doesn't exist" << std::endl;
-            }
-        }
-    } catch (const std::filesystem::filesystem_error& e) {
-        // Check specific error codes
-        if (e.code() == std::errc::permission_denied) {
-            std::cerr << "[InstanceStorage] Permission denied creating storage directory: " << storage_dir_ << std::endl;
-            std::cerr << "[InstanceStorage] Error: " << e.what() << std::endl;
-            std::cerr << "[InstanceStorage] Directory will be created when first instance is saved (if permissions allow)" << std::endl;
-        } else {
-            std::cerr << "[InstanceStorage] Filesystem error creating storage directory: " << e.what() << std::endl;
-            std::cerr << "[InstanceStorage] Error code: " << e.code().value() << " (" << e.code().message() << ")" << std::endl;
-        }
-        // Don't throw - let the application continue
-    } catch (const std::exception& e) {
-        std::cerr << "[InstanceStorage] Exception creating storage directory: " << e.what() << std::endl;
-        // Don't throw - let the application continue
+void InstanceStorage::ensureStorageDir() {
+    // Extract subdir name from storage_dir_ for fallback
+    std::filesystem::path path(storage_dir_);
+    std::string subdir = path.filename().string();
+    if (subdir.empty()) {
+        subdir = "instances"; // Default fallback subdir
+    }
+    
+    // Use resolveDirectory with 3-tier fallback strategy
+    std::string resolved_dir = EnvConfig::resolveDirectory(storage_dir_, subdir);
+    
+    // Update storage_dir_ if fallback was used
+    if (resolved_dir != storage_dir_) {
+        std::cerr << "[InstanceStorage] ⚠ Storage directory changed from " << storage_dir_ 
+                  << " to " << resolved_dir << " (fallback)" << std::endl;
+        storage_dir_ = resolved_dir;
     }
 }
 
@@ -66,30 +40,49 @@ std::string InstanceStorage::getInstancesFilePath() const {
 Json::Value InstanceStorage::loadInstancesFile() const {
     Json::Value root(Json::objectValue);
     
-    try {
-        std::string filepath = getInstancesFilePath();
+    // Extract subdir for checking all tiers
+    std::filesystem::path path(storage_dir_);
+    std::string subdir = path.filename().string();
+    if (subdir.empty()) {
+        subdir = "instances";
+    }
+    
+    // Get all possible directories in priority order
+    std::vector<std::string> allDirs = EnvConfig::getAllPossibleDirectories(subdir);
+    
+    // Try to load from all tiers, merge data (later tiers override earlier ones)
+    for (const auto& dir : allDirs) {
+        std::string filepath = dir + "/instances.json";
         if (!std::filesystem::exists(filepath)) {
-            return root; // Return empty object if file doesn't exist
+            continue; // Skip if file doesn't exist
         }
         
-        std::ifstream file(filepath);
-        if (!file.is_open()) {
-            return root;
+        try {
+            std::ifstream file(filepath);
+            if (!file.is_open()) {
+                continue;
+            }
+            
+            Json::CharReaderBuilder builder;
+            std::string errors;
+            Json::Value tierData(Json::objectValue);
+            if (Json::parseFromStream(builder, file, &tierData, &errors)) {
+                // Merge data: later tiers override earlier ones
+                for (const auto& key : tierData.getMemberNames()) {
+                    root[key] = tierData[key];
+                }
+                std::cerr << "[InstanceStorage] Loaded data from tier: " << dir << std::endl;
+            }
+        } catch (const std::exception& e) {
+            // Continue to next tier
+            continue;
         }
-        
-        Json::CharReaderBuilder builder;
-        std::string errors;
-        if (!Json::parseFromStream(builder, file, &root, &errors)) {
-            return Json::Value(Json::objectValue); // Return empty on parse error
-        }
-    } catch (const std::exception& e) {
-        return Json::Value(Json::objectValue);
     }
     
     return root;
 }
 
-bool InstanceStorage::saveInstancesFile(const Json::Value& instances) const {
+bool InstanceStorage::saveInstancesFile(const Json::Value& instances) {
     try {
         // Ensure directory exists - try to create if it doesn't exist
         ensureStorageDir();
@@ -115,6 +108,14 @@ bool InstanceStorage::saveInstancesFile(const Json::Value& instances) const {
         std::filesystem::path parent_dir = file_path_obj.parent_path();
         if (!parent_dir.empty() && !std::filesystem::exists(parent_dir)) {
             try {
+                // Use resolveDirectory for parent directory (with fallback if needed)
+                std::string parentDirStr = parent_dir.string();
+                std::string subdir = parent_dir.filename().string();
+                if (subdir.empty()) {
+                    subdir = "instances"; // Default fallback subdir
+                }
+                parentDirStr = EnvConfig::resolveDirectory(parentDirStr, subdir);
+                parent_dir = std::filesystem::path(parentDirStr);
                 std::filesystem::create_directories(parent_dir);
                 std::cerr << "[InstanceStorage] Created parent directory for file: " << parent_dir << std::endl;
             } catch (const std::exception& e) {
