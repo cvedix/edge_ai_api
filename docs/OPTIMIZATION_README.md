@@ -1,35 +1,19 @@
 # Performance Optimization Documentation
 
-## 📚 Tài Liệu Có Sẵn
+## 📚 Tài Liệu
 
-### 1. Báo Cáo Tổng Hợp (Bắt Đầu Từ Đây)
-**`OPTIMIZATION_COMPLETE_REPORT.md`** - Document tổng hợp tất cả optimizations
+### Báo Cáo Tổng Hợp (Bắt Đầu Từ Đây)
+**[OPTIMIZATION_COMPLETE_REPORT.md](OPTIMIZATION_COMPLETE_REPORT.md)** - Document tổng hợp tất cả optimizations
 - Tổng quan tất cả 3 phases
-- Kết quả chi tiết
-- Code changes
-- Metrics và impact
-
-### 2. Phân Tích Bottleneck
-- **`BOTTLENECK_ANALYSIS.md`** - Phân tích chi tiết các bottleneck (tiếng Anh)
-- **`BOTTLENECK_SUMMARY_VI.md`** - Tóm tắt bằng tiếng Việt, trả lời các câu hỏi
-
-### 3. Chi Tiết Từng Phase
-- **`PHASE1_OPTIMIZATION_SUMMARY.md`** - Phase 1: Memory & Lock Optimization
-- **`PHASE2_OPTIMIZATION_SUMMARY.md`** - Phase 2: Concurrency & Memory Design
-- **`PHASE3_OPTIMIZATION_SUMMARY.md`** - Phase 3: I/O & Backpressure Control
+- Kết quả chi tiết và metrics
+- Code changes và impact
+- Performance improvements
 
 ## 🚀 Quick Start
 
 ### Đọc Nhanh
-1. Đọc **`OPTIMIZATION_COMPLETE_REPORT.md`** để hiểu tổng quan
-2. Xem **`BOTTLENECK_SUMMARY_VI.md`** để hiểu vấn đề ban đầu
-3. Đọc từng phase summary nếu cần chi tiết
-
-### Tìm Hiểu Chi Tiết
-- **Vấn đề ban đầu**: `BOTTLENECK_ANALYSIS.md`
-- **Giải pháp Phase 1**: `PHASE1_OPTIMIZATION_SUMMARY.md`
-- **Giải pháp Phase 2**: `PHASE2_OPTIMIZATION_SUMMARY.md`
-- **Giải pháp Phase 3**: `PHASE3_OPTIMIZATION_SUMMARY.md`
+1. Đọc **[OPTIMIZATION_COMPLETE_REPORT.md](OPTIMIZATION_COMPLETE_REPORT.md)** để hiểu tổng quan và kết quả
+2. Xem phần "Kết Quả Tổng Hợp" bên dưới để nắm nhanh các cải thiện
 
 ## 📊 Kết Quả Tóm Tắt
 
