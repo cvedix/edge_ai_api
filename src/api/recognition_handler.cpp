@@ -246,6 +246,116 @@ static std::vector<float> extract_embedding_from_image(
     return embedding;
 }
 
+// Helper function: Resolve database file path with 3-tier fallback
+// Following DIRECTORY_CREATION_GUIDE.md pattern
+static std::string resolveDatabasePath() {
+    // Priority 1: Environment variable (highest priority)
+    const char* env_db = std::getenv("FACE_DATABASE_PATH");
+    if (env_db && strlen(env_db) > 0) {
+        std::string path = std::string(env_db);
+        try {
+            // Create parent directory if needed
+            std::filesystem::path filePath(path);
+            if (filePath.has_parent_path()) {
+                std::filesystem::create_directories(filePath.parent_path());
+            }
+            if (isApiLoggingEnabled()) {
+                PLOG_INFO << "[FaceDatabase] Using database path from FACE_DATABASE_PATH: " << path;
+            }
+            return path;
+        } catch (const std::filesystem::filesystem_error& e) {
+            if (e.code() == std::errc::permission_denied) {
+                if (isApiLoggingEnabled()) {
+                    PLOG_WARNING << "[FaceDatabase] Cannot create " << path << " (permission denied), trying fallback...";
+                }
+            }
+        } catch (...) {
+            if (isApiLoggingEnabled()) {
+                PLOG_WARNING << "[FaceDatabase] Error with FACE_DATABASE_PATH, trying fallback...";
+            }
+        }
+    }
+    
+    // Priority 2: Production path (/opt/edge_ai_api/data/face_database.txt)
+    std::string production_path = "/opt/edge_ai_api/data/face_database.txt";
+    if (std::filesystem::exists(production_path)) {
+        // Check if we have write permission by trying to open in write mode
+        std::ofstream test_file(production_path, std::ios::out | std::ios::app);
+        if (test_file.is_open() && test_file.good()) {
+            test_file.close();
+            if (isApiLoggingEnabled()) {
+                PLOG_INFO << "[FaceDatabase] Found existing database: " << production_path << " (production, writable)";
+            }
+            return production_path;
+        } else {
+            // File exists but we can't write to it, try fallback
+            if (isApiLoggingEnabled()) {
+                PLOG_WARNING << "[FaceDatabase] Found existing database but no write permission: " << production_path << ", trying fallback...";
+            }
+        }
+    } else {
+        // Try to create production directory
+        try {
+            std::filesystem::path filePath(production_path);
+            if (filePath.has_parent_path()) {
+                std::filesystem::create_directories(filePath.parent_path());
+            }
+            // Test write permission by creating a test file
+            std::ofstream test_file(production_path);
+            if (test_file.is_open() && test_file.good()) {
+                test_file.close();
+                std::filesystem::remove(production_path); // Remove test file
+                if (isApiLoggingEnabled()) {
+                    PLOG_INFO << "[FaceDatabase] Created directory and will use: " << production_path << " (production)";
+                }
+                return production_path;
+            } else {
+                if (isApiLoggingEnabled()) {
+                    PLOG_WARNING << "[FaceDatabase] Cannot create test file in " << production_path << ", trying fallback...";
+                }
+            }
+        } catch (const std::filesystem::filesystem_error& e) {
+            if (e.code() == std::errc::permission_denied) {
+                if (isApiLoggingEnabled()) {
+                    PLOG_WARNING << "[FaceDatabase] Cannot create " << production_path << " (permission denied), trying fallback...";
+                }
+            }
+        } catch (...) {
+            if (isApiLoggingEnabled()) {
+                PLOG_WARNING << "[FaceDatabase] Error creating " << production_path << ", trying fallback...";
+            }
+        }
+    }
+    
+    // Priority 3: User directory (~/.local/share/edge_ai_api/face_database.txt)
+    const char* home = std::getenv("HOME");
+    if (home) {
+        std::string user_path = std::string(home) + "/.local/share/edge_ai_api/face_database.txt";
+        try {
+            std::filesystem::path filePath(user_path);
+            if (filePath.has_parent_path()) {
+                std::filesystem::create_directories(filePath.parent_path());
+            }
+            if (isApiLoggingEnabled()) {
+                PLOG_INFO << "[FaceDatabase] Using fallback user directory: " << user_path;
+            }
+            return user_path;
+        } catch (...) {
+            if (isApiLoggingEnabled()) {
+                PLOG_WARNING << "[FaceDatabase] Cannot create user directory, using last resort...";
+            }
+        }
+    }
+    
+    // Last resort: Current directory (always works)
+    std::string last_resort = "./face_database.txt";
+    if (isApiLoggingEnabled()) {
+        PLOG_INFO << "[FaceDatabase] Using last resort: " << last_resort << " (current directory)";
+        PLOG_INFO << "[FaceDatabase] Note: To use production path, run: sudo mkdir -p /opt/edge_ai_api/data";
+    }
+    return last_resort;
+}
+
 // Face Database Class
 class FaceDatabase {
 private:
@@ -268,35 +378,129 @@ private:
     void load_database() {
         std::ifstream file(db_file_path_);
         if (!file.is_open()) {
+            if (isApiLoggingEnabled()) {
+                PLOG_DEBUG << "[FaceDatabase] Database file does not exist, creating new file: " << db_file_path_;
+            }
             std::ofstream create_file(db_file_path_);
             return;
         }
 
+        int line_number = 0;
+        int loaded_count = 0;
+        int error_count = 0;
         std::string line;
+        
         while (std::getline(file, line)) {
+            line_number++;
+            
+            // Trim whitespace
+            line.erase(0, line.find_first_not_of(" \t\r\n"));
+            line.erase(line.find_last_not_of(" \t\r\n") + 1);
+            
             if (line.empty()) continue;
+            
             size_t pos = line.find('|');
-            if (pos == std::string::npos) continue;
+            if (pos == std::string::npos) {
+                if (isApiLoggingEnabled()) {
+                    PLOG_WARNING << "[FaceDatabase] Invalid format at line " << line_number 
+                                 << ": missing '|' separator. Line: " << line.substr(0, 50) << "...";
+                }
+                error_count++;
+                continue;
+            }
 
             std::string name = line.substr(0, pos);
             std::string embedding_str = line.substr(pos + 1);
+            
+            // Trim name
+            name.erase(0, name.find_first_not_of(" \t"));
+            name.erase(name.find_last_not_of(" \t") + 1);
+            
+            if (name.empty()) {
+                if (isApiLoggingEnabled()) {
+                    PLOG_WARNING << "[FaceDatabase] Empty subject name at line " << line_number;
+                }
+                error_count++;
+                continue;
+            }
+            
             std::vector<float> embedding;
             std::stringstream ss(embedding_str);
             std::string value;
+            bool parse_error = false;
             
             while (std::getline(ss, value, ',')) {
-                embedding.push_back(std::stof(value));
+                // Trim value
+                value.erase(0, value.find_first_not_of(" \t\r\n"));
+                value.erase(value.find_last_not_of(" \t\r\n") + 1);
+                
+                if (value.empty()) continue;
+                
+                try {
+                    float fval = std::stof(value);
+                    embedding.push_back(fval);
+                } catch (const std::exception& e) {
+                    if (isApiLoggingEnabled()) {
+                        PLOG_WARNING << "[FaceDatabase] Failed to parse float value '" << value 
+                                     << "' for subject '" << name << "' at line " << line_number 
+                                     << ": " << e.what();
+                    }
+                    parse_error = true;
+                    break;
+                }
             }
 
-            if (!embedding.empty()) {
-                database_[name] = embedding;
+            if (parse_error) {
+                error_count++;
+                continue;
+            }
+            
+            if (embedding.empty()) {
+                if (isApiLoggingEnabled()) {
+                    PLOG_WARNING << "[FaceDatabase] Empty embedding for subject '" << name 
+                                 << "' at line " << line_number;
+                }
+                error_count++;
+                continue;
+            }
+            
+            database_[name] = embedding;
+            loaded_count++;
+            
+            if (isApiLoggingEnabled() && line_number <= 5) {
+                PLOG_DEBUG << "[FaceDatabase] Loaded subject '" << name 
+                           << "' with " << embedding.size() << " dimensions";
+            }
+        }
+        
+        if (isApiLoggingEnabled()) {
+            PLOG_INFO << "[FaceDatabase] Loaded " << loaded_count << " face(s) from " << db_file_path_;
+            if (error_count > 0) {
+                PLOG_WARNING << "[FaceDatabase] Encountered " << error_count 
+                             << " error(s) while loading database";
             }
         }
     }
 
     void save_database() {
-        std::ofstream file(db_file_path_);
+        // Ensure parent directory exists
+        try {
+            std::filesystem::path filePath(db_file_path_);
+            if (filePath.has_parent_path()) {
+                std::filesystem::create_directories(filePath.parent_path());
+            }
+        } catch (const std::exception& e) {
+            if (isApiLoggingEnabled()) {
+                PLOG_WARNING << "[FaceDatabase] Could not create parent directory for " << db_file_path_ << ": " << e.what();
+            }
+        }
+        
+        std::ofstream file(db_file_path_, std::ios::out | std::ios::trunc);
         if (!file.is_open()) {
+            if (isApiLoggingEnabled()) {
+                PLOG_ERROR << "[FaceDatabase] Failed to open database file for writing: " << db_file_path_;
+                PLOG_ERROR << "[FaceDatabase] Check file permissions and ensure the directory exists";
+            }
             return;
         }
 
@@ -308,25 +512,68 @@ private:
             }
             file << "\n";
         }
+        
+        // Explicitly flush and close to ensure data is written to disk
+        file.flush();
+        if (!file.good()) {
+            if (isApiLoggingEnabled()) {
+                PLOG_ERROR << "[FaceDatabase] Error flushing database file: " << db_file_path_;
+            }
+        }
+        file.close();
+        
+        // Verify file was written successfully
+        if (!std::filesystem::exists(db_file_path_)) {
+            if (isApiLoggingEnabled()) {
+                PLOG_ERROR << "[FaceDatabase] Database file was not created: " << db_file_path_;
+            }
+            return;
+        }
+        
+        if (isApiLoggingEnabled()) {
+            PLOG_INFO << "[FaceDatabase] Successfully saved " << database_.size() << " face(s) to " << db_file_path_;
+            try {
+                auto file_size = std::filesystem::file_size(db_file_path_);
+                PLOG_DEBUG << "[FaceDatabase] Database file size: " << file_size << " bytes";
+            } catch (...) {
+                // Ignore file size check errors
+            }
+        }
     }
 
 public:
-    FaceDatabase(const std::string& db_path = "./face_database.txt") 
-        : db_file_path_(db_path) {
+    FaceDatabase(const std::string& db_path = "") 
+        : db_file_path_(db_path.empty() ? resolveDatabasePath() : db_path) {
+        
+        if (isApiLoggingEnabled()) {
+            PLOG_INFO << "[FaceDatabase] Initializing FaceDatabase with db_path: " << db_file_path_;
+        }
         
         load_database();
         
         // Find ONNX model
         std::vector<std::string> model_paths = {
             "/home/cvedix/project/cvedix_data/models/face/face_recognition_sface_2021dec.onnx",
-            "/home/cvedix/project/cvedix_data/models/face/face_recognition_sface_2021dec.onnx",
-            "/home/cvedix/project/cvedix_data/models/face/face_recognition_sface_2021dec.onnx"
+            "./cvedix_data/models/face/face_recognition_sface_2021dec.onnx",
+            "../cvedix_data/models/face/face_recognition_sface_2021dec.onnx"
         };
         
+        bool found_onnx = false;
         for (const auto& path : model_paths) {
             if (std::filesystem::exists(path)) {
                 onnx_model_path_ = path;
+                found_onnx = true;
+                if (isApiLoggingEnabled()) {
+                    PLOG_INFO << "[FaceDatabase] Found recognition model: " << path;
+                }
                 break;
+            }
+        }
+        
+        if (!found_onnx && isApiLoggingEnabled()) {
+            PLOG_WARNING << "[FaceDatabase] Recognition model not found. Checked paths:";
+            for (const auto& path : model_paths) {
+                PLOG_WARNING << "[FaceDatabase]   - " << path;
             }
         }
         
@@ -340,10 +587,22 @@ public:
             "../cvedix_data/models/face/face_detection_yunet_2023mar_int8.onnx"
         };
         
+        bool found_detector = false;
         for (const auto& path : detector_paths) {
             if (std::filesystem::exists(path)) {
                 detector_model_path_ = path;
+                found_detector = true;
+                if (isApiLoggingEnabled()) {
+                    PLOG_INFO << "[FaceDatabase] Found detector model: " << path;
+                }
                 break;
+            }
+        }
+        
+        if (!found_detector && isApiLoggingEnabled()) {
+            PLOG_WARNING << "[FaceDatabase] Detector model not found. Checked paths:";
+            for (const auto& path : detector_paths) {
+                PLOG_WARNING << "[FaceDatabase]   - " << path;
             }
         }
     }
@@ -474,6 +733,11 @@ public:
         return result;
     }
 
+    const std::string& get_detector_model_path() const { return detector_model_path_; }
+    const std::string& get_onnx_model_path() const { return onnx_model_path_; }
+    const std::string& get_database_path() const { return db_file_path_; }
+    const std::map<std::string, std::vector<float>>& get_database() const { return database_; }
+
     size_t size() const { return database_.size(); }
 };
 
@@ -482,7 +746,17 @@ static std::unique_ptr<FaceDatabase> g_database;
 
 static FaceDatabase& get_database() {
     if (!g_database) {
-        g_database = std::make_unique<FaceDatabase>("./face_database.txt");
+        if (isApiLoggingEnabled()) {
+            PLOG_INFO << "[RecognitionHandler] Creating FaceDatabase instance...";
+        }
+        // Use empty string to trigger automatic path resolution
+        g_database = std::make_unique<FaceDatabase>("");
+        if (isApiLoggingEnabled()) {
+            PLOG_INFO << "[RecognitionHandler] FaceDatabase instance created";
+            PLOG_INFO << "[RecognitionHandler] Database file: " << g_database->get_database_path();
+            PLOG_INFO << "[RecognitionHandler] Detector model: " << (g_database->get_detector_model_path().empty() ? "NOT FOUND" : g_database->get_detector_model_path());
+            PLOG_INFO << "[RecognitionHandler] Recognition model: " << (g_database->get_onnx_model_path().empty() ? "NOT FOUND" : g_database->get_onnx_model_path());
+        }
     }
     return *g_database;
 }
@@ -649,22 +923,59 @@ bool RecognitionHandler::extractImageData(const HttpRequestPtr &req, std::vector
     imageData.assign(body.begin() + binaryStart, body.begin() + binaryEnd);
     
     // Check if the extracted data looks like base64 (text-based)
-    // Only check first 100 bytes to avoid performance issues
+    // Base64 strings are typically longer and contain only base64 characters
+    // Check if data is text-based (base64) or binary (image data)
     bool mightBeBase64 = false;
-    if (imageData.size() > 0 && imageData.size() < 10000) {
-        std::string firstBytes(reinterpret_cast<const char*>(imageData.data()), 
-                              std::min(imageData.size(), size_t(100)));
-        mightBeBase64 = isBase64(firstBytes);
+    
+    // Check if data contains only printable ASCII characters (base64)
+    bool isTextData = true;
+    size_t checkSize = std::min(imageData.size(), size_t(1000)); // Check first 1000 bytes
+    for (size_t i = 0; i < checkSize; i++) {
+        unsigned char c = imageData[i];
+        // Base64 characters: A-Z, a-z, 0-9, +, /, =, and whitespace
+        if (c != '\r' && c != '\n' && c != ' ' && c != '\t' && 
+            !((c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z') || 
+              (c >= '0' && c <= '9') || c == '+' || c == '/' || c == '=')) {
+            isTextData = false;
+            break;
+        }
     }
     
-    if (mightBeBase64) {
-        // Try to decode as base64
+    // If it looks like text data and is reasonably long, try base64 decode
+    if (isTextData && imageData.size() > 100) {
         std::string base64Str(reinterpret_cast<const char*>(imageData.data()), imageData.size());
-        std::vector<unsigned char> decoded;
-        if (decodeBase64(base64Str, decoded) && !decoded.empty()) {
-            imageData = decoded;
+        // Remove whitespace
+        std::string cleanBase64;
+        for (char c : base64Str) {
+            if (c != ' ' && c != '\n' && c != '\r' && c != '\t') {
+                cleanBase64 += c;
+            }
         }
-        // If base64 decode fails, keep original binary data
+        
+        // Try to decode as base64
+        std::vector<unsigned char> decoded;
+        if (decodeBase64(cleanBase64, decoded) && !decoded.empty()) {
+            // Verify decoded data looks like image (starts with image magic bytes)
+            if (decoded.size() > 4) {
+                // Check for common image formats: JPEG (FF D8), PNG (89 50 4E 47), etc.
+                if ((decoded[0] == 0xFF && decoded[1] == 0xD8) || // JPEG
+                    (decoded[0] == 0x89 && decoded[1] == 0x50 && decoded[2] == 0x4E && decoded[3] == 0x47) || // PNG
+                    (decoded[0] == 0x47 && decoded[1] == 0x49 && decoded[2] == 0x46) || // GIF
+                    (decoded[0] == 0x42 && decoded[1] == 0x4D)) { // BMP
+                    imageData = decoded;
+                    if (isApiLoggingEnabled()) {
+                        PLOG_DEBUG << "[RecognitionHandler] Successfully decoded base64 image data, size: " << imageData.size() << " bytes";
+        }
+    } else {
+                    // Decoded but doesn't look like image, try anyway (might be valid)
+                    imageData = decoded;
+                    if (isApiLoggingEnabled()) {
+                        PLOG_DEBUG << "[RecognitionHandler] Decoded base64 data (unknown format), size: " << imageData.size() << " bytes";
+                    }
+                }
+            }
+        }
+        // If base64 decode fails, keep original binary data (might be binary image)
     }
     
     if (imageData.empty()) {
@@ -711,11 +1022,14 @@ void RecognitionHandler::parseQueryParameters(const HttpRequestPtr &req,
     if (!detProbThresholdStr.empty()) {
         try {
             detProbThreshold = std::stod(detProbThresholdStr);
+            // Validate threshold range (0.0 to 1.0)
+            if (detProbThreshold < 0.0) detProbThreshold = 0.0;
+            if (detProbThreshold > 1.0) detProbThreshold = 1.0;
         } catch (...) {
-            detProbThreshold = 0.5;
+            detProbThreshold = 0.5; // Default on parse error
         }
     } else {
-        detProbThreshold = 0.5;
+        detProbThreshold = 0.5; // Default when parameter is missing or empty
     }
     
     // Parse face_plugins
@@ -744,69 +1058,319 @@ Json::Value RecognitionHandler::processFaceRecognition(const std::vector<unsigne
     
     try {
         // Decode image from memory
+        if (isApiLoggingEnabled()) {
+            PLOG_DEBUG << "[RecognitionHandler] Decoding image, size: " << imageData.size() << " bytes";
+        }
+        
         cv::Mat image = cv::imdecode(imageData, cv::IMREAD_COLOR);
         
         if (image.empty()) {
             // Return empty result if image cannot be decoded
+            if (isApiLoggingEnabled()) {
+                PLOG_WARNING << "[RecognitionHandler] Failed to decode image data";
+            }
         return result;
     }
     
-        // TODO: Integrate with actual face recognition service
-        // For now, return a mock response matching the expected format
-        // This should be replaced with actual face recognition logic
+        if (isApiLoggingEnabled()) {
+            PLOG_DEBUG << "[RecognitionHandler] Decoded image: " << image.cols << "x" << image.rows << " pixels";
+        }
+    
+        if (!detectFaces) {
+            // If detect_faces is false, return empty result
+            return result;
+        }
         
-        // Mock face detection result
+        // Get database instance
+        FaceDatabase& db = get_database();
+        
+        // Check if models are available
+        std::string detector_path = db.get_detector_model_path();
+        std::string onnx_path = db.get_onnx_model_path();
+        
+        if (detector_path.empty()) {
+            if (isApiLoggingEnabled()) {
+                PLOG_WARNING << "[RecognitionHandler] Face detector model not found. Checked paths:";
+                PLOG_WARNING << "[RecognitionHandler] - /home/cvedix/project/cvedix_data/models/face/face_detection_yunet_2023mar.onnx";
+                PLOG_WARNING << "[RecognitionHandler] - /home/cvedix/project/cvedix_data/models/face/face_detection_yunet_2023mar_int8.onnx";
+            }
+            return result;
+        }
+        
+        if (isApiLoggingEnabled()) {
+            PLOG_INFO << "[RecognitionHandler] Using detector model: " << detector_path;
+        }
+        
+        // Note: onnx_path can be empty if recognition is not needed, but we still want to detect faces
+        if (isApiLoggingEnabled()) {
+            if (onnx_path.empty()) {
+                PLOG_DEBUG << "[RecognitionHandler] Face recognition model not found, will only detect faces";
+            } else {
+                PLOG_DEBUG << "[RecognitionHandler] Using detector: " << detector_path;
+                PLOG_DEBUG << "[RecognitionHandler] Using recognizer: " << onnx_path;
+            }
+        }
+        
+        auto start_detector = std::chrono::steady_clock::now();
+        
+        // Detect faces using YuNet
+        if (isApiLoggingEnabled()) {
+            PLOG_DEBUG << "[RecognitionHandler] Creating face detector with threshold: " << detProbThreshold;
+        }
+        
+        cv::Ptr<cv::FaceDetectorYN> face_detector;
+        try {
+            face_detector = cv::FaceDetectorYN::create(
+                detector_path, "", cv::Size(320, 320), 
+                static_cast<float>(detProbThreshold), 0.3f, 5000,
+                cv::dnn::DNN_BACKEND_OPENCV, cv::dnn::DNN_TARGET_CPU);
+        } catch (const cv::Exception& e) {
+            if (isApiLoggingEnabled()) {
+                PLOG_ERROR << "[RecognitionHandler] Failed to create face detector: " << e.what();
+            }
+            return result;
+        } catch (const std::exception& e) {
+            if (isApiLoggingEnabled()) {
+                PLOG_ERROR << "[RecognitionHandler] Failed to create face detector: " << e.what();
+            }
+            return result;
+        }
+        
+        if (face_detector.empty()) {
+            if (isApiLoggingEnabled()) {
+                PLOG_ERROR << "[RecognitionHandler] Face detector creation returned empty";
+            }
+            return result;
+        }
+        
+        if (isApiLoggingEnabled()) {
+            PLOG_DEBUG << "[RecognitionHandler] Face detector created successfully";
+        }
+        
+        face_detector->setInputSize(image.size());
+        if (isApiLoggingEnabled()) {
+            PLOG_DEBUG << "[RecognitionHandler] Running face detection on image size: " << image.cols << "x" << image.rows;
+        }
+        
+        cv::Mat faces;
+        try {
+            face_detector->detect(image, faces);
+        } catch (const cv::Exception& e) {
+            if (isApiLoggingEnabled()) {
+                PLOG_ERROR << "[RecognitionHandler] Face detection exception: " << e.what();
+                PLOG_ERROR << "[RecognitionHandler] Error code: " << e.code << ", Error message: " << e.msg;
+            }
+            return result;
+        } catch (const std::exception& e) {
+            if (isApiLoggingEnabled()) {
+                PLOG_ERROR << "[RecognitionHandler] Face detection exception: " << e.what();
+            }
+            return result;
+        }
+        
+        auto end_detector = std::chrono::steady_clock::now();
+        auto detector_time = std::chrono::duration_cast<std::chrono::milliseconds>(end_detector - start_detector).count();
+        
+        if (isApiLoggingEnabled()) {
+            PLOG_DEBUG << "[RecognitionHandler] Face detection completed in " << detector_time << "ms";
+            PLOG_DEBUG << "[RecognitionHandler] Detection result: " << faces.rows << " faces, " << faces.cols << " columns";
+        }
+        
+        if (faces.rows == 0 || faces.empty()) {
+            // No faces detected, return empty result
+            if (isApiLoggingEnabled()) {
+                PLOG_WARNING << "[RecognitionHandler] No faces detected in image (size: " << image.cols << "x" << image.rows 
+                            << ", threshold: " << detProbThreshold << ")";
+            }
+            return result;
+        }
+        
+        if (isApiLoggingEnabled()) {
+            PLOG_DEBUG << "[RecognitionHandler] Detected " << faces.rows << " face(s) in image";
+        }
+        
+        // Process each detected face
+        int num_faces = (limit > 0) ? std::min(limit, faces.rows) : faces.rows;
+        
+        for (int i = 0; i < num_faces; i++) {
+            auto start_face = std::chrono::steady_clock::now();
         Json::Value faceResult;
         
-        // Mock bounding box
+            // Extract face detection data
+            float x = faces.at<float>(i, 0);
+            float y = faces.at<float>(i, 1);
+            float w = faces.at<float>(i, 2);
+            float h = faces.at<float>(i, 3);
+            float score = (faces.cols > 14) ? faces.at<float>(i, 14) : 1.0f;
+            
+            // Bounding box
         Json::Value box;
-        box["probability"] = 1.0;
-        box["x_max"] = image.cols - 100;
-        box["y_max"] = image.rows - 100;
-        box["x_min"] = 100;
-        box["y_min"] = 100;
+            box["probability"] = static_cast<double>(score);
+            box["x_min"] = static_cast<int>(x);
+            box["y_min"] = static_cast<int>(y);
+            box["x_max"] = static_cast<int>(x + w);
+            box["y_max"] = static_cast<int>(y + h);
         faceResult["box"] = box;
         
-        // Mock landmarks (5 points)
+            // Landmarks (5 points: right eye, left eye, nose tip, right mouth corner, left mouth corner)
         Json::Value landmarks(Json::arrayValue);
-        landmarks.append(Json::Value(Json::arrayValue));
-        landmarks[0].append(image.cols / 2 - 50);
-        landmarks[0].append(image.rows / 2 - 50);
-        landmarks.append(Json::Value(Json::arrayValue));
-        landmarks[1].append(image.cols / 2 + 50);
-        landmarks[1].append(image.rows / 2 - 30);
-        landmarks.append(Json::Value(Json::arrayValue));
-        landmarks[2].append(image.cols / 2);
-        landmarks[2].append(image.rows / 2);
-        landmarks.append(Json::Value(Json::arrayValue));
-        landmarks[3].append(image.cols / 2 - 30);
-        landmarks[3].append(image.rows / 2 + 30);
-        landmarks.append(Json::Value(Json::arrayValue));
-        landmarks[4].append(image.cols / 2 + 30);
-        landmarks[4].append(image.rows / 2 + 50);
+            if (faces.cols >= 15) {
+                // YuNet format: (x, y, w, h, re_x, re_y, le_x, le_y, nt_x, nt_y, rcm_x, rcm_y, lcm_x, lcm_y, score)
+                float re_x = faces.at<float>(i, 4);
+                float re_y = faces.at<float>(i, 5);
+                float le_x = faces.at<float>(i, 6);
+                float le_y = faces.at<float>(i, 7);
+                float nt_x = faces.at<float>(i, 8);
+                float nt_y = faces.at<float>(i, 9);
+                float rcm_x = faces.at<float>(i, 10);
+                float rcm_y = faces.at<float>(i, 11);
+                float lcm_x = faces.at<float>(i, 12);
+                float lcm_y = faces.at<float>(i, 13);
+                
+                Json::Value landmark1(Json::arrayValue);
+                landmark1.append(static_cast<int>(re_x));
+                landmark1.append(static_cast<int>(re_y));
+                landmarks.append(landmark1);
+                
+                Json::Value landmark2(Json::arrayValue);
+                landmark2.append(static_cast<int>(le_x));
+                landmark2.append(static_cast<int>(le_y));
+                landmarks.append(landmark2);
+                
+                Json::Value landmark3(Json::arrayValue);
+                landmark3.append(static_cast<int>(nt_x));
+                landmark3.append(static_cast<int>(nt_y));
+                landmarks.append(landmark3);
+                
+                Json::Value landmark4(Json::arrayValue);
+                landmark4.append(static_cast<int>(rcm_x));
+                landmark4.append(static_cast<int>(rcm_y));
+                landmarks.append(landmark4);
+                
+                Json::Value landmark5(Json::arrayValue);
+                landmark5.append(static_cast<int>(lcm_x));
+                landmark5.append(static_cast<int>(lcm_y));
+                landmarks.append(landmark5);
+            }
         faceResult["landmarks"] = landmarks;
         
-        // Mock subjects (recognition results)
+            // Recognize face (compare with database)
+            x = std::max(0.0f, std::min(x, (float)(image.cols - 1)));
+            y = std::max(0.0f, std::min(y, (float)(image.rows - 1)));
+            w = std::max(1.0f, std::min(w, (float)(image.cols - x)));
+            h = std::max(1.0f, std::min(h, (float)(image.rows - y)));
+            
+            cv::Mat aligned_face;
+            if (faces.cols >= 15) {
+                aligned_face = align_face_using_landmarks(image, faces, i);
+            } else {
+                cv::Mat face_roi = image(cv::Rect((int)x, (int)y, (int)w, (int)h)).clone();
+                cv::resize(face_roi, aligned_face, cv::Size(112, 112));
+            }
+            
+            // Extract embedding with data augmentation (original + flip) for better accuracy
+            // Similar to example_face_recognition.cpp
+            std::vector<std::vector<float>> embeddings;
+            
+            // Only extract embedding if recognition model is available
+            std::vector<float> face_embedding;
+            if (!onnx_path.empty()) {
+                // Original
+                std::vector<float> emb1 = extract_embedding_from_image(aligned_face, onnx_path);
+                if (!emb1.empty()) embeddings.push_back(emb1);
+                
+                // Horizontal flip
+                cv::Mat flipped;
+                cv::flip(aligned_face, flipped, 1);
+                std::vector<float> emb2 = extract_embedding_from_image(flipped, onnx_path);
+                if (!emb2.empty()) embeddings.push_back(emb2);
+                
+                // Average embeddings for more robust recognition
+                face_embedding = average_embeddings(embeddings);
+            }
+            
+            // Compare with database
         Json::Value subjects(Json::arrayValue);
+            const auto& database = db.get_database();
+            
+            if (isApiLoggingEnabled()) {
+                PLOG_DEBUG << "[RecognitionHandler] Processing face " << (i+1) << "/" << num_faces;
+                PLOG_DEBUG << "[RecognitionHandler] Database size: " << database.size() << ", ONNX path empty: " << (onnx_path.empty() ? "yes" : "no");
+            }
+            
+            if (!face_embedding.empty() && !onnx_path.empty() && database.size() > 0) {
+                if (isApiLoggingEnabled()) {
+                    PLOG_DEBUG << "[RecognitionHandler] Comparing face embedding (size: " << face_embedding.size() << ") with database";
+                }
+                
+                std::vector<std::pair<std::string, float>> similarities;
+                for (const auto& [name, db_embedding] : database) {
+                    float similarity = cosine_similarity(face_embedding, db_embedding);
+                    similarities.push_back({name, similarity});
+                }
+                
+                // Sort by similarity (descending)
+                std::sort(similarities.begin(), similarities.end(), 
+                    [](const std::pair<std::string, float>& a, const std::pair<std::string, float>& b) {
+                        return a.second > b.second;
+                    });
+                
+                // Take top N results (return all similarities, not just above threshold)
+                int top_n = std::min(predictionCount, static_cast<int>(similarities.size()));
+                for (int j = 0; j < top_n; j++) {
         Json::Value subject;
-        subject["similarity"] = 0.97858;
-        subject["subject"] = "subject1";
+                    subject["subject"] = similarities[j].first;
+                    subject["similarity"] = static_cast<double>(similarities[j].second);
         subjects.append(subject);
+                }
+                
+                if (isApiLoggingEnabled()) {
+                    PLOG_DEBUG << "[RecognitionHandler] Found " << subjects.size() << " matching subjects";
+                }
+            } else {
+                if (isApiLoggingEnabled()) {
+                    if (face_embedding.empty()) {
+                        PLOG_DEBUG << "[RecognitionHandler] Face embedding is empty, skipping recognition";
+                    } else if (onnx_path.empty()) {
+                        PLOG_DEBUG << "[RecognitionHandler] Recognition model not available, skipping recognition";
+                    } else if (database.size() == 0) {
+                        PLOG_DEBUG << "[RecognitionHandler] Database is empty, skipping recognition";
+                    }
+                }
+            }
         faceResult["subjects"] = subjects;
         
-        // Mock execution time
+            // Execution time for this face
+            auto end_face = std::chrono::steady_clock::now();
+            auto calculator_time = std::chrono::duration_cast<std::chrono::milliseconds>(end_face - start_face).count();
+            
         Json::Value executionTime;
-        executionTime["age"] = 28.0;
-        executionTime["gender"] = 26.0;
-        executionTime["detector"] = 117.0;
-        executionTime["calculator"] = 45.0;
-        executionTime["mask"] = 36.0;
+            executionTime["detector"] = static_cast<double>(detector_time);
+            executionTime["calculator"] = static_cast<double>(calculator_time);
+            executionTime["age"] = 0.0;  // Not implemented yet
+            executionTime["gender"] = 0.0;  // Not implemented yet
+            executionTime["mask"] = 0.0;  // Not implemented yet
         faceResult["execution_time"] = executionTime;
         
         result.append(faceResult);
+            
+            if (isApiLoggingEnabled()) {
+                PLOG_DEBUG << "[RecognitionHandler] Added face result " << (i+1) << " to response";
+            }
+        }
+        
+        if (isApiLoggingEnabled()) {
+            PLOG_INFO << "[RecognitionHandler] Returning " << result.size() << " face result(s)";
+        }
         
     } catch (const std::exception& e) {
+        if (isApiLoggingEnabled()) {
         PLOG_ERROR << "[RecognitionHandler] Error processing face recognition: " << e.what();
+        }
+    } catch (...) {
+        if (isApiLoggingEnabled()) {
+            PLOG_ERROR << "[RecognitionHandler] Unknown error in face recognition";
+        }
     }
     
     return result;
@@ -1057,9 +1621,9 @@ bool RecognitionHandler::registerSubject(const std::string& subjectName,
             error = "Invalid image format or corrupted image data";
             return false;
         }
-          
+        
         imageId = generateImageId();
-
+        
         // Register face using FaceDatabase
         FaceDatabase& db = get_database();
         std::string dbError;
