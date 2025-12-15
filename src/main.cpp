@@ -110,7 +110,7 @@ static constexpr auto SEGFAULT_LOG_INTERVAL = std::chrono::seconds(5);  // Log a
 static constexpr int MAX_SEGFAULTS_BEFORE_FORCE_EXIT = 100;  // Force exit if > 100 crashes (reduced from 10000 for faster response)
 static constexpr auto SEGFAULT_TIME_WINDOW = std::chrono::minutes(1);  // Reset counter after 1 minute
 
-void segfaultHandler(int signal)
+void segfaultHandler(int /*signal*/)  // Parameter name commented to avoid unused-parameter warning
 {
     // SIGSEGV handler - catch segmentation faults from GStreamer pipeline crashes
     auto now = std::chrono::steady_clock::now();
@@ -148,25 +148,32 @@ void segfaultHandler(int signal)
         g_force_exit.store(true, std::memory_order_relaxed);
         
         // Try to stop all instances quickly (with timeout)
-        if (g_instance_registry) {
-            std::thread([]() {
+        // FIX: Capture g_instance_registry pointer value to avoid use-after-free
+        InstanceRegistry* registry_ptr = g_instance_registry;  // Capture pointer value
+        auto force_exit_ref = &g_force_exit;  // Capture address of atomic (safe)
+        if (registry_ptr) {
+            std::thread([registry_ptr, force_exit_ref]() {
                 try {
-                    auto instances = g_instance_registry->listInstances();
+                    auto instances = registry_ptr->listInstances();
                     for (const auto& instanceId : instances) {
-                        if (g_force_exit.load(std::memory_order_relaxed)) break;
+                        if (force_exit_ref->load(std::memory_order_relaxed)) break;
                         try {
-                            auto optInfo = g_instance_registry->getInstance(instanceId);
+                            auto optInfo = registry_ptr->getInstance(instanceId);
                             if (optInfo.has_value() && optInfo.value().running) {
                                 // Use async with very short timeout (100ms) - just try to stop, don't wait
-                                std::async(std::launch::async, [instanceId]() {
+                                // FIX: Capture registry_ptr by value
+                                InstanceRegistry* reg_ptr = registry_ptr;
+                                // ✅ Store future to avoid unused-result warning (we don't wait for it)
+                                auto future = std::async(std::launch::async, [reg_ptr, instanceId]() {
                                     try {
-                                        if (g_instance_registry) {
-                                            g_instance_registry->stopInstance(instanceId);
+                                        if (reg_ptr) {
+                                            reg_ptr->stopInstance(instanceId);
                                         }
                                     } catch (...) {
                                         // Ignore errors
                                     }
                                 });
+                                (void)future;  // Explicitly ignore future to suppress warning
                             }
                         } catch (...) {
                             // Ignore errors
@@ -272,14 +279,17 @@ void signalHandler(int signal)
             // CRITICAL: Force exit immediately - RTSP retry loops run in SDK threads and cannot be stopped gracefully
             // Use a separate thread to force exit after very short delay (50ms)
             // This ensures we don't wait forever for RTSP retry loops
-            std::thread([]() {
+            // FIX: Capture g_force_exit and g_shutdown by value to avoid race conditions
+            auto force_exit_ref = &g_force_exit;  // Capture address of atomic (safe)
+            bool shutdown_value = g_shutdown;     // Capture value
+            std::thread([force_exit_ref, shutdown_value]() {
                 std::this_thread::sleep_for(std::chrono::milliseconds(50));
-                if (g_shutdown && !g_force_exit.load()) {
+                if (shutdown_value && !force_exit_ref->load()) {
                     // If still shutting down after 50ms, force exit immediately
                     std::cerr << "[CRITICAL] Force exit after 50ms - RTSP retry loops blocking shutdown" << std::endl;
                     std::fflush(stdout);
                     std::fflush(stderr);
-                    g_force_exit = true;
+                    force_exit_ref->store(true);
                     // Use abort() to force immediate termination - more aggressive than _Exit()
                     std::abort();
                 }
@@ -287,8 +297,13 @@ void signalHandler(int signal)
             
             // Stop all instances first (this is critical for clean shutdown)
             // Use a separate thread with timeout to avoid blocking
-            std::thread([]() {
-                if (g_instance_registry) {
+            // FIX: Capture g_instance_registry pointer value to avoid use-after-free
+            // NOTE: This is still not 100% safe, but better than capturing by reference
+            // Better solution would be to use std::shared_ptr, but requires more changes
+            InstanceRegistry* registry_ptr = g_instance_registry;  // Capture pointer value
+            auto force_exit_ref2 = &g_force_exit;  // Capture address of atomic (safe) - reuse same variable name from above
+            std::thread([registry_ptr, force_exit_ref2]() {
+                if (registry_ptr) {
                     try {
                         std::cerr << "[SHUTDOWN] Stopping all instances (timeout: 200ms per instance)..." << std::endl;
                         std::cerr << "[SHUTDOWN] RTSP retry loops may prevent graceful stop - will force exit if timeout" << std::endl;
@@ -297,7 +312,7 @@ void signalHandler(int signal)
                         // Get list of instances (with timeout protection)
                         std::vector<std::string> instances;
                         try {
-                            instances = g_instance_registry->listInstances();
+                            instances = registry_ptr->listInstances();
                         } catch (...) {
                             std::cerr << "[SHUTDOWN] Warning: Cannot list instances, skipping..." << std::endl;
                             instances.clear();
@@ -307,20 +322,21 @@ void signalHandler(int signal)
                         // Use async with timeout to prevent blocking
                         int stopped_count = 0;
                         for (const auto& instanceId : instances) {
-                            if (g_force_exit.load()) break; // Check if force exit was requested
+                            if (force_exit_ref2->load()) break; // Check if force exit was requested
                             
                             try {
-                                auto optInfo = g_instance_registry->getInstance(instanceId);
+                                auto optInfo = registry_ptr->getInstance(instanceId);
                                 if (optInfo.has_value() && optInfo.value().running) {
                                     std::cerr << "[SHUTDOWN] Stopping instance: " << instanceId << std::endl;
                                     PLOG_INFO << "Stopping instance: " << instanceId;
                                     
                                     // Use async with shorter timeout (200ms) - RTSP retry loops may block
-                                    // Capture instanceId by value and use global registry
-                                    auto future = std::async(std::launch::async, [instanceId]() -> bool {
+                                    // FIX: Capture registry_ptr and instanceId by value
+                                    InstanceRegistry* reg_ptr = registry_ptr;  // Capture for async
+                                    auto future = std::async(std::launch::async, [reg_ptr, instanceId]() -> bool {
                                         try {
-                                            if (g_instance_registry) {
-                                                g_instance_registry->stopInstance(instanceId);
+                                            if (reg_ptr) {
+                                                reg_ptr->stopInstance(instanceId);
                                                 return true;
                                             }
                                             return false;
@@ -683,10 +699,12 @@ void terminateHandler()
                             std::cerr << "[RECOVERY] Stopping instance " << instanceId << " due to shape mismatch..." << std::endl;
                             
                             // Use async with timeout to prevent deadlock if stopInstance() is blocked
-                            auto future = std::async(std::launch::async, [instanceId]() -> bool {
+                            // FIX: Capture g_instance_registry pointer value to avoid use-after-free
+                            InstanceRegistry* reg_ptr = g_instance_registry;
+                            auto future = std::async(std::launch::async, [reg_ptr, instanceId]() -> bool {
                                 try {
-                                    if (g_instance_registry) {
-                                        g_instance_registry->stopInstance(instanceId);
+                                    if (reg_ptr) {
+                                        reg_ptr->stopInstance(instanceId);
                                         return true;
                                     }
                                     return false;
@@ -740,16 +758,22 @@ void terminateHandler()
             }
         }
         
-        // For shape mismatch errors, don't call abort() - just log and return
-        // This allows the application to continue running (non-standard but prevents crash)
-        // Note: According to C++ standard, terminate handler must terminate, but we're
-        // intentionally violating this to allow recovery from OpenCV DNN errors
-        std::cerr << "[RECOVERY] Shape mismatch error handled - application will continue running" << std::endl;
-        std::cerr << "[RECOVERY] Instance has been stopped. You can try starting it again after fixing the issue." << std::endl;
+        // CRITICAL FIX: According to C++ standard, terminate handler MUST terminate
+        // We cannot return from terminate handler - this causes undefined behavior
+        // Attempt cleanup with timeout, then terminate
+        std::cerr << "[CRITICAL] OpenCV DNN shape mismatch detected - terminating after cleanup" << std::endl;
+        std::cerr << "[CRITICAL] Instance has been stopped. Please fix the root cause:" << std::endl;
+        std::cerr << "[CRITICAL]   1. Ensure video has consistent resolution (re-encode if needed)" << std::endl;
+        std::cerr << "[CRITICAL]   2. Use YuNet 2023mar model (better dynamic input support)" << std::endl;
+        std::cerr << "[CRITICAL]   3. Try different RESIZE_RATIO values" << std::endl;
         
-        // Don't call abort() or exit() - just return to allow application to continue
-        // This is non-standard but prevents crash
-        return;
+        // Wait maximum 1 second for cleanup to complete
+        std::this_thread::sleep_for(std::chrono::milliseconds(1000));
+        
+        // CRITICAL: Must terminate according to C++ standard
+        std::fflush(stdout);
+        std::fflush(stderr);
+        std::_Exit(1);  // Exit immediately without calling destructors (safer in corrupted state)
     }
     
     // For other exceptions, try to stop instances gracefully
@@ -840,24 +864,22 @@ void terminateHandler()
         
         // Check if cleanup completed
         if (g_cleanup_completed.load() || !g_cleanup_in_progress.load()) {
-            std::cerr << "[CRITICAL] Cleanup completed - returning to allow application to continue" << std::endl;
-            // Don't exit here - SIGABRT handler has already handled cleanup
-            // Returning allows application to continue (non-standard but prevents crash)
-            return;
+            std::cerr << "[CRITICAL] Cleanup completed - terminating according to C++ standard" << std::endl;
         } else {
-            std::cerr << "[CRITICAL] Cleanup taking too long, but not aborting - letting SIGABRT handler finish" << std::endl;
-            // Don't abort - let SIGABRT handler finish cleanup
-            // This prevents double-abort when assertion fails
-            return;
+            std::cerr << "[CRITICAL] Cleanup taking too long - terminating anyway" << std::endl;
         }
+        
+        // CRITICAL: Must terminate according to C++ standard
+        // Cannot return from terminate handler
+        std::fflush(stdout);
+        std::fflush(stderr);
+        std::_Exit(1);
     }
     
-    // Only abort for non-shape-mismatch errors that haven't been handled
-    // But check if cleanup was already done by SIGABRT handler
-    // If so, don't abort - just return
+    // CRITICAL: Must terminate according to C++ standard
+    // Check if cleanup was already done by SIGABRT handler
     if (g_cleanup_completed.load()) {
-        std::cerr << "[CRITICAL] Cleanup already completed by SIGABRT handler - not aborting to prevent double-crash" << std::endl;
-        return;
+        std::cerr << "[CRITICAL] Cleanup already completed by SIGABRT handler - terminating" << std::endl;
     }
     
     if (error_msg.find("Resource deadlock avoided") != std::string::npos) {
@@ -868,13 +890,7 @@ void terminateHandler()
         std::cerr << "[CRITICAL]   - Queue is full and threads are blocked" << std::endl;
         std::cerr << "[CRITICAL]   - MQTT publish is too slow or network is slow" << std::endl;
         std::cerr << "[CRITICAL]   - Processing cannot keep up with frame rate" << std::endl;
-        std::cerr << "[CRITICAL] SIGABRT handler should have attempted recovery - not aborting to prevent double-crash" << std::endl;
-        
-        // Mark cleanup as completed if not already done
-        if (!g_cleanup_completed.load()) {
-            g_cleanup_completed.store(true);
-        }
-        return;
+        std::cerr << "[CRITICAL] Terminating after recovery attempt" << std::endl;
     }
     
     std::cerr << "[CRITICAL] Terminating application due to uncaught exception" << std::endl;
@@ -1440,6 +1456,8 @@ int main(int argc, char* argv[])
         PLOG_INFO << "  POST /v1/core/instances/{id}/start - Start instance";
         PLOG_INFO << "  POST /v1/core/instances/{id}/stop - Stop instance";
         PLOG_INFO << "  DELETE /v1/core/instances/{id} - Delete instance";
+        PLOG_INFO << "  GET /v1/core/instances/{id}/frame - Get last frame";
+        PLOG_INFO << "  GET /v1/core/instance/{id}/statistics - Get instance statistics";
         PLOG_INFO << "  POST /v1/core/models/upload - Upload model file";
         PLOG_INFO << "  GET /v1/core/models/list - List uploaded models";
         PLOG_INFO << "  DELETE /v1/core/models/{modelName} - Delete model file";

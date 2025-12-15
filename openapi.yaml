@@ -1827,6 +1827,69 @@ paths:
         '200':
           description: CORS preflight response
 
+  /v1/core/instances/{instanceId}/frame:
+    get:
+      summary: Get last frame from instance
+      description: |
+        Returns the last processed frame from a running instance. The frame is encoded as JPEG and returned as a base64-encoded string.
+        
+        **Features:**
+        - Frame is captured from the pipeline after processing (includes OSD/detection overlays)
+        - Frame is automatically cached when pipeline processes new frames
+        - Frame cache is automatically cleaned up when instance stops or is deleted
+        
+        **Important Notes:**
+        - Frame capture only works if the pipeline has an `app_des_node`
+        - If pipeline doesn't have `app_des_node`, frame will be empty string
+        - Instance must be running to have a frame
+        - Frame is cached automatically each time pipeline processes a new frame
+      operationId: getLastFrame
+      tags:
+        - Instances
+      parameters:
+        - name: instanceId
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Instance ID (UUID)
+      responses:
+        '200':
+          description: Last frame retrieved successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LastFrameResponse'
+              example:
+                frame: "/9j/4AAQSkZJRgABAQEAYABgAAD/2wBDAAYEBQYFBAYGBQYHBwYIChAKCgkJChQODwwQFxQYGBcUFhYaHSUfGhsjHBYWICwgIyYnKSopGR8tMC0oMCUoKSj/2wBDAQcHBwoIChMKChMoGhYaKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCj/wAARCAABAAEDASIAAhEBAxEB/8QAFQABAQAAAAAAAAAAAAAAAAAAAAv/xAAUEAEAAAAAAAAAAAAAAAAAAAAA/8QAFQEBAQAAAAAAAAAAAAAAAAAAAAX/xAAUEQEAAAAAAAAAAAAAAAAAAAAA/9oADAMBAAIRAxEAPwCdABmX/9k="
+                running: true
+        '400':
+          description: Invalid request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: Instance not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+    options:
+      summary: CORS preflight for get last frame
+      operationId: getLastFrameOptions
+      tags:
+        - Instances
+      responses:
+        '200':
+          description: CORS preflight response
+
   /v1/core/instances/batch/start:
     post:
       summary: Start multiple instances concurrently
@@ -2833,6 +2896,86 @@ paths:
     options:
       summary: CORS preflight for set config
       operationId: setConfigOptions
+      tags:
+        - Instances
+      responses:
+        '200':
+          description: CORS preflight response
+
+  /v1/core/instance/{instanceId}/statistics:
+    get:
+      summary: Get instance statistics
+      description: |
+        Returns real-time statistics for a specific instance. Statistics include frames processed, framerate, latency, resolution, and queue information.
+        
+        **Statistics Include:**
+        - Frames processed count
+        - Source framerate (FPS from source)
+        - Current framerate (processing FPS)
+        - Average latency (milliseconds)
+        - Input queue size
+        - Dropped frames count
+        - Resolution and format information
+        - Source resolution
+        
+        **Important Notes:**
+        - Statistics are calculated in real-time
+        - Statistics reset to 0 when instance is restarted
+        - Statistics are not persisted (only calculated when requested)
+        - Instance must be running to get statistics
+      operationId: getStatistics
+      tags:
+        - Instances
+      parameters:
+        - name: instanceId
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Instance ID (UUID)
+          example: "a5204fc9-9a59-f80f-fb9f-bf3b42214943"
+      responses:
+        '200':
+          description: Statistics retrieved successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/InstanceStatisticsResponse'
+              example:
+                frames_processed: 1250
+                source_framerate: 30.0
+                current_framerate: 25.5
+                latency: 200.0
+                start_time: 1764900520
+                input_queue_size: 2
+                dropped_frames_count: 5
+                resolution: "1280x720"
+                format: "BGR"
+                source_resolution: "1920x1080"
+        '404':
+          description: Instance not found or not running
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                error: "Not found"
+                message: "Instance not found or not running: a5204fc9-9a59-f80f-fb9f-bf3b42214943"
+        '400':
+          description: Invalid request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+    options:
+      summary: CORS preflight for get statistics
+      operationId: getStatisticsOptions
       tags:
         - Instances
       responses:
@@ -4892,6 +5035,88 @@ components:
               type: string
               description: Human-readable status message
               example: "Instance is running and processing frames"
+
+    LastFrameResponse:
+      type: object
+      description: Last frame from a running instance
+      required:
+        - frame
+        - running
+      properties:
+        frame:
+          type: string
+          description: |
+            Base64-encoded JPEG frame. Empty string if no frame is available.
+            Frame is captured from pipeline after processing (includes OSD/detection overlays).
+            Frame is automatically cached when pipeline processes new frames.
+          example: "/9j/4AAQSkZJRgABAQEAYABgAAD/2wBDAAYEBQYFBAYGBQYHBwYIChAKCgkJChQODwwQFxQYGBcUFhYaHSUfGhsjHBYWICwgIyYnKSopGR8tMC0oMCUoKSj/2wBDAQcHBwoIChMKChMoGhYaKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCj/wAARCAABAAEDASIAAhEBAxEB/8QAFQABAQAAAAAAAAAAAAAAAAAAAAv/xAAUEAEAAAAAAAAAAAAAAAAAAAAA/8QAFQEBAQAAAAAAAAAAAAAAAAAAAAX/xAAUEQEAAAAAAAAAAAAAAAAAAAAA/9oADAMBAAIRAxEAPwCdABmX/9k="
+        running:
+          type: boolean
+          description: Whether the instance is currently running
+          example: true
+
+    InstanceStatisticsResponse:
+      type: object
+      description: Real-time statistics for an instance
+      required:
+        - frames_processed
+        - source_framerate
+        - current_framerate
+        - latency
+        - start_time
+        - input_queue_size
+        - dropped_frames_count
+        - resolution
+        - format
+        - source_resolution
+      properties:
+        frames_processed:
+          type: integer
+          format: int64
+          description: Total number of frames processed since instance started
+          example: 1250
+        source_framerate:
+          type: number
+          format: double
+          description: Frame rate from source (FPS from RTSP stream or video file)
+          example: 30.0
+        current_framerate:
+          type: number
+          format: double
+          description: Current processing frame rate (FPS being processed)
+          example: 25.5
+        latency:
+          type: number
+          format: double
+          description: Average processing latency per frame (milliseconds)
+          example: 200.0
+        start_time:
+          type: integer
+          format: int64
+          description: Unix timestamp when instance started (seconds)
+          example: 1764900520
+        input_queue_size:
+          type: integer
+          format: int64
+          description: Current size of input queue
+          example: 2
+        dropped_frames_count:
+          type: integer
+          format: int64
+          description: Total number of dropped frames
+          example: 5
+        resolution:
+          type: string
+          description: Current processing resolution (format WIDTHxHEIGHT)
+          example: "1280x720"
+        format:
+          type: string
+          description: Frame format (typically BGR for CVEDIX SDK)
+          example: "BGR"
+        source_resolution:
+          type: string
+          description: Original resolution from source (format WIDTHxHEIGHT)
+          example: "1920x1080"
 
     SolutionSummary:
       type: object
