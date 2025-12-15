@@ -4,21 +4,57 @@ Tài liệu này hướng dẫn cách triển khai Edge AI API lên thiết bị
 
 ## 🚀 Triển Khai Tự Động (Khuyến Nghị)
 
-### Bước 1: Build và Cài Đặt
+### Cách 1: Sử dụng setup.sh (Khuyến Nghị)
 
 ```bash
 cd /home/ubuntu/project/edge_ai_api
-sudo ./scripts/deploy_production.sh
+sudo ./setup.sh --production
 ```
 
 Script này sẽ tự động:
-- ✅ Build project (nếu chưa build)
+- ✅ Kiểm tra prerequisites
+- ✅ Cài đặt system dependencies
+- ✅ Build project
 - ✅ Tạo user `edgeai` và group `edgeai`
 - ✅ Cài đặt executable vào `/usr/local/bin/edge_ai_api`
 - ✅ Tạo thư mục production tại `/opt/edge_ai_api`
 - ✅ Cài đặt systemd service
 - ✅ Kích hoạt service tự động chạy khi khởi động
 - ✅ Khởi động service ngay lập tức
+
+### Cách 2: Sử dụng deploy/build.sh (Production Script)
+
+```bash
+cd /home/ubuntu/project/edge_ai_api
+sudo ./deploy/build.sh
+```
+
+Script này sẽ tự động:
+- ✅ Cài đặt system dependencies (nếu chưa có)
+- ✅ Build project
+- ✅ Tạo user `edgeai` và group `edgeai`
+- ✅ Cài đặt executable và libraries
+- ✅ Tạo thư mục production với cấu trúc đầy đủ
+- ✅ Cài đặt systemd service
+- ✅ Kích hoạt và khởi động service
+
+**Tùy chọn:**
+```bash
+# Bỏ qua cài đặt dependencies
+sudo ./deploy/build.sh --skip-deps
+
+# Bỏ qua build (dùng build có sẵn)
+sudo ./deploy/build.sh --skip-build
+
+# Không tự động start service
+sudo ./deploy/build.sh --no-start
+
+# Cấp quyền 777 (full permissions)
+sudo ./deploy/build.sh --full-permissions
+
+# Cấp quyền 755 (standard permissions - mặc định)
+sudo ./deploy/build.sh --standard-permissions
+```
 
 ### Bước 2: Kiểm Tra Service
 
@@ -256,6 +292,6 @@ sudo systemctl start edge-ai-api
 Hoặc chạy lại script deploy:
 
 ```bash
-sudo ./scripts/deploy_production.sh
+sudo ./setup.sh --production
 ```
 

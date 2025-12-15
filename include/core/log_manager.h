@@ -91,6 +91,23 @@ public:
      */
     static uint64_t getDirectorySize(const std::string& dir_path);
 
+    /**
+     * @brief List all log files in a category
+     * 
+     * @param category Log category
+     * @return Vector of log file info (date, size, path)
+     */
+    static std::vector<std::pair<std::string, uint64_t>> listLogFiles(Category category);
+
+    /**
+     * @brief Get log file path for category and date
+     * 
+     * @param category Log category
+     * @param date_str Date string in YYYY-MM-DD format
+     * @return Full path to log file
+     */
+    static std::string getLogFilePath(Category category, const std::string& date_str);
+
 private:
     static std::string base_dir_;
     static int max_disk_usage_percent_;
@@ -116,11 +133,6 @@ private:
      * @brief Get date string for today (YYYY-MM-DD)
      */
     static std::string getDateString();
-    
-    /**
-     * @brief Get log file path for category and date
-     */
-    static std::string getLogFilePath(Category category, const std::string& date_str);
     
     /**
      * @brief Cleanup old log files (older than 1 month)

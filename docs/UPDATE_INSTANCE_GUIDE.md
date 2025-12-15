@@ -26,7 +26,7 @@ PUT /v1/core/instances/{instanceId}
   "detectorMode": "SmartDetection",
   "detectionSensitivity": "High",
   "additionalParams": {
-    "RTSP_URL": "rtsp://new-url:8554/stream",
+    "RTSP_URL": "rtsp://localhost:8554/stream",
     "MODEL_PATH": "/path/to/model"
   }
 }
@@ -83,7 +83,7 @@ Bạn có thể gửi **toàn bộ hoặc một phần** của JSON config theo 
   },
   "Input": {
     "media_type": "IP Camera",
-    "uri": "gstreamer:///urisourcebin uri=rtsp://new-url:8554/stream ! decodebin ! videoconvert ! video/x-raw, format=NV12 ! appsink drop=true name=cvdsink"
+    "uri": "gstreamer:///urisourcebin uri=rtsp://localhost:8554/stream ! decodebin ! videoconvert ! video/x-raw, format=NV12 ! appsink drop=true name=cvdsink"
   },
   "Output": {
     "JSONExport": {
@@ -96,7 +96,7 @@ Bạn có thể gửi **toàn bộ hoặc một phần** của JSON config theo 
           "fps": 10
         },
         "enabled": true,
-        "uri": "rtsp://new-output:8554/stream"
+        "uri": "rtsp://localhost:8554/stream"
       }
     }
   },
@@ -296,7 +296,7 @@ curl -X PUT http://localhost:8080/v1/core/instances/b9bfa916-34c5-422c-9d7d-3391
   -H "Content-Type: application/json" \
   -d '{
     "Input": {
-      "uri": "gstreamer:///urisourcebin uri=rtsp://new-camera:8554/stream ! decodebin ! videoconvert ! video/x-raw, format=NV12 ! appsink drop=true name=cvdsink"
+      "uri": "gstreamer:///urisourcebin uri=rtsp://localhost:8554/stream ! decodebin ! videoconvert ! video/x-raw, format=NV12 ! appsink drop=true name=cvdsink"
     }
   }'
 ```
@@ -446,6 +446,117 @@ Các fields sau được **preserve** (giữ nguyên) nếu không có trong upd
 2. **Verify sau khi update**: Luôn GET instance detail sau khi update để verify.
 
 3. **Backup trước khi update**: Nếu cần, backup instance config trước khi update.
+
+## 🧪 Test Chức Năng Set Config
+
+API `POST /v1/core/instance/{instanceId}/config` cho phép bạn cập nhật từng field cụ thể trong config của instance mà không cần gửi toàn bộ config.
+
+### Request Body Format
+
+```json
+{
+  "path": "Đường/dẫn/đến/field",
+  "jsonValue": "Giá trị JSON dạng string (phải escape)"
+}
+```
+
+### Lưu ý quan trọng:
+
+1. **`path`**: Đường dẫn đến field cần update, sử dụng `/` để phân cách các level nested
+2. **`jsonValue`**: Phải là một JSON string hợp lệ, được escape đúng cách:
+   - String: `"\"my string\""` (có dấu ngoặc kép bên ngoài và escape bên trong)
+   - Number: `"0.5"` hoặc `"20"` (có thể không cần dấu ngoặc kép)
+   - Boolean: `"true"` hoặc `"false"` (có thể không cần dấu ngoặc kép)
+   - Object: `"{\"key\":\"value\"}"` (JSON object được escape)
+
+### Ví Dụ Test
+
+#### 1. Set DisplayName (String)
+
+```bash
+curl -X POST http://localhost:8080/v1/core/instance/{instanceId}/config \
+  -H "Content-Type: application/json" \
+  -d '{
+    "path": "DisplayName",
+    "jsonValue": "\"face_detection_demo_1_updated\""
+  }'
+```
+
+#### 2. Set Detector Confidence Threshold (Number)
+
+```bash
+curl -X POST http://localhost:8080/v1/core/instance/{instanceId}/config \
+  -H "Content-Type: application/json" \
+  -d '{
+    "path": "Detector/conf_threshold",
+    "jsonValue": "0.5"
+  }'
+```
+
+#### 3. Set AutoStart (Boolean)
+
+```bash
+curl -X POST http://localhost:8080/v1/core/instance/{instanceId}/config \
+  -H "Content-Type: application/json" \
+  -d '{
+    "path": "AutoStart",
+    "jsonValue": "false"
+  }'
+```
+
+#### 4. Set Nested Object (JSON Object)
+
+```bash
+curl -X POST http://localhost:8080/v1/core/instance/{instanceId}/config \
+  -H "Content-Type: application/json" \
+  -d '{
+    "path": "Detector/preset_values/MosaicInference",
+    "jsonValue": "{\"Detector/model_file\":\"pva_det_mosaic_320\",\"Detector/conf_threshold\":0.4}"
+  }'
+```
+
+### Kiểm Tra Config Sau Khi Set
+
+```bash
+# Lấy toàn bộ config của instance
+curl http://localhost:8080/v1/core/instance/{instanceId} | jq '.'
+
+# Hoặc chỉ xem một số field cụ thể
+curl http://localhost:8080/v1/core/instance/{instanceId} | jq '{
+  displayName: .displayName,
+  detector: .detector,
+  solutionManager: .solutionManager
+}'
+```
+
+### Các Trường Hợp Lỗi
+
+#### Instance không tồn tại
+**Response**: HTTP 404
+```json
+{
+  "error": "Instance not found",
+  "message": "Instance not found: {instanceId}"
+}
+```
+
+#### Path hoặc jsonValue thiếu
+**Response**: HTTP 400
+```json
+{
+  "error": "Bad request",
+  "message": "Field 'path' is required and must be a string"
+}
+```
+
+#### jsonValue không phải JSON hợp lệ
+**Response**: HTTP 400
+```json
+{
+  "error": "Bad request",
+  "message": "Field 'jsonValue' must contain valid JSON: {error details}"
+}
+```
 
 4. **Test với instance không chạy**: Test update với instance đã stop trước để tránh ảnh hưởng đến production.
 

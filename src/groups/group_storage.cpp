@@ -1,9 +1,13 @@
 #include "groups/group_storage.h"
+#include "core/env_config.h"
 #include <json/json.h>
 #include <fstream>
 #include <iostream>
 #include <filesystem>
 #include <sstream>
+#include <vector>
+#include <set>
+#include <algorithm>
 
 namespace fs = std::filesystem;
 
@@ -12,17 +16,25 @@ GroupStorage::GroupStorage(const std::string& storage_dir)
     ensureStorageDir();
 }
 
-void GroupStorage::ensureStorageDir() const {
-    try {
-        if (!fs::exists(storage_dir_)) {
-            std::cerr << "[GroupStorage] Creating storage directory: " << storage_dir_ << std::endl;
-            fs::create_directories(storage_dir_);
-            std::cerr << "[GroupStorage] Storage directory created successfully" << std::endl;
-        }
-    } catch (const std::exception& e) {
-        std::cerr << "[GroupStorage] Error creating storage directory: " << e.what() << std::endl;
-        throw;
+void GroupStorage::ensureStorageDir() {
+    // Extract subdir name from storage_dir_ for fallback
+    std::filesystem::path path(storage_dir_);
+    std::string subdir = path.filename().string();
+    if (subdir.empty()) {
+        subdir = "groups"; // Default fallback subdir
     }
+    
+    // Use resolveDirectory with 3-tier fallback strategy
+    std::string resolved_dir = EnvConfig::resolveDirectory(storage_dir_, subdir);
+    
+    // Update storage_dir_ if fallback was used
+    if (resolved_dir != storage_dir_) {
+        std::cerr << "[GroupStorage] ⚠ Storage directory changed from " << storage_dir_ 
+                  << " to " << resolved_dir << " (fallback)" << std::endl;
+        storage_dir_ = resolved_dir;
+    }
+    
+    // Don't throw - let the application continue even if directory creation failed
 }
 
 std::string GroupStorage::getGroupFilePath(const std::string& groupId) const {
@@ -62,60 +74,124 @@ bool GroupStorage::saveGroup(const GroupInfo& group) {
 }
 
 std::optional<GroupInfo> GroupStorage::loadGroup(const std::string& groupId) {
-    try {
-        std::string filepath = getGroupFilePath(groupId);
-        if (!fs::exists(filepath)) {
-            return std::nullopt;
-        }
-        
-        std::ifstream file(filepath);
-        if (!file.is_open()) {
-            return std::nullopt;
-        }
-        
-        Json::CharReaderBuilder builder;
-        Json::Value json;
-        std::string errors;
-        if (!Json::parseFromStream(builder, file, &json, &errors)) {
-            std::cerr << "[GroupStorage] Failed to parse group file: " << errors << std::endl;
-            return std::nullopt;
-        }
-        
-        std::string error;
-        auto group = jsonToGroupInfo(json, &error);
-        if (!group.has_value()) {
-            std::cerr << "[GroupStorage] Failed to convert JSON to group: " << error << std::endl;
-            return std::nullopt;
-        }
-        
-        return group;
-    } catch (const std::exception& e) {
-        std::cerr << "[GroupStorage] Exception loading group: " << e.what() << std::endl;
-        return std::nullopt;
+    // Extract subdir for checking all tiers
+    std::filesystem::path path(storage_dir_);
+    std::string subdir = path.filename().string();
+    if (subdir.empty()) {
+        subdir = "groups";
     }
+    
+    // Get all possible directories in priority order
+    std::vector<std::string> allDirs = EnvConfig::getAllPossibleDirectories(subdir);
+    
+    // Try to load from all tiers (later tiers override earlier ones)
+    // We iterate forward and keep the last found version
+    std::optional<GroupInfo> result = std::nullopt;
+    std::string foundInTier;
+    
+    for (const auto& dir : allDirs) {
+        std::string filepath = dir + "/" + groupId + ".json";
+        
+        if (!fs::exists(filepath)) {
+            continue; // Skip if file doesn't exist
+        }
+        
+        try {
+            std::ifstream file(filepath);
+            if (!file.is_open()) {
+                continue;
+            }
+            
+            Json::CharReaderBuilder builder;
+            Json::Value json;
+            std::string errors;
+            if (Json::parseFromStream(builder, file, &json, &errors)) {
+                std::string error;
+                auto group = jsonToGroupInfo(json, &error);
+                if (group.has_value()) {
+                    result = group; // Later tier overrides earlier one
+                    foundInTier = dir;
+                }
+            }
+        } catch (const std::exception& e) {
+            // Continue to next tier
+            continue;
+        }
+    }
+    
+    if (result.has_value()) {
+        std::cerr << "[GroupStorage] Loaded group " << groupId << " from tier: " << foundInTier << std::endl;
+    }
+    
+    return result;
 }
 
 std::vector<GroupInfo> GroupStorage::loadAllGroups() {
     std::vector<GroupInfo> groups;
+    std::set<std::string> loadedGroupIds; // Track loaded group IDs to avoid duplicates
     
-    try {
-        if (!fs::exists(storage_dir_)) {
-            return groups;
+    // Extract subdir for checking all tiers
+    std::filesystem::path path(storage_dir_);
+    std::string subdir = path.filename().string();
+    if (subdir.empty()) {
+        subdir = "groups";
+    }
+    
+    // Get all possible directories in priority order
+    std::vector<std::string> allDirs = EnvConfig::getAllPossibleDirectories(subdir);
+    
+    // Load from all tiers (later tiers override earlier ones for same groupId)
+    for (const auto& dir : allDirs) {
+        if (!fs::exists(dir)) {
+            continue; // Skip if directory doesn't exist
         }
         
-        for (const auto& entry : fs::directory_iterator(storage_dir_)) {
-            if (entry.is_regular_file() && entry.path().extension() == ".json") {
-                std::string filename = entry.path().filename().string();
-                std::string groupId = filename.substr(0, filename.length() - 5); // Remove .json
-                
-                auto group = loadGroup(groupId);
-                if (group.has_value()) {
-                    groups.push_back(group.value());
+        try {
+            for (const auto& entry : fs::directory_iterator(dir)) {
+                if (entry.is_regular_file() && entry.path().extension() == ".json") {
+                    std::string filename = entry.path().filename().string();
+                    std::string groupId = filename.substr(0, filename.length() - 5); // Remove .json
+                    
+                    // Skip if already loaded (later tier takes precedence)
+                    if (loadedGroupIds.find(groupId) != loadedGroupIds.end()) {
+                        continue;
+                    }
+                    
+                    // Try to load group from this tier
+                    std::string filepath = dir + "/" + filename;
+                    if (!fs::exists(filepath)) {
+                        continue;
+                    }
+                    
+                    std::ifstream file(filepath);
+                    if (!file.is_open()) {
+                        continue;
+                    }
+                    
+                    Json::CharReaderBuilder builder;
+                    Json::Value json;
+                    std::string errors;
+                    if (Json::parseFromStream(builder, file, &json, &errors)) {
+                        std::string error;
+                        auto group = jsonToGroupInfo(json, &error);
+                        if (group.has_value()) {
+                            // Remove old group if exists (from earlier tier)
+                            groups.erase(
+                                std::remove_if(groups.begin(), groups.end(),
+                                    [&groupId](const GroupInfo& g) { return g.groupId == groupId; }),
+                                groups.end()
+                            );
+                            groups.push_back(group.value());
+                            loadedGroupIds.insert(groupId);
+                            std::cerr << "[GroupStorage] Loaded group " << groupId << " from tier: " << dir << std::endl;
+                        }
+                    }
                 }
             }
+        } catch (const std::exception& e) {
+            // Continue to next tier
+            continue;
         }
-    } catch (const std::exception& e) {
-        std::cerr << "[GroupStorage] Exception loading all groups: " << e.what() << std::endl;
     }
     
     return groups;

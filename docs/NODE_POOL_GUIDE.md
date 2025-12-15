@@ -249,7 +249,7 @@ curl -X POST http://localhost:8080/v1/core/instance \
 POST /v1/core/nodes/preconfigured
 {
   "templateId": "rtsp_src_template",
-  "parameters": {"rtsp_url": "rtsp://camera1/stream"}
+  "parameters": {"rtsp_url": "rtsp://localhost/stream"}
 }
 → node_rtsp_1
 ```
@@ -300,4 +300,106 @@ POST /v1/core/instance
 - Nodes đang được sử dụng (`inUse: true`) không thể xóa
 - Solution được tạo từ nodes sẽ được đăng ký vào SolutionRegistry
 - Bạn có thể tạo nhiều solutions từ cùng một set nodes
+
+---
+
+## Ví Dụ Thực Tế - Sử Dụng Nodes
+
+### Tổng quan về bộ nodes
+
+Bạn có thể có nhiều pre-configured nodes với các loại sau:
+
+- **Source**: RTSP Source, File Source, App Source, Image Source, RTMP Source, UDP Source
+- **Processor**: Face OSD v2, SORT Tracker, BA Crossline, BA Crossline OSD
+- **Destination**: File Destination, Screen Destination, RTMP Destination
+- **Broker**: JSON Console Broker, Message Broker, JSON Enhanced Console Broker, MQTT Broker, Kafka Broker
+
+Tất cả nodes đều có `inUse: false` khi chưa được sử dụng, nghĩa là bạn có thể sử dụng chúng ngay!
+
+### Các thao tác với Nodes
+
+#### 1. Xem chi tiết một node cụ thể
+
+**GET** `/v1/core/nodes/{nodeId}`
+
+```bash
+curl http://localhost:8080/v1/core/nodes/node_b3ed65e5
+```
+
+**Response:**
+```json
+{
+  "nodeId": "node_b3ed65e5",
+  "templateId": "file_des_template",
+  "displayName": "File Destination",
+  "category": "destination",
+  "description": "Save video to file",
+  "nodeType": "file_des",
+  "parameters": {
+    "name_prefix": "object_detection",
+    "osd": "true",
+    "save_dir": "./output/{instanceId}"
+  },
+  "inUse": false,
+  "createdAt": "2025-12-08T23:58:27Z"
+}
+```
+
+#### 2. Cập nhật tham số của node
+
+**PUT** `/v1/core/nodes/{nodeId}`
+
+**Lưu ý:** Chỉ có thể cập nhật node khi `inUse: false`
+
+```bash
+curl -X PUT http://localhost:8080/v1/core/nodes/node_b3ed65e5 \
+  -H "Content-Type: application/json" \
+  -d '{
+    "parameters": {
+      "name_prefix": "face_detection",
+      "osd": "true",
+      "save_dir": "./output/videos/{instanceId}"
+    }
+  }'
+```
+
+#### 3. Xóa node
+
+**DELETE** `/v1/core/nodes/{nodeId}`
+
+**Lưu ý:** Chỉ có thể xóa node khi `inUse: false`
+
+```bash
+curl -X DELETE http://localhost:8080/v1/core/nodes/node_cdeaa847
+```
+
+#### 4. Tạo Solution từ các nodes đã chọn
+
+Đây là bước quan trọng nhất! Sau khi có các pre-configured nodes, bạn có thể chọn và tạo solution:
+
+```bash
+curl -X POST http://localhost:8080/v1/core/nodes/build-solution \
+  -H "Content-Type: application/json" \
+  -d '{
+    "solutionId": "my_custom_pipeline",
+    "solutionName": "My Custom Pipeline",
+    "nodeIds": [
+      "node_rtsp_1",
+      "node_face_detector_1",
+      "node_file_des_1"
+    ]
+  }'
+```
+
+Sau đó sử dụng solution này để tạo instance:
+
+```bash
+curl -X POST http://localhost:8080/v1/core/instance \
+  -H "Content-Type: application/json" \
+  -d '{
+    "name": "My Instance",
+    "solution": "my_custom_pipeline",
+    "autoStart": true
+  }'
+```
 

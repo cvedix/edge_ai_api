@@ -42,7 +42,7 @@ namespace Logger {
 inline void init(const std::string& log_dir = "", 
                  plog::Severity log_level = plog::info,
                  int max_days = 30,
-                 int roll_at_hour = 0,
+                 int /*roll_at_hour*/ = 0,  // Parameter name commented to avoid unused-parameter warning
                  bool enable_console = true) {
     
     // Get log directory from environment or use default

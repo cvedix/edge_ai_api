@@ -29,6 +29,25 @@ echo "Note: If you see version mismatch errors with cvedix packages, you may nee
 echo "  1. Remove cvedix-ai-runtime-dev if installed: sudo apt remove cvedix-ai-runtime-dev"
 echo "  2. Or update it to match cvedix-ai-runtime version"
 echo ""
+
+# Check for cvedix version mismatch
+CVEDIX_RUNTIME=$(dpkg -l | grep "cvedix-ai-runtime " | awk '{print $3}' | head -1)
+CVEDIX_DEV=$(dpkg -l | grep "cvedix-ai-runtime-dev" | awk '{print $3}' | head -1)
+
+if [ -n "$CVEDIX_RUNTIME" ] && [ -n "$CVEDIX_DEV" ]; then
+    RUNTIME_VER=$(echo "$CVEDIX_RUNTIME" | cut -d'-' -f1)
+    DEV_VER=$(echo "$CVEDIX_DEV" | cut -d'-' -f1)
+    
+    if [ "$RUNTIME_VER" != "$DEV_VER" ]; then
+        echo "⚠ Version mismatch detected!"
+        echo "  Runtime: $CVEDIX_RUNTIME"
+        echo "  Dev: $CVEDIX_DEV"
+        echo ""
+        echo "Removing cvedix-ai-runtime-dev to fix conflict..."
+        sudo apt remove -y cvedix-ai-runtime-dev 2>/dev/null || echo "Could not remove, continuing..."
+    fi
+fi
+
 sudo apt --fix-broken install -y || {
     echo ""
     echo "Warning: Some dependencies may have issues. Continuing anyway..."

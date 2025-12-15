@@ -315,7 +315,7 @@ API `POST /v1/core/instance` cho phép tạo các AI instances với các loại
     "RTSP_URL": "rtsp://192.168.1.100:8554/stream",
     "MODEL_PATH": "./cvedix_data/models/trt/others/yolov8s_v8.5.engine",
     "LABELS_PATH": "./cvedix_data/models/coco_80classes.txt",
-    "RTMP_URL": "rtmp://server.com:1935/live/stream"
+    "RTMP_URL": "rtmp://localhost:1935/live/stream"
   }
 }
 ```
@@ -446,7 +446,7 @@ curl -X POST http://localhost:8080/v1/core/instance \
     "INPUT_WIDTH": "640",
     "INPUT_HEIGHT": "640",
     "NUM_CLASSES": "1",
-    "RTMP_URL": "rtmp://server.com:1935/live/rknn_face"
+    "RTMP_URL": "rtmp://localhost:1935/live/rknn_face"
   }
 }
 ```
@@ -520,7 +520,7 @@ curl -X POST http://localhost:8080/v1/core/instance \
     "SCORE_THRESHOLD": "0.5",
     "CONFIDENCE_THRESHOLD": "0.5",
     "NMS_THRESHOLD": "0.5",
-    "RTMP_URL": "rtmp://server.com:1935/live/yolo"
+    "RTMP_URL": "rtmp://localhost:1935/live/yolo"
   }
 }
 ```
@@ -583,7 +583,7 @@ curl -X POST http://localhost:8080/v1/core/instance \
   "additionalParams": {
     "MODEL_PATH": "./cvedix_data/models/face/face_detection_yunet_2022mar.onnx",
     "CHANNEL": "0",
-    "RTMP_URL": "rtmp://server.com:1935/live/app_src"
+    "RTMP_URL": "rtmp://localhost:1935/live/app_src"
   }
 }
 ```
@@ -717,11 +717,11 @@ curl -X POST http://localhost:8080/v1/core/instance \
   "persistent": true,
   "autoStart": true,
   "additionalParams": {
-    "RTMP_SRC_URL": "rtmp://source.com:1935/live/input_stream",
+    "RTMP_SRC_URL": "rtmp://localhost:1935/live/input_stream",
     "RESIZE_RATIO": "1.0",
     "SKIP_INTERVAL": "0",
     "MODEL_PATH": "./cvedix_data/models/face/face_detection_yunet_2022mar.onnx",
-    "RTMP_URL": "rtmp://server.com:1935/live/output_stream"
+    "RTMP_URL": "rtmp://localhost:1935/live/output_stream"
   }
 }
 ```
@@ -786,7 +786,7 @@ curl -X POST http://localhost:8080/v1/core/instance \
     "RESIZE_RATIO": "1.0",
     "SKIP_INTERVAL": "0",
     "MODEL_PATH": "./cvedix_data/models/face/face_detection_yunet_2022mar.onnx",
-    "RTMP_URL": "rtmp://server.com:1935/live/udp_stream"
+    "RTMP_URL": "rtmp://localhost:1935/live/udp_stream"
   }
 }
 ```
@@ -867,7 +867,7 @@ curl -X POST http://localhost:8080/v1/core/instance \
     "MODEL_PATH": "./cvedix_data/models/face/face_detection_yunet_2022mar.onnx",
     "SFACE_MODEL_PATH": "./cvedix_data/models/face/face_recognition_sface_2021dec.onnx",
     "BROKE_FOR": "FACE",
-    "RTMP_URL": "rtmp://server.com:1935/live/face"
+    "RTMP_URL": "rtmp://localhost:1935/live/face"
   }
 }
 ```
@@ -951,7 +951,7 @@ curl -X POST http://localhost:8080/v1/core/instance \
     "MQTT_BROKER_URL": "anhoidong.datacenter.cvedix.com",
     "MQTT_PORT": "1883",
     "MQTT_TOPIC": "events",
-    "RTMP_URL": "rtmp://server.com:1935/live/face"
+    "RTMP_URL": "rtmp://localhost:1935/live/face"
   }
 }
 ```
@@ -1040,7 +1040,7 @@ curl -X POST http://localhost:8080/v1/core/instance \
     "BROKE_FOR": "FACE",
     "KAFKA_SERVERS": "192.168.77.87:9092",
     "KAFKA_TOPIC": "videopipe_topic",
-    "RTMP_URL": "rtmp://server.com:1935/live/face"
+    "RTMP_URL": "rtmp://localhost:1935/live/face"
   }
 }
 ```
@@ -1127,7 +1127,7 @@ curl -X POST http://localhost:8080/v1/core/instance \
     "SFACE_MODEL_PATH": "./cvedix_data/models/face/face_recognition_sface_2021dec.onnx",
     "BROKE_FOR": "FACE",
     "XML_FILE_PATH": "./output/broker_output.xml",
-    "RTMP_URL": "rtmp://server.com:1935/live/face"
+    "RTMP_URL": "rtmp://localhost:1935/live/face"
   }
 }
 ```
@@ -1212,7 +1212,7 @@ curl -X POST http://localhost:8080/v1/core/instance \
     "BROKE_FOR": "FACE",
     "XML_SOCKET_IP": "127.0.0.1",
     "XML_SOCKET_PORT": "8080",
-    "RTMP_URL": "rtmp://server.com:1935/live/face"
+    "RTMP_URL": "rtmp://localhost:1935/live/face"
   }
 }
 ```
@@ -1305,7 +1305,7 @@ curl -X POST http://localhost:8080/v1/core/instance \
     "MIN_CROP_WIDTH": "50",
     "MIN_CROP_HEIGHT": "50",
     "ONLY_FOR_TRACKED": "false",
-    "RTMP_URL": "rtmp://server.com:1935/live/face"
+    "RTMP_URL": "rtmp://localhost:1935/live/face"
   }
 }
 ```
@@ -1387,7 +1387,7 @@ curl -X POST http://localhost:8080/v1/core/instance \
     "PLATES_DIR": "plate_images",
     "MIN_CROP_WIDTH": "100",
     "ONLY_FOR_TRACKED": "true",
-    "RTMP_URL": "rtmp://server.com:1935/live/plate"
+    "RTMP_URL": "rtmp://localhost:1935/live/plate"
   }
 }
 ```
@@ -1487,7 +1487,7 @@ curl -X POST http://localhost:8080/v1/core/instance \
     "KAFKA_SERVERS": "192.168.77.87:9092",
     "KAFKA_TOPIC": "videopipe_topic",
     "XML_FILE_PATH": "./output/broker_output.xml",
-    "RTMP_URL": "rtmp://server.com:1935/live/face"
+    "RTMP_URL": "rtmp://localhost:1935/live/face"
   }
 }
 ```
@@ -1636,10 +1636,10 @@ cat ./output/broker_output.xml
 
 ```bash
 # Play RTMP stream
-ffplay rtmp://server.com:1935/live/stream
+ffplay rtmp://localhost:1935/live/stream
 
 # Hoặc sử dụng VLC
-vlc rtmp://server.com:1935/live/stream
+vlc rtmp://localhost:1935/live/stream
 ```
 
 ### Bước 6: Dừng Instance
@@ -1651,6 +1651,60 @@ curl -X POST http://localhost:8080/v1/core/instance/{instanceId}/stop
 # Delete instance
 curl -X DELETE http://localhost:8080/v1/core/instance/{instanceId}
 ```
+
+---
+
+## Case Study: Face Detection với RTMP Streaming
+
+### Pipeline
+
+Pipeline bao gồm các node sau (theo thứ tự):
+1. **File Source** - Đọc video từ file
+2. **YuNet Face Detector** - Phát hiện khuôn mặt
+3. **SFace Feature Encoder** - Mã hóa đặc trưng khuôn mặt
+4. **Face OSD v2** - Vẽ overlay lên video
+5. **RTMP Destination** - Stream video ra RTMP server
+
+### Tạo Instance
+
+```bash
+curl -X POST http://localhost:8080/v1/core/instance \
+  -H "Content-Type: application/json" \
+  -d '{
+    "name": "face_detection_demo_1",
+    "group": "demo",
+    "solution": "face_detection_rtmp",
+    "persistent": true,
+    "autoStart": true,
+    "detectionSensitivity": "Low",
+    "additionalParams": {
+      "FILE_PATH": "/path/to/video/face.mp4",
+      "RTMP_URL": "rtmp://localhost:1935/live/camera_demo_1",
+      "MODEL_PATH": "/usr/share/cvedix/cvedix_data/models/face/face_detection_yunet_2022mar.onnx",
+      "SFACE_MODEL_PATH": "/path/to/models/face_recognition_sface_2021dec.onnx",
+      "RESIZE_RATIO": "1.0"
+    }
+  }'
+```
+
+### Các Tham Số
+
+- `FILE_PATH`: Đường dẫn đến file video input (required)
+- `RTMP_URL`: URL RTMP server để stream (required)
+- `MODEL_PATH`: Đường dẫn đến model YuNet face detector (optional)
+- `SFACE_MODEL_PATH`: Đường dẫn đến model SFace encoder (optional)
+- `RESIZE_RATIO`: Tỷ lệ resize video (optional, default: `"0.5"`)
+
+### Lưu Ý Quan Trọng
+
+1. **RTMP URL**: RTMP node tự động thêm suffix `"_0"` vào stream key
+2. **Model Paths**: Nếu không cung cấp, hệ thống sẽ tự động tìm model trong các thư mục mặc định
+3. **Shape Mismatch Error**: Nếu gặp lỗi shape mismatch, re-encode video với resolution cố định:
+   ```bash
+   ffmpeg -i input.mp4 -vf "scale=320:240:force_original_aspect_ratio=decrease,pad=320:240:(ow-iw)/2:(oh-ih)/2" \
+          -c:v libx264 -preset fast -crf 23 -c:a copy output_320x240.mp4
+   ```
+   Sau đó sử dụng `RESIZE_RATIO: "1.0"` trong `additionalParams`.
 
 ---
 

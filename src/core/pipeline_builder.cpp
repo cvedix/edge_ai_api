@@ -1,6 +1,9 @@
 #include "core/pipeline_builder.h"
 #include "config/system_config.h"
 #include "core/platform_detector.h"
+#include "core/env_config.h"
+#include <cstdlib>  // For setenv
+#include <cstring>  // For strlen
 #include <cvedix/nodes/src/cvedix_rtsp_src_node.h>
 #include <cvedix/nodes/src/cvedix_file_src_node.h>
 #include <cvedix/nodes/src/cvedix_app_src_node.h>
@@ -13,6 +16,7 @@
 #include <cvedix/nodes/des/cvedix_file_des_node.h>
 #include <cvedix/nodes/des/cvedix_rtmp_des_node.h>
 #include <cvedix/nodes/des/cvedix_screen_des_node.h>
+#include <cvedix/nodes/des/cvedix_app_des_node.h>
 #include <cvedix/nodes/track/cvedix_sort_track_node.h>
 #include <cvedix/nodes/ba/cvedix_ba_crossline_node.h>
 #include <cvedix/nodes/osd/cvedix_ba_crossline_osd_node.h>
@@ -45,7 +49,9 @@
 
 // Other Inference Nodes
 #include <cvedix/nodes/infers/cvedix_yolo_detector_node.h>
-#include <cvedix/nodes/infers/cvedix_yolov11_detector_node.h>
+// Note: cvedix_yolov11_detector_node.h is not available in CVEDIX SDK
+// Use rknn_yolov11_detector (with CVEDIX_WITH_RKNN) or yolo_detector instead
+// #include <cvedix/nodes/infers/cvedix_yolov11_detector_node.h>
 #include <cvedix/nodes/infers/cvedix_enet_seg_node.h>
 #include <cvedix/nodes/infers/cvedix_mask_rcnn_detector_node.h>
 #include <cvedix/nodes/infers/cvedix_openpose_detector_node.h>
@@ -68,14 +74,23 @@
 #include <cvedix/nodes/infers/cvedix_trt_insight_face_recognition_node.h>
 #endif
 #include <vector>
+#include <atomic>
 
 // Broker Nodes
-// Temporarily disabled JSON broker nodes due to cereal dependency issue
-// TODO: Re-enable after fixing cereal symlink or CVEDIX SDK update
-// #include <cvedix/nodes/broker/cvedix_json_console_broker_node.h>
-// #include <cvedix/nodes/broker/cvedix_json_enhanced_console_broker_node.h>
 #ifdef CVEDIX_WITH_MQTT
-// #include <cvedix/nodes/broker/cvedix_json_mqtt_broker_node.h>
+#include <cvedix/nodes/broker/cvedix_json_enhanced_console_broker_node.h>
+#include <cvedix/nodes/broker/cvedix_json_mqtt_broker_node.h>
+// Note: cvedix_mqtt_client.h is included but implementation is not available
+// We'll use libmosquitto directly for MQTT publishing
+#include <mosquitto.h>
+#include <mutex>
+#include <ctime>
+#include <thread>
+#include <queue>
+#include <condition_variable>
+#include <chrono>
+#include <atomic>
+#include <future>
 #endif
 #ifdef CVEDIX_WITH_KAFKA
 // #include <cvedix/nodes/broker/cvedix_json_kafka_broker_node.h>
@@ -102,6 +117,7 @@
 #include <iomanip>
 #include <cmath>
 #include <set>
+#include <regex>
 #include <algorithm>
 #include <cctype>
 // CVEDIX SDK uses experimental::filesystem, so we need to use it too for compatibility
@@ -197,11 +213,12 @@ static void ensureCVEDIXInitialized() {
                                   << " from RTSP_TRANSPORT environment variable" << std::endl;
                     }
                 } else {
-                    // Default to TCP for better firewall compatibility
-                    // User can override by setting GST_RTSP_PROTOCOLS=udp if needed
-                    setenv("GST_RTSP_PROTOCOLS", "tcp", 0);
-                    std::cerr << "[PipelineBuilder] Set GST_RTSP_PROTOCOLS=tcp (default for firewall compatibility)" << std::endl;
-                    std::cerr << "[PipelineBuilder] NOTE: To use UDP, set GST_RTSP_PROTOCOLS=udp before starting" << std::endl;
+                    // Don't set default - let GStreamer use its default (UDP, or tcp+udp)
+                    // This allows VLC RTSP server and other UDP-only servers to work
+                    // User can explicitly set GST_RTSP_PROTOCOLS=tcp if needed for firewall compatibility
+                    std::cerr << "[PipelineBuilder] GST_RTSP_PROTOCOLS not set - using GStreamer default (UDP/tcp+udp)" << std::endl;
+                    std::cerr << "[PipelineBuilder] NOTE: To force TCP, set GST_RTSP_PROTOCOLS=tcp before starting" << std::endl;
+                    std::cerr << "[PipelineBuilder] NOTE: To force UDP, set GST_RTSP_PROTOCOLS=udp before starting" << std::endl;
                 }
             } else {
                 std::cerr << "[PipelineBuilder] Using GST_RTSP_PROTOCOLS=" << rtspProtocols 
@@ -248,9 +265,32 @@ static void ensureCVEDIXInitialized() {
                 std::cerr << "[PipelineBuilder] Warning: Failed to apply GStreamer plugin ranks from config" << std::endl;
             }
             
-            CVEDIX_SET_LOG_LEVEL(cvedix_utils::cvedix_log_level::INFO);
+            // Set CVEDIX log level (can be overridden via CVEDIX_LOG_LEVEL env var)
+            // Default: INFO to show all important logs (WARNING and above)
+            // Options: ERROR, WARNING, INFO, DEBUG (case-insensitive)
+            cvedix_utils::cvedix_log_level cvedix_log_level = cvedix_utils::cvedix_log_level::INFO;
+            const char* env_cvedix_log = std::getenv("CVEDIX_LOG_LEVEL");
+            if (env_cvedix_log) {
+                std::string log_level_str = env_cvedix_log;
+                std::transform(log_level_str.begin(), log_level_str.end(), log_level_str.begin(), ::toupper);
+                if (log_level_str == "DEBUG") {
+                    cvedix_log_level = cvedix_utils::cvedix_log_level::DEBUG;
+                } else if (log_level_str == "INFO") {
+                    cvedix_log_level = cvedix_utils::cvedix_log_level::INFO;
+                } else if (log_level_str == "WARNING" || log_level_str == "WARN") {
+                    cvedix_log_level = cvedix_utils::cvedix_log_level::WARN;
+                } else if (log_level_str == "ERROR") {
+                    cvedix_log_level = cvedix_utils::cvedix_log_level::ERROR;
+                }
+            }
+            CVEDIX_SET_LOG_LEVEL(cvedix_log_level);
             CVEDIX_LOGGER_INIT();
-            std::cerr << "[PipelineBuilder] CVEDIX SDK logger initialized" << std::endl;
+            std::string log_level_name = env_cvedix_log ? std::string(env_cvedix_log) : "INFO (default)";
+            std::cerr << "[PipelineBuilder] CVEDIX SDK logger initialized (log level: " << log_level_name << ")" << std::endl;
+            if (cvedix_log_level == cvedix_utils::cvedix_log_level::ERROR) {
+                std::cerr << "[PipelineBuilder] NOTE: WARNING logs (e.g., 'queue full, dropping meta!') are suppressed" << std::endl;
+                std::cerr << "[PipelineBuilder] NOTE: Set CVEDIX_LOG_LEVEL=INFO to see all logs" << std::endl;
+            }
         } catch (const std::exception& e) {
             std::cerr << "[PipelineBuilder] Warning: Failed to initialize CVEDIX logger: " 
                       << e.what() << std::endl;
@@ -337,6 +377,7 @@ std::vector<std::shared_ptr<cvedix_nodes::cvedix_node>> PipelineBuilder::buildPi
             } else {
                 // Check if this is an optional node that can be skipped
                 bool isOptionalNode = (nodeConfig.nodeType == "screen_des" || 
+                                     nodeConfig.nodeType == "rtmp_des" ||
                                      nodeConfig.nodeType == "json_console_broker" ||
                                      nodeConfig.nodeType == "json_enhanced_console_broker" ||
                                      nodeConfig.nodeType == "json_mqtt_broker" ||
@@ -438,6 +479,71 @@ std::vector<std::shared_ptr<cvedix_nodes::cvedix_node>> PipelineBuilder::buildPi
         }
     }
     
+    // Check if pipeline has app_des_node for frame capture
+    bool hasAppDesNode = false;
+    for (const auto& node : nodes) {
+        if (std::dynamic_pointer_cast<cvedix_nodes::cvedix_app_des_node>(node)) {
+            hasAppDesNode = true;
+            break;
+        }
+    }
+    
+    // Automatically add app_des_node if not present (for frame capture support)
+    if (!hasAppDesNode && !nodes.empty()) {
+        std::cerr << "[PipelineBuilder] No app_des_node found in pipeline" << std::endl;
+        std::cerr << "[PipelineBuilder] Automatically adding app_des_node for frame capture support..." << std::endl;
+        
+        try {
+            std::string appDesNodeName = "app_des_" + instanceId;
+            std::map<std::string, std::string> appDesParams;
+            appDesParams["channel"] = "0";
+            
+            auto appDesNode = createAppDesNode(appDesNodeName, appDesParams);
+            if (appDesNode) {
+                // Find the last non-DES node to attach app_des_node to
+                // DES nodes (like rtmp_des, file_des) cannot have next nodes
+                // So we need to attach app_des_node to the node before the last DES node
+                std::shared_ptr<cvedix_nodes::cvedix_node> attachTarget = nullptr;
+                
+                // Search backwards to find the last non-DES node
+                for (auto it = nodes.rbegin(); it != nodes.rend(); ++it) {
+                    auto node = *it;
+                    // Check if it's a DES node
+                    bool isDesNode = std::dynamic_pointer_cast<cvedix_nodes::cvedix_rtmp_des_node>(node) != nullptr ||
+                                     std::dynamic_pointer_cast<cvedix_nodes::cvedix_file_des_node>(node) != nullptr ||
+                                     std::dynamic_pointer_cast<cvedix_nodes::cvedix_app_des_node>(node) != nullptr;
+                    
+                    if (!isDesNode) {
+                        attachTarget = node;
+                        std::cerr << "[PipelineBuilder] Found non-DES node to attach app_des_node: " << typeid(*node).name() << std::endl;
+                        break;
+                    }
+                }
+                
+                if (attachTarget) {
+                    // Attach app_des_node to the same node as the last DES node
+                    appDesNode->attach_to({attachTarget});
+                    nodes.push_back(appDesNode);
+                    std::cerr << "[PipelineBuilder] ✓ app_des_node added successfully for frame capture" << std::endl;
+                    std::cerr << "[PipelineBuilder] NOTE: app_des_node attached to same source as other DES nodes (parallel connection)" << std::endl;
+                } else {
+                    std::cerr << "[PipelineBuilder] ⚠ Warning: Could not find suitable node to attach app_des_node" << std::endl;
+                    std::cerr << "[PipelineBuilder] Frame capture will not be available for this instance" << std::endl;
+                }
+            } else {
+                std::cerr << "[PipelineBuilder] ⚠ Warning: Failed to create app_des_node (frame capture will not be available)" << std::endl;
+            }
+        } catch (const std::exception& e) {
+            std::cerr << "[PipelineBuilder] ⚠ Warning: Exception adding app_des_node: " << e.what() << std::endl;
+            std::cerr << "[PipelineBuilder] Frame capture will not be available for this instance" << std::endl;
+        } catch (...) {
+            std::cerr << "[PipelineBuilder] ⚠ Warning: Unknown exception adding app_des_node" << std::endl;
+            std::cerr << "[PipelineBuilder] Frame capture will not be available for this instance" << std::endl;
+        }
+    } else if (hasAppDesNode) {
+        std::cerr << "[PipelineBuilder] ✓ app_des_node found in pipeline (frame capture supported)" << std::endl;
+    }
+    
     std::cerr << "[PipelineBuilder] Successfully built pipeline with " << nodes.size() 
               << " nodes" << std::endl;
     return nodes;
@@ -489,7 +595,7 @@ std::shared_ptr<cvedix_nodes::cvedix_node> PipelineBuilder::createNode(
             value = getRTSPUrl(req);
         } else if (value == "${FILE_PATH}") {
             value = getFilePath(req);
-        } else if (value == "${RTMP_URL}") {
+        } else if (value == "${RTMP_URL}" || value == "${RTMP_DES_URL}") {
             value = getRTMPUrl(req);
         } else if (value == "${WEIGHTS_PATH}") {
             auto it = req.additionalParams.find("WEIGHTS_PATH");
@@ -622,23 +728,83 @@ std::shared_ptr<cvedix_nodes::cvedix_node> PipelineBuilder::createNode(
             }
         }
         
+        // Generic placeholder substitution: Replace ${VARIABLE_NAME} with values from additionalParams
+        // This handles placeholders that weren't explicitly handled above (e.g., ${BROKE_FOR})
+        std::regex placeholderPattern("\\$\\{([A-Za-z0-9_]+)\\}");
+        std::sregex_iterator iter(value.begin(), value.end(), placeholderPattern);
+        std::sregex_iterator end;
+        std::set<std::string> processedVars; // Track processed variables to avoid duplicate replacements
+        
+        for (; iter != end; ++iter) {
+            std::string varName = (*iter)[1].str();
+            
+            // Skip if already processed
+            if (processedVars.find(varName) != processedVars.end()) {
+                continue;
+            }
+            processedVars.insert(varName);
+            
+            auto it = req.additionalParams.find(varName);
+            if (it != req.additionalParams.end() && !it->second.empty()) {
+                // Replace all occurrences of this placeholder
+                value = std::regex_replace(value, std::regex("\\$\\{" + varName + "\\}"), it->second);
+                std::cerr << "[PipelineBuilder] Replaced ${" << varName << "} with: " << it->second << std::endl;
+            } else {
+                // Placeholder not found in additionalParams - leave as is
+                std::cerr << "[PipelineBuilder] WARNING: Placeholder ${" << varName << "} not found in additionalParams, leaving as literal" << std::endl;
+            }
+        }
+        
         params[param.first] = value;
     }
     
     // Create node based on type
     try {
+        // Source nodes - Auto-detect source type for file_src if RTSP_SRC_URL or RTMP_SRC_URL is provided
+        std::string actualNodeType = nodeConfig.nodeType;
+        if (nodeConfig.nodeType == "file_src") {
+            // Check if RTSP_SRC_URL or RTMP_SRC_URL is provided in additionalParams
+            auto rtspIt = req.additionalParams.find("RTSP_SRC_URL");
+            auto rtmpIt = req.additionalParams.find("RTMP_SRC_URL");
+            
+            if (rtspIt != req.additionalParams.end() && !rtspIt->second.empty()) {
+                std::cerr << "[PipelineBuilder] Auto-detected RTSP source from RTSP_SRC_URL parameter, overriding file_src" << std::endl;
+                actualNodeType = "rtsp_src";
+                // Update params to use rtsp_url instead of file_path
+                params["rtsp_url"] = rtspIt->second;
+                // Update node name to reflect actual node type (like sample code uses "rtsp_src_0")
+                // Replace "file_src" with "rtsp_src" in node name for clarity
+                size_t fileSrcPos = nodeName.find("file_src");
+                if (fileSrcPos != std::string::npos) {
+                    nodeName.replace(fileSrcPos, 8, "rtsp_src");
+                    std::cerr << "[PipelineBuilder] Updated node name to reflect RTSP source: '" << nodeName << "'" << std::endl;
+                }
+            } else if (rtmpIt != req.additionalParams.end() && !rtmpIt->second.empty()) {
+                std::cerr << "[PipelineBuilder] Auto-detected RTMP source from RTMP_SRC_URL parameter, overriding file_src" << std::endl;
+                actualNodeType = "rtmp_src";
+                // Update params to use rtmp_url instead of file_path
+                params["rtmp_url"] = rtmpIt->second;
+                // Update node name to reflect actual node type (like sample code)
+                size_t fileSrcPos = nodeName.find("file_src");
+                if (fileSrcPos != std::string::npos) {
+                    nodeName.replace(fileSrcPos, 8, "rtmp_src");
+                    std::cerr << "[PipelineBuilder] Updated node name to reflect RTMP source: '" << nodeName << "'" << std::endl;
+                }
+            }
+        }
+        
         // Source nodes
-        if (nodeConfig.nodeType == "rtsp_src") {
+        if (actualNodeType == "rtsp_src") {
             return createRTSPSourceNode(nodeName, params, req);
-        } else if (nodeConfig.nodeType == "file_src") {
+        } else if (actualNodeType == "file_src") {
             return createFileSourceNode(nodeName, params, req);
-        } else if (nodeConfig.nodeType == "app_src") {
+        } else if (actualNodeType == "app_src") {
             return createAppSourceNode(nodeName, params, req);
-        } else if (nodeConfig.nodeType == "image_src") {
+        } else if (actualNodeType == "image_src") {
             return createImageSourceNode(nodeName, params, req);
-        } else if (nodeConfig.nodeType == "rtmp_src") {
+        } else if (actualNodeType == "rtmp_src") {
             return createRTMPSourceNode(nodeName, params, req);
-        } else if (nodeConfig.nodeType == "udp_src") {
+        } else if (actualNodeType == "udp_src") {
             return createUDPSourceNode(nodeName, params, req);
         }
         // Face detection nodes
@@ -733,16 +899,23 @@ std::shared_ptr<cvedix_nodes::cvedix_node> PipelineBuilder::createNode(
             return createBACrosslineOSDNode(nodeName, params);
         }
         // Broker nodes
-        // Temporarily disabled JSON broker nodes due to cereal dependency issue
         else if (nodeConfig.nodeType == "json_console_broker") {
-            std::cerr << "[PipelineBuilder] json_console_broker is temporarily disabled due to cereal dependency issue" << std::endl;
-            return nullptr;
+            return createJSONConsoleBrokerNode(nodeName, params, req);
         } else if (nodeConfig.nodeType == "json_enhanced_console_broker") {
             std::cerr << "[PipelineBuilder] json_enhanced_console_broker is temporarily disabled due to cereal dependency issue" << std::endl;
             return nullptr;
         } else if (nodeConfig.nodeType == "json_mqtt_broker") {
-            std::cerr << "[PipelineBuilder] json_mqtt_broker is temporarily disabled due to cereal dependency issue" << std::endl;
+#ifdef CVEDIX_WITH_MQTT
+            // CRITICAL: cvedix_json_mqtt_broker_node is currently broken and causes crashes
+            // Disabled to prevent application crashes
+            // Use json_console_broker with MQTT publishing in instance_registry instead
+            std::cerr << "[PipelineBuilder] WARNING: json_mqtt_broker_node is DISABLED due to crash issues" << std::endl;
+            std::cerr << "[PipelineBuilder] Use json_console_broker node instead - MQTT will be handled by instance_registry" << std::endl;
             return nullptr;
+#else
+            std::cerr << "[PipelineBuilder] json_mqtt_broker requires CVEDIX_WITH_MQTT to be enabled" << std::endl;
+            return nullptr;
+#endif
         } else if (nodeConfig.nodeType == "json_kafka_broker") {
             std::cerr << "[PipelineBuilder] json_kafka_broker is temporarily disabled due to cereal dependency issue" << std::endl;
             return nullptr;
@@ -799,18 +972,98 @@ std::shared_ptr<cvedix_nodes::cvedix_node> PipelineBuilder::createRTSPSourceNode
     const CreateInstanceRequest& req) {
     
     try {
-        std::string rtspUrl = params.count("rtsp_url") ? params.at("rtsp_url") : getRTSPUrl(req);
+        // Get RTSP URL - prioritize RTSP_SRC_URL (like sample code)
+        std::string rtspUrl;
+        if (params.count("rtsp_url") && !params.at("rtsp_url").empty()) {
+            rtspUrl = params.at("rtsp_url");
+        } else {
+            // Check RTSP_SRC_URL first (like sample), then RTSP_URL
+            auto rtspSrcIt = req.additionalParams.find("RTSP_SRC_URL");
+            if (rtspSrcIt != req.additionalParams.end() && !rtspSrcIt->second.empty()) {
+                rtspUrl = rtspSrcIt->second;
+                std::cerr << "[PipelineBuilder] Using RTSP_SRC_URL from additionalParams: '" << rtspUrl << "'" << std::endl;
+            } else {
+                rtspUrl = getRTSPUrl(req);
+            }
+        }
+        
         int channel = params.count("channel") ? std::stoi(params.at("channel")) : 0;
         
-        // cvedix_rtsp_src_node constructor: (name, channel, rtsp_url, resize_ratio)
+        // cvedix_rtsp_src_node constructor: (name, channel, rtsp_url, resize_ratio, gst_decoder_name, skip_interval, codec_type)
         // resize_ratio must be > 0.0 and <= 1.0
-        float resize_ratio = 1.0f; // Default to no resize
+        // Default to 0.6 like sample code (rtsp_ba_crossline_sample.cpp uses 0.6f)
+        float resize_ratio = 0.6f; // Default to 0.6 like sample
         
-        // Check if resize_ratio is specified in params
-        if (params.count("resize_ratio")) {
-            resize_ratio = std::stof(params.at("resize_ratio"));
-        } else if (params.count("scale")) {
-            resize_ratio = std::stof(params.at("scale"));
+        // Get decoder from config priority list if not specified
+        // Priority: additionalParams GST_DECODER_NAME > params gst_decoder_name > selectDecoderFromPriority > default
+        std::string defaultDecoder = "avdec_h264";
+        std::string gstDecoderName = defaultDecoder;
+        
+        // Check additionalParams first (highest priority)
+        auto decoderIt = req.additionalParams.find("GST_DECODER_NAME");
+        if (decoderIt != req.additionalParams.end() && !decoderIt->second.empty()) {
+            gstDecoderName = decoderIt->second;
+            std::cerr << "[PipelineBuilder] Using GST_DECODER_NAME from additionalParams: '" << gstDecoderName << "'" << std::endl;
+        } else if (params.count("gst_decoder_name") && !params.at("gst_decoder_name").empty()) {
+            gstDecoderName = params.at("gst_decoder_name");
+            std::cerr << "[PipelineBuilder] Using gst_decoder_name from params: '" << gstDecoderName << "'" << std::endl;
+        } else {
+            gstDecoderName = selectDecoderFromPriority(defaultDecoder);
+            std::cerr << "[PipelineBuilder] Using decoder from priority list: '" << gstDecoderName << "'" << std::endl;
+        }
+        
+        // Get skip_interval (0 means no skip)
+        // Priority: additionalParams SKIP_INTERVAL > params skip_interval > default (0)
+        int skipInterval = 0;
+        auto skipIt = req.additionalParams.find("SKIP_INTERVAL");
+        if (skipIt != req.additionalParams.end() && !skipIt->second.empty()) {
+            try {
+                skipInterval = std::stoi(skipIt->second);
+                std::cerr << "[PipelineBuilder] Using SKIP_INTERVAL from additionalParams: " << skipInterval << std::endl;
+            } catch (const std::exception& e) {
+                std::cerr << "[PipelineBuilder] Warning: Invalid SKIP_INTERVAL value '" << skipIt->second 
+                          << "', using default 0" << std::endl;
+            }
+        } else if (params.count("skip_interval")) {
+            skipInterval = std::stoi(params.at("skip_interval"));
+        }
+        
+        // Get codec_type (h264, h265, auto)
+        // Priority: additionalParams CODEC_TYPE > params codec_type > default ("h264")
+        std::string codecType = "h264";
+        auto codecIt = req.additionalParams.find("CODEC_TYPE");
+        if (codecIt != req.additionalParams.end() && !codecIt->second.empty()) {
+            codecType = codecIt->second;
+            std::cerr << "[PipelineBuilder] Using CODEC_TYPE from additionalParams: '" << codecType << "'" << std::endl;
+        } else if (params.count("codec_type") && !params.at("codec_type").empty()) {
+            codecType = params.at("codec_type");
+        }
+        
+        // Priority: additionalParams RESIZE_RATIO > params resize_ratio > params scale > default
+        // This allows runtime override of resize_ratio for RTSP streams
+        bool resizeRatioFromAdditionalParams = false;
+        auto resizeIt = req.additionalParams.find("RESIZE_RATIO");
+        if (resizeIt != req.additionalParams.end() && !resizeIt->second.empty()) {
+            try {
+                resize_ratio = std::stof(resizeIt->second);
+                resizeRatioFromAdditionalParams = true;
+                std::cerr << "[PipelineBuilder] Using RESIZE_RATIO from additionalParams: " << resize_ratio << std::endl;
+            } catch (const std::exception& e) {
+                std::cerr << "[PipelineBuilder] Warning: Invalid RESIZE_RATIO value '" << resizeIt->second 
+                          << "', using value from params or default" << std::endl;
+            }
+        }
+        
+        // Check if resize_ratio is specified in params (from solution config)
+        // Only override if RESIZE_RATIO was NOT set in additionalParams (highest priority)
+        if (!resizeRatioFromAdditionalParams) {
+            if (params.count("resize_ratio")) {
+                resize_ratio = std::stof(params.at("resize_ratio"));
+                std::cerr << "[PipelineBuilder] Using resize_ratio from solution config: " << resize_ratio << std::endl;
+            } else if (params.count("scale")) {
+                resize_ratio = std::stof(params.at("scale"));
+                std::cerr << "[PipelineBuilder] Using scale from solution config: " << resize_ratio << std::endl;
+            }
         }
         
         // Validate resize_ratio (must be > 0 and <= 1.0)
@@ -840,8 +1093,48 @@ std::shared_ptr<cvedix_nodes::cvedix_node> PipelineBuilder::createRTSPSourceNode
         }
         
         // Check RTSP transport protocol configuration
+        // Priority: RTSP_TRANSPORT in additionalParams > GST_RTSP_PROTOCOLS env > RTSP_TRANSPORT env > default (none - let GStreamer choose)
+        std::string rtspTransport = ""; // Default: empty - let GStreamer use its default (UDP/tcp+udp)
         const char* rtspProtocols = std::getenv("GST_RTSP_PROTOCOLS");
-        std::string transportInfo = rtspProtocols ? std::string(rtspProtocols) : "tcp (default)";
+        
+        // Check additionalParams first (highest priority)
+        auto rtspTransportIt = req.additionalParams.find("RTSP_TRANSPORT");
+        if (rtspTransportIt != req.additionalParams.end() && !rtspTransportIt->second.empty()) {
+            std::string transport = rtspTransportIt->second;
+            std::transform(transport.begin(), transport.end(), transport.begin(), ::tolower);
+            if (transport == "tcp" || transport == "udp") {
+                rtspTransport = transport;
+                setenv("GST_RTSP_PROTOCOLS", rtspTransport.c_str(), 1); // Overwrite to use user's choice
+                std::cerr << "[PipelineBuilder] Using RTSP_TRANSPORT=" << rtspTransport 
+                          << " from additionalParams" << std::endl;
+            } else {
+                std::cerr << "[PipelineBuilder] WARNING: Invalid RTSP_TRANSPORT='" << transport 
+                          << "', must be 'tcp' or 'udp'. Using default: tcp" << std::endl;
+            }
+        } else if (rtspProtocols && strlen(rtspProtocols) > 0) {
+            // Use environment variable if set
+            rtspTransport = std::string(rtspProtocols);
+            std::transform(rtspTransport.begin(), rtspTransport.end(), rtspTransport.begin(), ::tolower);
+            if (rtspTransport != "tcp" && rtspTransport != "udp") {
+                std::cerr << "[PipelineBuilder] WARNING: Invalid GST_RTSP_PROTOCOLS='" << rtspTransport 
+                          << "', must be 'tcp' or 'udp'. Using default: tcp" << std::endl;
+                rtspTransport = "tcp";
+            }
+        } else {
+            // Check RTSP_TRANSPORT environment variable
+            const char* rtspTransportEnv = std::getenv("RTSP_TRANSPORT");
+            if (rtspTransportEnv && strlen(rtspTransportEnv) > 0) {
+                rtspTransport = std::string(rtspTransportEnv);
+                std::transform(rtspTransport.begin(), rtspTransport.end(), rtspTransport.begin(), ::tolower);
+                if (rtspTransport == "tcp" || rtspTransport == "udp") {
+                    setenv("GST_RTSP_PROTOCOLS", rtspTransport.c_str(), 1);
+                } else {
+                    rtspTransport = "tcp";
+                }
+            }
+        }
+        
+        std::string transportInfo = rtspTransport.empty() ? "auto (GStreamer default)" : rtspTransport;
         
         std::cerr << "[PipelineBuilder] ========================================" << std::endl;
         std::cerr << "[PipelineBuilder] Creating RTSP source node:" << std::endl;
@@ -850,9 +1143,22 @@ std::shared_ptr<cvedix_nodes::cvedix_node> PipelineBuilder::createRTSPSourceNode
         std::cerr << "[PipelineBuilder]   Channel: " << channel << std::endl;
         std::cerr << "[PipelineBuilder]   Resize ratio: " << std::fixed << std::setprecision(3) << resize_ratio 
                   << " (type: float, value: " << static_cast<double>(resize_ratio) << ")" << std::endl;
+        std::cerr << "[PipelineBuilder]   Decoder: '" << gstDecoderName << "'" << std::endl;
+        std::cerr << "[PipelineBuilder]   Skip interval: " << skipInterval << " (0 = no skip)" << std::endl;
+        std::cerr << "[PipelineBuilder]   Codec type: '" << codecType << "' (h264/h265/auto)" << std::endl;
         std::cerr << "[PipelineBuilder]   Transport: " << transportInfo << std::endl;
-        std::cerr << "[PipelineBuilder]   NOTE: If UDP is blocked by firewall, connection will retry with TCP" << std::endl;
-        std::cerr << "[PipelineBuilder]   NOTE: Set GST_RTSP_PROTOCOLS=tcp to force TCP (recommended)" << std::endl;
+        if (rtspTransport == "udp") {
+            std::cerr << "[PipelineBuilder]   NOTE: Using UDP transport (faster but may be blocked by firewall)" << std::endl;
+            std::cerr << "[PipelineBuilder]   NOTE: If connection fails, try TCP by setting RTSP_TRANSPORT=tcp in additionalParams" << std::endl;
+        } else if (rtspTransport == "tcp") {
+            std::cerr << "[PipelineBuilder]   NOTE: Using TCP transport (better firewall compatibility)" << std::endl;
+            std::cerr << "[PipelineBuilder]   NOTE: To use UDP, set RTSP_TRANSPORT=udp in additionalParams" << std::endl;
+        } else {
+            std::cerr << "[PipelineBuilder]   NOTE: Using GStreamer default transport (usually UDP or tcp+udp)" << std::endl;
+            std::cerr << "[PipelineBuilder]   NOTE: To force TCP, set RTSP_TRANSPORT=tcp in additionalParams" << std::endl;
+            std::cerr << "[PipelineBuilder]   NOTE: To force UDP, set RTSP_TRANSPORT=udp in additionalParams" << std::endl;
+        }
+        std::cerr << "[PipelineBuilder]   NOTE: If decoder fails, try different GST_DECODER_NAME (e.g., 'nvh264dec', 'qsvh264dec')" << std::endl;
         std::cerr << "[PipelineBuilder] ========================================" << std::endl;
         
         // Double-check resize_ratio is valid float
@@ -873,17 +1179,89 @@ std::shared_ptr<cvedix_nodes::cvedix_node> PipelineBuilder::createRTSPSourceNode
             std::cerr << "[PipelineBuilder] Using maximum valid value: " << resize_ratio << std::endl;
         }
         
+        // Ensure GST_RTSP_PROTOCOLS is set before creating node (only if user specified)
+        // This must be set BEFORE node creation as SDK reads it during initialization
+        const char* currentProtocols = std::getenv("GST_RTSP_PROTOCOLS");
+        if (!rtspTransport.empty()) {
+            // User specified transport - set it
+            if (!currentProtocols || strlen(currentProtocols) == 0 || std::string(currentProtocols) != rtspTransport) {
+                setenv("GST_RTSP_PROTOCOLS", rtspTransport.c_str(), 1);  // Set to chosen transport
+                std::cerr << "[PipelineBuilder] Set GST_RTSP_PROTOCOLS=" << rtspTransport 
+                          << " before node creation" << std::endl;
+            }
+        } else {
+            // No transport specified - let GStreamer use its default
+            if (currentProtocols && strlen(currentProtocols) > 0) {
+                std::cerr << "[PipelineBuilder] Using GST_RTSP_PROTOCOLS=" << currentProtocols 
+                          << " from environment" << std::endl;
+            } else {
+                std::cerr << "[PipelineBuilder] No RTSP transport specified - GStreamer will use default (UDP/tcp+udp)" << std::endl;
+            }
+        }
+        
+        // Configure GStreamer environment variables for unstable streams
+        // These settings help handle network issues and prevent crashes
+        std::cerr << "[PipelineBuilder] Configuring GStreamer for unstable RTSP streams..." << std::endl;
+        
+        // Set buffer and timeout settings to handle unstable streams
+        // rtspsrc buffer-mode: 0=auto, 1=synced, 2=slave
+        // Use synced mode for better stability with unstable streams
+        if (!std::getenv("GST_RTSP_BUFFER_MODE")) {
+            setenv("GST_RTSP_BUFFER_MODE", "1", 0);  // 1 = synced mode
+            std::cerr << "[PipelineBuilder] Set GST_RTSP_BUFFER_MODE=1 (synced mode for unstable streams)" << std::endl;
+        }
+        
+        // Increase buffer size to handle network jitter
+        if (!std::getenv("GST_RTSP_BUFFER_SIZE")) {
+            setenv("GST_RTSP_BUFFER_SIZE", "10485760", 0);  // 10MB buffer
+            std::cerr << "[PipelineBuilder] Set GST_RTSP_BUFFER_SIZE=10485760 (10MB buffer for unstable streams)" << std::endl;
+        }
+        
+        // Increase timeout to handle slow/unstable connections
+        if (!std::getenv("GST_RTSP_TIMEOUT")) {
+            setenv("GST_RTSP_TIMEOUT", "10000000000", 0);  // 10 seconds (in nanoseconds)
+            std::cerr << "[PipelineBuilder] Set GST_RTSP_TIMEOUT=10000000000 (10s timeout)" << std::endl;
+        }
+        
+        // Enable drop-on-latency to prevent buffer overflow
+        if (!std::getenv("GST_RTSP_DROP_ON_LATENCY")) {
+            setenv("GST_RTSP_DROP_ON_LATENCY", "true", 0);
+            std::cerr << "[PipelineBuilder] Set GST_RTSP_DROP_ON_LATENCY=true (drop frames on latency)" << std::endl;
+        }
+        
+        // Set latency to handle network jitter (in nanoseconds)
+        if (!std::getenv("GST_RTSP_LATENCY")) {
+            setenv("GST_RTSP_LATENCY", "2000000000", 0);  // 2 seconds latency
+            std::cerr << "[PipelineBuilder] Set GST_RTSP_LATENCY=2000000000 (2s latency buffer)" << std::endl;
+        }
+        
+        // Disable do-rtsp-keep-alive to reduce connection overhead (may help with unstable streams)
+        // Note: This is a trade-off - keep-alive helps detect disconnections, but can cause issues with unstable streams
+        
         // Create node - wrap in try-catch to catch any assertion failures
         std::shared_ptr<cvedix_nodes::cvedix_rtsp_src_node> node;
         try {
             std::cerr << "[PipelineBuilder] Calling cvedix_rtsp_src_node constructor..." << std::endl;
+            std::cerr << "[PipelineBuilder] Current GST_RTSP_PROTOCOLS=" << (std::getenv("GST_RTSP_PROTOCOLS") ? std::getenv("GST_RTSP_PROTOCOLS") : "not set") << std::endl;
+            std::cerr << "[PipelineBuilder] GStreamer RTSP settings configured for unstable streams" << std::endl;
             node = std::make_shared<cvedix_nodes::cvedix_rtsp_src_node>(
                 nodeName,
                 channel,
                 rtspUrl,
-                resize_ratio
+                resize_ratio,
+                gstDecoderName,
+                skipInterval,
+                codecType
             );
             std::cerr << "[PipelineBuilder] RTSP source node created successfully" << std::endl;
+            std::cerr << "[PipelineBuilder] WARNING: SDK may use 'protocols=tcp+udp' in GStreamer pipeline despite GST_RTSP_PROTOCOLS=tcp" << std::endl;
+            std::cerr << "[PipelineBuilder] WARNING: This is a CVEDIX SDK limitation - it hardcodes protocols in the pipeline string" << std::endl;
+            std::cerr << "[PipelineBuilder] NOTE: RTSP connection may take 10-30 seconds to establish" << std::endl;
+            std::cerr << "[PipelineBuilder] NOTE: SDK will automatically retry connection if stream is not immediately available" << std::endl;
+            std::cerr << "[PipelineBuilder] NOTE: If connection succeeds but no frames are received, check:" << std::endl;
+            std::cerr << "[PipelineBuilder]   1. Decoder compatibility (avdec_h264 may not work with all H264 streams)" << std::endl;
+            std::cerr << "[PipelineBuilder]   2. Stream format (check if stream uses H264 High profile)" << std::endl;
+            std::cerr << "[PipelineBuilder]   3. Enable GStreamer debug: export GST_DEBUG=rtspsrc:4,avdec_h264:4" << std::endl;
         } catch (const std::bad_alloc& e) {
             std::cerr << "[PipelineBuilder] Memory allocation failed: " << e.what() << std::endl;
             throw;
@@ -1081,8 +1459,20 @@ std::shared_ptr<cvedix_nodes::cvedix_node> PipelineBuilder::createFileDestinatio
         }
         
         // Ensure save directory exists (required by cvedix_file_des_node)
-        // Use experimental::filesystem to match CVEDIX SDK
+        // Use resolveDirectory with fallback if needed
+        std::string resolvedSaveDir = saveDir;
         fs::path saveDirPath(saveDir);
+        std::string subdir = saveDirPath.filename().string();
+        if (subdir.empty()) {
+            subdir = "output"; // Default fallback subdir
+        }
+        resolvedSaveDir = EnvConfig::resolveDirectory(saveDir, subdir);
+        if (resolvedSaveDir != saveDir) {
+            std::cerr << "[PipelineBuilder] ⚠ Save directory changed from " << saveDir 
+                      << " to " << resolvedSaveDir << " (fallback)" << std::endl;
+            saveDir = resolvedSaveDir;
+            saveDirPath = fs::path(saveDir);
+        }
         if (!fs::exists(saveDirPath)) {
             std::cerr << "[PipelineBuilder] Creating save directory: " << saveDir << std::endl;
             fs::create_directories(saveDirPath);
@@ -1179,11 +1569,18 @@ double PipelineBuilder::mapDetectionSensitivity(const std::string& sensitivity) 
 }
 
 std::string PipelineBuilder::getRTSPUrl(const CreateInstanceRequest& req) const {
-    // Get RTSP URL from additionalParams
+    // Get RTSP URL from additionalParams - check both RTSP_URL and RTSP_SRC_URL
     auto it = req.additionalParams.find("RTSP_URL");
     if (it != req.additionalParams.end() && !it->second.empty()) {
-        std::cerr << "[PipelineBuilder] RTSP URL from request additionalParams: '" << it->second << "'" << std::endl;
+        std::cerr << "[PipelineBuilder] RTSP URL from request additionalParams (RTSP_URL): '" << it->second << "'" << std::endl;
         return it->second;
+    }
+    
+    // Also check RTSP_SRC_URL (for consistency with RTMP_SRC_URL)
+    auto srcIt = req.additionalParams.find("RTSP_SRC_URL");
+    if (srcIt != req.additionalParams.end() && !srcIt->second.empty()) {
+        std::cerr << "[PipelineBuilder] RTSP URL from request additionalParams (RTSP_SRC_URL): '" << srcIt->second << "'" << std::endl;
+        return srcIt->second;
     }
     
     // Default or from environment
@@ -1193,9 +1590,17 @@ std::string PipelineBuilder::getRTSPUrl(const CreateInstanceRequest& req) const 
         return std::string(envUrl);
     }
     
-    // Default fallback
+    // Also check RTSP_SRC_URL environment variable
+    const char* envSrcUrl = std::getenv("RTSP_SRC_URL");
+    if (envSrcUrl && strlen(envSrcUrl) > 0) {
+        std::cerr << "[PipelineBuilder] RTSP URL from environment variable (RTSP_SRC_URL): '" << envSrcUrl << "'" << std::endl;
+        return std::string(envSrcUrl);
+    }
+    
+    // Default fallback (development only - should be overridden in production)
+    // SECURITY: This is a development default. In production, always provide RTSP_URL via request or environment variable.
     std::cerr << "[PipelineBuilder] WARNING: Using default RTSP URL (rtsp://localhost:8554/stream)" << std::endl;
-    std::cerr << "[PipelineBuilder] NOTE: To use custom RTSP URL, provide 'RTSP_URL' in request body or set RTSP_URL environment variable" << std::endl;
+    std::cerr << "[PipelineBuilder] WARNING: This is a development default. For production, provide 'RTSP_URL' or 'RTSP_SRC_URL' in request body or set RTSP_URL/RTSP_SRC_URL environment variable" << std::endl;
     return "rtsp://localhost:8554/stream";
 }
 
@@ -1652,17 +2057,33 @@ std::shared_ptr<cvedix_nodes::cvedix_node> PipelineBuilder::createRTMPDestinatio
     const CreateInstanceRequest& req) {
     
     try {
+        // Helper function to trim whitespace from string
+        auto trim = [](const std::string& str) -> std::string {
+            if (str.empty()) return str;
+            size_t first = str.find_first_not_of(" \t\n\r\f\v");
+            if (first == std::string::npos) return "";
+            size_t last = str.find_last_not_of(" \t\n\r\f\v");
+            return str.substr(first, (last - first + 1));
+        };
+        
         // Get RTMP URL from params or request
         std::string rtmpUrl = params.count("rtmp_url") ? 
             params.at("rtmp_url") : getRTMPUrl(req);
+        
+        // Trim whitespace from RTMP URL to prevent GStreamer pipeline errors
+        rtmpUrl = trim(rtmpUrl);
+        
         int channel = params.count("channel") ? std::stoi(params.at("channel")) : 0;
         
         // Validate parameters
         if (nodeName.empty()) {
             throw std::invalid_argument("Node name cannot be empty");
         }
+        
+        // If RTMP URL is empty, return nullptr to skip this node (optional)
         if (rtmpUrl.empty()) {
-            throw std::invalid_argument("RTMP URL cannot be empty");
+            std::cerr << "[PipelineBuilder] RTMP URL is empty, skipping RTMP destination node: " << nodeName << std::endl;
+            return nullptr;
         }
         
         std::cerr << "[PipelineBuilder] Creating RTMP destination node:" << std::endl;
@@ -1682,6 +2103,40 @@ std::shared_ptr<cvedix_nodes::cvedix_node> PipelineBuilder::createRTMPDestinatio
     } catch (const std::exception& e) {
         std::cerr << "[PipelineBuilder] Exception in createRTMPDestinationNode: " << e.what() << std::endl;
         throw;
+    }
+}
+
+std::shared_ptr<cvedix_nodes::cvedix_node> PipelineBuilder::createAppDesNode(
+    const std::string& nodeName,
+    const std::map<std::string, std::string>& params) {
+    
+    try {
+        // Get channel parameter (default: 0)
+        int channel = params.count("channel") ? std::stoi(params.at("channel")) : 0;
+        
+        // Validate parameters
+        if (nodeName.empty()) {
+            throw std::invalid_argument("Node name cannot be empty");
+        }
+        
+        std::cerr << "[PipelineBuilder] Creating app_des node:" << std::endl;
+        std::cerr << "  Name: '" << nodeName << "'" << std::endl;
+        std::cerr << "  Channel: " << channel << std::endl;
+        std::cerr << "  NOTE: app_des node is used for frame capture via callback hook" << std::endl;
+        
+        auto node = std::make_shared<cvedix_nodes::cvedix_app_des_node>(
+            nodeName,
+            channel
+        );
+        
+        std::cerr << "[PipelineBuilder] ✓ app_des node created successfully" << std::endl;
+        return node;
+    } catch (const std::exception& e) {
+        std::cerr << "[PipelineBuilder] Exception in createAppDesNode: " << e.what() << std::endl;
+        throw;
+    } catch (...) {
+        std::cerr << "[PipelineBuilder] Unknown exception in createAppDesNode" << std::endl;
+        throw std::runtime_error("Unknown error creating app_des node");
     }
 }
 
@@ -1858,17 +2313,39 @@ std::string PipelineBuilder::getFilePath(const CreateInstanceRequest& req) const
 }
 
 std::string PipelineBuilder::getRTMPUrl(const CreateInstanceRequest& req) const {
-    // Get RTMP URL from additionalParams
-    auto it = req.additionalParams.find("RTMP_URL");
-    if (it != req.additionalParams.end() && !it->second.empty()) {
-        std::cerr << "[PipelineBuilder] RTMP URL from request additionalParams: '" << it->second << "'" << std::endl;
-        return it->second;
+    // Helper function to trim whitespace from string
+    auto trim = [](const std::string& str) -> std::string {
+        if (str.empty()) return str;
+        size_t first = str.find_first_not_of(" \t\n\r\f\v");
+        if (first == std::string::npos) return "";
+        size_t last = str.find_last_not_of(" \t\n\r\f\v");
+        return str.substr(first, (last - first + 1));
+    };
+    
+    // Get RTMP URL from additionalParams - check RTMP_DES_URL first (new format), then RTMP_URL (backward compatibility)
+    auto desIt = req.additionalParams.find("RTMP_DES_URL");
+    if (desIt != req.additionalParams.end() && !desIt->second.empty()) {
+        std::string trimmed = trim(desIt->second);
+        std::cerr << "[PipelineBuilder] RTMP URL from request additionalParams (RTMP_DES_URL): '" << trimmed << "'" << std::endl;
+        if (!trimmed.empty()) {
+            return trimmed;
+        }
     }
     
-    // Default fallback
-    std::cerr << "[PipelineBuilder] WARNING: Using default RTMP URL" << std::endl;
-    std::cerr << "[PipelineBuilder] NOTE: To use custom RTMP URL, provide 'RTMP_URL' in request body additionalParams" << std::endl;
-    return "rtmp://anhoidong.datacenter.cvedix.com:1935/live/camera_demo_1";
+    // Fallback to RTMP_URL for backward compatibility
+    auto it = req.additionalParams.find("RTMP_URL");
+    if (it != req.additionalParams.end() && !it->second.empty()) {
+        std::string trimmed = trim(it->second);
+        std::cerr << "[PipelineBuilder] RTMP URL from request additionalParams (RTMP_URL): '" << trimmed << "'" << std::endl;
+        if (!trimmed.empty()) {
+            return trimmed;
+        }
+    }
+    
+    // Return empty string if RTMP URL is not provided (allows skipping RTMP output)
+    std::cerr << "[PipelineBuilder] RTMP URL not provided, RTMP destination node will be skipped" << std::endl;
+    std::cerr << "[PipelineBuilder] NOTE: To enable RTMP output, provide 'RTMP_DES_URL' or 'RTMP_URL' in request body additionalParams" << std::endl;
+    return "";
 }
 
 // ========== TensorRT YOLOv8 Nodes Implementation ==========
@@ -2978,35 +3455,12 @@ std::shared_ptr<cvedix_nodes::cvedix_node> PipelineBuilder::createYOLOv11Detecto
     const std::map<std::string, std::string>& params,
     const CreateInstanceRequest& req) {
     
-    try {
-        std::string modelPath = params.count("model_path") ? params.at("model_path") : "";
-        
-        if (modelPath.empty()) {
-            auto it = req.additionalParams.find("MODEL_PATH");
-            if (it != req.additionalParams.end() && !it->second.empty()) {
-                modelPath = it->second;
-            }
-        }
-        
-        if (nodeName.empty() || modelPath.empty()) {
-            throw std::invalid_argument("Node name and model path are required");
-        }
-        
-        std::cerr << "[PipelineBuilder] Creating YOLOv11 detector node:" << std::endl;
-        std::cerr << "  Name: '" << nodeName << "'" << std::endl;
-        std::cerr << "  Model path: '" << modelPath << "'" << std::endl;
-        
-        auto node = std::make_shared<cvedix_nodes::cvedix_yolov11_detector_node>(
-            nodeName,
-            modelPath
-        );
-        
-        std::cerr << "[PipelineBuilder] ✓ YOLOv11 detector node created successfully" << std::endl;
-        return node;
-    } catch (const std::exception& e) {
-        std::cerr << "[PipelineBuilder] Exception in createYOLOv11DetectorNode: " << e.what() << std::endl;
-        throw;
-    }
+    // Note: cvedix_yolov11_detector_node is not available in CVEDIX SDK
+    // Use rknn_yolov11_detector (with CVEDIX_WITH_RKNN) or yolo_detector instead
+    throw std::runtime_error(
+        "yolov11_detector node type is not available. "
+        "Please use 'rknn_yolov11_detector' (requires CVEDIX_WITH_RKNN) or 'yolo_detector' instead."
+    );
 }
 
 std::shared_ptr<cvedix_nodes::cvedix_node> PipelineBuilder::createFaceSwapNode(
@@ -3411,7 +3865,8 @@ std::shared_ptr<cvedix_nodes::cvedix_node> PipelineBuilder::createRTMPSourceNode
             if (it != req.additionalParams.end() && !it->second.empty()) {
                 rtmpUrl = it->second;
             } else {
-                // Default fake data
+                // Default fallback (development only - should be overridden in production)
+                // SECURITY: This is a development default. In production, always provide RTMP_URL via request or environment variable.
                 rtmpUrl = "rtmp://localhost:1935/live/stream";
             }
         }
@@ -3518,9 +3973,6 @@ std::shared_ptr<cvedix_nodes::cvedix_node> PipelineBuilder::createUDPSourceNode(
 
 // ========== Broker Nodes Implementation ==========
 
-// Temporarily disabled JSON broker nodes due to cereal dependency issue
-// TODO: Re-enable after fixing cereal symlink or CVEDIX SDK update
-/*
 std::shared_ptr<cvedix_nodes::cvedix_node> PipelineBuilder::createJSONConsoleBrokerNode(
     const std::string& nodeName,
     const std::map<std::string, std::string>& params,
@@ -3615,48 +4067,6 @@ std::shared_ptr<cvedix_nodes::cvedix_node> PipelineBuilder::createJSONEnhancedCo
     }
 }
 
-#ifdef CVEDIX_WITH_MQTT
-std::shared_ptr<cvedix_nodes::cvedix_node> PipelineBuilder::createJSONMQTTBrokerNode(
-    const std::string& nodeName,
-    const std::map<std::string, std::string>& params,
-    const CreateInstanceRequest& req) {
-    
-    try {
-        std::string brokeForStr = params.count("broke_for") ? params.at("broke_for") : "NORMAL";
-        cvedix_nodes::cvedix_broke_for brokeFor = cvedix_nodes::cvedix_broke_for::NORMAL;
-        
-        if (brokeForStr == "FACE") {
-            brokeFor = cvedix_nodes::cvedix_broke_for::FACE;
-        } else if (brokeForStr == "TEXT") {
-            brokeFor = cvedix_nodes::cvedix_broke_for::TEXT;
-        } else if (brokeForStr == "POSE") {
-            brokeFor = cvedix_nodes::cvedix_broke_for::POSE;
-        }
-        
-        // MQTT broker node requires custom callbacks - use fake/default for now
-        // In real implementation, these should be provided via additionalParams or config
-        std::cerr << "[PipelineBuilder] Creating JSON MQTT broker node:" << std::endl;
-        std::cerr << "  Name: '" << nodeName << "'" << std::endl;
-        std::cerr << "  Broke for: " << brokeForStr << std::endl;
-        std::cerr << "  NOTE: MQTT broker requires custom callbacks - using default implementation" << std::endl;
-        
-        // Create with default/null callbacks (fake data)
-        auto node = std::make_shared<cvedix_nodes::cvedix_json_mqtt_broker_node>(
-            nodeName,
-            brokeFor,
-            nullptr,  // json_transformer (nullptr = use original JSON)
-            nullptr   // mqtt_publisher (nullptr = will need to be set later or use default)
-        );
-        
-        std::cerr << "[PipelineBuilder] ✓ JSON MQTT broker node created successfully" << std::endl;
-        return node;
-    } catch (const std::exception& e) {
-        std::cerr << "[PipelineBuilder] Exception in createJSONMQTTBrokerNode: " << e.what() << std::endl;
-        throw;
-    }
-}
-#endif
-
 #ifdef CVEDIX_WITH_KAFKA
 std::shared_ptr<cvedix_nodes::cvedix_node> PipelineBuilder::createJSONKafkaBrokerNode(
     const std::string& nodeName,
@@ -3721,20 +4131,386 @@ std::shared_ptr<cvedix_nodes::cvedix_node> PipelineBuilder::createJSONKafkaBroke
     }
 }
 #endif
-*/
-// Stub implementations to avoid linker errors
-std::shared_ptr<cvedix_nodes::cvedix_node> PipelineBuilder::createJSONConsoleBrokerNode(
-    const std::string&, const std::map<std::string, std::string>&, const CreateInstanceRequest&) {
-    return nullptr;
-}
-std::shared_ptr<cvedix_nodes::cvedix_node> PipelineBuilder::createJSONEnhancedConsoleBrokerNode(
-    const std::string&, const std::map<std::string, std::string>&, const CreateInstanceRequest&) {
-    return nullptr;
-}
+
 #ifdef CVEDIX_WITH_MQTT
 std::shared_ptr<cvedix_nodes::cvedix_node> PipelineBuilder::createJSONMQTTBrokerNode(
-    const std::string&, const std::map<std::string, std::string>&, const CreateInstanceRequest&) {
-    return nullptr;
+    const std::string& nodeName,
+    const std::map<std::string, std::string>& params,
+    const CreateInstanceRequest& req) {
+    
+    try {
+        // Parse broke_for enum
+        std::string brokeForStr = params.count("broke_for") ? params.at("broke_for") : "NORMAL";
+        cvedix_nodes::cvedix_broke_for brokeFor = cvedix_nodes::cvedix_broke_for::NORMAL;
+        
+        if (brokeForStr == "FACE") {
+            brokeFor = cvedix_nodes::cvedix_broke_for::FACE;
+        } else if (brokeForStr == "TEXT") {
+            brokeFor = cvedix_nodes::cvedix_broke_for::TEXT;
+        } else if (brokeForStr == "POSE") {
+            brokeFor = cvedix_nodes::cvedix_broke_for::POSE;
+        } else if (brokeForStr == "NORMAL") {
+            brokeFor = cvedix_nodes::cvedix_broke_for::NORMAL;
+        }
+        
+        // Get MQTT configuration from additionalParams
+        std::string mqtt_broker = "localhost";
+        int mqtt_port = 1883;
+        std::string mqtt_topic = "events";
+        std::string mqtt_username = "";
+        std::string mqtt_password = "";
+        
+        auto brokerIt = req.additionalParams.find("MQTT_BROKER_URL");
+        if (brokerIt != req.additionalParams.end() && !brokerIt->second.empty()) {
+            mqtt_broker = brokerIt->second;
+        }
+        
+        auto portIt = req.additionalParams.find("MQTT_PORT");
+        if (portIt != req.additionalParams.end() && !portIt->second.empty()) {
+            try {
+                mqtt_port = std::stoi(portIt->second);
+            } catch (...) {
+                std::cerr << "[PipelineBuilder] Warning: Invalid MQTT_PORT, using default 1883" << std::endl;
+            }
+        }
+        
+        auto topicIt = req.additionalParams.find("MQTT_TOPIC");
+        if (topicIt != req.additionalParams.end() && !topicIt->second.empty()) {
+            mqtt_topic = topicIt->second;
+        }
+        
+        auto usernameIt = req.additionalParams.find("MQTT_USERNAME");
+        if (usernameIt != req.additionalParams.end()) {
+            mqtt_username = usernameIt->second;
+        }
+        
+        auto passwordIt = req.additionalParams.find("MQTT_PASSWORD");
+        if (passwordIt != req.additionalParams.end()) {
+            mqtt_password = passwordIt->second;
+        }
+        
+        // Get thresholds
+        int warnThreshold = params.count("broking_cache_warn_threshold") ? std::stoi(params.at("broking_cache_warn_threshold")) : 100;
+        int ignoreThreshold = params.count("broking_cache_ignore_threshold") ? std::stoi(params.at("broking_cache_ignore_threshold")) : 500;
+        bool encodeFullFrame = params.count("encode_full_frame") ? (params.at("encode_full_frame") == "true" || params.at("encode_full_frame") == "1") : false;
+        
+        if (nodeName.empty()) {
+            throw std::invalid_argument("Node name cannot be empty");
+        }
+        
+        std::cerr << "[PipelineBuilder] Creating JSON MQTT broker node:" << std::endl;
+        std::cerr << "  Name: '" << nodeName << "'" << std::endl;
+        std::cerr << "  Broker: " << mqtt_broker << ":" << mqtt_port << std::endl;
+        std::cerr << "  Topic: " << mqtt_topic << std::endl;
+        std::cerr << "  Broke for: " << brokeForStr << std::endl;
+        
+        // Implement MQTT publishing using libmosquitto
+        std::cerr << "[PipelineBuilder] [MQTT] Initializing MQTT client for " << mqtt_broker << ":" << mqtt_port << std::endl;
+        
+        // Initialize mosquitto library (thread-safe, can be called multiple times)
+        static std::once_flag mosq_init_flag;
+        std::call_once(mosq_init_flag, []() {
+            mosquitto_lib_init();
+        });
+        
+        // Create mosquitto client
+        std::string client_id = "edge_ai_api_" + nodeName + "_" + std::to_string(std::time(nullptr));
+        struct mosquitto* mqtt_client = mosquitto_new(client_id.c_str(), true, nullptr);
+        
+        if (!mqtt_client) {
+            std::cerr << "[PipelineBuilder] [MQTT] Failed to create client" << std::endl;
+            std::cerr << "[PipelineBuilder] [MQTT] Continuing without MQTT publishing..." << std::endl;
+            auto mqtt_publish_func = [](const std::string&) {};
+            auto node = std::make_shared<cvedix_nodes::cvedix_json_mqtt_broker_node>(
+                nodeName, brokeFor, warnThreshold, ignoreThreshold, nullptr, mqtt_publish_func);
+            return node;
+        }
+        
+        // Set username/password if provided
+        if (!mqtt_username.empty() && !mqtt_password.empty()) {
+            mosquitto_username_pw_set(mqtt_client, mqtt_username.c_str(), mqtt_password.c_str());
+        }
+        
+        // Increase max inflight messages to prevent queue blocking
+        // Default is 20, increase to 5000 to handle bursts better and prevent blocking
+        // Increased from 1000 to 5000 for better buffer capacity
+        mosquitto_max_inflight_messages_set(mqtt_client, 5000);
+        
+        // Set message retry to 0 for QoS=0 (no retry needed, faster)
+        mosquitto_message_retry_set(mqtt_client, 0);
+        
+        // Set socket timeout to prevent blocking indefinitely
+        // 5 seconds timeout for network operations
+        mosquitto_socket(mqtt_client); // Get socket to set timeout if needed
+        
+        // Connect to broker
+        std::cerr << "[PipelineBuilder] [MQTT] Connecting to " << mqtt_broker << ":" << mqtt_port << "..." << std::endl;
+        int connect_result = mosquitto_connect(mqtt_client, mqtt_broker.c_str(), mqtt_port, 60); // 60 = keepalive
+        if (connect_result != MOSQ_ERR_SUCCESS) {
+            std::cerr << "[PipelineBuilder] [MQTT] Failed to connect: " << mosquitto_strerror(connect_result) << std::endl;
+            std::cerr << "[PipelineBuilder] [MQTT] Continuing without MQTT publishing..." << std::endl;
+            mosquitto_destroy(mqtt_client);
+            auto mqtt_publish_func = [](const std::string&) {};
+            auto node = std::make_shared<cvedix_nodes::cvedix_json_mqtt_broker_node>(
+                nodeName, brokeFor, warnThreshold, ignoreThreshold, nullptr, mqtt_publish_func);
+            return node;
+        }
+        
+        // Start network loop in a separate thread
+        mosquitto_loop_start(mqtt_client);
+        std::cerr << "[PipelineBuilder] [MQTT] Connected successfully!" << std::endl;
+        
+        // Create MQTT publish function callback using libmosquitto
+        // Use shared_ptr to manage mosquitto client lifetime
+        auto mqtt_client_ptr = std::shared_ptr<struct mosquitto>(mqtt_client, [](struct mosquitto* mqtt) {
+            if (mqtt) {
+                mosquitto_disconnect(mqtt);
+                mosquitto_loop_stop(mqtt, false);
+                mosquitto_destroy(mqtt);
+            }
+        });
+        
+        // Create non-blocking MQTT publisher with background thread
+        // This prevents blocking the node thread when MQTT publish is slow
+        struct NonBlockingMQTTPublisher {
+            enum {
+                MAX_QUEUE_SIZE = 1,  // Only keep 1 message (latest) - drop all old messages immediately
+                PUBLISH_TIMEOUT_MS = 50   // Reduced timeout - fail fast if publish is slow
+            };
+            
+            std::shared_ptr<struct mosquitto> client;
+            std::string topic;
+            std::queue<std::string> message_queue;
+            std::mutex queue_mutex;
+            std::condition_variable queue_cv;
+            std::atomic<bool> running{true};
+            std::thread publisher_thread;
+            std::atomic<int> dropped_count{0};
+            std::atomic<int> published_count{0};
+            
+            NonBlockingMQTTPublisher(std::shared_ptr<struct mosquitto> c, const std::string& t)
+                : client(c), topic(t) {
+                // Start background thread for publishing
+                publisher_thread = std::thread([this]() {
+                    #ifdef __GLIBC__
+                    pthread_setname_np(pthread_self(), "mqtt-publisher");
+                    #endif
+                    
+                    std::cerr << "[MQTT] Background publisher thread started" << std::endl;
+                    
+                    while (running.load() || !message_queue.empty()) {
+                        std::unique_lock<std::mutex> lock(queue_mutex);
+                        
+                        // Wait for messages or timeout
+                        if (message_queue.empty()) {
+                            queue_cv.wait_for(lock, std::chrono::milliseconds(100), [this]() {
+                                return !message_queue.empty() || !running.load();
+                            });
+                        }
+                        
+                        // CRITICAL: Only process the LATEST message, skip all old messages to prevent backlog
+                        // This ensures we always send the current state, not outdated data
+                        std::string json_data;
+                        bool has_message = false;
+                        
+                        if (!message_queue.empty()) {
+                            // Get the LATEST message (most recent) - skip all old messages
+                            // Clear all old messages and only keep/process the newest one
+                            while (message_queue.size() > 1) {
+                                message_queue.pop();  // Drop old messages
+                                dropped_count.fetch_add(1);
+                            }
+                            
+                            // Now queue has only 1 message (the latest)
+                            if (!message_queue.empty()) {
+                                json_data = std::move(message_queue.front());
+                                message_queue.pop();
+                                has_message = true;
+                            }
+                        }
+                        
+                        lock.unlock();
+                        
+                        // Only process if we have a message
+                        if (!has_message || !running.load()) {
+                            continue;
+                        }
+                            
+                            // CRITICAL: Use async with timeout to prevent mosquitto_publish() from blocking indefinitely
+                            // mosquitto_publish() can block if internal buffer is full, causing deadlock
+                            auto publish_start = std::chrono::steady_clock::now();
+                            
+                            // Call mosquitto_loop() BEFORE publish to drain buffer and prevent blocking
+                            mosquitto_loop(client.get(), 0, 50);  // Process up to 50 packets to drain buffer
+                            
+                            // Wrap mosquitto_publish() in async with timeout to prevent blocking
+                            // Capture json_data by value (copy) since it's moved from queue
+                            std::string json_data_copy = json_data;
+                            std::string topic_copy = topic;  // Copy topic to avoid capture issues
+                            int result = MOSQ_ERR_UNKNOWN;
+                            auto publish_future = std::async(std::launch::async, [this, json_data_copy, topic_copy]() -> int {
+                                return mosquitto_publish(client.get(), nullptr, topic_copy.c_str(), 
+                                                        json_data_copy.length(), json_data_copy.c_str(), 0, false);
+                            });
+                            
+                            // Wait for publish with timeout - if it takes too long, drop the message
+                            auto status = publish_future.wait_for(std::chrono::milliseconds(PUBLISH_TIMEOUT_MS));
+                            if (status == std::future_status::ready) {
+                                result = publish_future.get();
+                            } else {
+                                // Timeout - publish is taking too long, drop message to prevent deadlock
+                                dropped_count.fetch_add(1);
+                                auto publish_duration = std::chrono::duration_cast<std::chrono::milliseconds>(
+                                    std::chrono::steady_clock::now() - publish_start).count();
+                                if (dropped_count.load() % 100 == 0) {
+                                    std::cerr << "[MQTT] Warning: Publish timeout after " << publish_duration 
+                                             << "ms, dropping message to prevent deadlock (dropped: " 
+                                             << dropped_count.load() << ")" << std::endl;
+                                }
+                                // Message dropped, continue to next iteration (lock already unlocked)
+                                continue;
+                            }
+                            
+                            auto publish_duration = std::chrono::duration_cast<std::chrono::milliseconds>(
+                                std::chrono::steady_clock::now() - publish_start).count();
+                            
+                            if (result == MOSQ_ERR_SUCCESS) {
+                                published_count.fetch_add(1);
+                                if (published_count.load() <= 5) {
+                                    std::string preview = json_data.length() > 100 ? json_data.substr(0, 100) + "..." : json_data;
+                                    std::cerr << "[MQTT] Published #" << published_count.load() 
+                                             << " to topic '" << topic << "': " << json_data.length() 
+                                             << " bytes (took " << publish_duration << "ms)" << std::endl;
+                                } else if (published_count.load() == 6) {
+                                    std::cerr << "[MQTT] Published 5+ messages successfully. Reducing log verbosity..." << std::endl;
+                                }
+                            } else if (result == MOSQ_ERR_OVERSIZE_PACKET) {
+                                std::cerr << "[MQTT] Publish failed: Message too large (" << json_data.length() << " bytes)" << std::endl;
+                            } else if (result != MOSQ_ERR_NO_CONN) {
+                                // Log other errors (but not NO_CONN which is expected during reconnection)
+                                std::cerr << "[MQTT] Publish failed: " << mosquitto_strerror(result) << " (code: " << result << ")" << std::endl;
+                            }
+                            
+                            // If publish took too long (even if successful), warn
+                            if (publish_duration > PUBLISH_TIMEOUT_MS) {
+                                if (published_count.load() % 100 == 0) {
+                                    std::cerr << "[MQTT] Warning: Publish took " << publish_duration 
+                                             << "ms (threshold: " << PUBLISH_TIMEOUT_MS << "ms)" << std::endl;
+                                }
+                            }
+                            
+                        // Message processed (or dropped), continue to next iteration
+                        // No need to lock here since we already unlocked above
+                        
+                        // Call mosquitto_loop() after processing batch to ensure messages are sent
+                        // Process more packets to drain buffer and prevent buildup
+                        mosquitto_loop(client.get(), 0, 100);  // Increased to 100 packets to drain buffer faster
+                        
+                        // Longer sleep to prevent CPU spinning and allow network I/O
+                        std::this_thread::sleep_for(std::chrono::milliseconds(10));
+                    }
+                    
+                    std::cerr << "[MQTT] Background publisher thread stopped" << std::endl;
+                });
+            }
+            
+            ~NonBlockingMQTTPublisher() {
+                // Stop thread
+                running.store(false);
+                queue_cv.notify_all();
+                
+                if (publisher_thread.joinable()) {
+                    // Wait up to 2 seconds for thread to finish
+                    auto future = std::async(std::launch::async, [this]() {
+                        publisher_thread.join();
+                    });
+                    
+                    if (future.wait_for(std::chrono::seconds(2)) == std::future_status::timeout) {
+                        std::cerr << "[MQTT] Warning: Publisher thread join timeout, detaching..." << std::endl;
+                        publisher_thread.detach();
+                    }
+                }
+                
+                // Log statistics
+                std::cerr << "[MQTT] Publisher statistics: Published=" << published_count.load() 
+                         << ", Dropped=" << dropped_count.load() << std::endl;
+            }
+            
+            // Non-blocking enqueue - only keeps the LATEST message, drops all old messages
+            // This ensures we always send current state, not backlog of old data
+            void enqueue(const std::string& json_data) {
+                std::lock_guard<std::mutex> lock(queue_mutex);
+                
+                // CRITICAL: Only keep 1 message (the latest) to prevent backlog and deadlock
+                // If queue already has messages, drop them all and only keep the new one
+                if (!message_queue.empty()) {
+                    // Drop all old messages - we only care about the latest state
+                    size_t dropped = message_queue.size();
+                    while (!message_queue.empty()) {
+                        message_queue.pop();
+                    }
+                    dropped_count.fetch_add(dropped);
+                    
+                    // Log warning occasionally to indicate we're dropping old messages
+                    if (dropped_count.load() % 100 == 0 && dropped > 0) {
+                        std::cerr << "[MQTT] Info: Dropped " << dropped 
+                                 << " old messages, keeping only latest (total dropped: " 
+                                 << dropped_count.load() << ") - sending current state only" << std::endl;
+                    }
+                }
+                
+                // Add the new (latest) message
+                message_queue.push(json_data);
+                queue_cv.notify_one();
+            }
+        };
+        
+        // Create publisher instance
+        auto publisher = std::make_shared<NonBlockingMQTTPublisher>(mqtt_client_ptr, mqtt_topic);
+        
+        // Create non-blocking publish function
+        auto mqtt_publish_func = [publisher](const std::string& json_data) {
+            // DEBUG: Log when callback is called (first few times only)
+            static std::atomic<int> callback_count(0);
+            int cb_count = callback_count.fetch_add(1);
+            if (cb_count < 10) {
+                std::cerr << "[MQTT] Callback called #" << (cb_count + 1) << " - received data: " 
+                         << json_data.length() << " bytes" << std::endl;
+            } else if (cb_count == 10) {
+                std::cerr << "[MQTT] Callback called 10+ times. Reducing log verbosity..." << std::endl;
+            }
+            
+            // Enqueue message (non-blocking, drops if queue full)
+            // This should never block - if publisher queue is full, it will drop oldest message
+            publisher->enqueue(json_data);
+        };
+        
+        // Create MQTT broker node
+        // Note: CVEDIX SDK only has cvedix_json_mqtt_broker_node (not enhanced version)
+        // encodeFullFrame is not supported in this version
+        std::cerr << "[PipelineBuilder] [MQTT] Creating broker node with callback function..." << std::endl;
+        std::cerr << "[PipelineBuilder] [MQTT] Broke for: " << brokeForStr << ", Warn threshold: " << warnThreshold 
+                 << ", Ignore threshold: " << ignoreThreshold << std::endl;
+        auto node = std::make_shared<cvedix_nodes::cvedix_json_mqtt_broker_node>(
+            nodeName,
+            brokeFor,
+            warnThreshold,
+            ignoreThreshold,
+            nullptr,  // json_transformer (nullptr = use original JSON)
+            mqtt_publish_func);
+        
+        std::cerr << "[PipelineBuilder] ✓ JSON MQTT broker node created successfully" << std::endl;
+        std::cerr << "[PipelineBuilder] [MQTT] Node will publish to topic: '" << mqtt_topic << "'" << std::endl;
+        std::cerr << "[PipelineBuilder] [MQTT] NOTE: Callback will be called when json_mqtt_broker_node receives data" << std::endl;
+        std::cerr << "[PipelineBuilder] [MQTT] NOTE: If no messages appear, check:" << std::endl;
+        std::cerr << "[PipelineBuilder] [MQTT]   1. Upstream node (ba_crossline) is outputting data" << std::endl;
+        std::cerr << "[PipelineBuilder] [MQTT]   2. broke_for parameter matches data type (NORMAL for detection/BA events)" << std::endl;
+        std::cerr << "[PipelineBuilder] [MQTT]   3. Pipeline is running and processing frames" << std::endl;
+        return node;
+    } catch (const std::exception& e) {
+        std::cerr << "[PipelineBuilder] Exception in createJSONMQTTBrokerNode: " << e.what() << std::endl;
+        throw;
+    }
 }
 #endif
 #ifdef CVEDIX_WITH_KAFKA

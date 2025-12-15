@@ -908,8 +908,8 @@ curl -X POST http://localhost:8080/v1/core/config \
 
 ## 🔗 Tài Liệu Liên Quan
 
-- [CONFIG_IMPACT_ON_INSTANCES.md](./CONFIG_IMPACT_ON_INSTANCES.md) - Chi tiết về tác động của config với instance
 - [CREATE_INSTANCE_GUIDE.md](./CREATE_INSTANCE_GUIDE.md) - Hướng dẫn tạo instance
+- [UPDATE_INSTANCE_GUIDE.md](./UPDATE_INSTANCE_GUIDE.md) - Hướng dẫn cập nhật instance
 - [Swagger UI](http://localhost:8080/swagger) - Interactive API documentation
 
 ---
@@ -982,5 +982,5 @@ Nếu gặp vấn đề, vui lòng:
 1. Kiểm tra Swagger UI tại `/swagger` để xem API documentation
 2. Xem server logs để biết chi tiết lỗi
 3. Kiểm tra file `config.json` có hợp lệ không
-4. Tham khảo [CONFIG_IMPACT_ON_INSTANCES.md](./CONFIG_IMPACT_ON_INSTANCES.md) để hiểu rõ hơn về tác động của config
+4. Tham khảo [CREATE_INSTANCE_GUIDE.md](./CREATE_INSTANCE_GUIDE.md) để hiểu rõ hơn về cách tạo instance và tác động của config
 

@@ -1,4 +1,5 @@
 #include "models/model_upload_handler.h"
+#include "core/env_config.h"
 #include <drogon/HttpResponse.h>
 #include <fstream>
 #include <filesystem>
@@ -159,12 +160,10 @@ void ModelUploadHandler::uploadModel(
             std::string boundaryMarker = "--" + boundary;
             std::string endBoundary = boundaryMarker + "--";
             
-            // Ensure models directory exists
+            // Ensure models directory exists (with fallback if needed)
             std::string modelsDir = getModelsDirectory();
+            modelsDir = EnvConfig::resolveDirectory(modelsDir, "models");
             std::filesystem::path modelsPath(modelsDir);
-            if (!std::filesystem::exists(modelsPath)) {
-                std::filesystem::create_directories(modelsPath);
-            }
             
             // Parse all multipart parts
             Json::Value uploadedFiles(Json::arrayValue);
@@ -449,12 +448,10 @@ void ModelUploadHandler::uploadModel(
                 return;
             }
             
-            // Ensure models directory exists
+            // Ensure models directory exists (with fallback if needed)
             std::string modelsDir = getModelsDirectory();
+            modelsDir = EnvConfig::resolveDirectory(modelsDir, "models");
             std::filesystem::path modelsPath(modelsDir);
-            if (!std::filesystem::exists(modelsPath)) {
-                std::filesystem::create_directories(modelsPath);
-            }
             
             // Create full file path - if file exists, add number to name
             filePath = modelsPath / sanitizedFilename;
@@ -504,8 +501,50 @@ void ModelUploadHandler::uploadModel(
             outFile.close();
         }
         
-        // Get file size
-        auto fileSize = std::filesystem::file_size(filePath);
+        // Get file size with proper error handling
+        Json::Int64 fileSize = 0;
+        std::string canonicalPath;
+        
+        try {
+            // ✅ Check if file exists first
+            if (!std::filesystem::exists(filePath)) {
+                callback(createErrorResponse(500, "File not found", 
+                    "Uploaded file was not found after write operation"));
+                return;
+            }
+            
+            // ✅ Check if it's a regular file
+            if (!std::filesystem::is_regular_file(filePath)) {
+                callback(createErrorResponse(500, "Invalid file", 
+                    "Uploaded path is not a regular file"));
+                return;
+            }
+            
+            // ✅ Get file size with exception handling
+            try {
+                fileSize = static_cast<Json::Int64>(std::filesystem::file_size(filePath));
+            } catch (const std::filesystem::filesystem_error& e) {
+                std::cerr << "[ModelUploadHandler] Error getting file size: " << e.what() << std::endl;
+                callback(createErrorResponse(500, "File size error", 
+                    "Could not determine file size: " + std::string(e.what())));
+                return;
+            }
+            
+            // ✅ Get canonical path with exception handling
+            try {
+                canonicalPath = std::filesystem::canonical(filePath).string();
+            } catch (const std::filesystem::filesystem_error& e) {
+                std::cerr << "[ModelUploadHandler] Error getting canonical path: " << e.what() << std::endl;
+                // Use original path as fallback
+                canonicalPath = filePath;
+            }
+            
+        } catch (const std::exception& e) {
+            std::cerr << "[ModelUploadHandler] Unexpected error: " << e.what() << std::endl;
+            callback(createErrorResponse(500, "Internal error", 
+                "Unexpected error processing uploaded file"));
+            return;
+        }
         
         // Build response
         Json::Value response;
@@ -513,8 +552,8 @@ void ModelUploadHandler::uploadModel(
         response["message"] = "Model file uploaded successfully";
         response["filename"] = sanitizedFilename;
         response["originalFilename"] = originalFilename;
-        response["path"] = std::filesystem::canonical(filePath).string();
-        response["size"] = static_cast<Json::Int64>(fileSize);
+        response["path"] = canonicalPath;
+        response["size"] = fileSize;
         response["url"] = "/v1/core/models/" + sanitizedFilename;
         
         auto resp = HttpResponse::newHttpJsonResponse(response);
