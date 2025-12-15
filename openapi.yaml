@@ -1391,7 +1391,13 @@ paths:
         Registers a face subject by storing the image. You can add as many images as you want to train the system. 
         Images should contain only a single face.
         
-        This endpoint accepts a base64-encoded image in JSON format and associates it with a subject name.
+        This endpoint accepts image data in two formats:
+        1. **Multipart/form-data**: Upload file directly (recommended for file uploads)
+        2. **Application/json**: Send base64-encoded image string
+        
+        Supported image formats: JPEG, JPG, PNG, BMP, GIF, ICO, TIFF, WebP
+        Maximum file size: 5MB
+        
         The system will detect the face in the image and store the face features for recognition.
       operationId: registerFaceSubject
       tags:
@@ -1415,7 +1421,24 @@ paths:
           example: 0.5
       requestBody:
         required: true
+        description: |
+          Image data can be sent in two formats:
+          1. Multipart/form-data: Upload file directly (recommended for file uploads)
+          2. Application/json: Send base64-encoded image string
+          
+          Supported image formats: JPEG, JPG, PNG, BMP, GIF, ICO, TIFF, WebP
+          Maximum file size: 5MB
         content:
+          multipart/form-data:
+            schema:
+              type: object
+              required:
+                - file
+              properties:
+                file:
+                  type: string
+                  format: binary
+                  description: "Image file to upload. Supported formats: JPEG, JPG, PNG, BMP, GIF, ICO, TIFF, WebP. Max size: 5MB"
           application/json:
             schema:
               type: object
@@ -1424,7 +1447,7 @@ paths:
               properties:
                 file:
                   type: string
-                  description: Base64-encoded image data
+                  description: "Base64-encoded image data. Supported formats: JPEG, JPG, PNG, BMP, GIF, ICO, TIFF, WebP. Max size: 5MB"
                   example: "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg=="
             example:
               file: "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg=="

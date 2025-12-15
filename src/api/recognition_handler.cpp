@@ -817,6 +817,138 @@ bool RecognitionHandler::decodeBase64(const std::string& base64Str, std::vector<
     return true;
 }
 
+std::string RecognitionHandler::encodeBase64(const std::vector<unsigned char>& data) const {
+    const std::string base64_chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+    std::string encoded;
+    int val = 0, valb = -6;
+    
+    for (unsigned char c : data) {
+        val = (val << 8) + c;
+        valb += 8;
+        while (valb >= 0) {
+            encoded.push_back(base64_chars[(val >> valb) & 0x3F]);
+            valb -= 6;
+        }
+    }
+    
+    if (valb > -6) {
+        encoded.push_back(base64_chars[((val << 8) >> (valb + 8)) & 0x3F]);
+    }
+    
+    while (encoded.size() % 4) {
+        encoded.push_back('=');
+    }
+    
+    return encoded;
+}
+
+bool RecognitionHandler::validateImageFormatAndSize(const std::vector<unsigned char>& imageData, std::string& error) const {
+    // Check size: max 5MB
+    const size_t MAX_SIZE = 5 * 1024 * 1024; // 5MB
+    if (imageData.size() > MAX_SIZE) {
+        error = "Image file size exceeds maximum allowed size of 5MB. File size: " + 
+                std::to_string(imageData.size() / 1024 / 1024) + "MB";
+        return false;
+    }
+    
+    if (imageData.empty()) {
+        error = "Image data is empty";
+        return false;
+    }
+    
+    // Log first few bytes for debugging
+    if (isApiLoggingEnabled() && imageData.size() >= 4) {
+        std::stringstream ss;
+        ss << std::hex << std::setfill('0');
+        for (size_t i = 0; i < std::min(size_t(16), imageData.size()); i++) {
+            ss << std::setw(2) << static_cast<int>(imageData[i]) << " ";
+        }
+        PLOG_DEBUG << "[RecognitionHandler] First bytes of image data: " << ss.str();
+    }
+    
+    // Check image format by magic bytes
+    // Supported formats: jpeg, jpg, ico, png, bmp, gif, tif, tiff, webp
+    bool isValidFormat = false;
+    std::string detectedFormat;
+    
+    if (imageData.size() >= 2) {
+        // JPEG: FF D8
+        if (imageData[0] == 0xFF && imageData[1] == 0xD8) {
+            isValidFormat = true;
+            detectedFormat = "JPEG";
+        }
+        // PNG: 89 50 4E 47
+        else if (imageData.size() >= 4 && 
+                 imageData[0] == 0x89 && imageData[1] == 0x50 && 
+                 imageData[2] == 0x4E && imageData[3] == 0x47) {
+            isValidFormat = true;
+            detectedFormat = "PNG";
+        }
+        // GIF: 47 49 46 38 (GIF8) or 47 49 46 39 (GIF9)
+        else if (imageData.size() >= 4 && 
+                 imageData[0] == 0x47 && imageData[1] == 0x49 && 
+                 imageData[2] == 0x46 && (imageData[3] == 0x38 || imageData[3] == 0x39)) {
+            isValidFormat = true;
+            detectedFormat = "GIF";
+        }
+        // BMP: 42 4D
+        else if (imageData[0] == 0x42 && imageData[1] == 0x4D) {
+            isValidFormat = true;
+            detectedFormat = "BMP";
+        }
+        // ICO: 00 00 01 00 or 00 00 02 00
+        else if (imageData.size() >= 4 && 
+                 imageData[0] == 0x00 && imageData[1] == 0x00 && 
+                 (imageData[2] == 0x01 || imageData[2] == 0x02) && imageData[3] == 0x00) {
+            isValidFormat = true;
+            detectedFormat = "ICO";
+        }
+        // TIFF: 49 49 2A 00 (little-endian) or 4D 4D 00 2A (big-endian)
+        else if (imageData.size() >= 4 && 
+                 ((imageData[0] == 0x49 && imageData[1] == 0x49 && imageData[2] == 0x2A && imageData[3] == 0x00) ||
+                  (imageData[0] == 0x4D && imageData[1] == 0x4D && imageData[2] == 0x00 && imageData[3] == 0x2A))) {
+            isValidFormat = true;
+            detectedFormat = "TIFF";
+        }
+        // WebP: RIFF ... WEBP
+        else if (imageData.size() >= 12 && 
+                 imageData[0] == 0x52 && imageData[1] == 0x49 && 
+                 imageData[2] == 0x46 && imageData[3] == 0x46 &&
+                 imageData[8] == 0x57 && imageData[9] == 0x45 && 
+                 imageData[10] == 0x42 && imageData[11] == 0x50) {
+            isValidFormat = true;
+            detectedFormat = "WebP";
+        }
+    }
+    
+    if (!isValidFormat) {
+        // Log first bytes for debugging
+        std::stringstream hexBytes;
+        hexBytes << std::hex << std::setfill('0');
+        size_t bytesToShow = std::min(size_t(8), imageData.size());
+        for (size_t i = 0; i < bytesToShow; i++) {
+            hexBytes << std::setw(2) << static_cast<int>(imageData[i]);
+            if (i < bytesToShow - 1) hexBytes << " ";
+        }
+        
+        error = "Unsupported image format. Supported formats: JPEG, JPG, PNG, BMP, GIF, ICO, TIFF, WebP. "
+                "Detected format: Unknown (file may be corrupted or not an image). "
+                "First bytes (hex): " + hexBytes.str();
+        
+        if (isApiLoggingEnabled()) {
+            PLOG_WARNING << "[RecognitionHandler] Image format validation failed. First bytes: " << hexBytes.str();
+        }
+        return false;
+    }
+    
+    if (isApiLoggingEnabled()) {
+        PLOG_DEBUG << "[RecognitionHandler] Image format validated: " << detectedFormat 
+                   << ", size: " << imageData.size() << " bytes";
+    }
+    
+    return true;
+}
+
 bool RecognitionHandler::extractImageData(const HttpRequestPtr &req, std::vector<unsigned char>& imageData, std::string& error) const {
     std::string contentType = req->getHeader("Content-Type");
     bool isMultipart = contentType.find("multipart/form-data") != std::string::npos;
@@ -866,15 +998,22 @@ bool RecognitionHandler::extractImageData(const HttpRequestPtr &req, std::vector
         return false;
     }
     
-    // Search for file field - try "file", "image", "photo" as field names
+    // Find Content-Disposition header first (more reliable than searching for field name)
+    size_t contentDispositionPos = bodyStr.find("Content-Disposition:", partStart);
+    if (contentDispositionPos == std::string::npos || contentDispositionPos > partStart + 1024) {
+        error = "Could not find Content-Disposition header in multipart data";
+        return false;
+    }
+    
+    // Search for file field name in Content-Disposition - try "file", "image", "photo"
     size_t fileFieldPos = std::string::npos;
     std::vector<std::string> fieldNames = {"name=\"file\"", "name='file'", "name=file",
                                            "name=\"image\"", "name='image'", "name=image",
                                            "name=\"photo\"", "name='photo'", "name=photo"};
     
     for (const auto& fieldName : fieldNames) {
-        fileFieldPos = bodyStr.find(fieldName, partStart);
-        if (fileFieldPos != std::string::npos) {
+        fileFieldPos = bodyStr.find(fieldName, contentDispositionPos);
+        if (fileFieldPos != std::string::npos && fileFieldPos < contentDispositionPos + 512) {
             break;
         }
     }
@@ -884,20 +1023,33 @@ bool RecognitionHandler::extractImageData(const HttpRequestPtr &req, std::vector
         return false;
     }
     
-    // Find content start (after headers and blank line)
-    size_t contentStart = bodyStr.find("\r\n\r\n", fileFieldPos);
+    // Find content start (after headers and blank line) - search from Content-Disposition position
+    size_t contentStart = bodyStr.find("\r\n\r\n", contentDispositionPos);
     if (contentStart == std::string::npos) {
-        contentStart = bodyStr.find("\n\n", fileFieldPos);
+        contentStart = bodyStr.find("\n\n", contentDispositionPos);
     }
     if (contentStart == std::string::npos) {
         error = "Could not find content start in multipart data";
         return false;
     }
     
+    // Skip the blank line
     contentStart += 2; // Skip \r\n or \n
     if (contentStart < bodyStr.length() && 
         (bodyStr[contentStart] == '\r' || bodyStr[contentStart] == '\n')) {
         contentStart++;
+    }
+    
+    // Skip any additional whitespace/newlines
+    while (contentStart < bodyStr.length() && 
+           (bodyStr[contentStart] == '\r' || bodyStr[contentStart] == '\n' || 
+            bodyStr[contentStart] == ' ' || bodyStr[contentStart] == '\t')) {
+        contentStart++;
+    }
+    
+    if (contentStart >= bodyStr.length()) {
+        error = "Content start position is beyond body length";
+        return false;
     }
     
     // Find content end (before next boundary)
@@ -916,11 +1068,29 @@ bool RecognitionHandler::extractImageData(const HttpRequestPtr &req, std::vector
     }
     
     // Extract binary data directly from body (not from string to preserve binary data)
+    // Use the same offsets for binary extraction
     size_t binaryStart = contentStart;
     size_t binaryEnd = contentEnd;
     
+    if (isApiLoggingEnabled()) {
+        PLOG_DEBUG << "[RecognitionHandler] Extracting binary data from position " << binaryStart 
+                   << " to " << binaryEnd << " (size: " << (binaryEnd - binaryStart) << " bytes)";
+    }
+    
     // Copy binary data directly
     imageData.assign(body.begin() + binaryStart, body.begin() + binaryEnd);
+    
+    if (isApiLoggingEnabled()) {
+        PLOG_DEBUG << "[RecognitionHandler] Extracted image data from multipart, size: " << imageData.size() << " bytes";
+        if (imageData.size() >= 4) {
+            std::stringstream ss;
+            ss << std::hex << std::setfill('0');
+            for (size_t i = 0; i < std::min(size_t(8), imageData.size()); i++) {
+                ss << std::setw(2) << static_cast<int>(imageData[i]) << " ";
+            }
+            PLOG_DEBUG << "[RecognitionHandler] First bytes of extracted data (hex): " << ss.str();
+        }
+    }
     
     // Check if the extracted data looks like base64 (text-based)
     // Base64 strings are typically longer and contain only base64 characters
@@ -939,6 +1109,10 @@ bool RecognitionHandler::extractImageData(const HttpRequestPtr &req, std::vector
             isTextData = false;
             break;
         }
+    }
+    
+    if (isApiLoggingEnabled()) {
+        PLOG_DEBUG << "[RecognitionHandler] Data appears to be " << (isTextData ? "text/base64" : "binary");
     }
     
     // If it looks like text data and is reasonably long, try base64 decode
@@ -1560,8 +1734,12 @@ bool RecognitionHandler::extractImageFromRequest(const HttpRequestPtr &req, std:
         }
         // Try to extract from JSON (base64)
         if (extractImageFromJson(req, imageData, error)) {
+            // Validate format and size
+            if (!validateImageFormatAndSize(imageData, error)) {
+                return false;
+            }
             if (isApiLoggingEnabled()) {
-                PLOG_DEBUG << "[RecognitionHandler] Successfully extracted image from JSON, size: " << imageData.size() << " bytes";
+                PLOG_DEBUG << "[RecognitionHandler] Successfully extracted and validated image from JSON, size: " << imageData.size() << " bytes";
             }
             return true;
         }
@@ -1575,8 +1753,21 @@ bool RecognitionHandler::extractImageFromRequest(const HttpRequestPtr &req, std:
         }
         // Try to extract from multipart (binary or base64)
         if (extractImageData(req, imageData, error)) {
+            // Validate format and size
+            if (!validateImageFormatAndSize(imageData, error)) {
+                return false;
+            }
+            
+            // Convert to base64 for processing (as requested)
+            // Note: The imageData is already in binary format, but we can encode it to base64 if needed
+            // For now, we keep it as binary since OpenCV can handle binary data directly
+            // If base64 is required for storage/transmission, it can be encoded here
+            
             if (isApiLoggingEnabled()) {
-                PLOG_DEBUG << "[RecognitionHandler] Successfully extracted image from multipart, size: " << imageData.size() << " bytes";
+                PLOG_DEBUG << "[RecognitionHandler] Successfully extracted and validated image from multipart, size: " << imageData.size() << " bytes";
+                // Optionally encode to base64 for logging/debugging
+                std::string base64Encoded = encodeBase64(imageData);
+                PLOG_DEBUG << "[RecognitionHandler] Image encoded to base64, length: " << base64Encoded.length() << " characters";
             }
             return true;
         }
@@ -1588,8 +1779,12 @@ bool RecognitionHandler::extractImageFromRequest(const HttpRequestPtr &req, std:
         PLOG_DEBUG << "[RecognitionHandler] Content-Type not recognized, trying JSON first";
     }
     if (extractImageFromJson(req, imageData, error)) {
+        // Validate format and size
+        if (!validateImageFormatAndSize(imageData, error)) {
+            return false;
+        }
         if (isApiLoggingEnabled()) {
-            PLOG_DEBUG << "[RecognitionHandler] Successfully extracted image from JSON (fallback), size: " << imageData.size() << " bytes";
+            PLOG_DEBUG << "[RecognitionHandler] Successfully extracted and validated image from JSON (fallback), size: " << imageData.size() << " bytes";
         }
         return true;
     }
@@ -1599,8 +1794,12 @@ bool RecognitionHandler::extractImageFromRequest(const HttpRequestPtr &req, std:
         PLOG_DEBUG << "[RecognitionHandler] Trying multipart/form-data (fallback)";
     }
     if (extractImageData(req, imageData, error)) {
+        // Validate format and size
+        if (!validateImageFormatAndSize(imageData, error)) {
+            return false;
+        }
         if (isApiLoggingEnabled()) {
-            PLOG_DEBUG << "[RecognitionHandler] Successfully extracted image from multipart (fallback), size: " << imageData.size() << " bytes";
+            PLOG_DEBUG << "[RecognitionHandler] Successfully extracted and validated image from multipart (fallback), size: " << imageData.size() << " bytes";
         }
         return true;
     }
@@ -1615,10 +1814,15 @@ bool RecognitionHandler::registerSubject(const std::string& subjectName,
                                         std::string& imageId,
                                         std::string& error) const {
     try {
+        // Validate image format and size (already validated in extractImageFromRequest, but double-check here)
+        if (!validateImageFormatAndSize(imageData, error)) {
+            return false;
+        }
+        
         // Validate image can be decoded
         cv::Mat image = cv::imdecode(imageData, cv::IMREAD_COLOR);
         if (image.empty()) {
-            error = "Invalid image format or corrupted image data";
+            error = "Invalid image format or corrupted image data. Please ensure the image is a valid JPEG, PNG, BMP, GIF, ICO, TIFF, or WebP file";
             return false;
         }
         
