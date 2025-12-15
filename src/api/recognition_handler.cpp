@@ -2172,16 +2172,6 @@ void RecognitionHandler::renameSubject(const HttpRequestPtr &req,
     }
     
     try {
-        // Validate API key
-        std::string apiKeyError;
-        if (!validateApiKey(req, apiKeyError)) {
-            if (isApiLoggingEnabled()) {
-                PLOG_WARNING << "[API] PUT /v1/recognition/subjects/{subject} - " << apiKeyError;
-            }
-            callback(createErrorResponse(401, "Unauthorized", apiKeyError));
-            return;
-        }
-        
         // Extract old subject name from URL path
         std::string oldSubjectName = extractSubjectFromPath(req);
         if (oldSubjectName.empty()) {
@@ -2402,16 +2392,6 @@ void RecognitionHandler::deleteFaceSubject(const HttpRequestPtr &req,
     }
     
     try {
-        // Validate API key
-        std::string apiKeyError;
-        if (!validateApiKey(req, apiKeyError)) {
-            if (isApiLoggingEnabled()) {
-                PLOG_WARNING << "[API] DELETE /v1/recognition/faces/{image_id} - " << apiKeyError;
-            }
-            callback(createErrorResponse(401, "Unauthorized", apiKeyError));
-            return;
-        }
-        
         // Extract image ID from URL path
         std::string path = req->getPath();
         size_t facesPos = path.find("/faces/");
@@ -2503,16 +2483,6 @@ void RecognitionHandler::deleteMultipleFaceSubjects(const HttpRequestPtr &req,
     }
     
     try {
-        // Validate API key
-        std::string apiKeyError;
-        if (!validateApiKey(req, apiKeyError)) {
-            if (isApiLoggingEnabled()) {
-                PLOG_WARNING << "[API] POST /v1/recognition/faces/delete - " << apiKeyError;
-            }
-            callback(createErrorResponse(401, "Unauthorized", apiKeyError));
-            return;
-        }
-        
         // Parse JSON body
         auto json = req->getJsonObject();
         if (!json) {
