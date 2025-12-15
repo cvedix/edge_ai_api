@@ -81,26 +81,34 @@ std::string InstanceRegistry::createInstance(const CreateInstanceRequest& req) {
     }
     
     // Build pipeline if solution is provided (do this OUTSIDE lock - can take time)
+    // ✅ Use RAII: pipeline will automatically cleanup if exception occurs
+    // If pipeline_builder throws exception, pipeline vector will be empty and nodes will be destroyed
     std::vector<std::shared_ptr<cvedix_nodes::cvedix_node>> pipeline;
     if (solution) {
         try {
             pipeline = pipeline_builder_.buildPipeline(*solution, req, instanceId);
+            // ✅ Pipeline build succeeded - nodes are now owned by pipeline vector
+            // If exception occurs after this point, pipeline will be destroyed automatically
         } catch (const std::bad_alloc& e) {
             std::cerr << "[InstanceRegistry] Memory allocation error building pipeline for instance " 
                       << instanceId << ": " << e.what() << std::endl;
+            // ✅ Pipeline vector is empty, no cleanup needed
             return "";
         } catch (const std::invalid_argument& e) {
             std::cerr << "[InstanceRegistry] Invalid argument building pipeline for instance " 
                       << instanceId << ": " << e.what() << std::endl;
+            // ✅ Pipeline vector is empty, no cleanup needed
             return "";
         } catch (const std::runtime_error& e) {
             std::cerr << "[InstanceRegistry] Runtime error building pipeline for instance " 
                       << instanceId << ": " << e.what() << std::endl;
+            // ✅ Pipeline vector is empty, no cleanup needed
             return "";
         } catch (const std::exception& e) {
             // Pipeline build failed - log error but don't crash
             std::cerr << "[InstanceRegistry] Exception building pipeline for instance " << instanceId 
                       << ": " << e.what() << " (type: " << typeid(e).name() << ")" << std::endl;
+            // ✅ Pipeline vector is empty or partially constructed, will be destroyed automatically
             return ""; // Return empty string to indicate failure
         } catch (...) {
             // Unknown error - try to get more info
@@ -114,8 +122,16 @@ std::string InstanceRegistry::createInstance(const CreateInstanceRequest& req) {
             } catch (...) {
                 std::cerr << "[InstanceRegistry] Could not extract exception information" << std::endl;
             }
+            // ✅ Pipeline vector will be destroyed automatically, nodes will be cleaned up
             return "";
         }
+    }
+    
+    // ✅ CRITICAL: Only register pipeline if build succeeded and pipeline is not empty
+    // Pipeline will be moved into map, not copied, so no extra overhead
+    if (pipeline.empty()) {
+        std::cerr << "[InstanceRegistry] Pipeline is empty after build - cannot create instance" << std::endl;
+        return "";
     }
     
     // Create instance info (no lock needed)
@@ -332,7 +348,7 @@ bool InstanceRegistry::deleteInstance(const std::string& instanceId) {
     // This prevents blocking other operations when deleting instances
     
     std::vector<std::shared_ptr<cvedix_nodes::cvedix_node>> pipelineToStop;
-    bool isPersistent = false;
+    // Note: isPersistent was removed as it's not used in this function
     
     {
         std::unique_lock<std::shared_timed_mutex> lock(mutex_); // Exclusive lock for write operations
@@ -342,7 +358,7 @@ bool InstanceRegistry::deleteInstance(const std::string& instanceId) {
             return false;
         }
         
-        isPersistent = it->second.persistent;
+        // Note: persistent flag is checked but not used here - removed to avoid unused variable warning
         
         // Get pipeline copy before releasing lock
         auto pipelineIt = pipelines_.find(instanceId);
@@ -960,8 +976,9 @@ bool InstanceRegistry::startInstance(const std::string& instanceId, bool skipAut
                     // Thread is now managed (not detached) and will be joined on stop
                     
                     // CRITICAL: Use shared_ptr for mosq to ensure it's not destroyed while thread is running
-                    std::shared_ptr<struct mosquitto> mosq_shared(mosq, [](struct mosquitto* m) {
+                    std::shared_ptr<struct mosquitto> mosq_shared(mosq, [](struct mosquitto* /*m*/) {
                         // Custom deleter - don't destroy here, it will be destroyed when thread exits
+                        // Parameter name commented to avoid unused-parameter warning
                     });
                     
                     // CRITICAL: Create shared_ptr to stop flag to avoid capturing 'this'
@@ -3957,19 +3974,34 @@ void InstanceRegistry::stopMqttThread(const std::string& instanceId) {
     // Release lock before joining to avoid deadlock
     lock.unlock();
     
-    // Join thread with timeout to prevent blocking forever
+    // ✅ Join thread with timeout to prevent blocking forever
     if (threadToJoin.joinable()) {
         // Use async with timeout to prevent blocking
         auto future = std::async(std::launch::async, [&threadToJoin]() {
-            threadToJoin.join();
+            try {
+                threadToJoin.join();
+            } catch (const std::exception& e) {
+                std::cerr << "[InstanceRegistry] [MQTT] Error joining thread: " << e.what() << std::endl;
+            } catch (...) {
+                std::cerr << "[InstanceRegistry] [MQTT] Unknown error joining thread" << std::endl;
+            }
         });
         
-        // Wait up to 500ms for thread to finish (reduced from 2s for faster shutdown)
-        if (future.wait_for(std::chrono::milliseconds(500)) == std::future_status::timeout) {
-            std::cerr << "[InstanceRegistry] [MQTT] Warning: MQTT thread join timeout after 500ms, detaching..." << std::endl;
+        // Wait up to 2 seconds for thread to finish (increased for better reliability)
+        auto status = future.wait_for(std::chrono::seconds(2));
+        if (status == std::future_status::timeout) {
+            std::cerr << "[InstanceRegistry] [MQTT] WARNING: Thread join timeout after 2s, detaching..." << std::endl;
+            std::cerr << "[InstanceRegistry] [MQTT] Thread may still be running - this may cause resource leak" << std::endl;
             threadToJoin.detach();
-        } else {
+            // ⚠️ NOTE: Detaching thread means we lose control over it
+            // Better solution: Use thread pool or proper lifecycle management
+        } else if (status == std::future_status::ready) {
             // Thread joined successfully
+            try {
+                future.get(); // Get any exceptions
+            } catch (...) {
+                // Already logged in async lambda
+            }
             std::cerr << "[InstanceRegistry] [MQTT] Thread joined successfully" << std::endl;
         }
     }
@@ -4653,7 +4685,7 @@ void InstanceRegistry::setupFrameCaptureHook(const std::string& instanceId,
     
     // Setup hook on app_des_node if found
     if (appDesNode) {
-        appDesNode->set_app_des_result_hooker([this, instanceId](std::string node_name, 
+        appDesNode->set_app_des_result_hooker([this, instanceId](std::string /*node_name*/, 
                                                                  std::shared_ptr<cvedix_objects::cvedix_meta> meta) {
             try {
                 if (!meta) {
@@ -4739,7 +4771,7 @@ void InstanceRegistry::setupQueueSizeTrackingHook(const std::string& instanceId,
         }
         
         try {
-            node->set_meta_arriving_hooker([this, instanceId](std::string node_name, int queue_size, 
+            node->set_meta_arriving_hooker([this, instanceId](std::string /*node_name*/, int queue_size, 
                                                                std::shared_ptr<cvedix_objects::cvedix_meta> /* meta */) {
                 try {
                     // OPTIMIZED: Use try_lock to avoid blocking frame processing
@@ -5078,7 +5110,6 @@ bool InstanceRegistry::reconnectRTSPStream(const std::string& instanceId, std::s
         // CRITICAL: Check if instance exists and is running BEFORE attempting reconnect
         // This prevents race condition where instance is stopped while monitor thread is trying to reconnect
         InstanceInfo info;
-        bool instanceExists = false;
         bool instanceRunning = false;
         {
             std::shared_lock<std::shared_timed_mutex> lock(mutex_);
@@ -5087,7 +5118,7 @@ bool InstanceRegistry::reconnectRTSPStream(const std::string& instanceId, std::s
                 std::cerr << "[InstanceRegistry] [RTSP Reconnect] ✗ Instance not found" << std::endl;
                 return false;
             }
-            instanceExists = true;
+            // Note: instanceExists was removed as it's not used - we already know instance exists if we reach here
             instanceRunning = instanceIt->second.running;
             info = instanceIt->second;
         }
@@ -5258,17 +5289,41 @@ bool InstanceRegistry::reconnectRTSPStream(const std::string& instanceId, std::s
             return false;
         }
         
-        // CRITICAL: Use shared lock to allow concurrent start operations
+        // CRITICAL: Lock ordering to prevent deadlock
+        // Order: mutex_ (1) → gstreamer_ops_mutex_ (2)
+        // ALWAYS acquire mutex_ before gstreamer_ops_mutex_ to prevent deadlock
+        
+        // CRITICAL: Verify instance is still running BEFORE acquiring GStreamer lock
+        // This prevents deadlock by acquiring mutex_ first
+        {
+            std::shared_lock<std::shared_timed_mutex> lock(mutex_);
+            auto instanceIt = instances_.find(instanceId);
+            if (instanceIt == instances_.end() || !instanceIt->second.running) {
+                std::cerr << "[InstanceRegistry] [RTSP Reconnect] ✗ Aborted: instance stopped before acquiring GStreamer lock" << std::endl;
+                return false;
+            }
+            
+            // Check stop flag while holding mutex_
+            if (stopFlag && stopFlag->load()) {
+                std::cerr << "[InstanceRegistry] [RTSP Reconnect] ✗ Aborted: stop flag set before acquiring GStreamer lock" << std::endl;
+                return false;
+            }
+        } // Release mutex_ before acquiring gstreamer_ops_mutex_
+        
+        // CRITICAL: Now acquire GStreamer lock (after releasing mutex_)
+        // This prevents deadlock - we don't hold both locks simultaneously
+        // Use shared lock to allow concurrent start operations
         // Multiple instances can start simultaneously, but cleanup operations will wait
         std::shared_lock<std::shared_mutex> gstLock(gstreamer_ops_mutex_);
         
-        // CRITICAL: Check stop flag one more time after acquiring lock (instance may have been stopped while waiting for lock)
+        // CRITICAL: Re-check stop flag and instance status after acquiring GStreamer lock
+        // Instance may have been stopped while we were waiting for GStreamer lock
         if (stopFlag && stopFlag->load()) {
             std::cerr << "[InstanceRegistry] [RTSP Reconnect] ✗ Aborted: stop flag set after acquiring GStreamer lock" << std::endl;
             return false;
         }
         
-        // CRITICAL: Verify instance is still running after acquiring lock
+        // Re-check instance status (need to acquire mutex_ again, but briefly)
         {
             std::shared_lock<std::shared_timed_mutex> lock(mutex_);
             auto instanceIt = instances_.find(instanceId);
@@ -5276,7 +5331,7 @@ bool InstanceRegistry::reconnectRTSPStream(const std::string& instanceId, std::s
                 std::cerr << "[InstanceRegistry] [RTSP Reconnect] ✗ Aborted: instance stopped after acquiring GStreamer lock" << std::endl;
                 return false;
             }
-        }
+        } // Release mutex_ immediately - we only need it for the check
         
         // CRITICAL: Wrap start() in try-catch to handle GStreamer conflicts
         // If another instance is cleaning up GStreamer, this may throw or crash

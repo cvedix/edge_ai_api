@@ -169,8 +169,11 @@ PerformanceMonitor::OverallStats PerformanceMonitor::getOverallStats() const {
         total_count += metrics.total_requests.load();
     }
     
+    // ✅ Safe division: check total_count before dividing
     if (total_count > 0) {
-        stats.avg_latency_ms = total_latency / total_count;
+        stats.avg_latency_ms = total_latency / static_cast<double>(total_count);
+    } else {
+        stats.avg_latency_ms = 0.0;
     }
     
     stats.throughput_rps = calculateThroughput();
@@ -183,7 +186,8 @@ double PerformanceMonitor::calculateThroughput() const {
     auto elapsed = std::chrono::duration_cast<std::chrono::seconds>(
         now - start_time_).count();
     
-    if (elapsed == 0) {
+    // ✅ Safe division: check elapsed before dividing
+    if (elapsed <= 0) {
         return 0.0;
     }
     
@@ -192,7 +196,7 @@ double PerformanceMonitor::calculateThroughput() const {
         total += metrics.total_requests.load();
     }
     
-    return static_cast<double>(total) / elapsed;
+    return static_cast<double>(total) / static_cast<double>(elapsed);
 }
 
 void PerformanceMonitor::reset() {
