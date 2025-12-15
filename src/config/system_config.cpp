@@ -1,4 +1,5 @@
 #include "config/system_config.h"
+#include "core/env_config.h"
 #include <fstream>
 #include <iostream>
 #include <sstream>
@@ -78,10 +79,20 @@ bool SystemConfig::saveConfig(const std::string& configPath) {
     }
     
     try {
-        // Create parent directory if needed
+        // Create parent directory if needed (with fallback if needed)
         std::filesystem::path filePath(path);
         if (filePath.has_parent_path()) {
-            std::filesystem::create_directories(filePath.parent_path());
+            std::string parentDir = filePath.parent_path().string();
+            std::string subdir = filePath.parent_path().filename().string();
+            if (subdir.empty()) {
+                subdir = "config"; // Default fallback subdir
+            }
+            parentDir = EnvConfig::resolveDirectory(parentDir, subdir);
+            // Update path if fallback was used
+            if (parentDir != filePath.parent_path().string()) {
+                filePath = parentDir / filePath.filename();
+                path = filePath.string();
+            }
         }
         
         std::ofstream file(path);

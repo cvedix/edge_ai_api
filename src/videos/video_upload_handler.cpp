@@ -1,4 +1,5 @@
 #include "videos/video_upload_handler.h"
+#include "core/env_config.h"
 #include "core/cors_helper.h"
 #include <drogon/HttpResponse.h>
 #include <fstream>
@@ -185,12 +186,10 @@ void VideoUploadHandler::uploadVideo(
             std::string boundaryMarker = "--" + boundary;
             std::string endBoundary = boundaryMarker + "--";
             
-            // Ensure videos directory exists
+            // Ensure videos directory exists (with fallback if needed)
             std::string videosDir = getVideosDirectory();
+            videosDir = EnvConfig::resolveDirectory(videosDir, "videos");
             std::filesystem::path videosPath(videosDir);
-            if (!std::filesystem::exists(videosPath)) {
-                std::filesystem::create_directories(videosPath);
-            }
             
             // Parse all multipart parts
             Json::Value uploadedFiles(Json::arrayValue);
@@ -471,12 +470,10 @@ void VideoUploadHandler::uploadVideo(
                 return;
             }
             
-            // Ensure videos directory exists
+            // Ensure videos directory exists (with fallback if needed)
             std::string videosDir = getVideosDirectory();
+            videosDir = EnvConfig::resolveDirectory(videosDir, "videos");
             std::filesystem::path videosPath(videosDir);
-            if (!std::filesystem::exists(videosPath)) {
-                std::filesystem::create_directories(videosPath);
-            }
             
             // Create full file path - if file exists, add number to name
             filePath = videosPath / sanitizedFilename;

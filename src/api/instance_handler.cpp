@@ -4,6 +4,7 @@
 #include "instances/instance_info.h"
 #include "core/logging_flags.h"
 #include "core/logger.h"
+#include "core/env_config.h"
 #include <drogon/HttpResponse.h>
 #include <sstream>
 #include <thread>
@@ -1700,10 +1701,21 @@ void InstanceHandler::configureStreamOutput(
                 try {
                     fs::path dirPath(path);
                     
-                    // Create directory if it doesn't exist
+                    // Create directory if it doesn't exist (with fallback if needed)
                     if (!fs::exists(dirPath)) {
                         if (isApiLoggingEnabled()) {
                             PLOG_INFO << "[API] POST /v1/core/instance/" << instanceId << "/output/stream - Creating directory: " << path;
+                        }
+                        // Extract subdir from path for fallback
+                        std::string subdir = dirPath.filename().string();
+                        if (subdir.empty()) {
+                            subdir = "output"; // Default fallback subdir
+                        }
+                        std::string resolvedPath = EnvConfig::resolveDirectory(path, subdir);
+                        if (resolvedPath != path) {
+                            // Fallback was used, update path
+                            path = resolvedPath;
+                            dirPath = fs::path(path);
                         }
                         fs::create_directories(dirPath);
                     }

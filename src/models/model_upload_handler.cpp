@@ -1,4 +1,5 @@
 #include "models/model_upload_handler.h"
+#include "core/env_config.h"
 #include <drogon/HttpResponse.h>
 #include <fstream>
 #include <filesystem>
@@ -159,12 +160,10 @@ void ModelUploadHandler::uploadModel(
             std::string boundaryMarker = "--" + boundary;
             std::string endBoundary = boundaryMarker + "--";
             
-            // Ensure models directory exists
+            // Ensure models directory exists (with fallback if needed)
             std::string modelsDir = getModelsDirectory();
+            modelsDir = EnvConfig::resolveDirectory(modelsDir, "models");
             std::filesystem::path modelsPath(modelsDir);
-            if (!std::filesystem::exists(modelsPath)) {
-                std::filesystem::create_directories(modelsPath);
-            }
             
             // Parse all multipart parts
             Json::Value uploadedFiles(Json::arrayValue);
@@ -449,12 +448,10 @@ void ModelUploadHandler::uploadModel(
                 return;
             }
             
-            // Ensure models directory exists
+            // Ensure models directory exists (with fallback if needed)
             std::string modelsDir = getModelsDirectory();
+            modelsDir = EnvConfig::resolveDirectory(modelsDir, "models");
             std::filesystem::path modelsPath(modelsDir);
-            if (!std::filesystem::exists(modelsPath)) {
-                std::filesystem::create_directories(modelsPath);
-            }
             
             // Create full file path - if file exists, add number to name
             filePath = modelsPath / sanitizedFilename;
