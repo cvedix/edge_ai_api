@@ -206,7 +206,7 @@ curl -X GET "http://localhost:8080/v1/core/logs/api?from=2025-01-15T10:00:00.000
 curl -X GET "http://localhost:8080/v1/core/logs/api?level=ERROR&tail=50"
 ```
 
-**Xem chi tiết:** [LOGS_API.md](LOGS_API.md) - Tài liệu đầy đủ về Logs API endpoints
+**Xem chi tiết:** [API_REFERENCE.md](API_REFERENCE.md) - Tài liệu đầy đủ về Logs API endpoints
 
 ## Cấu Hình Logging
 
