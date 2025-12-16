@@ -62,6 +62,10 @@ if ! id "$SERVICE_USER" &>/dev/null; then
     adduser --system --group --home "$INSTALL_DIR" --no-create-home --shell /bin/false "$SERVICE_USER" || true
 fi
 
+# Create required directories (must exist before systemd sets up mount namespace)
+echo "Creating required directories..."
+mkdir -p "$INSTALL_DIR"/{instances,solutions,groups,models,logs,data,config,uploads,lib}
+
 # Set up directory permissions
 echo "Setting up directory permissions..."
 chown -R "$SERVICE_USER:$SERVICE_GROUP" "$INSTALL_DIR" 2>/dev/null || true
@@ -124,18 +128,27 @@ if [ -f "/etc/systemd/system/${SERVICE_NAME}.service" ]; then
     systemctl daemon-reload
     systemctl enable "${SERVICE_NAME}.service" || true
     
-    # Don't start automatically on install - let user do it manually
-    # systemctl start "${SERVICE_NAME}.service" || true
-    echo "Service enabled. Start it with: sudo systemctl start ${SERVICE_NAME}"
+    echo "Starting systemd service..."
+    if systemctl start "${SERVICE_NAME}.service"; then
+        echo "Service started successfully."
+        sleep 1
+        if systemctl is-active --quiet "${SERVICE_NAME}.service"; then
+            echo "Service is running."
+        else
+            echo "Warning: Service was started but may not be running. Check status with: sudo systemctl status ${SERVICE_NAME}"
+        fi
+    else
+        echo "Warning: Failed to start service. Check status with: sudo systemctl status ${SERVICE_NAME}"
+    fi
 fi
 
 echo "Installation completed successfully!"
 echo ""
-echo "To start the service:"
-echo "  sudo systemctl start ${SERVICE_NAME}"
-echo ""
-echo "To check status:"
+echo "Service status:"
 echo "  sudo systemctl status ${SERVICE_NAME}"
+echo ""
+echo "To restart the service:"
+echo "  sudo systemctl restart ${SERVICE_NAME}"
 
 exit 0
 
