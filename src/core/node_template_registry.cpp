@@ -47,6 +47,7 @@ const std::map<std::string, NodeTemplateRegistry::NodeTypeMetadata> NodeTemplate
     {"sface_feature_encoder", {"processor", {"model_path"}, {}, "SFace Feature Encoder", "Extract face features using SFace"}},
     {"sort_track", {"processor", {}, {}, "SORT Tracker", "Track objects using SORT algorithm"}},
     {"face_osd_v2", {"processor", {}, {}, "Face OSD v2", "Overlay face detection results"}},
+    {"osd_v3", {"processor", {}, {"font_path"}, "OSD v3", "Overlay masks and labels (for Mask R-CNN, segmentation, etc.)"}},
     {"ba_crossline", {"processor", {}, {"line_channel", "line_start_x", "line_start_y", "line_end_x", "line_end_y"}, "BA Crossline", "Behavior analysis - crossline detection"}},
     {"ba_crossline_osd", {"processor", {}, {}, "BA Crossline OSD", "Overlay crossline detection results"}},
     {"classifier", {"processor", {"model_path"}, {}, "Classifier", "Image classification"}},

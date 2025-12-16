@@ -223,6 +223,19 @@ void NodePoolManager::initializeDefaultTemplates() {
     faceOSD.isPreConfigured = true;  // No parameters needed
     templates_[faceOSD.templateId] = faceOSD;
     
+    // OSD v3 (for masks and labels)
+    NodeTemplate osdV3;
+    osdV3.templateId = "osd_v3_template";
+    osdV3.nodeType = "osd_v3";
+    osdV3.displayName = "OSD v3";
+    osdV3.description = "Overlay masks and labels (for Mask R-CNN, segmentation, etc.)";
+    osdV3.category = "processor";
+    osdV3.defaultParameters["font_path"] = "";
+    osdV3.requiredParameters = {};
+    osdV3.optionalParameters = {"font_path"};
+    osdV3.isPreConfigured = true;
+    templates_[osdV3.templateId] = osdV3;
+    
     // BA Crossline
     NodeTemplate baCrossline;
     baCrossline.templateId = "ba_crossline_template";

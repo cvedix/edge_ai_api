@@ -138,6 +138,15 @@ private:
     );
     
     /**
+     * @brief Create OSD v3 node (for masks and labels)
+     */
+    std::shared_ptr<cvedix_nodes::cvedix_node> createOSDv3Node(
+        const std::string& nodeName,
+        const std::map<std::string, std::string>& params,
+        const CreateInstanceRequest& req
+    );
+    
+    /**
      * @brief Create RTMP destination node
      */
     std::shared_ptr<cvedix_nodes::cvedix_node> createRTMPDestinationNode(

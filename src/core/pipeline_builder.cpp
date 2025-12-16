@@ -4,6 +4,7 @@
 #include "core/env_config.h"
 #include <cstdlib>  // For setenv
 #include <cstring>  // For strlen
+#include <opencv2/core.hpp>  // For cv::Exception
 #include <cvedix/nodes/src/cvedix_rtsp_src_node.h>
 #include <cvedix/nodes/src/cvedix_file_src_node.h>
 #include <cvedix/nodes/src/cvedix_app_src_node.h>
@@ -13,6 +14,7 @@
 #include <cvedix/nodes/infers/cvedix_yunet_face_detector_node.h>
 #include <cvedix/nodes/infers/cvedix_sface_feature_encoder_node.h>
 #include <cvedix/nodes/osd/cvedix_face_osd_node_v2.h>
+#include <cvedix/nodes/osd/cvedix_osd_node_v3.h>
 #include <cvedix/nodes/des/cvedix_file_des_node.h>
 #include <cvedix/nodes/des/cvedix_rtmp_des_node.h>
 #include <cvedix/nodes/des/cvedix_screen_des_node.h>
@@ -895,6 +897,12 @@ std::shared_ptr<cvedix_nodes::cvedix_node> PipelineBuilder::createNode(
             return createBACrosslineNode(nodeName, params);
         }
         // OSD nodes
+        else if (nodeConfig.nodeType == "face_osd_v2") {
+            return createFaceOSDNode(nodeName, params);
+        }
+        else if (nodeConfig.nodeType == "osd_v3") {
+            return createOSDv3Node(nodeName, params, req);
+        }
         else if (nodeConfig.nodeType == "ba_crossline_osd") {
             return createBACrosslineOSDNode(nodeName, params);
         }
@@ -1332,9 +1340,9 @@ std::shared_ptr<cvedix_nodes::cvedix_node> PipelineBuilder::createFaceDetectorNo
             std::cerr << "[PipelineBuilder]      /usr/include/cvedix/cvedix_data/models/face/yunet.onnx" << std::endl;
             std::cerr << "[PipelineBuilder]      (Create: sudo mkdir -p /usr/include/cvedix/cvedix_data/models/face)" << std::endl;
             std::cerr << "[PipelineBuilder]      NOTE: /usr/include/ is for header files, not data files" << std::endl;
-            std::cerr << "[PipelineBuilder]   2. SDK source location:" << std::endl;
-            std::cerr << "[PipelineBuilder]      /home/pnsang/project/edge_ai_sdk/cvedix_data/models/face/yunet.onnx" << std::endl;
-            std::cerr << "[PipelineBuilder]      (Copy: cp /path/to/yunet.onnx /home/pnsang/project/edge_ai_sdk/cvedix_data/models/face/)" << std::endl;
+            std::cerr << "[PipelineBuilder]   2. SDK source location (relative to API directory):" << std::endl;
+            std::cerr << "[PipelineBuilder]      ../edge_ai_sdk/cvedix_data/models/face/yunet.onnx" << std::endl;
+            std::cerr << "[PipelineBuilder]      (Copy: cp /path/to/yunet.onnx ../edge_ai_sdk/cvedix_data/models/face/)" << std::endl;
             std::cerr << "[PipelineBuilder]   3. API working directory: ./cvedix_data/models/face/yunet.onnx" << std::endl;
             std::cerr << "[PipelineBuilder]      (Create: mkdir -p ./cvedix_data/models/face)" << std::endl;
             std::cerr << "[PipelineBuilder]   4. Set environment variable CVEDIX_DATA_ROOT=/path/to/cvedix_data" << std::endl;
@@ -1609,8 +1617,10 @@ std::string PipelineBuilder::resolveModelPath(const std::string& relativePath) c
     // Priority:
     // 1. CVEDIX_DATA_ROOT environment variable
     // 2. CVEDIX_SDK_ROOT environment variable + /cvedix_data
-    // 3. Relative to current working directory (./cvedix_data)
-    // 4. Try to find SDK directory in common locations
+    // 3. Production path: /opt/edge_ai_api/models (where user-uploaded models are stored)
+    // 4. System-wide installation paths (/usr/share/cvedix/cvedix_data/)
+    // 5. SDK source locations (relative paths)
+    // 6. Development fallback: ./cvedix_data/ (will NOT exist in production)
     
     // 1. Check CVEDIX_DATA_ROOT
     const char* dataRoot = std::getenv("CVEDIX_DATA_ROOT");
@@ -1636,11 +1646,30 @@ std::string PipelineBuilder::resolveModelPath(const std::string& relativePath) c
         }
     }
     
-    // 3. Try relative to current working directory
-    std::string relativePathFull = "./cvedix_data/" + relativePath;
-    if (fs::exists(relativePathFull)) {
-        std::cerr << "[PipelineBuilder] Using relative path: " << fs::absolute(relativePathFull).string() << std::endl;
-        return relativePathFull;
+    // 3. Try production installation path (/opt/edge_ai_api/models)
+    // This is where user-uploaded models are stored
+    // Check if relativePath starts with "models/" or is a direct model file
+    if (relativePath.find("models/") == 0 || relativePath.find("models\\") == 0) {
+        // Extract the model path after "models/"
+        std::string modelPath = relativePath.substr(relativePath.find_first_of("/\\") + 1);
+        std::string optPath = "/opt/edge_ai_api/models/" + modelPath;
+        if (fs::exists(optPath)) {
+            std::cerr << "[PipelineBuilder] Using production path: " << optPath << std::endl;
+            return optPath;
+        }
+        // Also try direct path if relativePath is just a filename
+        std::string optPathDirect = "/opt/edge_ai_api/models/" + relativePath;
+        if (fs::exists(optPathDirect)) {
+            std::cerr << "[PipelineBuilder] Using production path: " << optPathDirect << std::endl;
+            return optPathDirect;
+        }
+    } else {
+        // Try direct model file in /opt/edge_ai_api/models
+        std::string optPath = "/opt/edge_ai_api/models/" + relativePath;
+        if (fs::exists(optPath)) {
+            std::cerr << "[PipelineBuilder] Using production path: " << optPath << std::endl;
+            return optPath;
+        }
     }
     
     // 4. Try system-wide installation paths (when SDK is installed to /usr)
@@ -1683,11 +1712,11 @@ std::string PipelineBuilder::resolveModelPath(const std::string& relativePath) c
         }
     }
     
-    // 5. Try common SDK source locations
+    // 5. Try common SDK source locations (relative paths only, no hardcoded absolute paths)
     std::vector<std::string> commonPaths = {
-        "/home/pnsang/project/edge_ai_sdk/cvedix_data/" + relativePath,
         "../edge_ai_sdk/cvedix_data/" + relativePath,
         "../../edge_ai_sdk/cvedix_data/" + relativePath,
+        "../../../edge_ai_sdk/cvedix_data/" + relativePath,
     };
     
     for (const auto& path : commonPaths) {
@@ -1697,8 +1726,17 @@ std::string PipelineBuilder::resolveModelPath(const std::string& relativePath) c
         }
     }
     
+    // 6. Development fallback: relative to current working directory (./cvedix_data/)
+    // NOTE: This path will NOT exist in production - all data should be in /opt/edge_ai_api
+    std::string relativePathFull = "./cvedix_data/" + relativePath;
+    if (fs::exists(relativePathFull)) {
+        std::cerr << "[PipelineBuilder] Using development relative path: " << fs::absolute(relativePathFull).string() << std::endl;
+        return relativePathFull;
+    }
+    
     // Return default relative path (will show warning later if not found)
-    std::cerr << "[PipelineBuilder] Using default path (may not exist): ./cvedix_data/" << relativePath << std::endl;
+    std::cerr << "[PipelineBuilder] ⚠ Using default path (may not exist): ./cvedix_data/" << relativePath << std::endl;
+    std::cerr << "[PipelineBuilder] ℹ NOTE: In production, use /opt/edge_ai_api/models/ or set CVEDIX_DATA_ROOT" << std::endl;
     return relativePathFull;
 }
 
@@ -1745,18 +1783,24 @@ std::string PipelineBuilder::resolveModelByName(const std::string& modelName, co
         searchDirs.push_back(dir);
     }
     
-    // 3. System-wide locations
+    // 3. Production installation path (/opt/edge_ai_api/models)
+    // This is where user-uploaded models are stored
+    searchDirs.push_back("/opt/edge_ai_api/models/" + category);
+    searchDirs.push_back("/opt/edge_ai_api/models"); // Also check root models directory
+    
+    // 4. System-wide locations
     searchDirs.push_back("/usr/share/cvedix/cvedix_data/models/" + category);
     searchDirs.push_back("/usr/local/share/cvedix/cvedix_data/models/" + category);
     searchDirs.push_back("/usr/include/cvedix/cvedix_data/models/" + category);
     searchDirs.push_back("/usr/local/include/cvedix/cvedix_data/models/" + category);
     
-    // 4. SDK source locations
-    searchDirs.push_back("/home/pnsang/project/edge_ai_sdk/cvedix_data/models/" + category);
+    // 5. SDK source locations (relative paths only, no hardcoded absolute paths)
     searchDirs.push_back("../edge_ai_sdk/cvedix_data/models/" + category);
     searchDirs.push_back("../../edge_ai_sdk/cvedix_data/models/" + category);
+    searchDirs.push_back("../../../edge_ai_sdk/cvedix_data/models/" + category);
     
-    // 5. Relative to current working directory
+    // 6. Development fallback: relative to current working directory (./cvedix_data/)
+    // NOTE: This path will NOT exist in production - all data should be in /opt/edge_ai_api
     searchDirs.push_back("./cvedix_data/models/" + category);
     searchDirs.push_back("./models"); // Also check API models directory
     
@@ -1837,6 +1881,15 @@ std::vector<std::string> PipelineBuilder::listAvailableModels(const std::string&
         }
     }
     
+    // Production installation path (/opt/edge_ai_api/models)
+    // This is where user-uploaded models are stored
+    if (category.empty()) {
+        searchDirs.push_back("/opt/edge_ai_api/models");
+    } else {
+        searchDirs.push_back("/opt/edge_ai_api/models/" + category);
+        searchDirs.push_back("/opt/edge_ai_api/models"); // Also check root models directory
+    }
+    
     if (category.empty()) {
         searchDirs.push_back("/usr/share/cvedix/cvedix_data/models");
         searchDirs.push_back("/usr/local/share/cvedix/cvedix_data/models");
@@ -1845,6 +1898,8 @@ std::vector<std::string> PipelineBuilder::listAvailableModels(const std::string&
         searchDirs.push_back("/usr/local/share/cvedix/cvedix_data/models/" + category);
     }
     
+    // Development fallback: relative to current working directory (./cvedix_data/)
+    // NOTE: This path will NOT exist in production - all data should be in /opt/edge_ai_api
     searchDirs.push_back("./cvedix_data/models/" + (category.empty() ? "" : category));
     searchDirs.push_back("./models");
     
@@ -2276,6 +2331,130 @@ std::shared_ptr<cvedix_nodes::cvedix_node> PipelineBuilder::createBACrosslineNod
     }
 }
 
+std::shared_ptr<cvedix_nodes::cvedix_node> PipelineBuilder::createOSDv3Node(
+    const std::string& nodeName,
+    const std::map<std::string, std::string>& params,
+    const CreateInstanceRequest& req) {
+    
+    try {
+        if (nodeName.empty()) {
+            throw std::invalid_argument("Node name cannot be empty");
+        }
+        
+        // Priority 1: Check additionalParams for FONT_PATH (highest priority - allows runtime override)
+        std::string fontPath = "";
+        auto it = req.additionalParams.find("FONT_PATH");
+        if (it != req.additionalParams.end() && !it->second.empty()) {
+            fontPath = it->second;
+            std::cerr << "[PipelineBuilder] Using FONT_PATH from additionalParams: " << fontPath << std::endl;
+        }
+        
+        // Priority 2: Get font_path from params if not in additionalParams
+        if (fontPath.empty() && params.count("font_path") && !params.at("font_path").empty()) {
+            fontPath = params.at("font_path");
+            
+            // Check if font file exists, try to resolve path
+            fs::path fontFilePath(fontPath);
+            
+            // If relative path, try to resolve it
+            if (!fontFilePath.is_absolute()) {
+                // Try current directory first
+                if (fs::exists(fontPath)) {
+                    fontPath = fs::absolute(fontPath).string();
+                } else {
+                    // Try with CVEDIX_DATA_ROOT or CVEDIX_SDK_ROOT
+                    const char* dataRoot = std::getenv("CVEDIX_DATA_ROOT");
+                    if (dataRoot && strlen(dataRoot) > 0) {
+                        std::string resolvedPath = std::string(dataRoot);
+                        if (resolvedPath.back() != '/') resolvedPath += '/';
+                        resolvedPath += fontPath;
+                        if (fs::exists(resolvedPath)) {
+                            fontPath = resolvedPath;
+                        }
+                    }
+                    
+                    // Try CVEDIX_SDK_ROOT
+                    if (!fs::exists(fontPath)) {
+                        const char* sdkRoot = std::getenv("CVEDIX_SDK_ROOT");
+                        if (sdkRoot && strlen(sdkRoot) > 0) {
+                            std::string resolvedPath = std::string(sdkRoot);
+                            if (resolvedPath.back() != '/') resolvedPath += '/';
+                            resolvedPath += "cvedix_data/" + fontPath;
+                            if (fs::exists(resolvedPath)) {
+                                fontPath = resolvedPath;
+                            }
+                        }
+                    }
+                }
+            }
+            
+            // Check if font file exists after resolution
+            if (!fs::exists(fontPath)) {
+                std::cerr << "[PipelineBuilder] ⚠ WARNING: Font file not found: '" << params.at("font_path") << "'" << std::endl;
+                std::cerr << "[PipelineBuilder] ⚠ Resolved path: '" << fontPath << "'" << std::endl;
+                std::cerr << "[PipelineBuilder] ⚠ Trying default font from environment..." << std::endl;
+                fontPath = ""; // Will try default font below
+            }
+        }
+        
+        // Priority 3: If no font_path in params/additionalParams or font file not found, try default font
+        if (fontPath.empty()) {
+            // Try default font from /opt/edge_ai_api/fonts/ first
+            std::string defaultFontPath = "/opt/edge_ai_api/fonts/NotoSansCJKsc-Medium.otf";
+            if (fs::exists(defaultFontPath)) {
+                fontPath = defaultFontPath;
+                std::cerr << "[PipelineBuilder] Using default font from /opt/edge_ai_api/fonts/" << std::endl;
+            } else {
+                // Fallback to environment variable resolution
+                fontPath = EnvConfig::resolveDefaultFontPath();
+            }
+        }
+        
+        std::cerr << "[PipelineBuilder] Creating OSD v3 node:" << std::endl;
+        std::cerr << "  Name: '" << nodeName << "'" << std::endl;
+        if (!fontPath.empty()) {
+            std::cerr << "  Font path: '" << fontPath << "'" << std::endl;
+        } else {
+            std::cerr << "  Font: Using default font" << std::endl;
+        }
+        
+        // Try to create node with font path, if it fails, fallback to default font
+        std::shared_ptr<cvedix_nodes::cvedix_node> node;
+        try {
+            node = std::make_shared<cvedix_nodes::cvedix_osd_node_v3>(nodeName, fontPath);
+            std::cerr << "[PipelineBuilder] ✓ OSD v3 node created successfully" << std::endl;
+            return node;
+        } catch (const cv::Exception& e) {
+            // OpenCV exception (likely font loading failed)
+            if (!fontPath.empty()) {
+                std::cerr << "[PipelineBuilder] ⚠ WARNING: Failed to load font from '" << fontPath 
+                         << "': " << e.what() << std::endl;
+                std::cerr << "[PipelineBuilder] ⚠ Falling back to default font (no Chinese/Unicode support)" << std::endl;
+                // Try again with empty font path (default font)
+                try {
+                    node = std::make_shared<cvedix_nodes::cvedix_osd_node_v3>(nodeName, "");
+                    std::cerr << "[PipelineBuilder] ✓ OSD v3 node created successfully with default font" << std::endl;
+                    return node;
+                } catch (const std::exception& e2) {
+                    std::cerr << "[PipelineBuilder] ✗ ERROR: Failed to create OSD v3 node even with default font: " 
+                             << e2.what() << std::endl;
+                    throw;
+                }
+            } else {
+                // Already using default font, rethrow
+                throw;
+            }
+        } catch (const std::exception& e) {
+            // Other exceptions
+            std::cerr << "[PipelineBuilder] Exception in createOSDv3Node: " << e.what() << std::endl;
+            throw;
+        }
+    } catch (const std::exception& e) {
+        std::cerr << "[PipelineBuilder] Exception in createOSDv3Node: " << e.what() << std::endl;
+        throw;
+    }
+}
+
 std::shared_ptr<cvedix_nodes::cvedix_node> PipelineBuilder::createBACrosslineOSDNode(
     const std::string& nodeName,
     const std::map<std::string, std::string>& params) {
@@ -2306,9 +2485,16 @@ std::string PipelineBuilder::getFilePath(const CreateInstanceRequest& req) const
         return it->second;
     }
     
-    // Default fallback
-    std::cerr << "[PipelineBuilder] WARNING: Using default file path (./cvedix_data/test_video/face.mp4)" << std::endl;
-    std::cerr << "[PipelineBuilder] NOTE: To use custom file path, provide 'FILE_PATH' in request body additionalParams" << std::endl;
+    // Default fallback: Try production path first, then development path
+    std::string productionPath = "/opt/edge_ai_api/videos/face.mp4";
+    if (fs::exists(productionPath)) {
+        std::cerr << "[PipelineBuilder] Using default production file path: " << productionPath << std::endl;
+        return productionPath;
+    }
+    
+    // Development fallback (will not exist in production)
+    std::cerr << "[PipelineBuilder] ⚠ WARNING: Using development default file path (./cvedix_data/test_video/face.mp4)" << std::endl;
+    std::cerr << "[PipelineBuilder] ℹ NOTE: In production, provide 'FILE_PATH' in request body or upload videos to /opt/edge_ai_api/videos/" << std::endl;
     return "./cvedix_data/test_video/face.mp4";
 }
 
@@ -3801,8 +3987,17 @@ std::shared_ptr<cvedix_nodes::cvedix_node> PipelineBuilder::createImageSourceNod
             if (it != req.additionalParams.end() && !it->second.empty()) {
                 portOrLocation = it->second;
             } else {
-                // Default: use file path pattern
-                portOrLocation = "./cvedix_data/test_images/%d.jpg";
+                // Default: Try production path first, then development path
+                std::string productionPath = "/opt/edge_ai_api/data/test_images/%d.jpg";
+                if (fs::exists("/opt/edge_ai_api/data/test_images")) {
+                    portOrLocation = productionPath;
+                    std::cerr << "[PipelineBuilder] Using default production image path: " << productionPath << std::endl;
+                } else {
+                    // Development fallback (will not exist in production)
+                    portOrLocation = "./cvedix_data/test_images/%d.jpg";
+                    std::cerr << "[PipelineBuilder] ⚠ WARNING: Using development default image path (./cvedix_data/test_images/%d.jpg)" << std::endl;
+                    std::cerr << "[PipelineBuilder] ℹ NOTE: In production, provide 'IMAGE_SRC_PORT_OR_LOCATION' or upload images to /opt/edge_ai_api/data/test_images/" << std::endl;
+                }
             }
         }
         
