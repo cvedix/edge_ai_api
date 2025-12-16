@@ -79,6 +79,7 @@ target_sources(edge_ai_api_tests PRIVATE
     ${CMAKE_SOURCE_DIR}/src/instances/instance_storage.cpp
     ${CMAKE_SOURCE_DIR}/src/instances/instance_registry.cpp
     ${CMAKE_SOURCE_DIR}/src/core/pipeline_builder.cpp
+    ${CMAKE_SOURCE_DIR}/src/utils/cvedix_mqtt_client_impl.cpp
     ${CMAKE_SOURCE_DIR}/src/solutions/solution_registry.cpp
     ${CMAKE_SOURCE_DIR}/src/solutions/solution_storage.cpp
     ${CMAKE_SOURCE_DIR}/src/config/system_config.cpp

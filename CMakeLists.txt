@@ -280,6 +280,7 @@ set(SOURCES
     src/solutions/solution_registry.cpp
     src/groups/group_registry.cpp
     src/core/pipeline_builder.cpp
+    src/utils/cvedix_mqtt_client_impl.cpp
     src/instances/instance_storage.cpp
     src/solutions/solution_storage.cpp
     src/groups/group_storage.cpp
