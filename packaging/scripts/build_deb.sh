@@ -266,7 +266,7 @@ create_bundle_libs_script
 # ============================================
 # Step 1: Check Build Dependencies
 # ============================================
-echo -e "${BLUE}[1/6]${NC} Checking build dependencies..."
+echo -e "${BLUE}[1/5]${NC} Checking build dependencies..."
 MISSING_DEPS=()
 
 # Check for commands
@@ -301,7 +301,7 @@ echo ""
 # Step 2: Clean (if requested)
 # ============================================
 if [ "$CLEAN_BUILD" = true ]; then
-    echo -e "${BLUE}[2/6]${NC} Cleaning build directory..."
+    echo -e "${BLUE}[2/5]${NC} Cleaning build directory..."
     rm -rf build
     rm -rf debian/edge-ai-api
     rm -f ../edge-ai-api_*.deb ../edge-ai-api_*.changes ../edge-ai-api_*.buildinfo
@@ -313,7 +313,7 @@ fi
 # Step 3: Build Project
 # ============================================
 if [ "$SKIP_BUILD" = false ]; then
-    echo -e "${BLUE}[3/6]${NC} Building project..."
+    echo -e "${BLUE}[3/5]${NC} Building project..."
     
     if [ ! -d "build" ]; then
         mkdir -p build
@@ -337,7 +337,7 @@ if [ "$SKIP_BUILD" = false ]; then
     echo -e "${GREEN}✓${NC} Build completed"
     echo ""
 else
-    echo -e "${YELLOW}[3/6]${NC} Skipping build (using existing build)"
+    echo -e "${YELLOW}[3/5]${NC} Skipping build (using existing build)"
     echo ""
 fi
 
@@ -372,7 +372,7 @@ echo "Found executable: $EXECUTABLE"
 # ============================================
 # Step 4: Update Changelog
 # ============================================
-echo -e "${BLUE}[4/6]${NC} Updating changelog..."
+echo -e "${BLUE}[4/5]${NC} Updating changelog..."
 if [ -f "debian/changelog" ]; then
     sed -i "s/edge-ai-api (.*) unstable/edge-ai-api ($VERSION) unstable/" debian/changelog
     echo -e "${GREEN}✓${NC} Changelog updated"
@@ -382,21 +382,10 @@ fi
 echo ""
 
 # ============================================
-# Step 5: Bundle Libraries (for debian/rules)
+# Step 5: Build Debian Package
 # ============================================
-echo -e "${BLUE}[5/6]${NC} Preparing libraries for bundling..."
-LIB_DIR_TEMP="debian/edge-ai-api/opt/edge_ai_api/lib"
-mkdir -p "$LIB_DIR_TEMP"
-
-# Bundle libraries using our function
-bundle_libraries "$EXECUTABLE" "$LIB_DIR_TEMP"
-
-echo ""
-
-# ============================================
-# Step 6: Build Debian Package
-# ============================================
-echo -e "${BLUE}[6/6]${NC} Building Debian package..."
+# Note: Library bundling is handled by debian/rules during install phase
+echo -e "${BLUE}[5/5]${NC} Building Debian package..."
 export DEB_BUILD_OPTIONS="parallel=$(nproc)"
 
 # Build package (dpkg-buildpackage expects to be run from project root)
