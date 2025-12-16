@@ -1,0 +1,21 @@
+{
+  "name": "mask_rcnn_rtmp_test",
+  "group": "test",
+  "solution": "mask_rcnn_rtmp",
+  "persistent": false,
+  "autoStart": false,
+  "detectionSensitivity": "Medium",
+  "additionalParams": {
+    "FILE_PATH": "/home/cvedix/project/edge_ai_api/cvedix_data/test_video/mask_rcnn.mp4",
+    "RTMP_URL": "rtmp://localhost:1935/live/mask_rcnn_stream",
+    "MODEL_PATH": "/home/cvedix/project/edge_ai_api/cvedix_data/models/mask_rcnn/frozen_inference_graph.pb",
+    "MODEL_CONFIG_PATH": "/home/cvedix/project/edge_ai_api/cvedix_data/models/mask_rcnn/mask_rcnn_inception_v2_coco_2018_01_28.pbtxt",
+    "LABELS_PATH": "/home/cvedix/project/edge_ai_api/cvedix_data/models/coco_80classes.txt",
+    "INPUT_WIDTH": "416",
+    "INPUT_HEIGHT": "416",
+    "SCORE_THRESHOLD": "0.5",
+    "RESIZE_RATIO": "1.0",
+    "ENABLE_SCREEN_DES": "false"
+  }
+}
+

@@ -1,0 +1,55 @@
+{
+  "events": [
+    {
+      "id": "550e8400-e29b-41d4-a716-446655440001",
+      "instance_id": "ba_crossline_file_mqtt_test",
+      "frame_id": 5678,
+      "frame_time": 189.27,
+      "type": "crossline_enter",
+      "label": "Vehicle crossed line",
+      "date": "Mon Jan 15 14:35:42 2025",
+      "system_date": "2025-01-15T07:35:42Z",
+      "system_timestamp": "1736940942000",
+      "best_thumbnail": {
+        "confidence": 0.88,
+        "image": "base64_encoded_image_string",
+        "position": {
+          "x": 0.35,
+          "y": 0.40,
+          "width": 0.20,
+          "height": 0.25
+        },
+        "timestamp": 189.27
+      },
+      "extra": {
+        "bbox": {
+          "x": 0.35,
+          "y": 0.40,
+          "width": 0.20,
+          "height": 0.25
+        },
+        "class": "Car",
+        "current_entries": 5,
+        "external_id": "550e8400-e29b-41d4-a716-446655440001",
+        "total_hits": 5678,
+        "track_id": "VehicleTracker_123"
+      },
+      "image": "base64_encoded_full_frame_string",
+      "tracks": [
+        {
+          "track_id": "VehicleTracker_123",
+          "bbox": {"x": 0.35, "y": 0.40, "width": 0.20, "height": 0.25},
+          "confidence": 0.88,
+          "class": "Car"
+        }
+      ],
+      "zone_id": "crossline_zone_1",
+      "zone_name": "Main Road Crossline"
+    }
+  ],
+  "frame_id": 5678,
+  "frame_time": 189.27,
+  "system_date": "Mon Jan 15 14:35:42 2025",
+  "system_timestamp": "1736940942000"
+}
+

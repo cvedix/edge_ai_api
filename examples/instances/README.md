@@ -1,151 +1,245 @@
-# Instance Examples
+# Instance Testing Guide - Tổng Hợp
 
-Thư mục này chứa các example files và scripts để làm việc với API instances.
+## 📋 Tổng Quan
 
-## Cấu trúc
+Thư mục này chứa toàn bộ tài liệu và examples để test các instances trong Edge AI API.
+
+## 📁 Cấu Trúc Thư Mục
 
 ```
 examples/instances/
-├── create/              # Example files để tạo instances
-├── update/              # Example files để cập nhật instances
-├── scripts/             # Utility scripts
-├── tests/               # Test files
-├── infer_nodes/         # Inference nodes examples
-├── example_*.json       # Solution examples (ở root)
-├── batch_operations.md  # Documentation
-└── README.md           # File này
+├── README.md                    # File này
+├── face_detection/              # Face Detection instances
+│   ├── README.md
+│   ├── test_file_source.json
+│   ├── test_rtsp_source.json
+│   ├── test_rtmp_output.json
+│   ├── test_mqtt_events.json
+│   └── report_body_example.json
+├── ba_crossline/                # Behavior Analysis Crossline instances
+│   ├── README.md
+│   ├── test_file_source_mqtt.json
+│   ├── test_rtsp_source_rtmp_mqtt.json
+│   ├── test_rtsp_source_mqtt_only.json
+│   ├── test_rtsp_source_rtmp_only.json
+│   ├── test_rtmp_output_only.json
+│   └── report_body_example.json
+├── mask_rcnn/                   # MaskRCNN instances
+│   ├── README.md
+│   ├── test_file_source.json
+│   ├── test_rtmp_output.json
+│   └── report_body_example.json
+├── rtmp_mqtt/                   # RTMP/MQTT integration guide
+│   └── README.md
+├── create/                      # Create examples (legacy)
+├── update/                      # Update examples (legacy)
+├── scripts/                     # Utility scripts
+└── tests/                       # Test files
 ```
 
-### 1. Create Examples (`create/`)
-Các example files cho các solution cơ bản đã được định nghĩa sẵn trong hệ thống.
+## 🎯 Các Loại Instance
 
-Xem [create/README.md](./create/README.md) để biết chi tiết.
+### 1. Face Detection (`face_detection/`)
 
-**Files**:
-- `create_face_detection_basic.json` - Face detection cơ bản với RTSP source
-- `create_face_detection_file_source.json` - Face detection với file source
-- `create_face_detection_rtmp.json` - Face detection với RTMP output
-- `create_object_detection.json` - Object detection cơ bản
-- `create_thermal_detection.json` - Thermal detection
-- `create_minimal.json` - Minimal example với các tham số tối thiểu
+**Solutions:**
+- `face_detection`: RTSP source + face detection
+- `face_detection_file`: File source + face detection
+- `face_detection_rtmp`: File source + RTMP output
 
-### 2. Solution Examples (`example_*.json` ở root)
-Các example files cho các solutions mới đã được tích hợp:
+**Tính năng:**
+- Phát hiện khuôn mặt với YuNet
+- Face recognition với SFace (tùy chọn)
+- Face tracking với SORT (tùy chọn)
+- RTMP streaming (tùy chọn)
+- MQTT events (tùy chọn)
 
-- `example_yolov11_detection.json` - YOLOv11 Object Detection
-- `example_face_swap.json` - Face Swap
-- `example_insightface_recognition.json` - InsightFace Recognition
-- `example_mllm_analysis.json` - MLLM Analysis
-- `example_rknn_yolov11_detection.json` - RKNN YOLOv11 (conditional)
-- `example_trt_insightface_recognition.json` - TensorRT InsightFace (conditional)
-- `example_ba_crossline_rtmp.json` - BA Crossline RTMP
-- `example_face_detection_rtmp.json` - Face Detection RTMP
-- `example_full_config.json` - Full configuration example
+**Xem:** [face_detection/README.md](./face_detection/README.md)
 
-### 3. Update Examples (`update/`)
-Các example files cho việc cập nhật instance.
+### 2. Behavior Analysis Crossline (`ba_crossline/`)
 
-Xem [update/README.md](./update/README.md) để biết chi tiết.
+**Solutions:**
+- `ba_crossline_with_mqtt`: BA crossline với MQTT events
 
-**Files**:
-- `update_change_model_path.json` - Thay đổi model path
-- `update_change_name_group.json` - Thay đổi name và group
-- `update_change_persistent_autostart.json` - Thay đổi persistent và autoStart
-- `update_change_rtsp_url.json` - Thay đổi RTSP URL
-- `update_change_settings.json` - Thay đổi các settings khác
+**Tính năng:**
+- Phát hiện phương tiện với YOLO
+- Tracking với SORT
+- Đếm phương tiện đi qua line
+- RTMP streaming (tùy chọn)
+- MQTT events khi có phương tiện đi qua
 
-### 4. Scripts (`scripts/`)
-Utility scripts để làm việc với API.
+**Xem:** [ba_crossline/README.md](./ba_crossline/README.md)
 
-Xem [scripts/README.md](./scripts/README.md) để biết chi tiết.
+### 3. MaskRCNN (`mask_rcnn/`)
 
-**Scripts**:
-- `demo_script.sh` - Demo script để test API
-- `check_instance_status.sh` - Kiểm tra trạng thái instance
-- `monitor_instance.sh` - Monitor instance
-- `test_output_api.sh` - Test output API
-- `analyze_log.sh` - Phân tích logs
+**Solutions:**
+- `mask_rcnn_detection`: File source + instance segmentation
+- `mask_rcnn_rtmp`: File source + RTMP output
 
-### 5. Tests (`tests/`)
-Test files và examples để test API functionality.
+**Tính năng:**
+- Instance segmentation với MaskRCNN
+- Phát hiện 80 COCO classes
+- Tạo mask cho từng đối tượng
+- RTMP streaming (tùy chọn)
 
-Xem [tests/README.md](./tests/README.md) để biết chi tiết.
+**Xem:** [mask_rcnn/README.md](./mask_rcnn/README.md)
 
-### 6. Inference Nodes Examples (`infer_nodes/`)
-Xem [infer_nodes/README.md](./infer_nodes/README.md) để biết chi tiết về các example files cho các inference nodes cụ thể.
+## 📝 Quick Start Guide
 
-### 7. Documentation
-- `README.md` - File này
-- `batch_operations.md` - Hướng dẫn batch operations
-- `infer_nodes/INFER_NODES_GUIDE.md` - Hướng dẫn sử dụng inference nodes
+### 1. Chọn Instance Type
 
-## Cách Sử dụng
+Xem các thư mục con để chọn instance phù hợp:
+- `face_detection/`: Phát hiện khuôn mặt
+- `ba_crossline/`: Đếm phương tiện đi qua line
+- `mask_rcnn/`: Instance segmentation
 
-### 1. Create Instance với Basic Solutions
+### 2. Chọn Test File
 
-Sử dụng các file trong `create/` với các solution đã được định nghĩa sẵn:
+Mỗi thư mục có các file test JSON:
+- `test_file_source.json`: Test với file video
+- `test_rtsp_source.json`: Test với RTSP stream
+- `test_rtmp_output.json`: Test với RTMP output
+- `test_mqtt_events.json`: Test với MQTT events
+
+### 3. Tạo Instance
 
 ```bash
 curl -X POST http://localhost:8080/v1/core/instance \
   -H "Content-Type: application/json" \
-  -d @create/create_face_detection_basic.json
+  -d @face_detection/test_file_source.json
 ```
 
-### 2. Create Instance với Solution Examples
-
-Sử dụng các file `example_*.json` ở root:
+### 4. Start Instance
 
 ```bash
-curl -X POST http://localhost:8080/v1/core/instance \
-  -H "Content-Type: application/json" \
-  -d @example_yolov11_detection.json
+curl -X POST http://localhost:8080/v1/core/instance/{instanceId}/start
 ```
 
-### 3. Inference Nodes (Cần tạo solution config)
-
-Sử dụng các file trong `infer_nodes/` sau khi đã tạo solution config tương ứng:
+### 5. Kiểm Tra Kết Quả
 
 ```bash
-# Bước 1: Tạo solution config (nếu chưa có)
-# Bước 2: Tạo instance với solution ID
-curl -X POST http://localhost:8080/v1/core/instance \
-  -H "Content-Type: application/json" \
-  -d @infer_nodes/example_trt_yolov8_detector.json
+# Kiểm tra status
+curl http://localhost:8080/v1/core/instance/{instanceId}
+
+# Kiểm tra statistics
+curl http://localhost:8080/v1/core/instance/{instanceId}/statistics
+
+# Subscribe MQTT (nếu có)
+mosquitto_sub -h localhost -t events -v
 ```
 
-Xem chi tiết trong [infer_nodes/INFER_NODES_GUIDE.md](./infer_nodes/INFER_NODES_GUIDE.md)
+## 🔧 Common Parameters
 
-### 4. Update Instance
+### File Source
+```json
+{
+  "FILE_PATH": "/path/to/video.mp4",
+  "RESIZE_RATIO": "1.0"
+}
+```
+
+### RTSP Source
+```json
+{
+  "RTSP_SRC_URL": "rtsp://server:8554/stream",
+  "RESIZE_RATIO": "1.0",
+  "GST_DECODER_NAME": "avdec_h264",
+  "SKIP_INTERVAL": "0",
+  "CODEC_TYPE": "h264"
+}
+```
+
+### RTMP Output
+```json
+{
+  "RTMP_URL": "rtmp://server:1935/live/stream_key",
+  "ENABLE_SCREEN_DES": "false"
+}
+```
+
+### MQTT Events
+```json
+{
+  "MQTT_BROKER_URL": "localhost",
+  "MQTT_PORT": "1883",
+  "MQTT_TOPIC": "events",
+  "MQTT_USERNAME": "",
+  "MQTT_PASSWORD": "",
+  "MQTT_RATE_LIMIT_MS": "1000",
+  "BROKE_FOR": "FACE"  // hoặc "NORMAL"
+}
+```
+
+## 📊 Report Body Structure
+
+Mỗi instance có file `report_body_example.json` mô tả cấu trúc report body từ MQTT events.
+
+**Common fields:**
+- `events[]`: Array of events
+- `frame_id`: Frame number
+- `frame_time`: Timestamp in seconds
+- `system_date`: ISO date string
+- `system_timestamp`: Unix timestamp in milliseconds
+
+**Event fields:**
+- `id`: UUID
+- `instance_id`: Instance name
+- `type`: Event type (face_detected, crossline_enter, object_detected, etc.)
+- `label`: Human-readable label
+- `best_thumbnail`: Cropped image with position
+- `extra`: Additional data (bbox, class, track_id, etc.)
+- `tracks[]`: Array of tracked objects
+
+## 🔍 Troubleshooting
+
+### Lỗi: Instance không start
 
 ```bash
-curl -X PUT http://localhost:8080/v1/core/instance/{instanceId} \
-  -H "Content-Type: application/json" \
-  -d @update/update_change_rtsp_url.json
+# Kiểm tra logs
+tail -f /opt/edge_ai_api/logs/edge_ai_api.log
+
+# Kiểm tra status
+curl http://localhost:8080/v1/core/instance/{instanceId}
 ```
 
-### 5. Sử dụng Scripts
+### Lỗi: Model không tìm thấy
 
-```bash
-# Check instance status
-./scripts/check_instance_status.sh {instanceId}
+- Kiểm tra đường dẫn model trong JSON config
+- Đảm bảo model files tồn tại
+- Kiểm tra permissions
 
-# Monitor instance
-./scripts/monitor_instance.sh {instanceId}
-```
+### Lỗi: RTSP/RTMP connection failed
 
-## Phân biệt các loại Examples
+- Kiểm tra network connectivity
+- Kiểm tra server đang chạy
+- Kiểm tra firewall rules
+- Test với ffmpeg/ffplay
 
-| Loại | Thư mục | Solution Config | Mục đích |
-|------|---------|----------------|----------|
-| Basic Solutions | `create/` | Đã có sẵn | Sử dụng ngay với các solution đã định nghĩa |
-| Solution Examples | Root (`example_*.json`) | Đã có sẵn | Examples cho các solutions mới |
-| Inference Nodes | `infer_nodes/` | Cần tạo | Demo các inference nodes cụ thể |
-| Update Examples | `update/` | N/A | Ví dụ về cách update instance |
-| Scripts | `scripts/` | N/A | Utility scripts |
-| Tests | `tests/` | N/A | Test files |
+### Lỗi: MQTT connection failed
 
-## Lưu ý
+- Kiểm tra MQTT broker đang chạy
+- Kiểm tra credentials
+- Test với mosquitto_sub
 
-1. **Basic Solutions**: Có thể sử dụng ngay mà không cần cấu hình thêm
-2. **Inference Nodes**: Yêu cầu tạo solution config trước khi sử dụng
-3. **Model Paths**: Các đường dẫn trong example files là ví dụ, cần cập nhật cho phù hợp với môi trường của bạn
+## 📚 Tài Liệu Tham Khảo
+
+- API Documentation: `docs/INSTANCE_GUIDE.md`
+- Solutions Reference: `docs/DEFAULT_SOLUTIONS_REFERENCE.md`
+- Sample Code: `sample/README.md`
+- Testing Guides:
+  - `sample/YUNET_TESTING_GUIDE.md`
+  - `sample/MASKRCNN_TESTING_GUIDE.md`
+  - `sample/SELECTED_SAMPLES_RTMP_MQTT.md`
+
+## 🗂️ Legacy Files
+
+Các thư mục sau được giữ lại cho tương thích ngược:
+- `create/`: Create examples (có thể sử dụng)
+- `update/`: Update examples (có thể sử dụng)
+- `scripts/`: Utility scripts
+- `tests/`: Test files
+
+Các file JSON ở root (`example_*.json`) là các examples cũ. Chúng đã được tổ chức lại vào các thư mục con tương ứng.
+
+**Khuyến nghị:** Sử dụng files trong các thư mục con (`face_detection/`, `ba_crossline/`, `mask_rcnn/`) thay vì các file ở root.
+
+Xem [LEGACY_FILES.md](./LEGACY_FILES.md) để biết mapping chi tiết.

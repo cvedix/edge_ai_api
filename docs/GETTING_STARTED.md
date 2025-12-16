@@ -532,6 +532,35 @@ curl -v http://localhost:8080/v1/core/health
 - Kiểm tra logs để xem có lỗi không
 - Kiểm tra network connectivity
 
+### Queue Issues và Auto-Recovery
+
+Hệ thống tự động phát hiện và xử lý queue issues để tránh deadlock:
+
+**Cơ chế phát hiện:**
+- **FPS = 0** trong 30+ giây → Queue có thể đầy
+- **Queue full warnings > 100** → Queue đầy
+
+**Tự động recovery:**
+- Hệ thống tự động restart instance để clear queue
+- Không cần can thiệp thủ công
+
+**Monitor logs:**
+```bash
+# Xem queue monitoring logs
+tail -f logs/general/*.log | grep -i "QueueMonitor"
+
+# Hoặc khi chạy server
+./build/bin/edge_ai_api 2>&1 | grep -i "QueueMonitor"
+```
+
+**Cấu hình (nếu cần):**
+```bash
+# Set CVEDIX log level để thấy queue warnings
+export CVEDIX_LOG_LEVEL=INFO
+```
+
+Xem chi tiết về Queue Monitoring trong code tại `src/instances/queue_monitor.h` và `src/instances/queue_monitor.cpp`.
+
 ## 📊 Performance
 
 ### Cấu Hình Tối Ưu
@@ -567,6 +596,6 @@ Có thể tùy chỉnh trong `src/main.cpp`:
 
 - [Setup Môi Trường Phát Triển](DEVELOPMENT_SETUP.md)
 - [Hướng Dẫn Phát Triển](DEVELOPMENT_GUIDE.md)
-- [Architecture](architecture.md)
+- [Architecture](ARCHITECTURE.md)
 - [OpenAPI Specification](../openapi.yaml)
 

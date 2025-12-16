@@ -135,7 +135,7 @@ ls -la /opt/edge_ai_api
 
 ## 📚 Tài Liệu Liên Quan
 
-- [DIRECTORY_CREATION_GUIDE.md](../docs/DIRECTORY_CREATION_GUIDE.md) - Hướng dẫn chi tiết về tạo thư mục
+- [DEVELOPMENT_SETUP.md](../docs/DEVELOPMENT_SETUP.md) - Hướng dẫn chi tiết về tạo thư mục (xem phần "Tạo Thư Mục Tự Động với Fallback")
 - [install_directories.sh](./install_directories.sh) - Script cài đặt thư mục
 - [set_full_permissions.sh](./set_full_permissions.sh) - Script cấp quyền 777
 - [build.sh](./build.sh) - Script build và deploy hoàn chỉnh

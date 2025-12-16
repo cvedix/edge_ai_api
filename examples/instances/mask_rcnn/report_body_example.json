@@ -1,0 +1,101 @@
+{
+  "events": [
+    {
+      "id": "550e8400-e29b-41d4-a716-446655440002",
+      "instance_id": "mask_rcnn_file_test",
+      "frame_id": 3456,
+      "frame_time": 115.2,
+      "type": "object_detected",
+      "label": "Person detected",
+      "date": "Mon Jan 15 14:32:15 2025",
+      "system_date": "2025-01-15T07:32:15Z",
+      "system_timestamp": "1736940735000",
+      "best_thumbnail": {
+        "confidence": 0.92,
+        "image": "base64_encoded_image_string",
+        "position": {
+          "x": 0.20,
+          "y": 0.15,
+          "width": 0.25,
+          "height": 0.50
+        },
+        "timestamp": 115.2
+      },
+      "extra": {
+        "bbox": {
+          "x": 0.20,
+          "y": 0.15,
+          "width": 0.25,
+          "height": 0.50
+        },
+        "class": "person",
+        "class_id": 1,
+        "confidence": 0.92,
+        "track_id": "ObjectTracker_456",
+        "mask": "base64_encoded_mask_string"
+      },
+      "image": "base64_encoded_full_frame_string",
+      "tracks": [
+        {
+          "track_id": "ObjectTracker_456",
+          "bbox": {"x": 0.20, "y": 0.15, "width": 0.25, "height": 0.50},
+          "confidence": 0.92,
+          "class": "person",
+          "class_id": 1,
+          "mask": "base64_encoded_mask_string"
+        }
+      ]
+    },
+    {
+      "id": "550e8400-e29b-41d4-a716-446655440003",
+      "instance_id": "mask_rcnn_file_test",
+      "frame_id": 3456,
+      "frame_time": 115.2,
+      "type": "object_detected",
+      "label": "Car detected",
+      "date": "Mon Jan 15 14:32:15 2025",
+      "system_date": "2025-01-15T07:32:15Z",
+      "system_timestamp": "1736940735000",
+      "best_thumbnail": {
+        "confidence": 0.88,
+        "image": "base64_encoded_image_string",
+        "position": {
+          "x": 0.60,
+          "y": 0.50,
+          "width": 0.30,
+          "height": 0.25
+        },
+        "timestamp": 115.2
+      },
+      "extra": {
+        "bbox": {
+          "x": 0.60,
+          "y": 0.50,
+          "width": 0.30,
+          "height": 0.25
+        },
+        "class": "car",
+        "class_id": 3,
+        "confidence": 0.88,
+        "track_id": "ObjectTracker_457",
+        "mask": "base64_encoded_mask_string"
+      },
+      "image": "base64_encoded_full_frame_string",
+      "tracks": [
+        {
+          "track_id": "ObjectTracker_457",
+          "bbox": {"x": 0.60, "y": 0.50, "width": 0.30, "height": 0.25},
+          "confidence": 0.88,
+          "class": "car",
+          "class_id": 3,
+          "mask": "base64_encoded_mask_string"
+        }
+      ]
+    }
+  ],
+  "frame_id": 3456,
+  "frame_time": 115.2,
+  "system_date": "Mon Jan 15 14:32:15 2025",
+  "system_timestamp": "1736940735000"
+}
+

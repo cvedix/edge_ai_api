@@ -2,7 +2,7 @@
 
 File này hướng dẫn cách build file `.deb` tự chứa tất cả dependencies để người dùng chỉ cần tải và cài đặt.
 
-## Quick Start - Chỉ Cần Một Lệnh!
+## 🚀 Quick Start - Chỉ Cần Một Lệnh!
 
 ```bash
 # Build file .deb (tất cả trong một lần chạy)
@@ -23,9 +23,11 @@ sudo systemctl start edge-ai-api
 - ✅ Bundle libraries
 - ✅ Tạo file .deb
 
-## Chi Tiết
+> ⚠️ **Lưu ý**: Không cần `sudo` để build! Chỉ cần sudo khi **cài đặt** package sau này.
 
-### Yêu Cầu Build
+## 📋 Yêu Cầu Build
+
+Script sẽ tự động kiểm tra và báo lỗi nếu thiếu. Cài đặt với:
 
 ```bash
 sudo apt-get update
@@ -39,7 +41,7 @@ sudo apt-get install -y \
     libmosquitto-dev
 ```
 
-### Build Package
+## 🔧 Build Package
 
 ```bash
 # Build với script tự động (khuyến nghị - tất cả trong một)
@@ -48,11 +50,13 @@ sudo apt-get install -y \
 # Hoặc với các tùy chọn
 ./packaging/scripts/build_deb.sh --clean          # Clean build trước
 ./packaging/scripts/build_deb.sh --no-build       # Chỉ tạo package từ build có sẵn
-./packaging/scripts/build_deb.sh --version 1.0.0 # Set version tùy chỉnh
+./packaging/scripts/build_deb.sh --version 1.0.0  # Set version tùy chỉnh
 ./packaging/scripts/build_deb.sh --help           # Xem tất cả options
 ```
 
-### Cài Đặt Package
+## 💾 Cài Đặt Package
+
+**Sau khi có file .deb**, mới cần sudo để cài đặt:
 
 ```bash
 # Cài đặt
@@ -66,7 +70,7 @@ sudo systemctl start edge-ai-api
 sudo systemctl enable edge-ai-api  # Tự động chạy khi khởi động
 ```
 
-### Kiểm Tra
+## ✅ Kiểm Tra
 
 ```bash
 # Kiểm tra service
@@ -79,7 +83,7 @@ sudo journalctl -u edge-ai-api -f
 curl http://localhost:8080/v1/core/health
 ```
 
-## Cấu Trúc Package
+## 📦 Cấu Trúc Package
 
 Sau khi cài đặt:
 
@@ -89,7 +93,7 @@ Sau khi cài đặt:
 - **Data**: `/opt/edge_ai_api/` (instances, solutions, models, logs, etc.)
 - **Service**: `/etc/systemd/system/edge-ai-api.service`
 
-## Tính Năng
+## ✨ Tính Năng
 
 ✅ **Bundled Libraries**: Tất cả shared libraries được bundle vào package  
 ✅ **RPATH Configuration**: Executable tự động tìm libraries trong package  
@@ -98,7 +102,24 @@ Sau khi cài đặt:
 ✅ **Directory Structure**: Tự động tạo cấu trúc thư mục cần thiết  
 ✅ **ldconfig**: Tự động cấu hình ldconfig để tìm libraries  
 
-## Troubleshooting
+## 📝 Tóm Tắt
 
-Xem chi tiết trong [debian/README.md](debian/README.md)
+| Bước | Lệnh | Cần Sudo? |
+|------|------|-----------|
+| **Build .deb** | `./packaging/scripts/build_deb.sh` | ❌ **KHÔNG** |
+| **Cài đặt package** | `sudo dpkg -i *.deb` | ✅ **CÓ** |
+| **Khởi động service** | `sudo systemctl start edge-ai-api` | ✅ **CÓ** |
 
+## 🛠️ Script Làm Gì?
+
+1. ✅ Kiểm tra dependencies
+2. ✅ Build project với CMake
+3. ✅ Bundle tất cả libraries
+4. ✅ Tạo file .deb package
+5. ✅ Đặt tên file đúng format
+
+Tất cả trong một lần chạy!
+
+## 🐛 Troubleshooting
+
+Xem chi tiết trong [debian/README.md](../debian/README.md)

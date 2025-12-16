@@ -6,7 +6,7 @@ Dự án Edge AI API sử dụng biến môi trường để cấu hình server 
 
 > **📖 Xem thêm:** 
 > - [Unified Configuration Approach](CONFIG_UNIFIED_APPROACH.md) - **Cách tiếp cận thống nhất** giữa config.json và env vars
-> - [Directory Creation Guide](DIRECTORY_CREATION_GUIDE.md) - Hướng dẫn chi tiết về cách xử lý tạo thư mục tự động với fallback
+> - [Development Setup](DEVELOPMENT_SETUP.md) - Hướng dẫn chi tiết về cách xử lý tạo thư mục tự động với fallback
 
 ## ⚡ Unified Configuration
 
@@ -133,7 +133,7 @@ Environment="CONFIG_FILE=/opt/edge_ai_api/config/config.json"
 - **Development**: Có thể override bằng biến môi trường `INSTANCES_DIR=./instances` để lưu ở project root
 - **Production**: Khuyến nghị sử dụng mặc định `/opt/edge_ai_api/instances` hoặc `/var/lib/edge_ai_api/instances`
 - **⚠️ Không nên lưu trong `build/` directory** - Dữ liệu có thể bị mất khi clean build
-- Xem chi tiết: [Directory Creation Guide](DIRECTORY_CREATION_GUIDE.md) - Hướng dẫn tạo thư mục tự động với fallback
+- Xem chi tiết: [Development Setup](DEVELOPMENT_SETUP.md) - Hướng dẫn tạo thư mục tự động với fallback
 
 #### CVEDIX SDK Configuration (Example)
 | Biến | Mô tả | Mặc định | File sử dụng |
