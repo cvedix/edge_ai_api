@@ -6,15 +6,16 @@
   "autoStart": true,
   "detectionSensitivity": "Medium",
   "additionalParams": {
-    "RTSP_URL": "rtsp://192.168.1.100:8554/stream",
-    "MODEL_PATH": "./cvedix_data/models/yolo/yolov3.weights",
-    "MODEL_CONFIG_PATH": "./cvedix_data/models/yolo/yolov3.cfg",
-    "LABELS_PATH": "./cvedix_data/models/coco_80classes.txt",
-    "INPUT_WIDTH": "416",
-    "INPUT_HEIGHT": "416",
-    "SCORE_THRESHOLD": "0.5",
-    "CONFIDENCE_THRESHOLD": "0.5",
-    "NMS_THRESHOLD": "0.5"
+    "input": {
+      "RTSP_URL": "rtsp://192.168.1.100:8554/stream",
+      "MODEL_PATH": "./cvedix_data/models/yolo/yolov3.weights",
+      "MODEL_CONFIG_PATH": "./cvedix_data/models/yolo/yolov3.cfg",
+      "LABELS_PATH": "./cvedix_data/models/coco_80classes.txt",
+      "INPUT_WIDTH": "416",
+      "INPUT_HEIGHT": "416",
+      "SCORE_THRESHOLD": "0.5",
+      "CONFIDENCE_THRESHOLD": "0.5",
+      "NMS_THRESHOLD": "0.5"
+    }
   }
 }
-

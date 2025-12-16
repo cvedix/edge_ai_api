@@ -6,10 +6,13 @@
   "autoStart": true,
   "detectionSensitivity": "Medium",
   "additionalParams": {
-    "RTSP_URL": "rtsp://192.168.1.100:8554/stream",
-    "MODEL_PATH": "./cvedix_data/models/trt/others/yolov8s_v8.5.engine",
-    "LABELS_PATH": "./cvedix_data/models/coco_80classes.txt",
-    "RTMP_URL": "rtmp://anhoidong.datacenter.cvedix.com:1935/live/yolov8_detector"
+    "input": {
+      "RTSP_URL": "rtsp://192.168.1.100:8554/stream",
+      "MODEL_PATH": "./cvedix_data/models/trt/others/yolov8s_v8.5.engine",
+      "LABELS_PATH": "./cvedix_data/models/coco_80classes.txt"
+    },
+    "output": {
+      "RTMP_URL": "rtmp://anhoidong.datacenter.cvedix.com:1935/live/yolov8_detector"
+    }
   }
 }
-

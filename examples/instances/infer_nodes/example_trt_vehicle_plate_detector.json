@@ -6,9 +6,10 @@
   "autoStart": true,
   "detectionSensitivity": "Medium",
   "additionalParams": {
-    "FILE_PATH": "./cvedix_data/test_video/plate.mp4",
-    "DET_MODEL_PATH": "./cvedix_data/models/trt/plate/det_v8.5.trt",
-    "REC_MODEL_PATH": "./cvedix_data/models/trt/plate/rec_v8.5.trt"
+    "input": {
+      "FILE_PATH": "./cvedix_data/test_video/plate.mp4",
+      "DET_MODEL_PATH": "./cvedix_data/models/trt/plate/det_v8.5.trt",
+      "REC_MODEL_PATH": "./cvedix_data/models/trt/plate/rec_v8.5.trt"
+    }
   }
 }
-
