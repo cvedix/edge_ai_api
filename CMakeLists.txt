@@ -281,6 +281,7 @@ set(SOURCES
     src/groups/group_registry.cpp
     src/core/pipeline_builder.cpp
     src/utils/cvedix_mqtt_client_impl.cpp
+    src/utils/gstreamer_checker.cpp
     src/instances/instance_storage.cpp
     src/solutions/solution_storage.cpp
     src/groups/group_storage.cpp
@@ -702,16 +703,118 @@ if(CPP_BASE64_INCLUDE_DIR)
     message(STATUS "✓ Added cpp-base64 include paths for CVEDIX SDK")
 endif()
 
+# ============================================
+# Check CUDA availability and OpenCV CUDA libraries
+# ============================================
+set(OPENCV_CUDA_AVAILABLE FALSE)
+set(OPENCV_CUDA_LIBS "")
+
+# List of OpenCV CUDA library names
+set(CUDA_LIB_NAMES
+    opencv_cudaarithm
+    opencv_cudabgsegm
+    opencv_cudacodec
+    opencv_cudafeatures2d
+    opencv_cudafilters
+    opencv_cudaimgproc
+    opencv_cudalegacy
+    opencv_cudaobjdetect
+    opencv_cudaoptflow
+    opencv_cudastereo
+    opencv_cudawarping
+    opencv_cudev
+)
+
+# Check if any OpenCV CUDA libraries exist by trying to find them
+# We check both library files and CMake targets
+set(SEARCH_PATHS
+    /usr/local/lib
+    /usr/local/lib/x86_64-linux-gnu
+    /usr/lib
+    /usr/lib/x86_64-linux-gnu
+)
+
+foreach(CUDA_LIB ${CUDA_LIB_NAMES})
+    # Check if CMake target exists (modern OpenCV)
+    if(TARGET opencv_${CUDA_LIB})
+        set(OPENCV_CUDA_AVAILABLE TRUE)
+        list(APPEND OPENCV_CUDA_LIBS opencv_${CUDA_LIB})
+    else()
+        # Check if library file exists (fallback)
+        find_library(CUDA_LIB_TEMP
+            NAMES ${CUDA_LIB}
+            PATHS ${SEARCH_PATHS}
+            NO_DEFAULT_PATH
+            NO_CMAKE_PATH
+            NO_CMAKE_ENVIRONMENT_PATH
+            NO_SYSTEM_ENVIRONMENT_PATH
+            NO_CMAKE_SYSTEM_PATH
+        )
+        if(CUDA_LIB_TEMP)
+            set(OPENCV_CUDA_AVAILABLE TRUE)
+            list(APPEND OPENCV_CUDA_LIBS ${CUDA_LIB})
+        endif()
+    endif()
+endforeach()
+
+if(OPENCV_CUDA_AVAILABLE)
+    message(STATUS "✓ OpenCV CUDA libraries found - GPU acceleration enabled")
+    message(STATUS "  Found CUDA libraries: ${OPENCV_CUDA_LIBS}")
+else()
+    message(STATUS "⚠ OpenCV CUDA libraries not found - building without GPU acceleration")
+    message(STATUS "  This is normal for systems without CUDA/GPU support")
+endif()
+
 target_link_libraries(edge_ai_api PRIVATE cvedix::cvedix_instance_sdk)
 message(STATUS "✓ CVEDIX SDK linked: cvedix::cvedix_instance_sdk")
+
+# Handle OpenCV CUDA libraries - filter them out if not available
+# CVEDIX SDK may link against OpenCV CUDA libraries transitively
+if(TARGET cvedix::cvedix_instance_sdk)
+    get_target_property(CVEDIX_LINK_LIBS cvedix::cvedix_instance_sdk INTERFACE_LINK_LIBRARIES)
+    if(CVEDIX_LINK_LIBS)
+        set(FILTERED_LIBS "")
+        foreach(LIB ${CVEDIX_LINK_LIBS})
+            # Check if this is a CUDA library
+            set(IS_CUDA_LIB FALSE)
+            foreach(CUDA_LIB_NAME ${CUDA_LIB_NAMES})
+                if("${LIB}" MATCHES "${CUDA_LIB_NAME}")
+                    set(IS_CUDA_LIB TRUE)
+                    break()
+                endif()
+            endforeach()
+            
+            # Only include CUDA libraries if they are available
+            if(IS_CUDA_LIB)
+                if(OPENCV_CUDA_AVAILABLE)
+                    list(APPEND FILTERED_LIBS "${LIB}")
+                endif()
+            else()
+                list(APPEND FILTERED_LIBS "${LIB}")
+            endif()
+        endforeach()
+        
+        # Update the target properties if needed
+        if(NOT "${CVEDIX_LINK_LIBS}" STREQUAL "${FILTERED_LIBS}")
+            set_target_properties(cvedix::cvedix_instance_sdk PROPERTIES
+                INTERFACE_LINK_LIBRARIES "${FILTERED_LIBS}"
+            )
+            if(OPENCV_CUDA_AVAILABLE)
+                message(STATUS "✓ CVEDIX SDK configured with CUDA support")
+            else()
+                message(STATUS "✓ Filtered unavailable CUDA libraries from CVEDIX SDK")
+            endif()
+        endif()
+    endif()
+endif()
 
 # Link OpenCV (for CVEDIX SDK)
 if(OpenCV_FOUND)
     if(TARGET opencv_core)
         # Modern CMake way
         # CVEDIX SDK requires opencv_dnn module (for cv::dnn::Net)
-        # Only link the modules we actually need (avoid CUDA modules if not built)
-        target_link_libraries(edge_ai_api PRIVATE 
+        # Only link the modules we actually need
+        set(OPENCV_BASE_LIBS
             opencv_core
             opencv_imgproc
             opencv_imgcodecs
@@ -719,16 +822,55 @@ if(OpenCV_FOUND)
             opencv_highgui
             opencv_dnn
         )
-        # Explicitly exclude CUDA modules if they don't exist
-        # This prevents linker errors when CUDA modules are not available
+        
+        # Conditionally add CUDA libraries if available
+        if(OPENCV_CUDA_AVAILABLE)
+            # Check which CUDA targets exist and add them
+            foreach(CUDA_LIB_NAME ${CUDA_LIB_NAMES})
+                if(TARGET opencv_${CUDA_LIB_NAME})
+                    list(APPEND OPENCV_BASE_LIBS opencv_${CUDA_LIB_NAME})
+                endif()
+            endforeach()
+            message(STATUS "✓ Linking OpenCV with CUDA support")
+        else()
+            message(STATUS "✓ Linking OpenCV without CUDA support")
+        endif()
+        
+        target_link_libraries(edge_ai_api PRIVATE ${OPENCV_BASE_LIBS})
     else()
-        # Fallback to pkg-config libraries, but filter out CUDA modules
+        # Fallback to pkg-config libraries
         set(OPENCV_LIBS ${OpenCV_LIBRARIES})
-        # Remove CUDA modules from the list
-        list(FILTER OPENCV_LIBS EXCLUDE REGEX "opencv_cuda")
+        
+        # Filter CUDA libraries based on availability
+        if(NOT OPENCV_CUDA_AVAILABLE)
+            # Remove CUDA modules from the list if CUDA is not available
+            list(FILTER OPENCV_LIBS EXCLUDE REGEX "opencv_cuda")
+            message(STATUS "✓ Filtered CUDA libraries from OpenCV pkg-config (CUDA not available)")
+        else()
+            message(STATUS "✓ Using OpenCV libraries from pkg-config (with CUDA)")
+        endif()
+        
         target_link_libraries(edge_ai_api PRIVATE ${OPENCV_LIBS})
     endif()
     message(STATUS "✓ OpenCV linked to edge_ai_api")
+endif()
+
+# Use linker flags to handle missing libraries gracefully
+# This provides a fallback in case some libraries are still referenced
+if(CMAKE_CXX_COMPILER_ID STREQUAL "GNU" OR CMAKE_CXX_COMPILER_ID MATCHES "Clang")
+    if(OPENCV_CUDA_AVAILABLE)
+        # With CUDA available, use --as-needed to only link what's needed
+        target_link_options(edge_ai_api PRIVATE 
+            -Wl,--as-needed
+        )
+    else()
+        # Without CUDA, allow missing shared library dependencies as fallback
+        target_link_options(edge_ai_api PRIVATE 
+            -Wl,--as-needed
+            -Wl,--allow-shlib-undefined
+        )
+        message(STATUS "✓ Added linker flags to handle missing CUDA libraries gracefully")
+    endif()
 endif()
 
 # ============================================
