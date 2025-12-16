@@ -104,14 +104,14 @@ Nếu gặp vấn đề:
 1. Kiểm tra documentation của solution tương ứng
 2. Xem section Troubleshooting trong documentation
 3. Kiểm tra logs trong `/var/lib/edge_ai_api/logs/`
-4. Tham khảo [API Documentation](../../docs/CREATE_INSTANCE_GUIDE.md)
+4. Tham khảo [API Documentation](../../docs/INSTANCE_GUIDE.md)
 
 ## Tài liệu tham khảo
 
 - [NODE_INTEGRATION_PLAN.md](../../develop_doc/NODE_INTEGRATION_PLAN.md)
 - [Solution Registry](../../src/solutions/solution_registry.cpp)
 - [Pipeline Builder](../../src/core/pipeline_builder.cpp)
-- [API Documentation](../../docs/CREATE_INSTANCE_GUIDE.md)
+- [API Documentation](../../docs/INSTANCE_GUIDE.md)
 - [Instance Examples README](../instances/README.md)
 
 ## Liên hệ và Hỗ trợ

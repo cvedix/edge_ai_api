@@ -191,7 +191,7 @@ curl -X POST http://localhost:8080/v1/core/instance \
 
 ## Xem thêm
 
-- [CREATE_INSTANCE_GUIDE.md](../../docs/CREATE_INSTANCE_GUIDE.md)
+- [INSTANCE_GUIDE.md](../../docs/INSTANCE_GUIDE.md)
 - [INSTANCE_CONFIG_FIELDS.md](../../docs/INSTANCE_CONFIG_FIELDS.md)
 - API Documentation: http://localhost:8080/v1/swagger
 

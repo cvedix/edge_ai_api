@@ -267,5 +267,5 @@ Xem logs để phát hiện lỗi:
 
 - [Solution Registry](../../src/solutions/solution_registry.cpp)
 - [Pipeline Builder](../../src/core/pipeline_builder.cpp)
-- [Create Instance Guide](../../docs/CREATE_INSTANCE_GUIDE.md)
+- [Instance Guide](../../docs/INSTANCE_GUIDE.md)
 
