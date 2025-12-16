@@ -7,6 +7,7 @@
 #include <cvedix/cvedix_version.h>
 #include <cvedix/nodes/src/cvedix_rtsp_src_node.h>
 #include <cvedix/nodes/src/cvedix_file_src_node.h>
+#include <cvedix/nodes/src/cvedix_rtmp_src_node.h>
 #include <cvedix/nodes/infers/cvedix_yunet_face_detector_node.h>
 #include <cvedix/nodes/infers/cvedix_sface_feature_encoder_node.h>
 #include <cvedix/nodes/infers/cvedix_mask_rcnn_detector_node.h>
@@ -2021,12 +2022,46 @@ bool InstanceRegistry::startPipeline(const std::vector<std::shared_ptr<cvedix_no
             return true;
         }
         
+        // Check for RTMP source node
+        auto rtmpNode = std::dynamic_pointer_cast<cvedix_nodes::cvedix_rtmp_src_node>(nodes[0]);
+        if (rtmpNode) {
+            std::cerr << "[InstanceRegistry] ========================================" << std::endl;
+            std::cerr << "[InstanceRegistry] Starting RTMP source pipeline..." << std::endl;
+            std::cerr << "[InstanceRegistry] NOTE: RTMP node will automatically retry connection if stream is not immediately available" << std::endl;
+            std::cerr << "[InstanceRegistry] NOTE: Connection warnings are normal if RTMP stream is not running yet" << std::endl;
+            std::cerr << "[InstanceRegistry] ========================================" << std::endl;
+            
+            // Add small delay to ensure pipeline is ready
+            std::this_thread::sleep_for(std::chrono::milliseconds(100));
+            
+            std::cerr << "[InstanceRegistry] Calling rtmpNode->start()..." << std::endl;
+            auto startTime = std::chrono::steady_clock::now();
+            try {
+                rtmpNode->start();
+                auto endTime = std::chrono::steady_clock::now();
+                auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(endTime - startTime).count();
+                std::cerr << "[InstanceRegistry] ✓ RTMP source node start() completed in " << duration << "ms" << std::endl;
+            } catch (const std::exception& e) {
+                std::cerr << "[InstanceRegistry] ✗ Exception during rtmpNode->start(): " << e.what() << std::endl;
+                std::cerr << "[InstanceRegistry] This may indicate a problem with the RTMP stream or connection" << std::endl;
+                return false;
+            } catch (...) {
+                std::cerr << "[InstanceRegistry] ✗ Unknown exception during rtmpNode->start()" << std::endl;
+                return false;
+            }
+            
+            std::cerr << "[InstanceRegistry] RTMP source pipeline started successfully" << std::endl;
+            std::cerr << "[InstanceRegistry] ========================================" << std::endl;
+            return true;
+        }
+        
         // If not a recognized source node, cannot start pipeline
-        // Only RTSP and File source nodes are currently supported
-        std::cerr << "[InstanceRegistry] ✗ Error: First node is not a recognized source node (RTSP or File)" << std::endl;
+        // RTSP, File, and RTMP source nodes are currently supported
+        std::cerr << "[InstanceRegistry] ✗ Error: First node is not a recognized source node (RTSP, File, or RTMP)" << std::endl;
         std::cerr << "[InstanceRegistry] Currently supported source node types:" << std::endl;
         std::cerr << "[InstanceRegistry]   - cvedix_rtsp_src_node (for RTSP streams)" << std::endl;
         std::cerr << "[InstanceRegistry]   - cvedix_file_src_node (for video files)" << std::endl;
+        std::cerr << "[InstanceRegistry]   - cvedix_rtmp_src_node (for RTMP streams)" << std::endl;
         std::cerr << "[InstanceRegistry] Please ensure your solution config uses one of these as the first node" << std::endl;
         return false;
     } catch (const std::exception& e) {
@@ -2172,35 +2207,72 @@ void InstanceRegistry::stopPipeline(const std::vector<std::shared_ptr<cvedix_nod
                     }
                 }
             } else {
-                // Try file source node
-                auto fileNode = std::dynamic_pointer_cast<cvedix_nodes::cvedix_file_src_node>(nodes[0]);
-                if (fileNode) {
+                // Try RTMP source node
+                auto rtmpNode = std::dynamic_pointer_cast<cvedix_nodes::cvedix_rtmp_src_node>(nodes[0]);
+                if (rtmpNode) {
                     if (isDeletion) {
-                        std::cerr << "[InstanceRegistry] Stopping file source node (deletion)..." << std::endl;
+                        std::cerr << "[InstanceRegistry] Stopping RTMP source node (deletion)..." << std::endl;
                     } else {
-                        std::cerr << "[InstanceRegistry] Stopping file source node..." << std::endl;
+                        std::cerr << "[InstanceRegistry] Stopping RTMP source node..." << std::endl;
                     }
                     try {
                         // CRITICAL: Use exclusive lock for cleanup operations
                         std::unique_lock<std::shared_mutex> gstLock(gstreamer_ops_mutex_);
                         
-                        // For file source, we need to detach to stop reading
-                        // But we'll keep the nodes in memory so they can be restarted (unless deletion)
-                        fileNode->detach_recursively();
-                        std::cerr << "[InstanceRegistry] ✓ File source node stopped" << std::endl;
+                        // For RTMP source, stop and detach
+                        rtmpNode->stop();
+                        rtmpNode->detach_recursively();
+                        std::cerr << "[InstanceRegistry] ✓ RTMP source node stopped" << std::endl;
                     } catch (const std::exception& e) {
-                        std::cerr << "[InstanceRegistry] ✗ Exception stopping file node: " << e.what() << std::endl;
-                    } catch (...) {
-                        std::cerr << "[InstanceRegistry] ✗ Unknown error stopping file node" << std::endl;
-                    }
-                } else {
-                    // Generic stop for other source types
-                    try {
-                        if (nodes[0]) {
-                            nodes[0]->detach_recursively();
+                        std::cerr << "[InstanceRegistry] ✗ Exception stopping RTMP node: " << e.what() << std::endl;
+                        // Try force stop as fallback
+                        try {
+                            rtmpNode->detach_recursively();
+                            std::cerr << "[InstanceRegistry] ✓ RTMP node force stopped using detach_recursively()" << std::endl;
+                        } catch (...) {
+                            std::cerr << "[InstanceRegistry] ✗ Force stop also failed" << std::endl;
                         }
                     } catch (...) {
-                        // Ignore errors
+                        std::cerr << "[InstanceRegistry] ✗ Unknown error stopping RTMP node" << std::endl;
+                        // Try force stop as fallback
+                        try {
+                            rtmpNode->detach_recursively();
+                            std::cerr << "[InstanceRegistry] ✓ RTMP node force stopped using detach_recursively()" << std::endl;
+                        } catch (...) {
+                            std::cerr << "[InstanceRegistry] ✗ Force stop also failed" << std::endl;
+                        }
+                    }
+                } else {
+                    // Try file source node
+                    auto fileNode = std::dynamic_pointer_cast<cvedix_nodes::cvedix_file_src_node>(nodes[0]);
+                    if (fileNode) {
+                        if (isDeletion) {
+                            std::cerr << "[InstanceRegistry] Stopping file source node (deletion)..." << std::endl;
+                        } else {
+                            std::cerr << "[InstanceRegistry] Stopping file source node..." << std::endl;
+                        }
+                        try {
+                            // CRITICAL: Use exclusive lock for cleanup operations
+                            std::unique_lock<std::shared_mutex> gstLock(gstreamer_ops_mutex_);
+                            
+                            // For file source, we need to detach to stop reading
+                            // But we'll keep the nodes in memory so they can be restarted (unless deletion)
+                            fileNode->detach_recursively();
+                            std::cerr << "[InstanceRegistry] ✓ File source node stopped" << std::endl;
+                        } catch (const std::exception& e) {
+                            std::cerr << "[InstanceRegistry] ✗ Exception stopping file node: " << e.what() << std::endl;
+                        } catch (...) {
+                            std::cerr << "[InstanceRegistry] ✗ Unknown error stopping file node" << std::endl;
+                        }
+                    } else {
+                        // Generic stop for other source types
+                        try {
+                            if (nodes[0]) {
+                                nodes[0]->detach_recursively();
+                            }
+                        } catch (...) {
+                            // Ignore errors
+                        }
                     }
                 }
             }
@@ -2416,11 +2488,12 @@ std::vector<std::shared_ptr<cvedix_nodes::cvedix_node>> InstanceRegistry::getSou
             // Source node is always the first node in the pipeline
             const auto& sourceNode = pipelineIt->second[0];
             
-            // Verify it's a source node (RTSP or file source)
+            // Verify it's a source node (RTSP, file, or RTMP source)
             auto rtspNode = std::dynamic_pointer_cast<cvedix_nodes::cvedix_rtsp_src_node>(sourceNode);
             auto fileNode = std::dynamic_pointer_cast<cvedix_nodes::cvedix_file_src_node>(sourceNode);
+            auto rtmpNode = std::dynamic_pointer_cast<cvedix_nodes::cvedix_rtmp_src_node>(sourceNode);
             
-            if (rtspNode || fileNode) {
+            if (rtspNode || fileNode || rtmpNode) {
                 sourceNodes.push_back(sourceNode);
             }
         }

@@ -324,13 +324,35 @@ std::vector<std::shared_ptr<cvedix_nodes::cvedix_node>> PipelineBuilder::buildPi
     std::vector<std::shared_ptr<cvedix_nodes::cvedix_node>> nodes;
     std::vector<std::string> nodeTypes; // Track node types for connection logic
     
+    // Check if pipeline has OSD node (for RTMP node OSD auto-enable logic)
+    bool hasOSDNode = false;
+    for (const auto& nodeConfig : solution.pipeline) {
+        if (nodeConfig.nodeType == "face_osd_v2" || 
+            nodeConfig.nodeType == "osd_v3" || 
+            nodeConfig.nodeType == "ba_crossline_osd") {
+            hasOSDNode = true;
+            break;
+        }
+    }
+    
     // Build nodes in pipeline order
     for (const auto& nodeConfig : solution.pipeline) {
         try {
             std::cerr << "[PipelineBuilder] Creating node: " << nodeConfig.nodeType 
                       << " (" << nodeConfig.nodeName << ")" << std::endl;
             
-            auto node = createNode(nodeConfig, req, instanceId);
+            // For RTMP nodes: if pipeline doesn't have OSD node and OSD parameter not explicitly set,
+            // enable OSD overlay in RTMP node
+            SolutionConfig::NodeConfig modifiedNodeConfig = nodeConfig;
+            if (nodeConfig.nodeType == "rtmp_des" && !hasOSDNode) {
+                // Check if OSD parameter is already set
+                if (modifiedNodeConfig.parameters.find("osd") == modifiedNodeConfig.parameters.end()) {
+                    modifiedNodeConfig.parameters["osd"] = "true";
+                    std::cerr << "[PipelineBuilder] NOTE: Pipeline has no OSD node, enabling OSD overlay in RTMP node" << std::endl;
+                }
+            }
+            
+            auto node = createNode(modifiedNodeConfig, req, instanceId);
             if (node) {
                 nodes.push_back(node);
                 nodeTypes.push_back(nodeConfig.nodeType);
@@ -343,33 +365,57 @@ std::vector<std::shared_ptr<cvedix_nodes::cvedix_node>> PipelineBuilder::buildPi
                                       nodeConfig.nodeType == "rtmp_des" || 
                                       nodeConfig.nodeType == "screen_des");
                     
-                    // Find the node to attach to
-                    // If current node is a destination node and previous node is also a destination node,
-                    // attach to the node before the previous one (to allow multiple destinations from same source)
-                    size_t attachIndex = nodes.size() - 2;
-                    if (isDestNode && attachIndex > 0) {
-                        // Check if previous node is also a destination node
-                        bool prevIsDestNode = (nodeTypes[attachIndex] == "file_des" || 
-                                              nodeTypes[attachIndex] == "rtmp_des" || 
-                                              nodeTypes[attachIndex] == "screen_des");
-                        if (prevIsDestNode) {
-                            // Find the last non-destination node
-                            for (int i = static_cast<int>(attachIndex) - 1; i >= 0; --i) {
-                                bool nodeIsDest = (nodeTypes[i] == "file_des" || 
-                                                  nodeTypes[i] == "rtmp_des" || 
-                                                  nodeTypes[i] == "screen_des");
-                                if (!nodeIsDest) {
-                                    attachIndex = i;
-                                    break;
-                                }
+                    // For RTMP nodes: if pipeline has OSD node, attach to OSD node (to get frames with overlay)
+                    std::shared_ptr<cvedix_nodes::cvedix_node> attachTarget = nullptr;
+                    if (nodeConfig.nodeType == "rtmp_des" && hasOSDNode) {
+                        // Find OSD node
+                        for (int i = static_cast<int>(nodes.size()) - 1; i >= 0; --i) {
+                            auto checkNode = nodes[i];
+                            bool isOSDNode = std::dynamic_pointer_cast<cvedix_nodes::cvedix_face_osd_node_v2>(checkNode) ||
+                                            std::dynamic_pointer_cast<cvedix_nodes::cvedix_osd_node_v3>(checkNode) ||
+                                            std::dynamic_pointer_cast<cvedix_nodes::cvedix_ba_crossline_osd_node>(checkNode);
+                            if (isOSDNode) {
+                                attachTarget = checkNode;
+                                std::cerr << "[PipelineBuilder] Attaching RTMP node to OSD node for overlay frames" << std::endl;
+                                break;
                             }
                         }
                     }
                     
-                    if (attachIndex < nodes.size()) {
-                        node->attach_to({nodes[attachIndex]});
-                    } else {
-                        node->attach_to({nodes[nodes.size() - 2]});
+                    // If no OSD node found or not RTMP node, use default logic
+                    if (!attachTarget) {
+                        // Find the node to attach to
+                        // If current node is a destination node and previous node is also a destination node,
+                        // attach to the node before the previous one (to allow multiple destinations from same source)
+                        size_t attachIndex = nodes.size() - 2;
+                        if (isDestNode && attachIndex > 0) {
+                            // Check if previous node is also a destination node
+                            bool prevIsDestNode = (nodeTypes[attachIndex] == "file_des" || 
+                                                  nodeTypes[attachIndex] == "rtmp_des" || 
+                                                  nodeTypes[attachIndex] == "screen_des");
+                            if (prevIsDestNode) {
+                                // Find the last non-destination node
+                                for (int i = static_cast<int>(attachIndex) - 1; i >= 0; --i) {
+                                    bool nodeIsDest = (nodeTypes[i] == "file_des" || 
+                                                      nodeTypes[i] == "rtmp_des" || 
+                                                      nodeTypes[i] == "screen_des");
+                                    if (!nodeIsDest) {
+                                        attachIndex = i;
+                                        break;
+                                    }
+                                }
+                            }
+                        }
+                        
+                        if (attachIndex < nodes.size()) {
+                            attachTarget = nodes[attachIndex];
+                        } else {
+                            attachTarget = nodes[nodes.size() - 2];
+                        }
+                    }
+                    
+                    if (attachTarget) {
+                        node->attach_to({attachTarget});
                     }
                 }
                 std::cerr << "[PipelineBuilder] Successfully created and connected node: " 
@@ -724,11 +770,65 @@ std::vector<std::shared_ptr<cvedix_nodes::cvedix_node>> PipelineBuilder::buildPi
         if (!rtmpUrl.empty() && !hasNodeType("rtmp_des")) {
             std::cerr << "[PipelineBuilder] Auto-adding rtmp_des node (RTMP_URL detected)" << std::endl;
             try {
+                // Check if pipeline has OSD node (face_osd_v2, osd_v3, ba_crossline_osd)
+                bool hasOSDNode = hasNodeType("face_osd_v2") || 
+                                  hasNodeType("osd_v3") || 
+                                  hasNodeType("ba_crossline_osd");
+                
+                // If no OSD node, auto-add face_osd_v2 node for face detection solutions
+                // Check if this is a face detection solution by looking for yunet_face_detector
+                bool hasFaceDetector = hasNodeType("yunet_face_detector");
+                if (!hasOSDNode && hasFaceDetector) {
+                    std::cerr << "[PipelineBuilder] Auto-adding face_osd_v2 node for RTMP overlay" << std::endl;
+                    try {
+                        SolutionConfig::NodeConfig osdConfig;
+                        osdConfig.nodeType = "face_osd_v2";
+                        osdConfig.nodeName = "osd_{instanceId}";
+                        
+                        std::string osdNodeName = osdConfig.nodeName;
+                        size_t pos = osdNodeName.find("{instanceId}");
+                        while (pos != std::string::npos) {
+                            osdNodeName.replace(pos, 12, instanceId);
+                            pos = osdNodeName.find("{instanceId}", pos + instanceId.length());
+                        }
+                        
+                        auto osdNode = createFaceOSDNode(osdNodeName, osdConfig.parameters);
+                        if (osdNode) {
+                            // Find detector node to attach OSD to
+                            std::shared_ptr<cvedix_nodes::cvedix_node> detectorNode = nullptr;
+                            for (int i = static_cast<int>(nodes.size()) - 1; i >= 0; --i) {
+                                auto node = nodes[i];
+                                bool isDestNode = std::dynamic_pointer_cast<cvedix_nodes::cvedix_file_des_node>(node) ||
+                                                 std::dynamic_pointer_cast<cvedix_nodes::cvedix_rtmp_des_node>(node) ||
+                                                 std::dynamic_pointer_cast<cvedix_nodes::cvedix_screen_des_node>(node) ||
+                                                 std::dynamic_pointer_cast<cvedix_nodes::cvedix_app_des_node>(node);
+                                if (!isDestNode) {
+                                    detectorNode = node;
+                                    break;
+                                }
+                            }
+                            
+                            if (detectorNode) {
+                                osdNode->attach_to({detectorNode});
+                                nodes.push_back(osdNode);
+                                nodeTypes.push_back("face_osd_v2");
+                                hasOSDNode = true;
+                                std::cerr << "[PipelineBuilder] ✓ Auto-added face_osd_v2 node" << std::endl;
+                            } else {
+                                std::cerr << "[PipelineBuilder] ⚠ Failed to find detector node to attach OSD node" << std::endl;
+                            }
+                        }
+                    } catch (const std::exception& e) {
+                        std::cerr << "[PipelineBuilder] ⚠ Failed to auto-add face_osd_v2 node: " << e.what() << std::endl;
+                    }
+                }
+                
                 SolutionConfig::NodeConfig rtmpConfig;
                 rtmpConfig.nodeType = "rtmp_des";
                 rtmpConfig.nodeName = "rtmp_des_{instanceId}";
                 rtmpConfig.parameters["rtmp_url"] = "${RTMP_URL}";
                 rtmpConfig.parameters["channel"] = "0";
+                // Don't enable OSD in RTMP node - use OSD node instead
                 
                 std::string rtmpNodeName = rtmpConfig.nodeName;
                 size_t pos = rtmpNodeName.find("{instanceId}");
@@ -739,12 +839,62 @@ std::vector<std::shared_ptr<cvedix_nodes::cvedix_node>> PipelineBuilder::buildPi
                 
                 auto rtmpNode = createRTMPDestinationNode(rtmpNodeName, rtmpConfig.parameters, req);
                 if (rtmpNode) {
-                    auto attachTarget = findLastNonDestNode();
+                    // Find the best node to attach to:
+                    // 1. If pipeline has OSD node, attach RTMP node to OSD node (to get frames with overlay)
+                    // 2. If RTMP node has OSD enabled, attach to detector node (to get metadata for overlay)
+                    // 3. Otherwise, attach to last non-destination node
+                    std::shared_ptr<cvedix_nodes::cvedix_node> attachTarget = nullptr;
+                    bool rtmpHasOSD = rtmpConfig.parameters.find("osd") != rtmpConfig.parameters.end() &&
+                                     (rtmpConfig.parameters.at("osd") == "true" || rtmpConfig.parameters.at("osd") == "1");
+                    
+                    // First, try to find OSD node (if pipeline has one and RTMP doesn't have OSD enabled)
+                    if (hasOSDNode && !rtmpHasOSD) {
+                        for (int i = static_cast<int>(nodes.size()) - 1; i >= 0; --i) {
+                            auto node = nodes[i];
+                            // Check if this is an OSD node
+                            bool isOSDNode = std::dynamic_pointer_cast<cvedix_nodes::cvedix_face_osd_node_v2>(node) ||
+                                            std::dynamic_pointer_cast<cvedix_nodes::cvedix_osd_node_v3>(node) ||
+                                            std::dynamic_pointer_cast<cvedix_nodes::cvedix_ba_crossline_osd_node>(node);
+                            if (isOSDNode) {
+                                attachTarget = node;
+                                std::cerr << "[PipelineBuilder] Attaching RTMP node to OSD node for overlay frames" << std::endl;
+                                break;
+                            }
+                        }
+                    }
+                    
+                    // If RTMP node has OSD enabled, attach to detector node (to get metadata)
+                    // Or if no OSD node found, attach to last non-destination node
+                    if (!attachTarget) {
+                        for (int i = static_cast<int>(nodes.size()) - 1; i >= 0; --i) {
+                            auto node = nodes[i];
+                            // Check if this is a destination node using dynamic_cast
+                            bool isDestNode = std::dynamic_pointer_cast<cvedix_nodes::cvedix_file_des_node>(node) ||
+                                             std::dynamic_pointer_cast<cvedix_nodes::cvedix_rtmp_des_node>(node) ||
+                                             std::dynamic_pointer_cast<cvedix_nodes::cvedix_screen_des_node>(node) ||
+                                             std::dynamic_pointer_cast<cvedix_nodes::cvedix_app_des_node>(node);
+                            if (!isDestNode) {
+                                attachTarget = node;
+                                if (rtmpHasOSD) {
+                                    std::cerr << "[PipelineBuilder] Attaching RTMP node (with OSD enabled) to detector node for metadata" << std::endl;
+                                }
+                                break;
+                            }
+                        }
+                    }
+                    
+                    // Fallback to last node if no non-destination node found
+                    if (!attachTarget && !nodes.empty()) {
+                        attachTarget = nodes.back();
+                    }
+                    
                     if (attachTarget) {
                         rtmpNode->attach_to({attachTarget});
                         nodes.push_back(rtmpNode);
                         nodeTypes.push_back("rtmp_des");
-                        std::cerr << "[PipelineBuilder] ✓ Auto-added rtmp_des node" << std::endl;
+                        std::cerr << "[PipelineBuilder] ✓ Auto-added rtmp_des node (attached to same source as other DES nodes - parallel connection)" << std::endl;
+                    } else {
+                        std::cerr << "[PipelineBuilder] ⚠ Failed to find suitable node to attach rtmp_des" << std::endl;
                     }
                 }
             } catch (const std::exception& e) {
@@ -777,12 +927,34 @@ std::vector<std::shared_ptr<cvedix_nodes::cvedix_node>> PipelineBuilder::buildPi
                 
                 auto screenNode = createScreenDestinationNode(screenNodeName, screenConfig.parameters);
                 if (screenNode) {
-                    auto attachTarget = findLastNonDestNode();
+                    // Find the last non-destination node to attach to
+                    // Use dynamic_cast to check actual node type, not just nodeTypes
+                    std::shared_ptr<cvedix_nodes::cvedix_node> attachTarget = nullptr;
+                    for (int i = static_cast<int>(nodes.size()) - 1; i >= 0; --i) {
+                        auto node = nodes[i];
+                        // Check if this is a destination node using dynamic_cast
+                        bool isDestNode = std::dynamic_pointer_cast<cvedix_nodes::cvedix_file_des_node>(node) ||
+                                         std::dynamic_pointer_cast<cvedix_nodes::cvedix_rtmp_des_node>(node) ||
+                                         std::dynamic_pointer_cast<cvedix_nodes::cvedix_screen_des_node>(node) ||
+                                         std::dynamic_pointer_cast<cvedix_nodes::cvedix_app_des_node>(node);
+                        if (!isDestNode) {
+                            attachTarget = node;
+                            break;
+                        }
+                    }
+                    
+                    // Fallback to last node if no non-destination node found
+                    if (!attachTarget && !nodes.empty()) {
+                        attachTarget = nodes.back();
+                    }
+                    
                     if (attachTarget) {
                         screenNode->attach_to({attachTarget});
                         nodes.push_back(screenNode);
                         nodeTypes.push_back("screen_des");
-                        std::cerr << "[PipelineBuilder] ✓ Auto-added screen_des node" << std::endl;
+                        std::cerr << "[PipelineBuilder] ✓ Auto-added screen_des node (attached to same source as other DES nodes - parallel connection)" << std::endl;
+                    } else {
+                        std::cerr << "[PipelineBuilder] ⚠ Failed to find suitable node to attach screen_des" << std::endl;
                     }
                 }
             } catch (const std::exception& e) {
@@ -1011,14 +1183,56 @@ std::shared_ptr<cvedix_nodes::cvedix_node> PipelineBuilder::createNode(
         std::string actualNodeType = nodeConfig.nodeType;
         if (nodeConfig.nodeType == "file_src") {
             // Priority 1: Check explicit source URL parameters
-            auto rtspIt = req.additionalParams.find("RTSP_SRC_URL");
-            auto rtmpIt = req.additionalParams.find("RTMP_SRC_URL");
+            auto rtspSrcIt = req.additionalParams.find("RTSP_SRC_URL");
+            auto rtspIt = req.additionalParams.find("RTSP_URL");  // Backward compatibility
+            auto rtmpSrcIt = req.additionalParams.find("RTMP_SRC_URL");
+            auto rtmpIt = req.additionalParams.find("RTMP_URL");  // Backward compatibility (for input)
             auto hlsIt = req.additionalParams.find("HLS_URL");
             auto httpIt = req.additionalParams.find("HTTP_URL");
             
             // Validate and trim URLs before checking
-            std::string rtspUrl = (rtspIt != req.additionalParams.end() && !rtspIt->second.empty()) ? rtspIt->second : "";
-            std::string rtmpUrl = (rtmpIt != req.additionalParams.end() && !rtmpIt->second.empty()) ? rtmpIt->second : "";
+            // RTSP: Check RTSP_SRC_URL first, then RTSP_URL for backward compatibility
+            std::string rtspUrl = "";
+            if (rtspSrcIt != req.additionalParams.end() && !rtspSrcIt->second.empty()) {
+                rtspUrl = rtspSrcIt->second;
+            } else if (rtspIt != req.additionalParams.end() && !rtspIt->second.empty()) {
+                rtspUrl = rtspIt->second;  // Backward compatibility: RTSP_URL can be used for input
+            }
+            
+            // RTMP: Check RTMP_SRC_URL first, then RTMP_URL (but only if not used for output)
+            std::string rtmpUrl = "";
+            if (rtmpSrcIt != req.additionalParams.end() && !rtmpSrcIt->second.empty()) {
+                // RTMP_SRC_URL always means input (highest priority)
+                rtmpUrl = rtmpSrcIt->second;
+            } else if (rtmpIt != req.additionalParams.end() && !rtmpIt->second.empty()) {
+                // RTMP_URL can be used for input OR output
+                // Priority: Check RTMP_DES_URL first - if provided, RTMP_URL should be for output
+                auto rtmpDesIt = req.additionalParams.find("RTMP_DES_URL");
+                bool rtmpUrlUsedForOutput = false;
+                if (rtmpDesIt != req.additionalParams.end() && !rtmpDesIt->second.empty()) {
+                    // RTMP_DES_URL is provided, so RTMP_URL should be for output, not input
+                    rtmpUrlUsedForOutput = true;
+                    std::cerr << "[PipelineBuilder] RTMP_DES_URL detected, RTMP_URL will be used for output (rtmp_des), not input" << std::endl;
+                } else {
+                    // Check if FILE_PATH is provided - if yes, RTMP_URL is likely for output
+                    auto filePathIt = req.additionalParams.find("FILE_PATH");
+                    if (filePathIt != req.additionalParams.end() && !filePathIt->second.empty()) {
+                        std::string filePath = filePathIt->second;
+                        filePath.erase(0, filePath.find_first_not_of(" \t\n\r"));
+                        filePath.erase(filePath.find_last_not_of(" \t\n\r") + 1);
+                        // If FILE_PATH is not an RTMP URL, then RTMP_URL is likely for output
+                        if (!filePath.empty() && detectInputType(filePath) != "rtmp") {
+                            rtmpUrlUsedForOutput = true;
+                            std::cerr << "[PipelineBuilder] FILE_PATH detected (not RTMP), RTMP_URL will be used for output (rtmp_des), not input" << std::endl;
+                        }
+                    }
+                }
+                // If RTMP_URL is not used for output, use it for input (backward compatibility)
+                if (!rtmpUrlUsedForOutput) {
+                    rtmpUrl = rtmpIt->second;
+                }
+            }
+            
             std::string hlsUrl = (hlsIt != req.additionalParams.end() && !hlsIt->second.empty()) ? hlsIt->second : "";
             std::string httpUrl = (httpIt != req.additionalParams.end() && !httpIt->second.empty()) ? httpIt->second : "";
             
@@ -2509,10 +2723,21 @@ std::shared_ptr<cvedix_nodes::cvedix_node> PipelineBuilder::createRTMPDestinatio
         std::string rtmpUrl = params.count("rtmp_url") ? 
             params.at("rtmp_url") : getRTMPUrl(req);
         
+        // Substitute placeholder if present (e.g., "${RTMP_URL}" or "${RTMP_DES_URL}")
+        if (rtmpUrl == "${RTMP_URL}" || rtmpUrl == "${RTMP_DES_URL}") {
+            rtmpUrl = getRTMPUrl(req);
+        }
+        
         // Trim whitespace from RTMP URL to prevent GStreamer pipeline errors
         rtmpUrl = trim(rtmpUrl);
         
         int channel = params.count("channel") ? std::stoi(params.at("channel")) : 0;
+        
+        // Check if OSD overlay should be enabled
+        // OSD parameter can be "true"/"1" or "false"/"0"
+        // If not specified, default to false (assume OSD node exists in pipeline)
+        bool enableOSD = params.count("osd") && 
+                         (params.at("osd") == "true" || params.at("osd") == "1");
         
         // Validate parameters
         if (nodeName.empty()) {
@@ -2529,13 +2754,41 @@ std::shared_ptr<cvedix_nodes::cvedix_node> PipelineBuilder::createRTMPDestinatio
         std::cerr << "  Name: '" << nodeName << "'" << std::endl;
         std::cerr << "  RTMP URL: '" << rtmpUrl << "'" << std::endl;
         std::cerr << "  Channel: " << channel << std::endl;
+        std::cerr << "  OSD overlay: " << (enableOSD ? "enabled" : "disabled") << std::endl;
         std::cerr << "  NOTE: RTMP node automatically adds '_0' suffix to stream key" << std::endl;
         
-        auto node = std::make_shared<cvedix_nodes::cvedix_rtmp_des_node>(
-            nodeName,
-            channel,
-            rtmpUrl
-        );
+        std::shared_ptr<cvedix_nodes::cvedix_rtmp_des_node> node;
+        if (enableOSD) {
+            // Use constructor with OSD parameter: (node_name, channel, rtmp_url, resolution, bitrate, osd)
+            // Get bitrate from params if provided, otherwise use default 1024
+            int bitrate = 1024; // Default bitrate
+            if (params.count("bitrate")) {
+                bitrate = std::stoi(params.at("bitrate"));
+                if (bitrate <= 0) {
+                    std::cerr << "[PipelineBuilder] Warning: bitrate <= 0: " << bitrate 
+                              << ", using default 1024" << std::endl;
+                    bitrate = 1024;
+                }
+            }
+            // resolution: empty (use source resolution), bitrate: from params or 1024, osd: true
+            cvedix_objects::cvedix_size resolution = {}; // Empty resolution = use source resolution
+            std::cerr << "[PipelineBuilder] Using bitrate: " << bitrate << " kbps" << std::endl;
+            node = std::make_shared<cvedix_nodes::cvedix_rtmp_des_node>(
+                nodeName,
+                channel,
+                rtmpUrl,
+                resolution,
+                bitrate,
+                true  // Enable OSD overlay
+            );
+        } else {
+            // Use simple constructor: (node_name, channel, rtmp_url)
+            node = std::make_shared<cvedix_nodes::cvedix_rtmp_des_node>(
+                nodeName,
+                channel,
+                rtmpUrl
+            );
+        }
         
         std::cerr << "[PipelineBuilder] ✓ RTMP destination node created successfully" << std::endl;
         return node;

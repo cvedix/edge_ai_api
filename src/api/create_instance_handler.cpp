@@ -349,15 +349,44 @@ bool CreateInstanceHandler::parseRequest(
         return str.substr(first, (last - first + 1));
     };
     
+    // Parse additionalParams - support both new structure (input/output) and old structure (flat)
     if (json.isMember("additionalParams") && json["additionalParams"].isObject()) {
-        for (const auto& key : json["additionalParams"].getMemberNames()) {
-            if (json["additionalParams"][key].isString()) {
-                std::string value = json["additionalParams"][key].asString();
-                // Trim RTMP URLs to prevent GStreamer pipeline errors
-                if (key == "RTMP_URL" || key == "RTMP_DES_URL") {
-                    value = trim(value);
+        // Check if using new structure (input/output)
+        if (json["additionalParams"].isMember("input") && json["additionalParams"]["input"].isObject()) {
+            // New structure: parse input section
+            for (const auto& key : json["additionalParams"]["input"].getMemberNames()) {
+                if (json["additionalParams"]["input"][key].isString()) {
+                    std::string value = json["additionalParams"]["input"][key].asString();
+                    req.additionalParams[key] = value;
                 }
-                req.additionalParams[key] = value;
+            }
+        }
+        
+        if (json["additionalParams"].isMember("output") && json["additionalParams"]["output"].isObject()) {
+            // New structure: parse output section
+            for (const auto& key : json["additionalParams"]["output"].getMemberNames()) {
+                if (json["additionalParams"]["output"][key].isString()) {
+                    std::string value = json["additionalParams"]["output"][key].asString();
+                    // Trim RTMP URLs to prevent GStreamer pipeline errors
+                    if (key == "RTMP_URL" || key == "RTMP_DES_URL") {
+                        value = trim(value);
+                    }
+                    req.additionalParams[key] = value;
+                }
+            }
+        }
+        
+        // Backward compatibility: if no input/output sections, parse as flat structure
+        if (!json["additionalParams"].isMember("input") && !json["additionalParams"].isMember("output")) {
+            for (const auto& key : json["additionalParams"].getMemberNames()) {
+                if (json["additionalParams"][key].isString()) {
+                    std::string value = json["additionalParams"][key].asString();
+                    // Trim RTMP URLs to prevent GStreamer pipeline errors
+                    if (key == "RTMP_URL" || key == "RTMP_DES_URL") {
+                        value = trim(value);
+                    }
+                    req.additionalParams[key] = value;
+                }
             }
         }
     }
