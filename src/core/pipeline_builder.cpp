@@ -5456,7 +5456,8 @@ std::shared_ptr<cvedix_nodes::cvedix_node> PipelineBuilder::createJSONMQTTBroker
         // Get thresholds
         int warnThreshold = params.count("broking_cache_warn_threshold") ? std::stoi(params.at("broking_cache_warn_threshold")) : 100;
         int ignoreThreshold = params.count("broking_cache_ignore_threshold") ? std::stoi(params.at("broking_cache_ignore_threshold")) : 500;
-        bool encodeFullFrame = params.count("encode_full_frame") ? (params.at("encode_full_frame") == "true" || params.at("encode_full_frame") == "1") : false;
+        // encode_full_frame parameter is not supported in this version
+        // bool encodeFullFrame = params.count("encode_full_frame") ? (params.at("encode_full_frame") == "true" || params.at("encode_full_frame") == "1") : false;
         
         if (nodeName.empty()) {
             throw std::invalid_argument("Node name cannot be empty");
@@ -5524,6 +5525,7 @@ std::shared_ptr<cvedix_nodes::cvedix_node> PipelineBuilder::createJSONCrosslineM
     const std::string& nodeName,
     const std::map<std::string, std::string>& params,
     const CreateInstanceRequest& req) {
+    (void)params; // Parameters may be used in future implementations
     
     try {
         // Get instance ID from request
