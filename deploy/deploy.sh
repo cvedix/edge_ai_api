@@ -12,9 +12,9 @@
 # 6. Cài đặt và khởi động systemd service
 #
 # Usage:
-#   sudo ./deploy/build.sh [options]
+#   sudo ./deploy/deploy.sh [options]
 #   hoặc từ thư mục deploy:
-#   sudo ./build.sh [options]
+#   sudo ./deploy.sh [options]
 #
 # Options:
 #   --skip-deps      Skip cài đặt dependencies
@@ -103,7 +103,7 @@ while [[ $# -gt 0 ]]; do
             ;;
         *)
             echo -e "${RED}Unknown option: $1${NC}"
-            echo "Usage: sudo ./build.sh [--skip-deps] [--skip-build] [--skip-fixes] [--no-start] [--full-permissions|--standard-permissions]"
+            echo "Usage: sudo ./deploy.sh [--skip-deps] [--skip-build] [--skip-fixes] [--no-start] [--full-permissions|--standard-permissions]"
             exit 1
             ;;
     esac
@@ -123,7 +123,7 @@ echo ""
 # Check if running as root
 if [ "$EUID" -ne 0 ]; then 
     echo -e "${RED}Error: Script này cần chạy với quyền sudo${NC}"
-    echo "Usage: sudo ./build.sh"
+    echo "Usage: sudo ./deploy.sh"
     exit 1
 fi
 

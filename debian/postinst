@@ -64,14 +64,49 @@ fi
 
 # Create required directories (must exist before systemd sets up mount namespace)
 echo "Creating required directories..."
-mkdir -p "$INSTALL_DIR"/{instances,solutions,groups,models,logs,data,config,uploads,lib}
+
+# Load directory creation helper
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
+if [ -f "$PROJECT_ROOT/deploy/create_directories.sh" ]; then
+    source "$PROJECT_ROOT/deploy/create_directories.sh"
+    create_app_directories "$INSTALL_DIR" "$PROJECT_ROOT"
+else
+    # Fallback: create directories manually if helper not found
+    echo "Warning: create_directories.sh not found, using fallback"
+    mkdir -p "$INSTALL_DIR"/instances
+    mkdir -p "$INSTALL_DIR"/solutions
+    mkdir -p "$INSTALL_DIR"/groups
+    mkdir -p "$INSTALL_DIR"/models
+    mkdir -p "$INSTALL_DIR"/logs
+    mkdir -p "$INSTALL_DIR"/data
+    mkdir -p "$INSTALL_DIR"/config
+    mkdir -p "$INSTALL_DIR"/uploads
+    mkdir -p "$INSTALL_DIR"/lib
+fi
 
 # Set up directory permissions
 echo "Setting up directory permissions..."
 chown -R "$SERVICE_USER:$SERVICE_GROUP" "$INSTALL_DIR" 2>/dev/null || true
 chmod 755 "$INSTALL_DIR"
-chmod 750 "$INSTALL_DIR"/{instances,solutions,groups,models,logs,data,config} 2>/dev/null || true
-chmod 755 "$INSTALL_DIR"/uploads 2>/dev/null || true
+
+# Apply permissions from directories.conf
+if [ -f "$PROJECT_ROOT/deploy/directories.conf" ]; then
+    source "$PROJECT_ROOT/deploy/directories.conf"
+    for dir_name in "${!APP_DIRECTORIES[@]}"; do
+        dir_path="$INSTALL_DIR/$dir_name"
+        dir_perms="${APP_DIRECTORIES[$dir_name]}"
+        if [ -d "$dir_path" ]; then
+            chmod "$dir_perms" "$dir_path" 2>/dev/null || true
+        fi
+    done
+else
+    # Fallback permissions
+    chmod 750 "$INSTALL_DIR"/instances "$INSTALL_DIR"/solutions "$INSTALL_DIR"/groups \
+              "$INSTALL_DIR"/models "$INSTALL_DIR"/logs "$INSTALL_DIR"/data \
+              "$INSTALL_DIR"/config 2>/dev/null || true
+    chmod 755 "$INSTALL_DIR"/uploads "$INSTALL_DIR"/lib 2>/dev/null || true
+fi
 
 # Create external data directory (/mnt/sb1/data) if it doesn't exist
 EXTERNAL_DATA_DIR="/mnt/sb1/data"

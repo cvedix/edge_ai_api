@@ -83,12 +83,37 @@ override_dh_auto_install:
 	install -d $(CURDIR)/debian/$(PACKAGE_NAME)$(INSTALL_DIR)/config
 	install -m 644 $(CURDIR)/config.json $(CURDIR)/debian/$(PACKAGE_NAME)$(INSTALL_DIR)/config/config.json
 	
-	# Create directory structure (including lib directory for bundled libraries)
-	install -d $(CURDIR)/debian/$(PACKAGE_NAME)$(INSTALL_DIR)/{instances,solutions,groups,models,logs,data,uploads,lib}
+	# Create directory structure from directories.conf
+	# Read directories.conf directly (Makefile uses /bin/sh, not bash)
+	@DIRS_CONF=$(CURDIR)/deploy/directories.conf; \
+	if [ -f $$DIRS_CONF ]; then \
+		echo "Reading directories from $$DIRS_CONF"; \
+		DIR_LIST=$$(grep -E '^\s*\["' $$DIRS_CONF | sed 's/.*\["\([^"]*\)"\].*/\1/' | tr '\n' ' '); \
+		for dir in $$DIR_LIST; do \
+			install -d $(CURDIR)/debian/$(PACKAGE_NAME)$(INSTALL_DIR)/$$dir; \
+		done; \
+	else \
+		echo "Warning: directories.conf not found, using fallback"; \
+		install -d $(CURDIR)/debian/$(PACKAGE_NAME)$(INSTALL_DIR)/instances; \
+		install -d $(CURDIR)/debian/$(PACKAGE_NAME)$(INSTALL_DIR)/solutions; \
+		install -d $(CURDIR)/debian/$(PACKAGE_NAME)$(INSTALL_DIR)/groups; \
+		install -d $(CURDIR)/debian/$(PACKAGE_NAME)$(INSTALL_DIR)/models; \
+		install -d $(CURDIR)/debian/$(PACKAGE_NAME)$(INSTALL_DIR)/logs; \
+		install -d $(CURDIR)/debian/$(PACKAGE_NAME)$(INSTALL_DIR)/data; \
+		install -d $(CURDIR)/debian/$(PACKAGE_NAME)$(INSTALL_DIR)/config; \
+		install -d $(CURDIR)/debian/$(PACKAGE_NAME)$(INSTALL_DIR)/uploads; \
+		install -d $(CURDIR)/debian/$(PACKAGE_NAME)$(INSTALL_DIR)/lib; \
+		install -d $(CURDIR)/debian/$(PACKAGE_NAME)$(INSTALL_DIR)/nodes; \
+		install -d $(CURDIR)/debian/$(PACKAGE_NAME)$(INSTALL_DIR)/videos; \
+		install -d $(CURDIR)/debian/$(PACKAGE_NAME)$(INSTALL_DIR)/fonts; \
+	fi
 	
 	# Install README
 	install -d $(CURDIR)/debian/$(PACKAGE_NAME)$(INSTALL_DIR)
 	install -m 644 $(CURDIR)/README.md $(CURDIR)/debian/$(PACKAGE_NAME)$(INSTALL_DIR)/README.md
+	
+	# Install OpenAPI specification file
+	install -m 644 $(CURDIR)/openapi.yaml $(CURDIR)/debian/$(PACKAGE_NAME)$(INSTALL_DIR)/openapi.yaml
 
 override_dh_shlibdeps:
 	# Skip automatic shlibdeps - we bundle libraries ourselves

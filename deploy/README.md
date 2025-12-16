@@ -1,297 +1,173 @@
-# Hướng Dẫn Triển Khai Production
+# Deploy Directory
 
-Tài liệu này hướng dẫn cách triển khai Edge AI API lên thiết bị thật và cấu hình để tự động chạy khi khởi động.
+Thư mục chứa các script và file cấu hình cho production deployment.
 
-## 🚀 Triển Khai Tự Động (Khuyến Nghị)
+## Files Quan Trọng
 
-### Cách 1: Sử dụng setup.sh (Khuyến Nghị)
+### Scripts
 
-```bash
-cd /home/ubuntu/project/edge_ai_api
-sudo ./setup.sh --production
-```
+- **`deploy.sh`** - Script chính để build và deploy production
+  - Cài đặt dependencies
+  - Build project
+  - Tạo user và directories
+  - Cài đặt executable và libraries
+  - Cài đặt systemd service
+  - Usage: `sudo ./deploy/deploy.sh [options]`
 
-Script này sẽ tự động:
-- ✅ Kiểm tra prerequisites
-- ✅ Cài đặt system dependencies
-- ✅ Build project
-- ✅ Tạo user `edgeai` và group `edgeai`
-- ✅ Cài đặt executable vào `/usr/local/bin/edge_ai_api`
-- ✅ Tạo thư mục production tại `/opt/edge_ai_api`
-- ✅ Cài đặt systemd service
-- ✅ Kích hoạt service tự động chạy khi khởi động
-- ✅ Khởi động service ngay lập tức
+- **`create_directories.sh`** - Helper script tạo thư mục từ `directories.conf`
+  - Được dùng bởi `deploy.sh`, `debian/rules`, `debian/postinst`
 
-### Cách 2: Sử dụng deploy/build.sh (Production Script)
+### Configuration Files
 
-```bash
-cd /home/ubuntu/project/edge_ai_api
-sudo ./deploy/build.sh
-```
+- **`directories.conf`** - Định nghĩa tất cả thư mục cần tạo
+  - Single source of truth cho directory structure
+  - Format: `["directory_name"]="permissions"`
 
-Script này sẽ tự động:
-- ✅ Cài đặt system dependencies (nếu chưa có)
-- ✅ Build project
-- ✅ Tạo user `edgeai` và group `edgeai`
-- ✅ Cài đặt executable và libraries
-- ✅ Tạo thư mục production với cấu trúc đầy đủ
-- ✅ Cài đặt systemd service
-- ✅ Kích hoạt và khởi động service
+- **`edge-ai-api.service`** - Systemd service file
 
-**Tùy chọn:**
-```bash
-# Bỏ qua cài đặt dependencies
-sudo ./deploy/build.sh --skip-deps
+## Quick Start
 
-# Bỏ qua build (dùng build có sẵn)
-sudo ./deploy/build.sh --skip-build
-
-# Không tự động start service
-sudo ./deploy/build.sh --no-start
-
-# Cấp quyền 777 (full permissions)
-sudo ./deploy/build.sh --full-permissions
-
-# Cấp quyền 755 (standard permissions - mặc định)
-sudo ./deploy/build.sh --standard-permissions
-```
-
-### Bước 2: Kiểm Tra Service
+### Production Deployment
 
 ```bash
-# Xem trạng thái
-sudo systemctl status edge-ai-api
+# Full deployment (recommended)
+sudo ./deploy/deploy.sh
 
-# Xem log
-sudo journalctl -u edge-ai-api -f
+# Skip dependencies (if already installed)
+sudo ./deploy/deploy.sh --skip-deps
 
-# Test API
-curl http://localhost:8080/v1/core/health
+# Skip build (use existing build)
+sudo ./deploy/deploy.sh --skip-build
+
+# Full permissions (777) - development only
+sudo ./deploy/deploy.sh --full-permissions
 ```
 
-## 📝 Cấu Hình
+## Deploy Options
 
-### Cấu Hình Biến Môi Trường
+- `--skip-deps` - Skip installing system dependencies
+- `--skip-build` - Skip building project
+- `--skip-fixes` - Skip fixing libraries/uploads/watchdog
+- `--no-start` - Don't auto-start service
+- `--full-permissions` - Use 777 permissions (development)
+- `--standard-permissions` - Use 755 permissions (production, default)
 
-Tạo file `.env` tại `/opt/edge_ai_api/config/.env`:
+---
+
+## Directory Management System
+
+Hệ thống quản lý thư mục tập trung, đảm bảo đồng bộ giữa development và production.
+
+### Tổng quan
+
+Tất cả các thư mục được định nghĩa trong một file duy nhất: `deploy/directories.conf`
+
+File này được sử dụng bởi:
+- ✅ `deploy/deploy.sh` - Production deployment
+- ✅ `debian/rules` - Debian package build
+- ✅ `debian/postinst` - Debian package installation
+- ✅ `deploy/create_directories.sh` - Helper script
+
+### Cấu trúc `directories.conf`
+
+File định nghĩa tất cả thư mục cần tạo:
 
 ```bash
-sudo nano /opt/edge_ai_api/config/.env
+declare -A APP_DIRECTORIES=(
+    ["instances"]="750"      # Instance configurations
+    ["solutions"]="750"      # Custom solutions
+    ["groups"]="750"         # Group configurations
+    ["nodes"]="750"          # Pre-configured nodes
+    ["models"]="750"         # Uploaded model files
+    ["videos"]="750"        # Uploaded video files
+    ["logs"]="750"          # Application logs
+    ["data"]="750"          # Application data
+    ["config"]="750"        # Configuration files
+    ["fonts"]="750"         # Font files
+    ["uploads"]="755"       # Uploaded files (public read)
+    ["lib"]="755"           # Bundled libraries
+)
 ```
 
-Ví dụ nội dung:
+**Format:** `["directory_name"]="permissions"`
+
+**Permissions:**
+- `750` = Restricted (chỉ user/group có quyền truy cập)
+- `755` = Public read (mọi người có thể đọc, chỉ user/group có thể ghi)
+
+### Helper Script `create_directories.sh`
+
+Cung cấp 2 functions:
+
+1. **`create_app_directories INSTALL_DIR [PROJECT_ROOT]`**
+   - Tạo tất cả thư mục từ `directories.conf`
+   - Áp dụng permissions tương ứng
+
+2. **`get_directory_list [PROJECT_ROOT]`**
+   - Trả về danh sách tên thư mục (dùng cho Makefile)
+
+### Cách sử dụng
+
+#### Thêm thư mục mới
+
+1. Mở `deploy/directories.conf`
+2. Thêm dòng mới:
+   ```bash
+   ["new_directory"]="750"
+   ```
+3. Tất cả script sẽ tự động sử dụng thư mục mới!
+
+#### Sử dụng trong script mới
 
 ```bash
-API_HOST=0.0.0.0
-API_PORT=8080
-WATCHDOG_CHECK_INTERVAL_MS=5000
-LOG_LEVEL=INFO
+#!/bin/bash
+source deploy/create_directories.sh
+create_app_directories "/opt/edge_ai_api" "$(pwd)"
 ```
 
-Sau khi chỉnh sửa, restart service:
+#### Sử dụng trong Makefile
 
+```makefile
+DIRS := $(shell bash -c 'source deploy/create_directories.sh; get_directory_list')
+```
+
+### Lợi ích
+
+✅ **Single Source of Truth** - Chỉ cần sửa một file  
+✅ **Đồng bộ tự động** - Dev và production luôn giống nhau  
+✅ **Dễ bảo trì** - Không cần sửa nhiều file  
+✅ **Tránh lỗi** - Không còn thư mục lạ do typo  
+✅ **Consistent permissions** - Quyền được quản lý tập trung  
+
+### Migration
+
+Nếu bạn đang có script cũ với danh sách thư mục hardcoded:
+
+**Trước:**
 ```bash
-sudo systemctl restart edge-ai-api
+mkdir -p "$INSTALL_DIR"/instances
+mkdir -p "$INSTALL_DIR"/solutions
+# ... nhiều dòng khác
 ```
 
-### Cấu Hình Service
-
-File service nằm tại: `/etc/systemd/system/edge-ai-api.service`
-
-Để chỉnh sửa:
-
+**Sau:**
 ```bash
-sudo nano /etc/systemd/system/edge-ai-api.service
-sudo systemctl daemon-reload
-sudo systemctl restart edge-ai-api
+source deploy/create_directories.sh
+create_app_directories "$INSTALL_DIR" "$PROJECT_ROOT"
 ```
 
-## 🔧 Quản Lý Service
+### Troubleshooting
 
-### Các Lệnh Thường Dùng
+#### Script không tìm thấy directories.conf
 
-```bash
-# Xem trạng thái
-sudo systemctl status edge-ai-api
+Script sẽ tự động tìm file theo thứ tự:
+1. `$PROJECT_ROOT/deploy/directories.conf`
+2. `deploy/directories.conf` (relative to current dir)
+3. Fallback to default directories
 
-# Khởi động
-sudo systemctl start edge-ai-api
+#### Permissions không đúng
 
-# Dừng
-sudo systemctl stop edge-ai-api
-
-# Khởi động lại
-sudo systemctl restart edge-ai-api
-
-# Xem log real-time
-sudo journalctl -u edge-ai-api -f
-
-# Xem log gần đây (50 dòng)
-sudo journalctl -u edge-ai-api -n 50
-
-# Bật tự động chạy khi khởi động
-sudo systemctl enable edge-ai-api
-
-# Tắt tự động chạy khi khởi động
-sudo systemctl disable edge-ai-api
-```
-
-## 🛠️ Triển Khai Thủ Công
-
-Nếu bạn muốn triển khai thủ công thay vì dùng script:
-
-### 1. Build Project
-
-```bash
-cd /home/ubuntu/project/edge_ai_api
-mkdir -p build && cd build
-cmake ..
-make -j$(nproc)
-```
-
-### 2. Tạo User và Thư Mục
-
-```bash
-sudo useradd -r -s /bin/false -d /opt/edge_ai_api edgeai
-sudo mkdir -p /opt/edge_ai_api/{logs,data,config}
-sudo chown -R edgeai:edgeai /opt/edge_ai_api
-```
-
-### 3. Cài Đặt Executable
-
-```bash
-sudo cp build/bin/edge_ai_api /usr/local/bin/edge_ai_api
-sudo chmod +x /usr/local/bin/edge_ai_api
-```
-
-### 4. Cài Đặt Service
-
-```bash
-sudo cp deploy/edge-ai-api.service /etc/systemd/system/
-sudo systemctl daemon-reload
-sudo systemctl enable edge-ai-api
-sudo systemctl start edge-ai-api
-```
-
-## 🔍 Troubleshooting
-
-### Service Không Khởi Động
-
-1. Kiểm tra log:
-```bash
-sudo journalctl -u edge-ai-api -n 100
-```
-
-2. Kiểm tra quyền:
-```bash
-ls -la /usr/local/bin/edge_ai_api
-ls -la /opt/edge_ai_api
-```
-
-3. Kiểm tra user:
-```bash
-id edgeai
-```
-
-### Service Chạy Nhưng API Không Phản Hồi
-
-1. Kiểm tra port có bị chiếm không:
-```bash
-sudo netstat -tlnp | grep 8080
-# hoặc
-sudo ss -tlnp | grep 8080
-```
-
-2. Kiểm tra firewall:
-```bash
-sudo ufw status
-```
-
-3. Test local:
-```bash
-curl http://localhost:8080/v1/core/health
-```
-
-### Service Tự Động Restart
-
-1. Xem log để tìm lỗi:
-```bash
-sudo journalctl -u edge-ai-api -n 100 --no-pager
-```
-
-2. Kiểm tra resource limits trong service file
-
-## 📂 Cấu Trúc Thư Mục Production
-
-```
-/opt/edge_ai_api/
-├── config/
-│   └── .env              # File cấu hình biến môi trường
-├── logs/                 # Log files (nếu có)
-├── data/                 # Data files (nếu có)
-└── ...
-
-/usr/local/bin/
-└── edge_ai_api           # Executable
-
-/etc/systemd/system/
-└── edge-ai-api.service   # Service file
-```
-
-## 🔐 Bảo Mật
-
-Service được cấu hình với các thiết lập bảo mật:
-- Chạy với user riêng (`edgeai`) không có shell
-- Giới hạn quyền truy cập file system
-- Giới hạn tài nguyên (memory, CPU)
-- Private tmp directory
-
-## 📊 Monitoring
-
-### Xem Resource Usage
-
-```bash
-# CPU và Memory
-sudo systemctl status edge-ai-api
-
-# Chi tiết hơn
-top -p $(pgrep edge_ai_api)
-```
-
-### Health Check
-
-```bash
-# API health check
-curl http://localhost:8080/v1/core/health
-
-# Version info
-curl http://localhost:8080/v1/core/version
-```
-
-## 🔄 Cập Nhật
-
-Khi cần cập nhật phiên bản mới:
-
-```bash
-# 1. Dừng service
-sudo systemctl stop edge-ai-api
-
-# 2. Build lại
-cd /home/ubuntu/project/edge_ai_api
-cd build
-cmake ..
-make -j$(nproc)
-
-# 3. Copy executable mới
-sudo cp build/bin/edge_ai_api /usr/local/bin/edge_ai_api
-
-# 4. Khởi động lại
-sudo systemctl start edge-ai-api
-```
-
-Hoặc chạy lại script deploy:
-
-```bash
-sudo ./setup.sh --production
-```
-
+Kiểm tra:
+1. File `directories.conf` có format đúng không?
+2. Script có quyền chạy không? (có thể cần `sudo`)
+3. User/group có tồn tại không?
