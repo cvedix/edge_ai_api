@@ -5,6 +5,7 @@
 #include "api/swagger_handler.h"
 #include "api/create_instance_handler.h"
 #include "api/instance_handler.h"
+#include "api/lines_handler.h"
 #ifdef ENABLE_SYSTEM_INFO_HANDLER
 #include "api/system_info_handler.h"
 #endif
@@ -1482,6 +1483,7 @@ int main(int argc, char* argv[])
         static VersionHandler versionHandler;
         static WatchdogHandler watchdogHandler;
         static SwaggerHandler swaggerHandler;
+        static LinesHandler linesHandler;
 #ifdef ENABLE_SYSTEM_INFO_HANDLER
         static SystemInfoHandler systemInfoHandler;
 #endif
@@ -1793,6 +1795,7 @@ int main(int argc, char* argv[])
         CreateInstanceHandler::setInstanceRegistry(&instanceRegistry);
         CreateInstanceHandler::setSolutionRegistry(&solutionRegistry);
         InstanceHandler::setInstanceRegistry(&instanceRegistry);
+        LinesHandler::setInstanceRegistry(&instanceRegistry);
         
         // Register solution registry and storage with solution handler
         SolutionHandler::setSolutionRegistry(&solutionRegistry);
