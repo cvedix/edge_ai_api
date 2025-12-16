@@ -33,6 +33,7 @@
 #include "core/node_pool_manager.h"
 #include "core/node_storage.h"
 #include "core/cors_filter.h"
+#include "utils/gstreamer_checker.h"
 #include <cvedix/utils/analysis_board/cvedix_analysis_board.h>
 #include <cvedix/nodes/src/cvedix_rtsp_src_node.h>
 #include <cvedix/nodes/src/cvedix_file_src_node.h>
@@ -1422,6 +1423,17 @@ int main(int argc, char* argv[])
             PLOG_INFO << "SDK output logging: ENABLED";
         }
         PLOG_INFO << "Starting REST API server...";
+
+        // Check GStreamer plugins availability
+        std::cerr << "\n[Main] Checking GStreamer plugins..." << std::endl;
+        bool pluginsOk = GStreamerChecker::validatePlugins(true);
+        if (!pluginsOk) {
+            std::cerr << "[Main] ⚠ WARNING: Some required GStreamer plugins are missing!" << std::endl;
+            std::cerr << "[Main] The application will continue, but some features may not work." << std::endl;
+            std::cerr << "[Main] Please install missing plugins before using RTSP/RTMP/File source nodes.\n" << std::endl;
+        } else {
+            std::cerr << "[Main] ✓ All required GStreamer plugins are available\n" << std::endl;
+        }
 
         // Register signal handlers for graceful shutdown and crash prevention
         // CRITICAL: Register BEFORE Drogon initializes to ensure our handler is used
