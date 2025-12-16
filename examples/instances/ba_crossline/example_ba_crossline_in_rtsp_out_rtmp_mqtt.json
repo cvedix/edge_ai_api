@@ -15,7 +15,7 @@
       "CODEC_TYPE": "h264"
     },
     "output": {
-      "RTMP_URL": "rtmp://anhoidong.datacenter.cvedix.com:1935/live/sang_camera_demo_1",
+      "RTMP_URL": "rtmp://localhost:1935/live/sang_camera_demo_1",
       "ENABLE_SCREEN_DES": "false",
       "BROKE_FOR": "NORMAL",
       "MQTT_BROKER_URL": "mqtt.goads.com.vn",

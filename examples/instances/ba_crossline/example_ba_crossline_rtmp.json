@@ -11,7 +11,7 @@
       "LABELS_PATH": "/home/cvedix/project/edge_ai_api/cvedix_data/models/det_cls/yolov3_tiny_5classes.txt"
     },
     "output": {
-      "RTMP_URL": "rtmp://anhoidong.datacenter.cvedix.com:1935/live/camera_demo_1",
+      "RTMP_URL": "rtmp://localhost:1935/live/camera_demo_1",
       "ENABLE_SCREEN_DES": "false"
     }
   }

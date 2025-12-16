@@ -121,7 +121,7 @@ curl -X POST http://localhost:8080/v1/core/instance \
     "autoStart": true,
     "detectionSensitivity": "Medium",
     "additionalParams": {
-      "RTSP_URL": "rtsp://192.168.1.100:554/stream",
+      "RTSP_URL": "rtsp://localhost:554/stream",
       "MODEL_PATH": "/opt/models/face_detection.trt",
       "RTMP_URL": "rtmp://localhost:1935/live/stream1"
     }
@@ -300,7 +300,7 @@ curl -X POST http://localhost:8080/v1/core/instance \
     "solution": "face_detection_mqtt",
     "autoStart": true,
     "additionalParams": {
-      "RTSP_URL": "rtsp://192.168.1.100:554/stream",
+      "RTSP_URL": "rtsp://localhost:554/stream",
       "MQTT_BROKER_URL": "tcp://localhost:1883",
       "MQTT_TOPIC": "face_detection/events"
     }
@@ -478,7 +478,7 @@ curl -X POST http://localhost:8080/v1/core/nodes/preconfigured \
   -d '{
     "templateId": "rtsp_src_template",
     "parameters": {
-      "rtsp_url": "rtsp://192.168.1.100:8554/stream1"
+      "rtsp_url": "rtsp://localhost:8554/stream1"
     }
   }'
 

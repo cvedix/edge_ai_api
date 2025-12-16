@@ -13,7 +13,7 @@
     },
     "output": {
       "BROKE_FOR": "FACE",
-      "MQTT_BROKER_URL": "anhoidong.datacenter.cvedix.com",
+      "MQTT_BROKER_URL": "localhost",
       "MQTT_PORT": "1883",
       "MQTT_TOPIC": "events"
     }
