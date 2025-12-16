@@ -1765,6 +1765,15 @@ int main(int argc, char* argv[])
             
             // Register solution (registerSolution will also check for default solutions)
             solutionRegistry.registerSolution(config);
+            
+            // Create nodes for node types in this custom solution (if they don't exist)
+            // Note: These are user-created nodes, not default nodes
+            size_t nodesCreated = nodePool.createNodesFromSolution(config);
+            if (nodesCreated > 0) {
+                PLOG_INFO << "[Main] Created " << nodesCreated 
+                          << " nodes for custom solution: " << config.solutionId;
+            }
+            
             PLOG_INFO << "[Main] Loaded custom solution: " << config.solutionId << " (" << config.solutionName << ")";
         }
         

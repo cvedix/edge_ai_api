@@ -25,12 +25,14 @@ public:
         ADD_METHOD_TO(SolutionHandler::listSolutions, "/v1/core/solutions", Get);
         ADD_METHOD_TO(SolutionHandler::getSolution, "/v1/core/solutions/{solutionId}", Get);
         ADD_METHOD_TO(SolutionHandler::getSolutionParameters, "/v1/core/solutions/{solutionId}/parameters", Get);
+        ADD_METHOD_TO(SolutionHandler::getSolutionInstanceBody, "/v1/core/solutions/{solutionId}/instance-body", Get);
         ADD_METHOD_TO(SolutionHandler::createSolution, "/v1/core/solutions", Post);
         ADD_METHOD_TO(SolutionHandler::updateSolution, "/v1/core/solutions/{solutionId}", Put);
         ADD_METHOD_TO(SolutionHandler::deleteSolution, "/v1/core/solutions/{solutionId}", Delete);
         ADD_METHOD_TO(SolutionHandler::handleOptions, "/v1/core/solutions", Options);
         ADD_METHOD_TO(SolutionHandler::handleOptions, "/v1/core/solutions/{solutionId}", Options);
         ADD_METHOD_TO(SolutionHandler::handleOptions, "/v1/core/solutions/{solutionId}/parameters", Options);
+        ADD_METHOD_TO(SolutionHandler::handleOptions, "/v1/core/solutions/{solutionId}/instance-body", Options);
     METHOD_LIST_END
     
     /**
@@ -74,6 +76,13 @@ public:
      */
     void getSolutionParameters(const HttpRequestPtr &req,
                               std::function<void(const HttpResponsePtr &)> &&callback);
+    
+    /**
+     * @brief Handle GET /v1/core/solutions/{solutionId}/instance-body
+     * Returns example request body for creating an instance with this solution
+     */
+    void getSolutionInstanceBody(const HttpRequestPtr &req,
+                                std::function<void(const HttpResponsePtr &)> &&callback);
     
     /**
      * @brief Handle OPTIONS request for CORS preflight

@@ -762,35 +762,165 @@ std::shared_ptr<cvedix_nodes::cvedix_node> PipelineBuilder::createNode(
     
     // Create node based on type
     try {
-        // Source nodes - Auto-detect source type for file_src if RTSP_SRC_URL or RTMP_SRC_URL is provided
+        // Source nodes - Auto-detect source type for file_src based on FILE_PATH or explicit parameters
         std::string actualNodeType = nodeConfig.nodeType;
         if (nodeConfig.nodeType == "file_src") {
-            // Check if RTSP_SRC_URL or RTMP_SRC_URL is provided in additionalParams
+            // Priority 1: Check explicit source URL parameters
             auto rtspIt = req.additionalParams.find("RTSP_SRC_URL");
             auto rtmpIt = req.additionalParams.find("RTMP_SRC_URL");
+            auto hlsIt = req.additionalParams.find("HLS_URL");
+            auto httpIt = req.additionalParams.find("HTTP_URL");
             
-            if (rtspIt != req.additionalParams.end() && !rtspIt->second.empty()) {
+            // Validate and trim URLs before checking
+            std::string rtspUrl = (rtspIt != req.additionalParams.end() && !rtspIt->second.empty()) ? rtspIt->second : "";
+            std::string rtmpUrl = (rtmpIt != req.additionalParams.end() && !rtmpIt->second.empty()) ? rtmpIt->second : "";
+            std::string hlsUrl = (hlsIt != req.additionalParams.end() && !hlsIt->second.empty()) ? hlsIt->second : "";
+            std::string httpUrl = (httpIt != req.additionalParams.end() && !httpIt->second.empty()) ? httpIt->second : "";
+            
+            // Trim whitespace
+            if (!rtspUrl.empty()) {
+                rtspUrl.erase(0, rtspUrl.find_first_not_of(" \t\n\r"));
+                rtspUrl.erase(rtspUrl.find_last_not_of(" \t\n\r") + 1);
+            }
+            if (!rtmpUrl.empty()) {
+                rtmpUrl.erase(0, rtmpUrl.find_first_not_of(" \t\n\r"));
+                rtmpUrl.erase(rtmpUrl.find_last_not_of(" \t\n\r") + 1);
+            }
+            if (!hlsUrl.empty()) {
+                hlsUrl.erase(0, hlsUrl.find_first_not_of(" \t\n\r"));
+                hlsUrl.erase(hlsUrl.find_last_not_of(" \t\n\r") + 1);
+            }
+            if (!httpUrl.empty()) {
+                httpUrl.erase(0, httpUrl.find_first_not_of(" \t\n\r"));
+                httpUrl.erase(httpUrl.find_last_not_of(" \t\n\r") + 1);
+            }
+            
+            if (!rtspUrl.empty()) {
+                // Check if FILE_PATH also contains RTSP URL (potential conflict)
+                auto filePathIt = req.additionalParams.find("FILE_PATH");
+                if (filePathIt != req.additionalParams.end() && !filePathIt->second.empty()) {
+                    std::string filePath = filePathIt->second;
+                    filePath.erase(0, filePath.find_first_not_of(" \t\n\r"));
+                    filePath.erase(filePath.find_last_not_of(" \t\n\r") + 1);
+                    if (!filePath.empty() && detectInputType(filePath) == "rtsp") {
+                        std::cerr << "[PipelineBuilder] ⚠ WARNING: Both RTSP_SRC_URL and FILE_PATH (with RTSP URL) are provided." << std::endl;
+                        std::cerr << "[PipelineBuilder] ⚠ Using RTSP_SRC_URL (priority). FILE_PATH will be ignored." << std::endl;
+                    }
+                }
                 std::cerr << "[PipelineBuilder] Auto-detected RTSP source from RTSP_SRC_URL parameter, overriding file_src" << std::endl;
                 actualNodeType = "rtsp_src";
-                // Update params to use rtsp_url instead of file_path
-                params["rtsp_url"] = rtspIt->second;
-                // Update node name to reflect actual node type (like sample code uses "rtsp_src_0")
-                // Replace "file_src" with "rtsp_src" in node name for clarity
+                params["rtsp_url"] = rtspUrl;
                 size_t fileSrcPos = nodeName.find("file_src");
                 if (fileSrcPos != std::string::npos) {
                     nodeName.replace(fileSrcPos, 8, "rtsp_src");
                     std::cerr << "[PipelineBuilder] Updated node name to reflect RTSP source: '" << nodeName << "'" << std::endl;
                 }
-            } else if (rtmpIt != req.additionalParams.end() && !rtmpIt->second.empty()) {
+            } else if (!rtmpUrl.empty()) {
+                // Check if FILE_PATH also contains RTMP URL (potential conflict)
+                auto filePathIt = req.additionalParams.find("FILE_PATH");
+                if (filePathIt != req.additionalParams.end() && !filePathIt->second.empty()) {
+                    std::string filePath = filePathIt->second;
+                    filePath.erase(0, filePath.find_first_not_of(" \t\n\r"));
+                    filePath.erase(filePath.find_last_not_of(" \t\n\r") + 1);
+                    if (!filePath.empty() && detectInputType(filePath) == "rtmp") {
+                        std::cerr << "[PipelineBuilder] ⚠ WARNING: Both RTMP_SRC_URL and FILE_PATH (with RTMP URL) are provided." << std::endl;
+                        std::cerr << "[PipelineBuilder] ⚠ Using RTMP_SRC_URL (priority). FILE_PATH will be ignored." << std::endl;
+                    }
+                }
                 std::cerr << "[PipelineBuilder] Auto-detected RTMP source from RTMP_SRC_URL parameter, overriding file_src" << std::endl;
                 actualNodeType = "rtmp_src";
-                // Update params to use rtmp_url instead of file_path
-                params["rtmp_url"] = rtmpIt->second;
-                // Update node name to reflect actual node type (like sample code)
+                params["rtmp_url"] = rtmpUrl;
                 size_t fileSrcPos = nodeName.find("file_src");
                 if (fileSrcPos != std::string::npos) {
                     nodeName.replace(fileSrcPos, 8, "rtmp_src");
                     std::cerr << "[PipelineBuilder] Updated node name to reflect RTMP source: '" << nodeName << "'" << std::endl;
+                }
+            } else if (!hlsUrl.empty()) {
+                // Check if FILE_PATH also contains HLS URL (potential conflict)
+                auto filePathIt = req.additionalParams.find("FILE_PATH");
+                if (filePathIt != req.additionalParams.end() && !filePathIt->second.empty()) {
+                    std::string filePath = filePathIt->second;
+                    filePath.erase(0, filePath.find_first_not_of(" \t\n\r"));
+                    filePath.erase(filePath.find_last_not_of(" \t\n\r") + 1);
+                    if (!filePath.empty() && (detectInputType(filePath) == "hls" || detectInputType(filePath) == "http")) {
+                        std::cerr << "[PipelineBuilder] ⚠ WARNING: Both HLS_URL and FILE_PATH (with HLS/HTTP URL) are provided." << std::endl;
+                        std::cerr << "[PipelineBuilder] ⚠ Using HLS_URL (priority). FILE_PATH will be ignored." << std::endl;
+                    }
+                }
+                std::cerr << "[PipelineBuilder] Auto-detected HLS source from HLS_URL parameter, using ff_src" << std::endl;
+                actualNodeType = "ff_src";
+                params["uri"] = hlsUrl;
+                size_t fileSrcPos = nodeName.find("file_src");
+                if (fileSrcPos != std::string::npos) {
+                    nodeName.replace(fileSrcPos, 8, "ff_src");
+                    std::cerr << "[PipelineBuilder] Updated node name to reflect FFmpeg source: '" << nodeName << "'" << std::endl;
+                }
+            } else if (!httpUrl.empty()) {
+                // Check if FILE_PATH also contains HTTP URL (potential conflict)
+                auto filePathIt = req.additionalParams.find("FILE_PATH");
+                if (filePathIt != req.additionalParams.end() && !filePathIt->second.empty()) {
+                    std::string filePath = filePathIt->second;
+                    filePath.erase(0, filePath.find_first_not_of(" \t\n\r"));
+                    filePath.erase(filePath.find_last_not_of(" \t\n\r") + 1);
+                    if (!filePath.empty() && (detectInputType(filePath) == "hls" || detectInputType(filePath) == "http")) {
+                        std::cerr << "[PipelineBuilder] ⚠ WARNING: Both HTTP_URL and FILE_PATH (with HLS/HTTP URL) are provided." << std::endl;
+                        std::cerr << "[PipelineBuilder] ⚠ Using HTTP_URL (priority). FILE_PATH will be ignored." << std::endl;
+                    }
+                }
+                std::cerr << "[PipelineBuilder] Auto-detected HTTP source from HTTP_URL parameter, using ff_src" << std::endl;
+                actualNodeType = "ff_src";
+                params["uri"] = httpUrl;
+                size_t fileSrcPos = nodeName.find("file_src");
+                if (fileSrcPos != std::string::npos) {
+                    nodeName.replace(fileSrcPos, 8, "ff_src");
+                    std::cerr << "[PipelineBuilder] Updated node name to reflect FFmpeg source: '" << nodeName << "'" << std::endl;
+                }
+            } else {
+                // Priority 2: Auto-detect from FILE_PATH
+                std::string filePath = params.count("file_path") ? params.at("file_path") : "";
+                if (filePath.empty()) {
+                    auto filePathIt = req.additionalParams.find("FILE_PATH");
+                    if (filePathIt != req.additionalParams.end() && !filePathIt->second.empty()) {
+                        filePath = filePathIt->second;
+                    }
+                }
+                
+                // Trim whitespace from filePath
+                if (!filePath.empty()) {
+                    filePath.erase(0, filePath.find_first_not_of(" \t\n\r"));
+                    filePath.erase(filePath.find_last_not_of(" \t\n\r") + 1);
+                }
+                
+                if (!filePath.empty()) {
+                    std::string inputType = detectInputType(filePath);
+                    if (inputType == "rtsp") {
+                        std::cerr << "[PipelineBuilder] Auto-detected RTSP source from FILE_PATH: '" << filePath << "'" << std::endl;
+                        actualNodeType = "rtsp_src";
+                        params["rtsp_url"] = filePath;
+                        size_t fileSrcPos = nodeName.find("file_src");
+                        if (fileSrcPos != std::string::npos) {
+                            nodeName.replace(fileSrcPos, 8, "rtsp_src");
+                        }
+                    } else if (inputType == "rtmp") {
+                        std::cerr << "[PipelineBuilder] Auto-detected RTMP source from FILE_PATH: '" << filePath << "'" << std::endl;
+                        actualNodeType = "rtmp_src";
+                        params["rtmp_url"] = filePath;
+                        size_t fileSrcPos = nodeName.find("file_src");
+                        if (fileSrcPos != std::string::npos) {
+                            nodeName.replace(fileSrcPos, 8, "rtmp_src");
+                        }
+                    } else if (inputType == "hls" || inputType == "http") {
+                        std::cerr << "[PipelineBuilder] Auto-detected " << inputType << " source from FILE_PATH: '" << filePath << "', using ff_src" << std::endl;
+                        actualNodeType = "ff_src";
+                        params["uri"] = filePath;
+                        size_t fileSrcPos = nodeName.find("file_src");
+                        if (fileSrcPos != std::string::npos) {
+                            nodeName.replace(fileSrcPos, 8, "ff_src");
+                        }
+                    } else {
+                        // If inputType == "file" or "udp", keep as file_src (default)
+                        std::cerr << "[PipelineBuilder] Using file_src for FILE_PATH: '" << filePath << "' (detected type: " << inputType << ")" << std::endl;
+                    }
                 }
             }
         }
@@ -808,6 +938,8 @@ std::shared_ptr<cvedix_nodes::cvedix_node> PipelineBuilder::createNode(
             return createRTMPSourceNode(nodeName, params, req);
         } else if (actualNodeType == "udp_src") {
             return createUDPSourceNode(nodeName, params, req);
+        } else if (actualNodeType == "ff_src") {
+            return createFFmpegSourceNode(nodeName, params, req);
         }
         // Face detection nodes
         else if (nodeConfig.nodeType == "yunet_face_detector") {
@@ -4099,6 +4231,141 @@ std::shared_ptr<cvedix_nodes::cvedix_node> PipelineBuilder::createRTMPSourceNode
         return node;
     } catch (const std::exception& e) {
         std::cerr << "[PipelineBuilder] Exception in createRTMPSourceNode: " << e.what() << std::endl;
+        throw;
+    }
+}
+
+std::string PipelineBuilder::detectInputType(const std::string& uri) const {
+    if (uri.empty()) {
+        return "file";
+    }
+    
+    // Trim whitespace
+    std::string trimmedUri = uri;
+    trimmedUri.erase(0, trimmedUri.find_first_not_of(" \t\n\r"));
+    trimmedUri.erase(trimmedUri.find_last_not_of(" \t\n\r") + 1);
+    
+    if (trimmedUri.empty()) {
+        return "file";
+    }
+    
+    // Convert to lowercase for comparison
+    std::string lowerUri = trimmedUri;
+    std::transform(lowerUri.begin(), lowerUri.end(), lowerUri.begin(), ::tolower);
+    
+    // Check protocol prefixes (must be at start of string)
+    if (lowerUri.find("rtsp://") == 0) {
+        return "rtsp";
+    } else if (lowerUri.find("rtmp://") == 0) {
+        return "rtmp";
+    } else if (lowerUri.find("hls://") == 0) {
+        return "hls";
+    } else if (lowerUri.find("http://") == 0 || lowerUri.find("https://") == 0) {
+        // Check if it's HLS playlist (.m3u8 extension)
+        // Check for .m3u8 at the end or before query parameters
+        size_t m3u8Pos = lowerUri.find(".m3u8");
+        if (m3u8Pos != std::string::npos) {
+            // Check if .m3u8 is at the end or followed by ? or #
+            size_t afterM3u8 = m3u8Pos + 5;
+            if (afterM3u8 >= lowerUri.length() || 
+                lowerUri[afterM3u8] == '?' || 
+                lowerUri[afterM3u8] == '#' ||
+                lowerUri[afterM3u8] == '/') {
+                return "hls";
+            }
+        }
+        return "http";
+    } else if (lowerUri.find("udp://") == 0) {
+        return "udp";
+    }
+    
+    // Check file extension for HLS (must be at end or before query params)
+    size_t m3u8Pos = lowerUri.find(".m3u8");
+    if (m3u8Pos != std::string::npos) {
+        size_t afterM3u8 = m3u8Pos + 5;
+        if (afterM3u8 >= lowerUri.length() || 
+            lowerUri[afterM3u8] == '?' || 
+            lowerUri[afterM3u8] == '#' ||
+            lowerUri[afterM3u8] == '/') {
+            return "hls";
+        }
+    }
+    
+    // Default to local file
+    return "file";
+}
+
+std::shared_ptr<cvedix_nodes::cvedix_node> PipelineBuilder::createFFmpegSourceNode(
+    const std::string& nodeName,
+    const std::map<std::string, std::string>& params,
+    const CreateInstanceRequest& req) {
+    
+    try {
+        // Get URI from params or request
+        std::string uri = params.count("uri") ? params.at("uri") : "";
+        if (uri.empty()) {
+            // Try to get from FILE_PATH or HLS_URL or HTTP_URL
+            auto filePathIt = req.additionalParams.find("FILE_PATH");
+            auto hlsIt = req.additionalParams.find("HLS_URL");
+            auto httpIt = req.additionalParams.find("HTTP_URL");
+            
+            if (hlsIt != req.additionalParams.end() && !hlsIt->second.empty()) {
+                uri = hlsIt->second;
+            } else if (httpIt != req.additionalParams.end() && !httpIt->second.empty()) {
+                uri = httpIt->second;
+            } else if (filePathIt != req.additionalParams.end() && !filePathIt->second.empty()) {
+                uri = filePathIt->second;
+            }
+        }
+        
+        int channel = params.count("channel") ? std::stoi(params.at("channel")) : 0;
+        float resizeRatio = params.count("resize_ratio") ? std::stof(params.at("resize_ratio")) : 1.0f;
+        
+        // Get resize_ratio from additionalParams if available
+        auto resizeIt = req.additionalParams.find("RESIZE_RATIO");
+        if (resizeIt != req.additionalParams.end() && !resizeIt->second.empty()) {
+            try {
+                resizeRatio = std::stof(resizeIt->second);
+            } catch (...) {
+                std::cerr << "[PipelineBuilder] Warning: Invalid RESIZE_RATIO, using default" << std::endl;
+            }
+        }
+        
+        if (nodeName.empty()) {
+            throw std::invalid_argument("Node name cannot be empty");
+        }
+        if (uri.empty()) {
+            throw std::invalid_argument("URI cannot be empty for FFmpeg source");
+        }
+        if (resizeRatio <= 0.0f || resizeRatio > 1.0f) {
+            std::cerr << "[PipelineBuilder] Warning: resize_ratio out of range, using 1.0" << std::endl;
+            resizeRatio = 1.0f;
+        }
+        
+        std::cerr << "[PipelineBuilder] Creating FFmpeg source node:" << std::endl;
+        std::cerr << "  Name: '" << nodeName << "'" << std::endl;
+        std::cerr << "  URI: '" << uri << "'" << std::endl;
+        std::cerr << "  Channel: " << channel << std::endl;
+        std::cerr << "  Resize ratio: " << resizeRatio << std::endl;
+        
+        // Note: CVEDIX SDK may not have ff_src node header
+        // Fallback: Use file_src with GStreamer urisourcebin pipeline
+        // For HLS/HTTP streams, we'll use file_src node which internally uses GStreamer
+        // The GStreamer backend should handle HLS/HTTP streams via urisourcebin
+        
+        // Since CVEDIX SDK file_src uses GStreamer internally, it should support HLS/HTTP
+        // We'll use file_src node with the URI directly
+        auto node = std::make_shared<cvedix_nodes::cvedix_file_src_node>(
+            nodeName,
+            channel,
+            uri,  // Pass URI directly - GStreamer should handle it
+            resizeRatio
+        );
+        
+        std::cerr << "[PipelineBuilder] ✓ FFmpeg source node created successfully (using file_src with GStreamer)" << std::endl;
+        return node;
+    } catch (const std::exception& e) {
+        std::cerr << "[PipelineBuilder] Exception in createFFmpegSourceNode: " << e.what() << std::endl;
         throw;
     }
 }

@@ -103,6 +103,22 @@ private:
     );
     
     /**
+     * @brief Create FFmpeg source node (for HLS, HTTP streams, etc.)
+     */
+    std::shared_ptr<cvedix_nodes::cvedix_node> createFFmpegSourceNode(
+        const std::string& nodeName,
+        const std::map<std::string, std::string>& params,
+        const CreateInstanceRequest& req
+    );
+    
+    /**
+     * @brief Detect input type from URI/path
+     * @param uri URI or file path
+     * @return Input type: "rtsp", "rtmp", "hls", "http", "file"
+     */
+    std::string detectInputType(const std::string& uri) const;
+    
+    /**
      * @brief Create face detector node (YuNet)
      */
     std::shared_ptr<cvedix_nodes::cvedix_node> createFaceDetectorNode(
