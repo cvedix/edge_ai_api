@@ -6,9 +6,10 @@
   "autoStart": false,
   "detectionSensitivity": "Medium",
   "additionalParams": {
-    "RTSP_URL": "rtsp://localhost:8554/stream",
-    "MODEL_PATH": "/opt/cvedix/models/yolov11/yolov11n.onnx",
-    "SAVE_DIR": "/tmp/output/yolov11_detection"
+    "input": {
+      "RTSP_URL": "rtsp://localhost:8554/stream",
+      "MODEL_PATH": "/opt/cvedix/models/yolov11/yolov11n.onnx",
+      "SAVE_DIR": "/tmp/output/yolov11_detection"
+    }
   }
 }
-

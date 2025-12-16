@@ -245,6 +245,15 @@ private:
     );
     
     /**
+     * @brief Create JSON Crossline MQTT broker node (custom formatting for ba_crossline)
+     */
+    std::shared_ptr<cvedix_nodes::cvedix_node> createJSONCrosslineMQTTBrokerNode(
+        const std::string& nodeName,
+        const std::map<std::string, std::string>& params,
+        const CreateInstanceRequest& req
+    );
+    
+    /**
      * @brief Create JSON Kafka broker node
      */
     std::shared_ptr<cvedix_nodes::cvedix_node> createJSONKafkaBrokerNode(

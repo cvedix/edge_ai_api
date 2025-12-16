@@ -23,7 +23,7 @@ if [ -z "$INSTANCE_ID" ]; then
     echo ""
     echo "Example:"
     echo "  $0 abc-123-def-456"
-    echo "  $0 abc-123-def-456 http://192.168.1.100:8848 5"
+    echo "  $0 abc-123-def-456 http://localhost:8848 5"
     exit 1
 fi
 

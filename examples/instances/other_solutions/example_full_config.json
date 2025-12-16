@@ -23,8 +23,9 @@
   "confThreshold": 0.2,
   "detectorThermalModelFile": "pva_det_mosaic_320",
   "additionalParams": {
-    "RTSP_URL": "rtsp://192.168.1.106:8554/live/vanphong",
-    "MODEL_PATH": "./cvedix_data/models/detection/pva_det_full_frame_512.trt"
+    "input": {
+      "RTSP_URL": "rtsp://localhost:8554/live/vanphong",
+      "MODEL_PATH": "./cvedix_data/models/detection/pva_det_full_frame_512.trt"
+    }
   }
 }
-

@@ -184,21 +184,10 @@ private:
     std::unordered_map<std::string, InstanceInfo> instances_;
     std::unordered_map<std::string, std::vector<std::shared_ptr<cvedix_nodes::cvedix_node>>> pipelines_;
     
-    // Thread management for logging threads (prevent memory leaks from detached threads)
-    std::unordered_map<std::string, std::atomic<bool>> logging_thread_stop_flags_;
-    std::unordered_map<std::string, std::thread> logging_threads_;
     // Thread management for video loop monitoring threads
     std::unordered_map<std::string, std::atomic<bool>> video_loop_thread_stop_flags_;
     std::unordered_map<std::string, std::thread> video_loop_threads_;
     mutable std::mutex thread_mutex_; // Separate mutex for thread management to avoid deadlock
-    
-    // Thread management for MQTT JSON reader threads (prevent memory leaks and segmentation faults)
-    // Use shared_ptr to atomic<bool> to avoid capturing 'this' in thread lambda
-    std::unordered_map<std::string, std::shared_ptr<std::atomic<bool>>> mqtt_thread_stop_flags_;
-    std::unordered_map<std::string, std::thread> mqtt_threads_;
-    std::unordered_map<std::string, int> mqtt_pipe_write_fds_; // Track pipe write FDs to close them on stop
-    std::unordered_map<std::string, int> mqtt_stdout_backups_; // Track stdout backups to restore on stop
-    mutable std::mutex mqtt_thread_mutex_; // Separate mutex for MQTT thread management
     
     // Thread management for RTSP connection monitoring and auto-reconnect
     std::unordered_map<std::string, std::shared_ptr<std::atomic<bool>>> rtsp_monitor_stop_flags_;
@@ -317,30 +306,6 @@ private:
      * @return true if pipeline was rebuilt successfully
      */
     bool rebuildPipelineFromInstanceInfo(const std::string& instanceId);
-    
-    /**
-     * @brief Log processing results for instance (for instances without RTMP output)
-     * @param instanceId Instance ID
-     */
-    void logProcessingResults(const std::string& instanceId) const;
-    
-    /**
-     * @brief Stop and cleanup logging thread for an instance
-     * @param instanceId Instance ID
-     */
-    void stopLoggingThread(const std::string& instanceId);
-    
-    /**
-     * @brief Stop and cleanup MQTT thread for an instance
-     * @param instanceId Instance ID
-     */
-    void stopMqttThread(const std::string& instanceId);
-    
-    /**
-     * @brief Start logging thread for an instance (if needed)
-     * @param instanceId Instance ID
-     */
-    void startLoggingThread(const std::string& instanceId);
     
     /**
      * @brief Start video loop monitoring thread for file-based instances

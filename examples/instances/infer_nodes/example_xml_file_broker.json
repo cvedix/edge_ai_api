@@ -6,11 +6,14 @@
   "autoStart": true,
   "detectionSensitivity": "Medium",
   "additionalParams": {
-    "FILE_PATH": "./cvedix_data/test_video/face.mp4",
-    "MODEL_PATH": "./cvedix_data/models/face/face_detection_yunet_2022mar.onnx",
-    "SFACE_MODEL_PATH": "./cvedix_data/models/face/face_recognition_sface_2021dec.onnx",
-    "BROKE_FOR": "FACE",
-    "XML_FILE_PATH": "./output/broker_output.xml"
+    "input": {
+      "FILE_PATH": "./cvedix_data/test_video/face.mp4",
+      "MODEL_PATH": "./cvedix_data/models/face/face_detection_yunet_2022mar.onnx",
+      "SFACE_MODEL_PATH": "./cvedix_data/models/face/face_recognition_sface_2021dec.onnx",
+      "XML_FILE_PATH": "./output/broker_output.xml"
+    },
+    "output": {
+      "BROKE_FOR": "FACE"
+    }
   }
 }
-

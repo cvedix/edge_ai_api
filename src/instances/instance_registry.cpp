@@ -7,6 +7,7 @@
 #include <cvedix/cvedix_version.h>
 #include <cvedix/nodes/src/cvedix_rtsp_src_node.h>
 #include <cvedix/nodes/src/cvedix_file_src_node.h>
+#include <cvedix/nodes/src/cvedix_rtmp_src_node.h>
 #include <cvedix/nodes/infers/cvedix_yunet_face_detector_node.h>
 #include <cvedix/nodes/infers/cvedix_sface_feature_encoder_node.h>
 #include <cvedix/nodes/infers/cvedix_mask_rcnn_detector_node.h>
@@ -27,7 +28,6 @@
 #include <sys/stat.h>
 #include <unistd.h>
 #include <future>
-#include <mosquitto.h>
 #include <atomic>
 #include <queue>
 #include <mutex>
@@ -303,16 +303,8 @@ std::string InstanceRegistry::createInstance(const CreateInstanceRequest& req) {
                     std::cerr << "[InstanceRegistry] NOTE: Monitor logs above for RTSP connection status" << std::endl;
                     std::cerr << "[InstanceRegistry] ========================================" << std::endl;
                     
-                    // Log processing results for instances without RTMP output
                     // Wait a bit for pipeline to initialize
                     std::this_thread::sleep_for(std::chrono::milliseconds(2000));
-                    if (!hasRTMPOutput(instanceId)) {
-                        std::cerr << "[InstanceRegistry] Instance does not have RTMP output - enabling processing result logging" << std::endl;
-                        logProcessingResults(instanceId);
-                        
-                        // Start periodic logging in a separate thread (managed, not detached)
-                        startLoggingThread(instanceId);
-                    }
                 } else {
                     std::cerr << "[InstanceRegistry] ✗ Failed to start pipeline for instance " 
                               << instanceId << " (pipeline created but not started)" << std::endl;
@@ -396,9 +388,6 @@ bool InstanceRegistry::deleteInstance(const std::string& instanceId) {
             // Continue with deletion anyway
         }
     }
-    
-    // Stop logging thread if exists
-    stopLoggingThread(instanceId);
     
     // Stop video loop monitoring thread if exists
     stopVideoLoopThread(instanceId);
@@ -900,1038 +889,6 @@ bool InstanceRegistry::startInstance(const std::string& instanceId, bool skipAut
     if (started) {
         // Wait a bit for pipeline to initialize and start processing
         std::this_thread::sleep_for(std::chrono::milliseconds(2000));
-        
-        // Check if instance uses json_console_broker and has MQTT config
-        // If so, setup MQTT publishing similar to face_tracking_sample.cpp
-        bool hasJsonConsoleBroker = false;
-        for (const auto& node : pipelineCopy) {
-            auto consoleBrokerNode = std::dynamic_pointer_cast<cvedix_nodes::cvedix_json_console_broker_node>(node);
-            if (consoleBrokerNode) {
-                hasJsonConsoleBroker = true;
-                break;
-            }
-        }
-        
-        // Get MQTT config from additionalParams
-        // CRITICAL: Use timeout to prevent deadlock if mutex is locked by recovery handler
-        std::string mqtt_broker, mqtt_topic, mqtt_username, mqtt_password;
-        int mqtt_port = 1883;
-        {
-            std::unique_lock<std::shared_timed_mutex> lock(mutex_, std::defer_lock);
-            // Try to acquire lock with timeout (500ms) - fail fast if locked
-            if (lock.try_lock_for(std::chrono::milliseconds(500))) {
-                auto instanceIt = instances_.find(instanceId);
-                if (instanceIt != instances_.end()) {
-                    const auto& params = instanceIt->second.additionalParams;
-                    auto brokerIt = params.find("MQTT_BROKER_URL");
-                    if (brokerIt != params.end() && !brokerIt->second.empty()) {
-                        mqtt_broker = brokerIt->second;
-                    }
-                    auto portIt = params.find("MQTT_PORT");
-                    if (portIt != params.end() && !portIt->second.empty()) {
-                        try {
-                            mqtt_port = std::stoi(portIt->second);
-                        } catch (...) {
-                            mqtt_port = 1883;
-                        }
-                    }
-                    auto topicIt = params.find("MQTT_TOPIC");
-                    if (topicIt != params.end() && !topicIt->second.empty()) {
-                        mqtt_topic = topicIt->second;
-                    }
-                    auto usernameIt = params.find("MQTT_USERNAME");
-                    if (usernameIt != params.end() && !usernameIt->second.empty()) {
-                        mqtt_username = usernameIt->second;
-                    }
-                    auto passwordIt = params.find("MQTT_PASSWORD");
-                    if (passwordIt != params.end() && !passwordIt->second.empty()) {
-                        mqtt_password = passwordIt->second;
-                    }
-                }
-            } else {
-                // Timeout - mutex is locked, skip MQTT setup to prevent deadlock
-                std::cerr << "[InstanceRegistry] [MQTT] WARNING: Cannot acquire mutex to read MQTT config (timeout 500ms)" << std::endl;
-                std::cerr << "[InstanceRegistry] [MQTT] Skipping MQTT setup to prevent deadlock" << std::endl;
-                mqtt_broker.clear();  // Clear to skip MQTT setup
-            }
-        }
-        
-        // Setup MQTT if instance uses json_console_broker and has MQTT config
-        // CRITICAL: This is the ONLY way to publish MQTT now since json_mqtt_broker_node is broken and causes crashes
-        // Using a safer approach: non-blocking I/O with timeout to prevent deadlocks
-        // Thread is completely independent and does NOT use instance_registry mutex
-        if (hasJsonConsoleBroker && !mqtt_broker.empty() && !mqtt_topic.empty()) {
-            std::cerr << "[InstanceRegistry] [MQTT] Setting up MQTT publishing for instance " << instanceId << std::endl;
-            std::cerr << "[InstanceRegistry] [MQTT] NOTE: Using stdout pipe method (json_mqtt_broker_node is disabled due to crashes)" << std::endl;
-            std::cerr << "[InstanceRegistry] [MQTT] Broker: " << mqtt_broker << ":" << mqtt_port << std::endl;
-            std::cerr << "[InstanceRegistry] [MQTT] Topic: " << mqtt_topic << std::endl;
-            std::cerr << "[InstanceRegistry] [MQTT] NOTE: Using non-blocking I/O with timeout to prevent deadlocks" << std::endl;
-            
-            // Initialize mosquitto library if not already initialized
-            static std::once_flag mosquitto_init_flag;
-            std::call_once(mosquitto_init_flag, []() {
-                mosquitto_lib_init();
-            });
-            
-            // Create mosquitto client
-            std::string client_id = "edge_ai_api_" + instanceId.substr(0, 8);
-            struct mosquitto* mosq = mosquitto_new(client_id.c_str(), true, nullptr);
-            bool mqtt_connected = false;
-            std::atomic<bool> local_mqtt_connected(false);  // Connection flag for callbacks
-            
-            if (mosq) {
-                // Set username/password if provided
-                if (!mqtt_username.empty() && !mqtt_password.empty()) {
-                    mosquitto_username_pw_set(mosq, mqtt_username.c_str(), mqtt_password.c_str());
-                }
-                
-                // Set callbacks to detect connection/disconnection
-                mosquitto_connect_callback_set(mosq, [](struct mosquitto* /*mosq*/, void* userdata, int result) {
-                    std::atomic<bool>* connected_ptr = static_cast<std::atomic<bool>*>(userdata);
-                    if (result == 0) {
-                        connected_ptr->store(true);
-                        std::cerr << "[InstanceRegistry] [MQTT] Connection callback: Connected!" << std::endl;
-                    } else {
-                        connected_ptr->store(false);
-                        std::cerr << "[InstanceRegistry] [MQTT] Connection callback: Failed with code " << result << std::endl;
-                    }
-                });
-                
-                mosquitto_disconnect_callback_set(mosq, [](struct mosquitto* /*mosq*/, void* userdata, int /*reason*/) {
-                    std::atomic<bool>* connected_ptr = static_cast<std::atomic<bool>*>(userdata);
-                    connected_ptr->store(false);
-                    std::cerr << "[InstanceRegistry] [MQTT] Disconnection callback: Connection lost!" << std::endl;
-                });
-                
-                // Pass connection flag pointer to callbacks
-                mosquitto_user_data_set(mosq, &local_mqtt_connected);
-                
-                // Connect to broker
-                std::cerr << "[InstanceRegistry] [MQTT] Connecting to broker " << mqtt_broker << ":" << mqtt_port << "..." << std::endl;
-                int rc = mosquitto_connect(mosq, mqtt_broker.c_str(), mqtt_port, 60);
-                if (rc == MOSQ_ERR_SUCCESS) {
-                    mqtt_connected = true;
-                    local_mqtt_connected.store(true);
-                    std::cerr << "[InstanceRegistry] [MQTT] Connected successfully!" << std::endl;
-                    mosquitto_loop_start(mosq);
-                } else {
-                    std::cerr << "[InstanceRegistry] [MQTT] Failed to connect: " << mosquitto_strerror(rc) << std::endl;
-                    std::cerr << "[InstanceRegistry] [MQTT] Continuing without MQTT publishing..." << std::endl;
-                    mosquitto_destroy(mosq);
-                    mosq = nullptr;
-                }
-            } else {
-                std::cerr << "[InstanceRegistry] [MQTT] Failed to create mosquitto client" << std::endl;
-            }
-            
-            // Setup MQTT publishing with non-blocking approach
-            if (mosq && mqtt_connected) {
-                // Create pipe for stdout redirection
-                int pipefd[2] = {-1, -1};  // Fixed: Initialize to invalid FDs
-                bool pipe_created = false;
-                int stdout_backup = -1;  // Fixed: Initialize to invalid FD
-                bool stdout_redirected = false;
-                
-                try {
-                    if (pipe(pipefd) == -1) {
-                        std::cerr << "[InstanceRegistry] [MQTT] Failed to create pipe: " << strerror(errno) << std::endl;
-                        throw std::runtime_error("Failed to create pipe");
-                    }
-                    pipe_created = true;
-                    
-                    // Set pipe to non-blocking mode to prevent deadlock
-                    int flags = fcntl(pipefd[0], F_GETFL, 0);
-                    if (flags == -1 || fcntl(pipefd[0], F_SETFL, flags | O_NONBLOCK) == -1) {
-                        std::cerr << "[InstanceRegistry] [MQTT] Failed to set pipe non-blocking: " << strerror(errno) << std::endl;
-                        throw std::runtime_error("Failed to set pipe non-blocking");
-                    }
-                    
-                    // Save original stdout
-                    stdout_backup = dup(STDOUT_FILENO);
-                    if (stdout_backup == -1) {
-                        std::cerr << "[InstanceRegistry] [MQTT] Failed to backup stdout: " << strerror(errno) << std::endl;
-                        throw std::runtime_error("Failed to backup stdout");
-                    }
-                    
-                    // Redirect stdout to pipe
-                    if (dup2(pipefd[1], STDOUT_FILENO) == -1) {
-                        std::cerr << "[InstanceRegistry] [MQTT] Failed to redirect stdout: " << strerror(errno) << std::endl;
-                        throw std::runtime_error("Failed to redirect stdout");
-                    }
-                    stdout_redirected = true;
-                    // CRITICAL: After dup2, pipefd[1] and STDOUT_FILENO point to same FD (pipe write end)
-                    // We need to close pipefd[1] to release the extra reference
-                    // Close pipefd[1] - we don't need the extra reference anymore
-                    // STDOUT_FILENO still points to the pipe write end and will be closed on stop
-                    if (pipefd[1] >= 0) {
-                        close(pipefd[1]);
-                        pipefd[1] = -1;  // Mark as closed
-                    }
-                    
-                    // Start thread to read JSON from pipe and publish to MQTT
-                    // CRITICAL: This thread is COMPLETELY INDEPENDENT - does NOT use instance_registry mutex
-                    // Only keep the LATEST JSON, drop all old JSONs to prevent backlog and deadlock
-                    // Thread is now managed (not detached) and will be joined on stop
-                    
-                    // CRITICAL: Use shared_ptr for mosq to ensure it's not destroyed while thread is running
-                    std::shared_ptr<struct mosquitto> mosq_shared(mosq, [](struct mosquitto* /*m*/) {
-                        // Custom deleter - don't destroy here, it will be destroyed when thread exits
-                        // Parameter name commented to avoid unused-parameter warning
-                    });
-                    
-                    // CRITICAL: Create shared_ptr to stop flag to avoid capturing 'this'
-                    // This prevents use-after-free if InstanceRegistry is destroyed while thread is running
-                    auto stop_flag = std::make_shared<std::atomic<bool>>(false);
-                    
-                    // CRITICAL: Store stop flag and thread in maps for proper management
-                    {
-                        std::lock_guard<std::mutex> lock(mqtt_thread_mutex_);
-                        mqtt_thread_stop_flags_[instanceId] = stop_flag;
-                        // Store STDOUT_FILENO (which is now pipe write end) to close it on stop
-                        // Note: After dup2, STDOUT_FILENO points to pipe write end
-                        mqtt_pipe_write_fds_[instanceId] = STDOUT_FILENO;
-                        // Store stdout backup to restore it on stop
-                        mqtt_stdout_backups_[instanceId] = stdout_backup;
-                    }
-                    
-                    // Update local_mqtt_connected with current connection status
-                    local_mqtt_connected.store(mqtt_connected);
-                    
-                    // CRITICAL: Copy pipefd[0] and stdout_backup to avoid issues when variables go out of scope
-                    int pipefd_read = pipefd[0];
-                    int stdout_backup_copy = stdout_backup;
-                    
-                    // Get MQTT rate limit from instance config (if available)
-                    // This allows users to slow down MQTT publishing to reduce server load
-                    int mqtt_rate_limit_ms = 2000;  // Default: 2 seconds (0.5 messages per second) - very conservative
-                    {
-                        std::shared_lock<std::shared_timed_mutex> lock(mutex_);
-                        auto instanceIt = instances_.find(instanceId);
-                        if (instanceIt != instances_.end()) {
-                            const auto& info = instanceIt->second;
-                            // Check for MQTT_RATE_LIMIT_MS parameter
-                            auto it = info.additionalParams.find("MQTT_RATE_LIMIT_MS");
-                            if (it != info.additionalParams.end() && !it->second.empty()) {
-                                try {
-                                    mqtt_rate_limit_ms = std::stoi(it->second);
-                                    if (mqtt_rate_limit_ms < 500) mqtt_rate_limit_ms = 500;  // Minimum 500ms
-                                    if (mqtt_rate_limit_ms > 10000) mqtt_rate_limit_ms = 10000;  // Maximum 10 seconds
-                                    std::cerr << "[InstanceRegistry] [MQTT] Rate limit configured: " << mqtt_rate_limit_ms << "ms (" 
-                                              << (1000.0 / mqtt_rate_limit_ms) << " messages/second)" << std::endl;
-                                } catch (...) {
-                                    std::cerr << "[InstanceRegistry] [MQTT] Warning: Invalid MQTT_RATE_LIMIT_MS, using default 2000ms" << std::endl;
-                                }
-                            }
-                            // Also check PROCESSING_DELAY_MS and use it if larger
-                            auto delayIt = info.additionalParams.find("PROCESSING_DELAY_MS");
-                            if (delayIt != info.additionalParams.end() && !delayIt->second.empty()) {
-                                try {
-                                    int processingDelay = std::stoi(delayIt->second);
-                                    if (processingDelay > mqtt_rate_limit_ms) {
-                                        mqtt_rate_limit_ms = processingDelay;
-                                        std::cerr << "[InstanceRegistry] [MQTT] Using PROCESSING_DELAY_MS (" << processingDelay 
-                                                  << "ms) as rate limit to reduce processing speed" << std::endl;
-                                    }
-                                } catch (...) {
-                                    // Ignore errors
-                                }
-                            }
-                        }
-                    }
-                    
-                    // CRITICAL: Do NOT capture 'this' - use shared_ptr to stop flag instead
-                    // This prevents use-after-free if InstanceRegistry is destroyed
-                    std::thread json_reader_thread([stop_flag, mosq_shared, mqtt_topic, local_mqtt_connected_ptr = &local_mqtt_connected, pipefd_read, stdout_backup_copy, mqtt_rate_limit_ms]() {
-                                try {
-                                // CRITICAL: This lambda does NOT capture 'this' to avoid use-after-free
-                                // All variables are copied to ensure thread independence
-                                // Use shared_ptr to stop flag to safely check stop condition
-                                
-                                // Helper function to safely convert JSON value to int (handles both Int and UInt)
-                                // Must be defined inside lambda to be accessible
-                                auto safeJsonToInt = [](const Json::Value& value, int default_value = -1) -> int {
-                                    if (value.isInt()) {
-                                        return value.asInt();
-                                    } else if (value.isUInt()) {
-                                        Json::UInt64 uint_val = value.asUInt64();
-                                        // Check if value fits in int range
-                                        if (uint_val <= static_cast<Json::UInt64>(std::numeric_limits<int>::max())) {
-                                            return static_cast<int>(uint_val);
-                                        } else {
-                                            // Value too large, return default or clamp to max int
-                                            return std::numeric_limits<int>::max();
-                                        }
-                                    } else if (value.isNumeric()) {
-                                        // Try asInt first, but catch exception if it fails
-                                        try {
-                                            return value.asInt();
-                                        } catch (...) {
-                                            // If asInt fails, try asUInt64
-                                            try {
-                                                Json::UInt64 uint_val = value.asUInt64();
-                                                if (uint_val <= static_cast<Json::UInt64>(std::numeric_limits<int>::max())) {
-                                                    return static_cast<int>(uint_val);
-                                                } else {
-                                                    return std::numeric_limits<int>::max();
-                                                }
-                                            } catch (...) {
-                                                return default_value;
-                                            }
-                                        }
-                                    }
-                                    return default_value;
-                                };
-                                
-                                // Fixed: Use dynamic buffer instead of fixed size to prevent overflow
-                                // Use std::vector for automatic memory management
-                                std::vector<char> buffer(4096);  // Start with 4KB, can grow if needed
-                                std::string line_buffer;
-                                std::string latest_json;  // Only keep the latest complete JSON
-                                int publish_count = 0;
-                                int skip_count = 0;
-                                int dropped_json_count = 0;
-                                auto last_reconnect_attempt = std::chrono::steady_clock::now();
-                                const auto reconnect_cooldown = std::chrono::seconds(5);  // Only try reconnect every 5 seconds
-                                
-                                // Track when we last received JSON for debugging
-                                auto last_json_received_time = std::chrono::steady_clock::now();
-                                auto thread_start_time = std::chrono::steady_clock::now();
-                                const auto json_timeout = std::chrono::seconds(30);  // Warn if no JSON for 30 seconds
-                                
-                                // Track vehicle count for summary messages
-                                int total_vehicles_crossed = 0;  // Cumulative count of vehicles that have crossed the line
-                                std::set<int> tracked_vehicle_ids;  // Track unique vehicle IDs that have crossed
-                                int last_frame_index = -1;  // Track last frame to avoid double counting
-                                int max_target_size_seen = 0;  // Track maximum target_size seen (to handle resets)
-                                
-                                // Rate limiting: Only publish every N milliseconds to prevent server overload
-                                // Use configured rate limit (default: 2000ms = 0.5 messages/second)
-                                auto last_publish_time = std::chrono::steady_clock::now();
-                                const auto min_publish_interval = std::chrono::milliseconds(mqtt_rate_limit_ms);
-                                
-                                // Log thread start for debugging
-                                std::cerr << "[InstanceRegistry] [MQTT] JSON reader thread started, waiting for data from json_console_broker..." << std::endl;
-                                std::cerr << "[InstanceRegistry] [MQTT] NOTE: If no JSON received, check:" << std::endl;
-                                std::cerr << "[InstanceRegistry] [MQTT]   1. RTSP stream is working (FPS > 0)" << std::endl;
-                                std::cerr << "[InstanceRegistry] [MQTT]   2. Pipeline is processing frames" << std::endl;
-                                std::cerr << "[InstanceRegistry] [MQTT]   3. ba_crossline node is detecting objects" << std::endl;
-                                std::cerr << "[InstanceRegistry] [MQTT]   4. json_console_broker broke_for matches data type (NORMAL)" << std::endl;
-                                
-                                while (!stop_flag->load()) {
-                                    // CRITICAL: Check stop flag before blocking read to allow quick exit
-                                    if (stop_flag->load()) {
-                                        break;
-                                    }
-                                    
-                                    // CRITICAL: Check stop flag BEFORE any potentially blocking operations
-                                    if (stop_flag->load()) {
-                                        break;
-                                    }
-                                    
-                                    // CRITICAL: Call mosquitto_loop() regularly to maintain connection and process network I/O
-                                    // This must be called frequently to keep connection alive and send queued messages
-                                    // Use non-blocking mode (timeout=0) to prevent blocking
-                                    // Reduced packet count to prevent blocking
-                                    if (mosq_shared && !stop_flag->load()) {
-                                        mosquitto_loop(mosq_shared.get(), 0, 5);  // Process up to 5 packets each iteration (reduced from 10)
-                                        
-                                        // Check connection status and try to reconnect if lost (with cooldown)
-                                        if (!stop_flag->load()) {
-                                            auto now = std::chrono::steady_clock::now();
-                                            if (!local_mqtt_connected_ptr->load() && 
-                                                (now - last_reconnect_attempt) >= reconnect_cooldown) {
-                                                int rc = mosquitto_reconnect(mosq_shared.get());
-                                                last_reconnect_attempt = now;
-                                                if (rc == MOSQ_ERR_SUCCESS) {
-                                                    local_mqtt_connected_ptr->store(true);
-                                                    std::cerr << "[InstanceRegistry] [MQTT] Reconnected successfully!" << std::endl;
-                                                } else {
-                                                    std::cerr << "[InstanceRegistry] [MQTT] Reconnect attempt failed: " << mosquitto_strerror(rc) << std::endl;
-                                                }
-                                            }
-                                        }
-                                    }
-                                    
-                                    // Check stop flag again before read
-                                    if (stop_flag->load()) {
-                                        break;
-                                    }
-                                    
-                                    // Use select() with timeout to allow frequent stop_flag checks
-                                    // Increased to 200ms to reduce CPU usage while still checking stop_flag regularly
-                                    fd_set readfds;
-                                    FD_ZERO(&readfds);
-                                    FD_SET(pipefd_read, &readfds);
-                                    struct timeval timeout;
-                                    timeout.tv_sec = 0;
-                                    timeout.tv_usec = 200000;  // 200ms timeout (increased from 50ms to reduce CPU usage)
-                                    
-                                    int select_result = select(pipefd_read + 1, &readfds, nullptr, nullptr, &timeout);
-                                    
-                                    // Check stop flag after select (may have waited up to 200ms)
-                                    if (stop_flag->load()) {
-                                        break;
-                                    }
-                                    
-                                    // Warn if no JSON received for a while (every 30 seconds)
-                                    auto now = std::chrono::steady_clock::now();
-                                    auto time_since_last_json = std::chrono::duration_cast<std::chrono::seconds>(
-                                        now - last_json_received_time).count();
-                                    auto time_since_thread_start = std::chrono::duration_cast<std::chrono::seconds>(
-                                        now - thread_start_time).count();
-                                    
-                                    // Only warn if thread has been running for at least 30 seconds
-                                    if (time_since_thread_start >= 30 && time_since_last_json >= json_timeout.count()) {
-                                        static auto last_warning_time = std::chrono::steady_clock::now() - json_timeout;
-                                        auto time_since_last_warning = std::chrono::duration_cast<std::chrono::seconds>(
-                                            now - last_warning_time).count();
-                                        
-                                        // Only warn every 30 seconds to avoid spam
-                                        if (time_since_last_warning >= 30) {
-                                            std::cerr << "[InstanceRegistry] [MQTT] ⚠ WARNING: No JSON received from json_console_broker for " 
-                                                      << time_since_last_json << " seconds!" << std::endl;
-                                            std::cerr << "[InstanceRegistry] [MQTT] ⚠ This usually means:" << std::endl;
-                                            std::cerr << "[InstanceRegistry] [MQTT]   1. RTSP stream is not working (check FPS > 0)" << std::endl;
-                                            std::cerr << "[InstanceRegistry] [MQTT]   2. Pipeline is not processing frames" << std::endl;
-                                            std::cerr << "[InstanceRegistry] [MQTT]   3. ba_crossline is not detecting objects" << std::endl;
-                                            std::cerr << "[InstanceRegistry] [MQTT]   4. json_console_broker broke_for parameter mismatch" << std::endl;
-                                            last_warning_time = now;
-                                        }
-                                    }
-                                    
-                                    ssize_t n = -1;
-                                    if (select_result > 0 && FD_ISSET(pipefd_read, &readfds)) {
-                                        // Data is available, read it (non-blocking, so should return immediately)
-                                        // Fixed: Use buffer.data() and ensure we don't overflow
-                                        n = read(pipefd_read, buffer.data(), buffer.size() - 1);
-                                    } else if (select_result == 0) {
-                                        // Timeout - no data available, continue to check stop_flag
-                                        n = -1;
-                                        errno = EAGAIN;
-                                    } else {
-                                        // Error in select
-                                        n = -1;
-                                    }
-                                    if (n > 0) {
-                                        // Fixed: Ensure null termination and prevent buffer overflow
-                                        if (static_cast<size_t>(n) < buffer.size()) {
-                                            buffer[n] = '\0';
-                                        } else {
-                                            buffer[buffer.size() - 1] = '\0';
-                                            n = buffer.size() - 1;  // Adjust n to safe value
-                                        }
-                                        
-                                        // CRITICAL: Limit line_buffer size - drop old data if too large
-                                        // Only keep recent data to prevent memory buildup
-                                        if (line_buffer.length() > 8192) {
-                                            // Keep only the last 4096 chars (drop old data)
-                                            line_buffer = line_buffer.substr(line_buffer.length() - 4096);
-                                            dropped_json_count++;
-                                        }
-                                        
-                                        // Fixed: Append buffer safely using string_view to avoid copying null terminator issues
-                                        line_buffer.append(buffer.data(), n);
-                                        
-                                        // CRITICAL: Find the LATEST complete JSON in buffer (not the first one)
-                                        // This ensures we always process the most recent data, not old backlog
-                                        // Strategy: Find all JSON objects by matching braces, then take the last one
-                                        size_t last_json_start = std::string::npos;
-                                        size_t last_json_end = std::string::npos;
-                                        
-                                        // Find all complete JSON objects by scanning from start to end
-                                        int brace_count = 0;
-                                        size_t current_start = std::string::npos;
-                                        
-                                        for (size_t i = 0; i < line_buffer.length(); i++) {
-                                            char c = line_buffer[i];
-                                            
-                                            if (c == '{') {
-                                                if (brace_count == 0) {
-                                                    current_start = i;  // Start of a new JSON object
-                                                }
-                                                brace_count++;
-                                            } else if (c == '}') {
-                                                brace_count--;
-                                                if (brace_count == 0 && current_start != std::string::npos) {
-                                                    // Found a complete JSON object
-                                                    last_json_start = current_start;
-                                                    last_json_end = i;
-                                                    current_start = std::string::npos;  // Reset for next JSON
-                                                }
-                                            }
-                                        }
-                                        
-                                        // If we found a complete JSON, extract it (this is the latest one)
-                                        if (last_json_start != std::string::npos && last_json_end != std::string::npos) {
-                                            std::string json_candidate = line_buffer.substr(last_json_start, last_json_end - last_json_start + 1);
-                                            
-                                            if (json_candidate.length() > 10 && 
-                                                json_candidate[0] == '{' && 
-                                                json_candidate.back() == '}') {
-                                                // Update last JSON received time
-                                                last_json_received_time = std::chrono::steady_clock::now();
-                                                // CRITICAL: Parse JSON FIRST before updating latest_json
-                                                // This ensures we always use the most recent data
-                                                std::string summary_str;
-                                                try {
-                                                    Json::Value json_root;
-                                                    Json::Reader reader;
-                                                    if (reader.parse(json_candidate, json_root)) {
-                                                        // Extract vehicle count from JSON
-                                                        int vehicle_count = 0;
-                                                        // Use safe conversion for frame_index (may be large UInt)
-                                                        int current_frame_index = safeJsonToInt(json_root.get("frame_index", -1), -1);
-                                                        int current_target_size = 0;
-                                                        
-                                                        // Get target_size first (this is the cumulative count from ba_crossline)
-                                                        // CRITICAL: target_size is the authoritative source for total vehicles crossed
-                                                        // ba_crossline node maintains this count internally
-                                                        if (json_root.isMember("target_size")) {
-                                                            if (json_root["target_size"].isInt()) {
-                                                                current_target_size = json_root["target_size"].asInt();
-                                                            } else if (json_root["target_size"].isUInt()) {
-                                                                current_target_size = static_cast<int>(json_root["target_size"].asUInt());
-                                                            } else if (json_root["target_size"].isNumeric()) {
-                                                                // Use safe conversion for numeric values (may be large UInt)
-                                                                current_target_size = safeJsonToInt(json_root["target_size"], 0);
-                                                            }
-                                                            
-                                                            // CRITICAL: Always use max to ensure total_vehicles_crossed only increases, never decreases
-                                                            // target_size can decrease (e.g., when vehicles leave or node resets)
-                                                            // We must maintain the maximum count seen so far
-                                                            // Track maximum target_size seen to handle resets
-                                                            if (current_target_size > max_target_size_seen) {
-                                                                max_target_size_seen = current_target_size;
-                                                                // When we see a new max, update total immediately
-                                                                total_vehicles_crossed = std::max(total_vehicles_crossed, max_target_size_seen);
-                                                            }
-                                                            
-                                                            // Use max of: current total, current target_size, and max target_size seen
-                                                            // NOTE: We don't use tracked_vehicle_ids.size() because SORT tracker reuses IDs
-                                                            // when vehicles leave the frame, making it unreliable for counting
-                                                            // Priority: max_target_size_seen > current_target_size
-                                                            total_vehicles_crossed = std::max({total_vehicles_crossed, current_target_size, max_target_size_seen});
-                                                            vehicle_count = current_target_size;
-                                                        }
-                                                        
-                                                        // Also get targets array size for reference
-                                                        int targets_array_size = 0;
-                                                        if (json_root.isMember("targets") && json_root["targets"].isArray()) {
-                                                            targets_array_size = json_root["targets"].size();
-                                                            
-                                                            // If target_size is not available, use targets array size as fallback
-                                                            if (vehicle_count == 0 && current_target_size == 0 && targets_array_size > 0) {
-                                                                vehicle_count = targets_array_size;
-                                                                // Don't update total_vehicles_crossed here - let tracked_vehicle_ids handle it
-                                                            }
-                                                            
-                                                            // Track unique vehicle IDs from targets array
-                                                            // This helps maintain count even when target_size resets
-                                                            if (current_frame_index != last_frame_index) {
-                                                                for (const auto& target : json_root["targets"]) {
-                                                                    if (target.isObject()) {
-                                                                        int vehicle_id = -1;
-                                                                        
-                                                                        // Try to get ID from ptr_wrapper structure
-                                                                        if (target.isMember("ptr_wrapper")) {
-                                                                            const auto& ptr_wrapper = target["ptr_wrapper"];
-                                                                            if (ptr_wrapper.isObject()) {
-                                                                                if (ptr_wrapper.isMember("id")) {
-                                                                                    // Use safe conversion for vehicle ID (may be large UInt)
-                                                                                    vehicle_id = safeJsonToInt(ptr_wrapper["id"], -1);
-                                                                                }
-                                                                            }
-                                                                        }
-                                                                        
-                                                                        // Track unique IDs - this maintains count across resets
-                                                                        if (vehicle_id != -1) {
-                                                                            tracked_vehicle_ids.insert(vehicle_id);
-                                                                            // Update total if we have new tracked vehicles
-                                                                            int tracked_count = static_cast<int>(tracked_vehicle_ids.size());
-                                                                            total_vehicles_crossed = std::max(total_vehicles_crossed, tracked_count);
-                                                                        }
-                                                                    }
-                                                                }
-                                                                last_frame_index = current_frame_index;
-                                                            }
-                                                        }
-                                                        
-                                                        // Debug: Log JSON structure for first few frames to understand format
-                                                        static int debug_log_count = 0;
-                                                        if (debug_log_count < 3) {
-                                                            std::cerr << "[InstanceRegistry] [MQTT] Debug JSON structure (frame " << current_frame_index << "):" << std::endl;
-                                                            std::cerr << "  target_size: " << current_target_size << std::endl;
-                                                            std::cerr << "  targets array size: " << targets_array_size << std::endl;
-                                                            std::cerr << "  JSON keys: ";
-                                                            for (const auto& key : json_root.getMemberNames()) {
-                                                                std::cerr << key << " ";
-                                                            }
-                                                            std::cerr << std::endl;
-                                                            debug_log_count++;
-                                                        }
-                                                        
-                                                        // Create summary JSON with vehicle count
-                                                        Json::Value summary_json;
-                                                        summary_json["timestamp"] = std::chrono::duration_cast<std::chrono::milliseconds>(
-                                                            std::chrono::system_clock::now().time_since_epoch()).count();
-                                                        summary_json["channel_index"] = json_root.get("channel_index", 0);
-                                                        summary_json["frame_index"] = current_frame_index;
-                                                        summary_json["vehicle_count"] = vehicle_count;  // Current count (from target_size)
-                                                        summary_json["targets_count"] = targets_array_size;  // Targets array size
-                                                        summary_json["target_size"] = current_target_size;  // Target size from ba_crossline (cumulative)
-                                                        summary_json["total_vehicles_crossed"] = total_vehicles_crossed;  // Total (same as target_size)
-                                                        summary_json["unique_vehicles_tracked"] = static_cast<int>(tracked_vehicle_ids.size());  // Unique IDs tracked
-                                                        summary_json["fps"] = json_root.get("fps", 0.0);
-                                                        summary_json["broke_for"] = json_root.get("broke_for", "normal");
-                                                        
-                                                        // Convert summary to string
-                                                        Json::StreamWriterBuilder builder;
-                                                        builder["indentation"] = "";  // Compact format
-                                                        std::string summary_str = Json::writeString(builder, summary_json);
-                                                        
-                                                        // Log vehicle count (only first few times or when count > 0 or total changes)
-                                                        static int log_count = 0;
-                                                        static int last_logged_total = -1;
-                                                        int tracked_count = static_cast<int>(tracked_vehicle_ids.size());
-                                                        if (vehicle_count > 0 || total_vehicles_crossed != last_logged_total || log_count < 10) {
-                                                            std::cerr << "[InstanceRegistry] [MQTT] Frame " << current_frame_index 
-                                                                      << ": target_size=" << current_target_size
-                                                                      << ", vehicle_count=" << vehicle_count 
-                                                                      << ", total_vehicles_crossed=" << total_vehicles_crossed 
-                                                                      << ", targets_count=" << targets_array_size
-                                                                      << ", tracked_ids=" << tracked_count
-                                                                      << ", max_target_size_seen=" << max_target_size_seen << std::endl;
-                                                            log_count++;
-                                                            last_logged_total = total_vehicles_crossed;
-                                                        }
-                                                        
-                                                        // CRITICAL: Update latest_json with summary JSON AFTER parsing
-                                                        // This ensures we always use the most recent parsed data with correct target_size
-                                                        latest_json = summary_str;
-                                                    } else {
-                                                        // JSON parsing failed - use original JSON
-                                                        latest_json = json_candidate;
-                                                    }
-                                                } catch (const std::exception& e) {
-                                                    // JSON parsing error - use original JSON
-                                                    std::cerr << "[InstanceRegistry] [MQTT] JSON parse error: " << e.what() << std::endl;
-                                                    latest_json = json_candidate;
-                                                } catch (...) {
-                                                    // Unknown error - use original JSON
-                                                    latest_json = json_candidate;
-                                                }
-                                                
-                                                // Reduced debug logging to improve performance
-                                                // Only log first 2 JSONs, then every 100th JSON
-                                                static int json_received_count = 0;
-                                                json_received_count++;
-                                                if (json_received_count <= 2 || json_received_count % 100 == 0) {
-                                                    std::cerr << "[InstanceRegistry] [MQTT] Debug: Received JSON #" << json_received_count 
-                                                              << " (length=" << json_candidate.length() << ")" << std::endl;
-                                                    // Only log preview for first 2 messages
-                                                    if (json_received_count <= 2) {
-                                                        std::cerr << "[InstanceRegistry] [MQTT] Debug: JSON preview: " 
-                                                                  << json_candidate.substr(0, std::min(300, (int)json_candidate.length())) << "..." << std::endl;
-                                                    }
-                                                }
-                                                
-                                                // Clear processed data from buffer (keep only unprocessed tail)
-                                                if (last_json_end + 1 < line_buffer.length()) {
-                                                    line_buffer = line_buffer.substr(last_json_end + 1);
-                                                } else {
-                                                    line_buffer.clear();
-                                                }
-                                                
-                                                // Publish every JSON message (no skipping)
-                                                skip_count++;
-                                                // Reduced debug logging - only log first 3, then every 100th
-                                                if (skip_count <= 3 || skip_count % 100 == 0) {
-                                                    std::cerr << "[InstanceRegistry] [MQTT] Debug: skip_count=" << skip_count << " (publishing all JSONs)" << std::endl;
-                                                }
-                                                // Publish every message (removed skip threshold)
-                                                // But apply rate limiting to prevent server overload
-                                                {
-                                                                    // CRITICAL: Check stop flag before starting publish operation
-                                                                    if (stop_flag->load()) {
-                                                                        break;
-                                                                    }
-                                                                    
-                                                                    // Rate limiting: Check if enough time has passed since last publish
-                                                                    auto now = std::chrono::steady_clock::now();
-                                                                    auto time_since_last_publish = std::chrono::duration_cast<std::chrono::milliseconds>(
-                                                                        now - last_publish_time);
-                                                                    
-                                                                    if (time_since_last_publish < min_publish_interval) {
-                                                                        // Skip this message - rate limit
-                                                                        skip_count++;
-                                                                        continue;
-                                                                    }
-                                                                    
-                                                                    // Reduced debug logging to improve performance
-                                                                    // Only log first 3 messages, then every 100th message
-                                                                    if (skip_count <= 3 || skip_count % 100 == 0) {
-                                                                        std::cerr << "[InstanceRegistry] [MQTT] Debug: Attempting to publish JSON #" << skip_count << "..." << std::endl;
-                                                                    }
-                                                                    // Publish the LATEST JSON only (not old ones)
-                                                                    if (mosq_shared && local_mqtt_connected_ptr->load() && !latest_json.empty()) {
-                                                                        // CRITICAL: Check stop flag again before blocking operations
-                                                                        if (stop_flag->load()) {
-                                                                            break;
-                                                                        }
-                                                                        
-                                                                        // CRITICAL: Call loop BEFORE publish to drain buffer and prevent blocking
-                                                                        // Reduced packet count to prevent blocking
-                                                                        mosquitto_loop(mosq_shared.get(), 0, 10);  // Process up to 10 packets (reduced from 50 to prevent blocking)
-                                                                        
-                                                                        // CRITICAL: Check stop flag after loop call
-                                                                        if (stop_flag->load()) {
-                                                                            break;
-                                                                        }
-                                                                        
-                                                                        // Wrap mosquitto_publish() in async with timeout to prevent blocking
-                                                                        // Publish raw JSON (not wrapped in quotes) - user wants JSON object, not JSON string
-                                                                        std::string json_to_publish = latest_json;  // Publish raw JSON without quotes
-                                                                        auto publish_future = std::async(std::launch::async, [mosq_shared, mqtt_topic, json_to_publish]() -> int {
-                                                                            return mosquitto_publish(mosq_shared.get(), nullptr, mqtt_topic.c_str(), 
-                                                                                                    json_to_publish.length(), json_to_publish.c_str(), 0, false);
-                                                                        });
-                                                                        
-                                                                        // Wait with timeout (100ms) - but check stop_flag periodically
-                                                                        // Reduced timeout to prevent blocking too long
-                                                                        auto status = std::future_status::timeout;
-                                                                        auto wait_start = std::chrono::steady_clock::now();
-                                                                        const auto total_timeout = std::chrono::milliseconds(100);  // Reduced from 200ms
-                                                                        const auto check_interval = std::chrono::milliseconds(20);  // Check every 20ms (increased from 10ms to reduce CPU)
-                                                                        
-                                                                        while (std::chrono::steady_clock::now() - wait_start < total_timeout) {
-                                                                            if (stop_flag->load()) {
-                                                                                // Stop flag set, break immediately
-                                                                                status = std::future_status::timeout;  // Mark as timeout to skip processing
-                                                                                break;
-                                                                            }
-                                                                            status = publish_future.wait_for(check_interval);
-                                                                            if (status == std::future_status::ready) {
-                                                                                break;
-                                                                            }
-                                                                        }
-                                                                        
-                                                                        // CRITICAL: Check stop flag before processing result
-                                                                        if (stop_flag->load()) {
-                                                                            break;
-                                                                        }
-                                                                        
-                                                                        if (status == std::future_status::ready) {
-                                                                            // CRITICAL: Check stop flag before calling get() which might block briefly
-                                                                            if (stop_flag->load()) {
-                                                                                break;
-                                                                            }
-                                                                            
-                                                                            int rc = MOSQ_ERR_UNKNOWN;
-                                                                            try {
-                                                                                rc = publish_future.get();
-                                                                            } catch (...) {
-                                                                                // If get() throws, skip this message
-                                                                                std::cerr << "[InstanceRegistry] [MQTT] Exception getting publish result, skipping..." << std::endl;
-                                                                                continue;
-                                                                            }
-                                                                            
-                                                                            if (rc == MOSQ_ERR_SUCCESS) {
-                                                                                publish_count++;
-                                                                                last_publish_time = std::chrono::steady_clock::now();  // Update last publish time
-                                                                                // Reduced logging - only log first 5 messages, then every 100th message
-                                                                                if (publish_count <= 5 || publish_count % 100 == 0) {
-                                                                                    std::cerr << "[InstanceRegistry] [MQTT] ✓ Published message #" << publish_count << " with targets (" << json_to_publish.length() << " bytes)" << std::endl;
-                                                                                }
-                                                                            } else {
-                                                                                // Log all publish errors for debugging (always log first 20 errors, then every 10th)
-                                                                                static int error_count = 0;
-                                                                                error_count++;
-                                                                                bool should_log = (error_count <= 20 || error_count % 10 == 0);
-                                                                                
-                                                                                if (should_log) {
-                                                                                    std::cerr << "[InstanceRegistry] [MQTT] ✗ Publish failed #" << error_count 
-                                                                                              << " with error code: " << rc << " (" << mosquitto_strerror(rc) << ")" << std::endl;
-                                                                                }
-                                                                                
-                                                                                if (rc == MOSQ_ERR_NO_CONN) {
-                                                                                    local_mqtt_connected_ptr->store(false);
-                                                                                    if (should_log) {
-                                                                                        std::cerr << "[InstanceRegistry] [MQTT] Connection lost - will attempt reconnect" << std::endl;
-                                                                                    }
-                                                                                } else if (rc == MOSQ_ERR_OVERSIZE_PACKET) {
-                                                                                    if (should_log) {
-                                                                                        std::cerr << "[InstanceRegistry] [MQTT] Message too large, skipping (" << json_to_publish.length() << " bytes)" << std::endl;
-                                                                                    }
-                                                                                } else if (rc == MOSQ_ERR_NOMEM) {
-                                                                                    if (should_log) {
-                                                                                        std::cerr << "[InstanceRegistry] [MQTT] Out of memory" << std::endl;
-                                                                                    }
-                                                                                } else if (rc == MOSQ_ERR_INVAL) {
-                                                                                    if (should_log) {
-                                                                                        std::cerr << "[InstanceRegistry] [MQTT] Invalid parameters" << std::endl;
-                                                                                    }
-                                                                                }
-                                                                            }
-                                                                        } else {
-                                                                            // Timeout or stop flag set - skip message to prevent deadlock
-                                                                            if (stop_flag->load()) {
-                                                                                // Stop flag was set during wait, exit immediately
-                                                                                break;
-                                                                            }
-                                                                            // Timeout - publish is taking too long, skip message to prevent deadlock
-                                                                            static int timeout_count = 0;
-                                                                            timeout_count++;
-                                                                            if (timeout_count <= 5 || timeout_count % 20 == 0) {
-                                                                                std::cerr << "[InstanceRegistry] [MQTT] ⚠ Publish timeout after 200ms, skipping message #" << timeout_count << " to prevent deadlock" << std::endl;
-                                                                            }
-                                                                            // Continue processing - don't break the loop
-                                                                        }
-                                                                    } else {
-                                                                        // Log only occasionally to avoid spam, but continue processing
-                                                                        static int skip_publish_count = 0;
-                                                                        skip_publish_count++;
-                                                                        if (skip_publish_count <= 3 || skip_publish_count % 50 == 0) {
-                                                                            std::cerr << "[InstanceRegistry] [MQTT] ⚠ Cannot publish #" << skip_publish_count 
-                                                                                      << ": mosq_shared=" << (mosq_shared ? "valid" : "null") 
-                                                                                      << ", connected=" << (local_mqtt_connected_ptr->load() ? "true" : "false")
-                                                                                      << ", latest_json.empty()=" << (latest_json.empty() ? "true" : "false") << std::endl;
-                                                                        }
-                                                                        // Continue processing - connection might recover
-                                                                    }
-                                                    }
-                                            }
-                                        } else {
-                                            // No complete JSON found, but user wants to receive even incomplete data
-                                            // Check stop flag before processing partial JSON
-                                            if (stop_flag->load()) {
-                                                break;
-                                            }
-                                            
-                                            // Check if we have partial JSON data (starts with '{')
-                                            if (!line_buffer.empty() && line_buffer[0] == '{') {
-                                                // Extract partial JSON (up to 2000 chars to avoid huge messages)
-                                                std::string partial_json = line_buffer.substr(0, std::min(2000, (int)line_buffer.length()));
-                                                
-                                                // Publish partial JSON if we have connection
-                                                if (mosq_shared && local_mqtt_connected_ptr->load() && !partial_json.empty()) {
-                                                    // Check stop flag before blocking operations
-                                                    if (stop_flag->load()) {
-                                                        break;
-                                                    }
-                                                    
-                                                    mosquitto_loop(mosq_shared.get(), 0, 10);  // Reduced from 50 to prevent blocking
-                                                    
-                                                    // Check stop flag after loop
-                                                    if (stop_flag->load()) {
-                                                        break;
-                                                    }
-                                                    
-                                                    std::string json_to_publish = partial_json;  // Publish raw partial JSON
-                                                    auto publish_future = std::async(std::launch::async, [mosq_shared, mqtt_topic, json_to_publish]() -> int {
-                                                        return mosquitto_publish(mosq_shared.get(), nullptr, mqtt_topic.c_str(), 
-                                                                                json_to_publish.length(), json_to_publish.c_str(), 0, false);
-                                                    });
-                                                    
-                                                    // Wait with periodic stop_flag checks
-                                                    auto status = std::future_status::timeout;
-                                                    auto wait_start = std::chrono::steady_clock::now();
-                                                    const auto total_timeout = std::chrono::milliseconds(200);
-                                                    const auto check_interval = std::chrono::milliseconds(10);
-                                                    
-                                                    while (std::chrono::steady_clock::now() - wait_start < total_timeout) {
-                                                        if (stop_flag->load()) {
-                                                            status = std::future_status::timeout;  // Mark as timeout to skip processing
-                                                            break;
-                                                        }
-                                                        status = publish_future.wait_for(check_interval);
-                                                        if (status == std::future_status::ready) {
-                                                            break;
-                                                        }
-                                                    }
-                                                    
-                                                    // Check stop flag one more time before processing result
-                                                    if (stop_flag->load()) {
-                                                        break;
-                                                    }
-                                                    if (status == std::future_status::ready) {
-                                                        // Check stop flag before calling get()
-                                                        if (stop_flag->load()) {
-                                                            break;
-                                                        }
-                                                        
-                                                        int rc = MOSQ_ERR_UNKNOWN;
-                                                        try {
-                                                            rc = publish_future.get();
-                                                        } catch (...) {
-                                                            // If get() throws, skip this message
-                                                            continue;
-                                                        }
-                                                        
-                                                        if (rc == MOSQ_ERR_SUCCESS) {
-                                                            publish_count++;
-                                                            last_publish_time = std::chrono::steady_clock::now();  // Update last publish time
-                                                            if (publish_count <= 5) {
-                                                                std::cerr << "[InstanceRegistry] [MQTT] ✓ Published partial JSON #" << publish_count 
-                                                                          << " (" << json_to_publish.length() << " bytes)" << std::endl;
-                                                            }
-                                                        }
-                                                    }
-                                                }
-                                            }
-                                        }
-                                        
-                                    } else if (n == 0) {
-                                        // EOF - pipe closed (write end was closed)
-                                        // This is normal when instance stops
-                                        break;
-                                    } else {
-                                        // Error or EAGAIN (non-blocking)
-                                        if (errno == EBADF) {
-                                            // File descriptor is invalid (pipe was closed)
-                                            // This can happen when instance stops
-                                            break;
-                                        } else if (errno != EAGAIN && errno != EWOULDBLOCK) {
-                                            // Other error - log and exit
-                                            break;
-                                        }
-                                    }
-                                    
-                                    // CRITICAL: Check stop flag after read to allow quick exit
-                                    if (stop_flag->load()) {
-                                        break;
-                                    }
-                                    
-                                    // Shorter sleep to process messages faster and prevent backlog
-                                    // Use sleep with interruptible check to allow quick exit
-                                    // Sleep in smaller chunks and check stop_flag frequently
-                                    for (int i = 0; i < 10 && !stop_flag->load(); i++) {
-                                        std::this_thread::sleep_for(std::chrono::milliseconds(10));
-                                    }
-                                    
-                                    // Final check before next iteration
-                                    if (stop_flag->load()) {
-                                        break;
-                                    }
-                                }
-                                
-                                // CRITICAL: Close pipe first
-                                if (pipefd_read >= 0) {
-                                    close(pipefd_read);
-                                }
-                                
-                                // Cleanup MQTT
-                                if (mosq_shared) {
-                                    try {
-                                        mosquitto_disconnect(mosq_shared.get());
-                                        mosquitto_loop_stop(mosq_shared.get(), false);
-                                    } catch (...) {
-                                        // Ignore errors during cleanup
-                                    }
-                                    // shared_ptr will automatically cleanup when lambda exits
-                                }
-                                
-                                // CRITICAL: DO NOT restore stdout here - it can cause segmentation fault
-                                // Stdout will be automatically restored when process exits or instance stops
-                                // Restoring stdout from multiple threads can cause race conditions
-                                // Just close the backup fd if it's still valid
-                                // Use syscall directly to avoid any C++ exception issues
-                                if (stdout_backup_copy >= 0) {
-                                    ::close(stdout_backup_copy);
-                                }
-                                
-                                // Use write() directly to stderr to avoid any stdout issues
-                                char msg[256];
-                                int len = snprintf(msg, sizeof(msg), 
-                                    "[InstanceRegistry] [MQTT] Thread stopped. Published %d messages total.\n", 
-                                    publish_count);
-                                if (len > 0 && len < (int)sizeof(msg)) {
-                                    ::write(STDERR_FILENO, msg, len);
-                                }
-                                } catch (const std::exception& e) {
-                                    // Fixed: Catch exceptions in thread to prevent crash and ensure cleanup
-                                    char err_msg[512];
-                                    int len = snprintf(err_msg, sizeof(err_msg),
-                                        "[InstanceRegistry] [MQTT] Exception in thread: %s\n", e.what());
-                                    if (len > 0 && len < (int)sizeof(err_msg)) {
-                                        ::write(STDERR_FILENO, err_msg, len);
-                                    }
-                                    // Cleanup file descriptors even on exception
-                                    if (pipefd_read >= 0) {
-                                        ::close(pipefd_read);
-                                    }
-                                    if (stdout_backup_copy >= 0) {
-                                        ::close(stdout_backup_copy);
-                                    }
-                                } catch (...) {
-                                    // Fixed: Catch any other exceptions
-                                    ::write(STDERR_FILENO, "[InstanceRegistry] [MQTT] Unknown exception in thread\n", 54);
-                                    // Cleanup file descriptors even on exception
-                                    if (pipefd_read >= 0) {
-                                        ::close(pipefd_read);
-                                    }
-                                    if (stdout_backup_copy >= 0) {
-                                        ::close(stdout_backup_copy);
-                                    }
-                                }
-                            });
-                            
-                            // Store thread for proper management (join on stop)
-                            {
-                                std::lock_guard<std::mutex> lock(mqtt_thread_mutex_);
-                                mqtt_threads_[instanceId] = std::move(json_reader_thread);
-                            }
-                            
-                            std::cerr << "[InstanceRegistry] [MQTT] MQTT publishing thread started for instance " << instanceId << std::endl;
-                            std::cerr << "[InstanceRegistry] [MQTT] NOTE: Publishing every message (including partial JSON if available)" << std::endl;
-                            std::cerr << "[InstanceRegistry] [MQTT] NOTE: Only keeping LATEST JSON, dropping all old JSONs to prevent backlog and deadlock" << std::endl;
-                        } catch (const std::exception& e) {
-                            // Fixed: Cleanup file descriptors on exception
-                            std::cerr << "[InstanceRegistry] [MQTT] Exception setting up pipe: " << e.what() << std::endl;
-                            
-                            // Cleanup in reverse order
-                            if (stdout_redirected && stdout_backup >= 0) {
-                                dup2(stdout_backup, STDOUT_FILENO);
-                                close(stdout_backup);
-                            }
-                            if (pipe_created) {
-                                if (pipefd[0] >= 0) close(pipefd[0]);
-                                if (pipefd[1] >= 0) close(pipefd[1]);
-                            }
-                            if (mosq) {
-                                mosquitto_disconnect(mosq);
-                                mosquitto_loop_stop(mosq, false);
-                                mosquitto_destroy(mosq);
-                            }
-                        } catch (...) {
-                            // Fixed: Cleanup file descriptors on any exception
-                            std::cerr << "[InstanceRegistry] [MQTT] Unknown exception setting up pipe" << std::endl;
-                            
-                            // Cleanup in reverse order
-                            if (stdout_redirected && stdout_backup >= 0) {
-                                dup2(stdout_backup, STDOUT_FILENO);
-                                close(stdout_backup);
-                            }
-                            if (pipe_created) {
-                                if (pipefd[0] >= 0) close(pipefd[0]);
-                                if (pipefd[1] >= 0) close(pipefd[1]);
-                            }
-                            if (mosq) {
-                                mosquitto_disconnect(mosq);
-                                mosquitto_loop_stop(mosq, false);
-                                mosquitto_destroy(mosq);
-                            }
-                        }
-                    }
-                }
-            }
-    
-    // Log initial processing status (outside if(started) block)
-    if (started && !hasRTMPOutput(instanceId)) {
-        std::cerr << "[InstanceRegistry] Instance does not have RTMP output - enabling processing result logging" << std::endl;
-        logProcessingResults(instanceId);
-        
-        // Start periodic logging in a separate thread (managed, not detached)
-        startLoggingThread(instanceId);
     }
     
     // DISABLED: Video loop monitoring thread - feature removed to improve performance
@@ -2026,36 +983,6 @@ bool InstanceRegistry::stopInstance(const std::string& instanceId) {
         std::unique_lock<std::shared_timed_mutex> lock(mutex_);
         pipelines_.erase(instanceId);
     }
-    
-    // CRITICAL: Stop MQTT thread BEFORE stopping pipeline (only if this instance has MQTT)
-    // MQTT thread may be reading from pipe connected to nodes
-    // Check if instance has MQTT before stopping to avoid unnecessary operations
-    {
-        std::shared_lock<std::shared_timed_mutex> lock(mutex_);
-        auto instanceIt = instances_.find(instanceId);
-        if (instanceIt != instances_.end()) {
-            // Check if instance has MQTT configured
-            // MQTT topic is stored in additionalParams with key "MQTT_TOPIC"
-            bool hasMqtt = instanceIt->second.additionalParams.find("MQTT_TOPIC") != instanceIt->second.additionalParams.end();
-            if (hasMqtt) {
-                std::cerr << "[InstanceRegistry] Stopping MQTT thread for instance " << instanceId << "..." << std::endl;
-                std::cerr << "[InstanceRegistry] NOTE: Only stopping MQTT thread for this specific instance" << std::endl;
-                lock.unlock(); // Release lock before calling stopMqttThread
-                stopMqttThread(instanceId);
-            } else {
-                std::cerr << "[InstanceRegistry] Instance " << instanceId << " has no MQTT, skipping MQTT thread stop" << std::endl;
-            }
-        } else {
-            // Instance not found, but continue cleanup anyway
-            std::cerr << "[InstanceRegistry] Instance not found in map, skipping MQTT thread stop" << std::endl;
-        }
-    }
-    
-    // Stop logging thread if exists
-    // IMPORTANT: stopLoggingThread() uses instanceId to identify and stop ONLY this instance's thread
-    std::cerr << "[InstanceRegistry] Stopping logging thread for instance " << instanceId << "..." << std::endl;
-    std::cerr << "[InstanceRegistry] NOTE: Only stopping logging thread for this specific instance" << std::endl;
-    stopLoggingThread(instanceId);
     
     // Stop video loop monitoring thread if exists
     // IMPORTANT: stopVideoLoopThread() uses instanceId to identify and stop ONLY this instance's thread
@@ -3095,12 +2022,46 @@ bool InstanceRegistry::startPipeline(const std::vector<std::shared_ptr<cvedix_no
             return true;
         }
         
+        // Check for RTMP source node
+        auto rtmpNode = std::dynamic_pointer_cast<cvedix_nodes::cvedix_rtmp_src_node>(nodes[0]);
+        if (rtmpNode) {
+            std::cerr << "[InstanceRegistry] ========================================" << std::endl;
+            std::cerr << "[InstanceRegistry] Starting RTMP source pipeline..." << std::endl;
+            std::cerr << "[InstanceRegistry] NOTE: RTMP node will automatically retry connection if stream is not immediately available" << std::endl;
+            std::cerr << "[InstanceRegistry] NOTE: Connection warnings are normal if RTMP stream is not running yet" << std::endl;
+            std::cerr << "[InstanceRegistry] ========================================" << std::endl;
+            
+            // Add small delay to ensure pipeline is ready
+            std::this_thread::sleep_for(std::chrono::milliseconds(100));
+            
+            std::cerr << "[InstanceRegistry] Calling rtmpNode->start()..." << std::endl;
+            auto startTime = std::chrono::steady_clock::now();
+            try {
+                rtmpNode->start();
+                auto endTime = std::chrono::steady_clock::now();
+                auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(endTime - startTime).count();
+                std::cerr << "[InstanceRegistry] ✓ RTMP source node start() completed in " << duration << "ms" << std::endl;
+            } catch (const std::exception& e) {
+                std::cerr << "[InstanceRegistry] ✗ Exception during rtmpNode->start(): " << e.what() << std::endl;
+                std::cerr << "[InstanceRegistry] This may indicate a problem with the RTMP stream or connection" << std::endl;
+                return false;
+            } catch (...) {
+                std::cerr << "[InstanceRegistry] ✗ Unknown exception during rtmpNode->start()" << std::endl;
+                return false;
+            }
+            
+            std::cerr << "[InstanceRegistry] RTMP source pipeline started successfully" << std::endl;
+            std::cerr << "[InstanceRegistry] ========================================" << std::endl;
+            return true;
+        }
+        
         // If not a recognized source node, cannot start pipeline
-        // Only RTSP and File source nodes are currently supported
-        std::cerr << "[InstanceRegistry] ✗ Error: First node is not a recognized source node (RTSP or File)" << std::endl;
+        // RTSP, File, and RTMP source nodes are currently supported
+        std::cerr << "[InstanceRegistry] ✗ Error: First node is not a recognized source node (RTSP, File, or RTMP)" << std::endl;
         std::cerr << "[InstanceRegistry] Currently supported source node types:" << std::endl;
         std::cerr << "[InstanceRegistry]   - cvedix_rtsp_src_node (for RTSP streams)" << std::endl;
         std::cerr << "[InstanceRegistry]   - cvedix_file_src_node (for video files)" << std::endl;
+        std::cerr << "[InstanceRegistry]   - cvedix_rtmp_src_node (for RTMP streams)" << std::endl;
         std::cerr << "[InstanceRegistry] Please ensure your solution config uses one of these as the first node" << std::endl;
         return false;
     } catch (const std::exception& e) {
@@ -3246,35 +2207,72 @@ void InstanceRegistry::stopPipeline(const std::vector<std::shared_ptr<cvedix_nod
                     }
                 }
             } else {
-                // Try file source node
-                auto fileNode = std::dynamic_pointer_cast<cvedix_nodes::cvedix_file_src_node>(nodes[0]);
-                if (fileNode) {
+                // Try RTMP source node
+                auto rtmpNode = std::dynamic_pointer_cast<cvedix_nodes::cvedix_rtmp_src_node>(nodes[0]);
+                if (rtmpNode) {
                     if (isDeletion) {
-                        std::cerr << "[InstanceRegistry] Stopping file source node (deletion)..." << std::endl;
+                        std::cerr << "[InstanceRegistry] Stopping RTMP source node (deletion)..." << std::endl;
                     } else {
-                        std::cerr << "[InstanceRegistry] Stopping file source node..." << std::endl;
+                        std::cerr << "[InstanceRegistry] Stopping RTMP source node..." << std::endl;
                     }
                     try {
                         // CRITICAL: Use exclusive lock for cleanup operations
                         std::unique_lock<std::shared_mutex> gstLock(gstreamer_ops_mutex_);
                         
-                        // For file source, we need to detach to stop reading
-                        // But we'll keep the nodes in memory so they can be restarted (unless deletion)
-                        fileNode->detach_recursively();
-                        std::cerr << "[InstanceRegistry] ✓ File source node stopped" << std::endl;
+                        // For RTMP source, stop and detach
+                        rtmpNode->stop();
+                        rtmpNode->detach_recursively();
+                        std::cerr << "[InstanceRegistry] ✓ RTMP source node stopped" << std::endl;
                     } catch (const std::exception& e) {
-                        std::cerr << "[InstanceRegistry] ✗ Exception stopping file node: " << e.what() << std::endl;
-                    } catch (...) {
-                        std::cerr << "[InstanceRegistry] ✗ Unknown error stopping file node" << std::endl;
-                    }
-                } else {
-                    // Generic stop for other source types
-                    try {
-                        if (nodes[0]) {
-                            nodes[0]->detach_recursively();
+                        std::cerr << "[InstanceRegistry] ✗ Exception stopping RTMP node: " << e.what() << std::endl;
+                        // Try force stop as fallback
+                        try {
+                            rtmpNode->detach_recursively();
+                            std::cerr << "[InstanceRegistry] ✓ RTMP node force stopped using detach_recursively()" << std::endl;
+                        } catch (...) {
+                            std::cerr << "[InstanceRegistry] ✗ Force stop also failed" << std::endl;
                         }
                     } catch (...) {
-                        // Ignore errors
+                        std::cerr << "[InstanceRegistry] ✗ Unknown error stopping RTMP node" << std::endl;
+                        // Try force stop as fallback
+                        try {
+                            rtmpNode->detach_recursively();
+                            std::cerr << "[InstanceRegistry] ✓ RTMP node force stopped using detach_recursively()" << std::endl;
+                        } catch (...) {
+                            std::cerr << "[InstanceRegistry] ✗ Force stop also failed" << std::endl;
+                        }
+                    }
+                } else {
+                    // Try file source node
+                    auto fileNode = std::dynamic_pointer_cast<cvedix_nodes::cvedix_file_src_node>(nodes[0]);
+                    if (fileNode) {
+                        if (isDeletion) {
+                            std::cerr << "[InstanceRegistry] Stopping file source node (deletion)..." << std::endl;
+                        } else {
+                            std::cerr << "[InstanceRegistry] Stopping file source node..." << std::endl;
+                        }
+                        try {
+                            // CRITICAL: Use exclusive lock for cleanup operations
+                            std::unique_lock<std::shared_mutex> gstLock(gstreamer_ops_mutex_);
+                            
+                            // For file source, we need to detach to stop reading
+                            // But we'll keep the nodes in memory so they can be restarted (unless deletion)
+                            fileNode->detach_recursively();
+                            std::cerr << "[InstanceRegistry] ✓ File source node stopped" << std::endl;
+                        } catch (const std::exception& e) {
+                            std::cerr << "[InstanceRegistry] ✗ Exception stopping file node: " << e.what() << std::endl;
+                        } catch (...) {
+                            std::cerr << "[InstanceRegistry] ✗ Unknown error stopping file node" << std::endl;
+                        }
+                    } else {
+                        // Generic stop for other source types
+                        try {
+                            if (nodes[0]) {
+                                nodes[0]->detach_recursively();
+                            }
+                        } catch (...) {
+                            // Ignore errors
+                        }
                     }
                 }
             }
@@ -3490,11 +2488,12 @@ std::vector<std::shared_ptr<cvedix_nodes::cvedix_node>> InstanceRegistry::getSou
             // Source node is always the first node in the pipeline
             const auto& sourceNode = pipelineIt->second[0];
             
-            // Verify it's a source node (RTSP or file source)
+            // Verify it's a source node (RTSP, file, or RTMP source)
             auto rtspNode = std::dynamic_pointer_cast<cvedix_nodes::cvedix_rtsp_src_node>(sourceNode);
             auto fileNode = std::dynamic_pointer_cast<cvedix_nodes::cvedix_file_src_node>(sourceNode);
+            auto rtmpNode = std::dynamic_pointer_cast<cvedix_nodes::cvedix_rtmp_src_node>(sourceNode);
             
-            if (rtspNode || fileNode) {
+            if (rtspNode || fileNode || rtmpNode) {
                 sourceNodes.push_back(sourceNode);
             }
         }
@@ -3686,126 +2685,6 @@ int InstanceRegistry::checkAndHandleRetryLimits() {
     return stoppedCount;
 }
 
-void InstanceRegistry::logProcessingResults(const std::string& instanceId) const {
-    // CRITICAL: Use shared_lock for read-only operations to allow concurrent readers
-    // This prevents deadlock when multiple threads read instance data simultaneously
-    std::shared_lock<std::shared_timed_mutex> lock(mutex_); // Shared lock for read operations
-    
-    // Check if instance exists
-    auto instanceIt = instances_.find(instanceId);
-    if (instanceIt == instances_.end()) {
-        return;
-    }
-    
-    const InstanceInfo& info = instanceIt->second;
-    
-    // Only log for running instances
-    if (!info.running) {
-        return;
-    }
-    
-    // Get current timestamp
-    auto now = std::chrono::system_clock::now();
-    auto time_t = std::chrono::system_clock::to_time_t(now);
-    auto ms = std::chrono::duration_cast<std::chrono::milliseconds>(
-        now.time_since_epoch()) % 1000;
-    
-    std::stringstream ss;
-    ss << std::put_time(std::localtime(&time_t), "%Y-%m-%d %H:%M:%S");
-    ss << '.' << std::setfill('0') << std::setw(3) << ms.count();
-    std::string timestamp = ss.str();
-    
-    // Log to PLOG if SDK output logging is enabled
-    if (isSdkOutputLoggingEnabled()) {
-        PLOG_INFO << "[SDKOutput] [" << timestamp << "] Instance: " << info.displayName 
-                  << " (" << instanceId << ") - FPS: " << std::fixed << std::setprecision(2) << info.fps
-                  << ", Solution: " << info.solutionId;
-    }
-    
-    // Log processing results
-    std::cerr << "[InstanceProcessingLog] ========================================" << std::endl;
-    std::cerr << "[InstanceProcessingLog] [" << timestamp << "] Instance: " << info.displayName 
-              << " (" << instanceId << ")" << std::endl;
-    std::cerr << "[InstanceProcessingLog] Solution: " << info.solutionName 
-              << " (" << info.solutionId << ")" << std::endl;
-    std::cerr << "[InstanceProcessingLog] Status: RUNNING" << std::endl;
-    std::cerr << "[InstanceProcessingLog] FPS: " << std::fixed << std::setprecision(2) << info.fps << std::endl;
-    
-    // Update RTSP activity if instance is receiving frames (FPS > 0) and is RTSP-based
-    // Note: We update activity here to track when stream is active
-    // This helps the monitoring thread detect when stream is working
-    if (info.fps > 0 && !info.rtspUrl.empty()) {
-        // Update activity timestamp (thread-safe, only updates monitoring data)
-        {
-            std::lock_guard<std::mutex> lock(rtsp_monitor_mutex_);
-            rtsp_last_activity_[instanceId] = std::chrono::steady_clock::now();
-        }
-    }
-    
-    // Log input source
-    if (!info.filePath.empty()) {
-        std::cerr << "[InstanceProcessingLog] Input Source: FILE - " << info.filePath << std::endl;
-    } else if (info.additionalParams.find("RTSP_URL") != info.additionalParams.end()) {
-        std::cerr << "[InstanceProcessingLog] Input Source: RTSP - " 
-                  << info.additionalParams.at("RTSP_URL") << std::endl;
-    } else if (info.additionalParams.find("FILE_PATH") != info.additionalParams.end()) {
-        std::cerr << "[InstanceProcessingLog] Input Source: FILE - " 
-                  << info.additionalParams.at("FILE_PATH") << std::endl;
-    }
-    
-    // Log output type - check directly from info instead of calling hasRTMPOutput to avoid deadlock
-    bool hasRTMP = !info.rtmpUrl.empty() || 
-                   info.additionalParams.find("RTMP_DES_URL") != info.additionalParams.end() ||
-                   info.additionalParams.find("RTMP_URL") != info.additionalParams.end();
-    if (hasRTMP) {
-        std::cerr << "[InstanceProcessingLog] Output: RTMP Stream" << std::endl;
-        if (!info.rtmpUrl.empty()) {
-            std::cerr << "[InstanceProcessingLog] RTMP URL: " << info.rtmpUrl << std::endl;
-        } else if (info.additionalParams.find("RTMP_DES_URL") != info.additionalParams.end()) {
-            std::cerr << "[InstanceProcessingLog] RTMP URL: " 
-                      << info.additionalParams.at("RTMP_DES_URL") << std::endl;
-        } else if (info.additionalParams.find("RTMP_URL") != info.additionalParams.end()) {
-            std::cerr << "[InstanceProcessingLog] RTMP URL: " 
-                      << info.additionalParams.at("RTMP_URL") << std::endl;
-        }
-    } else {
-        std::cerr << "[InstanceProcessingLog] Output: File-based (no RTMP stream)" << std::endl;
-        
-        // Check for file destination output directory
-        auto pipelineIt = pipelines_.find(instanceId);
-        if (pipelineIt != pipelines_.end()) {
-            // Try to determine output directory from file_des node
-            // Output is typically in ./output/{instanceId} or ./build/output/{instanceId}
-            std::cerr << "[InstanceProcessingLog] Output Directory: ./output/" << instanceId 
-                      << " (or ./build/output/" << instanceId << ")" << std::endl;
-        }
-    }
-    
-    // Log detection settings
-    std::cerr << "[InstanceProcessingLog] Detection Sensitivity: " << info.detectionSensitivity << std::endl;
-    if (!info.detectorMode.empty()) {
-        std::cerr << "[InstanceProcessingLog] Detector Mode: " << info.detectorMode << std::endl;
-    }
-    
-    // Log processing modes
-    if (info.statisticsMode) {
-        std::cerr << "[InstanceProcessingLog] Statistics Mode: ENABLED" << std::endl;
-    }
-    if (info.metadataMode) {
-        std::cerr << "[InstanceProcessingLog] Metadata Mode: ENABLED" << std::endl;
-    }
-    if (info.debugMode) {
-        std::cerr << "[InstanceProcessingLog] Debug Mode: ENABLED" << std::endl;
-    }
-    
-    // Log frame rate limit if set
-    if (info.frameRateLimit > 0) {
-        std::cerr << "[InstanceProcessingLog] Frame Rate Limit: " << info.frameRateLimit << " fps" << std::endl;
-    }
-    
-    std::cerr << "[InstanceProcessingLog] ========================================" << std::endl;
-}
-
 bool InstanceRegistry::updateInstanceFromConfig(const std::string& instanceId, const Json::Value& configJson) {
     std::cerr << "[InstanceRegistry] ========================================" << std::endl;
     std::cerr << "[InstanceRegistry] Updating instance from config: " << instanceId << std::endl;
@@ -3944,214 +2823,6 @@ bool InstanceRegistry::updateInstanceFromConfig(const std::string& instanceId, c
     
     std::cerr << "[InstanceRegistry] ========================================" << std::endl;
     return true;
-}
-
-void InstanceRegistry::startLoggingThread(const std::string& instanceId) {
-    // Stop existing thread if any
-    stopLoggingThread(instanceId);
-    
-    // Create stop flag
-    {
-        std::lock_guard<std::mutex> lock(thread_mutex_);
-        logging_thread_stop_flags_.emplace(instanceId, false);
-    }
-    
-    // Start new logging thread
-    std::thread loggingThread([this, instanceId]() {
-        while (true) {
-            // Check stop flag first (before sleep to allow quick exit)
-            {
-                std::lock_guard<std::mutex> lock(thread_mutex_);
-                auto flagIt = logging_thread_stop_flags_.find(instanceId);
-                if (flagIt == logging_thread_stop_flags_.end() || flagIt->second.load()) {
-                    // Thread should stop
-                    break;
-                }
-            }
-            
-            // Wait 10 seconds between logs (but check flag periodically)
-            for (int i = 0; i < 100; ++i) { // Check every 100ms for 10 seconds
-                std::this_thread::sleep_for(std::chrono::milliseconds(100));
-                
-                // Check stop flag
-                {
-                    std::lock_guard<std::mutex> lock(thread_mutex_);
-                    auto flagIt = logging_thread_stop_flags_.find(instanceId);
-                    if (flagIt == logging_thread_stop_flags_.end() || flagIt->second.load()) {
-                        return; // Exit thread
-                    }
-                }
-                
-                // Check if instance still exists and is running
-                {
-                    std::unique_lock<std::shared_timed_mutex> lock(mutex_); // Exclusive lock for write operations
-                    auto instanceIt = instances_.find(instanceId);
-                    if (instanceIt == instances_.end() || !instanceIt->second.running) {
-                        // Instance deleted or stopped, exit logging thread
-                        return;
-                    }
-                }
-            }
-            
-            // Log processing results if instance still exists and has no RTMP output
-            {
-                std::unique_lock<std::shared_timed_mutex> lock(mutex_); // Exclusive lock for write operations
-                auto instanceIt = instances_.find(instanceId);
-                if (instanceIt == instances_.end() || !instanceIt->second.running) {
-                    // Instance deleted or stopped, exit logging thread
-                    break;
-                }
-                
-                // CRITICAL: Check RTMP output directly from instance info to avoid deadlock
-                // Cannot call hasRTMPOutput() here because it tries to acquire mutex_ again
-                // (would deadlock since we already hold exclusive lock)
-                const auto& info = instanceIt->second;
-                const auto& additionalParams = info.additionalParams;
-                bool hasRTMP = !info.rtmpUrl.empty() ||
-                               (additionalParams.find("RTMP_DES_URL") != additionalParams.end() && 
-                                !additionalParams.at("RTMP_DES_URL").empty()) ||
-                               (additionalParams.find("RTMP_URL") != additionalParams.end() && 
-                                !additionalParams.at("RTMP_URL").empty());
-                
-                if (hasRTMP) {
-                    // Instance now has RTMP output, stop logging
-                    break;
-                }
-            }
-            
-            // Log processing results
-            logProcessingResults(instanceId);
-        }
-    });
-    
-    // Store thread handle
-    {
-        std::lock_guard<std::mutex> lock(thread_mutex_);
-        logging_threads_[instanceId] = std::move(loggingThread);
-    }
-}
-
-void InstanceRegistry::stopLoggingThread(const std::string& instanceId) {
-    std::unique_lock<std::mutex> lock(thread_mutex_);
-    
-    // Set stop flag
-    auto flagIt = logging_thread_stop_flags_.find(instanceId);
-    if (flagIt != logging_thread_stop_flags_.end()) {
-        flagIt->second.store(true);
-    }
-    
-    // Get thread handle and release lock before joining to avoid deadlock
-    std::thread threadToJoin;
-    auto threadIt = logging_threads_.find(instanceId);
-    if (threadIt != logging_threads_.end()) {
-        if (threadIt->second.joinable()) {
-            threadToJoin = std::move(threadIt->second);
-        }
-        logging_threads_.erase(threadIt);
-    }
-    
-    // Remove stop flag
-    if (flagIt != logging_thread_stop_flags_.end()) {
-        logging_thread_stop_flags_.erase(flagIt);
-    }
-    
-    // Release lock before joining to avoid deadlock
-    lock.unlock();
-    
-    // Join thread outside of lock
-    if (threadToJoin.joinable()) {
-        threadToJoin.join();
-    }
-}
-
-void InstanceRegistry::stopMqttThread(const std::string& instanceId) {
-    std::unique_lock<std::mutex> lock(mqtt_thread_mutex_);
-    
-    // CRITICAL: Set stop flag FIRST to allow thread to exit gracefully
-    auto flagIt = mqtt_thread_stop_flags_.find(instanceId);
-    if (flagIt != mqtt_thread_stop_flags_.end() && flagIt->second) {
-        flagIt->second->store(true);
-    }
-    
-    // CRITICAL: Close pipe write end IMMEDIATELY after setting stop flag
-    // This will cause read() to return 0 (EOF) and thread will exit quickly
-    // Do this BEFORE restoring stdout to ensure pipe is closed
-    auto pipeIt = mqtt_pipe_write_fds_.find(instanceId);
-    if (pipeIt != mqtt_pipe_write_fds_.end()) {
-        int pipe_write_fd = pipeIt->second;
-        if (pipe_write_fd >= 0) {
-            ::close(pipe_write_fd);  // Close pipe write end to interrupt read()
-            mqtt_pipe_write_fds_.erase(pipeIt);
-        }
-    }
-    
-    // Give thread a moment to check stop flag and exit gracefully
-    // This prevents race condition where we try to join before thread exits
-    // Reduced to 50ms since we're using select() with timeout now
-    std::this_thread::sleep_for(std::chrono::milliseconds(50));
-    
-    // CRITICAL: Restore stdout AFTER closing pipe (pipe already closed above)
-    // This prevents stdout from being closed when we close the pipe
-    auto backupIt = mqtt_stdout_backups_.find(instanceId);
-    if (backupIt != mqtt_stdout_backups_.end()) {
-        int stdout_backup_fd = backupIt->second;
-        if (stdout_backup_fd >= 0) {
-            // Restore stdout from backup
-            dup2(stdout_backup_fd, STDOUT_FILENO);
-            close(stdout_backup_fd);  // Close backup FD
-        }
-        mqtt_stdout_backups_.erase(backupIt);
-    }
-    
-    // Get thread handle and release lock before joining to avoid deadlock
-    std::thread threadToJoin;
-    auto threadIt = mqtt_threads_.find(instanceId);
-    if (threadIt != mqtt_threads_.end()) {
-        if (threadIt->second.joinable()) {
-            threadToJoin = std::move(threadIt->second);
-        }
-        mqtt_threads_.erase(threadIt);
-    }
-    
-    // Remove stop flag
-    if (flagIt != mqtt_thread_stop_flags_.end()) {
-        mqtt_thread_stop_flags_.erase(flagIt);
-    }
-    
-    // Release lock before joining to avoid deadlock
-    lock.unlock();
-    
-    // ✅ Join thread with timeout to prevent blocking forever
-    if (threadToJoin.joinable()) {
-        // Use async with timeout to prevent blocking
-        auto future = std::async(std::launch::async, [&threadToJoin]() {
-            try {
-                threadToJoin.join();
-            } catch (const std::exception& e) {
-                std::cerr << "[InstanceRegistry] [MQTT] Error joining thread: " << e.what() << std::endl;
-            } catch (...) {
-                std::cerr << "[InstanceRegistry] [MQTT] Unknown error joining thread" << std::endl;
-            }
-        });
-        
-        // Wait up to 2 seconds for thread to finish (increased for better reliability)
-        auto status = future.wait_for(std::chrono::seconds(2));
-        if (status == std::future_status::timeout) {
-            std::cerr << "[InstanceRegistry] [MQTT] WARNING: Thread join timeout after 2s, detaching..." << std::endl;
-            std::cerr << "[InstanceRegistry] [MQTT] Thread may still be running - this may cause resource leak" << std::endl;
-            threadToJoin.detach();
-            // ⚠️ NOTE: Detaching thread means we lose control over it
-            // Better solution: Use thread pool or proper lifecycle management
-        } else if (status == std::future_status::ready) {
-            // Thread joined successfully
-            try {
-                future.get(); // Get any exceptions
-            } catch (...) {
-                // Already logged in async lambda
-            }
-            std::cerr << "[InstanceRegistry] [MQTT] Thread joined successfully" << std::endl;
-        }
-    }
 }
 
 void InstanceRegistry::startVideoLoopThread(const std::string& instanceId) {

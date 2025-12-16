@@ -6,12 +6,13 @@
   "autoStart": true,
   "detectionSensitivity": "Low",
   "additionalParams": {
-    "FILE_PATH": "./cvedix_data/test_video/enet_seg.mp4",
-    "MODEL_PATH": "./cvedix_data/models/enet-cityscapes/enet-model.net",
-    "MODEL_CONFIG_PATH": "",
-    "LABELS_PATH": "./cvedix_data/models/enet-cityscapes/enet-classes.txt",
-    "INPUT_WIDTH": "1024",
-    "INPUT_HEIGHT": "512"
+    "input": {
+      "FILE_PATH": "./cvedix_data/test_video/enet_seg.mp4",
+      "MODEL_PATH": "./cvedix_data/models/enet-cityscapes/enet-model.net",
+      "MODEL_CONFIG_PATH": "",
+      "LABELS_PATH": "./cvedix_data/models/enet-cityscapes/enet-classes.txt",
+      "INPUT_WIDTH": "1024",
+      "INPUT_HEIGHT": "512"
+    }
   }
 }
-
