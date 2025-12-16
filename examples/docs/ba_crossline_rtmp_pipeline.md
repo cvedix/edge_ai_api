@@ -341,7 +341,7 @@ Hiển thị trực tiếp trên màn hình với:
 - [Solution Registry](../src/solutions/solution_registry.cpp)
 - [Pipeline Builder](../src/core/pipeline_builder.cpp)
 - [Sample Code](../../sample/ba_crossline_sample.cpp)
-- [API Documentation](../../docs/CREATE_INSTANCE_GUIDE.md)
+- [API Documentation](../../docs/INSTANCE_GUIDE.md)
 
 ## Liên hệ và Hỗ trợ
 

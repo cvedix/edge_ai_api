@@ -228,5 +228,5 @@ Xem documentation chi tiết của từng solution:
 - [NODE_INTEGRATION_PLAN.md](../../develop_doc/NODE_INTEGRATION_PLAN.md)
 - [Solution Registry](../../src/solutions/solution_registry.cpp)
 - [Pipeline Builder](../../src/core/pipeline_builder.cpp)
-- [API Documentation](../../docs/CREATE_INSTANCE_GUIDE.md)
+- [API Documentation](../../docs/INSTANCE_GUIDE.md)
 

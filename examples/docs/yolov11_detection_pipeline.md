@@ -240,5 +240,5 @@ Pipeline sẽ log các thông tin:
 - [YOLOv11 Documentation](https://github.com/ultralytics/ultralytics)
 - [Solution Registry](../../src/solutions/solution_registry.cpp)
 - [Pipeline Builder](../../src/core/pipeline_builder.cpp)
-- [API Documentation](../../docs/CREATE_INSTANCE_GUIDE.md)
+- [API Documentation](../../docs/INSTANCE_GUIDE.md)
 

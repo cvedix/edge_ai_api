@@ -295,5 +295,5 @@ Pipeline sẽ log các thông tin:
 - [Anthropic Claude API](https://docs.anthropic.com/claude/docs)
 - [Solution Registry](../../src/solutions/solution_registry.cpp)
 - [Pipeline Builder](../../src/core/pipeline_builder.cpp)
-- [API Documentation](../../docs/CREATE_INSTANCE_GUIDE.md)
+- [API Documentation](../../docs/INSTANCE_GUIDE.md)
 

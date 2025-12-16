@@ -111,15 +111,51 @@ void CreateInstanceHandler::createInstance(
         }
         
         // Create instance
-        std::string instanceId = instance_registry_->createInstance(createReq);
+        std::string instanceId;
+        try {
+            instanceId = instance_registry_->createInstance(createReq);
+        } catch (const std::invalid_argument& e) {
+            auto end_time = std::chrono::steady_clock::now();
+            auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(end_time - start_time);
+            if (isApiLoggingEnabled()) {
+                PLOG_ERROR << "[API] POST /v1/core/instance - Invalid argument: " << e.what() << " - " << duration.count() << "ms";
+            }
+            callback(createErrorResponse(400, "Invalid request", e.what()));
+            return;
+        } catch (const std::runtime_error& e) {
+            auto end_time = std::chrono::steady_clock::now();
+            auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(end_time - start_time);
+            if (isApiLoggingEnabled()) {
+                PLOG_ERROR << "[API] POST /v1/core/instance - Runtime error: " << e.what() << " - " << duration.count() << "ms";
+            }
+            callback(createErrorResponse(500, "Failed to create instance", e.what()));
+            return;
+        } catch (const std::exception& e) {
+            auto end_time = std::chrono::steady_clock::now();
+            auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(end_time - start_time);
+            if (isApiLoggingEnabled()) {
+                PLOG_ERROR << "[API] POST /v1/core/instance - Exception: " << e.what() << " - " << duration.count() << "ms";
+            }
+            callback(createErrorResponse(500, "Failed to create instance", std::string("Error: ") + e.what()));
+            return;
+        } catch (...) {
+            auto end_time = std::chrono::steady_clock::now();
+            auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(end_time - start_time);
+            if (isApiLoggingEnabled()) {
+                PLOG_ERROR << "[API] POST /v1/core/instance - Unknown error - " << duration.count() << "ms";
+            }
+            callback(createErrorResponse(500, "Failed to create instance", "Unknown error occurred while creating instance"));
+            return;
+        }
+        
         auto end_time = std::chrono::steady_clock::now();
         auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(end_time - start_time);
         
         if (instanceId.empty()) {
             if (isApiLoggingEnabled()) {
-                PLOG_ERROR << "[API] POST /v1/core/instance - Failed to create instance - " << duration.count() << "ms";
+                PLOG_ERROR << "[API] POST /v1/core/instance - Failed to create instance (empty ID) - " << duration.count() << "ms";
             }
-            callback(createErrorResponse(500, "Failed to create instance", "Could not create instance. Check solution ID and parameters."));
+            callback(createErrorResponse(500, "Failed to create instance", "Instance creation returned empty ID. This should not happen."));
             return;
         }
         

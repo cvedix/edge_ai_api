@@ -47,7 +47,7 @@ Các file này yêu cầu bạn phải tạo solution config tương ứng trư�
 
 ### Hướng dẫn Chi tiết
 - **[INFER_NODES_GUIDE.md](./INFER_NODES_GUIDE.md)** - Hướng dẫn các node types và parameters
-- **[../../docs/CREATE_INSTANCE_GUIDE.md](../../docs/CREATE_INSTANCE_GUIDE.md)** - Hướng dẫn tạo instance cho từng case cụ thể
+- **[../../docs/INSTANCE_GUIDE.md](../../docs/INSTANCE_GUIDE.md)** - Hướng dẫn tạo và cập nhật instance
 
 ### Quick Start
 
@@ -55,7 +55,7 @@ Các file này yêu cầu bạn phải tạo solution config tương ứng trư�
 2. **Tạo Instance** với solution ID và parameters
 3. **Kiểm tra** instance status và output
 
-Xem ví dụ cụ thể trong [CREATE_INSTANCE_GUIDE.md](../../docs/CREATE_INSTANCE_GUIDE.md)
+Xem ví dụ cụ thể trong [INSTANCE_GUIDE.md](../../docs/INSTANCE_GUIDE.md)
 
 ## Lưu ý
 

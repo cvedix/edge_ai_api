@@ -4,6 +4,7 @@
 #include "core/env_config.h"
 #include <cstdlib>  // For setenv
 #include <cstring>  // For strlen
+#include <opencv2/core.hpp>  // For cv::Exception
 #include <cvedix/nodes/src/cvedix_rtsp_src_node.h>
 #include <cvedix/nodes/src/cvedix_file_src_node.h>
 #include <cvedix/nodes/src/cvedix_app_src_node.h>
@@ -13,6 +14,7 @@
 #include <cvedix/nodes/infers/cvedix_yunet_face_detector_node.h>
 #include <cvedix/nodes/infers/cvedix_sface_feature_encoder_node.h>
 #include <cvedix/nodes/osd/cvedix_face_osd_node_v2.h>
+#include <cvedix/nodes/osd/cvedix_osd_node_v3.h>
 #include <cvedix/nodes/des/cvedix_file_des_node.h>
 #include <cvedix/nodes/des/cvedix_rtmp_des_node.h>
 #include <cvedix/nodes/des/cvedix_screen_des_node.h>
@@ -760,35 +762,165 @@ std::shared_ptr<cvedix_nodes::cvedix_node> PipelineBuilder::createNode(
     
     // Create node based on type
     try {
-        // Source nodes - Auto-detect source type for file_src if RTSP_SRC_URL or RTMP_SRC_URL is provided
+        // Source nodes - Auto-detect source type for file_src based on FILE_PATH or explicit parameters
         std::string actualNodeType = nodeConfig.nodeType;
         if (nodeConfig.nodeType == "file_src") {
-            // Check if RTSP_SRC_URL or RTMP_SRC_URL is provided in additionalParams
+            // Priority 1: Check explicit source URL parameters
             auto rtspIt = req.additionalParams.find("RTSP_SRC_URL");
             auto rtmpIt = req.additionalParams.find("RTMP_SRC_URL");
+            auto hlsIt = req.additionalParams.find("HLS_URL");
+            auto httpIt = req.additionalParams.find("HTTP_URL");
             
-            if (rtspIt != req.additionalParams.end() && !rtspIt->second.empty()) {
+            // Validate and trim URLs before checking
+            std::string rtspUrl = (rtspIt != req.additionalParams.end() && !rtspIt->second.empty()) ? rtspIt->second : "";
+            std::string rtmpUrl = (rtmpIt != req.additionalParams.end() && !rtmpIt->second.empty()) ? rtmpIt->second : "";
+            std::string hlsUrl = (hlsIt != req.additionalParams.end() && !hlsIt->second.empty()) ? hlsIt->second : "";
+            std::string httpUrl = (httpIt != req.additionalParams.end() && !httpIt->second.empty()) ? httpIt->second : "";
+            
+            // Trim whitespace
+            if (!rtspUrl.empty()) {
+                rtspUrl.erase(0, rtspUrl.find_first_not_of(" \t\n\r"));
+                rtspUrl.erase(rtspUrl.find_last_not_of(" \t\n\r") + 1);
+            }
+            if (!rtmpUrl.empty()) {
+                rtmpUrl.erase(0, rtmpUrl.find_first_not_of(" \t\n\r"));
+                rtmpUrl.erase(rtmpUrl.find_last_not_of(" \t\n\r") + 1);
+            }
+            if (!hlsUrl.empty()) {
+                hlsUrl.erase(0, hlsUrl.find_first_not_of(" \t\n\r"));
+                hlsUrl.erase(hlsUrl.find_last_not_of(" \t\n\r") + 1);
+            }
+            if (!httpUrl.empty()) {
+                httpUrl.erase(0, httpUrl.find_first_not_of(" \t\n\r"));
+                httpUrl.erase(httpUrl.find_last_not_of(" \t\n\r") + 1);
+            }
+            
+            if (!rtspUrl.empty()) {
+                // Check if FILE_PATH also contains RTSP URL (potential conflict)
+                auto filePathIt = req.additionalParams.find("FILE_PATH");
+                if (filePathIt != req.additionalParams.end() && !filePathIt->second.empty()) {
+                    std::string filePath = filePathIt->second;
+                    filePath.erase(0, filePath.find_first_not_of(" \t\n\r"));
+                    filePath.erase(filePath.find_last_not_of(" \t\n\r") + 1);
+                    if (!filePath.empty() && detectInputType(filePath) == "rtsp") {
+                        std::cerr << "[PipelineBuilder] ⚠ WARNING: Both RTSP_SRC_URL and FILE_PATH (with RTSP URL) are provided." << std::endl;
+                        std::cerr << "[PipelineBuilder] ⚠ Using RTSP_SRC_URL (priority). FILE_PATH will be ignored." << std::endl;
+                    }
+                }
                 std::cerr << "[PipelineBuilder] Auto-detected RTSP source from RTSP_SRC_URL parameter, overriding file_src" << std::endl;
                 actualNodeType = "rtsp_src";
-                // Update params to use rtsp_url instead of file_path
-                params["rtsp_url"] = rtspIt->second;
-                // Update node name to reflect actual node type (like sample code uses "rtsp_src_0")
-                // Replace "file_src" with "rtsp_src" in node name for clarity
+                params["rtsp_url"] = rtspUrl;
                 size_t fileSrcPos = nodeName.find("file_src");
                 if (fileSrcPos != std::string::npos) {
                     nodeName.replace(fileSrcPos, 8, "rtsp_src");
                     std::cerr << "[PipelineBuilder] Updated node name to reflect RTSP source: '" << nodeName << "'" << std::endl;
                 }
-            } else if (rtmpIt != req.additionalParams.end() && !rtmpIt->second.empty()) {
+            } else if (!rtmpUrl.empty()) {
+                // Check if FILE_PATH also contains RTMP URL (potential conflict)
+                auto filePathIt = req.additionalParams.find("FILE_PATH");
+                if (filePathIt != req.additionalParams.end() && !filePathIt->second.empty()) {
+                    std::string filePath = filePathIt->second;
+                    filePath.erase(0, filePath.find_first_not_of(" \t\n\r"));
+                    filePath.erase(filePath.find_last_not_of(" \t\n\r") + 1);
+                    if (!filePath.empty() && detectInputType(filePath) == "rtmp") {
+                        std::cerr << "[PipelineBuilder] ⚠ WARNING: Both RTMP_SRC_URL and FILE_PATH (with RTMP URL) are provided." << std::endl;
+                        std::cerr << "[PipelineBuilder] ⚠ Using RTMP_SRC_URL (priority). FILE_PATH will be ignored." << std::endl;
+                    }
+                }
                 std::cerr << "[PipelineBuilder] Auto-detected RTMP source from RTMP_SRC_URL parameter, overriding file_src" << std::endl;
                 actualNodeType = "rtmp_src";
-                // Update params to use rtmp_url instead of file_path
-                params["rtmp_url"] = rtmpIt->second;
-                // Update node name to reflect actual node type (like sample code)
+                params["rtmp_url"] = rtmpUrl;
                 size_t fileSrcPos = nodeName.find("file_src");
                 if (fileSrcPos != std::string::npos) {
                     nodeName.replace(fileSrcPos, 8, "rtmp_src");
                     std::cerr << "[PipelineBuilder] Updated node name to reflect RTMP source: '" << nodeName << "'" << std::endl;
+                }
+            } else if (!hlsUrl.empty()) {
+                // Check if FILE_PATH also contains HLS URL (potential conflict)
+                auto filePathIt = req.additionalParams.find("FILE_PATH");
+                if (filePathIt != req.additionalParams.end() && !filePathIt->second.empty()) {
+                    std::string filePath = filePathIt->second;
+                    filePath.erase(0, filePath.find_first_not_of(" \t\n\r"));
+                    filePath.erase(filePath.find_last_not_of(" \t\n\r") + 1);
+                    if (!filePath.empty() && (detectInputType(filePath) == "hls" || detectInputType(filePath) == "http")) {
+                        std::cerr << "[PipelineBuilder] ⚠ WARNING: Both HLS_URL and FILE_PATH (with HLS/HTTP URL) are provided." << std::endl;
+                        std::cerr << "[PipelineBuilder] ⚠ Using HLS_URL (priority). FILE_PATH will be ignored." << std::endl;
+                    }
+                }
+                std::cerr << "[PipelineBuilder] Auto-detected HLS source from HLS_URL parameter, using ff_src" << std::endl;
+                actualNodeType = "ff_src";
+                params["uri"] = hlsUrl;
+                size_t fileSrcPos = nodeName.find("file_src");
+                if (fileSrcPos != std::string::npos) {
+                    nodeName.replace(fileSrcPos, 8, "ff_src");
+                    std::cerr << "[PipelineBuilder] Updated node name to reflect FFmpeg source: '" << nodeName << "'" << std::endl;
+                }
+            } else if (!httpUrl.empty()) {
+                // Check if FILE_PATH also contains HTTP URL (potential conflict)
+                auto filePathIt = req.additionalParams.find("FILE_PATH");
+                if (filePathIt != req.additionalParams.end() && !filePathIt->second.empty()) {
+                    std::string filePath = filePathIt->second;
+                    filePath.erase(0, filePath.find_first_not_of(" \t\n\r"));
+                    filePath.erase(filePath.find_last_not_of(" \t\n\r") + 1);
+                    if (!filePath.empty() && (detectInputType(filePath) == "hls" || detectInputType(filePath) == "http")) {
+                        std::cerr << "[PipelineBuilder] ⚠ WARNING: Both HTTP_URL and FILE_PATH (with HLS/HTTP URL) are provided." << std::endl;
+                        std::cerr << "[PipelineBuilder] ⚠ Using HTTP_URL (priority). FILE_PATH will be ignored." << std::endl;
+                    }
+                }
+                std::cerr << "[PipelineBuilder] Auto-detected HTTP source from HTTP_URL parameter, using ff_src" << std::endl;
+                actualNodeType = "ff_src";
+                params["uri"] = httpUrl;
+                size_t fileSrcPos = nodeName.find("file_src");
+                if (fileSrcPos != std::string::npos) {
+                    nodeName.replace(fileSrcPos, 8, "ff_src");
+                    std::cerr << "[PipelineBuilder] Updated node name to reflect FFmpeg source: '" << nodeName << "'" << std::endl;
+                }
+            } else {
+                // Priority 2: Auto-detect from FILE_PATH
+                std::string filePath = params.count("file_path") ? params.at("file_path") : "";
+                if (filePath.empty()) {
+                    auto filePathIt = req.additionalParams.find("FILE_PATH");
+                    if (filePathIt != req.additionalParams.end() && !filePathIt->second.empty()) {
+                        filePath = filePathIt->second;
+                    }
+                }
+                
+                // Trim whitespace from filePath
+                if (!filePath.empty()) {
+                    filePath.erase(0, filePath.find_first_not_of(" \t\n\r"));
+                    filePath.erase(filePath.find_last_not_of(" \t\n\r") + 1);
+                }
+                
+                if (!filePath.empty()) {
+                    std::string inputType = detectInputType(filePath);
+                    if (inputType == "rtsp") {
+                        std::cerr << "[PipelineBuilder] Auto-detected RTSP source from FILE_PATH: '" << filePath << "'" << std::endl;
+                        actualNodeType = "rtsp_src";
+                        params["rtsp_url"] = filePath;
+                        size_t fileSrcPos = nodeName.find("file_src");
+                        if (fileSrcPos != std::string::npos) {
+                            nodeName.replace(fileSrcPos, 8, "rtsp_src");
+                        }
+                    } else if (inputType == "rtmp") {
+                        std::cerr << "[PipelineBuilder] Auto-detected RTMP source from FILE_PATH: '" << filePath << "'" << std::endl;
+                        actualNodeType = "rtmp_src";
+                        params["rtmp_url"] = filePath;
+                        size_t fileSrcPos = nodeName.find("file_src");
+                        if (fileSrcPos != std::string::npos) {
+                            nodeName.replace(fileSrcPos, 8, "rtmp_src");
+                        }
+                    } else if (inputType == "hls" || inputType == "http") {
+                        std::cerr << "[PipelineBuilder] Auto-detected " << inputType << " source from FILE_PATH: '" << filePath << "', using ff_src" << std::endl;
+                        actualNodeType = "ff_src";
+                        params["uri"] = filePath;
+                        size_t fileSrcPos = nodeName.find("file_src");
+                        if (fileSrcPos != std::string::npos) {
+                            nodeName.replace(fileSrcPos, 8, "ff_src");
+                        }
+                    } else {
+                        // If inputType == "file" or "udp", keep as file_src (default)
+                        std::cerr << "[PipelineBuilder] Using file_src for FILE_PATH: '" << filePath << "' (detected type: " << inputType << ")" << std::endl;
+                    }
                 }
             }
         }
@@ -806,6 +938,8 @@ std::shared_ptr<cvedix_nodes::cvedix_node> PipelineBuilder::createNode(
             return createRTMPSourceNode(nodeName, params, req);
         } else if (actualNodeType == "udp_src") {
             return createUDPSourceNode(nodeName, params, req);
+        } else if (actualNodeType == "ff_src") {
+            return createFFmpegSourceNode(nodeName, params, req);
         }
         // Face detection nodes
         else if (nodeConfig.nodeType == "yunet_face_detector") {
@@ -895,6 +1029,12 @@ std::shared_ptr<cvedix_nodes::cvedix_node> PipelineBuilder::createNode(
             return createBACrosslineNode(nodeName, params);
         }
         // OSD nodes
+        else if (nodeConfig.nodeType == "face_osd_v2") {
+            return createFaceOSDNode(nodeName, params);
+        }
+        else if (nodeConfig.nodeType == "osd_v3") {
+            return createOSDv3Node(nodeName, params, req);
+        }
         else if (nodeConfig.nodeType == "ba_crossline_osd") {
             return createBACrosslineOSDNode(nodeName, params);
         }
@@ -1332,9 +1472,9 @@ std::shared_ptr<cvedix_nodes::cvedix_node> PipelineBuilder::createFaceDetectorNo
             std::cerr << "[PipelineBuilder]      /usr/include/cvedix/cvedix_data/models/face/yunet.onnx" << std::endl;
             std::cerr << "[PipelineBuilder]      (Create: sudo mkdir -p /usr/include/cvedix/cvedix_data/models/face)" << std::endl;
             std::cerr << "[PipelineBuilder]      NOTE: /usr/include/ is for header files, not data files" << std::endl;
-            std::cerr << "[PipelineBuilder]   2. SDK source location:" << std::endl;
-            std::cerr << "[PipelineBuilder]      /home/pnsang/project/edge_ai_sdk/cvedix_data/models/face/yunet.onnx" << std::endl;
-            std::cerr << "[PipelineBuilder]      (Copy: cp /path/to/yunet.onnx /home/pnsang/project/edge_ai_sdk/cvedix_data/models/face/)" << std::endl;
+            std::cerr << "[PipelineBuilder]   2. SDK source location (relative to API directory):" << std::endl;
+            std::cerr << "[PipelineBuilder]      ../edge_ai_sdk/cvedix_data/models/face/yunet.onnx" << std::endl;
+            std::cerr << "[PipelineBuilder]      (Copy: cp /path/to/yunet.onnx ../edge_ai_sdk/cvedix_data/models/face/)" << std::endl;
             std::cerr << "[PipelineBuilder]   3. API working directory: ./cvedix_data/models/face/yunet.onnx" << std::endl;
             std::cerr << "[PipelineBuilder]      (Create: mkdir -p ./cvedix_data/models/face)" << std::endl;
             std::cerr << "[PipelineBuilder]   4. Set environment variable CVEDIX_DATA_ROOT=/path/to/cvedix_data" << std::endl;
@@ -1609,8 +1749,10 @@ std::string PipelineBuilder::resolveModelPath(const std::string& relativePath) c
     // Priority:
     // 1. CVEDIX_DATA_ROOT environment variable
     // 2. CVEDIX_SDK_ROOT environment variable + /cvedix_data
-    // 3. Relative to current working directory (./cvedix_data)
-    // 4. Try to find SDK directory in common locations
+    // 3. Production path: /opt/edge_ai_api/models (where user-uploaded models are stored)
+    // 4. System-wide installation paths (/usr/share/cvedix/cvedix_data/)
+    // 5. SDK source locations (relative paths)
+    // 6. Development fallback: ./cvedix_data/ (will NOT exist in production)
     
     // 1. Check CVEDIX_DATA_ROOT
     const char* dataRoot = std::getenv("CVEDIX_DATA_ROOT");
@@ -1636,11 +1778,30 @@ std::string PipelineBuilder::resolveModelPath(const std::string& relativePath) c
         }
     }
     
-    // 3. Try relative to current working directory
-    std::string relativePathFull = "./cvedix_data/" + relativePath;
-    if (fs::exists(relativePathFull)) {
-        std::cerr << "[PipelineBuilder] Using relative path: " << fs::absolute(relativePathFull).string() << std::endl;
-        return relativePathFull;
+    // 3. Try production installation path (/opt/edge_ai_api/models)
+    // This is where user-uploaded models are stored
+    // Check if relativePath starts with "models/" or is a direct model file
+    if (relativePath.find("models/") == 0 || relativePath.find("models\\") == 0) {
+        // Extract the model path after "models/"
+        std::string modelPath = relativePath.substr(relativePath.find_first_of("/\\") + 1);
+        std::string optPath = "/opt/edge_ai_api/models/" + modelPath;
+        if (fs::exists(optPath)) {
+            std::cerr << "[PipelineBuilder] Using production path: " << optPath << std::endl;
+            return optPath;
+        }
+        // Also try direct path if relativePath is just a filename
+        std::string optPathDirect = "/opt/edge_ai_api/models/" + relativePath;
+        if (fs::exists(optPathDirect)) {
+            std::cerr << "[PipelineBuilder] Using production path: " << optPathDirect << std::endl;
+            return optPathDirect;
+        }
+    } else {
+        // Try direct model file in /opt/edge_ai_api/models
+        std::string optPath = "/opt/edge_ai_api/models/" + relativePath;
+        if (fs::exists(optPath)) {
+            std::cerr << "[PipelineBuilder] Using production path: " << optPath << std::endl;
+            return optPath;
+        }
     }
     
     // 4. Try system-wide installation paths (when SDK is installed to /usr)
@@ -1683,11 +1844,11 @@ std::string PipelineBuilder::resolveModelPath(const std::string& relativePath) c
         }
     }
     
-    // 5. Try common SDK source locations
+    // 5. Try common SDK source locations (relative paths only, no hardcoded absolute paths)
     std::vector<std::string> commonPaths = {
-        "/home/pnsang/project/edge_ai_sdk/cvedix_data/" + relativePath,
         "../edge_ai_sdk/cvedix_data/" + relativePath,
         "../../edge_ai_sdk/cvedix_data/" + relativePath,
+        "../../../edge_ai_sdk/cvedix_data/" + relativePath,
     };
     
     for (const auto& path : commonPaths) {
@@ -1697,8 +1858,17 @@ std::string PipelineBuilder::resolveModelPath(const std::string& relativePath) c
         }
     }
     
+    // 6. Development fallback: relative to current working directory (./cvedix_data/)
+    // NOTE: This path will NOT exist in production - all data should be in /opt/edge_ai_api
+    std::string relativePathFull = "./cvedix_data/" + relativePath;
+    if (fs::exists(relativePathFull)) {
+        std::cerr << "[PipelineBuilder] Using development relative path: " << fs::absolute(relativePathFull).string() << std::endl;
+        return relativePathFull;
+    }
+    
     // Return default relative path (will show warning later if not found)
-    std::cerr << "[PipelineBuilder] Using default path (may not exist): ./cvedix_data/" << relativePath << std::endl;
+    std::cerr << "[PipelineBuilder] ⚠ Using default path (may not exist): ./cvedix_data/" << relativePath << std::endl;
+    std::cerr << "[PipelineBuilder] ℹ NOTE: In production, use /opt/edge_ai_api/models/ or set CVEDIX_DATA_ROOT" << std::endl;
     return relativePathFull;
 }
 
@@ -1745,18 +1915,24 @@ std::string PipelineBuilder::resolveModelByName(const std::string& modelName, co
         searchDirs.push_back(dir);
     }
     
-    // 3. System-wide locations
+    // 3. Production installation path (/opt/edge_ai_api/models)
+    // This is where user-uploaded models are stored
+    searchDirs.push_back("/opt/edge_ai_api/models/" + category);
+    searchDirs.push_back("/opt/edge_ai_api/models"); // Also check root models directory
+    
+    // 4. System-wide locations
     searchDirs.push_back("/usr/share/cvedix/cvedix_data/models/" + category);
     searchDirs.push_back("/usr/local/share/cvedix/cvedix_data/models/" + category);
     searchDirs.push_back("/usr/include/cvedix/cvedix_data/models/" + category);
     searchDirs.push_back("/usr/local/include/cvedix/cvedix_data/models/" + category);
     
-    // 4. SDK source locations
-    searchDirs.push_back("/home/pnsang/project/edge_ai_sdk/cvedix_data/models/" + category);
+    // 5. SDK source locations (relative paths only, no hardcoded absolute paths)
     searchDirs.push_back("../edge_ai_sdk/cvedix_data/models/" + category);
     searchDirs.push_back("../../edge_ai_sdk/cvedix_data/models/" + category);
+    searchDirs.push_back("../../../edge_ai_sdk/cvedix_data/models/" + category);
     
-    // 5. Relative to current working directory
+    // 6. Development fallback: relative to current working directory (./cvedix_data/)
+    // NOTE: This path will NOT exist in production - all data should be in /opt/edge_ai_api
     searchDirs.push_back("./cvedix_data/models/" + category);
     searchDirs.push_back("./models"); // Also check API models directory
     
@@ -1837,6 +2013,15 @@ std::vector<std::string> PipelineBuilder::listAvailableModels(const std::string&
         }
     }
     
+    // Production installation path (/opt/edge_ai_api/models)
+    // This is where user-uploaded models are stored
+    if (category.empty()) {
+        searchDirs.push_back("/opt/edge_ai_api/models");
+    } else {
+        searchDirs.push_back("/opt/edge_ai_api/models/" + category);
+        searchDirs.push_back("/opt/edge_ai_api/models"); // Also check root models directory
+    }
+    
     if (category.empty()) {
         searchDirs.push_back("/usr/share/cvedix/cvedix_data/models");
         searchDirs.push_back("/usr/local/share/cvedix/cvedix_data/models");
@@ -1845,6 +2030,8 @@ std::vector<std::string> PipelineBuilder::listAvailableModels(const std::string&
         searchDirs.push_back("/usr/local/share/cvedix/cvedix_data/models/" + category);
     }
     
+    // Development fallback: relative to current working directory (./cvedix_data/)
+    // NOTE: This path will NOT exist in production - all data should be in /opt/edge_ai_api
     searchDirs.push_back("./cvedix_data/models/" + (category.empty() ? "" : category));
     searchDirs.push_back("./models");
     
@@ -2276,6 +2463,130 @@ std::shared_ptr<cvedix_nodes::cvedix_node> PipelineBuilder::createBACrosslineNod
     }
 }
 
+std::shared_ptr<cvedix_nodes::cvedix_node> PipelineBuilder::createOSDv3Node(
+    const std::string& nodeName,
+    const std::map<std::string, std::string>& params,
+    const CreateInstanceRequest& req) {
+    
+    try {
+        if (nodeName.empty()) {
+            throw std::invalid_argument("Node name cannot be empty");
+        }
+        
+        // Priority 1: Check additionalParams for FONT_PATH (highest priority - allows runtime override)
+        std::string fontPath = "";
+        auto it = req.additionalParams.find("FONT_PATH");
+        if (it != req.additionalParams.end() && !it->second.empty()) {
+            fontPath = it->second;
+            std::cerr << "[PipelineBuilder] Using FONT_PATH from additionalParams: " << fontPath << std::endl;
+        }
+        
+        // Priority 2: Get font_path from params if not in additionalParams
+        if (fontPath.empty() && params.count("font_path") && !params.at("font_path").empty()) {
+            fontPath = params.at("font_path");
+            
+            // Check if font file exists, try to resolve path
+            fs::path fontFilePath(fontPath);
+            
+            // If relative path, try to resolve it
+            if (!fontFilePath.is_absolute()) {
+                // Try current directory first
+                if (fs::exists(fontPath)) {
+                    fontPath = fs::absolute(fontPath).string();
+                } else {
+                    // Try with CVEDIX_DATA_ROOT or CVEDIX_SDK_ROOT
+                    const char* dataRoot = std::getenv("CVEDIX_DATA_ROOT");
+                    if (dataRoot && strlen(dataRoot) > 0) {
+                        std::string resolvedPath = std::string(dataRoot);
+                        if (resolvedPath.back() != '/') resolvedPath += '/';
+                        resolvedPath += fontPath;
+                        if (fs::exists(resolvedPath)) {
+                            fontPath = resolvedPath;
+                        }
+                    }
+                    
+                    // Try CVEDIX_SDK_ROOT
+                    if (!fs::exists(fontPath)) {
+                        const char* sdkRoot = std::getenv("CVEDIX_SDK_ROOT");
+                        if (sdkRoot && strlen(sdkRoot) > 0) {
+                            std::string resolvedPath = std::string(sdkRoot);
+                            if (resolvedPath.back() != '/') resolvedPath += '/';
+                            resolvedPath += "cvedix_data/" + fontPath;
+                            if (fs::exists(resolvedPath)) {
+                                fontPath = resolvedPath;
+                            }
+                        }
+                    }
+                }
+            }
+            
+            // Check if font file exists after resolution
+            if (!fs::exists(fontPath)) {
+                std::cerr << "[PipelineBuilder] ⚠ WARNING: Font file not found: '" << params.at("font_path") << "'" << std::endl;
+                std::cerr << "[PipelineBuilder] ⚠ Resolved path: '" << fontPath << "'" << std::endl;
+                std::cerr << "[PipelineBuilder] ⚠ Trying default font from environment..." << std::endl;
+                fontPath = ""; // Will try default font below
+            }
+        }
+        
+        // Priority 3: If no font_path in params/additionalParams or font file not found, try default font
+        if (fontPath.empty()) {
+            // Try default font from /opt/edge_ai_api/fonts/ first
+            std::string defaultFontPath = "/opt/edge_ai_api/fonts/NotoSansCJKsc-Medium.otf";
+            if (fs::exists(defaultFontPath)) {
+                fontPath = defaultFontPath;
+                std::cerr << "[PipelineBuilder] Using default font from /opt/edge_ai_api/fonts/" << std::endl;
+            } else {
+                // Fallback to environment variable resolution
+                fontPath = EnvConfig::resolveDefaultFontPath();
+            }
+        }
+        
+        std::cerr << "[PipelineBuilder] Creating OSD v3 node:" << std::endl;
+        std::cerr << "  Name: '" << nodeName << "'" << std::endl;
+        if (!fontPath.empty()) {
+            std::cerr << "  Font path: '" << fontPath << "'" << std::endl;
+        } else {
+            std::cerr << "  Font: Using default font" << std::endl;
+        }
+        
+        // Try to create node with font path, if it fails, fallback to default font
+        std::shared_ptr<cvedix_nodes::cvedix_node> node;
+        try {
+            node = std::make_shared<cvedix_nodes::cvedix_osd_node_v3>(nodeName, fontPath);
+            std::cerr << "[PipelineBuilder] ✓ OSD v3 node created successfully" << std::endl;
+            return node;
+        } catch (const cv::Exception& e) {
+            // OpenCV exception (likely font loading failed)
+            if (!fontPath.empty()) {
+                std::cerr << "[PipelineBuilder] ⚠ WARNING: Failed to load font from '" << fontPath 
+                         << "': " << e.what() << std::endl;
+                std::cerr << "[PipelineBuilder] ⚠ Falling back to default font (no Chinese/Unicode support)" << std::endl;
+                // Try again with empty font path (default font)
+                try {
+                    node = std::make_shared<cvedix_nodes::cvedix_osd_node_v3>(nodeName, "");
+                    std::cerr << "[PipelineBuilder] ✓ OSD v3 node created successfully with default font" << std::endl;
+                    return node;
+                } catch (const std::exception& e2) {
+                    std::cerr << "[PipelineBuilder] ✗ ERROR: Failed to create OSD v3 node even with default font: " 
+                             << e2.what() << std::endl;
+                    throw;
+                }
+            } else {
+                // Already using default font, rethrow
+                throw;
+            }
+        } catch (const std::exception& e) {
+            // Other exceptions
+            std::cerr << "[PipelineBuilder] Exception in createOSDv3Node: " << e.what() << std::endl;
+            throw;
+        }
+    } catch (const std::exception& e) {
+        std::cerr << "[PipelineBuilder] Exception in createOSDv3Node: " << e.what() << std::endl;
+        throw;
+    }
+}
+
 std::shared_ptr<cvedix_nodes::cvedix_node> PipelineBuilder::createBACrosslineOSDNode(
     const std::string& nodeName,
     const std::map<std::string, std::string>& params) {
@@ -2306,9 +2617,16 @@ std::string PipelineBuilder::getFilePath(const CreateInstanceRequest& req) const
         return it->second;
     }
     
-    // Default fallback
-    std::cerr << "[PipelineBuilder] WARNING: Using default file path (./cvedix_data/test_video/face.mp4)" << std::endl;
-    std::cerr << "[PipelineBuilder] NOTE: To use custom file path, provide 'FILE_PATH' in request body additionalParams" << std::endl;
+    // Default fallback: Try production path first, then development path
+    std::string productionPath = "/opt/edge_ai_api/videos/face.mp4";
+    if (fs::exists(productionPath)) {
+        std::cerr << "[PipelineBuilder] Using default production file path: " << productionPath << std::endl;
+        return productionPath;
+    }
+    
+    // Development fallback (will not exist in production)
+    std::cerr << "[PipelineBuilder] ⚠ WARNING: Using development default file path (./cvedix_data/test_video/face.mp4)" << std::endl;
+    std::cerr << "[PipelineBuilder] ℹ NOTE: In production, provide 'FILE_PATH' in request body or upload videos to /opt/edge_ai_api/videos/" << std::endl;
     return "./cvedix_data/test_video/face.mp4";
 }
 
@@ -3801,8 +4119,17 @@ std::shared_ptr<cvedix_nodes::cvedix_node> PipelineBuilder::createImageSourceNod
             if (it != req.additionalParams.end() && !it->second.empty()) {
                 portOrLocation = it->second;
             } else {
-                // Default: use file path pattern
-                portOrLocation = "./cvedix_data/test_images/%d.jpg";
+                // Default: Try production path first, then development path
+                std::string productionPath = "/opt/edge_ai_api/data/test_images/%d.jpg";
+                if (fs::exists("/opt/edge_ai_api/data/test_images")) {
+                    portOrLocation = productionPath;
+                    std::cerr << "[PipelineBuilder] Using default production image path: " << productionPath << std::endl;
+                } else {
+                    // Development fallback (will not exist in production)
+                    portOrLocation = "./cvedix_data/test_images/%d.jpg";
+                    std::cerr << "[PipelineBuilder] ⚠ WARNING: Using development default image path (./cvedix_data/test_images/%d.jpg)" << std::endl;
+                    std::cerr << "[PipelineBuilder] ℹ NOTE: In production, provide 'IMAGE_SRC_PORT_OR_LOCATION' or upload images to /opt/edge_ai_api/data/test_images/" << std::endl;
+                }
             }
         }
         
@@ -3904,6 +4231,141 @@ std::shared_ptr<cvedix_nodes::cvedix_node> PipelineBuilder::createRTMPSourceNode
         return node;
     } catch (const std::exception& e) {
         std::cerr << "[PipelineBuilder] Exception in createRTMPSourceNode: " << e.what() << std::endl;
+        throw;
+    }
+}
+
+std::string PipelineBuilder::detectInputType(const std::string& uri) const {
+    if (uri.empty()) {
+        return "file";
+    }
+    
+    // Trim whitespace
+    std::string trimmedUri = uri;
+    trimmedUri.erase(0, trimmedUri.find_first_not_of(" \t\n\r"));
+    trimmedUri.erase(trimmedUri.find_last_not_of(" \t\n\r") + 1);
+    
+    if (trimmedUri.empty()) {
+        return "file";
+    }
+    
+    // Convert to lowercase for comparison
+    std::string lowerUri = trimmedUri;
+    std::transform(lowerUri.begin(), lowerUri.end(), lowerUri.begin(), ::tolower);
+    
+    // Check protocol prefixes (must be at start of string)
+    if (lowerUri.find("rtsp://") == 0) {
+        return "rtsp";
+    } else if (lowerUri.find("rtmp://") == 0) {
+        return "rtmp";
+    } else if (lowerUri.find("hls://") == 0) {
+        return "hls";
+    } else if (lowerUri.find("http://") == 0 || lowerUri.find("https://") == 0) {
+        // Check if it's HLS playlist (.m3u8 extension)
+        // Check for .m3u8 at the end or before query parameters
+        size_t m3u8Pos = lowerUri.find(".m3u8");
+        if (m3u8Pos != std::string::npos) {
+            // Check if .m3u8 is at the end or followed by ? or #
+            size_t afterM3u8 = m3u8Pos + 5;
+            if (afterM3u8 >= lowerUri.length() || 
+                lowerUri[afterM3u8] == '?' || 
+                lowerUri[afterM3u8] == '#' ||
+                lowerUri[afterM3u8] == '/') {
+                return "hls";
+            }
+        }
+        return "http";
+    } else if (lowerUri.find("udp://") == 0) {
+        return "udp";
+    }
+    
+    // Check file extension for HLS (must be at end or before query params)
+    size_t m3u8Pos = lowerUri.find(".m3u8");
+    if (m3u8Pos != std::string::npos) {
+        size_t afterM3u8 = m3u8Pos + 5;
+        if (afterM3u8 >= lowerUri.length() || 
+            lowerUri[afterM3u8] == '?' || 
+            lowerUri[afterM3u8] == '#' ||
+            lowerUri[afterM3u8] == '/') {
+            return "hls";
+        }
+    }
+    
+    // Default to local file
+    return "file";
+}
+
+std::shared_ptr<cvedix_nodes::cvedix_node> PipelineBuilder::createFFmpegSourceNode(
+    const std::string& nodeName,
+    const std::map<std::string, std::string>& params,
+    const CreateInstanceRequest& req) {
+    
+    try {
+        // Get URI from params or request
+        std::string uri = params.count("uri") ? params.at("uri") : "";
+        if (uri.empty()) {
+            // Try to get from FILE_PATH or HLS_URL or HTTP_URL
+            auto filePathIt = req.additionalParams.find("FILE_PATH");
+            auto hlsIt = req.additionalParams.find("HLS_URL");
+            auto httpIt = req.additionalParams.find("HTTP_URL");
+            
+            if (hlsIt != req.additionalParams.end() && !hlsIt->second.empty()) {
+                uri = hlsIt->second;
+            } else if (httpIt != req.additionalParams.end() && !httpIt->second.empty()) {
+                uri = httpIt->second;
+            } else if (filePathIt != req.additionalParams.end() && !filePathIt->second.empty()) {
+                uri = filePathIt->second;
+            }
+        }
+        
+        int channel = params.count("channel") ? std::stoi(params.at("channel")) : 0;
+        float resizeRatio = params.count("resize_ratio") ? std::stof(params.at("resize_ratio")) : 1.0f;
+        
+        // Get resize_ratio from additionalParams if available
+        auto resizeIt = req.additionalParams.find("RESIZE_RATIO");
+        if (resizeIt != req.additionalParams.end() && !resizeIt->second.empty()) {
+            try {
+                resizeRatio = std::stof(resizeIt->second);
+            } catch (...) {
+                std::cerr << "[PipelineBuilder] Warning: Invalid RESIZE_RATIO, using default" << std::endl;
+            }
+        }
+        
+        if (nodeName.empty()) {
+            throw std::invalid_argument("Node name cannot be empty");
+        }
+        if (uri.empty()) {
+            throw std::invalid_argument("URI cannot be empty for FFmpeg source");
+        }
+        if (resizeRatio <= 0.0f || resizeRatio > 1.0f) {
+            std::cerr << "[PipelineBuilder] Warning: resize_ratio out of range, using 1.0" << std::endl;
+            resizeRatio = 1.0f;
+        }
+        
+        std::cerr << "[PipelineBuilder] Creating FFmpeg source node:" << std::endl;
+        std::cerr << "  Name: '" << nodeName << "'" << std::endl;
+        std::cerr << "  URI: '" << uri << "'" << std::endl;
+        std::cerr << "  Channel: " << channel << std::endl;
+        std::cerr << "  Resize ratio: " << resizeRatio << std::endl;
+        
+        // Note: CVEDIX SDK may not have ff_src node header
+        // Fallback: Use file_src with GStreamer urisourcebin pipeline
+        // For HLS/HTTP streams, we'll use file_src node which internally uses GStreamer
+        // The GStreamer backend should handle HLS/HTTP streams via urisourcebin
+        
+        // Since CVEDIX SDK file_src uses GStreamer internally, it should support HLS/HTTP
+        // We'll use file_src node with the URI directly
+        auto node = std::make_shared<cvedix_nodes::cvedix_file_src_node>(
+            nodeName,
+            channel,
+            uri,  // Pass URI directly - GStreamer should handle it
+            resizeRatio
+        );
+        
+        std::cerr << "[PipelineBuilder] ✓ FFmpeg source node created successfully (using file_src with GStreamer)" << std::endl;
+        return node;
+    } catch (const std::exception& e) {
+        std::cerr << "[PipelineBuilder] Exception in createFFmpegSourceNode: " << e.what() << std::endl;
         throw;
     }
 }

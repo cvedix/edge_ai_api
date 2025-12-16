@@ -132,6 +132,16 @@ private:
      */
     void registerMLLMAnalysisSolution();
     
+    /**
+     * @brief Register MaskRCNN detection solution (file source + file output)
+     */
+    void registerMaskRCNNDetectionSolution();
+    
+    /**
+     * @brief Register MaskRCNN detection with RTMP streaming solution
+     */
+    void registerMaskRCNNRTMPSolution();
+    
 #ifdef CVEDIX_WITH_RKNN
     /**
      * @brief Register RKNN YOLOv11 detection solution

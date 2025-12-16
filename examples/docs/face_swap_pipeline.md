@@ -241,5 +241,5 @@ Pipeline sẽ log các thông tin:
 - [YuNet Face Detector](https://github.com/opencv/opencv_zoo)
 - [Solution Registry](../../src/solutions/solution_registry.cpp)
 - [Pipeline Builder](../../src/core/pipeline_builder.cpp)
-- [API Documentation](../../docs/CREATE_INSTANCE_GUIDE.md)
+- [API Documentation](../../docs/INSTANCE_GUIDE.md)
 

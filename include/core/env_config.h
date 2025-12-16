@@ -1,6 +1,7 @@
 #pragma once
 
 #include <cstdlib>
+#include <cstring>
 #include <string>
 #include <cstdint>
 #include <stdexcept>
@@ -414,6 +415,88 @@ inline std::string resolveDataDir(const char* env_var_name, const std::string& s
         std::cerr << "[EnvConfig] ⚠⚠ Warning: Cannot create even last resort directory: " << last_resort << std::endl;
         return last_resort;
     }
+}
+
+/**
+ * @brief Resolve default font path for OSD nodes
+ * 
+ * Priority:
+ * 1. OSD_DEFAULT_FONT_PATH environment variable (if set) - highest priority
+ * 2. DEFAULT_FONT_PATH environment variable (if set)
+ * 3. CVEDIX_DATA_ROOT/font/NotoSansCJKsc-Medium.otf (if CVEDIX_DATA_ROOT is set)
+ * 4. CVEDIX_SDK_ROOT/cvedix_data/font/NotoSansCJKsc-Medium.otf (if CVEDIX_SDK_ROOT is set)
+ * 5. ./cvedix_data/font/NotoSansCJKsc-Medium.otf (relative to current directory)
+ * 6. Empty string (use default font)
+ * 
+ * @return Resolved font path, or empty string if not found
+ */
+inline std::string resolveDefaultFontPath() {
+    // Priority 1: OSD_DEFAULT_FONT_PATH environment variable
+    const char* osdFontPath = std::getenv("OSD_DEFAULT_FONT_PATH");
+    if (osdFontPath && strlen(osdFontPath) > 0) {
+        std::string path = std::string(osdFontPath);
+        if (std::filesystem::exists(path)) {
+            std::cerr << "[EnvConfig] ✓ Using font from OSD_DEFAULT_FONT_PATH: " << path << std::endl;
+            return path;
+        } else {
+            std::cerr << "[EnvConfig] ⚠ OSD_DEFAULT_FONT_PATH points to non-existent file: " << path << std::endl;
+        }
+    }
+    
+    // Priority 2: DEFAULT_FONT_PATH environment variable
+    const char* defaultFontPath = std::getenv("DEFAULT_FONT_PATH");
+    if (defaultFontPath && strlen(defaultFontPath) > 0) {
+        std::string path = std::string(defaultFontPath);
+        if (std::filesystem::exists(path)) {
+            std::cerr << "[EnvConfig] ✓ Using font from DEFAULT_FONT_PATH: " << path << std::endl;
+            return path;
+        } else {
+            std::cerr << "[EnvConfig] ⚠ DEFAULT_FONT_PATH points to non-existent file: " << path << std::endl;
+        }
+    }
+    
+    // Priority 3: CVEDIX_DATA_ROOT/font/NotoSansCJKsc-Medium.otf
+    const char* dataRoot = std::getenv("CVEDIX_DATA_ROOT");
+    if (dataRoot && strlen(dataRoot) > 0) {
+        std::string path = std::string(dataRoot);
+        if (path.back() != '/') path += '/';
+        path += "font/NotoSansCJKsc-Medium.otf";
+        if (std::filesystem::exists(path)) {
+            std::cerr << "[EnvConfig] ✓ Using font from CVEDIX_DATA_ROOT: " << path << std::endl;
+            return path;
+        }
+    }
+    
+    // Priority 4: CVEDIX_SDK_ROOT/cvedix_data/font/NotoSansCJKsc-Medium.otf
+    const char* sdkRoot = std::getenv("CVEDIX_SDK_ROOT");
+    if (sdkRoot && strlen(sdkRoot) > 0) {
+        std::string path = std::string(sdkRoot);
+        if (path.back() != '/') path += '/';
+        path += "cvedix_data/font/NotoSansCJKsc-Medium.otf";
+        if (std::filesystem::exists(path)) {
+            std::cerr << "[EnvConfig] ✓ Using font from CVEDIX_SDK_ROOT: " << path << std::endl;
+            return path;
+        }
+    }
+    
+    // Priority 5: /opt/edge_ai_api/fonts/NotoSansCJKsc-Medium.otf (production fonts directory)
+    std::string productionFontPath = "/opt/edge_ai_api/fonts/NotoSansCJKsc-Medium.otf";
+    if (std::filesystem::exists(productionFontPath)) {
+        std::cerr << "[EnvConfig] ✓ Using font from production fonts directory: " << productionFontPath << std::endl;
+        return productionFontPath;
+    }
+    
+    // Priority 6: Development fallback: ./cvedix_data/font/NotoSansCJKsc-Medium.otf
+    // NOTE: This path will NOT exist in production - all fonts should be in /opt/edge_ai_api/fonts
+    std::string relativePath = "./cvedix_data/font/NotoSansCJKsc-Medium.otf";
+    if (std::filesystem::exists(relativePath)) {
+        std::cerr << "[EnvConfig] ✓ Using font from development directory: " << relativePath << std::endl;
+        return std::filesystem::absolute(relativePath).string();
+    }
+    
+    // Priority 7: Empty string (use default font)
+    std::cerr << "[EnvConfig] ℹ No default font found, OSD nodes will use system default font" << std::endl;
+    return "";
 }
 
 /**

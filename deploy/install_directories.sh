@@ -66,6 +66,7 @@ else
         ["groups"]="750"        # Group configurations
         ["models"]="750"        # Uploaded model files
         ["videos"]="750"        # Uploaded video files
+        ["fonts"]="750"         # Font files
         ["nodes"]="750"         # Pre-configured nodes (node pool storage)
         ["logs"]="750"          # Application logs
         ["data"]="750"          # Application data

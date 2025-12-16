@@ -9,6 +9,8 @@
 #include <cvedix/nodes/src/cvedix_file_src_node.h>
 #include <cvedix/nodes/infers/cvedix_yunet_face_detector_node.h>
 #include <cvedix/nodes/infers/cvedix_sface_feature_encoder_node.h>
+#include <cvedix/nodes/infers/cvedix_mask_rcnn_detector_node.h>
+#include <cvedix/nodes/infers/cvedix_openpose_detector_node.h>
 #include <cvedix/nodes/des/cvedix_rtmp_des_node.h>
 #include <cvedix/nodes/des/cvedix_app_des_node.h>
 #include <cvedix/objects/cvedix_meta.h>
@@ -64,17 +66,18 @@ std::string InstanceRegistry::createInstance(const CreateInstanceRequest& req) {
     if (!req.solution.empty()) {
         auto optSolution = solution_registry_.getSolution(req.solution);
         if (!optSolution.has_value()) {
-            std::cerr << "[InstanceRegistry] Solution not found: " << req.solution << std::endl;
-            std::cerr << "[InstanceRegistry] Available solutions: ";
+            std::string availableSolutionsStr = "";
             auto availableSolutions = solution_registry_.listSolutions();
             for (size_t i = 0; i < availableSolutions.size(); ++i) {
-                std::cerr << availableSolutions[i];
+                availableSolutionsStr += availableSolutions[i];
                 if (i < availableSolutions.size() - 1) {
-                    std::cerr << ", ";
+                    availableSolutionsStr += ", ";
                 }
             }
-            std::cerr << std::endl;
-            return ""; // Solution not found
+            std::cerr << "[InstanceRegistry] Solution not found: " << req.solution << std::endl;
+            std::cerr << "[InstanceRegistry] Available solutions: " << availableSolutionsStr << std::endl;
+            throw std::invalid_argument("Solution not found: " + req.solution + 
+                ". Available solutions: " + availableSolutionsStr);
         }
         solutionConfig = optSolution.value();
         solution = &solutionConfig;
@@ -93,45 +96,48 @@ std::string InstanceRegistry::createInstance(const CreateInstanceRequest& req) {
             std::cerr << "[InstanceRegistry] Memory allocation error building pipeline for instance " 
                       << instanceId << ": " << e.what() << std::endl;
             // ✅ Pipeline vector is empty, no cleanup needed
-            return "";
+            throw std::runtime_error("Memory allocation error while building pipeline: " + std::string(e.what()));
         } catch (const std::invalid_argument& e) {
             std::cerr << "[InstanceRegistry] Invalid argument building pipeline for instance " 
                       << instanceId << ": " << e.what() << std::endl;
             // ✅ Pipeline vector is empty, no cleanup needed
-            return "";
+            throw std::invalid_argument("Invalid argument while building pipeline: " + std::string(e.what()));
         } catch (const std::runtime_error& e) {
             std::cerr << "[InstanceRegistry] Runtime error building pipeline for instance " 
                       << instanceId << ": " << e.what() << std::endl;
             // ✅ Pipeline vector is empty, no cleanup needed
-            return "";
+            throw std::runtime_error("Runtime error while building pipeline: " + std::string(e.what()));
         } catch (const std::exception& e) {
-            // Pipeline build failed - log error but don't crash
+            // Pipeline build failed - log error and rethrow with context
             std::cerr << "[InstanceRegistry] Exception building pipeline for instance " << instanceId 
                       << ": " << e.what() << " (type: " << typeid(e).name() << ")" << std::endl;
             // ✅ Pipeline vector is empty or partially constructed, will be destroyed automatically
-            return ""; // Return empty string to indicate failure
+            throw std::runtime_error("Pipeline build failed: " + std::string(e.what()) + 
+                " (exception type: " + typeid(e).name() + ")");
         } catch (...) {
             // Unknown error - try to get more info
             std::cerr << "[InstanceRegistry] Unknown error building pipeline for instance " 
                       << instanceId << " (non-standard exception)" << std::endl;
             // Try to get exception info if possible
+            std::string errorMsg = "Unknown error while building pipeline (non-standard exception)";
             try {
                 std::rethrow_exception(std::current_exception());
             } catch (const std::exception& e) {
                 std::cerr << "[InstanceRegistry] Re-thrown exception: " << e.what() << std::endl;
+                errorMsg = "Pipeline build failed: " + std::string(e.what());
             } catch (...) {
                 std::cerr << "[InstanceRegistry] Could not extract exception information" << std::endl;
             }
             // ✅ Pipeline vector will be destroyed automatically, nodes will be cleaned up
-            return "";
+            throw std::runtime_error(errorMsg);
         }
     }
     
     // ✅ CRITICAL: Only register pipeline if build succeeded and pipeline is not empty
     // Pipeline will be moved into map, not copied, so no extra overhead
-    if (pipeline.empty()) {
+    if (pipeline.empty() && solution) {
         std::cerr << "[InstanceRegistry] Pipeline is empty after build - cannot create instance" << std::endl;
-        return "";
+        throw std::runtime_error("Pipeline build completed but pipeline is empty. Check solution configuration and node types.");
     }
     
     // Create instance info (no lock needed)
@@ -236,8 +242,8 @@ std::string InstanceRegistry::createInstance(const CreateInstanceRequest& req) {
                     if (modelPathIt != additionalParams.end() && !modelPathIt->second.empty()) {
                         modelPath = modelPathIt->second;
                     } else {
-                        // Use default path
-                        modelPath = "/home/pnsang/project/edge_ai_sdk/cvedix_data/models/face/face_recognition_sface_2021dec.onnx";
+                        // Use system-wide default path (no hardcoded user-specific paths)
+                        modelPath = "/usr/share/cvedix/cvedix_data/models/face/face_recognition_sface_2021dec.onnx";
                     }
                     
                     // Check if model file exists
@@ -617,6 +623,34 @@ bool InstanceRegistry::startInstance(const std::string& instanceId, bool skipAut
                 return false;
             }
             
+            // Validate video file format using ffprobe (if available)
+            // This prevents infinite retry loops when file is corrupted or invalid
+            std::string ffprobeCmd = "ffprobe -v error -show_format -show_streams \"" + filePath + "\" >/dev/null 2>&1";
+            int ffprobeResult = system(ffprobeCmd.c_str());
+            if (ffprobeResult != 0) {
+                // Try gst-discoverer as fallback
+                std::string gstCmd = "gst-discoverer-1.0 \"" + filePath + "\" >/dev/null 2>&1";
+                int gstResult = system(gstCmd.c_str());
+                if (gstResult != 0) {
+                    std::cerr << "[InstanceRegistry] ✗ Video file is invalid or corrupted: " << filePath << std::endl;
+                    std::cerr << "[InstanceRegistry] ✗ Cannot start instance - video file validation failed" << std::endl;
+                    std::cerr << "[InstanceRegistry] Error details:" << std::endl;
+                    std::cerr << "[InstanceRegistry]   - File exists but cannot be read as video" << std::endl;
+                    std::cerr << "[InstanceRegistry]   - File may be corrupted (missing moov atom for MP4)" << std::endl;
+                    std::cerr << "[InstanceRegistry]   - File may be in unsupported format" << std::endl;
+                    std::cerr << "[InstanceRegistry] Please check:" << std::endl;
+                    std::cerr << "[InstanceRegistry]   1. File is a valid video file (try: ffprobe " << filePath << ")" << std::endl;
+                    std::cerr << "[InstanceRegistry]   2. File is not corrupted or incomplete" << std::endl;
+                    std::cerr << "[InstanceRegistry]   3. File format is supported by GStreamer" << std::endl;
+                    // Cleanup pipeline
+                    {
+                        std::unique_lock<std::shared_timed_mutex> lock(mutex_); // Exclusive lock for write operations
+                        pipelines_.erase(instanceId);
+                    }
+                    return false;
+                }
+            }
+            
             std::cerr << "[InstanceRegistry] ✓ File validation passed: " << filePath << std::endl;
         } else {
             std::cerr << "[InstanceRegistry] ⚠ Warning: File path is empty for file source node" << std::endl;
@@ -679,6 +713,70 @@ bool InstanceRegistry::startInstance(const std::string& instanceId, bool skipAut
             std::cerr << "[InstanceRegistry] ✓ YuNet model file validation passed: " << modelPath << std::endl;
         }
         
+        // Check for Mask RCNN detector node
+        auto maskRCNNNode = std::dynamic_pointer_cast<cvedix_nodes::cvedix_mask_rcnn_detector_node>(node);
+        if (maskRCNNNode) {
+            // Get model path from additionalParams
+            std::string modelPath;
+            auto modelPathIt = additionalParams.find("MODEL_PATH");
+            if (modelPathIt != additionalParams.end() && !modelPathIt->second.empty()) {
+                modelPath = modelPathIt->second;
+            } else {
+                std::cerr << "[InstanceRegistry] ⚠ Warning: MODEL_PATH not found in additionalParams for Mask RCNN" << std::endl;
+                continue;
+            }
+            
+            // Get model config path
+            std::string modelConfigPath;
+            auto modelConfigPathIt = additionalParams.find("MODEL_CONFIG_PATH");
+            if (modelConfigPathIt != additionalParams.end() && !modelConfigPathIt->second.empty()) {
+                modelConfigPath = modelConfigPathIt->second;
+            }
+            
+            // Check if model file exists
+            struct stat modelStat;
+            if (stat(modelPath.c_str(), &modelStat) != 0) {
+                std::cerr << "[InstanceRegistry] ========================================" << std::endl;
+                std::cerr << "[InstanceRegistry] ✗ CRITICAL: Mask RCNN model file not found!" << std::endl;
+                std::cerr << "[InstanceRegistry] Expected path: " << modelPath << std::endl;
+                std::cerr << "[InstanceRegistry] ========================================" << std::endl;
+                std::cerr << "[InstanceRegistry] Cannot start instance - model file validation failed" << std::endl;
+                std::cerr << "[InstanceRegistry] The pipeline will crash with assertion failure if started without model file" << std::endl;
+                std::cerr << "[InstanceRegistry] Please ensure the model file exists before starting the instance" << std::endl;
+                std::cerr << "[InstanceRegistry] ========================================" << std::endl;
+                modelValidationFailed = true;
+                missingModelPath = modelPath;
+                break;
+            }
+            
+            if (!S_ISREG(modelStat.st_mode)) {
+                std::cerr << "[InstanceRegistry] ✗ CRITICAL: Model path is not a regular file: " << modelPath << std::endl;
+                std::cerr << "[InstanceRegistry] Cannot start instance - model file validation failed" << std::endl;
+                modelValidationFailed = true;
+                missingModelPath = modelPath;
+                break;
+            }
+            
+            // Check model config path if provided
+            if (!modelConfigPath.empty()) {
+                struct stat configStat;
+                if (stat(modelConfigPath.c_str(), &configStat) != 0) {
+                    std::cerr << "[InstanceRegistry] ⚠ WARNING: Mask RCNN config file not found: " << modelConfigPath << std::endl;
+                    std::cerr << "[InstanceRegistry] Model may fail to load without config file" << std::endl;
+                } else if (!S_ISREG(configStat.st_mode)) {
+                    std::cerr << "[InstanceRegistry] ⚠ WARNING: Mask RCNN config path is not a regular file: " << modelConfigPath << std::endl;
+                } else {
+                    std::cerr << "[InstanceRegistry] ✓ Mask RCNN config file validation passed: " << modelConfigPath << std::endl;
+                }
+            }
+            
+            std::cerr << "[InstanceRegistry] ✓ Mask RCNN model file validation passed: " << modelPath << std::endl;
+            std::cerr << "[InstanceRegistry] ⚠ NOTE: If you see 'cv::dnn::readNet load network failed!' warning," << std::endl;
+            std::cerr << "[InstanceRegistry]    the model format may not be supported by OpenCV DNN." << std::endl;
+            std::cerr << "[InstanceRegistry]    Mask RCNN requires TensorFlow frozen graph (.pb) with config (.pbtxt)." << std::endl;
+            std::cerr << "[InstanceRegistry]    Ensure OpenCV is compiled with TensorFlow support." << std::endl;
+        }
+        
         // Check for SFace feature encoder node
         auto sfaceNode = std::dynamic_pointer_cast<cvedix_nodes::cvedix_sface_feature_encoder_node>(node);
         if (sfaceNode) {
@@ -688,8 +786,8 @@ bool InstanceRegistry::startInstance(const std::string& instanceId, bool skipAut
             if (modelPathIt != additionalParams.end() && !modelPathIt->second.empty()) {
                 modelPath = modelPathIt->second;
             } else {
-                // Use default path
-                modelPath = "/home/pnsang/project/edge_ai_sdk/cvedix_data/models/face/face_recognition_sface_2021dec.onnx";
+                // Use system-wide default path (no hardcoded user-specific paths)
+                modelPath = "/usr/share/cvedix/cvedix_data/models/face/face_recognition_sface_2021dec.onnx";
             }
             
             // Check if model file exists
@@ -2697,12 +2795,61 @@ bool InstanceRegistry::startPipeline(const std::vector<std::shared_ptr<cvedix_no
     {
         using namespace BackpressureController;
         auto& controller = BackpressureController::BackpressureController::getInstance();
+        
+        // Get FPS from additionalParams if provided (user override)
+        double maxFPS = 0.0;
+        bool userFPSProvided = false;
+        {
+            std::unique_lock<std::shared_timed_mutex> lock(mutex_);
+            auto instanceIt = instances_.find(instanceId);
+            if (instanceIt != instances_.end()) {
+                auto fpsIt = instanceIt->second.additionalParams.find("MAX_FPS");
+                if (fpsIt != instanceIt->second.additionalParams.end() && !fpsIt->second.empty()) {
+                    try {
+                        maxFPS = std::stod(fpsIt->second);
+                        userFPSProvided = true;
+                        std::cerr << "[InstanceRegistry] ✓ Using MAX_FPS from additionalParams: " << maxFPS << " FPS" << std::endl;
+                    } catch (const std::exception& e) {
+                        std::cerr << "[InstanceRegistry] ⚠ Invalid MAX_FPS value in additionalParams: " << fpsIt->second << std::endl;
+                    }
+                }
+            }
+        }
+        
+        // If user didn't provide FPS, auto-detect based on model type
+        if (!userFPSProvided) {
+            // Detect if pipeline contains slow nodes (Mask RCNN, OpenPose, etc.)
+            // These models are computationally expensive and need lower FPS
+            bool hasSlowModel = false;
+            for (const auto& node : nodes) {
+                auto maskRCNNNode = std::dynamic_pointer_cast<cvedix_nodes::cvedix_mask_rcnn_detector_node>(node);
+                auto openPoseNode = std::dynamic_pointer_cast<cvedix_nodes::cvedix_openpose_detector_node>(node);
+                if (maskRCNNNode || openPoseNode) {
+                    hasSlowModel = true;
+                    break;
+                }
+            }
+            
+            // Use lower FPS for slow models to prevent queue overflow
+            maxFPS = hasSlowModel ? 10.0 : 30.0;  // 10 FPS for Mask RCNN/OpenPose, 30 FPS for others
+            
+            if (hasSlowModel) {
+                std::cerr << "[InstanceRegistry] ⚠ Detected slow model (Mask RCNN/OpenPose) - using reduced FPS: " 
+                          << maxFPS << " FPS to prevent queue overflow" << std::endl;
+            }
+        }
+        
+        // Clamp FPS to valid range (5-60 FPS)
+        maxFPS = std::max(5.0, std::min(60.0, maxFPS));
+        
         // Configure with DROP_NEWEST policy (keep latest frame, drop old ones)
         // This prevents queue backlog while maintaining current state
         controller.configure(instanceId, 
                            BackpressureController::DropPolicy::DROP_NEWEST,
-                           30.0,  // Max 30 FPS
-                           10);   // Max queue size warning threshold
+                           maxFPS,  // FPS from user or auto-detected
+                           10);     // Max queue size warning threshold
+        
+        std::cerr << "[InstanceRegistry] ✓ Backpressure control configured: " << maxFPS << " FPS max" << std::endl;
     }
     
     // Setup frame capture hook before starting pipeline
