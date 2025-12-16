@@ -386,6 +386,105 @@ POST /v1/core/instances/{instanceId}/start
 
 ---
 
+## Flexible Input Source Adaptation
+
+Hệ thống hỗ trợ **auto-detect input type** từ `FILE_PATH` hoặc các parameters rõ ràng, cho phép user tự do adapt với nhiều loại input khác nhau mà không cần thay đổi solution config.
+
+### Các Loại Input Được Hỗ Trợ
+
+1. **Local File**: `FILE_PATH="/path/to/video.mp4"` → `file_src`
+2. **RTSP Stream**: `FILE_PATH="rtsp://..."` hoặc `RTSP_SRC_URL="rtsp://..."` → `rtsp_src`
+3. **RTMP Stream**: `FILE_PATH="rtmp://..."` hoặc `RTMP_SRC_URL="rtmp://..."` → `rtmp_src`
+4. **HLS Stream**: `FILE_PATH="http://.../playlist.m3u8"` hoặc `HLS_URL="..."` → `ff_src`
+5. **HTTP Stream**: `FILE_PATH="http://.../video.mp4"` hoặc `HTTP_URL="..."` → `ff_src`
+
+### Priority Order
+
+1. **Explicit Parameters** (ưu tiên cao nhất): `RTSP_SRC_URL`, `RTMP_SRC_URL`, `HLS_URL`, `HTTP_URL`
+2. **Auto-detect từ FILE_PATH**: Hệ thống tự động phát hiện loại input từ URL/path
+
+**Ví dụ:**
+```json
+{
+  "additionalParams": {
+    "FILE_PATH": "rtsp://localhost:8554/mystream"
+    // Tự động chuyển thành rtsp_src node
+  }
+}
+```
+
+## Stream/Record Output API
+
+API cho phép cấu hình **stream output** (phát video trực tiếp) hoặc **record output** (lưu video vào file) cho instance.
+
+### Endpoints
+
+- **POST** `/v1/core/instance/{instanceId}/output/stream` - Cấu hình output
+- **GET** `/v1/core/instance/{instanceId}/output/stream` - Lấy cấu hình hiện tại
+
+### Record Output Mode
+
+Lưu video vào file MP4:
+```json
+{
+  "enabled": true,
+  "path": "/mnt/sb1/data"
+}
+```
+
+### Stream Output Mode
+
+Phát video trực tiếp qua RTMP/RTSP/HLS:
+```json
+{
+  "enabled": true,
+  "uri": "rtmp://localhost:1935/live/stream"
+}
+```
+
+### Disable Output
+
+```json
+{
+  "enabled": false
+}
+```
+
+## Node Pool Manager
+
+Node Pool Manager cho phép bạn có sẵn 20+ node templates đã được cấu hình sẵn, user tự chọn nodes từ pool để tạo pipeline solution.
+
+### API Endpoints
+
+- **GET** `/v1/core/nodes/templates` - Lấy danh sách node templates
+- **GET** `/v1/core/nodes/templates/{category}` - Lấy templates theo category
+- **POST** `/v1/core/nodes/preconfigured` - Tạo pre-configured node
+- **GET** `/v1/core/nodes/preconfigured` - Lấy danh sách pre-configured nodes
+
+### Workflow
+
+```
+Node Templates → Pre-configured Nodes → Solution Config → Instance
+```
+
+**Ví dụ:**
+```bash
+# 1. Lấy danh sách templates
+curl http://localhost:8080/v1/core/nodes/templates
+
+# 2. Tạo pre-configured node
+curl -X POST http://localhost:8080/v1/core/nodes/preconfigured \
+  -H "Content-Type: application/json" \
+  -d '{
+    "templateId": "rtsp_src_template",
+    "parameters": {
+      "rtsp_url": "rtsp://192.168.1.100:8554/stream1"
+    }
+  }'
+
+# 3. Sử dụng node trong solution config
+```
+
 ## Related Documentation
 
 - [API_REFERENCE.md](API_REFERENCE.md) - Tài liệu tham khảo API đầy đủ

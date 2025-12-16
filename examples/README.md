@@ -6,7 +6,6 @@ Thư mục này chứa các examples, documentation và scripts để làm việ
 
 ```
 examples/
-├── docs/              # Documentation chi tiết về các solutions và pipelines
 ├── instances/         # Example files và scripts cho instances
 │   ├── create/       # Examples để tạo instances
 │   ├── update/       # Examples để cập nhật instances
@@ -18,17 +17,6 @@ examples/
 ```
 
 ## Thư mục con
-
-### 📚 `docs/`
-Documentation chi tiết về các solutions và pipelines:
-- [New Solutions Overview](./docs/new_solutions_overview.md) - Tổng quan các solutions mới
-- [YOLOv11 Detection Pipeline](./docs/yolov11_detection_pipeline.md)
-- [Face Swap Pipeline](./docs/face_swap_pipeline.md)
-- [InsightFace Recognition Pipeline](./docs/insightface_recognition_pipeline.md)
-- [MLLM Analysis Pipeline](./docs/mllm_analysis_pipeline.md)
-- [BA Crossline RTMP Pipeline](./docs/ba_crossline_rtmp_pipeline.md)
-
-Xem [docs/README.md](./docs/README.md) để biết chi tiết.
 
 ### 📝 `instances/`
 Example files và scripts để làm việc với instances:
@@ -87,8 +75,8 @@ curl -X PUT http://localhost:8080/v1/core/instance/{instanceId} \
 ## Documentation
 
 - [Instances Examples](./instances/README.md) - Hướng dẫn sử dụng instance examples
-- [Solutions Documentation](./docs/README.md) - Documentation về các solutions
-- [New Solutions Overview](./docs/new_solutions_overview.md) - Tổng quan solutions mới
+- [Solutions Reference](../docs/DEFAULT_SOLUTIONS_REFERENCE.md) - Documentation về các solutions
+- [Instance Guide](../docs/INSTANCE_GUIDE.md) - Hướng dẫn tạo và cập nhật instances
 
 ## Lưu ý
 

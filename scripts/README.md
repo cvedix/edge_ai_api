@@ -177,7 +177,7 @@ cd build && cmake .. && make -j$(nproc)
 
 ## 📚 Tài Liệu Tham Khảo
 
-- `docs/SCRIPTS_ANALYSIS.md` - Phân tích chi tiết về các scripts
+- `docs/DEVELOPMENT_SETUP.md` - Xem phần "Scripts và Utilities" để biết chi tiết về các scripts
 - `docs/TROUBLESHOOTING.md` - Hướng dẫn troubleshooting
 - `docs/CMAKE_ISSUES_ANALYSIS.md` - Phân tích các vấn đề CMake
 
