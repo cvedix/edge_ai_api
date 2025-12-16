@@ -14,6 +14,7 @@
 #include "api/node_handler.h"
 #include "models/model_upload_handler.h"
 #include "videos/video_upload_handler.h"
+#include "fonts/font_upload_handler.h"
 #include "config/system_config.h"
 #include "core/watchdog.h"
 #include "core/health_monitor.h"
@@ -1461,6 +1462,12 @@ int main(int argc, char* argv[])
         PLOG_INFO << "  POST /v1/core/models/upload - Upload model file";
         PLOG_INFO << "  GET /v1/core/models/list - List uploaded models";
         PLOG_INFO << "  DELETE /v1/core/models/{modelName} - Delete model file";
+        PLOG_INFO << "  POST /v1/core/videos/upload - Upload video file";
+        PLOG_INFO << "  GET /v1/core/videos/list - List uploaded videos";
+        PLOG_INFO << "  DELETE /v1/core/videos/{videoName} - Delete video file";
+        PLOG_INFO << "  POST /v1/core/fonts/upload - Upload font file";
+        PLOG_INFO << "  GET /v1/core/fonts/list - List uploaded fonts";
+        PLOG_INFO << "  DELETE /v1/core/fonts/{fontName} - Delete font file";
         PLOG_INFO << "  GET /swagger         - Swagger UI (all versions)";
         PLOG_INFO << "  GET /v1/swagger      - Swagger UI for API v1";
         PLOG_INFO << "  GET /v2/swagger      - Swagger UI for API v2";
@@ -2038,6 +2045,154 @@ int main(int argc, char* argv[])
         VideoUploadHandler::setVideosDirectory(videosDir);
         static VideoUploadHandler videoUploadHandler;
         
+        // Initialize font upload handler with configurable directory
+        // Priority: 1. FONTS_DIR env var, 2. /opt/edge_ai_api/fonts (with auto-fallback)
+        std::string fontsDir;
+        const char* env_fonts_dir = std::getenv("FONTS_DIR");
+        if (env_fonts_dir && strlen(env_fonts_dir) > 0) {
+            fontsDir = std::string(env_fonts_dir);
+            std::cerr << "[Main] Using FONTS_DIR from environment: " << fontsDir << std::endl;
+        } else {
+            // Try /opt/edge_ai_api/fonts first, fallback to user directory if needed
+            fontsDir = "/opt/edge_ai_api/fonts";
+            std::cerr << "[Main] Attempting to use: " << fontsDir << std::endl;
+        }
+        
+        // Try to create directory if it doesn't exist
+        // Strategy: Try /opt first, if fails, auto-fallback to user directory
+        bool fonts_directory_ready = false;
+        if (!std::filesystem::exists(fontsDir)) {
+            std::cerr << "[Main] Fonts directory does not exist, attempting to create: " << fontsDir << std::endl;
+            
+            try {
+                // Try to create directory (will create parent dirs if we have permission)
+                bool created = std::filesystem::create_directories(fontsDir);
+                if (created) {
+                    std::cerr << "[Main] ✓ Successfully created fonts directory: " << fontsDir << std::endl;
+                    fonts_directory_ready = true;
+                } else {
+                    // Directory might have been created by another process
+                    if (std::filesystem::exists(fontsDir)) {
+                        std::cerr << "[Main] ✓ Fonts directory exists (created by another process): " << fontsDir << std::endl;
+                        fonts_directory_ready = true;
+                    }
+                }
+            } catch (const std::filesystem::filesystem_error& e) {
+                if (e.code() == std::errc::permission_denied) {
+                    std::cerr << "[Main] ⚠ Cannot create " << fontsDir << " (permission denied)" << std::endl;
+                    
+                    // Auto-fallback: Try user directory (works without sudo)
+                    if (env_fonts_dir == nullptr || strlen(env_fonts_dir) == 0) {
+                        const char* home = std::getenv("HOME");
+                        if (home) {
+                            std::string fallback_path = std::string(home) + "/.local/share/edge_ai_api/fonts";
+                            std::cerr << "[Main] Auto-fallback: Trying user directory: " << fallback_path << std::endl;
+                            try {
+                                std::filesystem::create_directories(fallback_path);
+                                fontsDir = fallback_path;
+                                fonts_directory_ready = true;
+                                std::cerr << "[Main] ✓ Using fallback directory: " << fontsDir << std::endl;
+                                std::cerr << "[Main] ℹ Note: To use /opt/edge_ai_api/fonts, create parent directory:" << std::endl;
+                                std::cerr << "[Main] ℹ   sudo mkdir -p /opt/edge_ai_api && sudo chown $USER:$USER /opt/edge_ai_api" << std::endl;
+                            } catch (const std::exception& fallback_e) {
+                                std::cerr << "[Main] ⚠ Fallback also failed: " << fallback_e.what() << std::endl;
+                                // Last resort: current directory
+                                fontsDir = "./fonts";
+                                try {
+                                    std::filesystem::create_directories(fontsDir);
+                                    fonts_directory_ready = true;
+                                    std::cerr << "[Main] ✓ Using current directory: " << fontsDir << std::endl;
+                                } catch (...) {
+                                    std::cerr << "[Main] ✗ ERROR: Cannot create any fonts directory" << std::endl;
+                                }
+                            }
+                        } else {
+                            // No HOME, use current directory
+                            fontsDir = "./fonts";
+                            try {
+                                std::filesystem::create_directories(fontsDir);
+                                fonts_directory_ready = true;
+                                std::cerr << "[Main] ✓ Using current directory: " << fontsDir << std::endl;
+                            } catch (...) {
+                                std::cerr << "[Main] ✗ ERROR: Cannot create ./fonts" << std::endl;
+                            }
+                        }
+                    } else {
+                        // User specified FONTS_DIR but can't create it
+                        std::cerr << "[Main] ✗ ERROR: Cannot create user-specified directory: " << fontsDir << std::endl;
+                        std::cerr << "[Main] ✗ Please check permissions or use a different path" << std::endl;
+                    }
+                } else {
+                    std::cerr << "[Main] ✗ ERROR creating " << fontsDir << ": " << e.what() << std::endl;
+                }
+            } catch (const std::exception& e) {
+                std::cerr << "[Main] ✗ Exception creating " << fontsDir << ": " << e.what() << std::endl;
+            }
+        } else {
+            // Check if it's actually a directory
+            if (std::filesystem::is_directory(fontsDir)) {
+                std::cerr << "[Main] ✓ Fonts directory already exists: " << fontsDir << std::endl;
+                fonts_directory_ready = true;
+            } else {
+                std::cerr << "[Main] ✗ ERROR: Path exists but is not a directory: " << fontsDir << std::endl;
+            }
+        }
+        
+        if (fonts_directory_ready) {
+            std::cerr << "[Main] ✓ Fonts directory is ready: " << fontsDir << std::endl;
+            
+            // Copy default font from include/fonts/ to fonts directory if it doesn't exist or is corrupted
+            std::string defaultFontName = "NotoSansCJKsc-Medium.otf";
+            std::string defaultFontDest = fontsDir + "/" + defaultFontName;
+            std::string defaultFontSource = "include/fonts/" + defaultFontName;
+            
+            bool needCopy = false;
+            if (!std::filesystem::exists(defaultFontDest)) {
+                needCopy = true;
+                std::cerr << "[Main] Default font does not exist, will copy from source" << std::endl;
+            } else {
+                // Check if file size matches (simple corruption check)
+                try {
+                    auto sourceSize = std::filesystem::file_size(defaultFontSource);
+                    auto destSize = std::filesystem::file_size(defaultFontDest);
+                    if (sourceSize != destSize) {
+                        needCopy = true;
+                        std::cerr << "[Main] ⚠ Default font file size mismatch (source: " << sourceSize 
+                                 << ", dest: " << destSize << "), will recopy" << std::endl;
+                    }
+                } catch (...) {
+                    // If can't check size, try to copy anyway
+                    needCopy = true;
+                }
+            }
+            
+            if (needCopy) {
+                if (std::filesystem::exists(defaultFontSource)) {
+                    try {
+                        std::filesystem::copy_file(defaultFontSource, defaultFontDest, 
+                            std::filesystem::copy_options::overwrite_existing);
+                        std::cerr << "[Main] ✓ Copied default font from " << defaultFontSource 
+                                 << " to " << defaultFontDest << std::endl;
+                        PLOG_INFO << "[Main] Copied default font: " << defaultFontDest;
+                    } catch (const std::filesystem::filesystem_error& e) {
+                        std::cerr << "[Main] ⚠ WARNING: Could not copy default font: " << e.what() << std::endl;
+                        PLOG_WARNING << "[Main] Could not copy default font: " << e.what();
+                    }
+                } else {
+                    std::cerr << "[Main] ℹ Default font source not found: " << defaultFontSource 
+                             << " (this is OK if font is already uploaded)" << std::endl;
+                }
+            } else {
+                std::cerr << "[Main] ✓ Default font already exists and appears valid: " << defaultFontDest << std::endl;
+            }
+        } else {
+            std::cerr << "[Main] ⚠ WARNING: Fonts directory may not be ready" << std::endl;
+        }
+        
+        PLOG_INFO << "[Main] Fonts directory: " << fontsDir;
+        FontUploadHandler::setFontsDirectory(fontsDir);
+        static FontUploadHandler fontUploadHandler;
+        
         // System configuration already loaded above (for web_server config)
         // Log additional configuration details
         if (systemConfig.isLoaded()) {
@@ -2097,6 +2252,18 @@ int main(int argc, char* argv[])
         PLOG_INFO << "  PUT /v1/core/models/{modelName} - Rename model file";
         PLOG_INFO << "  DELETE /v1/core/models/{modelName} - Delete model file";
         PLOG_INFO << "  Models directory: " << modelsDir;
+        PLOG_INFO << "[Main] Video upload handler initialized";
+        PLOG_INFO << "  POST /v1/core/videos/upload - Upload video file";
+        PLOG_INFO << "  GET /v1/core/videos/list - List uploaded videos";
+        PLOG_INFO << "  PUT /v1/core/videos/{videoName} - Rename video file";
+        PLOG_INFO << "  DELETE /v1/core/videos/{videoName} - Delete video file";
+        PLOG_INFO << "  Videos directory: " << videosDir;
+        PLOG_INFO << "[Main] Font upload handler initialized";
+        PLOG_INFO << "  POST /v1/core/fonts/upload - Upload font file";
+        PLOG_INFO << "  GET /v1/core/fonts/list - List uploaded fonts";
+        PLOG_INFO << "  PUT /v1/core/fonts/{fontName} - Rename font file";
+        PLOG_INFO << "  DELETE /v1/core/fonts/{fontName} - Delete font file";
+        PLOG_INFO << "  Fonts directory: " << fontsDir;
         
         PLOG_INFO << "[Main] Video upload handler initialized";
         PLOG_INFO << "  POST /v1/core/videos/upload - Upload video file";
@@ -2104,6 +2271,13 @@ int main(int argc, char* argv[])
         PLOG_INFO << "  PUT /v1/core/videos/{videoName} - Rename video file";
         PLOG_INFO << "  DELETE /v1/core/videos/{videoName} - Delete video file";
         PLOG_INFO << "  Videos directory: " << videosDir;
+        
+        PLOG_INFO << "[Main] Font upload handler initialized";
+        PLOG_INFO << "  POST /v1/core/fonts/upload - Upload font file";
+        PLOG_INFO << "  GET /v1/core/fonts/list - List uploaded fonts";
+        PLOG_INFO << "  PUT /v1/core/fonts/{fontName} - Rename font file";
+        PLOG_INFO << "  DELETE /v1/core/fonts/{fontName} - Delete font file";
+        PLOG_INFO << "  Fonts directory: " << fontsDir;
         
         PLOG_INFO << "[Main] Configuration management initialized";
         PLOG_INFO << "  GET /v1/core/config - Get full configuration";
