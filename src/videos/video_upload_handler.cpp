@@ -191,6 +191,15 @@ void VideoUploadHandler::uploadVideo(
             videosDir = EnvConfig::resolveDirectory(videosDir, "videos");
             std::filesystem::path videosPath(videosDir);
             
+            // CRITICAL: Create directory if it doesn't exist
+            try {
+                std::filesystem::create_directories(videosPath);
+            } catch (const std::filesystem::filesystem_error& e) {
+                callback(createErrorResponse(500, "Directory creation failed", 
+                    "Could not create videos directory: " + std::string(e.what())));
+                return;
+            }
+            
             // Parse all multipart parts
             Json::Value uploadedFiles(Json::arrayValue);
             std::vector<std::string> errors;
@@ -291,21 +300,22 @@ void VideoUploadHandler::uploadVideo(
                 
                 // Find the start of file content (after headers and blank line)
                 size_t contentStart = bodyStr.find("\r\n\r\n", contentDispositionPos);
-                if (contentStart == std::string::npos) {
+                if (contentStart != std::string::npos) {
+                    // Found \r\n\r\n, skip all 4 bytes
+                    contentStart += 4;
+                } else {
+                    // Try \n\n
                     contentStart = bodyStr.find("\n\n", contentDispositionPos);
-                }
-                if (contentStart == std::string::npos) {
-                    errors.push_back("Could not find content for file '" + partFilename + "'");
-                    size_t nextBoundary = bodyStr.find(boundaryMarker, partStart);
-                    if (nextBoundary == std::string::npos) break;
-                    partStart = nextBoundary;
-                    continue;
-                }
-                
-                contentStart += 2; // Skip \r\n or \n
-                if (contentStart < bodyStr.length() && 
-                    (bodyStr[contentStart] == '\r' || bodyStr[contentStart] == '\n')) {
-                    contentStart++;
+                    if (contentStart != std::string::npos) {
+                        // Found \n\n, skip both bytes
+                        contentStart += 2;
+                    } else {
+                        errors.push_back("Could not find content for file '" + partFilename + "'");
+                        size_t nextBoundary = bodyStr.find(boundaryMarker, partStart);
+                        if (nextBoundary == std::string::npos) break;
+                        partStart = nextBoundary;
+                        continue;
+                    }
                 }
                 
                 // Find the end of file content (before next boundary)
@@ -324,7 +334,7 @@ void VideoUploadHandler::uploadVideo(
                     continue;
                 }
                 
-                // Create full file path - if file exists, add number to name
+                // Create full file path - if file exists, find unique name
                 std::filesystem::path partFilePath = videosPath / sanitizedPartFilename;
                 
                 // If file already exists, find a unique name by adding number
@@ -348,18 +358,94 @@ void VideoUploadHandler::uploadVideo(
                     }
                 }
                 
-                // Save file content
+                // Save file content using atomic write pattern (write to temp file, then rename)
+                // This prevents file corruption if another process reads the file during upload
+                std::filesystem::path tempFilePath = partFilePath;
+                tempFilePath += ".tmp";
+                
                 try {
-                    std::ofstream outFile(partFilePath, std::ios::binary);
+                    // Write to temporary file first
+                    std::ofstream outFile(tempFilePath, std::ios::binary);
                     if (!outFile.is_open()) {
-                        errors.push_back("Could not create file '" + finalFilename + "'");
+                        errors.push_back("Could not create temporary file for '" + finalFilename + "'");
                         partStart = nextBoundary;
                         continue;
                     }
                     
                     // Write file content
-                    outFile.write(body.data() + contentStart, contentEnd - contentStart);
+                    size_t writeSize = contentEnd - contentStart;
+                    
+                    // CRITICAL: Validate bounds to prevent buffer overflow
+                    if (contentStart > body.size() || contentEnd > body.size() || contentStart > contentEnd) {
+                        outFile.close();
+                        std::filesystem::remove(tempFilePath);
+                        errors.push_back("Invalid content boundaries for file '" + partFilename + "'");
+                        partStart = nextBoundary;
+                        continue;
+                    }
+                    
+                    // Ensure writeSize doesn't exceed available data
+                    if (writeSize > body.size() - contentStart) {
+                        writeSize = body.size() - contentStart;
+                    }
+                    
+                    // Write file content
+                    outFile.write(reinterpret_cast<const char*>(body.data()) + contentStart, writeSize);
+                    
+                    // CRITICAL: Verify bytes written
+                    std::streampos bytesWritten = outFile.tellp();
+                    if (bytesWritten == -1 || static_cast<size_t>(bytesWritten) != writeSize) {
+                        outFile.close();
+                        std::filesystem::remove(tempFilePath);
+                        errors.push_back("Failed to write complete file '" + partFilename + "': expected " + 
+                                       std::to_string(writeSize) + " bytes, wrote " + 
+                                       std::to_string(bytesWritten == -1 ? 0 : static_cast<size_t>(bytesWritten)) + " bytes");
+                        partStart = nextBoundary;
+                        continue;
+                    }
+                    
+                    // CRITICAL: Check if write succeeded
+                    if (!outFile.good()) {
+                        outFile.close();
+                        std::filesystem::remove(tempFilePath);
+                        errors.push_back("Failed to write file '" + partFilename + "': write operation failed");
+                        partStart = nextBoundary;
+                        continue;
+                    }
+                    
+                    // CRITICAL: Flush buffer to ensure data is written
+                    outFile.flush();
+                    if (!outFile.good()) {
+                        outFile.close();
+                        std::filesystem::remove(tempFilePath);
+                        errors.push_back("Failed to flush file '" + partFilename + "': flush operation failed");
+                        partStart = nextBoundary;
+                        continue;
+                    }
+                    
+                    // CRITICAL: Sync file system to ensure data is on disk
+                    // This is especially important for MP4 files where moov atom must be written
+                    if (outFile.rdbuf() && outFile.rdbuf()->pubsync() != 0) {
+                        outFile.close();
+                        std::filesystem::remove(tempFilePath);
+                        errors.push_back("Failed to sync file '" + partFilename + "': sync operation failed");
+                        partStart = nextBoundary;
+                        continue;
+                    }
+                    
                     outFile.close();
+                    
+                    // CRITICAL: Atomic rename - ensures file is only visible when complete
+                    // This prevents reading partial/corrupted files
+                    try {
+                        std::filesystem::rename(tempFilePath, partFilePath);
+                    } catch (const std::filesystem::filesystem_error& e) {
+                        // Clean up temp file if rename fails
+                        std::filesystem::remove(tempFilePath);
+                        errors.push_back("Error finalizing file '" + partFilename + "': " + std::string(e.what()));
+                        partStart = nextBoundary;
+                        continue;
+                    }
                     
                     // Get file size
                     auto fileSize = std::filesystem::file_size(partFilePath);
@@ -475,7 +561,16 @@ void VideoUploadHandler::uploadVideo(
             videosDir = EnvConfig::resolveDirectory(videosDir, "videos");
             std::filesystem::path videosPath(videosDir);
             
-            // Create full file path - if file exists, add number to name
+            // CRITICAL: Create directory if it doesn't exist
+            try {
+                std::filesystem::create_directories(videosPath);
+            } catch (const std::filesystem::filesystem_error& e) {
+                callback(createErrorResponse(500, "Directory creation failed", 
+                    "Could not create videos directory: " + std::string(e.what())));
+                return;
+            }
+            
+            // Create full file path - if file exists, find unique name
             filePath = videosPath / sanitizedFilename;
             
             // If file already exists, find a unique name by adding number
@@ -510,17 +605,86 @@ void VideoUploadHandler::uploadVideo(
                 return;
             }
             
-            // Save file
-            std::ofstream outFile(filePath, std::ios::binary);
+            // Save file using atomic write pattern (write to temp file, then rename)
+            // This prevents file corruption if another process reads the file during upload
+            std::filesystem::path tempFilePath = filePath;
+            tempFilePath += ".tmp";
+            
+            std::ofstream outFile(tempFilePath, std::ios::binary);
             if (!outFile.is_open()) {
                 callback(createErrorResponse(500, "File save failed", 
-                    "Could not save uploaded file"));
+                    "Could not create temporary file for upload"));
                 return;
             }
             
             // Write file content from body
-            outFile.write(reinterpret_cast<const char*>(body.data()), body.size());
+            size_t writeSize = body.size();
+            
+            // CRITICAL: Validate body is not empty
+            if (writeSize == 0) {
+                outFile.close();
+                std::filesystem::remove(tempFilePath);
+                callback(createErrorResponse(400, "Empty file", 
+                    "Uploaded file has no content"));
+                return;
+            }
+            
+            // Write file content
+            outFile.write(reinterpret_cast<const char*>(body.data()), writeSize);
+            
+            // CRITICAL: Verify bytes written
+            std::streampos bytesWritten = outFile.tellp();
+            if (bytesWritten == -1 || static_cast<size_t>(bytesWritten) != writeSize) {
+                outFile.close();
+                std::filesystem::remove(tempFilePath);
+                callback(createErrorResponse(500, "File save failed", 
+                    "Failed to write complete file data: expected " + std::to_string(writeSize) + 
+                    " bytes, wrote " + std::to_string(bytesWritten == -1 ? 0 : static_cast<size_t>(bytesWritten)) + " bytes"));
+                return;
+            }
+            
+            // CRITICAL: Check if write succeeded
+            if (!outFile.good()) {
+                outFile.close();
+                std::filesystem::remove(tempFilePath);
+                callback(createErrorResponse(500, "File save failed", 
+                    "Failed to write file data: write operation failed"));
+                return;
+            }
+            
+            // CRITICAL: Flush buffer to ensure data is written
+            outFile.flush();
+            if (!outFile.good()) {
+                outFile.close();
+                std::filesystem::remove(tempFilePath);
+                callback(createErrorResponse(500, "File save failed", 
+                    "Failed to flush file data: flush operation failed"));
+                return;
+            }
+            
+            // CRITICAL: Sync file system to ensure data is on disk
+            // This is especially important for MP4 files where moov atom must be written
+            if (outFile.rdbuf() && outFile.rdbuf()->pubsync() != 0) {
+                outFile.close();
+                std::filesystem::remove(tempFilePath);
+                callback(createErrorResponse(500, "File save failed", 
+                    "Failed to sync file data to disk: sync operation failed"));
+                return;
+            }
+            
             outFile.close();
+            
+            // CRITICAL: Atomic rename - ensures file is only visible when complete
+            // This prevents reading partial/corrupted files
+            try {
+                std::filesystem::rename(tempFilePath, filePath);
+            } catch (const std::filesystem::filesystem_error& e) {
+                // Clean up temp file if rename fails
+                std::filesystem::remove(tempFilePath);
+                callback(createErrorResponse(500, "File save failed", 
+                    "Could not finalize uploaded file: " + std::string(e.what())));
+                return;
+            }
         }
         
         // Get file size with proper error handling
