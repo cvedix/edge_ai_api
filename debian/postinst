@@ -1,0 +1,141 @@
+#!/bin/bash
+# postinst script for edge-ai-api
+
+set -e
+
+PACKAGE_NAME="edge-ai-api"
+INSTALL_DIR="/opt/edge_ai_api"
+BIN_DIR="/usr/local/bin"
+LIB_DIR="/opt/edge_ai_api/lib"
+SERVICE_USER="edgeai"
+SERVICE_GROUP="edgeai"
+SERVICE_NAME="edge-ai-api"
+
+# Function to bundle libraries (libraries should already be bundled in package)
+bundle_libraries() {
+    echo "Setting up bundled libraries..."
+    
+    # Create lib directory if it doesn't exist (should be created by package, but ensure it exists)
+    mkdir -p "$LIB_DIR"
+    
+    # Check if libraries exist
+    if [ ! -d "$LIB_DIR" ] || [ -z "$(ls -A "$LIB_DIR" 2>/dev/null)" ]; then
+        echo "Warning: Library directory not found or empty at $LIB_DIR"
+        echo "This is normal if libraries are bundled elsewhere or not included in package."
+        # Don't fail installation, just warn
+        return 0
+    fi
+    
+    # Create symlinks for .so files (ldconfig requires symlinks)
+    # For files like libdrogon.so.1.8.0, create libdrogon.so.1 -> libdrogon.so.1.8.0
+    # and libdrogon.so -> libdrogon.so.1
+    for lib_file in "$LIB_DIR"/*.so.*; do
+        if [ -f "$lib_file" ] && [ ! -L "$lib_file" ]; then
+            lib_base=$(basename "$lib_file")
+            # Extract base name (e.g., libdrogon.so.1.8.0 -> libdrogon.so.1)
+            lib_major="${lib_base%.*}"
+            # Extract base name without version (e.g., libdrogon.so.1 -> libdrogon.so)
+            lib_base_name="${lib_major%.*}"
+            
+            # Create major version symlink (libdrogon.so.1 -> libdrogon.so.1.8.0)
+            if [ "$lib_major" != "$lib_base" ] && [ ! -L "$LIB_DIR/$lib_major" ]; then
+                ln -sf "$lib_base" "$LIB_DIR/$lib_major" 2>/dev/null || true
+            fi
+            
+            # Create base symlink (libdrogon.so -> libdrogon.so.1)
+            if [ "$lib_base_name" != "$lib_major" ] && [ ! -L "$LIB_DIR/$lib_base_name" ]; then
+                ln -sf "$lib_major" "$LIB_DIR/$lib_base_name" 2>/dev/null || true
+            fi
+        fi
+    done
+    
+    # Create ldconfig configuration
+    echo "$LIB_DIR" > /etc/ld.so.conf.d/edge-ai-api.conf
+    ldconfig 2>&1 | grep -v "is not a symbolic link" || true
+    
+    echo "Libraries configured successfully."
+}
+
+# Create user and group
+if ! id "$SERVICE_USER" &>/dev/null; then
+    echo "Creating user $SERVICE_USER..."
+    adduser --system --group --home "$INSTALL_DIR" --no-create-home --shell /bin/false "$SERVICE_USER" || true
+fi
+
+# Set up directory permissions
+echo "Setting up directory permissions..."
+chown -R "$SERVICE_USER:$SERVICE_GROUP" "$INSTALL_DIR" 2>/dev/null || true
+chmod 755 "$INSTALL_DIR"
+chmod 750 "$INSTALL_DIR"/{instances,solutions,groups,models,logs,data,config} 2>/dev/null || true
+chmod 755 "$INSTALL_DIR"/uploads 2>/dev/null || true
+
+# Create external data directory (/mnt/sb1/data) if it doesn't exist
+EXTERNAL_DATA_DIR="/mnt/sb1/data"
+if [ ! -d "$EXTERNAL_DATA_DIR" ]; then
+    echo "Creating external data directory: $EXTERNAL_DATA_DIR..."
+    mkdir -p "$EXTERNAL_DATA_DIR"
+    chown "$SERVICE_USER:$SERVICE_GROUP" "$EXTERNAL_DATA_DIR"
+    chmod 755 "$EXTERNAL_DATA_DIR"
+    echo "External data directory created successfully."
+else
+    echo "External data directory already exists: $EXTERNAL_DATA_DIR"
+    # Ensure correct ownership and permissions
+    chown "$SERVICE_USER:$SERVICE_GROUP" "$EXTERNAL_DATA_DIR" 2>/dev/null || true
+    chmod 755 "$EXTERNAL_DATA_DIR" 2>/dev/null || true
+fi
+
+# Bundle libraries
+bundle_libraries
+
+# Create .env file if it doesn't exist
+if [ ! -f "$INSTALL_DIR/config/.env" ]; then
+    echo "Creating default .env file..."
+    cat > "$INSTALL_DIR/config/.env" <<EOF
+API_HOST=0.0.0.0
+API_PORT=8080
+LOG_LEVEL=INFO
+EOF
+    chown "$SERVICE_USER:$SERVICE_GROUP" "$INSTALL_DIR/config/.env"
+    chmod 640 "$INSTALL_DIR/config/.env"
+fi
+
+# Verify executable and libraries
+if [ -f "$BIN_DIR/edge_ai_api" ]; then
+    echo "Verifying executable..."
+    # Check if executable can find libraries
+    if command -v ldd >/dev/null 2>&1; then
+        MISSING_LIBS=$(ldd "$BIN_DIR/edge_ai_api" 2>&1 | grep "not found" || true)
+        if [ -n "$MISSING_LIBS" ]; then
+            echo "Warning: Some libraries may be missing:"
+            echo "$MISSING_LIBS"
+        fi
+    fi
+    
+    # Check RPATH
+    if command -v patchelf >/dev/null 2>&1; then
+        RPATH=$(patchelf --print-rpath "$BIN_DIR/edge_ai_api" 2>/dev/null || echo "")
+        echo "Executable RPATH: ${RPATH:-not set}"
+    fi
+fi
+
+# Enable and start systemd service
+if [ -f "/etc/systemd/system/${SERVICE_NAME}.service" ]; then
+    echo "Enabling systemd service..."
+    systemctl daemon-reload
+    systemctl enable "${SERVICE_NAME}.service" || true
+    
+    # Don't start automatically on install - let user do it manually
+    # systemctl start "${SERVICE_NAME}.service" || true
+    echo "Service enabled. Start it with: sudo systemctl start ${SERVICE_NAME}"
+fi
+
+echo "Installation completed successfully!"
+echo ""
+echo "To start the service:"
+echo "  sudo systemctl start ${SERVICE_NAME}"
+echo ""
+echo "To check status:"
+echo "  sudo systemctl status ${SERVICE_NAME}"
+
+exit 0
+
