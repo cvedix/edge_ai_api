@@ -2070,6 +2070,570 @@ paths:
         '200':
           description: CORS preflight response
 
+  /v1/recognition/faces/{image_id}:
+    delete:
+      summary: Delete face subject by ID or subject name
+      description: |
+        Deletes a face subject by its image ID or subject name. 
+        
+        - If the identifier is an **image_id**, only that specific face will be deleted.
+        - If the identifier is a **subject name**, all faces associated with that subject will be deleted.
+        
+        The endpoint automatically detects whether the identifier is an image_id or subject name.
+        If no face is found with the given identifier, a 404 error is returned.
+      operationId: deleteFaceSubject
+      tags:
+        - Recognition
+      parameters:
+        - name: image_id
+          in: path
+          required: true
+          schema:
+            type: string
+          description: |
+            Either the UUID of the face subject to be deleted, or the subject name.
+            The endpoint will automatically detect the type of identifier.
+          example: "6b135f5b-a365-4522-b1f1-4c9ac2dd0728"
+      responses:
+        '200':
+          description: Face subject(s) deleted successfully
+          content:
+            application/json:
+              schema:
+                oneOf:
+                  - type: object
+                    required:
+                      - image_id
+                      - subject
+                    properties:
+                      image_id:
+                        type: string
+                        description: UUID of the deleted face subject
+                        example: "6b135f5b-a365-4522-b1f1-4c9ac2dd0728"
+                      subject:
+                        type: string
+                        description: Name of the person associated with the deleted face
+                        example: "subject1"
+                  - type: object
+                    required:
+                      - subject
+                      - deleted_count
+                      - image_ids
+                    properties:
+                      subject:
+                        type: string
+                        description: Name of the subject that was deleted
+                        example: "subject1"
+                      deleted_count:
+                        type: integer
+                        description: Number of faces deleted for this subject
+                        example: 3
+                      image_ids:
+                        type: array
+                        items:
+                          type: string
+                        description: List of image IDs that were deleted
+                        example: ["6b135f5b-a365-4522-b1f1-4c9ac2dd0728", "7c246g6c-b476-5633-c2g2-5d0bd3ee1839"]
+              examples:
+                single_face:
+                  summary: Single face deleted
+                  value:
+                    image_id: "6b135f5b-a365-4522-b1f1-4c9ac2dd0728"
+                    subject: "subject1"
+                multiple_faces:
+                  summary: All faces for a subject deleted
+                  value:
+                    subject: "subject1"
+                    deleted_count: 3
+                    image_ids:
+                      - "6b135f5b-a365-4522-b1f1-4c9ac2dd0728"
+                      - "7c246g6c-b476-5633-c2g2-5d0bd3ee1839"
+                      - "8d357h7d-c587-6744-d3h3-6e1ce4ff2950"
+        '400':
+          description: Bad request (missing image_id, etc.)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          description: Unauthorized (missing or invalid API key)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: Face subject not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+    options:
+      summary: CORS preflight for delete face subject
+      operationId: deleteFaceSubjectOptions
+      tags:
+        - Recognition
+      responses:
+        '200':
+          description: CORS preflight response
+
+  /v1/recognition/faces/delete:
+    post:
+      summary: Delete multiple face subjects
+      description: |
+        Deletes multiple face subjects by their image IDs. If some IDs do not exist, 
+        they will be ignored. This endpoint is available since version 1.0.
+      operationId: deleteMultipleFaceSubjects
+      tags:
+        - Recognition
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: array
+              items:
+                type: string
+                format: uuid
+              description: Array of image IDs to delete
+            example:
+              - "6b135f5b-a365-4522-b1f1-4c9ac2dd0728"
+              - "7c246g6c-b476-5633-c2g2-5d0bd3ee1839"
+      responses:
+        '200':
+          description: Face subjects deleted successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - deleted
+                properties:
+                  deleted:
+                    type: array
+                    description: Array of deleted face subjects
+                    items:
+                      type: object
+                      required:
+                        - image_id
+                        - subject
+                      properties:
+                        image_id:
+                          type: string
+                          format: uuid
+                          description: UUID of the deleted face subject
+                          example: "6b135f5b-a365-4522-b1f1-4c9ac2dd0728"
+                        subject:
+                          type: string
+                          description: Name of the person associated with the deleted face
+                          example: "subject1"
+              example:
+                deleted:
+                  - image_id: "6b135f5b-a365-4522-b1f1-4c9ac2dd0728"
+                    subject: "subject1"
+                  - image_id: "7c246g6c-b476-5633-c2g2-5d0bd3ee1839"
+                    subject: "subject2"
+        '400':
+          description: Bad request (invalid JSON, not an array, etc.)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          description: Unauthorized (missing or invalid API key)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+    options:
+      summary: CORS preflight for delete multiple face subjects
+      operationId: deleteMultipleFaceSubjectsOptions
+      tags:
+        - Recognition
+      responses:
+        '200':
+          description: CORS preflight response
+
+  /v1/recognition/faces/all:
+    delete:
+      summary: Delete all face subjects
+      description: |
+        Deletes all face subjects from the database. This operation is irreversible.
+        All image IDs and subject mappings will be removed.
+        
+        **Warning:** This endpoint will delete all registered faces. Use with caution.
+      operationId: deleteAllFaceSubjects
+      tags:
+        - Recognition
+      responses:
+        '200':
+          description: All face subjects deleted successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - deleted_count
+                  - message
+                properties:
+                  deleted_count:
+                    type: integer
+                    description: Total number of face subjects deleted
+                    example: 15
+                  message:
+                    type: string
+                    description: Success message
+                    example: "All face subjects deleted successfully"
+              example:
+                deleted_count: 15
+                message: "All face subjects deleted successfully"
+        '500':
+          description: Server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+    options:
+      summary: CORS preflight for delete all face subjects
+      operationId: deleteAllFaceSubjectsOptions
+      tags:
+        - Recognition
+      responses:
+        '200':
+          description: CORS preflight response
+
+  /v1/recognition/subjects/{subject}:
+    put:
+      summary: Rename face subject
+      description: |
+        Renames an existing face subject. This endpoint searches for the face subject name in the face database 
+        and allows you to select and rename that subject.
+        
+        **How it works:**
+        1. The endpoint searches for the subject name specified in the URL path (`{subject}`) in the face database.
+        2. If found, it renames the subject to the new name provided in the request body.
+        3. All face registrations associated with the old subject name are updated to use the new name.
+        
+        **Behavior:**
+        - If the new subject name does not exist, all faces from the old subject are moved to the new name.
+        - If the new subject name already exists, the subjects are merged. The embeddings are averaged and 
+          all faces from the old subject are reassigned to the subject with the new name, and the old subject is removed.
+        - All image_id mappings are automatically updated to reflect the new subject name.
+        - The face database file is updated to persist the changes.
+        
+        **Note:** The subject name in the URL path must match exactly with a subject name in the database.
+        Use GET /v1/recognition/faces to list all available subjects.
+        
+        This endpoint is available since version 0.6.
+      operationId: renameSubject
+      tags:
+        - Recognition
+      parameters:
+        - name: subject
+          in: path
+          required: true
+          schema:
+            type: string
+          description: |
+            The current subject name to rename. This must match exactly with a subject name in the face database.
+            Use GET /v1/recognition/faces to see all available subjects.
+          example: "subject1"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RenameSubjectRequest'
+            example:
+              subject: "testing_face"
+      responses:
+        '200':
+          description: Subject renamed successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - updated
+                  - old_subject
+                  - new_subject
+                  - message
+                properties:
+                  updated:
+                    type: string
+                    enum: ["true"]
+                    description: Indicates the operation was successful
+                  old_subject:
+                    type: string
+                    description: The original subject name
+                    example: "subject1"
+                  new_subject:
+                    type: string
+                    description: The new subject name
+                    example: "testing_face"
+                  message:
+                    type: string
+                    description: Success message
+                    example: "Subject renamed successfully"
+              example:
+                updated: "true"
+                old_subject: "subject1"
+                new_subject: "testing_face"
+                message: "Subject renamed successfully"
+        '400':
+          description: Bad request (subject not found, missing subject, invalid JSON, etc.)
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - updated
+                  - error
+                  - old_subject
+                properties:
+                  updated:
+                    type: string
+                    enum: ["false"]
+                    description: Indicates the operation failed
+                  error:
+                    type: string
+                    description: Error message explaining why the rename failed
+                    example: "Subject 'subject1' not found in face database"
+                  old_subject:
+                    type: string
+                    description: The subject name that was attempted to be renamed
+                    example: "subject1"
+              example:
+                updated: "false"
+                error: "Subject 'subject1' not found in face database"
+                old_subject: "subject1"
+        '500':
+          description: Server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+    options:
+      summary: CORS preflight for rename subject
+      operationId: renameSubjectOptions
+      tags:
+        - Recognition
+      responses:
+        '200':
+          description: CORS preflight response
+
+  /v1/core/fonts/upload:
+    post:
+      summary: Upload a font file
+      description: Uploads a font file (TTF, OTF, WOFF, WOFF2, etc.) to the server. The file will be saved in the fonts directory.
+      operationId: uploadFont
+      tags:
+        - Fonts
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              properties:
+                files:
+                  type: array
+                  items:
+                    type: string
+                    format: binary
+                  description: Font file(s) to upload. Select multiple files to upload at once (.ttf, .otf, .woff, .woff2, .eot, .ttc)
+                file:
+                  type: string
+                  format: binary
+                  description: Single font file to upload (alternative to files array)
+          application/octet-stream:
+            schema:
+              type: string
+              format: binary
+              description: Font file as binary data
+      responses:
+        '201':
+          description: Font file(s) uploaded successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  message:
+                    type: string
+                  count:
+                    type: integer
+                    description: Number of files uploaded successfully
+                  files:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        filename:
+                          type: string
+                        originalFilename:
+                          type: string
+                        path:
+                          type: string
+                        size:
+                          type: integer
+                        url:
+                          type: string
+                  warnings:
+                    type: array
+                    items:
+                      type: string
+                    description: Warnings for files that failed to upload
+        '400':
+          description: Invalid request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '409':
+          description: File already exists
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+    options:
+      summary: CORS preflight for font upload
+      operationId: uploadFontOptions
+      tags:
+        - Fonts
+      responses:
+        '200':
+          description: CORS preflight response
+
+  /v1/core/fonts/list:
+    get:
+      summary: List uploaded font files
+      description: Returns a list of all font files that have been uploaded to the server.
+      operationId: listFonts
+      tags:
+        - Fonts
+      responses:
+        '200':
+          description: List of font files
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  fonts:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        filename:
+                          type: string
+                        path:
+                          type: string
+                        size:
+                          type: integer
+                        modified:
+                          type: string
+                  count:
+                    type: integer
+                  directory:
+                    type: string
+        '500':
+          description: Server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /v1/core/fonts/{fontName}:
+    put:
+      summary: Rename a font file
+      description: Renames a font file on the server.
+      operationId: renameFont
+      tags:
+        - Fonts
+      parameters:
+        - name: fontName
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Current name of the font file to rename
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - newName
+              properties:
+                newName:
+                  type: string
+                  description: New name for the font file (must have valid font file extension)
+                  example: "my_font_v2.ttf"
+      responses:
+        '200':
+          description: Font file renamed successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  message:
+                    type: string
+                  oldName:
+                    type: string
+                  newName:
+                    type: string
+                  path:
+                    type: string
+        '400':
+          description: Invalid request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: Font file not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '409':
+          description: New name already exists
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
     delete:
       summary: Delete a font file
       description: Deletes a font file from the server.
@@ -6840,112 +7404,6 @@ components:
             destination: 3
             broker: 0
 
-    FaceRecognitionResult:
-      type: object
-      required:
-        - box
-        - landmarks
-        - subjects
-        - execution_time
-      properties:
-        box:
-          type: object
-          required:
-            - probability
-            - x_max
-            - y_max
-            - x_min
-            - y_min
-          properties:
-            probability:
-              type: number
-              format: float
-              description: Detection probability (0.0 to 1.0)
-              example: 1.0
-            x_max:
-              type: integer
-              description: Maximum X coordinate of bounding box
-              example: 1420
-            y_max:
-              type: integer
-              description: Maximum Y coordinate of bounding box
-              example: 1368
-            x_min:
-              type: integer
-              description: Minimum X coordinate of bounding box
-              example: 548
-            y_min:
-              type: integer
-              description: Minimum Y coordinate of bounding box
-              example: 295
-        landmarks:
-          type: array
-          description: Coordinates of face landmarks (5 points)
-          items:
-            type: array
-            items:
-              type: integer
-          example:
-            - [814, 713]
-            - [1104, 829]
-            - [832, 937]
-            - [704, 1030]
-            - [1017, 1133]
-        subjects:
-          type: array
-          description: List of similar subjects ordered by similarity
-          items:
-            type: object
-            required:
-              - similarity
-              - subject
-            properties:
-              similarity:
-                type: number
-                format: float
-                description: Similarity score (0.0 to 1.0)
-                example: 0.97858
-              subject:
-                type: string
-                description: Subject identifier
-                example: "subject1"
-        execution_time:
-          type: object
-          description: Execution time for each plugin (in milliseconds)
-          properties:
-            age:
-              type: number
-              format: float
-              description: Age detection execution time
-              example: 28.0
-            gender:
-              type: number
-              format: float
-              description: Gender detection execution time
-              example: 26.0
-            detector:
-              type: number
-              format: float
-              description: Face detector execution time
-              example: 117.0
-            calculator:
-              type: number
-              format: float
-              description: Feature calculator execution time
-              example: 45.0
-            mask:
-              type: number
-              format: float
-              description: Mask detection execution time
-              example: 36.0
-
-  securitySchemes:
-    ApiKeyAuth:
-      type: apiKey
-      in: header
-      name: x-api-key
-      description: API key for Face Recognition service (created by the user)
-
 tags:
   - name: Core
     description: Core API endpoints for health and version information
@@ -6965,8 +7423,4 @@ tags:
     description: Font file management endpoints
   - name: Node
     description: Node pool management endpoints for pre-configured nodes and templates (create, list, update, delete, templates, stats)
-  - name: Recognition
-    description: Face recognition endpoints for recognizing faces from uploaded images
-  - name: Video
-    description: Video file management endpoints
 

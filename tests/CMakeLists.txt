@@ -30,6 +30,7 @@ set(TEST_SOURCES
     test_instance_get_config.cpp
     test_instance_configure_stream.cpp
     test_solution_handler.cpp
+    test_recognition_handler.cpp
     test_config_handler.cpp
     test_system_info_handler.cpp
     test_metrics_handler.cpp
@@ -65,6 +66,7 @@ target_sources(edge_ai_api_tests PRIVATE
     ${CMAKE_SOURCE_DIR}/src/api/endpoints_handler.cpp
     ${CMAKE_SOURCE_DIR}/src/api/solution_handler.cpp
     ${CMAKE_SOURCE_DIR}/src/api/instance_handler.cpp
+    ${CMAKE_SOURCE_DIR}/src/api/recognition_handler.cpp
     ${CMAKE_SOURCE_DIR}/src/api/config_handler.cpp
     ${CMAKE_SOURCE_DIR}/src/api/system_info_handler.cpp
     ${CMAKE_SOURCE_DIR}/src/api/metrics_handler.cpp
