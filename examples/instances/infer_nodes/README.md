@@ -67,4 +67,3 @@ Xem ví dụ cụ thể trong [INSTANCE_GUIDE.md](../../docs/INSTANCE_GUIDE.md)
    - TensorRT nodes: `CVEDIX_WITH_TRT`
    - RKNN nodes: `CVEDIX_WITH_RKNN`
    - PaddleOCR nodes: `CVEDIX_WITH_PADDLE`
-

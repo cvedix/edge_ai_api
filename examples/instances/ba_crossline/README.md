@@ -201,4 +201,3 @@ mosquitto_sub -h localhost -t ba_crossline/events -v
 - Sample code: `sample/ba_crossline_sample.cpp`
 - Sample code: `sample/rtsp_ba_crossline_sample.cpp`
 - Testing guide: `sample/README.md` (section: ba_crossline_sample)
-

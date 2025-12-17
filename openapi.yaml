@@ -3,24 +3,24 @@ info:
   title: Edge AI API
   description: |
     REST API for Edge AI operations and management.
-    
+
     ## Logging Features
-    
+
     The server supports detailed logging features that can be enabled via command-line arguments:
-    
+
     - **API Logging** (`--log-api` or `--debug-api`): Logs all API requests and responses with response times
     - **Instance Execution Logging** (`--log-instance` or `--debug-instance`): Logs instance lifecycle events (start/stop/status)
     - **SDK Output Logging** (`--log-sdk-output` or `--debug-sdk-output`): Logs SDK output when instances process data
-    
+
     Example usage:
     ```bash
     ./edge_ai_api --log-api --log-instance --log-sdk-output
     ```
-    
+
     For more details, see the [Logging Documentation](../docs/LOGGING.md).
-    
+
     ## Swagger UI
-    
+
     This API provides Swagger UI for interactive testing and exploration:
     - Access Swagger UI at `/swagger` or `/v1/swagger`
     - OpenAPI specification available at `/openapi.yaml` or `/v1/openapi.yaml`
@@ -148,11 +148,11 @@ paths:
       description: |
         Returns system configuration. If `path` query parameter is provided, returns the specific configuration section.
         Otherwise, returns the complete system configuration.
-        
+
         **Path Format:**
         - Use forward slashes `/` or dots `.` to navigate nested configuration keys
         - Examples: `system/max_running_instances`, `system.max_running_instances`, `gstreamer/decode_pipelines/auto`
-        
+
         **Recommended:** Use query parameter with forward slashes for better compatibility.
       operationId: getConfig
       tags:
@@ -301,11 +301,11 @@ paths:
       summary: Update configuration section (query parameter)
       description: |
         Updates a specific section of the system configuration at the given path.
-        
+
         **Path Format:**
         - Use forward slashes `/` or dots `.` as separators
         - Examples: `system/max_running_instances`, `system.max_running_instances`
-        
+
         Only the provided fields in the section will be updated.
         The configuration is saved to the config file after update.
       operationId: updateConfigSectionQuery
@@ -363,11 +363,11 @@ paths:
       summary: Delete configuration section (query parameter)
       description: |
         Deletes a specific section of the system configuration at the given path.
-        
+
         **Path Format:**
         - Use forward slashes `/` or dots `.` as separators
         - Examples: `system/max_running_instances`, `system.max_running_instances`
-        
+
         The configuration is saved to the config file after deletion.
       operationId: deleteConfigSectionQuery
       tags:
@@ -428,7 +428,7 @@ paths:
         Resets the entire system configuration to default values.
         All existing configuration will be replaced with default values.
         The configuration is saved to the config file after reset.
-        
+
         **Warning:** This operation will replace all configuration with default values.
         Consider backing up your configuration before resetting.
       operationId: resetConfig
@@ -461,13 +461,13 @@ paths:
       summary: Get configuration section (path parameter)
       description: |
         Returns a specific section of the system configuration at the given path.
-        
+
         **Path Format:**
         - Use dots `.` as separators (e.g., `system.max_running_instances`)
         - Forward slashes `/` with URL encoding (`%2F`) are NOT supported due to Drogon routing limitations
-        
+
         **Recommended:** Use query parameter instead: `GET /v1/core/config?path=system/max_running_instances`
-        
+
         Example paths: `system.max_running_instances`, `system.web_server`, `gstreamer.decode_pipelines.auto`
       operationId: getConfigSection
       tags:
@@ -518,13 +518,13 @@ paths:
       summary: Update configuration section (path parameter)
       description: |
         Updates a specific section of the system configuration at the given path.
-        
+
         **Path Format:**
         - Use dots `.` as separators (e.g., `system.max_running_instances`)
         - Forward slashes `/` with URL encoding (`%2F`) are NOT supported
-        
+
         **Recommended:** Use query parameter instead: `PATCH /v1/core/config?path=system/max_running_instances`
-        
+
         Only the provided fields in the section will be updated.
         The configuration is saved to the config file after update.
       operationId: updateConfigSection
@@ -585,13 +585,13 @@ paths:
       summary: Delete configuration section (path parameter)
       description: |
         Deletes a specific section of the system configuration at the given path.
-        
+
         **Path Format:**
         - Use dots `.` as separators (e.g., `system.max_running_instances`)
         - Forward slashes `/` with URL encoding (`%2F`) are NOT supported
-        
+
         **Recommended:** Use query parameter instead: `DELETE /v1/core/config?path=system/max_running_instances`
-        
+
         The configuration is saved to the config file after deletion.
       operationId: deleteConfigSection
       tags:
@@ -1153,8 +1153,8 @@ paths:
     post:
       summary: Recognize faces from uploaded image
       description: |
-        Recognizes faces from an uploaded image. The image can be provided as base64-encoded data 
-        in a multipart/form-data request. Returns face detection results including bounding boxes, 
+        Recognizes faces from an uploaded image. The image can be provided as base64-encoded data
+        in a multipart/form-data request. Returns face detection results including bounding boxes,
         landmarks, recognized subjects, and execution times.
       operationId: recognizeFaces
       tags:
@@ -1280,9 +1280,9 @@ paths:
     get:
       summary: List face subjects
       description: |
-        Retrieves a list of all saved face subjects with pagination support. 
+        Retrieves a list of all saved face subjects with pagination support.
         You can filter by subject name or retrieve all subjects.
-        
+
         This endpoint returns paginated results with face information including image_id and subject name.
       operationId: listFaceSubjects
       tags:
@@ -1384,20 +1384,20 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
-    
+
     post:
       summary: Register face subject
       description: |
-        Registers a face subject by storing the image. You can add as many images as you want to train the system. 
+        Registers a face subject by storing the image. You can add as many images as you want to train the system.
         Images should contain only a single face.
-        
+
         This endpoint accepts image data in two formats:
         1. **Multipart/form-data**: Upload file directly (recommended for file uploads)
         2. **Application/json**: Send base64-encoded image string
-        
+
         Supported image formats: JPEG, JPG, PNG, BMP, GIF, ICO, TIFF, WebP
         Maximum file size: 5MB
-        
+
         The system will detect the face in the image and store the face features for recognition.
       operationId: registerFaceSubject
       tags:
@@ -1425,7 +1425,7 @@ paths:
           Image data can be sent in two formats:
           1. Multipart/form-data: Upload file directly (recommended for file uploads)
           2. Application/json: Send base64-encoded image string
-          
+
           Supported image formats: JPEG, JPG, PNG, BMP, GIF, ICO, TIFF, WebP
           Maximum file size: 5MB
         content:
@@ -1505,11 +1505,11 @@ paths:
     delete:
       summary: Delete face subject by ID or subject name
       description: |
-        Deletes a face subject by its image ID or subject name. 
-        
+        Deletes a face subject by its image ID or subject name.
+
         - If the identifier is an **image_id**, only that specific face will be deleted.
         - If the identifier is a **subject name**, all faces associated with that subject will be deleted.
-        
+
         The endpoint automatically detects whether the identifier is an image_id or subject name.
         If no face is found with the given identifier, a 404 error is returned.
       operationId: deleteFaceSubject
@@ -1617,7 +1617,7 @@ paths:
     post:
       summary: Delete multiple face subjects
       description: |
-        Deletes multiple face subjects by their image IDs. If some IDs do not exist, 
+        Deletes multiple face subjects by their image IDs. If some IDs do not exist,
         they will be ignored. This endpoint is available since version 1.0.
       operationId: deleteMultipleFaceSubjects
       tags:
@@ -1702,7 +1702,7 @@ paths:
       description: |
         Deletes all face subjects from the database. This operation is irreversible.
         All image IDs and subject mappings will be removed.
-        
+
         **Warning:** This endpoint will delete all registered faces. Use with caution.
       operationId: deleteAllFaceSubjects
       tags:
@@ -1887,24 +1887,24 @@ paths:
     put:
       summary: Rename face subject
       description: |
-        Renames an existing face subject. This endpoint searches for the face subject name in the face database 
+        Renames an existing face subject. This endpoint searches for the face subject name in the face database
         and allows you to select and rename that subject.
-        
+
         **How it works:**
         1. The endpoint searches for the subject name specified in the URL path (`{subject}`) in the face database.
         2. If found, it renames the subject to the new name provided in the request body.
         3. All face registrations associated with the old subject name are updated to use the new name.
-        
+
         **Behavior:**
         - If the new subject name does not exist, all faces from the old subject are moved to the new name.
-        - If the new subject name already exists, the subjects are merged. The embeddings are averaged and 
+        - If the new subject name already exists, the subjects are merged. The embeddings are averaged and
           all faces from the old subject are reassigned to the subject with the new name, and the old subject is removed.
         - All image_id mappings are automatically updated to reflect the new subject name.
         - The face database file is updated to persist the changes.
-        
+
         **Note:** The subject name in the URL path must match exactly with a subject name in the database.
         Use GET /v1/recognition/faces to list all available subjects.
-        
+
         This endpoint is available since version 0.6.
       operationId: renameSubject
       tags:
@@ -2016,6 +2016,8 @@ paths:
           multipart/form-data:
             schema:
               type: object
+              required:
+                - file
               properties:
                 files:
                   type: array
@@ -2062,17 +2064,14 @@ paths:
                           type: integer
                         url:
                           type: string
-                  warnings:
-                    type: array
-                    items:
-                      type: string
-                    description: Warnings for files that failed to upload
         '400':
-          description: Invalid request
+          description: Invalid request (missing file, invalid format, etc.)
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          description: Unauthorized (missing or invalid API key)
         '409':
           description: File already exists
           content:
@@ -2160,8 +2159,7 @@ paths:
               properties:
                 newName:
                   type: string
-                  description: New name for the font file (must have valid font file extension)
-                  example: "my_font_v2.ttf"
+                  description: New name for the font file
       responses:
         '200':
           description: Font file renamed successfully
@@ -2177,8 +2175,6 @@ paths:
                   oldName:
                     type: string
                   newName:
-                    type: string
-                  path:
                     type: string
         '400':
           description: Invalid request
@@ -2204,57 +2200,20 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
-    delete:
-      summary: Delete a font file
-      description: Deletes a font file from the server.
-      operationId: deleteFont
+    options:
+      summary: CORS preflight for font operations
+      operationId: fontOptionsHandler
       tags:
         - Fonts
-      parameters:
-        - name: fontName
-          in: path
-          required: true
-          schema:
-            type: string
-          description: Name of the font file to delete
       responses:
         '200':
-          description: Font file deleted successfully
-          content:
-            application/json:
-              schema:
-                type: object
-                properties:
-                  success:
-                    type: boolean
-                  message:
-                    type: string
-                  filename:
-                    type: string
-        '400':
-          description: Invalid request
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
-        '404':
-          description: Font file not found
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
-        '500':
-          description: Server error
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
+          description: CORS preflight response
 
   /v1/core/instance/status/summary:
     get:
       summary: Get instance status summary
       description: |
-        Returns a summary of instance status including total number of configured instances, 
+        Returns a summary of instance status including total number of configured instances,
         number of running instances, and number of stopped instances.
       operationId: getStatusSummary
       tags:
@@ -2305,13 +2264,13 @@ paths:
       summary: List all instances
       description: |
         Returns a list of all AI instances with summary information including running status, solution information, and basic configuration details.
-        
+
         The response includes:
         - Total count of instances
         - Number of running instances
         - Number of stopped instances
         - Summary information for each instance (ID, display name, running status, solution, etc.)
-        
+
         This endpoint is useful for getting an overview of all instances in the system without fetching detailed information for each one.
       operationId: listInstances
       tags:
@@ -2352,24 +2311,24 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
-    
+
     delete:
       summary: Delete all instances
       description: |
         Deletes all instances in the system. This operation permanently removes all instances and stops their pipelines if running.
-        
+
         **Behavior:**
         - All instances are deleted concurrently for optimal performance
         - If instances are currently running, they will be stopped first
         - All instance configurations will be removed from memory
         - Persistent instance configuration files will be deleted from storage
         - All resources associated with instances will be released
-        
+
         **Response:**
         - Returns a summary of the deletion operation
         - Includes detailed results for each instance (success/failure status)
         - Provides counts of total, deleted, and failed instances
-        
+
         **Note:** This operation cannot be undone. Once deleted, instances must be recreated using the create instance endpoint.
       operationId: deleteAllInstances
       tags:
@@ -2443,7 +2402,7 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
-    
+
     options:
       summary: CORS preflight for list instances
       operationId: listInstancesOptions
@@ -2458,14 +2417,14 @@ paths:
       summary: Get instance details
       description: |
         Returns detailed information about a specific instance including full configuration, status, and runtime information.
-        
+
         The response includes:
         - Instance configuration (display name, group, solution, etc.)
         - Runtime status (running, loaded, FPS, etc.)
         - Configuration settings (detector mode, sensitivity, frame rate limits, etc.)
         - Input/Output configuration
         - Originator information
-        
+
         The instance must exist. If the instance is not found, a 404 error will be returned.
       operationId: getInstance
       tags:
@@ -2496,20 +2455,20 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
-    
+
     put:
       summary: Update instance information
       description: |
         Updates configuration of an existing instance. Only provided fields will be updated. Supports two update formats:
-        
+
         **Update Format 1: Field-by-field (camelCase)**
         - Update individual fields like `name`, `group`, `autoStart`, `frameRateLimit`, etc.
         - Use `additionalParams` to update solution-specific parameters (RTSP_URL, MODEL_PATH, etc.)
-        
+
         **Update Format 2: Direct Config (PascalCase)**
         - Update using PascalCase format matching instance config file
         - Can update `Input`, `Output`, `Detector`, `Zone`, etc. directly
-        
+
         **Behavior:**
         - If the instance is currently running, it will be automatically restarted to apply the changes
         - If the instance is not running, changes will take effect when the instance is started
@@ -2562,22 +2521,22 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
-    
+
     delete:
       summary: Delete an instance
       description: |
         Deletes an instance and stops its pipeline if running. This operation permanently removes the instance from the system.
-        
+
         **Behavior:**
         - If the instance is currently running, it will be stopped first
         - The instance configuration will be removed from memory
         - If the instance is persistent, its configuration file will be deleted from storage
         - All resources associated with the instance will be released
-        
+
         **Prerequisites:**
         - Instance must exist
         - Instance must not be read-only (system instances cannot be deleted)
-        
+
         **Note:** This operation cannot be undone. Once deleted, the instance must be recreated using the create instance endpoint.
       operationId: deleteInstance
       tags:
@@ -2621,19 +2580,19 @@ paths:
       summary: Start an instance
       description: |
         Starts the pipeline for an instance. The instance must have a pipeline configured and a valid solution.
-        
+
         **Prerequisites:**
         - Instance must exist
         - Instance must have a valid solution configuration
         - Instance must not be read-only
         - Input source must be properly configured (if required by solution)
-        
+
         **Behavior:**
         - If the instance is already running, the request will succeed without error
         - The pipeline will be built and started based on the instance's solution configuration
         - Processing will begin according to the configured input source and detector settings
         - Returns the updated instance information with `running: true`
-        
+
         **Note:** Starting an instance may take a few seconds as the pipeline is initialized.
       operationId: startInstance
       tags:
@@ -2681,15 +2640,15 @@ paths:
       summary: Stop an instance
       description: |
         Stops the pipeline for an instance, halting all processing and releasing resources.
-        
+
         **Behavior:**
         - If the instance is already stopped, the request will succeed without error
         - The pipeline will be gracefully stopped and all resources will be released
         - Processing will stop immediately
         - Returns the updated instance information with `running: false`
-        
+
         **Note:** Stopping an instance may take a few seconds as the pipeline is cleaned up.
-        
+
         The instance configuration is preserved and can be started again using the start endpoint.
       operationId: stopInstance
       tags:
@@ -2737,18 +2696,18 @@ paths:
       summary: Restart an instance
       description: |
         Restarts an instance by stopping it (if running) and then starting it again. This is useful for applying configuration changes or recovering from errors.
-        
+
         **Behavior:**
         - If the instance is running, it will be stopped first
         - Then the instance will be started again
         - This ensures a clean restart with the current configuration
         - Returns the updated instance information after restart
-        
+
         **Use Cases:**
         - Apply configuration changes that require a restart
         - Recover from errors or unexpected states
         - Refresh the pipeline with updated settings
-        
+
         **Note:** Restarting an instance may take several seconds as the pipeline is stopped and then restarted.
       operationId: restartInstance
       tags:
@@ -2810,7 +2769,7 @@ paths:
         - Output type and details (FILE output files or RTMP stream)
         - Detection settings and processing modes
         - Current status and processing state
-        
+
         For instances with FILE output, it includes file count, total size, latest file information, and activity status.
         For instances with RTMP output, it includes RTMP and RTSP URLs.
       operationId: getInstanceOutput
@@ -2933,12 +2892,12 @@ paths:
       summary: Get last frame from instance
       description: |
         Returns the last processed frame from a running instance. The frame is encoded as JPEG and returned as a base64-encoded string.
-        
+
         **Features:**
         - Frame is captured from the pipeline after processing (includes OSD/detection overlays)
         - Frame is automatically cached when pipeline processes new frames
         - Frame cache is automatically cleaned up when instance stops or is deleted
-        
+
         **Important Notes:**
         - Frame capture only works if the pipeline has an `app_des_node`
         - If pipeline doesn't have `app_des_node`, frame will be empty string
@@ -2996,27 +2955,27 @@ paths:
       summary: Start multiple instances concurrently
       description: |
         Starts multiple instances concurrently for faster batch operations. All operations run in parallel for optimal performance.
-        
+
         **Behavior:**
         - All instances are started in parallel, not sequentially
         - Each instance is started independently
         - Results are returned for each instance (success or failure)
         - Instances that are already running will be marked as successful
-        
+
         **Request Format:**
         - Provide an array of instance IDs in the `instanceIds` field
         - All instance IDs must exist in the system
-        
+
         **Response:**
         - Returns detailed results for each instance
         - Includes total count, success count, and failed count
         - Each result includes the instance ID, success status, running status, and any error messages
-        
+
         **Use Cases:**
         - Start multiple instances after server restart
         - Batch operations for managing multiple cameras or streams
         - Efficiently start a group of related instances
-        
+
         **Note:** Starting multiple instances simultaneously may consume significant system resources. Monitor system performance when starting many instances at once.
       operationId: batchStartInstances
       tags:
@@ -3107,27 +3066,27 @@ paths:
       summary: Stop multiple instances concurrently
       description: |
         Stops multiple instances concurrently for faster batch operations. All operations run in parallel for optimal performance.
-        
+
         **Behavior:**
         - All instances are stopped in parallel, not sequentially
         - Each instance is stopped independently
         - Results are returned for each instance (success or failure)
         - Instances that are already stopped will be marked as successful
-        
+
         **Request Format:**
         - Provide an array of instance IDs in the `instanceIds` field
         - All instance IDs must exist in the system
-        
+
         **Response:**
         - Returns detailed results for each instance
         - Includes total count, success count, and failed count
         - Each result includes the instance ID, success status, running status, and any error messages
-        
+
         **Use Cases:**
         - Stop multiple instances for maintenance
         - Batch operations for managing multiple cameras or streams
         - Efficiently stop a group of related instances
-        
+
         **Note:** Stopping multiple instances simultaneously will release system resources. This is useful for managing system load.
       operationId: batchStopInstances
       tags:
@@ -3306,13 +3265,13 @@ paths:
       summary: List all groups
       description: |
         Returns a list of all groups with summary information including group name, description, instance count, and metadata.
-        
+
         The response includes:
         - Total count of groups
         - Number of default groups
         - Number of custom groups
         - Summary information for each group (ID, name, description, instance count, etc.)
-        
+
         This endpoint is useful for getting an overview of all groups in the system without fetching detailed information for each one.
       operationId: listGroups
       tags:
@@ -3365,21 +3324,21 @@ paths:
       summary: Create a new group
       description: |
         Creates a new group for organizing instances. Groups help organize and manage multiple instances together.
-        
+
         **Group Properties:**
         - **groupId** (required): Unique identifier for the group (alphanumeric, underscores, hyphens only)
         - **groupName** (optional): Display name for the group (defaults to groupId if not provided)
         - **description** (optional): Description of the group's purpose
-        
+
         **Validation:**
         - Group ID must be unique
         - Group ID must match pattern: `^[A-Za-z0-9_-]+$`
         - Group name must match pattern: `^[A-Za-z0-9 -_]+$`
-        
+
         **Persistence:**
         - Groups are automatically saved to storage
         - Group files are stored in `/var/lib/edge_ai_api/groups` (configurable via `GROUPS_DIR` environment variable)
-        
+
         **Returns:** The created group information including timestamps.
       operationId: createGroup
       tags:
@@ -3427,13 +3386,13 @@ paths:
       summary: Get group details
       description: |
         Returns detailed information about a specific group including group metadata and list of instance IDs.
-        
+
         The response includes:
         - Group configuration (ID, name, description)
         - Group metadata (isDefault, readOnly, timestamps)
         - Instance count
         - List of instance IDs in the group
-        
+
         The group must exist. If the group is not found, a 404 error will be returned.
       operationId: getGroup
       tags:
@@ -3476,16 +3435,16 @@ paths:
       summary: Update a group
       description: |
         Updates an existing group's information. Only provided fields will be updated.
-        
+
         **Updateable Fields:**
         - **groupName**: Update the display name of the group
         - **description**: Update the description of the group
-        
+
         **Restrictions:**
         - Group must exist
         - Group must not be read-only
         - Group ID cannot be changed
-        
+
         **Behavior:**
         - Only provided fields will be updated
         - Other fields remain unchanged
@@ -3538,18 +3497,18 @@ paths:
       summary: Delete a group
       description: |
         Deletes a group from the system. This operation permanently removes the group.
-        
+
         **Prerequisites:**
         - Group must exist
         - Group must not be a default group
         - Group must not be read-only
         - Group must have no instances (all instances must be removed or moved to other groups first)
-        
+
         **Behavior:**
         - Group configuration will be removed from memory
         - Group file will be deleted from storage
         - All resources associated with the group will be released
-        
+
         **Note:** This operation cannot be undone. Once deleted, the group must be recreated using the create group endpoint.
       operationId: deleteGroup
       tags:
@@ -3607,17 +3566,17 @@ paths:
       summary: Get instances in a group
       description: |
         Returns a list of all instances that belong to a specific group.
-        
+
         The response includes:
         - Group ID
         - List of instances with summary information (ID, display name, solution, running status)
         - Total count of instances in the group
-        
+
         **Use Cases:**
         - View all instances in a specific group
         - Monitor group status and performance
         - Manage instances by group
-        
+
         The group must exist. If the group is not found, a 404 error will be returned.
       operationId: getGroupInstances
       tags:
@@ -3698,7 +3657,7 @@ paths:
       summary: Create a new AI instance
       description: |
         Creates and registers a new AI instance with the specified configuration. Returns the instance ID (UUID) that can be used to control the instance.
-        
+
         **Configuration Options:**
         - **Basic Settings:** name, group, solution, persistent mode
         - **Performance:** frame rate limits, input pixel limits, input orientation
@@ -3706,23 +3665,23 @@ paths:
         - **Processing Modes:** metadata mode, statistics mode, diagnostics mode, debug mode
         - **Auto Management:** auto-start, auto-restart, blocking readahead queue
         - **Solution Parameters:** RTSP_URL, MODEL_PATH, FILE_PATH, RTMP_URL, etc. (via additionalParams)
-        
+
         **Solution Types:**
         - `face_detection`: Face detection with RTSP input
         - `face_detection_file`: Face detection with file input
         - `object_detection`: Object detection (YOLO)
         - `face_detection_rtmp`: Face detection with RTMP streaming
         - Custom solutions registered via solution management endpoints
-        
+
         **Persistence:**
         - If `persistent: true`, the instance will be saved to a JSON file in the instances directory
         - Persistent instances are automatically loaded when the server restarts
         - Instance configuration files are stored in `/var/lib/edge_ai_api/instances` (configurable via `INSTANCES_DIR` environment variable)
-        
+
         **Auto Start:**
         - If `autoStart: true`, the instance will automatically start after creation
         - The pipeline will be built and started immediately
-        
+
         **Returns:** The created instance information including the generated UUID that can be used for subsequent operations.
       operationId: createInstance
       tags:
@@ -3815,12 +3774,12 @@ paths:
       summary: Set input source for an instance
       description: |
         Sets the input source configuration for an instance. Replaces the Input field in the Instance File according to the request.
-        
+
         **Input Types:**
         - **RTSP**: Uses `rtsp_src` node for RTSP streams
         - **HLS**: Uses `hls_src` node for HLS streams
         - **Manual**: Uses `v4l2_src` node for V4L2 devices
-        
+
         The instance must exist and not be read-only. If the instance is currently running, it will be automatically restarted to apply the changes.
       operationId: setInstanceInput
       tags:
@@ -3876,7 +3835,7 @@ paths:
       summary: Get instance configuration
       description: |
         Returns the configuration of an instance. This endpoint provides the configuration settings of the instance, which are different from runtime state. Configuration includes settings like AutoRestart, AutoStart, Detector settings, Input configuration, etc.
-        
+
         **Note:** This returns the configuration format, not the runtime state. For runtime state information, use the instance details endpoint.
       operationId: getConfig
       tags:
@@ -3933,17 +3892,17 @@ paths:
       summary: Set config value at a specific path
       description: |
         Sets a configuration value at the specified path. The path is a key in the configuration, and for nested structures, it will be nested keys separated by forward slashes "/".
-        
+
         **Note:** This operation will overwrite the value at the given path.
-        
+
         **Path Examples:**
         - Simple path: `"DisplayName"` - Sets top-level DisplayName
         - Nested path: `"Output/handlers/Mqtt"` - Sets Mqtt handler in Output.handlers
-        
+
         **jsonValue Format:**
         - For string values: `"\"my string\""` (escaped JSON string)
         - For object values: `"{\"key\":\"value\"}"` (escaped JSON object)
-        
+
         The instance must exist and not be read-only. If the instance is currently running, it will be automatically restarted to apply the changes.
       operationId: setConfig
       tags:
@@ -4008,7 +3967,7 @@ paths:
       summary: Get instance statistics
       description: |
         Returns real-time statistics for a specific instance. Statistics include frames processed, framerate, latency, resolution, and queue information.
-        
+
         **Statistics Include:**
         - Frames processed count
         - Source framerate (FPS from source)
@@ -4018,7 +3977,7 @@ paths:
         - Dropped frames count
         - Resolution and format information
         - Source resolution
-        
+
         **Important Notes:**
         - Statistics are calculated in real-time
         - Statistics reset to 0 when instance is restarted
@@ -4088,11 +4047,11 @@ paths:
       summary: Get stream output configuration
       description: |
         Returns the current stream output configuration for an instance. This endpoint retrieves the stream output settings including whether it is enabled and the configured URI.
-        
+
         **Response Format:**
         - `enabled`: Boolean indicating whether stream output is enabled
         - `uri`: The configured stream URI (empty string if disabled)
-        
+
         The URI can be in one of the following formats:
         - **RTMP**: `rtmp://host:port/path/stream_key`
         - **RTSP**: `rtsp://host:port/path/stream_key`
@@ -4142,24 +4101,24 @@ paths:
       summary: Configure stream/record output
       description: |
         Configures stream or record output for an instance. This endpoint allows you to enable or disable output and set either a stream URI or a local path for recording.
-        
+
         **Record Output Mode (using `path` parameter):**
         - When `enabled` is `true` and `path` is provided, video will be saved as MP4 files to the specified local directory
         - The path must exist and have write permissions (will be created if it doesn't exist)
         - Uses `rtmp_des_node` to push data to local stream
         - Files are saved in MP4 format to the specified path
-        
+
         **Stream Output Mode (using `uri` parameter):**
         - **RTMP**: `rtmp://host:port/path/stream_key` - For RTMP streaming (e.g., to MediaMTX, YouTube Live, etc.)
         - **RTSP**: `rtsp://host:port/path/stream_key` - For RTSP streaming
         - **HLS**: `hls://host:port/path/stream_key` - For HLS streaming
-        
+
         **Behavior:**
         - When `enabled` is `true`, either `path` (for record output) or `uri` (for stream output) field is required
         - When `enabled` is `false`, output is disabled
         - If the instance is currently running, it will be automatically restarted to apply the changes
         - The stream output uses the `rtmp_des_node` in the pipeline
-        
+
         **MediaMTX Setup:**
         - For local streaming, ensure MediaMTX is installed and running: https://github.com/bluenviron/mediamtx
         - Default MediaMTX RTMP endpoint: `rtmp://localhost:1935/live/stream`
@@ -4483,7 +4442,7 @@ paths:
         This includes:
         - **Additional Parameters**: Solution-specific parameters extracted from pipeline nodes (e.g., RTSP_URL, MODEL_PATH, FILE_PATH)
         - **Standard Fields**: Common instance creation fields (name, group, persistent, autoStart, etc.)
-        
+
         Parameters marked as required must be provided in the `additionalParams` object when creating an instance.
         Parameters with default values are optional.
       operationId: getSolutionParameters
@@ -4781,7 +4740,7 @@ paths:
         This includes:
         - **Standard Fields**: Common instance creation fields with default values
         - **Additional Parameters**: Solution-specific parameters with example values based on parameter names
-        
+
         Users can copy this body, modify the values, and use it to create an instance via POST /v1/core/instance.
       operationId: getSolutionInstanceBody
       tags:
@@ -5147,9 +5106,9 @@ paths:
       summary: List all node templates
       description: |
         Returns a list of all available node templates that can be used to create pre-configured nodes.
-        
+
         **Available Node Types:**
-        
+
         **Source Nodes:**
         - `rtsp_src` - RTSP Source
         - `file_src` - File Source
@@ -5157,7 +5116,7 @@ paths:
         - `image_src` - Image Source
         - `rtmp_src` - RTMP Source
         - `udp_src` - UDP Source
-        
+
         **Detector Nodes:**
         - `yunet_face_detector` - YuNet Face Detector
         - `yolo_detector` - YOLO Detector
@@ -5180,7 +5139,7 @@ paths:
         - `face_swap` - Face Swap
         - `insight_face_recognition` - InsightFace Recognition
         - `mllm_analyser` - MLLM Analyser
-        
+
         **Processor Nodes:**
         - `sface_feature_encoder` - SFace Feature Encoder
         - `sort_track` - SORT Tracker
@@ -5194,12 +5153,12 @@ paths:
         - `trt_vehicle_color_classifier` - TensorRT Vehicle Color Classifier (requires CVEDIX_WITH_TRT)
         - `trt_vehicle_type_classifier` - TensorRT Vehicle Type Classifier (requires CVEDIX_WITH_TRT)
         - `trt_vehicle_scanner` - TensorRT Vehicle Scanner (requires CVEDIX_WITH_TRT)
-        
+
         **Destination Nodes:**
         - `file_des` - File Destination
         - `rtmp_des` - RTMP Destination
         - `screen_des` - Screen Destination
-        
+
         **Broker Nodes:**
         - `json_console_broker` - JSON Console Broker
         - `json_enhanced_console_broker` - JSON Enhanced Console Broker
@@ -5213,7 +5172,7 @@ paths:
         - `embeddings_properties_socket_broker` - Embeddings Properties Socket Broker
         - `plate_socket_broker` - Plate Socket Broker
         - `expr_socket_broker` - Expression Socket Broker
-        
+
         All node templates are automatically imported from CVEDIX SDK nodes available in `/opt/cvedix/include/cvedix/nodes/infers`.
       operationId: listTemplates
       tags:
@@ -6534,25 +6493,25 @@ components:
                 type: string
                 description: |
                   Type of node. Available node types:
-                  
+
                   **Source:** rtsp_src, file_src, app_src, image_src, rtmp_src, udp_src
-                  
-                  **Detector:** yunet_face_detector, yolo_detector, yolov11_detector, mask_rcnn_detector, openpose_detector, enet_seg, 
-                  trt_yolov8_detector, trt_yolov8_seg_detector, trt_yolov8_pose_detector, trt_yolov8_classifier, 
+
+                  **Detector:** yunet_face_detector, yolo_detector, yolov11_detector, mask_rcnn_detector, openpose_detector, enet_seg,
+                  trt_yolov8_detector, trt_yolov8_seg_detector, trt_yolov8_pose_detector, trt_yolov8_classifier,
                   trt_vehicle_detector, trt_vehicle_plate_detector, trt_vehicle_plate_detector_v2, trt_insight_face_recognition,
                   rknn_yolov8_detector, rknn_yolov11_detector, rknn_face_detector, ppocr_text_detector,
                   face_swap, insight_face_recognition, mllm_analyser
-                  
-                  **Processor:** sface_feature_encoder, sort_track, face_osd_v2, ba_crossline, ba_crossline_osd, classifier, 
-                  lane_detector, restoration, trt_vehicle_feature_encoder, trt_vehicle_color_classifier, 
+
+                  **Processor:** sface_feature_encoder, sort_track, face_osd_v2, ba_crossline, ba_crossline_osd, classifier,
+                  lane_detector, restoration, trt_vehicle_feature_encoder, trt_vehicle_color_classifier,
                   trt_vehicle_type_classifier, trt_vehicle_scanner
-                  
+
                   **Destination:** file_des, rtmp_des, screen_des
-                  
+
                   **Broker:** json_console_broker, json_enhanced_console_broker, json_mqtt_broker, json_kafka_broker,
                   xml_file_broker, xml_socket_broker, msg_broker, ba_socket_broker, embeddings_socket_broker,
                   embeddings_properties_socket_broker, plate_socket_broker, expr_socket_broker
-                  
+
                   See GET /v1/core/nodes/templates for complete list with descriptions.
                 example: "rtsp_src"
               nodeName:
@@ -6993,4 +6952,3 @@ tags:
     description: Font file management endpoints
   - name: Node
     description: Node pool management endpoints for pre-configured nodes and templates (create, list, update, delete, templates, stats)
-

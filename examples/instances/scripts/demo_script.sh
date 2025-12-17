@@ -149,7 +149,7 @@ read -p "Bạn có muốn xóa instance ${INSTANCE_ID}? (y/N): " CONFIRM_DELETE
 
 if [ "$CONFIRM_DELETE" = "y" ] || [ "$CONFIRM_DELETE" = "Y" ]; then
     execute_cmd "curl -X DELETE ${API_BASE}/instances/${INSTANCE_ID} | jq '.'"
-    
+
     echo ""
     echo "Kiểm tra xem instance đã bị xóa chưa:"
     execute_cmd "curl -X GET ${API_BASE}/instances/${INSTANCE_ID} | jq '.'"
@@ -175,4 +175,3 @@ echo "  7. DELETE - Xóa instance"
 echo ""
 echo "Các file JSON mẫu có sẵn trong thư mục examples/instances/"
 echo ""
-

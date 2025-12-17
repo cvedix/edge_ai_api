@@ -21,7 +21,7 @@ option(AUTO_DOWNLOAD_DEPENDENCIES "Automatically download missing dependencies" 
 # Check for OpenSSL (required)
 find_package(OpenSSL QUIET)
 if(NOT OpenSSL_FOUND)
-    message(FATAL_ERROR 
+    message(FATAL_ERROR
         "OpenSSL not found. Drogon requires OpenSSL.\n"
         "To install: sudo apt-get install libssl-dev")
 endif()
@@ -35,7 +35,7 @@ if(NOT UUID_LIBRARY)
         # UUID is usually small, we can continue without it
         set(UUID_LIBRARY "")
     else()
-        message(WARNING 
+        message(WARNING
             "UUID library not found. Some Drogon features may not work.\n"
             "To install: sudo apt-get install uuid-dev")
     endif()
@@ -49,7 +49,7 @@ if(NOT Jsoncpp_FOUND)
     if(AUTO_DOWNLOAD_DEPENDENCIES)
         message(STATUS "Jsoncpp not found. Attempting to download using FetchContent...")
         include(FetchContent)
-        
+
         # CMAKE_POSITION_INDEPENDENT_CODE is already set globally above
         FetchContent_Declare(
             jsoncpp
@@ -57,19 +57,19 @@ if(NOT Jsoncpp_FOUND)
             GIT_TAG        1.9.5
             GIT_SHALLOW    TRUE
         )
-        
+
         # Set jsoncpp build options
         set(JSONCPP_WITH_TESTS OFF CACHE BOOL "" FORCE)
         set(JSONCPP_WITH_POST_BUILD_UNITTEST OFF CACHE BOOL "" FORCE)
         set(JSONCPP_WITH_WARNING_AS_ERROR OFF CACHE BOOL "" FORCE)
         set(JSONCPP_WITH_CMAKE_PACKAGE OFF CACHE BOOL "" FORCE)  # Disable to avoid path issues
         set(JSONCPP_INCLUDE_DIR "${CMAKE_BINARY_DIR}/_deps/jsoncpp-src/include" CACHE PATH "" FORCE)
-        
+
         # Build jsoncpp as shared library with -fPIC for linking into shared libraries
         set(BUILD_SHARED_LIBS ON CACHE BOOL "" FORCE)
-        
+
         FetchContent_MakeAvailable(jsoncpp)
-        
+
         # Ensure jsoncpp is built with -fPIC
         if(TARGET jsoncpp_lib)
             set_target_properties(jsoncpp_lib PROPERTIES
@@ -81,44 +81,44 @@ if(NOT Jsoncpp_FOUND)
                 POSITION_INDEPENDENT_CODE ON
             )
         endif()
-        
+
         # After FetchContent_MakeAvailable, jsoncpp should be available
         # Use source include directory (always exists)
         set(JSONCPP_INCLUDE_DIRS "${CMAKE_BINARY_DIR}/_deps/jsoncpp-src/include" CACHE PATH "Jsoncpp include directories" FORCE)
-        
+
         # For library, jsoncpp_lib target should be available
         # The actual library file is built in build/lib/ directory, not _deps/jsoncpp-build/
         # Find the actual library file location
         find_library(JSONCPP_LIBRARIES
             NAMES jsoncpp
-            PATHS 
+            PATHS
                 ${CMAKE_BINARY_DIR}/lib
                 ${CMAKE_BINARY_DIR}/_deps/jsoncpp-build
                 ${CMAKE_BINARY_DIR}/_deps/jsoncpp-build/lib
             NO_DEFAULT_PATH
         )
-        
+
         # If not found yet (not built), use expected path in build/lib/
         if(NOT JSONCPP_LIBRARIES)
             set(JSONCPP_LIBRARIES "${CMAKE_BINARY_DIR}/lib/libjsoncpp.a")
         endif()
-        
+
         # Verify include directory exists
         if(NOT EXISTS "${JSONCPP_INCLUDE_DIRS}/json/json.h")
-            message(FATAL_ERROR 
+            message(FATAL_ERROR
                 "Jsoncpp include directory not found: ${JSONCPP_INCLUDE_DIRS}/json/json.h")
         endif()
-        
+
         # Set variables that Drogon's FindJsoncpp.cmake expects
         set(JSONCPP_LIBRARIES ${JSONCPP_LIBRARIES} CACHE FILEPATH "Jsoncpp library" FORCE)
         set(Jsoncpp_FOUND TRUE CACHE BOOL "Jsoncpp found" FORCE)
-        
+
         message(STATUS "✓ Jsoncpp downloaded and configured successfully")
         message(STATUS "  Include: ${JSONCPP_INCLUDE_DIRS}")
         message(STATUS "  Library target: jsoncpp_lib (will be built automatically)")
         message(STATUS "  Library path: ${JSONCPP_LIBRARIES}")
     else()
-        message(FATAL_ERROR 
+        message(FATAL_ERROR
             "Jsoncpp not found. Drogon requires jsoncpp.\n"
             "To install: sudo apt-get install libjsoncpp-dev\n"
             "Or enable auto-download: cmake .. -DAUTO_DOWNLOAD_DEPENDENCIES=ON")
@@ -136,40 +136,40 @@ option(DROGON_USE_FETCHCONTENT "Use FetchContent to download Drogon automaticall
 
 if(DROGON_USE_FETCHCONTENT)
     message(STATUS "Using FetchContent to download Drogon automatically...")
-    
+
     # Ensure FetchContent is included (may have been included for jsoncpp)
     if(NOT DEFINED FetchContent_MakeAvailable)
         include(FetchContent)
     endif()
-    
+
     # Configure Drogon version (use latest stable release)
     set(DROGON_VERSION "v1.9.0" CACHE STRING "Drogon version to fetch")
-    
+
     FetchContent_Declare(
         drogon
         GIT_REPOSITORY https://github.com/drogonframework/drogon.git
         GIT_TAG        ${DROGON_VERSION}
         GIT_SHALLOW   TRUE
     )
-    
+
     # Set Drogon build options
     set(BUILD_TESTING OFF CACHE BOOL "" FORCE)
     set(BUILD_EXAMPLES OFF CACHE BOOL "" FORCE)
     set(BUILD_ORM OFF CACHE BOOL "" FORCE)  # Disable ORM if not needed
-    
+
     # UUID is optional for Drogon, but FindUUID.cmake may fail if not found
     # We'll let Drogon handle it - it should work without UUID
-    
+
     # Make Drogon available (dependencies should be ready now)
     FetchContent_MakeAvailable(drogon)
-    
+
     message(STATUS "✓ Drogon fetched and built successfully")
 else()
     message(STATUS "Looking for system-installed Drogon...")
     find_package(Drogon REQUIRED)
-    
+
     if(NOT Drogon_FOUND)
-        message(FATAL_ERROR 
+        message(FATAL_ERROR
             "Drogon not found. Please install Drogon or set DROGON_USE_FETCHCONTENT=ON")
     endif()
 endif()
@@ -192,7 +192,7 @@ if(NOT OpenCV_FOUND)
 endif()
 
 if(NOT OpenCV_FOUND)
-    message(WARNING 
+    message(WARNING
         "OpenCV not found. CVEDIX SDK features may not work.\n"
         "To install: sudo apt-get install libopencv-dev")
 else()
@@ -207,19 +207,19 @@ endif()
 if(AUTO_DOWNLOAD_DEPENDENCIES)
     message(STATUS "Downloading Plog logging library...")
     include(FetchContent)
-    
+
     FetchContent_Declare(
         plog
         GIT_REPOSITORY https://github.com/SergiusTheBest/plog.git
         GIT_TAG        1.1.11
         GIT_SHALLOW    TRUE
     )
-    
+
     FetchContent_MakeAvailable(plog)
-    
+
     # Plog is header-only, so we just need to add the include directory
     set(PLOG_INCLUDE_DIR "${CMAKE_BINARY_DIR}/_deps/plog-src/include" CACHE PATH "Plog include directory" FORCE)
-    
+
     message(STATUS "✓ Plog downloaded and configured successfully")
     message(STATUS "  Include: ${PLOG_INCLUDE_DIR}")
 else()
@@ -230,11 +230,11 @@ else()
             /usr/local/include
             ${CMAKE_SOURCE_DIR}/third_party/plog/include
     )
-    
+
     if(PLOG_INCLUDE_DIR)
         message(STATUS "✓ Found system Plog: ${PLOG_INCLUDE_DIR}")
     else()
-        message(FATAL_ERROR 
+        message(FATAL_ERROR
             "Plog not found. Please install Plog or enable auto-download:\n"
             "  cmake .. -DAUTO_DOWNLOAD_DEPENDENCIES=ON")
     endif()
@@ -365,7 +365,7 @@ find_path(CEREAL_INCLUDE_DIR cereal/cereal.hpp
 if(NOT CEREAL_INCLUDE_DIR AND AUTO_DOWNLOAD_DEPENDENCIES)
     message(STATUS "Cereal not found. Downloading headers only...")
     include(FetchContent)
-    
+
     # Download cereal source without building (header-only library)
     FetchContent_Declare(
         cereal
@@ -373,7 +373,7 @@ if(NOT CEREAL_INCLUDE_DIR AND AUTO_DOWNLOAD_DEPENDENCIES)
         GIT_TAG        v1.3.2
         GIT_SHALLOW    TRUE
     )
-    
+
     # Only fetch, don't configure/build (cereal is header-only)
     FetchContent_GetProperties(cereal)
     if(NOT cereal_POPULATED)
@@ -385,14 +385,14 @@ endif()
 
 if(CEREAL_INCLUDE_DIR)
     message(STATUS "✓ Found Cereal: ${CEREAL_INCLUDE_DIR}")
-    
+
     # CVEDIX SDK expects cereal at ../../../third_party/cereal relative to /opt/cvedix/include/cvedix/nodes/broker/cereal_archive/
     # This means it looks for /opt/cvedix/include/cvedix/third_party/cereal/cereal.hpp
     # Create the exact directory structure CVEDIX SDK expects in build directory
     set(CVEDIX_THIRD_PARTY_DIR "${CMAKE_BINARY_DIR}/cvedix_third_party")
     set(CVEDIX_CEREAL_DIR "${CVEDIX_THIRD_PARTY_DIR}/cereal")
     file(MAKE_DIRECTORY "${CVEDIX_THIRD_PARTY_DIR}")
-    
+
     # Create symlink: build/cvedix_third_party/cereal -> cereal include dir
     if(NOT EXISTS "${CVEDIX_CEREAL_DIR}")
         execute_process(
@@ -408,7 +408,7 @@ if(CEREAL_INCLUDE_DIR)
             message(WARNING "  This may cause compilation errors. Run: sudo ./scripts/fix_all_symlinks.sh")
         endif()
     endif()
-    
+
     # Check if system symlink exists (required for CVEDIX SDK)
     # Check both /usr/include/cvedix and /opt/cvedix/include/cvedix locations
     set(CEREAL_SYMLINK_FOUND FALSE)
@@ -419,7 +419,7 @@ if(CEREAL_INCLUDE_DIR)
         message(STATUS "✓ Cereal symlink found at /opt/cvedix/include/cvedix/third_party/cereal")
         set(CEREAL_SYMLINK_FOUND TRUE)
     endif()
-    
+
     if(NOT CEREAL_SYMLINK_FOUND)
         message(WARNING "")
         message(WARNING "⚠ CVEDIX SDK requires cereal symlink")
@@ -461,7 +461,7 @@ find_path(CPP_BASE64_INCLUDE_DIR base64.h
 if(NOT CPP_BASE64_INCLUDE_DIR AND AUTO_DOWNLOAD_DEPENDENCIES)
     message(STATUS "cpp-base64 not found. Downloading headers only...")
     include(FetchContent)
-    
+
     # Download cpp-base64 source without building (header-only library)
     FetchContent_Declare(
         cpp-base64
@@ -469,7 +469,7 @@ if(NOT CPP_BASE64_INCLUDE_DIR AND AUTO_DOWNLOAD_DEPENDENCIES)
         GIT_TAG        master
         GIT_SHALLOW    TRUE
     )
-    
+
     # Only fetch, don't configure/build (cpp-base64 is header-only)
     FetchContent_GetProperties(cpp-base64)
     if(NOT cpp-base64_POPULATED)
@@ -481,14 +481,14 @@ endif()
 
 if(CPP_BASE64_INCLUDE_DIR)
     message(STATUS "✓ Found cpp-base64: ${CPP_BASE64_INCLUDE_DIR}")
-    
+
     # CVEDIX SDK expects cpp_base64 at ../../../third_party/cpp_base64 relative to /opt/cvedix/include/cvedix/nodes/broker/
     # This means it looks for /opt/cvedix/include/cvedix/third_party/cpp_base64/base64.h
     # Create the exact directory structure CVEDIX SDK expects in build directory
     set(CVEDIX_THIRD_PARTY_DIR "${CMAKE_BINARY_DIR}/cvedix_third_party")
     set(CVEDIX_CPP_BASE64_DIR "${CVEDIX_THIRD_PARTY_DIR}/cpp_base64")
     file(MAKE_DIRECTORY "${CVEDIX_THIRD_PARTY_DIR}")
-    
+
     # Create symlink: build/cvedix_third_party/cpp_base64 -> cpp-base64 source dir
     if(NOT EXISTS "${CVEDIX_CPP_BASE64_DIR}")
         execute_process(
@@ -504,7 +504,7 @@ if(CPP_BASE64_INCLUDE_DIR)
             message(WARNING "  This may cause compilation errors. Run: sudo ./scripts/fix_all_symlinks.sh")
         endif()
     endif()
-    
+
     # Check if system symlink exists (required for CVEDIX SDK)
     # Check both /usr/include/cvedix and /opt/cvedix/include/cvedix locations
     set(CPP_BASE64_SYMLINK_FOUND FALSE)
@@ -515,7 +515,7 @@ if(CPP_BASE64_INCLUDE_DIR)
         message(STATUS "✓ cpp-base64 symlink found at /opt/cvedix/include/cvedix/third_party/cpp_base64")
         set(CPP_BASE64_SYMLINK_FOUND TRUE)
     endif()
-    
+
     if(NOT CPP_BASE64_SYMLINK_FOUND)
         message(WARNING "")
         message(WARNING "⚠ CVEDIX SDK requires cpp-base64 symlink")
@@ -579,7 +579,7 @@ if(EXISTS "/opt/cvedix/lib/cmake/cvedix/cvedix-config.cmake")
     message(STATUS "Found CVEDIX SDK in /opt/cvedix, adding to CMAKE_PREFIX_PATH")
     list(APPEND CMAKE_PREFIX_PATH "/opt/cvedix")
     message(STATUS "✓ Added /opt/cvedix to CMAKE_PREFIX_PATH")
-    
+
     # Create symlink structure for CVEDIX SDK third_party dependencies
     # CVEDIX SDK headers use relative paths like ../../third_party/cpp_base64/base64.h
     # We need to create the structure in /opt/cvedix/include/cvedix/third_party/
@@ -784,7 +784,7 @@ if(TARGET cvedix::cvedix_instance_sdk)
                     break()
                 endif()
             endforeach()
-            
+
             # Only include CUDA libraries if they are available
             if(IS_CUDA_LIB)
                 if(OPENCV_CUDA_AVAILABLE)
@@ -794,7 +794,7 @@ if(TARGET cvedix::cvedix_instance_sdk)
                 list(APPEND FILTERED_LIBS "${LIB}")
             endif()
         endforeach()
-        
+
         # Update the target properties if needed
         if(NOT "${CVEDIX_LINK_LIBS}" STREQUAL "${FILTERED_LIBS}")
             set_target_properties(cvedix::cvedix_instance_sdk PROPERTIES
@@ -823,7 +823,7 @@ if(OpenCV_FOUND)
             opencv_highgui
             opencv_dnn
         )
-        
+
         # Conditionally add CUDA libraries if available
         if(OPENCV_CUDA_AVAILABLE)
             # Check which CUDA targets exist and add them
@@ -836,12 +836,12 @@ if(OpenCV_FOUND)
         else()
             message(STATUS "✓ Linking OpenCV without CUDA support")
         endif()
-        
+
         target_link_libraries(edge_ai_api PRIVATE ${OPENCV_BASE_LIBS})
     else()
         # Fallback to pkg-config libraries
         set(OPENCV_LIBS ${OpenCV_LIBRARIES})
-        
+
         # Filter CUDA libraries based on availability
         if(NOT OPENCV_CUDA_AVAILABLE)
             # Remove CUDA modules from the list if CUDA is not available
@@ -850,7 +850,7 @@ if(OpenCV_FOUND)
         else()
             message(STATUS "✓ Using OpenCV libraries from pkg-config (with CUDA)")
         endif()
-        
+
         target_link_libraries(edge_ai_api PRIVATE ${OPENCV_LIBS})
     endif()
     message(STATUS "✓ OpenCV linked to edge_ai_api")
@@ -861,12 +861,12 @@ endif()
 if(CMAKE_CXX_COMPILER_ID STREQUAL "GNU" OR CMAKE_CXX_COMPILER_ID MATCHES "Clang")
     if(OPENCV_CUDA_AVAILABLE)
         # With CUDA available, use --as-needed to only link what's needed
-        target_link_options(edge_ai_api PRIVATE 
+        target_link_options(edge_ai_api PRIVATE
             -Wl,--as-needed
         )
     else()
         # Without CUDA, allow missing shared library dependencies as fallback
-        target_link_options(edge_ai_api PRIVATE 
+        target_link_options(edge_ai_api PRIVATE
             -Wl,--as-needed
             -Wl,--allow-shlib-undefined
         )
@@ -908,21 +908,21 @@ if(EXISTS "${CMAKE_SOURCE_DIR}/third_party/hwinfo/CMakeLists.txt")
 elseif(AUTO_DOWNLOAD_DEPENDENCIES)
     # Use FetchContent to download hwinfo automatically
     message(STATUS "hwinfo submodule not found. Downloading via FetchContent...")
-    
+
     # Ensure FetchContent is included (may have been included for other dependencies)
     if(NOT DEFINED FetchContent_MakeAvailable)
         include(FetchContent)
     endif()
-    
+
     FetchContent_Declare(
         hwinfo
         GIT_REPOSITORY https://github.com/lfreist/hwinfo.git
         GIT_TAG        main
         GIT_SHALLOW    TRUE
     )
-    
+
     FetchContent_MakeAvailable(hwinfo)
-    
+
     target_link_libraries(edge_ai_api PRIVATE lfreist-hwinfo::hwinfo)
     message(STATUS "✓ hwinfo downloaded and linked to edge_ai_api")
     # Add system_info_handler if hwinfo is available
@@ -938,7 +938,7 @@ else()
 endif()
 
 # Additional libraries (if needed)
-# target_link_libraries(edge_ai_api PRIVATE 
+# target_link_libraries(edge_ai_api PRIVATE
 #     OpenSSL::SSL      # Uncomment when using cache
 #     OpenSSL::Crypto   # Uncomment when using cache
 # )
@@ -1006,7 +1006,7 @@ option(CVEDIX_WITH_MQTT "Enable MQTT support (requires CVEDIX SDK built with MQT
 if(CVEDIX_WITH_MQTT)
     target_compile_definitions(edge_ai_api PRIVATE CVEDIX_WITH_MQTT)
     message(STATUS "✓ MQTT support enabled (CVEDIX_WITH_MQTT)")
-    
+
     # cvedix_mqtt_client uses libmosquitto, need to link it
     find_library(MOSQUITTO_LIBRARY
         NAMES mosquitto
@@ -1016,7 +1016,7 @@ if(CVEDIX_WITH_MQTT)
             /usr/local/lib
             /opt/cvedix/lib
     )
-    
+
     if(MOSQUITTO_LIBRARY)
         target_link_libraries(edge_ai_api PRIVATE ${MOSQUITTO_LIBRARY})
         message(STATUS "✓ Linked mosquitto library: ${MOSQUITTO_LIBRARY}")

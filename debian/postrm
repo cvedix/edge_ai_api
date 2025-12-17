@@ -17,4 +17,3 @@ if [ -d "$LIB_DIR" ]; then
 fi
 
 exit 0
-

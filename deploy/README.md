@@ -133,11 +133,11 @@ DIRS := $(shell bash -c 'source deploy/create_directories.sh; get_directory_list
 
 ### Lợi ích
 
-✅ **Single Source of Truth** - Chỉ cần sửa một file  
-✅ **Đồng bộ tự động** - Dev và production luôn giống nhau  
-✅ **Dễ bảo trì** - Không cần sửa nhiều file  
-✅ **Tránh lỗi** - Không còn thư mục lạ do typo  
-✅ **Consistent permissions** - Quyền được quản lý tập trung  
+✅ **Single Source of Truth** - Chỉ cần sửa một file
+✅ **Đồng bộ tự động** - Dev và production luôn giống nhau
+✅ **Dễ bảo trì** - Không cần sửa nhiều file
+✅ **Tránh lỗi** - Không còn thư mục lạ do typo
+✅ **Consistent permissions** - Quyền được quản lý tập trung
 
 ### Migration
 

@@ -2,7 +2,7 @@
 # ============================================
 # Edge AI API - Create Directories Helper
 # ============================================
-# 
+#
 # Script helper để tạo thư mục từ directories.conf
 # Có thể được dùng bởi:
 #   - debian/rules (Makefile)
@@ -23,12 +23,12 @@
 create_app_directories() {
     local INSTALL_DIR="$1"
     local PROJECT_ROOT="${2:-$(pwd)}"
-    
+
     if [ -z "$INSTALL_DIR" ]; then
         echo "Error: INSTALL_DIR is required" >&2
         return 1
     fi
-    
+
     # Find directories.conf
     local DIRS_CONF=""
     if [ -f "$PROJECT_ROOT/deploy/directories.conf" ]; then
@@ -55,7 +55,7 @@ create_app_directories() {
             ["lib"]="755"
         )
     fi
-    
+
     # Load configuration if file exists
     if [ -n "$DIRS_CONF" ] && [ -f "$DIRS_CONF" ]; then
         # Source the config file in a subshell to avoid polluting current environment
@@ -67,27 +67,27 @@ declare -p APP_DIRECTORIES
 TEMP_EOF
         local dirs_output=$(bash "$temp_script" "$DIRS_CONF" 2>/dev/null)
         rm -f "$temp_script"
-        
+
         # Evaluate the output to get the array
         if [ -n "$dirs_output" ]; then
             eval "$dirs_output"
         fi
     fi
-    
+
     # Create each directory
     for dir_name in "${!APP_DIRECTORIES[@]}"; do
         local dir_path="$INSTALL_DIR/$dir_name"
         local dir_perms="${APP_DIRECTORIES[$dir_name]}"
-        
+
         # Create directory
         mkdir -p "$dir_path" 2>/dev/null || true
-        
+
         # Set permissions if specified
         if [ -n "$dir_perms" ] && [ "$dir_perms" != "0" ]; then
             chmod "$dir_perms" "$dir_path" 2>/dev/null || true
         fi
     done
-    
+
     return 0
 }
 
@@ -95,7 +95,7 @@ TEMP_EOF
 # Returns space-separated list of directory names
 get_directory_list() {
     local PROJECT_ROOT="${1:-$(pwd)}"
-    
+
     # Find directories.conf
     local DIRS_CONF=""
     if [ -f "$PROJECT_ROOT/deploy/directories.conf" ]; then
@@ -103,7 +103,7 @@ get_directory_list() {
     elif [ -f "deploy/directories.conf" ]; then
         DIRS_CONF="deploy/directories.conf"
     fi
-    
+
     # Load configuration
     if [ -n "$DIRS_CONF" ] && [ -f "$DIRS_CONF" ]; then
         local temp_script=$(mktemp)
@@ -131,4 +131,3 @@ if [ "${BASH_SOURCE[0]}" = "${0}" ]; then
     fi
     create_app_directories "$1" "${2:-$(pwd)}"
 fi
-

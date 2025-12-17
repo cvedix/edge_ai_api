@@ -2,7 +2,7 @@
 # ============================================
 # Load Environment Variables from .env file
 # ============================================
-# 
+#
 # This script loads environment variables from .env file
 # and runs the edge_ai_api server.
 #
@@ -58,7 +58,7 @@ fi
 if [ ! -f "$ENV_FILE" ]; then
     echo "Warning: .env file not found at $ENV_FILE"
     echo "Creating from .env.example..."
-    
+
     if [ -f "$PROJECT_ROOT/.env.example" ]; then
         cp "$PROJECT_ROOT/.env.example" "$ENV_FILE"
         echo "Created .env file from .env.example"
@@ -187,7 +187,7 @@ if [ "$LOAD_ONLY" = true ]; then
     fi
     echo ""
     echo "Note: Use 'source $0 --load-only' to load variables into current shell session."
-    return 0 2>/dev/null || exit 0
+    return 0
 fi
 
 # Check if build directory exists
@@ -258,4 +258,3 @@ echo ""
 # Run the server
 cd "$(dirname "$EXECUTABLE")" || exit 1
 ./$(basename "$EXECUTABLE")
-

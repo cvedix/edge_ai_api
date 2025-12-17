@@ -2,7 +2,7 @@
 # ============================================
 # Edge AI API - Setup Face Database Permissions
 # ============================================
-# 
+#
 # Script này tạo và cấp quyền cho face_database.txt ở tất cả các vị trí có thể.
 # Đảm bảo service có quyền tạo và ghi vào database file.
 #
@@ -49,7 +49,7 @@ while [[ $# -gt 0 ]]; do
 done
 
 # Check if running as root
-if [ "$EUID" -ne 0 ]; then 
+if [ "$EUID" -ne 0 ]; then
     echo -e "${RED}Error: Script này cần chạy với quyền root (sudo)${NC}"
     echo "Usage: sudo $0"
     exit 1
@@ -84,10 +84,10 @@ fi
 setup_database_file() {
     local db_path="$1"
     local description="$2"
-    
+
     echo -e "${BLUE}Setting up: $description${NC}"
     echo "  Path: $db_path"
-    
+
     # Create parent directory if needed
     local parent_dir=$(dirname "$db_path")
     if [ ! -d "$parent_dir" ]; then
@@ -96,7 +96,7 @@ setup_database_file() {
     else
         echo -e "  ${GREEN}✓${NC} Thư mục đã tồn tại: $parent_dir"
     fi
-    
+
     # Create database file if it doesn't exist
     if [ ! -f "$db_path" ]; then
         touch "$db_path"
@@ -104,12 +104,12 @@ setup_database_file() {
     else
         echo -e "  ${GREEN}✓${NC} File đã tồn tại: $db_path"
     fi
-    
+
     # Set ownership
     chown "$SERVICE_USER:$SERVICE_GROUP" "$db_path"
     chown -R "$SERVICE_USER:$SERVICE_GROUP" "$parent_dir"
     echo -e "  ${GREEN}✓${NC} Đã set ownership: $SERVICE_USER:$SERVICE_GROUP"
-    
+
     # Set permissions
     if [ "$PERMISSION_MODE" = "full" ]; then
         chmod 666 "$db_path"  # Full: -rw-rw-rw- (mọi người có thể đọc/ghi)
@@ -120,7 +120,7 @@ setup_database_file() {
         chmod 755 "$parent_dir"  # Standard: drwxr-xr-x
         echo -e "  ${GREEN}✓${NC} Đã cấp quyền STANDARD (644) cho file"
     fi
-    
+
     # Verify write permission
     if [ -w "$db_path" ]; then
         echo -e "  ${GREEN}✓${NC} Xác nhận: Có quyền ghi vào file"
@@ -128,7 +128,7 @@ setup_database_file() {
         echo -e "  ${RED}✗${NC} Lỗi: Không có quyền ghi vào file"
         return 1
     fi
-    
+
     echo ""
     return 0
 }
@@ -194,5 +194,3 @@ echo "Để thay đổi quyền sau khi setup:"
 echo "  sudo $0 --full-permissions    # Cấp quyền 666"
 echo "  sudo $0 --standard-permissions # Cấp quyền 644 (mặc định)"
 echo ""
-
-

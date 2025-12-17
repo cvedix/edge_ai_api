@@ -89,7 +89,7 @@ echo "  FPS: $FPS"
 
 if [ "$RUNNING" = "true" ]; then
     print_status "OK" "Instance đang chạy"
-    
+
     if (( $(echo "$FPS > 0" | bc -l) )); then
         print_status "SUCCESS" "Instance đang xử lý frames (FPS: $FPS)"
     else
@@ -111,17 +111,17 @@ BUILD_OUTPUT_DIR="./build/output/${INSTANCE_ID}"
 if [ -d "$OUTPUT_DIR" ]; then
     FILE_COUNT=$(find "$OUTPUT_DIR" -type f | wc -l)
     LATEST_FILE=$(find "$OUTPUT_DIR" -type f -printf '%T@ %p\n' | sort -n | tail -1 | cut -d' ' -f2-)
-    
+
     if [ $FILE_COUNT -gt 0 ]; then
         print_status "SUCCESS" "Tìm thấy $FILE_COUNT file(s) trong $OUTPUT_DIR"
-        
+
         if [ -n "$LATEST_FILE" ]; then
             FILE_TIME=$(stat -c %y "$LATEST_FILE" 2>/dev/null || stat -f "%Sm" "$LATEST_FILE" 2>/dev/null)
             FILE_SIZE=$(du -h "$LATEST_FILE" | cut -f1)
             echo "  File mới nhất: $(basename "$LATEST_FILE")"
             echo "  Thời gian: $FILE_TIME"
             echo "  Kích thước: $FILE_SIZE"
-            
+
             # Kiểm tra file có được tạo gần đây không (trong 1 phút)
             FILE_AGE=$(find "$OUTPUT_DIR" -type f -mmin -1 | wc -l)
             if [ $FILE_AGE -gt 0 ]; then
@@ -130,7 +130,7 @@ if [ -d "$OUTPUT_DIR" ]; then
                 print_status "WARNING" "Không có file mới trong 1 phút qua"
             fi
         fi
-        
+
         echo ""
         echo "Xem các file gần đây:"
         echo "  ls -lht $OUTPUT_DIR | head -10"
@@ -215,7 +215,7 @@ if [ "$RUNNING" = "true" ]; then
         echo "Các dấu hiệu thành công:"
         echo "  ✓ Instance đang chạy (running = true)"
         echo "  ✓ FPS > 0 (đang xử lý frames)"
-        
+
         if [ -d "$OUTPUT_DIR" ] || [ -d "$BUILD_OUTPUT_DIR" ]; then
             FILE_COUNT=$(find "$OUTPUT_DIR" "$BUILD_OUTPUT_DIR" -type f 2>/dev/null | wc -l)
             if [ $FILE_COUNT -gt 0 ]; then
@@ -259,4 +259,3 @@ echo ""
 echo "Kiểm tra FPS định kỳ:"
 echo "  watch -n 2 'curl -s ${API_BASE}/instances/${INSTANCE_ID} | jq \".fps\"'"
 echo ""
-

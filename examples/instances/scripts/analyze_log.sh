@@ -46,7 +46,7 @@ if [ $? -eq 0 ]; then
         outputType: .output.type,
         message: .status.message
     }'
-    
+
     OUTPUT_TYPE=$(echo "$OUTPUT_INFO" | jq -r '.output.type')
     if [ "$OUTPUT_TYPE" = "FILE" ]; then
         echo ""
@@ -104,13 +104,13 @@ if [ -n "$FOUND_DIR" ]; then
     echo -e "${GREEN}✓ Tìm thấy output directory: $FOUND_DIR${NC}"
     FILE_COUNT=$(find "$FOUND_DIR" -type f 2>/dev/null | wc -l)
     echo "  Số lượng files: $FILE_COUNT"
-    
+
     if [ "$FILE_COUNT" -gt 0 ]; then
         echo ""
         echo "  5 files mới nhất:"
         ls -lht "$FOUND_DIR" | head -6 | tail -5
         echo ""
-        
+
         LATEST_FILE=$(ls -t "$FOUND_DIR" | head -1)
         if [ -n "$LATEST_FILE" ]; then
             FILE_SIZE=$(du -h "$FOUND_DIR/$LATEST_FILE" | cut -f1)
@@ -165,4 +165,3 @@ fi
 echo "=========================================="
 echo "Kết thúc phân tích"
 echo "=========================================="
-

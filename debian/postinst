@@ -14,10 +14,10 @@ SERVICE_NAME="edge-ai-api"
 # Function to bundle libraries (libraries should already be bundled in package)
 bundle_libraries() {
     echo "Setting up bundled libraries..."
-    
+
     # Create lib directory if it doesn't exist (should be created by package, but ensure it exists)
     mkdir -p "$LIB_DIR"
-    
+
     # Check if libraries exist
     if [ ! -d "$LIB_DIR" ] || [ -z "$(ls -A "$LIB_DIR" 2>/dev/null)" ]; then
         echo "Warning: Library directory not found or empty at $LIB_DIR"
@@ -25,7 +25,7 @@ bundle_libraries() {
         # Don't fail installation, just warn
         return 0
     fi
-    
+
     # Create symlinks for .so files (ldconfig requires symlinks)
     # For files like libdrogon.so.1.8.0, create libdrogon.so.1 -> libdrogon.so.1.8.0
     # and libdrogon.so -> libdrogon.so.1
@@ -36,23 +36,23 @@ bundle_libraries() {
             lib_major="${lib_base%.*}"
             # Extract base name without version (e.g., libdrogon.so.1 -> libdrogon.so)
             lib_base_name="${lib_major%.*}"
-            
+
             # Create major version symlink (libdrogon.so.1 -> libdrogon.so.1.8.0)
             if [ "$lib_major" != "$lib_base" ] && [ ! -L "$LIB_DIR/$lib_major" ]; then
                 ln -sf "$lib_base" "$LIB_DIR/$lib_major" 2>/dev/null || true
             fi
-            
+
             # Create base symlink (libdrogon.so -> libdrogon.so.1)
             if [ "$lib_base_name" != "$lib_major" ] && [ ! -L "$LIB_DIR/$lib_base_name" ]; then
                 ln -sf "$lib_major" "$LIB_DIR/$lib_base_name" 2>/dev/null || true
             fi
         fi
     done
-    
+
     # Create ldconfig configuration
     echo "$LIB_DIR" > /etc/ld.so.conf.d/edge-ai-api.conf
     ldconfig 2>&1 | grep -v "is not a symbolic link" || true
-    
+
     echo "Libraries configured successfully."
 }
 
@@ -149,7 +149,7 @@ if [ -f "$BIN_DIR/edge_ai_api" ]; then
             echo "$MISSING_LIBS"
         fi
     fi
-    
+
     # Check RPATH
     if command -v patchelf >/dev/null 2>&1; then
         RPATH=$(patchelf --print-rpath "$BIN_DIR/edge_ai_api" 2>/dev/null || echo "")
@@ -162,7 +162,7 @@ if [ -f "/etc/systemd/system/${SERVICE_NAME}.service" ]; then
     echo "Enabling systemd service..."
     systemctl daemon-reload
     systemctl enable "${SERVICE_NAME}.service" || true
-    
+
     echo "Starting systemd service..."
     if systemctl start "${SERVICE_NAME}.service"; then
         echo "Service started successfully."
@@ -186,4 +186,3 @@ echo "To restart the service:"
 echo "  sudo systemctl restart ${SERVICE_NAME}"
 
 exit 0
-

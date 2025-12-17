@@ -152,4 +152,3 @@ Hoặc sử dụng script:
 - Test executable nằm tại `build/bin/edge_ai_api_tests` (không phải `build/tests/`)
 - Sử dụng script `./scripts/run_tests.sh` để tự động tìm đúng vị trí
 - Hoặc chạy trực tiếp: `./build/bin/edge_ai_api_tests`
-

@@ -2,7 +2,7 @@
 # ============================================
 # Edge AI API - Complete Build & Deploy Script
 # ============================================
-# 
+#
 # Script này tổng hợp tất cả các bước:
 # 1. Cài đặt dependencies hệ thống
 # 2. Build project
@@ -121,7 +121,7 @@ echo "  No auto-start:     $NO_START"
 echo ""
 
 # Check if running as root
-if [ "$EUID" -ne 0 ]; then 
+if [ "$EUID" -ne 0 ]; then
     echo -e "${RED}Error: Script này cần chạy với quyền sudo${NC}"
     echo "Usage: sudo ./deploy.sh"
     exit 1
@@ -132,7 +132,7 @@ fi
 # ============================================
 if [ "$SKIP_DEPS" = false ]; then
     echo -e "${BLUE}[1/6]${NC} Cài đặt system dependencies..."
-    
+
     # Detect OS
     if [ -f /etc/os-release ]; then
         . /etc/os-release
@@ -141,28 +141,28 @@ if [ "$SKIP_DEPS" = false ]; then
         echo "Cannot detect OS. Assuming Ubuntu/Debian"
         OS="ubuntu"
     fi
-    
+
     echo "Detected OS: $OS"
     echo ""
-    
+
     # Install dependencies based on OS
     if [ "$OS" = "ubuntu" ] || [ "$OS" = "debian" ]; then
         echo "Installing dependencies for Ubuntu/Debian..."
-        
+
         # Try to update package list, but continue even if some repositories fail
         echo "Updating package lists..."
         set +e  # Temporarily disable exit on error
         apt-get update > /dev/null 2>&1
         UPDATE_EXIT_CODE=$?
         set -e  # Re-enable exit on error
-        
+
         if [ $UPDATE_EXIT_CODE -eq 0 ]; then
             echo -e "${GREEN}✓${NC} Package lists updated successfully"
         else
             echo -e "${YELLOW}⚠${NC}  Some repositories had errors (this is often OK)"
             echo "  Continuing with installation anyway..."
         fi
-        
+
         # Check if packages are already installed
         echo "Installing required packages..."
         set +e  # Temporarily disable exit on error
@@ -177,7 +177,7 @@ if [ "$SKIP_DEPS" = false ]; then
             pkg-config
         INSTALL_EXIT_CODE=$?
         set -e  # Re-enable exit on error
-        
+
         if [ $INSTALL_EXIT_CODE -eq 0 ]; then
             echo -e "${GREEN}✓${NC} All packages installed successfully"
         else
@@ -185,12 +185,12 @@ if [ "$SKIP_DEPS" = false ]; then
             echo "  This might be OK if packages are already installed"
             echo "  If build fails, try: sudo ./build.sh --skip-deps"
         fi
-        
+
         echo -e "${GREEN}✓${NC} Dependencies installation completed!"
-        
+
     elif [ "$OS" = "centos" ] || [ "$OS" = "rhel" ] || [ "$OS" = "fedora" ]; then
         echo "Installing dependencies for CentOS/RHEL/Fedora..."
-        
+
         if command -v dnf &> /dev/null; then
             dnf install -y \
                 gcc-c++ \
@@ -212,7 +212,7 @@ if [ "$SKIP_DEPS" = false ]; then
                 libuuid-devel \
                 pkgconfig
         fi
-        
+
         echo -e "${GREEN}✓${NC} Dependencies installed successfully!"
     else
         echo -e "${YELLOW}⚠${NC}  Unknown OS. Please install dependencies manually"
@@ -229,27 +229,27 @@ fi
 if [ "$SKIP_BUILD" = false ]; then
     echo -e "${BLUE}[2/6]${NC} Build project..."
     cd "$PROJECT_ROOT" || exit 1
-    
+
     # Check if CMakeLists.txt exists
     if [ ! -f "CMakeLists.txt" ]; then
         echo -e "${RED}Error: Không tìm thấy CMakeLists.txt trong $PROJECT_ROOT${NC}"
         exit 1
     fi
-    
+
     if [ ! -d "build" ]; then
         echo "Tạo thư mục build..."
         mkdir -p build
     fi
-    
+
     cd build
-    
+
     # Check if CMake is available
     if ! command -v cmake &> /dev/null; then
         echo -e "${RED}Error: CMake không được cài đặt${NC}"
         echo "Vui lòng cài đặt CMake hoặc chạy script với --skip-deps để cài dependencies"
         exit 1
     fi
-    
+
     if [ ! -f "CMakeCache.txt" ]; then
         echo "Chạy CMake..."
         if ! cmake ..; then
@@ -259,13 +259,13 @@ if [ "$SKIP_BUILD" = false ]; then
     else
         echo "CMake đã được cấu hình, chỉ build..."
     fi
-    
+
     # Check if make is available
     if ! command -v make &> /dev/null; then
         echo -e "${RED}Error: Make không được cài đặt${NC}"
         exit 1
     fi
-    
+
     echo "Build project (sử dụng tất cả CPU cores)..."
     CPU_CORES=$(nproc)
     echo "Sử dụng $CPU_CORES CPU cores..."
@@ -273,7 +273,7 @@ if [ "$SKIP_BUILD" = false ]; then
         echo -e "${RED}Error: Build failed${NC}"
         exit 1
     fi
-    
+
     cd ..
     echo -e "${GREEN}✓${NC} Build hoàn tất!"
     echo ""
@@ -416,15 +416,17 @@ LIB_SOURCE="$PROJECT_ROOT/build/lib"
 if [ -d "$LIB_SOURCE" ]; then
     echo "Copy shared libraries..."
     cd "$LIB_SOURCE"
-    
+
     LIB_COUNT=0
     # Copy all drogon, trantor, and jsoncpp libraries (including symlinks)
     for lib in libdrogon.so* libtrantor.so* libjsoncpp.so*; do
         if [ -e "$lib" ]; then
-            cp -P "$lib" "$LIB_DIR/" 2>/dev/null && LIB_COUNT=$((LIB_COUNT + 1)) || true
+            if cp -P "$lib" "$LIB_DIR/" 2>/dev/null; then
+                LIB_COUNT=$((LIB_COUNT + 1))
+            fi
         fi
     done
-    
+
     if [ $LIB_COUNT -gt 0 ]; then
         # Update library cache
         ldconfig
@@ -473,35 +475,35 @@ echo ""
 # ============================================
 if [ "$SKIP_FIXES" = false ]; then
     echo -e "${BLUE}[5/6]${NC} Fix các vấn đề cấu hình..."
-    
+
     # Fix uploads directory (already done in step 3, but ensure permissions)
     echo "Đảm bảo uploads directory có quyền đúng..."
     mkdir -p "$INSTALL_DIR/uploads"
     chown "$SERVICE_USER:$SERVICE_USER" "$INSTALL_DIR/uploads"
     chmod 755 "$INSTALL_DIR/uploads"
     echo -e "${GREEN}✓${NC} Uploads directory OK"
-    
+
     # Fix watchdog in service file (if service file exists)
     INSTALLED_SERVICE_FILE="/etc/systemd/system/${SERVICE_NAME}.service"
     if [ -f "$INSTALLED_SERVICE_FILE" ]; then
         echo "Fix watchdog configuration..."
-        
+
         # Backup service file
         if [ ! -f "${INSTALLED_SERVICE_FILE}.backup" ]; then
             cp "$INSTALLED_SERVICE_FILE" "${INSTALLED_SERVICE_FILE}.backup"
         fi
-        
+
         # Comment out WatchdogSec and NotifyAccess if not already commented
         sed -i 's/^WatchdogSec=/#WatchdogSec=/' "$INSTALLED_SERVICE_FILE" 2>/dev/null || true
         sed -i 's/^NotifyAccess=/#NotifyAccess=/' "$INSTALLED_SERVICE_FILE" 2>/dev/null || true
-        
+
         # Generate ReadWritePaths from APP_DIRECTORIES configuration
         READWRITE_PATHS=""
         for dir_name in "${!APP_DIRECTORIES[@]}"; do
             READWRITE_PATHS="$READWRITE_PATHS $INSTALL_DIR/$dir_name"
         done
-        READWRITE_PATHS=$(echo "$READWRITE_PATHS" | sed 's/^ *//')  # Trim leading spaces
-        
+        READWRITE_PATHS="${READWRITE_PATHS# }"  # Trim leading space
+
         # Update ReadWritePaths in service file
         if grep -q "^ReadWritePaths=" "$INSTALLED_SERVICE_FILE"; then
             # Replace existing ReadWritePaths
@@ -512,10 +514,10 @@ if [ "$SKIP_FIXES" = false ]; then
             sed -i "/^\[Install\]/i ReadWritePaths=$READWRITE_PATHS" "$INSTALLED_SERVICE_FILE"
             echo -e "${GREEN}✓${NC} Đã thêm ReadWritePaths vào service file"
         fi
-        
+
         echo -e "${GREEN}✓${NC} Service file đã được cập nhật"
     fi
-    
+
     echo ""
 else
     echo -e "${YELLOW}[5/6]${NC} Skip các bước fix"
@@ -539,7 +541,7 @@ READWRITE_PATHS=""
 for dir_name in "${!APP_DIRECTORIES[@]}"; do
     READWRITE_PATHS="$READWRITE_PATHS $INSTALL_DIR/$dir_name"
 done
-READWRITE_PATHS=$(echo "$READWRITE_PATHS" | sed 's/^ *//')  # Trim leading spaces
+READWRITE_PATHS="${READWRITE_PATHS# }"  # Trim leading space
 
 # Update service file paths and ReadWritePaths
 SERVICE_TEMP=$(mktemp)
@@ -590,11 +592,11 @@ if [ "$NO_START" = false ]; then
             exit 1
         fi
     fi
-    
+
     # Wait a moment for service to start
     echo "Đợi service khởi động..."
     sleep 3
-    
+
     # Check service status
     echo ""
     echo "=========================================="
@@ -605,7 +607,7 @@ if [ "$NO_START" = false ]; then
         echo ""
         echo "Thông tin service:"
         systemctl status "${SERVICE_NAME}.service" --no-pager -l | head -n 15
-        
+
         # Try to get API endpoint info if available
         echo ""
         echo "Kiểm tra API endpoint..."
@@ -648,4 +650,3 @@ echo ""
 echo -e "${GREEN}=========================================="
 echo "Build & Deploy hoàn tất!"
 echo "==========================================${NC}"
-

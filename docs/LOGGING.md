@@ -161,12 +161,12 @@ Bạn có thể kết hợp nhiều logging flags cùng lúc:
 ```
 
 > **Lưu ý về đường dẫn executable:**
-> 
+>
 > Khi build project với CMake, executable được đặt trong thư mục `build/bin/` thay vì trực tiếp trong `build/`. Đây là cấu hình mặc định của CMake để tổ chức các file output:
 > - **Executables** → `build/bin/`
 > - **Libraries** → `build/lib/`
 > - **Object files** → `build/CMakeFiles/`
-> 
+>
 > Cấu trúc này giúp phân tách rõ ràng giữa các loại file build và giữ cho thư mục build gọn gàng hơn.
 
 ---
