@@ -42,9 +42,6 @@
 #include <csetjmp>
 #include <csignal>
 #include <cstdlib>
-#include <netinet/in.h>
-#include <sys/socket.h>
-#include <unistd.h>
 #include <cvedix/nodes/src/cvedix_file_src_node.h>
 #include <cvedix/nodes/src/cvedix_rtsp_src_node.h>
 #include <cvedix/utils/analysis_board/cvedix_analysis_board.h>
@@ -54,8 +51,10 @@
 #include <future>
 #include <iostream>
 #include <memory>
+#include <netinet/in.h>
 #include <stdexcept>
 #include <string>
+#include <sys/socket.h>
 #include <sys/types.h>
 #include <sys/wait.h>
 #include <thread>
