@@ -12,6 +12,7 @@
 #include <filesystem>
 #include <fstream>
 #include <map>
+#include <set>
 #include <cmath>
 #include <opencv2/opencv.hpp>
 #include <opencv2/dnn.hpp>
@@ -738,6 +739,27 @@ public:
         return result;
     }
 
+    bool remove_subject(const std::string& subject_name) {
+        auto it = database_.find(subject_name);
+        if (it == database_.end()) {
+            return false;
+        }
+        database_.erase(it);
+        save_database();
+        if (isApiLoggingEnabled()) {
+            PLOG_INFO << "[FaceDatabase] Removed subject '" << subject_name << "' from database";
+        }
+        return true;
+    }
+
+    void clear_all() {
+        database_.clear();
+        save_database();
+        if (isApiLoggingEnabled()) {
+            PLOG_INFO << "[FaceDatabase] Cleared all subjects from database";
+        }
+    }
+
     const std::string& get_detector_model_path() const { return detector_model_path_; }
     const std::string& get_onnx_model_path() const { return onnx_model_path_; }
     const std::string& get_database_path() const { return db_file_path_; }
@@ -762,8 +784,25 @@ static FaceDatabase& get_database() {
             PLOG_INFO << "[RecognitionHandler] Detector model: " << (g_database->get_detector_model_path().empty() ? "NOT FOUND" : g_database->get_detector_model_path());
             PLOG_INFO << "[RecognitionHandler] Recognition model: " << (g_database->get_onnx_model_path().empty() ? "NOT FOUND" : g_database->get_onnx_model_path());
         }
+        
+        // Populate image_id_to_subject_ and face_subjects_storage_ from loaded database
+        const auto& db_map = g_database->get_database();
+        RecognitionHandler::populateStorageFromDatabase(db_map);
     }
     return *g_database;
+}
+
+void RecognitionHandler::populateStorageFromDatabase(const std::map<std::string, std::vector<float>>& db_map) {
+    std::lock_guard<std::mutex> lock(storage_mutex_);
+    for (const auto& [subject_name, embedding] : db_map) {
+        // Generate a stable image_id based on subject name
+        std::string imageId = generateImageIdForSubject(subject_name);
+        image_id_to_subject_[imageId] = subject_name;
+        face_subjects_storage_[subject_name].push_back(imageId);
+    }
+    if (isApiLoggingEnabled()) {
+        PLOG_INFO << "[RecognitionHandler] Loaded " << db_map.size() << " subjects into memory";
+    }
 }
 
 bool RecognitionHandler::isBase64(const std::string& str) const {
@@ -1676,6 +1715,31 @@ std::string RecognitionHandler::generateImageId() const {
     for (i = 0; i < 12; i++) {
         ss << dis(gen);
     }
+    return ss.str();
+}
+
+std::string RecognitionHandler::generateImageIdForSubject(const std::string& subject_name) {
+    // Generate a deterministic UUID-like ID based on subject name
+    // This ensures the same subject always gets the same image_id across restarts
+    std::hash<std::string> hasher;
+    size_t hash_value = hasher(subject_name);
+    
+    std::stringstream ss;
+    ss << std::hex << std::setfill('0');
+    
+    // Format: xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx
+    ss << std::setw(8) << ((hash_value >> 32) & 0xFFFFFFFF);
+    ss << "-";
+    ss << std::setw(4) << ((hash_value >> 16) & 0xFFFF);
+    ss << "-";
+    ss << std::setw(4) << (hash_value & 0xFFFF);
+    ss << "-";
+    // Use additional hash for remaining parts
+    size_t hash2 = hasher(subject_name + "_salt");
+    ss << std::setw(4) << ((hash2 >> 48) & 0xFFFF);
+    ss << "-";
+    ss << std::setw(12) << (hash2 & 0xFFFFFFFFFFFF);
+    
     return ss.str();
 }
 
@@ -2642,6 +2706,10 @@ void RecognitionHandler::deleteFaceSubject(const HttpRequestPtr &req,
             }
         }
         
+        // Also remove from face database file
+        FaceDatabase& db = get_database();
+        db.remove_subject(subjectName);
+        
         // Build response
         Json::Value response;
         if (deletedImageIds.size() == 1) {
@@ -2730,6 +2798,7 @@ void RecognitionHandler::deleteMultipleFaceSubjects(const HttpRequestPtr &req,
         
         // Process each image ID
         Json::Value deletedFaces(Json::arrayValue);
+        std::set<std::string> subjectsToDelete;
         
         for (const auto& item : *json) {
             if (!item.isString()) {
@@ -2747,8 +2816,20 @@ void RecognitionHandler::deleteMultipleFaceSubjects(const HttpRequestPtr &req,
                 deletedFace["image_id"] = imageId;
                 deletedFace["subject"] = subjectName;
                 deletedFaces.append(deletedFace);
+                
+                // Check if this subject has no more images - mark for deletion from database
+                std::lock_guard<std::mutex> lock(storage_mutex_);
+                if (face_subjects_storage_.find(subjectName) == face_subjects_storage_.end()) {
+                    subjectsToDelete.insert(subjectName);
+                }
             }
             // If not found, ignore it (as per spec: "If some IDs do not exist, they will be ignored")
+        }
+        
+        // Remove subjects from face database file
+        FaceDatabase& db = get_database();
+        for (const auto& subject : subjectsToDelete) {
+            db.remove_subject(subject);
         }
         
         // Build response
@@ -2809,6 +2890,10 @@ void RecognitionHandler::deleteAllFaceSubjects(const HttpRequestPtr &req,
         // Clear all storage
         image_id_to_subject_.clear();
         face_subjects_storage_.clear();
+        
+        // Also clear from face database file
+        FaceDatabase& db = get_database();
+        db.clear_all();
         
         // Build response
         Json::Value response;

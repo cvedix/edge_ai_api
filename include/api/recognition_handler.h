@@ -26,6 +26,11 @@ using namespace drogon;
  */
 class RecognitionHandler : public drogon::HttpController<RecognitionHandler> {
 public:
+    /**
+     * @brief Populate storage from database (called during initialization)
+     */
+    static void populateStorageFromDatabase(const std::map<std::string, std::vector<float>>& db_map);
+    
     METHOD_LIST_BEGIN
         ADD_METHOD_TO(RecognitionHandler::recognizeFaces, "/v1/recognition/recognize", Post);
         ADD_METHOD_TO(RecognitionHandler::registerFaceSubject, "/v1/recognition/faces", Post);
@@ -183,6 +188,12 @@ private:
      * @brief Generate unique image ID (UUID-like)
      */
     std::string generateImageId() const;
+    
+    /**
+     * @brief Generate deterministic image ID for a subject name
+     * Used when loading existing subjects from database
+     */
+    static std::string generateImageIdForSubject(const std::string& subject_name);
     
     /**
      * @brief Register face subject by storing image
