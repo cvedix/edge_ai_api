@@ -1201,6 +1201,668 @@ paths:
             type: boolean
             default: true
           description: Whether to detect faces (true) or only recognize existing faces (false)
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required:
+                - file
+              properties:
+                file:
+                  type: string
+                  format: binary
+                  description: Image file as base64-encoded data or binary data
+      responses:
+        '200':
+          description: Face recognition results
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  result:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/FaceRecognitionResult'
+              example:
+                result:
+                  - box:
+                      probability: 1.0
+                      x_max: 1420
+                      y_max: 1368
+                      x_min: 548
+                      y_min: 295
+                    landmarks:
+                      - [814, 713]
+                      - [1104, 829]
+                      - [832, 937]
+                      - [704, 1030]
+                      - [1017, 1133]
+                    subjects:
+                      - similarity: 0.97858
+                        subject: "subject1"
+                    execution_time:
+                      age: 28.0
+                      gender: 26.0
+                      detector: 117.0
+                      calculator: 45.0
+                      mask: 36.0
+        '400':
+          description: Invalid request (missing file, invalid image format, etc.)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          description: Unauthorized (missing or invalid API key)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+    options:
+      summary: CORS preflight for face recognition
+      operationId: recognizeFacesOptions
+      tags:
+        - Recognition
+      responses:
+        '200':
+          description: CORS preflight response
+
+  /v1/recognition/faces:
+    get:
+      summary: List face subjects
+      description: |
+        Retrieves a list of all saved face subjects with pagination support. 
+        You can filter by subject name or retrieve all subjects.
+        
+        This endpoint returns paginated results with face information including image_id and subject name.
+      operationId: listFaceSubjects
+      tags:
+        - Recognition
+      parameters:
+        - name: page
+          in: query
+          required: false
+          schema:
+            type: integer
+            default: 0
+            minimum: 0
+          description: Page number of examples to return. Used for pagination. Default value is 0.
+          example: 0
+        - name: size
+          in: query
+          required: false
+          schema:
+            type: integer
+            default: 20
+            minimum: 1
+            maximum: 100
+          description: Number of faces per page (page size). Used for pagination. Default value is 20.
+          example: 20
+        - name: subject
+          in: query
+          required: false
+          schema:
+            type: string
+          description: Specifies the subject examples to return. If empty, returns examples for all subjects.
+          example: "subject1"
+      responses:
+        '200':
+          description: List of face subjects retrieved successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - faces
+                  - page_number
+                  - page_size
+                  - total_pages
+                  - total_elements
+                properties:
+                  faces:
+                    type: array
+                    description: List of face subjects
+                    items:
+                      type: object
+                      required:
+                        - image_id
+                        - subject
+                      properties:
+                        image_id:
+                          type: string
+                          format: uuid
+                          description: Unique identifier of the face
+                          example: "6b135f5b-a365-4522-b1f1-4c9ac2dd0728"
+                        subject:
+                          type: string
+                          description: Subject (person) associated with the saved image
+                          example: "subject1"
+                  page_number:
+                    type: integer
+                    description: Current page number
+                    example: 0
+                  page_size:
+                    type: integer
+                    description: Requested page size
+                    example: 20
+                  total_pages:
+                    type: integer
+                    description: Total number of pages available
+                    example: 2
+                  total_elements:
+                    type: integer
+                    description: Total number of faces available
+                    example: 12
+              example:
+                faces:
+                  - image_id: "6b135f5b-a365-4522-b1f1-4c9ac2dd0728"
+                    subject: "subject1"
+                  - image_id: "7c246g6c-b476-5633-c2g2-5d0bd3ee1839"
+                    subject: "subject1"
+                page_number: 0
+                page_size: 20
+                total_pages: 2
+                total_elements: 12
+        '401':
+          description: Unauthorized (missing or invalid API key)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+    
+    post:
+      summary: Register face subject
+      description: |
+        Registers a face subject by storing the image. You can add as many images as you want to train the system. 
+        Images should contain only a single face.
+        
+        This endpoint accepts image data in two formats:
+        1. **Multipart/form-data**: Upload file directly (recommended for file uploads)
+        2. **Application/json**: Send base64-encoded image string
+        
+        Supported image formats: JPEG, JPG, PNG, BMP, GIF, ICO, TIFF, WebP
+        Maximum file size: 5MB
+        
+        The system will detect the face in the image and store the face features for recognition.
+      operationId: registerFaceSubject
+      tags:
+        - Recognition
+      parameters:
+        - name: subject
+          in: query
+          required: true
+          schema:
+            type: string
+          description: Subject name to register (e.g., "subject1")
+          example: "subject1"
+        - name: det_prob_threshold
+          in: query
+          required: false
+          schema:
+            type: number
+            format: float
+            default: 0.5
+          description: Detection probability threshold (0.0 to 1.0)
+          example: 0.5
+      requestBody:
+        required: true
+        description: |
+          Image data can be sent in two formats:
+          1. Multipart/form-data: Upload file directly (recommended for file uploads)
+          2. Application/json: Send base64-encoded image string
+          
+          Supported image formats: JPEG, JPG, PNG, BMP, GIF, ICO, TIFF, WebP
+          Maximum file size: 5MB
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required:
+                - file
+              properties:
+                file:
+                  type: string
+                  format: binary
+                  description: "Image file to upload. Supported formats: JPEG, JPG, PNG, BMP, GIF, ICO, TIFF, WebP. Max size: 5MB"
+          application/json:
+            schema:
+              type: object
+              required:
+                - file
+              properties:
+                file:
+                  type: string
+                  description: "Base64-encoded image data. Supported formats: JPEG, JPG, PNG, BMP, GIF, ICO, TIFF, WebP. Max size: 5MB"
+                  example: "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg=="
+            example:
+              file: "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg=="
+      responses:
+        '200':
+          description: Face subject registered successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - image_id
+                  - subject
+                properties:
+                  image_id:
+                    type: string
+                    format: uuid
+                    description: Unique identifier for the registered image
+                    example: "6b135f5b-a365-4522-b1f1-4c9ac2dd0728"
+                  subject:
+                    type: string
+                    description: Subject name that was registered
+                    example: "subject1"
+              example:
+                image_id: "6b135f5b-a365-4522-b1f1-4c9ac2dd0728"
+                subject: "subject1"
+        '400':
+          description: Invalid request (missing subject, invalid image format, etc.)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          description: Unauthorized (missing or invalid API key)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+    options:
+      summary: CORS preflight for register face subject
+      operationId: registerFaceSubjectOptions
+      tags:
+        - Recognition
+      responses:
+        '200':
+          description: CORS preflight response
+
+  /v1/recognition/faces/{image_id}:
+    delete:
+      summary: Delete face subject by ID or subject name
+      description: |
+        Deletes a face subject by its image ID or subject name. 
+        
+        - If the identifier is an **image_id**, only that specific face will be deleted.
+        - If the identifier is a **subject name**, all faces associated with that subject will be deleted.
+        
+        The endpoint automatically detects whether the identifier is an image_id or subject name.
+        If no face is found with the given identifier, a 404 error is returned.
+      operationId: deleteFaceSubject
+      tags:
+        - Recognition
+      parameters:
+        - name: image_id
+          in: path
+          required: true
+          schema:
+            type: string
+          description: |
+            Either the UUID of the face subject to be deleted, or the subject name.
+            The endpoint will automatically detect the type of identifier.
+          example: "6b135f5b-a365-4522-b1f1-4c9ac2dd0728"
+      responses:
+        '200':
+          description: Face subject(s) deleted successfully
+          content:
+            application/json:
+              schema:
+                oneOf:
+                  - type: object
+                    required:
+                      - image_id
+                      - subject
+                    properties:
+                      image_id:
+                        type: string
+                        description: UUID of the deleted face subject
+                        example: "6b135f5b-a365-4522-b1f1-4c9ac2dd0728"
+                      subject:
+                        type: string
+                        description: Name of the person associated with the deleted face
+                        example: "subject1"
+                  - type: object
+                    required:
+                      - subject
+                      - deleted_count
+                      - image_ids
+                    properties:
+                      subject:
+                        type: string
+                        description: Name of the subject that was deleted
+                        example: "subject1"
+                      deleted_count:
+                        type: integer
+                        description: Number of faces deleted for this subject
+                        example: 3
+                      image_ids:
+                        type: array
+                        items:
+                          type: string
+                        description: List of image IDs that were deleted
+                        example: ["6b135f5b-a365-4522-b1f1-4c9ac2dd0728", "7c246g6c-b476-5633-c2g2-5d0bd3ee1839"]
+              examples:
+                single_face:
+                  summary: Single face deleted
+                  value:
+                    image_id: "6b135f5b-a365-4522-b1f1-4c9ac2dd0728"
+                    subject: "subject1"
+                multiple_faces:
+                  summary: All faces for a subject deleted
+                  value:
+                    subject: "subject1"
+                    deleted_count: 3
+                    image_ids:
+                      - "6b135f5b-a365-4522-b1f1-4c9ac2dd0728"
+                      - "7c246g6c-b476-5633-c2g2-5d0bd3ee1839"
+                      - "8d357h7d-c587-6744-d3h3-6e1ce4ff2950"
+        '400':
+          description: Bad request (missing image_id, etc.)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          description: Unauthorized (missing or invalid API key)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: Face subject not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+    options:
+      summary: CORS preflight for delete face subject
+      operationId: deleteFaceSubjectOptions
+      tags:
+        - Recognition
+      responses:
+        '200':
+          description: CORS preflight response
+
+  /v1/recognition/faces/delete:
+    post:
+      summary: Delete multiple face subjects
+      description: |
+        Deletes multiple face subjects by their image IDs. If some IDs do not exist, 
+        they will be ignored. This endpoint is available since version 1.0.
+      operationId: deleteMultipleFaceSubjects
+      tags:
+        - Recognition
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: array
+              items:
+                type: string
+                format: uuid
+              description: Array of image IDs to delete
+            example:
+              - "6b135f5b-a365-4522-b1f1-4c9ac2dd0728"
+              - "7c246g6c-b476-5633-c2g2-5d0bd3ee1839"
+      responses:
+        '200':
+          description: Face subjects deleted successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - deleted
+                properties:
+                  deleted:
+                    type: array
+                    description: Array of deleted face subjects
+                    items:
+                      type: object
+                      required:
+                        - image_id
+                        - subject
+                      properties:
+                        image_id:
+                          type: string
+                          format: uuid
+                          description: UUID of the deleted face subject
+                          example: "6b135f5b-a365-4522-b1f1-4c9ac2dd0728"
+                        subject:
+                          type: string
+                          description: Name of the person associated with the deleted face
+                          example: "subject1"
+              example:
+                deleted:
+                  - image_id: "6b135f5b-a365-4522-b1f1-4c9ac2dd0728"
+                    subject: "subject1"
+                  - image_id: "7c246g6c-b476-5633-c2g2-5d0bd3ee1839"
+                    subject: "subject2"
+        '400':
+          description: Bad request (invalid JSON, not an array, etc.)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          description: Unauthorized (missing or invalid API key)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+    options:
+      summary: CORS preflight for delete multiple face subjects
+      operationId: deleteMultipleFaceSubjectsOptions
+      tags:
+        - Recognition
+      responses:
+        '200':
+          description: CORS preflight response
+
+  /v1/recognition/faces/all:
+    delete:
+      summary: Delete all face subjects
+      description: |
+        Deletes all face subjects from the database. This operation is irreversible.
+        All image IDs and subject mappings will be removed.
+        
+        **Warning:** This endpoint will delete all registered faces. Use with caution.
+      operationId: deleteAllFaceSubjects
+      tags:
+        - Recognition
+      responses:
+        '200':
+          description: All face subjects deleted successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - deleted_count
+                  - message
+                properties:
+                  deleted_count:
+                    type: integer
+                    description: Total number of face subjects deleted
+                    example: 15
+                  message:
+                    type: string
+                    description: Success message
+                    example: "All face subjects deleted successfully"
+              example:
+                deleted_count: 15
+                message: "All face subjects deleted successfully"
+        '500':
+          description: Server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+    options:
+      summary: CORS preflight for delete all face subjects
+      operationId: deleteAllFaceSubjectsOptions
+      tags:
+        - Recognition
+      responses:
+        '200':
+          description: CORS preflight response
+
+  /v1/recognition/subjects/{subject}:
+    put:
+      summary: Rename face subject
+      description: |
+        Renames an existing face subject. This endpoint searches for the face subject name in the face database 
+        and allows you to select and rename that subject.
+        
+        **How it works:**
+        1. The endpoint searches for the subject name specified in the URL path (`{subject}`) in the face database.
+        2. If found, it renames the subject to the new name provided in the request body.
+        3. All face registrations associated with the old subject name are updated to use the new name.
+        
+        **Behavior:**
+        - If the new subject name does not exist, all faces from the old subject are moved to the new name.
+        - If the new subject name already exists, the subjects are merged. The embeddings are averaged and 
+          all faces from the old subject are reassigned to the subject with the new name, and the old subject is removed.
+        - All image_id mappings are automatically updated to reflect the new subject name.
+        - The face database file is updated to persist the changes.
+        
+        **Note:** The subject name in the URL path must match exactly with a subject name in the database.
+        Use GET /v1/recognition/faces to list all available subjects.
+        
+        This endpoint is available since version 0.6.
+      operationId: renameSubject
+      tags:
+        - Recognition
+      parameters:
+        - name: subject
+          in: path
+          required: true
+          schema:
+            type: string
+          description: |
+            The current subject name to rename. This must match exactly with a subject name in the face database.
+            Use GET /v1/recognition/faces to see all available subjects.
+          example: "subject1"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RenameSubjectRequest'
+            example:
+              subject: "testing_face"
+      responses:
+        '200':
+          description: Subject renamed successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - updated
+                  - old_subject
+                  - new_subject
+                  - message
+                properties:
+                  updated:
+                    type: string
+                    enum: ["true"]
+                    description: Indicates the operation was successful
+                  old_subject:
+                    type: string
+                    description: The original subject name
+                    example: "subject1"
+                  new_subject:
+                    type: string
+                    description: The new subject name
+                    example: "testing_face"
+                  message:
+                    type: string
+                    description: Success message
+                    example: "Subject renamed successfully"
+              example:
+                updated: "true"
+                old_subject: "subject1"
+                new_subject: "testing_face"
+                message: "Subject renamed successfully"
+        '400':
+          description: Bad request (subject not found, missing subject, invalid JSON, etc.)
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - updated
+                  - error
+                  - old_subject
+                properties:
+                  updated:
+                    type: string
+                    enum: ["false"]
+                    description: Indicates the operation failed
+                  error:
+                    type: string
+                    description: Error message explaining why the rename failed
+                    example: "Subject 'subject1' not found in face database"
+                  old_subject:
+                    type: string
+                    description: The subject name that was attempted to be renamed
+                    example: "subject1"
+              example:
+                updated: "false"
+                error: "Subject 'subject1' not found in face database"
+                old_subject: "subject1"
+        '500':
+          description: Server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+    options:
+      summary: CORS preflight for rename subject
+      operationId: renameSubjectOptions
+      tags:
+        - Recognition
+      responses:
+        '200':
+          description: CORS preflight response
 
   /v1/core/fonts/upload:
     post:
