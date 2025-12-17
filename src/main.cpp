@@ -12,6 +12,7 @@
 #include "api/group_handler.h"
 #include "api/config_handler.h"
 #include "api/node_handler.h"
+#include "api/recognition_handler.h"
 #include "models/model_upload_handler.h"
 #include "videos/video_upload_handler.h"
 #include "fonts/font_upload_handler.h"
@@ -2065,6 +2066,7 @@ int main(int argc, char* argv[])
         PLOG_INFO << "[Main] Videos directory: " << videosDir;
         VideoUploadHandler::setVideosDirectory(videosDir);
         static VideoUploadHandler videoUploadHandler;
+        static RecognitionHandler recognitionHandler;
         
         // Initialize font upload handler with configurable directory
         // Priority: 1. FONTS_DIR env var, 2. /opt/edge_ai_api/fonts (with auto-fallback)

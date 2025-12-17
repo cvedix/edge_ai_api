@@ -1149,6 +1149,59 @@ paths:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
 
+  /v1/recognition/recognize:
+    post:
+      summary: Recognize faces from uploaded image
+      description: |
+        Recognizes faces from an uploaded image. The image can be provided as base64-encoded data 
+        in a multipart/form-data request. Returns face detection results including bounding boxes, 
+        landmarks, recognized subjects, and execution times.
+      operationId: recognizeFaces
+      tags:
+        - Recognition
+      parameters:
+        - name: limit
+          in: query
+          required: false
+          schema:
+            type: integer
+            default: 0
+          description: Maximum number of faces to recognize (0 = no limit). Recognizes the largest faces first.
+        - name: prediction_count
+          in: query
+          required: false
+          schema:
+            type: integer
+            default: 1
+          description: Number of predictions to return per face
+        - name: det_prob_threshold
+          in: query
+          required: false
+          schema:
+            type: number
+            format: float
+            default: 0.5
+          description: Detection probability threshold (0.0 to 1.0)
+        - name: face_plugins
+          in: query
+          required: false
+          schema:
+            type: string
+          description: Face plugins to enable (comma-separated)
+        - name: status
+          in: query
+          required: false
+          schema:
+            type: string
+          description: Status filter
+        - name: detect_faces
+          in: query
+          required: false
+          schema:
+            type: boolean
+            default: true
+          description: Whether to detect faces (true) or only recognize existing faces (false)
+
   /v1/core/fonts/upload:
     post:
       summary: Upload a font file
@@ -1162,6 +1215,17 @@ paths:
           multipart/form-data:
             schema:
               type: object
+              required:
+                - file
+              properties:
+                file:
+                  type: string
+                  format: binary
+                  description: Image file as base64-encoded data or binary data
+      responses:
+        '200':
+          description: Face recognition results
+
               properties:
                 files:
                   type: array
@@ -1186,6 +1250,36 @@ paths:
               schema:
                 type: object
                 properties:
+                  result:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/FaceRecognitionResult'
+              example:
+                result:
+                  - box:
+                      probability: 1.0
+                      x_max: 1420
+                      y_max: 1368
+                      x_min: 548
+                      y_min: 295
+                    landmarks:
+                      - [814, 713]
+                      - [1104, 829]
+                      - [832, 937]
+                      - [704, 1030]
+                      - [1017, 1133]
+                    subjects:
+                      - similarity: 0.97858
+                        subject: "subject1"
+                    execution_time:
+                      age: 28.0
+                      gender: 26.0
+                      detector: 117.0
+                      calculator: 45.0
+                      mask: 36.0
+        '400':
+          description: Invalid request (missing file, invalid image format, etc.)
+
                   success:
                     type: boolean
                   message:
@@ -1219,6 +1313,9 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          description: Unauthorized (missing or invalid API key)
+
         '409':
           description: File already exists
           content:
@@ -1232,6 +1329,11 @@ paths:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
     options:
+      summary: CORS preflight for face recognition
+      operationId: recognizeFacesOptions
+      tags:
+        - Recognition
+
       summary: CORS preflight for font upload
       operationId: uploadFontOptions
       tags:
@@ -1239,6 +1341,48 @@ paths:
       responses:
         '200':
           description: CORS preflight response
+
+  /v1/recognition/faces:
+    get:
+      summary: List face subjects
+      description: |
+        Retrieves a list of all saved face subjects with pagination support. 
+        You can filter by subject name or retrieve all subjects.
+        
+        This endpoint returns paginated results with face information including image_id and subject name.
+      operationId: listFaceSubjects
+      tags:
+        - Recognition
+      parameters:
+        - name: page
+          in: query
+          required: false
+          schema:
+            type: integer
+            default: 0
+            minimum: 0
+          description: Page number of examples to return. Used for pagination. Default value is 0.
+          example: 0
+        - name: size
+          in: query
+          required: false
+          schema:
+            type: integer
+            default: 20
+            minimum: 1
+            maximum: 100
+          description: Number of faces per page (page size). Used for pagination. Default value is 20.
+          example: 20
+        - name: subject
+          in: query
+          required: false
+          schema:
+            type: string
+          description: Specifies the subject examples to return. If empty, returns examples for all subjects.
+          example: "subject1"
+      responses:
+        '200':
+          description: List of face subjects retrieved successfully
 
   /v1/core/fonts/list:
     get:
@@ -1254,6 +1398,64 @@ paths:
             application/json:
               schema:
                 type: object
+                required:
+                  - faces
+                  - page_number
+                  - page_size
+                  - total_pages
+                  - total_elements
+                properties:
+                  faces:
+                    type: array
+                    description: List of face subjects
+                    items:
+                      type: object
+                      required:
+                        - image_id
+                        - subject
+                      properties:
+                        image_id:
+                          type: string
+                          format: uuid
+                          description: Unique identifier of the face
+                          example: "6b135f5b-a365-4522-b1f1-4c9ac2dd0728"
+                        subject:
+                          type: string
+                          description: Subject (person) associated with the saved image
+                          example: "subject1"
+                  page_number:
+                    type: integer
+                    description: Current page number
+                    example: 0
+                  page_size:
+                    type: integer
+                    description: Requested page size
+                    example: 20
+                  total_pages:
+                    type: integer
+                    description: Total number of pages available
+                    example: 2
+                  total_elements:
+                    type: integer
+                    description: Total number of faces available
+                    example: 12
+              example:
+                faces:
+                  - image_id: "6b135f5b-a365-4522-b1f1-4c9ac2dd0728"
+                    subject: "subject1"
+                  - image_id: "7c246g6c-b476-5633-c2g2-5d0bd3ee1839"
+                    subject: "subject1"
+                page_number: 0
+                page_size: 20
+                total_pages: 2
+                total_elements: 12
+        '401':
+          description: Unauthorized (missing or invalid API key)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
                 properties:
                   success:
                     type: boolean
@@ -1280,6 +1482,62 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
+    
+    post:
+      summary: Register face subject
+      description: |
+        Registers a face subject by storing the image. You can add as many images as you want to train the system. 
+        Images should contain only a single face.
+        
+        This endpoint accepts image data in two formats:
+        1. **Multipart/form-data**: Upload file directly (recommended for file uploads)
+        2. **Application/json**: Send base64-encoded image string
+        
+        Supported image formats: JPEG, JPG, PNG, BMP, GIF, ICO, TIFF, WebP
+        Maximum file size: 5MB
+        
+        The system will detect the face in the image and store the face features for recognition.
+      operationId: registerFaceSubject
+      tags:
+        - Recognition
+      parameters:
+        - name: subject
+          in: query
+          required: true
+          schema:
+            type: string
+          description: Subject name to register (e.g., "subject1")
+          example: "subject1"
+        - name: det_prob_threshold
+          in: query
+          required: false
+          schema:
+            type: number
+            format: float
+            default: 0.5
+          description: Detection probability threshold (0.0 to 1.0)
+          example: 0.5
+      requestBody:
+        required: true
+        description: |
+          Image data can be sent in two formats:
+          1. Multipart/form-data: Upload file directly (recommended for file uploads)
+          2. Application/json: Send base64-encoded image string
+          
+          Supported image formats: JPEG, JPG, PNG, BMP, GIF, ICO, TIFF, WebP
+          Maximum file size: 5MB
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required:
+                - file
+              properties:
+                file:
+                  type: string
+                  format: binary
+                  description: "Image file to upload. Supported formats: JPEG, JPG, PNG, BMP, GIF, ICO, TIFF, WebP. Max size: 5MB"
+
 
   /v1/core/fonts/{fontName}:
     put:
@@ -1302,6 +1560,18 @@ paths:
             schema:
               type: object
               required:
+                - file
+              properties:
+                file:
+                  type: string
+                  description: "Base64-encoded image data. Supported formats: JPEG, JPG, PNG, BMP, GIF, ICO, TIFF, WebP. Max size: 5MB"
+                  example: "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg=="
+            example:
+              file: "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg=="
+      responses:
+        '200':
+          description: Face subject registered successfully
+
                 - newName
               properties:
                 newName:
@@ -1315,6 +1585,25 @@ paths:
             application/json:
               schema:
                 type: object
+                required:
+                  - image_id
+                  - subject
+                properties:
+                  image_id:
+                    type: string
+                    format: uuid
+                    description: Unique identifier for the registered image
+                    example: "6b135f5b-a365-4522-b1f1-4c9ac2dd0728"
+                  subject:
+                    type: string
+                    description: Subject name that was registered
+                    example: "subject1"
+              example:
+                image_id: "6b135f5b-a365-4522-b1f1-4c9ac2dd0728"
+                subject: "subject1"
+        '400':
+          description: Invalid request (missing subject, invalid image format, etc.)
+
                 properties:
                   success:
                     type: boolean
@@ -1332,6 +1621,9 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          description: Unauthorized (missing or invalid API key)
+
         '404':
           description: Font file not found
           content:
@@ -1350,6 +1642,15 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
+    options:
+      summary: CORS preflight for register face subject
+      operationId: registerFaceSubjectOptions
+      tags:
+        - Recognition
+      responses:
+        '200':
+          description: CORS preflight response
+
     delete:
       summary: Delete a font file
       description: Deletes a font file from the server.
@@ -6120,6 +6421,112 @@ components:
             destination: 3
             broker: 0
 
+    FaceRecognitionResult:
+      type: object
+      required:
+        - box
+        - landmarks
+        - subjects
+        - execution_time
+      properties:
+        box:
+          type: object
+          required:
+            - probability
+            - x_max
+            - y_max
+            - x_min
+            - y_min
+          properties:
+            probability:
+              type: number
+              format: float
+              description: Detection probability (0.0 to 1.0)
+              example: 1.0
+            x_max:
+              type: integer
+              description: Maximum X coordinate of bounding box
+              example: 1420
+            y_max:
+              type: integer
+              description: Maximum Y coordinate of bounding box
+              example: 1368
+            x_min:
+              type: integer
+              description: Minimum X coordinate of bounding box
+              example: 548
+            y_min:
+              type: integer
+              description: Minimum Y coordinate of bounding box
+              example: 295
+        landmarks:
+          type: array
+          description: Coordinates of face landmarks (5 points)
+          items:
+            type: array
+            items:
+              type: integer
+          example:
+            - [814, 713]
+            - [1104, 829]
+            - [832, 937]
+            - [704, 1030]
+            - [1017, 1133]
+        subjects:
+          type: array
+          description: List of similar subjects ordered by similarity
+          items:
+            type: object
+            required:
+              - similarity
+              - subject
+            properties:
+              similarity:
+                type: number
+                format: float
+                description: Similarity score (0.0 to 1.0)
+                example: 0.97858
+              subject:
+                type: string
+                description: Subject identifier
+                example: "subject1"
+        execution_time:
+          type: object
+          description: Execution time for each plugin (in milliseconds)
+          properties:
+            age:
+              type: number
+              format: float
+              description: Age detection execution time
+              example: 28.0
+            gender:
+              type: number
+              format: float
+              description: Gender detection execution time
+              example: 26.0
+            detector:
+              type: number
+              format: float
+              description: Face detector execution time
+              example: 117.0
+            calculator:
+              type: number
+              format: float
+              description: Feature calculator execution time
+              example: 45.0
+            mask:
+              type: number
+              format: float
+              description: Mask detection execution time
+              example: 36.0
+
+  securitySchemes:
+    ApiKeyAuth:
+      type: apiKey
+      in: header
+      name: x-api-key
+      description: API key for Face Recognition service (created by the user)
+
 tags:
   - name: Core
     description: Core API endpoints for health and version information
@@ -6139,4 +6546,8 @@ tags:
     description: Font file management endpoints
   - name: Node
     description: Node pool management endpoints for pre-configured nodes and templates (create, list, update, delete, templates, stats)
+  - name: Recognition
+    description: Face recognition endpoints for recognizing faces from uploaded images
+  - name: Video
+    description: Video file management endpoints
 
