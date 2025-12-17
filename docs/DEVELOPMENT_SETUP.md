@@ -515,7 +515,7 @@ LIBS=(
 for lib in "${LIBS[@]}"; do
     SOURCE="${CVEDIX_LIB_DIR}/${lib}"
     TARGET="${TARGET_LIB_DIR}/${lib}"
-    
+
     if [ -f "$SOURCE" ]; then
         if [ ! -e "$TARGET" ]; then
             echo "Creating symlink: $TARGET -> $SOURCE"
@@ -865,4 +865,3 @@ Xem chi tiết về tất cả scripts trong `scripts/README.md`.
 - [Hướng Dẫn Phát Triển](DEVELOPMENT_GUIDE.md)
 - [Architecture](ARCHITECTURE.md)
 - [Environment Variables](ENVIRONMENT_VARIABLES.md)
-

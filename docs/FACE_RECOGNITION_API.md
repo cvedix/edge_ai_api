@@ -314,5 +314,3 @@ export FACE_DATABASE_PATH=/custom/path/face_database.txt
 
 - **POST /v1/recognition/faces**: Register face subject
 - **GET /v1/recognition/faces**: List registered face subjects
-
-

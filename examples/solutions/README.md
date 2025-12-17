@@ -50,7 +50,7 @@ Mỗi solution file là một JSON với cấu trúc sau:
 - **Mô tả**: MaskRCNN instance segmentation với file source và file output
 - **Pipeline**: File Source → MaskRCNN Detector → OSD v3 → File Destination
 - **Use case**: Test MaskRCNN detection và segmentation trên video file
-- **Yêu cầu**: 
+- **Yêu cầu**:
   - Model file (.pb)
   - Config file (.pbtxt)
   - Labels file (.txt)
@@ -59,7 +59,7 @@ Mỗi solution file là một JSON với cấu trúc sau:
 - **Mô tả**: MaskRCNN instance segmentation với file source và RTMP streaming output
 - **Pipeline**: File Source → MaskRCNN Detector → OSD v3 → RTMP Destination
 - **Use case**: Test MaskRCNN detection và streaming kết quả lên RTMP server
-- **Yêu cầu**: 
+- **Yêu cầu**:
   - Model file (.pb)
   - Config file (.pbtxt)
   - Labels file (.txt)
@@ -194,4 +194,3 @@ curl -X POST http://localhost:8080/v1/core/instance \
 - [INSTANCE_GUIDE.md](../../docs/INSTANCE_GUIDE.md)
 - [INSTANCE_CONFIG_FIELDS.md](../../docs/INSTANCE_CONFIG_FIELDS.md)
 - API Documentation: http://localhost:8080/v1/swagger
-

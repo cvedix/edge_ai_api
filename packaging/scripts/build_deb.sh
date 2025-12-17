@@ -2,7 +2,7 @@
 # ============================================
 # Build Debian Package - All-in-One Script
 # ============================================
-# 
+#
 # Script này làm tất cả: build project, bundle libraries, và tạo file .deb
 # Chỉ cần chạy một lần: ./build_deb.sh
 #
@@ -88,7 +88,7 @@ cd "$PROJECT_ROOT"
 # ============================================
 create_bundle_libs_script() {
     local BUNDLE_SCRIPT="$PROJECT_ROOT/debian/bundle_libs.sh"
-    
+
     if [ ! -f "$BUNDLE_SCRIPT" ] || [ "$CLEAN_BUILD" = true ]; then
         echo "Creating bundle_libs.sh script..."
         cat > "$BUNDLE_SCRIPT" <<'BUNDLE_SCRIPT_EOF'
@@ -132,7 +132,7 @@ fi
 ldd "$EXEC_PATH" 2>/dev/null | grep -v "not found" | awk '{print $3}' | grep -v "^$" | sort -u | while read lib; do
     if [ -f "$lib" ]; then
         libname=$(basename "$lib")
-        
+
         # Skip system libraries
         case "$libname" in
             libc.so*|libm.so*|libpthread.so*|libdl.so*|libgcc_s.so*|libstdc++.so*|ld-linux*)
@@ -186,52 +186,52 @@ BUNDLE_SCRIPT_EOF
 bundle_libraries() {
     local EXECUTABLE="$1"
     local LIB_DIR="$2"
-    
+
     if [ -z "$EXECUTABLE" ] || [ -z "$LIB_DIR" ]; then
         echo -e "${RED}Error: bundle_libraries requires executable and lib_dir${NC}"
         return 1
     fi
-    
+
     if [ ! -f "$EXECUTABLE" ]; then
         echo -e "${RED}Error: Executable not found: $EXECUTABLE${NC}"
         return 1
     fi
-    
+
     mkdir -p "$LIB_DIR"
-    
+
     echo "Bundling libraries for $(basename "$EXECUTABLE")..."
-    
+
     # Copy libraries from build directory
     if [ -d "$(dirname "$EXECUTABLE")/../lib" ]; then
         BUILD_LIB_DIR="$(dirname "$EXECUTABLE")/../lib"
         echo "  Copying from build/lib..."
         cp -L "$BUILD_LIB_DIR"/*.so* "$LIB_DIR/" 2>/dev/null || true
     fi
-    
+
     # Copy CVEDIX SDK libraries if available
     if [ -d "/opt/cvedix/lib" ]; then
         echo "  Copying CVEDIX SDK libraries..."
         cp -L /opt/cvedix/lib/libcvedix*.so* "$LIB_DIR/" 2>/dev/null || true
         cp -L /opt/cvedix/lib/libtinyexpr.so* "$LIB_DIR/" 2>/dev/null || true
     fi
-    
+
     # Find and copy required libraries (excluding OpenCV and GStreamer)
     REQUIRED_LIBS=$(ldd "$EXECUTABLE" 2>/dev/null | grep -v "not found" | awk '{print $3}' | grep -v "^$" | sort -u)
-    
+
     for lib in $REQUIRED_LIBS; do
         if [ -f "$lib" ]; then
             libname=$(basename "$lib")
-            
+
             # Skip system libraries
             if [[ "$libname" =~ ^(libc\.|libm\.|libpthread\.|libdl\.|libgcc_s\.|libstdc\+\+\.|ld-linux) ]]; then
                 continue
             fi
-            
+
             # Skip OpenCV and GStreamer - user must install via package dependencies
             if [[ "$libname" =~ ^(libopencv|libgst|libgstrtspserver) ]]; then
                 continue
             fi
-            
+
             # Copy if not already copied
             if [ ! -f "$LIB_DIR/$libname" ]; then
                 # Copy custom libraries (not in standard system paths)
@@ -242,7 +242,7 @@ bundle_libraries() {
             fi
         fi
     done
-    
+
     # Copy symlinks
     for lib in "$LIB_DIR"/*.so*; do
         if [ -L "$lib" ] 2>/dev/null; then
@@ -252,7 +252,7 @@ bundle_libraries() {
             fi
         fi
     done
-    
+
     echo -e "${GREEN}✓${NC} Libraries bundled to $LIB_DIR"
     local lib_count=$(ls -1 "$LIB_DIR"/*.so* 2>/dev/null | wc -l)
     echo "  Total libraries: $lib_count"
@@ -314,25 +314,25 @@ fi
 # ============================================
 if [ "$SKIP_BUILD" = false ]; then
     echo -e "${BLUE}[3/5]${NC} Building project..."
-    
+
     if [ ! -d "build" ]; then
         mkdir -p build
     fi
-    
+
     cd build
-    
+
     if [ ! -f "CMakeCache.txt" ]; then
         echo "Running CMake..."
         cmake .. -DCMAKE_BUILD_TYPE=Release \
                  -DAUTO_DOWNLOAD_DEPENDENCIES=ON \
                  -DDROGON_USE_FETCHCONTENT=ON
     fi
-    
+
     echo "Building (using all CPU cores)..."
     CPU_CORES=$(nproc)
     echo "Using $CPU_CORES CPU cores..."
     make -j$CPU_CORES
-    
+
     cd ..
     echo -e "${GREEN}✓${NC} Build completed"
     echo ""
@@ -446,4 +446,3 @@ echo ""
 echo "Check status:"
 echo "  sudo systemctl status edge-ai-api"
 echo ""
-

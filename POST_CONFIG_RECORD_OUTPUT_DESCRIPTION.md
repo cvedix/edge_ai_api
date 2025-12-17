@@ -194,7 +194,7 @@ This feature extends the POST `/v1/core/instance/{instanceId}/output/stream` end
 ### Integration Points
 
 - **InstanceRegistry**: Sử dụng `updateInstanceFromConfig()` để cập nhật config
-- **Pipeline Builder**: 
+- **Pipeline Builder**:
   - Handle `RECORD_PATH` để configure `file_des_node`
   - Handle `RTMP_URL` để configure `rtmp_des_node`
 - **Instance Storage**: Config được lưu vào storage để persist
@@ -463,4 +463,3 @@ Cả 2 modes:
 - Cùng request/response format (khác parameter)
 - Cùng validation và error handling pattern
 - Cùng auto-restart behavior
-

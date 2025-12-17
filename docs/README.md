@@ -125,4 +125,3 @@ Tài liệu hướng dẫn đầy đủ cho Edge AI API project.
 - Code examples sử dụng C++17 và Drogon Framework
 - Tests sử dụng Google Test framework
 - API documentation sử dụng OpenAPI 3.0
-

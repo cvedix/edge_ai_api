@@ -45,7 +45,7 @@ curl -X POST "http://localhost:8080/v1/recognition/faces?subject=subject_name" \
 ## Định dạng File Được Hỗ Trợ
 
 - **jpeg, jpg**: JPEG images
-- **png**: PNG images  
+- **png**: PNG images
 - **bmp**: Bitmap images
 - **gif**: GIF images
 - **tif, tiff**: TIFF images
@@ -93,7 +93,7 @@ curl -X POST "http://localhost:8080/v1/recognition/faces?subject=subject_name" \
 
 1. **Method**: POST
 2. **URL**: `http://localhost:8080/v1/recognition/faces?subject=test&det_prob_threshold=0.5`
-3. **Body**: 
+3. **Body**:
    - Chọn `form-data`
    - Key: `file` (type: File)
    - Value: Chọn file ảnh từ máy tính
@@ -133,4 +133,3 @@ sudo ./deploy/setup_face_database.sh --full-permissions
 
 - File phải nhỏ hơn 5MB
 - Nén ảnh hoặc resize nếu cần
-

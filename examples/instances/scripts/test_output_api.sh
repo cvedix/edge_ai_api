@@ -96,16 +96,16 @@ if [ "$OUTPUT_TYPE" = "FILE" ]; then
     echo "📁 File Output Details:"
     echo "$OUTPUT_RESPONSE" | jq '.output.files'
     echo ""
-    
+
     FILE_COUNT=$(echo "$OUTPUT_RESPONSE" | jq -r '.output.files.fileCount // 0')
     IS_ACTIVE=$(echo "$OUTPUT_RESPONSE" | jq -r '.output.files.isActive // false')
-    
+
     if [ "$FILE_COUNT" -gt 0 ]; then
         echo -e "${GREEN}✓ Có $FILE_COUNT file(s) trong output directory${NC}"
     else
         echo -e "${YELLOW}⚠ Chưa có file output (có thể đang xử lý)${NC}"
     fi
-    
+
     if [ "$IS_ACTIVE" = "true" ]; then
         echo -e "${GREEN}✓ Instance đang tạo file mới (active)${NC}"
     else
@@ -152,7 +152,7 @@ if [ "$OUTPUT_TYPE" = "FILE" ]; then
     FILE_COUNT2=$(echo "$OUTPUT_RESPONSE2" | jq -r '.output.files.fileCount // 0')
     echo "File count lần 1: $FILE_COUNT1"
     echo "File count lần 2: $FILE_COUNT2"
-    
+
     if [ "$FILE_COUNT2" -gt "$FILE_COUNT1" ]; then
         echo -e "${GREEN}✓ File count tăng - Instance đang tạo file mới!${NC}"
     fi
@@ -169,4 +169,3 @@ echo ""
 echo "Để xóa instance sau khi test:"
 echo "  curl -X DELETE ${API_BASE}/instances/${INSTANCE_ID}"
 echo ""
-

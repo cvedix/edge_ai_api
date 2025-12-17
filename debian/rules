@@ -48,7 +48,7 @@ override_dh_auto_install:
 		ls -la $(CURDIR)/build/edge_ai_api 2>/dev/null || echo "build/edge_ai_api does not exist"; \
 		exit 1; \
 	fi
-	
+
 	# Install bundled libraries - bundle directly from executable
 	# Ensure lib directory exists
 	install -d $(CURDIR)/debian/$(PACKAGE_NAME)$(LIB_DIR)
@@ -68,21 +68,21 @@ override_dh_auto_install:
 		echo "Copying pre-bundled libraries..."; \
 		cp -r $(CURDIR)/debian/edge-ai-api/opt/edge_ai_api/lib/* $(CURDIR)/debian/$(PACKAGE_NAME)$(LIB_DIR)/ 2>/dev/null || true; \
 	fi
-	
+
 	# Update RPATH in executable to use bundled libraries
 	# RPATH: /opt/edge_ai_api/lib (relative to executable at /usr/local/bin)
 	if command -v patchelf >/dev/null 2>&1; then \
 		patchelf --set-rpath "/opt/edge_ai_api/lib" $(CURDIR)/debian/$(PACKAGE_NAME)$(BIN_DIR)/edge_ai_api 2>/dev/null || true; \
 	fi
-	
+
 	# Install systemd service
 	install -d $(CURDIR)/debian/$(PACKAGE_NAME)/etc/systemd/system
 	install -m 644 $(CURDIR)/deploy/edge-ai-api.service $(CURDIR)/debian/$(PACKAGE_NAME)/etc/systemd/system/edge-ai-api.service
-	
+
 	# Install config files
 	install -d $(CURDIR)/debian/$(PACKAGE_NAME)$(INSTALL_DIR)/config
 	install -m 644 $(CURDIR)/config.json $(CURDIR)/debian/$(PACKAGE_NAME)$(INSTALL_DIR)/config/config.json
-	
+
 	# Create directory structure from directories.conf
 	# Read directories.conf directly (Makefile uses /bin/sh, not bash)
 	@DIRS_CONF=$(CURDIR)/deploy/directories.conf; \
@@ -107,11 +107,11 @@ override_dh_auto_install:
 		install -d $(CURDIR)/debian/$(PACKAGE_NAME)$(INSTALL_DIR)/videos; \
 		install -d $(CURDIR)/debian/$(PACKAGE_NAME)$(INSTALL_DIR)/fonts; \
 	fi
-	
+
 	# Install README
 	install -d $(CURDIR)/debian/$(PACKAGE_NAME)$(INSTALL_DIR)
 	install -m 644 $(CURDIR)/README.md $(CURDIR)/debian/$(PACKAGE_NAME)$(INSTALL_DIR)/README.md
-	
+
 	# Install OpenAPI specification file
 	install -m 644 $(CURDIR)/openapi.yaml $(CURDIR)/debian/$(PACKAGE_NAME)$(INSTALL_DIR)/openapi.yaml
 
@@ -128,4 +128,3 @@ override_dh_strip:
 	dh_strip
 
 .PHONY: override_dh_auto_configure override_dh_auto_build override_dh_auto_install override_dh_shlibdeps override_dh_usrlocal override_dh_strip
-

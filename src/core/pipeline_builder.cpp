@@ -1,52 +1,52 @@
 #include "core/pipeline_builder.h"
 #include "config/system_config.h"
-#include "core/platform_detector.h"
 #include "core/env_config.h"
-#include <cstdlib>  // For setenv
-#include <cstring>  // For strlen
-#include <opencv2/core.hpp>  // For cv::Exception
-#include <cvedix/nodes/src/cvedix_rtsp_src_node.h>
-#include <cvedix/nodes/src/cvedix_file_src_node.h>
-#include <cvedix/nodes/src/cvedix_app_src_node.h>
-#include <cvedix/nodes/src/cvedix_image_src_node.h>
-#include <cvedix/nodes/src/cvedix_rtmp_src_node.h>
-#include <cvedix/nodes/src/cvedix_udp_src_node.h>
-#include <cvedix/nodes/infers/cvedix_yunet_face_detector_node.h>
-#include <cvedix/nodes/infers/cvedix_sface_feature_encoder_node.h>
-#include <cvedix/nodes/osd/cvedix_face_osd_node_v2.h>
-#include <cvedix/nodes/osd/cvedix_osd_node_v3.h>
+#include "core/platform_detector.h"
+#include <cstdlib> // For setenv
+#include <cstring> // For strlen
+#include <cvedix/nodes/ba/cvedix_ba_crossline_node.h>
+#include <cvedix/nodes/des/cvedix_app_des_node.h>
 #include <cvedix/nodes/des/cvedix_file_des_node.h>
 #include <cvedix/nodes/des/cvedix_rtmp_des_node.h>
 #include <cvedix/nodes/des/cvedix_screen_des_node.h>
-#include <cvedix/nodes/des/cvedix_app_des_node.h>
-#include <cvedix/nodes/track/cvedix_sort_track_node.h>
-#include <cvedix/nodes/ba/cvedix_ba_crossline_node.h>
+#include <cvedix/nodes/infers/cvedix_sface_feature_encoder_node.h>
+#include <cvedix/nodes/infers/cvedix_yunet_face_detector_node.h>
 #include <cvedix/nodes/osd/cvedix_ba_crossline_osd_node.h>
-#include <cvedix/utils/cvedix_utils.h>
-#include <cvedix/objects/shapes/cvedix_size.h>
-#include <cvedix/objects/shapes/cvedix_point.h>
+#include <cvedix/nodes/osd/cvedix_face_osd_node_v2.h>
+#include <cvedix/nodes/osd/cvedix_osd_node_v3.h>
+#include <cvedix/nodes/src/cvedix_app_src_node.h>
+#include <cvedix/nodes/src/cvedix_file_src_node.h>
+#include <cvedix/nodes/src/cvedix_image_src_node.h>
+#include <cvedix/nodes/src/cvedix_rtmp_src_node.h>
+#include <cvedix/nodes/src/cvedix_rtsp_src_node.h>
+#include <cvedix/nodes/src/cvedix_udp_src_node.h>
+#include <cvedix/nodes/track/cvedix_sort_track_node.h>
 #include <cvedix/objects/shapes/cvedix_line.h>
+#include <cvedix/objects/shapes/cvedix_point.h>
+#include <cvedix/objects/shapes/cvedix_size.h>
+#include <cvedix/utils/cvedix_utils.h>
+#include <opencv2/core.hpp> // For cv::Exception
 
 // TensorRT Inference Nodes
 #ifdef CVEDIX_WITH_TRT
-#include <cvedix/nodes/infers/cvedix_trt_yolov8_detector.h>
-#include <cvedix/nodes/infers/cvedix_trt_yolov8_seg_detector.h>
-#include <cvedix/nodes/infers/cvedix_trt_yolov8_pose_detector.h>
-#include <cvedix/nodes/infers/cvedix_trt_yolov8_classifier.h>
+#include <cvedix/nodes/infers/cvedix_trt_vehicle_color_classifier.h>
 #include <cvedix/nodes/infers/cvedix_trt_vehicle_detector.h>
+#include <cvedix/nodes/infers/cvedix_trt_vehicle_feature_encoder.h>
 #include <cvedix/nodes/infers/cvedix_trt_vehicle_plate_detector.h>
 #include <cvedix/nodes/infers/cvedix_trt_vehicle_plate_detector_v2.h>
-#include <cvedix/nodes/infers/cvedix_trt_vehicle_color_classifier.h>
-#include <cvedix/nodes/infers/cvedix_trt_vehicle_type_classifier.h>
-#include <cvedix/nodes/infers/cvedix_trt_vehicle_feature_encoder.h>
 #include <cvedix/nodes/infers/cvedix_trt_vehicle_scanner.h>
+#include <cvedix/nodes/infers/cvedix_trt_vehicle_type_classifier.h>
+#include <cvedix/nodes/infers/cvedix_trt_yolov8_classifier.h>
+#include <cvedix/nodes/infers/cvedix_trt_yolov8_detector.h>
+#include <cvedix/nodes/infers/cvedix_trt_yolov8_pose_detector.h>
+#include <cvedix/nodes/infers/cvedix_trt_yolov8_seg_detector.h>
 #endif
 
 // RKNN Inference Nodes
 #ifdef CVEDIX_WITH_RKNN
-#include <cvedix/nodes/infers/cvedix_rknn_yolov8_detector_node.h>
-#include <cvedix/nodes/infers/cvedix_rknn_yolov11_detector_node.h>
 #include <cvedix/nodes/infers/cvedix_rknn_face_detector_node.h>
+#include <cvedix/nodes/infers/cvedix_rknn_yolov11_detector_node.h>
+#include <cvedix/nodes/infers/cvedix_rknn_yolov8_detector_node.h>
 #endif
 
 // Other Inference Nodes
@@ -54,15 +54,16 @@
 // Note: cvedix_yolov11_detector_node.h is not available in CVEDIX SDK
 // Use rknn_yolov11_detector (with CVEDIX_WITH_RKNN) or yolo_detector instead
 // #include <cvedix/nodes/infers/cvedix_yolov11_detector_node.h>
+#include <cvedix/nodes/infers/cvedix_classifier_node.h>
 #include <cvedix/nodes/infers/cvedix_enet_seg_node.h>
 #include <cvedix/nodes/infers/cvedix_mask_rcnn_detector_node.h>
 #include <cvedix/nodes/infers/cvedix_openpose_detector_node.h>
-#include <cvedix/nodes/infers/cvedix_classifier_node.h>
-// Note: cvedix_feature_encoder_node is abstract - use cvedix_sface_feature_encoder_node or cvedix_trt_vehicle_feature_encoder instead
-// #include <cvedix/nodes/infers/cvedix_feature_encoder_node.h>
-#include <cvedix/nodes/infers/cvedix_lane_detector_node.h>
+// Note: cvedix_feature_encoder_node is abstract - use
+// cvedix_sface_feature_encoder_node or cvedix_trt_vehicle_feature_encoder
+// instead #include <cvedix/nodes/infers/cvedix_feature_encoder_node.h>
 #include <cvedix/nodes/infers/cvedix_face_swap_node.h>
 #include <cvedix/nodes/infers/cvedix_insight_face_recognition_node.h>
+#include <cvedix/nodes/infers/cvedix_lane_detector_node.h>
 #ifdef CVEDIX_WITH_LLM
 #include <cvedix/nodes/infers/cvedix_mllm_analyser_node.h>
 #endif
@@ -75,22 +76,22 @@
 #ifdef CVEDIX_WITH_TRT
 #include <cvedix/nodes/infers/cvedix_trt_insight_face_recognition_node.h>
 #endif
-#include <vector>
 #include <atomic>
+#include <vector>
 
 // Broker Nodes
 #ifdef CVEDIX_WITH_MQTT
+#include <atomic>
+#include <chrono>
+#include <ctime>
+#include <cvedix/nodes/broker/cereal_archive/cvedix_objects_cereal_archive.h>
 #include <cvedix/nodes/broker/cvedix_json_enhanced_console_broker_node.h>
 #include <cvedix/nodes/broker/cvedix_json_mqtt_broker_node.h>
-#include <cvedix/nodes/broker/cereal_archive/cvedix_objects_cereal_archive.h>
 #include <cvedix/utils/mqtt_client/cvedix_mqtt_client.h>
-#include <mutex>
-#include <ctime>
-#include <chrono>
-#include <atomic>
 #include <future>
-#include <opencv2/imgproc.hpp>
+#include <mutex>
 #include <opencv2/imgcodecs.hpp>
+#include <opencv2/imgproc.hpp>
 #endif
 #ifdef CVEDIX_WITH_KAFKA
 // #include <cvedix/nodes/broker/cvedix_json_kafka_broker_node.h>
@@ -102,25 +103,27 @@
 // #include <cvedix/nodes/broker/cvedix_msg_broker_node.h>
 // #include <cvedix/nodes/broker/cvedix_ba_socket_broker_node.h>
 // #include <cvedix/nodes/broker/cvedix_embeddings_socket_broker_node.h>
-// #include <cvedix/nodes/broker/cvedix_embeddings_properties_socket_broker_node.h>
+// #include
+// <cvedix/nodes/broker/cvedix_embeddings_properties_socket_broker_node.h>
 // #include <cvedix/nodes/broker/cvedix_plate_socket_broker_node.h>
 // #include <cvedix/nodes/broker/cvedix_expr_socket_broker_node.h>
-#include <cstdlib>
-#include <cstring>
-#include <sstream>
-#include <stdexcept>
-#include <iostream>
-#include <fstream>
-#include <typeinfo>
-#include <exception>
-#include <mutex>
-#include <iomanip>
-#include <cmath>
-#include <set>
-#include <regex>
 #include <algorithm>
 #include <cctype>
-// CVEDIX SDK uses experimental::filesystem, so we need to use it too for compatibility
+#include <cmath>
+#include <cstdlib>
+#include <cstring>
+#include <exception>
+#include <fstream>
+#include <iomanip>
+#include <iostream>
+#include <mutex>
+#include <regex>
+#include <set>
+#include <sstream>
+#include <stdexcept>
+#include <typeinfo>
+// CVEDIX SDK uses experimental::filesystem, so we need to use it too for
+// compatibility
 #include <experimental/filesystem>
 namespace fs = std::experimental::filesystem;
 
@@ -128,5545 +131,6593 @@ namespace fs = std::experimental::filesystem;
 static std::once_flag cvedix_init_flag;
 
 // Helper function to select decoder from priority list
-static std::string selectDecoderFromPriority(const std::string& defaultDecoder) {
-    try {
-        auto& systemConfig = SystemConfig::getInstance();
-        auto decoderList = systemConfig.getDecoderPriorityList();
-        
-        if (decoderList.empty()) {
-            return defaultDecoder;
-        }
-        
-        // Map decoder priority names to GStreamer decoder names
-        std::map<std::string, std::string> decoderMap = {
-            {"blaize.auto", "avdec_h264"},  // Blaize hardware decoder (fallback to software)
-            {"rockchip", "mppvideodec"},     // Rockchip MPP decoder
-            {"nvidia.1", "nvh264dec"},       // NVIDIA hardware decoder
-            {"intel.1", "qsvh264dec"},       // Intel QuickSync decoder
-            {"software", "avdec_h264"}       // Software decoder
-        };
-        
-        // Try decoders in priority order
-        for (const auto& priorityDecoder : decoderList) {
-            auto it = decoderMap.find(priorityDecoder);
-            if (it != decoderMap.end()) {
-                // Check if decoder is available (simple check - could be enhanced)
-                // For now, return first available in priority order
-                std::cerr << "[PipelineBuilder] Selected decoder from priority: " 
-                         << priorityDecoder << " -> " << it->second << std::endl;
-                return it->second;
-            }
-        }
-        
-        // If no match, return default
-        return defaultDecoder;
-    } catch (...) {
-        // On error, return default
-        return defaultDecoder;
+static std::string
+selectDecoderFromPriority(const std::string &defaultDecoder) {
+  try {
+    auto &systemConfig = SystemConfig::getInstance();
+    auto decoderList = systemConfig.getDecoderPriorityList();
+
+    if (decoderList.empty()) {
+      return defaultDecoder;
     }
+
+    // Map decoder priority names to GStreamer decoder names
+    std::map<std::string, std::string> decoderMap = {
+        {"blaize.auto",
+         "avdec_h264"}, // Blaize hardware decoder (fallback to software)
+        {"rockchip", "mppvideodec"}, // Rockchip MPP decoder
+        {"nvidia.1", "nvh264dec"},   // NVIDIA hardware decoder
+        {"intel.1", "qsvh264dec"},   // Intel QuickSync decoder
+        {"software", "avdec_h264"}   // Software decoder
+    };
+
+    // Try decoders in priority order
+    for (const auto &priorityDecoder : decoderList) {
+      auto it = decoderMap.find(priorityDecoder);
+      if (it != decoderMap.end()) {
+        // Check if decoder is available (simple check - could be enhanced)
+        // For now, return first available in priority order
+        std::cerr << "[PipelineBuilder] Selected decoder from priority: "
+                  << priorityDecoder << " -> " << it->second << std::endl;
+        return it->second;
+      }
+    }
+
+    // If no match, return default
+    return defaultDecoder;
+  } catch (...) {
+    // On error, return default
+    return defaultDecoder;
+  }
 }
 
 // Helper function to get GStreamer pipeline from config
 // Note: Currently not used but available for future integration
 [[maybe_unused]] static std::string getGStreamerPipelineForPlatform() {
-    try {
-        auto& systemConfig = SystemConfig::getInstance();
-        std::string platform = PlatformDetector::detectPlatform();
-        std::string pipeline = systemConfig.getGStreamerPipeline(platform);
-        
-        if (!pipeline.empty()) {
-            std::cerr << "[PipelineBuilder] Using GStreamer pipeline from config for platform '" 
-                     << platform << "': " << pipeline << std::endl;
-            return pipeline;
-        }
-        
-        // Fallback to auto if platform-specific not found
-        pipeline = systemConfig.getGStreamerPipeline("auto");
-        if (!pipeline.empty()) {
-            std::cerr << "[PipelineBuilder] Using GStreamer pipeline from config (auto): " 
-                     << pipeline << std::endl;
-            return pipeline;
-        }
-    } catch (...) {
-        // On error, return empty (will use default)
+  try {
+    auto &systemConfig = SystemConfig::getInstance();
+    std::string platform = PlatformDetector::detectPlatform();
+    std::string pipeline = systemConfig.getGStreamerPipeline(platform);
+
+    if (!pipeline.empty()) {
+      std::cerr << "[PipelineBuilder] Using GStreamer pipeline from config for "
+                   "platform '"
+                << platform << "': " << pipeline << std::endl;
+      return pipeline;
     }
-    
-    return "";
+
+    // Fallback to auto if platform-specific not found
+    pipeline = systemConfig.getGStreamerPipeline("auto");
+    if (!pipeline.empty()) {
+      std::cerr
+          << "[PipelineBuilder] Using GStreamer pipeline from config (auto): "
+          << pipeline << std::endl;
+      return pipeline;
+    }
+  } catch (...) {
+    // On error, return empty (will use default)
+  }
+
+  return "";
 }
 
 // Initialize CVEDIX SDK logger (required before creating nodes)
 static void ensureCVEDIXInitialized() {
-    std::call_once(cvedix_init_flag, []() {
-        try {
-            // Configure GStreamer RTSP transport protocol if specified
-            // This helps avoid UDP firewall issues by forcing TCP
-            const char* rtspProtocols = std::getenv("GST_RTSP_PROTOCOLS");
-            if (!rtspProtocols || strlen(rtspProtocols) == 0) {
-                // Check if RTSP_TRANSPORT is set (alternative name)
-                const char* rtspTransport = std::getenv("RTSP_TRANSPORT");
-                if (rtspTransport && strlen(rtspTransport) > 0) {
-                    std::string transport = rtspTransport;
-                    std::transform(transport.begin(), transport.end(), transport.begin(), ::tolower);
-                    if (transport == "tcp" || transport == "udp") {
-                        setenv("GST_RTSP_PROTOCOLS", transport.c_str(), 0); // Don't overwrite if already set
-                        std::cerr << "[PipelineBuilder] Set GST_RTSP_PROTOCOLS=" << transport 
-                                  << " from RTSP_TRANSPORT environment variable" << std::endl;
-                    }
-                } else {
-                    // Don't set default - let GStreamer use its default (UDP, or tcp+udp)
-                    // This allows VLC RTSP server and other UDP-only servers to work
-                    // User can explicitly set GST_RTSP_PROTOCOLS=tcp if needed for firewall compatibility
-                    std::cerr << "[PipelineBuilder] GST_RTSP_PROTOCOLS not set - using GStreamer default (UDP/tcp+udp)" << std::endl;
-                    std::cerr << "[PipelineBuilder] NOTE: To force TCP, set GST_RTSP_PROTOCOLS=tcp before starting" << std::endl;
-                    std::cerr << "[PipelineBuilder] NOTE: To force UDP, set GST_RTSP_PROTOCOLS=udp before starting" << std::endl;
-                }
-            } else {
-                std::cerr << "[PipelineBuilder] Using GST_RTSP_PROTOCOLS=" << rtspProtocols 
-                          << " from environment" << std::endl;
-            }
-            
-            // Apply GStreamer plugin ranks from config
-            try {
-                auto& systemConfig = SystemConfig::getInstance();
-                // Get all plugin ranks from config
-                // Note: GStreamer plugin ranks are set via environment variables
-                // Format: GST_PLUGIN_FEATURE_RANK=plugin1:rank1,plugin2:rank2,...
-                std::vector<std::string> pluginRanks;
-                std::vector<std::string> knownPlugins = {
-                    "nvv4l2decoder", "nvjpegdec", "nvjpegenc", "nvvidconv",
-                    "msdkvpp", "vaapipostproc", "vpldec",
-                    "qsv", "qsvh265dec", "qsvh264dec", "qsvh265enc", "qsvh264enc",
-                    "amfh264dec", "amfh265dec", "amfhvp9dec", "amfhav1dec",
-                    "nvh264dec", "nvh265dec", "nvh264enc", "nvh265enc",
-                    "nvvp9dec", "nvvp9enc",
-                    "nvmpeg4videodec", "nvmpeg2videodec", "nvmpegvideodec",
-                    "mpph264enc", "mpph265enc", "mppvp8enc", "mppjpegenc",
-                    "mppvideodec", "mppjpegdec"
-                };
-                
-                for (const auto& plugin : knownPlugins) {
-                    std::string rank = systemConfig.getGStreamerPluginRank(plugin);
-                    if (!rank.empty()) {
-                        pluginRanks.push_back(plugin + ":" + rank);
-                    }
-                }
-                
-                if (!pluginRanks.empty()) {
-                    std::string rankEnv = "";
-                    for (size_t i = 0; i < pluginRanks.size(); ++i) {
-                        if (i > 0) rankEnv += ",";
-                        rankEnv += pluginRanks[i];
-                    }
-                    setenv("GST_PLUGIN_FEATURE_RANK", rankEnv.c_str(), 0);
-                    std::cerr << "[PipelineBuilder] Set GStreamer plugin ranks from config: " 
-                             << pluginRanks.size() << " plugins" << std::endl;
-                }
-            } catch (...) {
-                std::cerr << "[PipelineBuilder] Warning: Failed to apply GStreamer plugin ranks from config" << std::endl;
-            }
-            
-            // Set CVEDIX log level (can be overridden via CVEDIX_LOG_LEVEL env var)
-            // Default: INFO to show all important logs (WARNING and above)
-            // Options: ERROR, WARNING, INFO, DEBUG (case-insensitive)
-            cvedix_utils::cvedix_log_level cvedix_log_level = cvedix_utils::cvedix_log_level::INFO;
-            const char* env_cvedix_log = std::getenv("CVEDIX_LOG_LEVEL");
-            if (env_cvedix_log) {
-                std::string log_level_str = env_cvedix_log;
-                std::transform(log_level_str.begin(), log_level_str.end(), log_level_str.begin(), ::toupper);
-                if (log_level_str == "DEBUG") {
-                    cvedix_log_level = cvedix_utils::cvedix_log_level::DEBUG;
-                } else if (log_level_str == "INFO") {
-                    cvedix_log_level = cvedix_utils::cvedix_log_level::INFO;
-                } else if (log_level_str == "WARNING" || log_level_str == "WARN") {
-                    cvedix_log_level = cvedix_utils::cvedix_log_level::WARN;
-                } else if (log_level_str == "ERROR") {
-                    cvedix_log_level = cvedix_utils::cvedix_log_level::ERROR;
-                }
-            }
-            CVEDIX_SET_LOG_LEVEL(cvedix_log_level);
-            CVEDIX_LOGGER_INIT();
-            std::string log_level_name = env_cvedix_log ? std::string(env_cvedix_log) : "INFO (default)";
-            std::cerr << "[PipelineBuilder] CVEDIX SDK logger initialized (log level: " << log_level_name << ")" << std::endl;
-            if (cvedix_log_level == cvedix_utils::cvedix_log_level::ERROR) {
-                std::cerr << "[PipelineBuilder] NOTE: WARNING logs (e.g., 'queue full, dropping meta!') are suppressed" << std::endl;
-                std::cerr << "[PipelineBuilder] NOTE: Set CVEDIX_LOG_LEVEL=INFO to see all logs" << std::endl;
-            }
-        } catch (const std::exception& e) {
-            std::cerr << "[PipelineBuilder] Warning: Failed to initialize CVEDIX logger: " 
-                      << e.what() << std::endl;
-        } catch (...) {
-            std::cerr << "[PipelineBuilder] Warning: Unknown error initializing CVEDIX logger" << std::endl;
+  std::call_once(cvedix_init_flag, []() {
+    try {
+      // Configure GStreamer RTSP transport protocol if specified
+      // This helps avoid UDP firewall issues by forcing TCP
+      const char *rtspProtocols = std::getenv("GST_RTSP_PROTOCOLS");
+      if (!rtspProtocols || strlen(rtspProtocols) == 0) {
+        // Check if RTSP_TRANSPORT is set (alternative name)
+        const char *rtspTransport = std::getenv("RTSP_TRANSPORT");
+        if (rtspTransport && strlen(rtspTransport) > 0) {
+          std::string transport = rtspTransport;
+          std::transform(transport.begin(), transport.end(), transport.begin(),
+                         ::tolower);
+          if (transport == "tcp" || transport == "udp") {
+            setenv("GST_RTSP_PROTOCOLS", transport.c_str(),
+                   0); // Don't overwrite if already set
+            std::cerr << "[PipelineBuilder] Set GST_RTSP_PROTOCOLS="
+                      << transport
+                      << " from RTSP_TRANSPORT environment variable"
+                      << std::endl;
+          }
+        } else {
+          // Don't set default - let GStreamer use its default (UDP, or tcp+udp)
+          // This allows VLC RTSP server and other UDP-only servers to work
+          // User can explicitly set GST_RTSP_PROTOCOLS=tcp if needed for
+          // firewall compatibility
+          std::cerr << "[PipelineBuilder] GST_RTSP_PROTOCOLS not set - using "
+                       "GStreamer default (UDP/tcp+udp)"
+                    << std::endl;
+          std::cerr << "[PipelineBuilder] NOTE: To force TCP, set "
+                       "GST_RTSP_PROTOCOLS=tcp before starting"
+                    << std::endl;
+          std::cerr << "[PipelineBuilder] NOTE: To force UDP, set "
+                       "GST_RTSP_PROTOCOLS=udp before starting"
+                    << std::endl;
         }
-    });
+      } else {
+        std::cerr << "[PipelineBuilder] Using GST_RTSP_PROTOCOLS="
+                  << rtspProtocols << " from environment" << std::endl;
+      }
+
+      // Apply GStreamer plugin ranks from config
+      try {
+        auto &systemConfig = SystemConfig::getInstance();
+        // Get all plugin ranks from config
+        // Note: GStreamer plugin ranks are set via environment variables
+        // Format: GST_PLUGIN_FEATURE_RANK=plugin1:rank1,plugin2:rank2,...
+        std::vector<std::string> pluginRanks;
+        std::vector<std::string> knownPlugins = {
+            "nvv4l2decoder",   "nvjpegdec",
+            "nvjpegenc",       "nvvidconv",
+            "msdkvpp",         "vaapipostproc",
+            "vpldec",          "qsv",
+            "qsvh265dec",      "qsvh264dec",
+            "qsvh265enc",      "qsvh264enc",
+            "amfh264dec",      "amfh265dec",
+            "amfhvp9dec",      "amfhav1dec",
+            "nvh264dec",       "nvh265dec",
+            "nvh264enc",       "nvh265enc",
+            "nvvp9dec",        "nvvp9enc",
+            "nvmpeg4videodec", "nvmpeg2videodec",
+            "nvmpegvideodec",  "mpph264enc",
+            "mpph265enc",      "mppvp8enc",
+            "mppjpegenc",      "mppvideodec",
+            "mppjpegdec"};
+
+        for (const auto &plugin : knownPlugins) {
+          std::string rank = systemConfig.getGStreamerPluginRank(plugin);
+          if (!rank.empty()) {
+            pluginRanks.push_back(plugin + ":" + rank);
+          }
+        }
+
+        if (!pluginRanks.empty()) {
+          std::string rankEnv = "";
+          for (size_t i = 0; i < pluginRanks.size(); ++i) {
+            if (i > 0)
+              rankEnv += ",";
+            rankEnv += pluginRanks[i];
+          }
+          setenv("GST_PLUGIN_FEATURE_RANK", rankEnv.c_str(), 0);
+          std::cerr
+              << "[PipelineBuilder] Set GStreamer plugin ranks from config: "
+              << pluginRanks.size() << " plugins" << std::endl;
+        }
+      } catch (...) {
+        std::cerr << "[PipelineBuilder] Warning: Failed to apply GStreamer "
+                     "plugin ranks from config"
+                  << std::endl;
+      }
+
+      // Set CVEDIX log level (can be overridden via CVEDIX_LOG_LEVEL env var)
+      // Default: INFO to show all important logs (WARNING and above)
+      // Options: ERROR, WARNING, INFO, DEBUG (case-insensitive)
+      cvedix_utils::cvedix_log_level cvedix_log_level =
+          cvedix_utils::cvedix_log_level::INFO;
+      const char *env_cvedix_log = std::getenv("CVEDIX_LOG_LEVEL");
+      if (env_cvedix_log) {
+        std::string log_level_str = env_cvedix_log;
+        std::transform(log_level_str.begin(), log_level_str.end(),
+                       log_level_str.begin(), ::toupper);
+        if (log_level_str == "DEBUG") {
+          cvedix_log_level = cvedix_utils::cvedix_log_level::DEBUG;
+        } else if (log_level_str == "INFO") {
+          cvedix_log_level = cvedix_utils::cvedix_log_level::INFO;
+        } else if (log_level_str == "WARNING" || log_level_str == "WARN") {
+          cvedix_log_level = cvedix_utils::cvedix_log_level::WARN;
+        } else if (log_level_str == "ERROR") {
+          cvedix_log_level = cvedix_utils::cvedix_log_level::ERROR;
+        }
+      }
+      CVEDIX_SET_LOG_LEVEL(cvedix_log_level);
+      CVEDIX_LOGGER_INIT();
+      std::string log_level_name =
+          env_cvedix_log ? std::string(env_cvedix_log) : "INFO (default)";
+      std::cerr
+          << "[PipelineBuilder] CVEDIX SDK logger initialized (log level: "
+          << log_level_name << ")" << std::endl;
+      if (cvedix_log_level == cvedix_utils::cvedix_log_level::ERROR) {
+        std::cerr << "[PipelineBuilder] NOTE: WARNING logs (e.g., 'queue full, "
+                     "dropping meta!') are suppressed"
+                  << std::endl;
+        std::cerr << "[PipelineBuilder] NOTE: Set CVEDIX_LOG_LEVEL=INFO to see "
+                     "all logs"
+                  << std::endl;
+      }
+    } catch (const std::exception &e) {
+      std::cerr
+          << "[PipelineBuilder] Warning: Failed to initialize CVEDIX logger: "
+          << e.what() << std::endl;
+    } catch (...) {
+      std::cerr << "[PipelineBuilder] Warning: Unknown error initializing "
+                   "CVEDIX logger"
+                << std::endl;
+    }
+  });
 }
 
-std::vector<std::shared_ptr<cvedix_nodes::cvedix_node>> PipelineBuilder::buildPipeline(
-    const SolutionConfig& solution,
-    const CreateInstanceRequest& req,
-    const std::string& instanceId) {
-    
-    // Ensure CVEDIX SDK is initialized before creating nodes
-    ensureCVEDIXInitialized();
-    
-    std::cerr << "[PipelineBuilder] ========================================" << std::endl;
-    std::cerr << "[PipelineBuilder] Building pipeline for solution: " << solution.solutionId << std::endl;
-    std::cerr << "[PipelineBuilder] Solution name: " << solution.solutionName << std::endl;
-    std::cerr << "[PipelineBuilder] Instance ID: " << instanceId << std::endl;
-    std::cerr << "[PipelineBuilder] NOTE: This may be a new instance or rebuilding after stop/restart" << std::endl;
-    std::cerr << "[PipelineBuilder] Pipeline will contain " << solution.pipeline.size() << " nodes:" << std::endl;
-    for (size_t i = 0; i < solution.pipeline.size(); ++i) {
-        const auto& nodeConfig = solution.pipeline[i];
-        std::cerr << "[PipelineBuilder]   " << (i + 1) << ". " << nodeConfig.nodeType 
-                  << " (" << nodeConfig.nodeName << ")" << std::endl;
+std::vector<std::shared_ptr<cvedix_nodes::cvedix_node>>
+PipelineBuilder::buildPipeline(const SolutionConfig &solution,
+                               const CreateInstanceRequest &req,
+                               const std::string &instanceId) {
+
+  // Ensure CVEDIX SDK is initialized before creating nodes
+  ensureCVEDIXInitialized();
+
+  std::cerr << "[PipelineBuilder] ========================================"
+            << std::endl;
+  std::cerr << "[PipelineBuilder] Building pipeline for solution: "
+            << solution.solutionId << std::endl;
+  std::cerr << "[PipelineBuilder] Solution name: " << solution.solutionName
+            << std::endl;
+  std::cerr << "[PipelineBuilder] Instance ID: " << instanceId << std::endl;
+  std::cerr << "[PipelineBuilder] NOTE: This may be a new instance or "
+               "rebuilding after stop/restart"
+            << std::endl;
+  std::cerr << "[PipelineBuilder] Pipeline will contain "
+            << solution.pipeline.size() << " nodes:" << std::endl;
+  for (size_t i = 0; i < solution.pipeline.size(); ++i) {
+    const auto &nodeConfig = solution.pipeline[i];
+    std::cerr << "[PipelineBuilder]   " << (i + 1) << ". "
+              << nodeConfig.nodeType << " (" << nodeConfig.nodeName << ")"
+              << std::endl;
+  }
+  std::cerr << "[PipelineBuilder] ========================================"
+            << std::endl;
+
+  std::vector<std::shared_ptr<cvedix_nodes::cvedix_node>> nodes;
+  std::vector<std::string> nodeTypes; // Track node types for connection logic
+
+  // Check if pipeline has OSD node (for RTMP node OSD auto-enable logic)
+  bool hasOSDNode = false;
+  for (const auto &nodeConfig : solution.pipeline) {
+    if (nodeConfig.nodeType == "face_osd_v2" ||
+        nodeConfig.nodeType == "osd_v3" ||
+        nodeConfig.nodeType == "ba_crossline_osd") {
+      hasOSDNode = true;
+      break;
     }
-    std::cerr << "[PipelineBuilder] ========================================" << std::endl;
-    
-    std::vector<std::shared_ptr<cvedix_nodes::cvedix_node>> nodes;
-    std::vector<std::string> nodeTypes; // Track node types for connection logic
-    
-    // Check if pipeline has OSD node (for RTMP node OSD auto-enable logic)
-    bool hasOSDNode = false;
-    for (const auto& nodeConfig : solution.pipeline) {
-        if (nodeConfig.nodeType == "face_osd_v2" || 
-            nodeConfig.nodeType == "osd_v3" || 
-            nodeConfig.nodeType == "ba_crossline_osd") {
-            hasOSDNode = true;
-            break;
+  }
+
+  // Build nodes in pipeline order
+  for (const auto &nodeConfig : solution.pipeline) {
+    try {
+      std::cerr << "[PipelineBuilder] Creating node: " << nodeConfig.nodeType
+                << " (" << nodeConfig.nodeName << ")" << std::endl;
+
+      // For RTMP nodes: if pipeline doesn't have OSD node and OSD parameter not
+      // explicitly set, enable OSD overlay in RTMP node
+      SolutionConfig::NodeConfig modifiedNodeConfig = nodeConfig;
+      if (nodeConfig.nodeType == "rtmp_des" && !hasOSDNode) {
+        // Check if OSD parameter is already set
+        if (modifiedNodeConfig.parameters.find("osd") ==
+            modifiedNodeConfig.parameters.end()) {
+          modifiedNodeConfig.parameters["osd"] = "true";
+          std::cerr << "[PipelineBuilder] NOTE: Pipeline has no OSD node, "
+                       "enabling OSD overlay in RTMP node"
+                    << std::endl;
         }
-    }
-    
-    // Build nodes in pipeline order
-    for (const auto& nodeConfig : solution.pipeline) {
-        try {
-            std::cerr << "[PipelineBuilder] Creating node: " << nodeConfig.nodeType 
-                      << " (" << nodeConfig.nodeName << ")" << std::endl;
-            
-            // For RTMP nodes: if pipeline doesn't have OSD node and OSD parameter not explicitly set,
-            // enable OSD overlay in RTMP node
-            SolutionConfig::NodeConfig modifiedNodeConfig = nodeConfig;
-            if (nodeConfig.nodeType == "rtmp_des" && !hasOSDNode) {
-                // Check if OSD parameter is already set
-                if (modifiedNodeConfig.parameters.find("osd") == modifiedNodeConfig.parameters.end()) {
-                    modifiedNodeConfig.parameters["osd"] = "true";
-                    std::cerr << "[PipelineBuilder] NOTE: Pipeline has no OSD node, enabling OSD overlay in RTMP node" << std::endl;
-                }
+      }
+
+      auto node = createNode(modifiedNodeConfig, req, instanceId);
+      if (node) {
+        nodes.push_back(node);
+        nodeTypes.push_back(nodeConfig.nodeType);
+
+        // Connect to previous node
+        // attach_to() expects a vector of shared_ptr, not a raw pointer
+        if (nodes.size() > 1) {
+          // Check if current node is a destination node
+          bool isDestNode = (nodeConfig.nodeType == "file_des" ||
+                             nodeConfig.nodeType == "rtmp_des" ||
+                             nodeConfig.nodeType == "screen_des");
+
+          // For RTMP nodes: if pipeline has OSD node, attach to OSD node (to
+          // get frames with overlay)
+          std::shared_ptr<cvedix_nodes::cvedix_node> attachTarget = nullptr;
+          if (nodeConfig.nodeType == "rtmp_des" && hasOSDNode) {
+            // Find OSD node
+            for (int i = static_cast<int>(nodes.size()) - 1; i >= 0; --i) {
+              auto checkNode = nodes[i];
+              bool isOSDNode =
+                  std::dynamic_pointer_cast<
+                      cvedix_nodes::cvedix_face_osd_node_v2>(checkNode) ||
+                  std::dynamic_pointer_cast<cvedix_nodes::cvedix_osd_node_v3>(
+                      checkNode) ||
+                  std::dynamic_pointer_cast<
+                      cvedix_nodes::cvedix_ba_crossline_osd_node>(checkNode);
+              if (isOSDNode) {
+                attachTarget = checkNode;
+                std::cerr << "[PipelineBuilder] Attaching RTMP node to OSD "
+                             "node for overlay frames"
+                          << std::endl;
+                break;
+              }
             }
-            
-            auto node = createNode(modifiedNodeConfig, req, instanceId);
-            if (node) {
-                nodes.push_back(node);
-                nodeTypes.push_back(nodeConfig.nodeType);
-                
-                // Connect to previous node
-                // attach_to() expects a vector of shared_ptr, not a raw pointer
-                if (nodes.size() > 1) {
-                    // Check if current node is a destination node
-                    bool isDestNode = (nodeConfig.nodeType == "file_des" || 
-                                      nodeConfig.nodeType == "rtmp_des" || 
-                                      nodeConfig.nodeType == "screen_des");
-                    
-                    // For RTMP nodes: if pipeline has OSD node, attach to OSD node (to get frames with overlay)
-                    std::shared_ptr<cvedix_nodes::cvedix_node> attachTarget = nullptr;
-                    if (nodeConfig.nodeType == "rtmp_des" && hasOSDNode) {
-                        // Find OSD node
-                        for (int i = static_cast<int>(nodes.size()) - 1; i >= 0; --i) {
-                            auto checkNode = nodes[i];
-                            bool isOSDNode = std::dynamic_pointer_cast<cvedix_nodes::cvedix_face_osd_node_v2>(checkNode) ||
-                                            std::dynamic_pointer_cast<cvedix_nodes::cvedix_osd_node_v3>(checkNode) ||
-                                            std::dynamic_pointer_cast<cvedix_nodes::cvedix_ba_crossline_osd_node>(checkNode);
-                            if (isOSDNode) {
-                                attachTarget = checkNode;
-                                std::cerr << "[PipelineBuilder] Attaching RTMP node to OSD node for overlay frames" << std::endl;
-                                break;
-                            }
-                        }
-                    }
-                    
-                    // If no OSD node found or not RTMP node, use default logic
-                    if (!attachTarget) {
-                        // Find the node to attach to
-                        // If current node is a destination node and previous node is also a destination node,
-                        // attach to the node before the previous one (to allow multiple destinations from same source)
-                        size_t attachIndex = nodes.size() - 2;
-                        if (isDestNode && attachIndex > 0) {
-                            // Check if previous node is also a destination node
-                            bool prevIsDestNode = (nodeTypes[attachIndex] == "file_des" || 
-                                                  nodeTypes[attachIndex] == "rtmp_des" || 
-                                                  nodeTypes[attachIndex] == "screen_des");
-                            if (prevIsDestNode) {
-                                // Find the last non-destination node
-                                for (int i = static_cast<int>(attachIndex) - 1; i >= 0; --i) {
-                                    bool nodeIsDest = (nodeTypes[i] == "file_des" || 
-                                                      nodeTypes[i] == "rtmp_des" || 
-                                                      nodeTypes[i] == "screen_des");
-                                    if (!nodeIsDest) {
-                                        attachIndex = i;
-                                        break;
-                                    }
-                                }
-                            }
-                        }
-                        
-                        if (attachIndex < nodes.size()) {
-                            attachTarget = nodes[attachIndex];
-                        } else {
-                            attachTarget = nodes[nodes.size() - 2];
-                        }
-                    }
-                    
-                    if (attachTarget) {
-                        node->attach_to({attachTarget});
-                    }
+          }
+
+          // If no OSD node found or not RTMP node, use default logic
+          if (!attachTarget) {
+            // Find the node to attach to
+            // If current node is a destination node and previous node is also a
+            // destination node, attach to the node before the previous one (to
+            // allow multiple destinations from same source)
+            size_t attachIndex = nodes.size() - 2;
+            if (isDestNode && attachIndex > 0) {
+              // Check if previous node is also a destination node
+              bool prevIsDestNode = (nodeTypes[attachIndex] == "file_des" ||
+                                     nodeTypes[attachIndex] == "rtmp_des" ||
+                                     nodeTypes[attachIndex] == "screen_des");
+              if (prevIsDestNode) {
+                // Find the last non-destination node
+                for (int i = static_cast<int>(attachIndex) - 1; i >= 0; --i) {
+                  bool nodeIsDest = (nodeTypes[i] == "file_des" ||
+                                     nodeTypes[i] == "rtmp_des" ||
+                                     nodeTypes[i] == "screen_des");
+                  if (!nodeIsDest) {
+                    attachIndex = i;
+                    break;
+                  }
                 }
-                std::cerr << "[PipelineBuilder] Successfully created and connected node: " 
-                          << nodeConfig.nodeType << std::endl;
+              }
+            }
+
+            if (attachIndex < nodes.size()) {
+              attachTarget = nodes[attachIndex];
             } else {
-                // Check if this is an optional node that can be skipped
-                bool isOptionalNode = (nodeConfig.nodeType == "screen_des" || 
-                                     nodeConfig.nodeType == "rtmp_des" ||
-                                     nodeConfig.nodeType == "json_console_broker" ||
-                                     nodeConfig.nodeType == "json_enhanced_console_broker" ||
-                                     nodeConfig.nodeType == "json_mqtt_broker" ||
-                                     nodeConfig.nodeType == "json_crossline_mqtt_broker" ||
-                                     nodeConfig.nodeType == "json_kafka_broker" ||
-                                     nodeConfig.nodeType == "xml_file_broker" ||
-                                     nodeConfig.nodeType == "xml_socket_broker" ||
-                                     nodeConfig.nodeType == "msg_broker" ||
-                                     nodeConfig.nodeType == "ba_socket_broker" ||
-                                     nodeConfig.nodeType == "embeddings_socket_broker" ||
-                                     nodeConfig.nodeType == "embeddings_properties_socket_broker" ||
-                                     nodeConfig.nodeType == "plate_socket_broker" ||
-                                     nodeConfig.nodeType == "expr_socket_broker");
-                
-                if (isOptionalNode) {
-                    std::cerr << "[PipelineBuilder] Skipping optional node: " << nodeConfig.nodeType 
-                              << " (node creation returned nullptr)" << std::endl;
-                    // Continue to next node without throwing exception
-                } else {
-                    std::cerr << "[PipelineBuilder] Failed to create node: " << nodeConfig.nodeType 
-                              << " (createNode returned nullptr)" << std::endl;
-                    throw std::runtime_error("Failed to create node: " + nodeConfig.nodeType);
-                }
+              attachTarget = nodes[nodes.size() - 2];
             }
-        } catch (const std::exception& e) {
-            std::cerr << "[PipelineBuilder] Exception creating node " << nodeConfig.nodeType 
-                      << ": " << e.what() << std::endl;
-            throw; // Re-throw to be caught by caller
-        } catch (...) {
-            std::cerr << "[PipelineBuilder] Unknown exception creating node: " 
-                      << nodeConfig.nodeType << std::endl;
-            throw std::runtime_error("Unknown error creating node: " + nodeConfig.nodeType);
+          }
+
+          if (attachTarget) {
+            node->attach_to({attachTarget});
+          }
         }
+        std::cerr
+            << "[PipelineBuilder] Successfully created and connected node: "
+            << nodeConfig.nodeType << std::endl;
+      } else {
+        // Check if this is an optional node that can be skipped
+        bool isOptionalNode =
+            (nodeConfig.nodeType == "screen_des" ||
+             nodeConfig.nodeType == "rtmp_des" ||
+             nodeConfig.nodeType == "json_console_broker" ||
+             nodeConfig.nodeType == "json_enhanced_console_broker" ||
+             nodeConfig.nodeType == "json_mqtt_broker" ||
+             nodeConfig.nodeType == "json_crossline_mqtt_broker" ||
+             nodeConfig.nodeType == "json_kafka_broker" ||
+             nodeConfig.nodeType == "xml_file_broker" ||
+             nodeConfig.nodeType == "xml_socket_broker" ||
+             nodeConfig.nodeType == "msg_broker" ||
+             nodeConfig.nodeType == "ba_socket_broker" ||
+             nodeConfig.nodeType == "embeddings_socket_broker" ||
+             nodeConfig.nodeType == "embeddings_properties_socket_broker" ||
+             nodeConfig.nodeType == "plate_socket_broker" ||
+             nodeConfig.nodeType == "expr_socket_broker");
+
+        if (isOptionalNode) {
+          std::cerr << "[PipelineBuilder] Skipping optional node: "
+                    << nodeConfig.nodeType
+                    << " (node creation returned nullptr)" << std::endl;
+          // Continue to next node without throwing exception
+        } else {
+          std::cerr << "[PipelineBuilder] Failed to create node: "
+                    << nodeConfig.nodeType << " (createNode returned nullptr)"
+                    << std::endl;
+          throw std::runtime_error("Failed to create node: " +
+                                   nodeConfig.nodeType);
+        }
+      }
+    } catch (const std::exception &e) {
+      std::cerr << "[PipelineBuilder] Exception creating node "
+                << nodeConfig.nodeType << ": " << e.what() << std::endl;
+      throw; // Re-throw to be caught by caller
+    } catch (...) {
+      std::cerr << "[PipelineBuilder] Unknown exception creating node: "
+                << nodeConfig.nodeType << std::endl;
+      throw std::runtime_error("Unknown error creating node: " +
+                               nodeConfig.nodeType);
     }
-    
-    // Auto-add file_des node if RECORD_PATH is set in additionalParams
-    auto recordPathIt = req.additionalParams.find("RECORD_PATH");
-    if (recordPathIt != req.additionalParams.end() && !recordPathIt->second.empty()) {
-        std::string recordPath = recordPathIt->second;
-        std::cerr << "[PipelineBuilder] RECORD_PATH detected: " << recordPath << std::endl;
-        std::cerr << "[PipelineBuilder] Auto-adding file_des node for recording..." << std::endl;
-        
+  }
+
+  // Auto-add file_des node if RECORD_PATH is set in additionalParams
+  auto recordPathIt = req.additionalParams.find("RECORD_PATH");
+  if (recordPathIt != req.additionalParams.end() &&
+      !recordPathIt->second.empty()) {
+    std::string recordPath = recordPathIt->second;
+    std::cerr << "[PipelineBuilder] RECORD_PATH detected: " << recordPath
+              << std::endl;
+    std::cerr << "[PipelineBuilder] Auto-adding file_des node for recording..."
+              << std::endl;
+
+    try {
+      // Create file_des node config
+      SolutionConfig::NodeConfig fileDesConfig;
+      fileDesConfig.nodeType = "file_des";
+      fileDesConfig.nodeName = "file_des_record_{instanceId}";
+      fileDesConfig.parameters["save_dir"] = recordPath;
+      fileDesConfig.parameters["name_prefix"] = "record";
+      fileDesConfig.parameters["max_duration"] = "10"; // 10 minutes per file
+      fileDesConfig.parameters["osd"] = "true";        // Include OSD overlay
+
+      // Substitute {instanceId} in node name
+      std::string fileDesNodeName = fileDesConfig.nodeName;
+      size_t pos = fileDesNodeName.find("{instanceId}");
+      while (pos != std::string::npos) {
+        fileDesNodeName.replace(pos, 12, instanceId);
+        pos = fileDesNodeName.find("{instanceId}", pos + instanceId.length());
+      }
+
+      // Create file_des node
+      auto fileDesNode = createFileDestinationNode(
+          fileDesNodeName, fileDesConfig.parameters, instanceId);
+
+      if (fileDesNode && !nodes.empty()) {
+        // Find the last non-destination node to attach to
+        // Destination nodes (file_des, rtmp_des, screen_des) don't forward
+        // frames, so we need to attach to the source node (usually OSD node)
+        std::shared_ptr<cvedix_nodes::cvedix_node> attachTarget = nullptr;
+        for (int i = static_cast<int>(nodes.size()) - 1; i >= 0; --i) {
+          auto node = nodes[i];
+          // Check if this is a destination node
+          bool isDestNode =
+              std::dynamic_pointer_cast<cvedix_nodes::cvedix_file_des_node>(
+                  node) ||
+              std::dynamic_pointer_cast<cvedix_nodes::cvedix_rtmp_des_node>(
+                  node) ||
+              std::dynamic_pointer_cast<cvedix_nodes::cvedix_screen_des_node>(
+                  node);
+          if (!isDestNode) {
+            attachTarget = node;
+            break;
+          }
+        }
+
+        // Fallback to last node if no non-destination node found
+        if (!attachTarget) {
+          attachTarget = nodes.back();
+        }
+
+        // Connect file_des node to the target node
+        fileDesNode->attach_to({attachTarget});
+        nodes.push_back(fileDesNode);
+        std::cerr
+            << "[PipelineBuilder] ✓ Auto-added file_des node for recording to: "
+            << recordPath << std::endl;
+      } else {
+        std::cerr << "[PipelineBuilder] ⚠ Failed to create file_des node for "
+                     "recording"
+                  << std::endl;
+      }
+    } catch (const std::exception &e) {
+      std::cerr << "[PipelineBuilder] ⚠ Exception auto-adding file_des node: "
+                << e.what() << std::endl;
+      std::cerr << "[PipelineBuilder] ⚠ Recording will not be available, but "
+                   "pipeline will continue"
+                << std::endl;
+    }
+  }
+
+  // Check if pipeline has app_des_node for frame capture
+  bool hasAppDesNode = false;
+  for (const auto &node : nodes) {
+    if (std::dynamic_pointer_cast<cvedix_nodes::cvedix_app_des_node>(node)) {
+      hasAppDesNode = true;
+      break;
+    }
+  }
+
+  // Automatically add app_des_node if not present (for frame capture support)
+  if (!hasAppDesNode && !nodes.empty()) {
+    std::cerr << "[PipelineBuilder] No app_des_node found in pipeline"
+              << std::endl;
+    std::cerr << "[PipelineBuilder] Automatically adding app_des_node for "
+                 "frame capture support..."
+              << std::endl;
+
+    try {
+      std::string appDesNodeName = "app_des_" + instanceId;
+      std::map<std::string, std::string> appDesParams;
+      appDesParams["channel"] = "0";
+
+      auto appDesNode = createAppDesNode(appDesNodeName, appDesParams);
+      if (appDesNode) {
+        // Find the last non-DES node to attach app_des_node to
+        // DES nodes (like rtmp_des, file_des) cannot have next nodes
+        // So we need to attach app_des_node to the node before the last DES
+        // node
+        std::shared_ptr<cvedix_nodes::cvedix_node> attachTarget = nullptr;
+
+        // Search backwards to find the last non-DES node
+        for (auto it = nodes.rbegin(); it != nodes.rend(); ++it) {
+          auto node = *it;
+          // Check if it's a DES node
+          bool isDesNode =
+              std::dynamic_pointer_cast<cvedix_nodes::cvedix_rtmp_des_node>(
+                  node) != nullptr ||
+              std::dynamic_pointer_cast<cvedix_nodes::cvedix_file_des_node>(
+                  node) != nullptr ||
+              std::dynamic_pointer_cast<cvedix_nodes::cvedix_app_des_node>(
+                  node) != nullptr;
+
+          if (!isDesNode) {
+            attachTarget = node;
+            std::cerr << "[PipelineBuilder] Found non-DES node to attach "
+                         "app_des_node: "
+                      << typeid(*node).name() << std::endl;
+            break;
+          }
+        }
+
+        if (attachTarget) {
+          // Attach app_des_node to the same node as the last DES node
+          appDesNode->attach_to({attachTarget});
+          nodes.push_back(appDesNode);
+          std::cerr << "[PipelineBuilder] ✓ app_des_node added successfully "
+                       "for frame capture"
+                    << std::endl;
+          std::cerr << "[PipelineBuilder] NOTE: app_des_node attached to same "
+                       "source as other DES nodes (parallel connection)"
+                    << std::endl;
+        } else {
+          std::cerr << "[PipelineBuilder] ⚠ Warning: Could not find suitable "
+                       "node to attach app_des_node"
+                    << std::endl;
+          std::cerr << "[PipelineBuilder] Frame capture will not be available "
+                       "for this instance"
+                    << std::endl;
+        }
+      } else {
+        std::cerr << "[PipelineBuilder] ⚠ Warning: Failed to create "
+                     "app_des_node (frame capture will not be available)"
+                  << std::endl;
+      }
+    } catch (const std::exception &e) {
+      std::cerr
+          << "[PipelineBuilder] ⚠ Warning: Exception adding app_des_node: "
+          << e.what() << std::endl;
+      std::cerr << "[PipelineBuilder] Frame capture will not be available for "
+                   "this instance"
+                << std::endl;
+    } catch (...) {
+      std::cerr << "[PipelineBuilder] ⚠ Warning: Unknown exception adding "
+                   "app_des_node"
+                << std::endl;
+      std::cerr << "[PipelineBuilder] Frame capture will not be available for "
+                   "this instance"
+                << std::endl;
+    }
+  } else if (hasAppDesNode) {
+    std::cerr << "[PipelineBuilder] ✓ app_des_node found in pipeline (frame "
+                 "capture supported)"
+              << std::endl;
+  }
+
+  // ========== Auto-inject optional output nodes based on parameters ==========
+  // This allows any instance to freely choose input/output without needing to
+  // define in solution
+
+  // Helper function to find the appropriate node for attaching broker/output
+  // nodes For ba_crossline: attach broker to ba_crossline node Otherwise: find
+  // last non-DES node (excluding app_des)
+  auto findAttachTargetForBroker = [&nodes, &nodeTypes](bool isCrosslineBroker)
+      -> std::shared_ptr<cvedix_nodes::cvedix_node> {
+    if (isCrosslineBroker) {
+      // For crossline broker, find ba_crossline node specifically
+      for (size_t i = 0; i < nodeTypes.size(); ++i) {
+        if (nodeTypes[i] == "ba_crossline") {
+          return nodes[i];
+        }
+      }
+    }
+
+    // For other brokers, find last non-DES node (excluding app_des)
+    for (int i = static_cast<int>(nodes.size()) - 1; i >= 0; --i) {
+      bool isDestNode =
+          (nodeTypes[i] == "file_des" || nodeTypes[i] == "rtmp_des" ||
+           nodeTypes[i] == "screen_des" || nodeTypes[i] == "app_des");
+      // Also exclude broker nodes (they should be in sequence, not parallel)
+      bool isBrokerNode = (nodeTypes[i] == "json_mqtt_broker" ||
+                           nodeTypes[i] == "json_crossline_mqtt_broker" ||
+                           nodeTypes[i] == "json_console_broker");
+      if (!isDestNode && !isBrokerNode) {
+        return nodes[i];
+      }
+    }
+    return nodes.empty() ? nullptr : nodes[0];
+  };
+
+  // Helper function to find the last non-destination node for attaching DES
+  // nodes
+  auto findLastNonDestNode =
+      [&nodes, &nodeTypes]() -> std::shared_ptr<cvedix_nodes::cvedix_node> {
+    for (int i = static_cast<int>(nodes.size()) - 1; i >= 0; --i) {
+      bool isDestNode =
+          (nodeTypes[i] == "file_des" || nodeTypes[i] == "rtmp_des" ||
+           nodeTypes[i] == "screen_des" || nodeTypes[i] == "app_des");
+      if (!isDestNode) {
+        return nodes[i];
+      }
+    }
+    return nodes.empty() ? nullptr : nodes[0];
+  };
+
+  // Helper function to check if a node type already exists in pipeline
+  auto hasNodeType = [&nodeTypes](const std::string &nodeType) -> bool {
+    for (const auto &type : nodeTypes) {
+      if (type == nodeType) {
+        return true;
+      }
+    }
+    return false;
+  };
+
+// 1. Auto-add MQTT broker nodes if MQTT config is provided but not in pipeline
+#ifdef CVEDIX_WITH_MQTT
+  auto mqttBrokerIt = req.additionalParams.find("MQTT_BROKER_URL");
+  if (mqttBrokerIt != req.additionalParams.end() &&
+      !mqttBrokerIt->second.empty()) {
+    std::string mqttBroker = mqttBrokerIt->second;
+    mqttBroker.erase(0, mqttBroker.find_first_not_of(" \t\n\r"));
+    mqttBroker.erase(mqttBroker.find_last_not_of(" \t\n\r") + 1);
+
+    if (!mqttBroker.empty()) {
+      // Check if we have ba_crossline in pipeline - use crossline MQTT broker
+      bool hasBACrossline = hasNodeType("ba_crossline");
+      bool hasMQTTBroker = hasNodeType("json_mqtt_broker") ||
+                           hasNodeType("json_crossline_mqtt_broker") ||
+                           hasNodeType("json_console_broker");
+
+      if (hasBACrossline && !hasNodeType("json_crossline_mqtt_broker")) {
+        // Auto-add crossline MQTT broker - attach to ba_crossline node
+        std::cerr << "[PipelineBuilder] Auto-adding json_crossline_mqtt_broker "
+                     "node (MQTT_BROKER_URL detected)"
+                  << std::endl;
         try {
-            // Create file_des node config
-            SolutionConfig::NodeConfig fileDesConfig;
-            fileDesConfig.nodeType = "file_des";
-            fileDesConfig.nodeName = "file_des_record_{instanceId}";
-            fileDesConfig.parameters["save_dir"] = recordPath;
-            fileDesConfig.parameters["name_prefix"] = "record";
-            fileDesConfig.parameters["max_duration"] = "10"; // 10 minutes per file
-            fileDesConfig.parameters["osd"] = "true"; // Include OSD overlay
-            
-            // Substitute {instanceId} in node name
-            std::string fileDesNodeName = fileDesConfig.nodeName;
-            size_t pos = fileDesNodeName.find("{instanceId}");
+          SolutionConfig::NodeConfig mqttConfig;
+          mqttConfig.nodeType = "json_crossline_mqtt_broker";
+          mqttConfig.nodeName = "json_crossline_mqtt_broker_{instanceId}";
+          mqttConfig.parameters = {};
+
+          std::string mqttNodeName = mqttConfig.nodeName;
+          size_t pos = mqttNodeName.find("{instanceId}");
+          while (pos != std::string::npos) {
+            mqttNodeName.replace(pos, 12, instanceId);
+            pos = mqttNodeName.find("{instanceId}", pos + instanceId.length());
+          }
+
+          auto mqttNode = createJSONCrosslineMQTTBrokerNode(
+              mqttNodeName, mqttConfig.parameters, req);
+          if (mqttNode) {
+            // Find ba_crossline node to attach to (like in sample code)
+            auto attachTarget = findAttachTargetForBroker(true);
+            // Verify that attachTarget is actually ba_crossline node by
+            // checking nodeTypes
+            bool isBACrosslineNode = false;
+            for (size_t i = 0; i < nodes.size(); ++i) {
+              if (nodes[i] == attachTarget && nodeTypes[i] == "ba_crossline") {
+                isBACrosslineNode = true;
+                break;
+              }
+            }
+
+            if (attachTarget && isBACrosslineNode) {
+              // Attach MQTT broker to ba_crossline node
+              mqttNode->attach_to({attachTarget});
+              nodes.push_back(mqttNode);
+              nodeTypes.push_back("json_crossline_mqtt_broker");
+              std::cerr << "[PipelineBuilder] ✓ Auto-added "
+                           "json_crossline_mqtt_broker node (attached to "
+                           "ba_crossline)"
+                        << std::endl;
+
+              // Reconnect OSD node to MQTT broker (if OSD exists and comes
+              // after ba_crossline) This matches the sample:
+              // osd->attach_to({mqtt_broker_node}) Pipeline should be:
+              // ba_crossline -> mqtt_broker -> osd
+              for (size_t i = 0; i < nodes.size() - 1;
+                   ++i) { // Exclude the MQTT node we just added
+                if (nodeTypes[i] == "ba_crossline_osd") {
+                  // Reconnect OSD to MQTT broker
+                  try {
+                    nodes[i]->attach_to({mqttNode});
+                    std::cerr
+                        << "[PipelineBuilder] ✓ Reconnected ba_crossline_osd "
+                           "to json_crossline_mqtt_broker"
+                        << std::endl;
+                  } catch (const std::exception &e) {
+                    std::cerr << "[PipelineBuilder] ⚠ Warning: Could not "
+                                 "reconnect OSD to MQTT broker: "
+                              << e.what() << std::endl;
+                    std::cerr
+                        << "[PipelineBuilder] ⚠ OSD may already be connected "
+                           "correctly or SDK handles parallel connections"
+                        << std::endl;
+                  }
+                  break;
+                }
+              }
+            } else {
+              std::cerr << "[PipelineBuilder] ⚠ Failed to find ba_crossline "
+                           "node to attach MQTT broker"
+                        << std::endl;
+              std::cerr << "[PipelineBuilder] ⚠ attachTarget: "
+                        << (attachTarget ? "found" : "nullptr") << std::endl;
+              std::cerr << "[PipelineBuilder] ⚠ isBACrosslineNode: "
+                        << (isBACrosslineNode ? "true" : "false") << std::endl;
+            }
+          } else {
+            std::cerr << "[PipelineBuilder] ⚠ Failed to create "
+                         "json_crossline_mqtt_broker node (returned nullptr)"
+                      << std::endl;
+          }
+        } catch (const std::exception &e) {
+          std::cerr << "[PipelineBuilder] ⚠ Failed to auto-add "
+                       "json_crossline_mqtt_broker: "
+                    << e.what() << std::endl;
+        }
+      } else if (!hasMQTTBroker) {
+        // Auto-add regular MQTT broker for non-crossline pipelines
+        std::cerr << "[PipelineBuilder] Auto-adding json_mqtt_broker node "
+                     "(MQTT_BROKER_URL detected)"
+                  << std::endl;
+        try {
+          SolutionConfig::NodeConfig mqttConfig;
+          mqttConfig.nodeType = "json_mqtt_broker";
+          mqttConfig.nodeName = "json_mqtt_broker_{instanceId}";
+          mqttConfig.parameters["broke_for"] = "NORMAL";
+
+          std::string mqttNodeName = mqttConfig.nodeName;
+          size_t pos = mqttNodeName.find("{instanceId}");
+          while (pos != std::string::npos) {
+            mqttNodeName.replace(pos, 12, instanceId);
+            pos = mqttNodeName.find("{instanceId}", pos + instanceId.length());
+          }
+
+          auto mqttNode = createJSONMQTTBrokerNode(mqttNodeName,
+                                                   mqttConfig.parameters, req);
+          if (mqttNode) {
+            auto attachTarget = findAttachTargetForBroker(false);
+            if (attachTarget) {
+              mqttNode->attach_to({attachTarget});
+              nodes.push_back(mqttNode);
+              nodeTypes.push_back("json_mqtt_broker");
+              std::cerr
+                  << "[PipelineBuilder] ✓ Auto-added json_mqtt_broker node"
+                  << std::endl;
+            }
+          }
+        } catch (const std::exception &e) {
+          std::cerr
+              << "[PipelineBuilder] ⚠ Failed to auto-add json_mqtt_broker: "
+              << e.what() << std::endl;
+        }
+      }
+    }
+  }
+#endif
+
+  // 2. Auto-add RTMP destination if RTMP_URL is provided but not in pipeline
+  auto rtmpUrlIt = req.additionalParams.find("RTMP_URL");
+  if (rtmpUrlIt != req.additionalParams.end() && !rtmpUrlIt->second.empty()) {
+    std::string rtmpUrl = rtmpUrlIt->second;
+    rtmpUrl.erase(0, rtmpUrl.find_first_not_of(" \t\n\r"));
+    rtmpUrl.erase(rtmpUrl.find_last_not_of(" \t\n\r") + 1);
+
+    if (!rtmpUrl.empty() && !hasNodeType("rtmp_des")) {
+      std::cerr
+          << "[PipelineBuilder] Auto-adding rtmp_des node (RTMP_URL detected)"
+          << std::endl;
+      try {
+        // Check if pipeline has OSD node (face_osd_v2, osd_v3,
+        // ba_crossline_osd)
+        bool hasOSDNode = hasNodeType("face_osd_v2") || hasNodeType("osd_v3") ||
+                          hasNodeType("ba_crossline_osd");
+
+        // If no OSD node, auto-add face_osd_v2 node for face detection
+        // solutions Check if this is a face detection solution by looking for
+        // yunet_face_detector
+        bool hasFaceDetector = hasNodeType("yunet_face_detector");
+        if (!hasOSDNode && hasFaceDetector) {
+          std::cerr << "[PipelineBuilder] Auto-adding face_osd_v2 node for "
+                       "RTMP overlay"
+                    << std::endl;
+          try {
+            SolutionConfig::NodeConfig osdConfig;
+            osdConfig.nodeType = "face_osd_v2";
+            osdConfig.nodeName = "osd_{instanceId}";
+
+            std::string osdNodeName = osdConfig.nodeName;
+            size_t pos = osdNodeName.find("{instanceId}");
             while (pos != std::string::npos) {
-                fileDesNodeName.replace(pos, 12, instanceId);
-                pos = fileDesNodeName.find("{instanceId}", pos + instanceId.length());
+              osdNodeName.replace(pos, 12, instanceId);
+              pos = osdNodeName.find("{instanceId}", pos + instanceId.length());
             }
-            
-            // Create file_des node
-            auto fileDesNode = createFileDestinationNode(
-                fileDesNodeName,
-                fileDesConfig.parameters,
-                instanceId
-            );
-            
-            if (fileDesNode && !nodes.empty()) {
-                // Find the last non-destination node to attach to
-                // Destination nodes (file_des, rtmp_des, screen_des) don't forward frames,
-                // so we need to attach to the source node (usually OSD node)
-                std::shared_ptr<cvedix_nodes::cvedix_node> attachTarget = nullptr;
-                for (int i = static_cast<int>(nodes.size()) - 1; i >= 0; --i) {
-                    auto node = nodes[i];
-                    // Check if this is a destination node
-                    bool isDestNode = std::dynamic_pointer_cast<cvedix_nodes::cvedix_file_des_node>(node) ||
-                                     std::dynamic_pointer_cast<cvedix_nodes::cvedix_rtmp_des_node>(node) ||
-                                     std::dynamic_pointer_cast<cvedix_nodes::cvedix_screen_des_node>(node);
-                    if (!isDestNode) {
-                        attachTarget = node;
-                        break;
-                    }
+
+            auto osdNode = createFaceOSDNode(osdNodeName, osdConfig.parameters);
+            if (osdNode) {
+              // Find detector node to attach OSD to
+              std::shared_ptr<cvedix_nodes::cvedix_node> detectorNode = nullptr;
+              for (int i = static_cast<int>(nodes.size()) - 1; i >= 0; --i) {
+                auto node = nodes[i];
+                bool isDestNode =
+                    std::dynamic_pointer_cast<
+                        cvedix_nodes::cvedix_file_des_node>(node) ||
+                    std::dynamic_pointer_cast<
+                        cvedix_nodes::cvedix_rtmp_des_node>(node) ||
+                    std::dynamic_pointer_cast<
+                        cvedix_nodes::cvedix_screen_des_node>(node) ||
+                    std::dynamic_pointer_cast<
+                        cvedix_nodes::cvedix_app_des_node>(node);
+                if (!isDestNode) {
+                  detectorNode = node;
+                  break;
                 }
-                
-                // Fallback to last node if no non-destination node found
-                if (!attachTarget) {
-                    attachTarget = nodes.back();
-                }
-                
-                // Connect file_des node to the target node
-                fileDesNode->attach_to({attachTarget});
-                nodes.push_back(fileDesNode);
-                std::cerr << "[PipelineBuilder] ✓ Auto-added file_des node for recording to: " << recordPath << std::endl;
-            } else {
-                std::cerr << "[PipelineBuilder] ⚠ Failed to create file_des node for recording" << std::endl;
+              }
+
+              if (detectorNode) {
+                osdNode->attach_to({detectorNode});
+                nodes.push_back(osdNode);
+                nodeTypes.push_back("face_osd_v2");
+                hasOSDNode = true;
+                std::cerr << "[PipelineBuilder] ✓ Auto-added face_osd_v2 node"
+                          << std::endl;
+              } else {
+                std::cerr << "[PipelineBuilder] ⚠ Failed to find detector node "
+                             "to attach OSD node"
+                          << std::endl;
+              }
             }
-        } catch (const std::exception& e) {
-            std::cerr << "[PipelineBuilder] ⚠ Exception auto-adding file_des node: " << e.what() << std::endl;
-            std::cerr << "[PipelineBuilder] ⚠ Recording will not be available, but pipeline will continue" << std::endl;
+          } catch (const std::exception &e) {
+            std::cerr
+                << "[PipelineBuilder] ⚠ Failed to auto-add face_osd_v2 node: "
+                << e.what() << std::endl;
+          }
         }
+
+        SolutionConfig::NodeConfig rtmpConfig;
+        rtmpConfig.nodeType = "rtmp_des";
+        rtmpConfig.nodeName = "rtmp_des_{instanceId}";
+        rtmpConfig.parameters["rtmp_url"] = "${RTMP_URL}";
+        rtmpConfig.parameters["channel"] = "0";
+        // Don't enable OSD in RTMP node - use OSD node instead
+
+        std::string rtmpNodeName = rtmpConfig.nodeName;
+        size_t pos = rtmpNodeName.find("{instanceId}");
+        while (pos != std::string::npos) {
+          rtmpNodeName.replace(pos, 12, instanceId);
+          pos = rtmpNodeName.find("{instanceId}", pos + instanceId.length());
+        }
+
+        auto rtmpNode =
+            createRTMPDestinationNode(rtmpNodeName, rtmpConfig.parameters, req);
+        if (rtmpNode) {
+          // Find the best node to attach to:
+          // 1. If pipeline has OSD node, attach RTMP node to OSD node (to get
+          // frames with overlay)
+          // 2. If RTMP node has OSD enabled, attach to detector node (to get
+          // metadata for overlay)
+          // 3. Otherwise, attach to last non-destination node
+          std::shared_ptr<cvedix_nodes::cvedix_node> attachTarget = nullptr;
+          bool rtmpHasOSD = rtmpConfig.parameters.find("osd") !=
+                                rtmpConfig.parameters.end() &&
+                            (rtmpConfig.parameters.at("osd") == "true" ||
+                             rtmpConfig.parameters.at("osd") == "1");
+
+          // First, try to find OSD node (if pipeline has one and RTMP doesn't
+          // have OSD enabled)
+          if (hasOSDNode && !rtmpHasOSD) {
+            for (int i = static_cast<int>(nodes.size()) - 1; i >= 0; --i) {
+              auto node = nodes[i];
+              // Check if this is an OSD node
+              bool isOSDNode =
+                  std::dynamic_pointer_cast<
+                      cvedix_nodes::cvedix_face_osd_node_v2>(node) ||
+                  std::dynamic_pointer_cast<cvedix_nodes::cvedix_osd_node_v3>(
+                      node) ||
+                  std::dynamic_pointer_cast<
+                      cvedix_nodes::cvedix_ba_crossline_osd_node>(node);
+              if (isOSDNode) {
+                attachTarget = node;
+                std::cerr << "[PipelineBuilder] Attaching RTMP node to OSD "
+                             "node for overlay frames"
+                          << std::endl;
+                break;
+              }
+            }
+          }
+
+          // If RTMP node has OSD enabled, attach to detector node (to get
+          // metadata) Or if no OSD node found, attach to last non-destination
+          // node
+          if (!attachTarget) {
+            for (int i = static_cast<int>(nodes.size()) - 1; i >= 0; --i) {
+              auto node = nodes[i];
+              // Check if this is a destination node using dynamic_cast
+              bool isDestNode =
+                  std::dynamic_pointer_cast<cvedix_nodes::cvedix_file_des_node>(
+                      node) ||
+                  std::dynamic_pointer_cast<cvedix_nodes::cvedix_rtmp_des_node>(
+                      node) ||
+                  std::dynamic_pointer_cast<
+                      cvedix_nodes::cvedix_screen_des_node>(node) ||
+                  std::dynamic_pointer_cast<cvedix_nodes::cvedix_app_des_node>(
+                      node);
+              if (!isDestNode) {
+                attachTarget = node;
+                if (rtmpHasOSD) {
+                  std::cerr << "[PipelineBuilder] Attaching RTMP node (with "
+                               "OSD enabled) to detector node for metadata"
+                            << std::endl;
+                }
+                break;
+              }
+            }
+          }
+
+          // Fallback to last node if no non-destination node found
+          if (!attachTarget && !nodes.empty()) {
+            attachTarget = nodes.back();
+          }
+
+          if (attachTarget) {
+            rtmpNode->attach_to({attachTarget});
+            nodes.push_back(rtmpNode);
+            nodeTypes.push_back("rtmp_des");
+            std::cerr
+                << "[PipelineBuilder] ✓ Auto-added rtmp_des node (attached to "
+                   "same source as other DES nodes - parallel connection)"
+                << std::endl;
+          } else {
+            std::cerr << "[PipelineBuilder] ⚠ Failed to find suitable node to "
+                         "attach rtmp_des"
+                      << std::endl;
+          }
+        }
+      } catch (const std::exception &e) {
+        std::cerr << "[PipelineBuilder] ⚠ Failed to auto-add rtmp_des: "
+                  << e.what() << std::endl;
+      }
     }
-    
-    // Check if pipeline has app_des_node for frame capture
-    bool hasAppDesNode = false;
-    for (const auto& node : nodes) {
-        if (std::dynamic_pointer_cast<cvedix_nodes::cvedix_app_des_node>(node)) {
-            hasAppDesNode = true;
-            break;
+  }
+
+  // 3. Auto-add screen destination if ENABLE_SCREEN_DES is true but not in
+  // pipeline
+  auto screenDesIt = req.additionalParams.find("ENABLE_SCREEN_DES");
+  if (screenDesIt != req.additionalParams.end()) {
+    std::string enableScreen = screenDesIt->second;
+    std::transform(enableScreen.begin(), enableScreen.end(),
+                   enableScreen.begin(), ::tolower);
+    if ((enableScreen == "true" || enableScreen == "1" ||
+         enableScreen == "yes" || enableScreen == "on") &&
+        !hasNodeType("screen_des")) {
+      std::cerr << "[PipelineBuilder] Auto-adding screen_des node "
+                   "(ENABLE_SCREEN_DES=true detected)"
+                << std::endl;
+      try {
+        SolutionConfig::NodeConfig screenConfig;
+        screenConfig.nodeType = "screen_des";
+        screenConfig.nodeName = "screen_des_{instanceId}";
+        screenConfig.parameters["channel"] = "0";
+        screenConfig.parameters["enabled"] = "true";
+
+        std::string screenNodeName = screenConfig.nodeName;
+        size_t pos = screenNodeName.find("{instanceId}");
+        while (pos != std::string::npos) {
+          screenNodeName.replace(pos, 12, instanceId);
+          pos = screenNodeName.find("{instanceId}", pos + instanceId.length());
         }
-    }
-    
-    // Automatically add app_des_node if not present (for frame capture support)
-    if (!hasAppDesNode && !nodes.empty()) {
-        std::cerr << "[PipelineBuilder] No app_des_node found in pipeline" << std::endl;
-        std::cerr << "[PipelineBuilder] Automatically adding app_des_node for frame capture support..." << std::endl;
-        
-        try {
-            std::string appDesNodeName = "app_des_" + instanceId;
-            std::map<std::string, std::string> appDesParams;
-            appDesParams["channel"] = "0";
-            
-            auto appDesNode = createAppDesNode(appDesNodeName, appDesParams);
-            if (appDesNode) {
-                // Find the last non-DES node to attach app_des_node to
-                // DES nodes (like rtmp_des, file_des) cannot have next nodes
-                // So we need to attach app_des_node to the node before the last DES node
-                std::shared_ptr<cvedix_nodes::cvedix_node> attachTarget = nullptr;
-                
-                // Search backwards to find the last non-DES node
-                for (auto it = nodes.rbegin(); it != nodes.rend(); ++it) {
-                    auto node = *it;
-                    // Check if it's a DES node
-                    bool isDesNode = std::dynamic_pointer_cast<cvedix_nodes::cvedix_rtmp_des_node>(node) != nullptr ||
-                                     std::dynamic_pointer_cast<cvedix_nodes::cvedix_file_des_node>(node) != nullptr ||
-                                     std::dynamic_pointer_cast<cvedix_nodes::cvedix_app_des_node>(node) != nullptr;
-                    
-                    if (!isDesNode) {
-                        attachTarget = node;
-                        std::cerr << "[PipelineBuilder] Found non-DES node to attach app_des_node: " << typeid(*node).name() << std::endl;
-                        break;
-                    }
-                }
-                
-                if (attachTarget) {
-                    // Attach app_des_node to the same node as the last DES node
-                    appDesNode->attach_to({attachTarget});
-                    nodes.push_back(appDesNode);
-                    std::cerr << "[PipelineBuilder] ✓ app_des_node added successfully for frame capture" << std::endl;
-                    std::cerr << "[PipelineBuilder] NOTE: app_des_node attached to same source as other DES nodes (parallel connection)" << std::endl;
-                } else {
-                    std::cerr << "[PipelineBuilder] ⚠ Warning: Could not find suitable node to attach app_des_node" << std::endl;
-                    std::cerr << "[PipelineBuilder] Frame capture will not be available for this instance" << std::endl;
-                }
-            } else {
-                std::cerr << "[PipelineBuilder] ⚠ Warning: Failed to create app_des_node (frame capture will not be available)" << std::endl;
-            }
-        } catch (const std::exception& e) {
-            std::cerr << "[PipelineBuilder] ⚠ Warning: Exception adding app_des_node: " << e.what() << std::endl;
-            std::cerr << "[PipelineBuilder] Frame capture will not be available for this instance" << std::endl;
-        } catch (...) {
-            std::cerr << "[PipelineBuilder] ⚠ Warning: Unknown exception adding app_des_node" << std::endl;
-            std::cerr << "[PipelineBuilder] Frame capture will not be available for this instance" << std::endl;
-        }
-    } else if (hasAppDesNode) {
-        std::cerr << "[PipelineBuilder] ✓ app_des_node found in pipeline (frame capture supported)" << std::endl;
-    }
-    
-    // ========== Auto-inject optional output nodes based on parameters ==========
-    // This allows any instance to freely choose input/output without needing to define in solution
-    
-    // Helper function to find the appropriate node for attaching broker/output nodes
-    // For ba_crossline: attach broker to ba_crossline node
-    // Otherwise: find last non-DES node (excluding app_des)
-    auto findAttachTargetForBroker = [&nodes, &nodeTypes](bool isCrosslineBroker) -> std::shared_ptr<cvedix_nodes::cvedix_node> {
-        if (isCrosslineBroker) {
-            // For crossline broker, find ba_crossline node specifically
-            for (size_t i = 0; i < nodeTypes.size(); ++i) {
-                if (nodeTypes[i] == "ba_crossline") {
-                    return nodes[i];
-                }
-            }
-        }
-        
-        // For other brokers, find last non-DES node (excluding app_des)
-        for (int i = static_cast<int>(nodes.size()) - 1; i >= 0; --i) {
-            bool isDestNode = (nodeTypes[i] == "file_des" || 
-                              nodeTypes[i] == "rtmp_des" || 
-                              nodeTypes[i] == "screen_des" ||
-                              nodeTypes[i] == "app_des");
-            // Also exclude broker nodes (they should be in sequence, not parallel)
-            bool isBrokerNode = (nodeTypes[i] == "json_mqtt_broker" ||
-                                nodeTypes[i] == "json_crossline_mqtt_broker" ||
-                                nodeTypes[i] == "json_console_broker");
-            if (!isDestNode && !isBrokerNode) {
-                return nodes[i];
-            }
-        }
-        return nodes.empty() ? nullptr : nodes[0];
-    };
-    
-    // Helper function to find the last non-destination node for attaching DES nodes
-    auto findLastNonDestNode = [&nodes, &nodeTypes]() -> std::shared_ptr<cvedix_nodes::cvedix_node> {
-        for (int i = static_cast<int>(nodes.size()) - 1; i >= 0; --i) {
-            bool isDestNode = (nodeTypes[i] == "file_des" || 
-                              nodeTypes[i] == "rtmp_des" || 
-                              nodeTypes[i] == "screen_des" ||
-                              nodeTypes[i] == "app_des");
+
+        auto screenNode = createScreenDestinationNode(screenNodeName,
+                                                      screenConfig.parameters);
+        if (screenNode) {
+          // Find the last non-destination node to attach to
+          // Use dynamic_cast to check actual node type, not just nodeTypes
+          std::shared_ptr<cvedix_nodes::cvedix_node> attachTarget = nullptr;
+          for (int i = static_cast<int>(nodes.size()) - 1; i >= 0; --i) {
+            auto node = nodes[i];
+            // Check if this is a destination node using dynamic_cast
+            bool isDestNode =
+                std::dynamic_pointer_cast<cvedix_nodes::cvedix_file_des_node>(
+                    node) ||
+                std::dynamic_pointer_cast<cvedix_nodes::cvedix_rtmp_des_node>(
+                    node) ||
+                std::dynamic_pointer_cast<cvedix_nodes::cvedix_screen_des_node>(
+                    node) ||
+                std::dynamic_pointer_cast<cvedix_nodes::cvedix_app_des_node>(
+                    node);
             if (!isDestNode) {
-                return nodes[i];
+              attachTarget = node;
+              break;
             }
+          }
+
+          // Fallback to last node if no non-destination node found
+          if (!attachTarget && !nodes.empty()) {
+            attachTarget = nodes.back();
+          }
+
+          if (attachTarget) {
+            screenNode->attach_to({attachTarget});
+            nodes.push_back(screenNode);
+            nodeTypes.push_back("screen_des");
+            std::cerr
+                << "[PipelineBuilder] ✓ Auto-added screen_des node (attached "
+                   "to same source as other DES nodes - parallel connection)"
+                << std::endl;
+          } else {
+            std::cerr << "[PipelineBuilder] ⚠ Failed to find suitable node to "
+                         "attach screen_des"
+                      << std::endl;
+          }
         }
-        return nodes.empty() ? nullptr : nodes[0];
-    };
-    
-    // Helper function to check if a node type already exists in pipeline
-    auto hasNodeType = [&nodeTypes](const std::string& nodeType) -> bool {
-        for (const auto& type : nodeTypes) {
-            if (type == nodeType) {
-                return true;
-            }
-        }
-        return false;
-    };
-    
-    // 1. Auto-add MQTT broker nodes if MQTT config is provided but not in pipeline
-    #ifdef CVEDIX_WITH_MQTT
-    auto mqttBrokerIt = req.additionalParams.find("MQTT_BROKER_URL");
-    if (mqttBrokerIt != req.additionalParams.end() && !mqttBrokerIt->second.empty()) {
-        std::string mqttBroker = mqttBrokerIt->second;
-        mqttBroker.erase(0, mqttBroker.find_first_not_of(" \t\n\r"));
-        mqttBroker.erase(mqttBroker.find_last_not_of(" \t\n\r") + 1);
-        
-        if (!mqttBroker.empty()) {
-            // Check if we have ba_crossline in pipeline - use crossline MQTT broker
-            bool hasBACrossline = hasNodeType("ba_crossline");
-            bool hasMQTTBroker = hasNodeType("json_mqtt_broker") || 
-                                hasNodeType("json_crossline_mqtt_broker") ||
-                                hasNodeType("json_console_broker");
-            
-            if (hasBACrossline && !hasNodeType("json_crossline_mqtt_broker")) {
-                // Auto-add crossline MQTT broker - attach to ba_crossline node
-                std::cerr << "[PipelineBuilder] Auto-adding json_crossline_mqtt_broker node (MQTT_BROKER_URL detected)" << std::endl;
-                try {
-                    SolutionConfig::NodeConfig mqttConfig;
-                    mqttConfig.nodeType = "json_crossline_mqtt_broker";
-                    mqttConfig.nodeName = "json_crossline_mqtt_broker_{instanceId}";
-                    mqttConfig.parameters = {};
-                    
-                    std::string mqttNodeName = mqttConfig.nodeName;
-                    size_t pos = mqttNodeName.find("{instanceId}");
-                    while (pos != std::string::npos) {
-                        mqttNodeName.replace(pos, 12, instanceId);
-                        pos = mqttNodeName.find("{instanceId}", pos + instanceId.length());
-                    }
-                    
-                    auto mqttNode = createJSONCrosslineMQTTBrokerNode(mqttNodeName, mqttConfig.parameters, req);
-                    if (mqttNode) {
-                        // Find ba_crossline node to attach to (like in sample code)
-                        auto attachTarget = findAttachTargetForBroker(true);
-                        // Verify that attachTarget is actually ba_crossline node by checking nodeTypes
-                        bool isBACrosslineNode = false;
-                        for (size_t i = 0; i < nodes.size(); ++i) {
-                            if (nodes[i] == attachTarget && nodeTypes[i] == "ba_crossline") {
-                                isBACrosslineNode = true;
-                                break;
-                            }
-                        }
-                        
-                        if (attachTarget && isBACrosslineNode) {
-                            // Attach MQTT broker to ba_crossline node
-                            mqttNode->attach_to({attachTarget});
-                            nodes.push_back(mqttNode);
-                            nodeTypes.push_back("json_crossline_mqtt_broker");
-                            std::cerr << "[PipelineBuilder] ✓ Auto-added json_crossline_mqtt_broker node (attached to ba_crossline)" << std::endl;
-                            
-                            // Reconnect OSD node to MQTT broker (if OSD exists and comes after ba_crossline)
-                            // This matches the sample: osd->attach_to({mqtt_broker_node})
-                            // Pipeline should be: ba_crossline -> mqtt_broker -> osd
-                            for (size_t i = 0; i < nodes.size() - 1; ++i) {  // Exclude the MQTT node we just added
-                                if (nodeTypes[i] == "ba_crossline_osd") {
-                                    // Reconnect OSD to MQTT broker
-                                    try {
-                                        nodes[i]->attach_to({mqttNode});
-                                        std::cerr << "[PipelineBuilder] ✓ Reconnected ba_crossline_osd to json_crossline_mqtt_broker" << std::endl;
-                                    } catch (const std::exception& e) {
-                                        std::cerr << "[PipelineBuilder] ⚠ Warning: Could not reconnect OSD to MQTT broker: " << e.what() << std::endl;
-                                        std::cerr << "[PipelineBuilder] ⚠ OSD may already be connected correctly or SDK handles parallel connections" << std::endl;
-                                    }
-                                    break;
-                                }
-                            }
-                        } else {
-                            std::cerr << "[PipelineBuilder] ⚠ Failed to find ba_crossline node to attach MQTT broker" << std::endl;
-                            std::cerr << "[PipelineBuilder] ⚠ attachTarget: " << (attachTarget ? "found" : "nullptr") << std::endl;
-                            std::cerr << "[PipelineBuilder] ⚠ isBACrosslineNode: " << (isBACrosslineNode ? "true" : "false") << std::endl;
-                        }
-                    } else {
-                        std::cerr << "[PipelineBuilder] ⚠ Failed to create json_crossline_mqtt_broker node (returned nullptr)" << std::endl;
-                    }
-                } catch (const std::exception& e) {
-                    std::cerr << "[PipelineBuilder] ⚠ Failed to auto-add json_crossline_mqtt_broker: " << e.what() << std::endl;
-                }
-            } else if (!hasMQTTBroker) {
-                // Auto-add regular MQTT broker for non-crossline pipelines
-                std::cerr << "[PipelineBuilder] Auto-adding json_mqtt_broker node (MQTT_BROKER_URL detected)" << std::endl;
-                try {
-                    SolutionConfig::NodeConfig mqttConfig;
-                    mqttConfig.nodeType = "json_mqtt_broker";
-                    mqttConfig.nodeName = "json_mqtt_broker_{instanceId}";
-                    mqttConfig.parameters["broke_for"] = "NORMAL";
-                    
-                    std::string mqttNodeName = mqttConfig.nodeName;
-                    size_t pos = mqttNodeName.find("{instanceId}");
-                    while (pos != std::string::npos) {
-                        mqttNodeName.replace(pos, 12, instanceId);
-                        pos = mqttNodeName.find("{instanceId}", pos + instanceId.length());
-                    }
-                    
-                    auto mqttNode = createJSONMQTTBrokerNode(mqttNodeName, mqttConfig.parameters, req);
-                    if (mqttNode) {
-                        auto attachTarget = findAttachTargetForBroker(false);
-                        if (attachTarget) {
-                            mqttNode->attach_to({attachTarget});
-                            nodes.push_back(mqttNode);
-                            nodeTypes.push_back("json_mqtt_broker");
-                            std::cerr << "[PipelineBuilder] ✓ Auto-added json_mqtt_broker node" << std::endl;
-                        }
-                    }
-                } catch (const std::exception& e) {
-                    std::cerr << "[PipelineBuilder] ⚠ Failed to auto-add json_mqtt_broker: " << e.what() << std::endl;
-                }
-            }
-        }
+      } catch (const std::exception &e) {
+        std::cerr << "[PipelineBuilder] ⚠ Failed to auto-add screen_des: "
+                  << e.what() << std::endl;
+      }
     }
-    #endif
-    
-    // 2. Auto-add RTMP destination if RTMP_URL is provided but not in pipeline
-    auto rtmpUrlIt = req.additionalParams.find("RTMP_URL");
-    if (rtmpUrlIt != req.additionalParams.end() && !rtmpUrlIt->second.empty()) {
-        std::string rtmpUrl = rtmpUrlIt->second;
+  }
+
+  std::cerr << "[PipelineBuilder] Successfully built pipeline with "
+            << nodes.size() << " nodes" << std::endl;
+  return nodes;
+}
+
+std::shared_ptr<cvedix_nodes::cvedix_node>
+PipelineBuilder::createNode(const SolutionConfig::NodeConfig &nodeConfig,
+                            const CreateInstanceRequest &req,
+                            const std::string &instanceId) {
+
+  // Get node name with instanceId substituted
+  std::string nodeName = nodeConfig.nodeName;
+  std::string placeholder = "{instanceId}";
+  size_t pos = nodeName.find(placeholder);
+  while (pos != std::string::npos) {
+    nodeName.replace(pos, placeholder.length(), instanceId);
+    pos = nodeName.find(placeholder, pos + instanceId.length());
+  }
+
+  // Debug: log the final node name
+  std::cerr << "[PipelineBuilder] Original node name template: '"
+            << nodeConfig.nodeName << "'" << std::endl;
+  std::cerr << "[PipelineBuilder] Node name after substitution: '" << nodeName
+            << "'" << std::endl;
+
+  // Build parameter map with substitutions
+  std::map<std::string, std::string> params;
+  for (const auto &param : nodeConfig.parameters) {
+    std::string value = param.second;
+
+    // Replace {instanceId}
+    std::string placeholder = "{instanceId}";
+    size_t pos = value.find(placeholder);
+    while (pos != std::string::npos) {
+      value.replace(pos, placeholder.length(), instanceId);
+      pos = value.find(placeholder, pos + instanceId.length());
+    }
+
+    // Replace ${variable} from request
+    // Map detectionSensitivity to threshold value
+    if (param.first == "score_threshold" &&
+        value == "${detectionSensitivity}") {
+      double threshold = mapDetectionSensitivity(req.detectionSensitivity);
+      std::ostringstream oss;
+      oss << threshold;
+      value = oss.str();
+    } else if (value == "${frameRateLimit}") {
+      std::ostringstream oss;
+      oss << req.frameRateLimit;
+      value = oss.str();
+    } else if (value == "${RTSP_URL}") {
+      value = getRTSPUrl(req);
+    } else if (value == "${FILE_PATH}") {
+      value = getFilePath(req);
+    } else if (value == "${RTMP_URL}" || value == "${RTMP_DES_URL}") {
+      value = getRTMPUrl(req);
+    } else if (value == "${WEIGHTS_PATH}") {
+      auto it = req.additionalParams.find("WEIGHTS_PATH");
+      if (it != req.additionalParams.end() && !it->second.empty()) {
+        value = it->second;
+      }
+    } else if (value == "${CONFIG_PATH}") {
+      auto it = req.additionalParams.find("CONFIG_PATH");
+      if (it != req.additionalParams.end() && !it->second.empty()) {
+        value = it->second;
+      }
+    } else if (value == "${LABELS_PATH}") {
+      auto it = req.additionalParams.find("LABELS_PATH");
+      if (it != req.additionalParams.end() && !it->second.empty()) {
+        value = it->second;
+      }
+    } else if (value == "${ENABLE_SCREEN_DES}") {
+      auto it = req.additionalParams.find("ENABLE_SCREEN_DES");
+      if (it != req.additionalParams.end() && !it->second.empty()) {
+        value = it->second;
+      } else {
+        // Default: empty string means enabled if display available
+        value = "";
+      }
+    } else if (param.first == "model_path" && value == "${MODEL_PATH}") {
+      // Priority: MODEL_NAME > MODEL_PATH > default
+      std::string modelPath;
+
+      // 1. Check MODEL_NAME first (allows user to select model by name)
+      auto modelNameIt = req.additionalParams.find("MODEL_NAME");
+      if (modelNameIt != req.additionalParams.end() &&
+          !modelNameIt->second.empty()) {
+        std::string modelName = modelNameIt->second;
+        std::string category = "face"; // Default category
+
+        // Check if category is specified (format: "category:modelname" or just
+        // "modelname")
+        size_t colonPos = modelName.find(':');
+        if (colonPos != std::string::npos) {
+          category = modelName.substr(0, colonPos);
+          modelName = modelName.substr(colonPos + 1);
+        }
+
+        modelPath = resolveModelByName(modelName, category);
+        if (!modelPath.empty()) {
+          std::cerr << "[PipelineBuilder] Using model by name: '"
+                    << modelNameIt->second << "' -> " << modelPath << std::endl;
+          value = modelPath;
+        } else {
+          std::cerr << "[PipelineBuilder] WARNING: Model name '"
+                    << modelNameIt->second
+                    << "' not found, falling back to default" << std::endl;
+        }
+      }
+
+      // 2. If MODEL_NAME not found or not provided, check MODEL_PATH
+      if (modelPath.empty()) {
+        auto it = req.additionalParams.find("MODEL_PATH");
+        if (it != req.additionalParams.end() && !it->second.empty()) {
+          value = it->second;
+        } else {
+          // Default to yunet.onnx - resolve path intelligently
+          value = resolveModelPath("models/face/yunet.onnx");
+        }
+      } else {
+        value = modelPath;
+      }
+    } else if (param.first == "model_path" && value == "${SFACE_MODEL_PATH}") {
+      // Handle SFace model path
+      std::string modelPath;
+
+      // 1. Check SFACE_MODEL_NAME first
+      auto modelNameIt = req.additionalParams.find("SFACE_MODEL_NAME");
+      if (modelNameIt != req.additionalParams.end() &&
+          !modelNameIt->second.empty()) {
+        std::string modelName = modelNameIt->second;
+        std::string category = "face";
+
+        size_t colonPos = modelName.find(':');
+        if (colonPos != std::string::npos) {
+          category = modelName.substr(0, colonPos);
+          modelName = modelName.substr(colonPos + 1);
+        }
+
+        modelPath = resolveModelByName(modelName, category);
+        if (!modelPath.empty()) {
+          value = modelPath;
+        }
+      }
+
+      // 2. If SFACE_MODEL_NAME not found, check SFACE_MODEL_PATH
+      if (modelPath.empty()) {
+        auto it = req.additionalParams.find("SFACE_MODEL_PATH");
+        if (it != req.additionalParams.end() && !it->second.empty()) {
+          value = it->second;
+        } else {
+          // Default to sface model - resolve path intelligently
+          value = resolveModelPath(
+              "models/face/face_recognition_sface_2021dec.onnx");
+        }
+      } else {
+        value = modelPath;
+      }
+    }
+
+    // Override model_path if provided in additionalParams (even if not using
+    // ${MODEL_PATH} placeholder)
+    if (param.first == "model_path") {
+      // Priority: MODEL_NAME > MODEL_PATH
+      std::string modelPath;
+
+      auto modelNameIt = req.additionalParams.find("MODEL_NAME");
+      if (modelNameIt != req.additionalParams.end() &&
+          !modelNameIt->second.empty()) {
+        std::string modelName = modelNameIt->second;
+        std::string category = "face";
+
+        size_t colonPos = modelName.find(':');
+        if (colonPos != std::string::npos) {
+          category = modelName.substr(0, colonPos);
+          modelName = modelName.substr(colonPos + 1);
+        }
+
+        modelPath = resolveModelByName(modelName, category);
+        if (!modelPath.empty()) {
+          value = modelPath;
+        }
+      }
+
+      if (modelPath.empty()) {
+        auto it = req.additionalParams.find("MODEL_PATH");
+        if (it != req.additionalParams.end() && !it->second.empty()) {
+          value = it->second;
+        }
+      } else {
+        value = modelPath;
+      }
+    }
+
+    // Generic placeholder substitution: Replace ${VARIABLE_NAME} with values
+    // from additionalParams This handles placeholders that weren't explicitly
+    // handled above (e.g., ${BROKE_FOR})
+    std::regex placeholderPattern("\\$\\{([A-Za-z0-9_]+)\\}");
+    std::sregex_iterator iter(value.begin(), value.end(), placeholderPattern);
+    std::sregex_iterator end;
+    std::set<std::string> processedVars; // Track processed variables to avoid
+                                         // duplicate replacements
+
+    for (; iter != end; ++iter) {
+      std::string varName = (*iter)[1].str();
+
+      // Skip if already processed
+      if (processedVars.find(varName) != processedVars.end()) {
+        continue;
+      }
+      processedVars.insert(varName);
+
+      auto it = req.additionalParams.find(varName);
+      if (it != req.additionalParams.end() && !it->second.empty()) {
+        // Replace all occurrences of this placeholder
+        value = std::regex_replace(
+            value, std::regex("\\$\\{" + varName + "\\}"), it->second);
+        std::cerr << "[PipelineBuilder] Replaced ${" << varName
+                  << "} with: " << it->second << std::endl;
+      } else {
+        // Placeholder not found in additionalParams - leave as is
+        std::cerr << "[PipelineBuilder] WARNING: Placeholder ${" << varName
+                  << "} not found in additionalParams, leaving as literal"
+                  << std::endl;
+      }
+    }
+
+    params[param.first] = value;
+  }
+
+  // Create node based on type
+  try {
+    // Source nodes - Auto-detect source type for file_src based on FILE_PATH or
+    // explicit parameters
+    std::string actualNodeType = nodeConfig.nodeType;
+    if (nodeConfig.nodeType == "file_src") {
+      // Priority 1: Check explicit source URL parameters
+      auto rtspSrcIt = req.additionalParams.find("RTSP_SRC_URL");
+      auto rtspIt =
+          req.additionalParams.find("RTSP_URL"); // Backward compatibility
+      auto rtmpSrcIt = req.additionalParams.find("RTMP_SRC_URL");
+      auto rtmpIt = req.additionalParams.find(
+          "RTMP_URL"); // Backward compatibility (for input)
+      auto hlsIt = req.additionalParams.find("HLS_URL");
+      auto httpIt = req.additionalParams.find("HTTP_URL");
+
+      // Validate and trim URLs before checking
+      // RTSP: Check RTSP_SRC_URL first, then RTSP_URL for backward
+      // compatibility
+      std::string rtspUrl = "";
+      if (rtspSrcIt != req.additionalParams.end() &&
+          !rtspSrcIt->second.empty()) {
+        rtspUrl = rtspSrcIt->second;
+      } else if (rtspIt != req.additionalParams.end() &&
+                 !rtspIt->second.empty()) {
+        rtspUrl = rtspIt->second; // Backward compatibility: RTSP_URL can be
+                                  // used for input
+      }
+
+      // RTMP: Check RTMP_SRC_URL first, then RTMP_URL (but only if not used for
+      // output)
+      std::string rtmpUrl = "";
+      if (rtmpSrcIt != req.additionalParams.end() &&
+          !rtmpSrcIt->second.empty()) {
+        // RTMP_SRC_URL always means input (highest priority)
+        rtmpUrl = rtmpSrcIt->second;
+      } else if (rtmpIt != req.additionalParams.end() &&
+                 !rtmpIt->second.empty()) {
+        // RTMP_URL can be used for input OR output
+        // Priority: Check RTMP_DES_URL first - if provided, RTMP_URL should be
+        // for output
+        auto rtmpDesIt = req.additionalParams.find("RTMP_DES_URL");
+        bool rtmpUrlUsedForOutput = false;
+        if (rtmpDesIt != req.additionalParams.end() &&
+            !rtmpDesIt->second.empty()) {
+          // RTMP_DES_URL is provided, so RTMP_URL should be for output, not
+          // input
+          rtmpUrlUsedForOutput = true;
+          std::cerr << "[PipelineBuilder] RTMP_DES_URL detected, RTMP_URL will "
+                       "be used for output (rtmp_des), not input"
+                    << std::endl;
+        } else {
+          // Check if FILE_PATH is provided - if yes, RTMP_URL is likely for
+          // output
+          auto filePathIt = req.additionalParams.find("FILE_PATH");
+          if (filePathIt != req.additionalParams.end() &&
+              !filePathIt->second.empty()) {
+            std::string filePath = filePathIt->second;
+            filePath.erase(0, filePath.find_first_not_of(" \t\n\r"));
+            filePath.erase(filePath.find_last_not_of(" \t\n\r") + 1);
+            // If FILE_PATH is not an RTMP URL, then RTMP_URL is likely for
+            // output
+            if (!filePath.empty() && detectInputType(filePath) != "rtmp") {
+              rtmpUrlUsedForOutput = true;
+              std::cerr
+                  << "[PipelineBuilder] FILE_PATH detected (not RTMP), "
+                     "RTMP_URL will be used for output (rtmp_des), not input"
+                  << std::endl;
+            }
+          }
+        }
+        // If RTMP_URL is not used for output, use it for input (backward
+        // compatibility)
+        if (!rtmpUrlUsedForOutput) {
+          rtmpUrl = rtmpIt->second;
+        }
+      }
+
+      std::string hlsUrl =
+          (hlsIt != req.additionalParams.end() && !hlsIt->second.empty())
+              ? hlsIt->second
+              : "";
+      std::string httpUrl =
+          (httpIt != req.additionalParams.end() && !httpIt->second.empty())
+              ? httpIt->second
+              : "";
+
+      // Trim whitespace
+      if (!rtspUrl.empty()) {
+        rtspUrl.erase(0, rtspUrl.find_first_not_of(" \t\n\r"));
+        rtspUrl.erase(rtspUrl.find_last_not_of(" \t\n\r") + 1);
+      }
+      if (!rtmpUrl.empty()) {
         rtmpUrl.erase(0, rtmpUrl.find_first_not_of(" \t\n\r"));
         rtmpUrl.erase(rtmpUrl.find_last_not_of(" \t\n\r") + 1);
-        
-        if (!rtmpUrl.empty() && !hasNodeType("rtmp_des")) {
-            std::cerr << "[PipelineBuilder] Auto-adding rtmp_des node (RTMP_URL detected)" << std::endl;
-            try {
-                // Check if pipeline has OSD node (face_osd_v2, osd_v3, ba_crossline_osd)
-                bool hasOSDNode = hasNodeType("face_osd_v2") || 
-                                  hasNodeType("osd_v3") || 
-                                  hasNodeType("ba_crossline_osd");
-                
-                // If no OSD node, auto-add face_osd_v2 node for face detection solutions
-                // Check if this is a face detection solution by looking for yunet_face_detector
-                bool hasFaceDetector = hasNodeType("yunet_face_detector");
-                if (!hasOSDNode && hasFaceDetector) {
-                    std::cerr << "[PipelineBuilder] Auto-adding face_osd_v2 node for RTMP overlay" << std::endl;
-                    try {
-                        SolutionConfig::NodeConfig osdConfig;
-                        osdConfig.nodeType = "face_osd_v2";
-                        osdConfig.nodeName = "osd_{instanceId}";
-                        
-                        std::string osdNodeName = osdConfig.nodeName;
-                        size_t pos = osdNodeName.find("{instanceId}");
-                        while (pos != std::string::npos) {
-                            osdNodeName.replace(pos, 12, instanceId);
-                            pos = osdNodeName.find("{instanceId}", pos + instanceId.length());
-                        }
-                        
-                        auto osdNode = createFaceOSDNode(osdNodeName, osdConfig.parameters);
-                        if (osdNode) {
-                            // Find detector node to attach OSD to
-                            std::shared_ptr<cvedix_nodes::cvedix_node> detectorNode = nullptr;
-                            for (int i = static_cast<int>(nodes.size()) - 1; i >= 0; --i) {
-                                auto node = nodes[i];
-                                bool isDestNode = std::dynamic_pointer_cast<cvedix_nodes::cvedix_file_des_node>(node) ||
-                                                 std::dynamic_pointer_cast<cvedix_nodes::cvedix_rtmp_des_node>(node) ||
-                                                 std::dynamic_pointer_cast<cvedix_nodes::cvedix_screen_des_node>(node) ||
-                                                 std::dynamic_pointer_cast<cvedix_nodes::cvedix_app_des_node>(node);
-                                if (!isDestNode) {
-                                    detectorNode = node;
-                                    break;
-                                }
-                            }
-                            
-                            if (detectorNode) {
-                                osdNode->attach_to({detectorNode});
-                                nodes.push_back(osdNode);
-                                nodeTypes.push_back("face_osd_v2");
-                                hasOSDNode = true;
-                                std::cerr << "[PipelineBuilder] ✓ Auto-added face_osd_v2 node" << std::endl;
-                            } else {
-                                std::cerr << "[PipelineBuilder] ⚠ Failed to find detector node to attach OSD node" << std::endl;
-                            }
-                        }
-                    } catch (const std::exception& e) {
-                        std::cerr << "[PipelineBuilder] ⚠ Failed to auto-add face_osd_v2 node: " << e.what() << std::endl;
-                    }
-                }
-                
-                SolutionConfig::NodeConfig rtmpConfig;
-                rtmpConfig.nodeType = "rtmp_des";
-                rtmpConfig.nodeName = "rtmp_des_{instanceId}";
-                rtmpConfig.parameters["rtmp_url"] = "${RTMP_URL}";
-                rtmpConfig.parameters["channel"] = "0";
-                // Don't enable OSD in RTMP node - use OSD node instead
-                
-                std::string rtmpNodeName = rtmpConfig.nodeName;
-                size_t pos = rtmpNodeName.find("{instanceId}");
-                while (pos != std::string::npos) {
-                    rtmpNodeName.replace(pos, 12, instanceId);
-                    pos = rtmpNodeName.find("{instanceId}", pos + instanceId.length());
-                }
-                
-                auto rtmpNode = createRTMPDestinationNode(rtmpNodeName, rtmpConfig.parameters, req);
-                if (rtmpNode) {
-                    // Find the best node to attach to:
-                    // 1. If pipeline has OSD node, attach RTMP node to OSD node (to get frames with overlay)
-                    // 2. If RTMP node has OSD enabled, attach to detector node (to get metadata for overlay)
-                    // 3. Otherwise, attach to last non-destination node
-                    std::shared_ptr<cvedix_nodes::cvedix_node> attachTarget = nullptr;
-                    bool rtmpHasOSD = rtmpConfig.parameters.find("osd") != rtmpConfig.parameters.end() &&
-                                     (rtmpConfig.parameters.at("osd") == "true" || rtmpConfig.parameters.at("osd") == "1");
-                    
-                    // First, try to find OSD node (if pipeline has one and RTMP doesn't have OSD enabled)
-                    if (hasOSDNode && !rtmpHasOSD) {
-                        for (int i = static_cast<int>(nodes.size()) - 1; i >= 0; --i) {
-                            auto node = nodes[i];
-                            // Check if this is an OSD node
-                            bool isOSDNode = std::dynamic_pointer_cast<cvedix_nodes::cvedix_face_osd_node_v2>(node) ||
-                                            std::dynamic_pointer_cast<cvedix_nodes::cvedix_osd_node_v3>(node) ||
-                                            std::dynamic_pointer_cast<cvedix_nodes::cvedix_ba_crossline_osd_node>(node);
-                            if (isOSDNode) {
-                                attachTarget = node;
-                                std::cerr << "[PipelineBuilder] Attaching RTMP node to OSD node for overlay frames" << std::endl;
-                                break;
-                            }
-                        }
-                    }
-                    
-                    // If RTMP node has OSD enabled, attach to detector node (to get metadata)
-                    // Or if no OSD node found, attach to last non-destination node
-                    if (!attachTarget) {
-                        for (int i = static_cast<int>(nodes.size()) - 1; i >= 0; --i) {
-                            auto node = nodes[i];
-                            // Check if this is a destination node using dynamic_cast
-                            bool isDestNode = std::dynamic_pointer_cast<cvedix_nodes::cvedix_file_des_node>(node) ||
-                                             std::dynamic_pointer_cast<cvedix_nodes::cvedix_rtmp_des_node>(node) ||
-                                             std::dynamic_pointer_cast<cvedix_nodes::cvedix_screen_des_node>(node) ||
-                                             std::dynamic_pointer_cast<cvedix_nodes::cvedix_app_des_node>(node);
-                            if (!isDestNode) {
-                                attachTarget = node;
-                                if (rtmpHasOSD) {
-                                    std::cerr << "[PipelineBuilder] Attaching RTMP node (with OSD enabled) to detector node for metadata" << std::endl;
-                                }
-                                break;
-                            }
-                        }
-                    }
-                    
-                    // Fallback to last node if no non-destination node found
-                    if (!attachTarget && !nodes.empty()) {
-                        attachTarget = nodes.back();
-                    }
-                    
-                    if (attachTarget) {
-                        rtmpNode->attach_to({attachTarget});
-                        nodes.push_back(rtmpNode);
-                        nodeTypes.push_back("rtmp_des");
-                        std::cerr << "[PipelineBuilder] ✓ Auto-added rtmp_des node (attached to same source as other DES nodes - parallel connection)" << std::endl;
-                    } else {
-                        std::cerr << "[PipelineBuilder] ⚠ Failed to find suitable node to attach rtmp_des" << std::endl;
-                    }
-                }
-            } catch (const std::exception& e) {
-                std::cerr << "[PipelineBuilder] ⚠ Failed to auto-add rtmp_des: " << e.what() << std::endl;
-            }
-        }
-    }
-    
-    // 3. Auto-add screen destination if ENABLE_SCREEN_DES is true but not in pipeline
-    auto screenDesIt = req.additionalParams.find("ENABLE_SCREEN_DES");
-    if (screenDesIt != req.additionalParams.end()) {
-        std::string enableScreen = screenDesIt->second;
-        std::transform(enableScreen.begin(), enableScreen.end(), enableScreen.begin(), ::tolower);
-        if ((enableScreen == "true" || enableScreen == "1" || enableScreen == "yes" || enableScreen == "on") 
-            && !hasNodeType("screen_des")) {
-            std::cerr << "[PipelineBuilder] Auto-adding screen_des node (ENABLE_SCREEN_DES=true detected)" << std::endl;
-            try {
-                SolutionConfig::NodeConfig screenConfig;
-                screenConfig.nodeType = "screen_des";
-                screenConfig.nodeName = "screen_des_{instanceId}";
-                screenConfig.parameters["channel"] = "0";
-                screenConfig.parameters["enabled"] = "true";
-                
-                std::string screenNodeName = screenConfig.nodeName;
-                size_t pos = screenNodeName.find("{instanceId}");
-                while (pos != std::string::npos) {
-                    screenNodeName.replace(pos, 12, instanceId);
-                    pos = screenNodeName.find("{instanceId}", pos + instanceId.length());
-                }
-                
-                auto screenNode = createScreenDestinationNode(screenNodeName, screenConfig.parameters);
-                if (screenNode) {
-                    // Find the last non-destination node to attach to
-                    // Use dynamic_cast to check actual node type, not just nodeTypes
-                    std::shared_ptr<cvedix_nodes::cvedix_node> attachTarget = nullptr;
-                    for (int i = static_cast<int>(nodes.size()) - 1; i >= 0; --i) {
-                        auto node = nodes[i];
-                        // Check if this is a destination node using dynamic_cast
-                        bool isDestNode = std::dynamic_pointer_cast<cvedix_nodes::cvedix_file_des_node>(node) ||
-                                         std::dynamic_pointer_cast<cvedix_nodes::cvedix_rtmp_des_node>(node) ||
-                                         std::dynamic_pointer_cast<cvedix_nodes::cvedix_screen_des_node>(node) ||
-                                         std::dynamic_pointer_cast<cvedix_nodes::cvedix_app_des_node>(node);
-                        if (!isDestNode) {
-                            attachTarget = node;
-                            break;
-                        }
-                    }
-                    
-                    // Fallback to last node if no non-destination node found
-                    if (!attachTarget && !nodes.empty()) {
-                        attachTarget = nodes.back();
-                    }
-                    
-                    if (attachTarget) {
-                        screenNode->attach_to({attachTarget});
-                        nodes.push_back(screenNode);
-                        nodeTypes.push_back("screen_des");
-                        std::cerr << "[PipelineBuilder] ✓ Auto-added screen_des node (attached to same source as other DES nodes - parallel connection)" << std::endl;
-                    } else {
-                        std::cerr << "[PipelineBuilder] ⚠ Failed to find suitable node to attach screen_des" << std::endl;
-                    }
-                }
-            } catch (const std::exception& e) {
-                std::cerr << "[PipelineBuilder] ⚠ Failed to auto-add screen_des: " << e.what() << std::endl;
-            }
-        }
-    }
-    
-    std::cerr << "[PipelineBuilder] Successfully built pipeline with " << nodes.size() 
-              << " nodes" << std::endl;
-    return nodes;
-}
+      }
+      if (!hlsUrl.empty()) {
+        hlsUrl.erase(0, hlsUrl.find_first_not_of(" \t\n\r"));
+        hlsUrl.erase(hlsUrl.find_last_not_of(" \t\n\r") + 1);
+      }
+      if (!httpUrl.empty()) {
+        httpUrl.erase(0, httpUrl.find_first_not_of(" \t\n\r"));
+        httpUrl.erase(httpUrl.find_last_not_of(" \t\n\r") + 1);
+      }
 
-std::shared_ptr<cvedix_nodes::cvedix_node> PipelineBuilder::createNode(
-    const SolutionConfig::NodeConfig& nodeConfig,
-    const CreateInstanceRequest& req,
-    const std::string& instanceId) {
-    
-    // Get node name with instanceId substituted
-    std::string nodeName = nodeConfig.nodeName;
-    std::string placeholder = "{instanceId}";
-    size_t pos = nodeName.find(placeholder);
-    while (pos != std::string::npos) {
-        nodeName.replace(pos, placeholder.length(), instanceId);
-        pos = nodeName.find(placeholder, pos + instanceId.length());
+      if (!rtspUrl.empty()) {
+        // Check if FILE_PATH also contains RTSP URL (potential conflict)
+        auto filePathIt = req.additionalParams.find("FILE_PATH");
+        if (filePathIt != req.additionalParams.end() &&
+            !filePathIt->second.empty()) {
+          std::string filePath = filePathIt->second;
+          filePath.erase(0, filePath.find_first_not_of(" \t\n\r"));
+          filePath.erase(filePath.find_last_not_of(" \t\n\r") + 1);
+          if (!filePath.empty() && detectInputType(filePath) == "rtsp") {
+            std::cerr << "[PipelineBuilder] ⚠ WARNING: Both RTSP_SRC_URL and "
+                         "FILE_PATH (with RTSP URL) are provided."
+                      << std::endl;
+            std::cerr << "[PipelineBuilder] ⚠ Using RTSP_SRC_URL (priority). "
+                         "FILE_PATH will be ignored."
+                      << std::endl;
+          }
+        }
+        std::cerr << "[PipelineBuilder] Auto-detected RTSP source from "
+                     "RTSP_SRC_URL parameter, overriding file_src"
+                  << std::endl;
+        actualNodeType = "rtsp_src";
+        params["rtsp_url"] = rtspUrl;
+        size_t fileSrcPos = nodeName.find("file_src");
+        if (fileSrcPos != std::string::npos) {
+          nodeName.replace(fileSrcPos, 8, "rtsp_src");
+          std::cerr
+              << "[PipelineBuilder] Updated node name to reflect RTSP source: '"
+              << nodeName << "'" << std::endl;
+        }
+      } else if (!rtmpUrl.empty()) {
+        // Check if FILE_PATH also contains RTMP URL (potential conflict)
+        auto filePathIt = req.additionalParams.find("FILE_PATH");
+        if (filePathIt != req.additionalParams.end() &&
+            !filePathIt->second.empty()) {
+          std::string filePath = filePathIt->second;
+          filePath.erase(0, filePath.find_first_not_of(" \t\n\r"));
+          filePath.erase(filePath.find_last_not_of(" \t\n\r") + 1);
+          if (!filePath.empty() && detectInputType(filePath) == "rtmp") {
+            std::cerr << "[PipelineBuilder] ⚠ WARNING: Both RTMP_SRC_URL and "
+                         "FILE_PATH (with RTMP URL) are provided."
+                      << std::endl;
+            std::cerr << "[PipelineBuilder] ⚠ Using RTMP_SRC_URL (priority). "
+                         "FILE_PATH will be ignored."
+                      << std::endl;
+          }
+        }
+        std::cerr << "[PipelineBuilder] Auto-detected RTMP source from "
+                     "RTMP_SRC_URL parameter, overriding file_src"
+                  << std::endl;
+        actualNodeType = "rtmp_src";
+        params["rtmp_url"] = rtmpUrl;
+        size_t fileSrcPos = nodeName.find("file_src");
+        if (fileSrcPos != std::string::npos) {
+          nodeName.replace(fileSrcPos, 8, "rtmp_src");
+          std::cerr
+              << "[PipelineBuilder] Updated node name to reflect RTMP source: '"
+              << nodeName << "'" << std::endl;
+        }
+      } else if (!hlsUrl.empty()) {
+        // Check if FILE_PATH also contains HLS URL (potential conflict)
+        auto filePathIt = req.additionalParams.find("FILE_PATH");
+        if (filePathIt != req.additionalParams.end() &&
+            !filePathIt->second.empty()) {
+          std::string filePath = filePathIt->second;
+          filePath.erase(0, filePath.find_first_not_of(" \t\n\r"));
+          filePath.erase(filePath.find_last_not_of(" \t\n\r") + 1);
+          if (!filePath.empty() && (detectInputType(filePath) == "hls" ||
+                                    detectInputType(filePath) == "http")) {
+            std::cerr << "[PipelineBuilder] ⚠ WARNING: Both HLS_URL and "
+                         "FILE_PATH (with HLS/HTTP URL) are provided."
+                      << std::endl;
+            std::cerr << "[PipelineBuilder] ⚠ Using HLS_URL (priority). "
+                         "FILE_PATH will be ignored."
+                      << std::endl;
+          }
+        }
+        std::cerr << "[PipelineBuilder] Auto-detected HLS source from HLS_URL "
+                     "parameter, using ff_src"
+                  << std::endl;
+        actualNodeType = "ff_src";
+        params["uri"] = hlsUrl;
+        size_t fileSrcPos = nodeName.find("file_src");
+        if (fileSrcPos != std::string::npos) {
+          nodeName.replace(fileSrcPos, 8, "ff_src");
+          std::cerr << "[PipelineBuilder] Updated node name to reflect FFmpeg "
+                       "source: '"
+                    << nodeName << "'" << std::endl;
+        }
+      } else if (!httpUrl.empty()) {
+        // Check if FILE_PATH also contains HTTP URL (potential conflict)
+        auto filePathIt = req.additionalParams.find("FILE_PATH");
+        if (filePathIt != req.additionalParams.end() &&
+            !filePathIt->second.empty()) {
+          std::string filePath = filePathIt->second;
+          filePath.erase(0, filePath.find_first_not_of(" \t\n\r"));
+          filePath.erase(filePath.find_last_not_of(" \t\n\r") + 1);
+          if (!filePath.empty() && (detectInputType(filePath) == "hls" ||
+                                    detectInputType(filePath) == "http")) {
+            std::cerr << "[PipelineBuilder] ⚠ WARNING: Both HTTP_URL and "
+                         "FILE_PATH (with HLS/HTTP URL) are provided."
+                      << std::endl;
+            std::cerr << "[PipelineBuilder] ⚠ Using HTTP_URL (priority). "
+                         "FILE_PATH will be ignored."
+                      << std::endl;
+          }
+        }
+        std::cerr << "[PipelineBuilder] Auto-detected HTTP source from "
+                     "HTTP_URL parameter, using ff_src"
+                  << std::endl;
+        actualNodeType = "ff_src";
+        params["uri"] = httpUrl;
+        size_t fileSrcPos = nodeName.find("file_src");
+        if (fileSrcPos != std::string::npos) {
+          nodeName.replace(fileSrcPos, 8, "ff_src");
+          std::cerr << "[PipelineBuilder] Updated node name to reflect FFmpeg "
+                       "source: '"
+                    << nodeName << "'" << std::endl;
+        }
+      } else {
+        // Priority 2: Auto-detect from FILE_PATH
+        std::string filePath =
+            params.count("file_path") ? params.at("file_path") : "";
+        if (filePath.empty()) {
+          auto filePathIt = req.additionalParams.find("FILE_PATH");
+          if (filePathIt != req.additionalParams.end() &&
+              !filePathIt->second.empty()) {
+            filePath = filePathIt->second;
+          }
+        }
+
+        // Trim whitespace from filePath
+        if (!filePath.empty()) {
+          filePath.erase(0, filePath.find_first_not_of(" \t\n\r"));
+          filePath.erase(filePath.find_last_not_of(" \t\n\r") + 1);
+        }
+
+        if (!filePath.empty()) {
+          std::string inputType = detectInputType(filePath);
+          if (inputType == "rtsp") {
+            std::cerr << "[PipelineBuilder] Auto-detected RTSP source from "
+                         "FILE_PATH: '"
+                      << filePath << "'" << std::endl;
+            actualNodeType = "rtsp_src";
+            params["rtsp_url"] = filePath;
+            size_t fileSrcPos = nodeName.find("file_src");
+            if (fileSrcPos != std::string::npos) {
+              nodeName.replace(fileSrcPos, 8, "rtsp_src");
+            }
+          } else if (inputType == "rtmp") {
+            std::cerr << "[PipelineBuilder] Auto-detected RTMP source from "
+                         "FILE_PATH: '"
+                      << filePath << "'" << std::endl;
+            actualNodeType = "rtmp_src";
+            params["rtmp_url"] = filePath;
+            size_t fileSrcPos = nodeName.find("file_src");
+            if (fileSrcPos != std::string::npos) {
+              nodeName.replace(fileSrcPos, 8, "rtmp_src");
+            }
+          } else if (inputType == "hls" || inputType == "http") {
+            std::cerr << "[PipelineBuilder] Auto-detected " << inputType
+                      << " source from FILE_PATH: '" << filePath
+                      << "', using ff_src" << std::endl;
+            actualNodeType = "ff_src";
+            params["uri"] = filePath;
+            size_t fileSrcPos = nodeName.find("file_src");
+            if (fileSrcPos != std::string::npos) {
+              nodeName.replace(fileSrcPos, 8, "ff_src");
+            }
+          } else {
+            // If inputType == "file" or "udp", keep as file_src (default)
+            std::cerr << "[PipelineBuilder] Using file_src for FILE_PATH: '"
+                      << filePath << "' (detected type: " << inputType << ")"
+                      << std::endl;
+          }
+        }
+      }
     }
-    
-    // Debug: log the final node name
-    std::cerr << "[PipelineBuilder] Original node name template: '" << nodeConfig.nodeName << "'" << std::endl;
-    std::cerr << "[PipelineBuilder] Node name after substitution: '" << nodeName << "'" << std::endl;
-    
-    // Build parameter map with substitutions
-    std::map<std::string, std::string> params;
-    for (const auto& param : nodeConfig.parameters) {
-        std::string value = param.second;
-        
-        // Replace {instanceId}
-        std::string placeholder = "{instanceId}";
-        size_t pos = value.find(placeholder);
-        while (pos != std::string::npos) {
-            value.replace(pos, placeholder.length(), instanceId);
-            pos = value.find(placeholder, pos + instanceId.length());
-        }
-        
-        // Replace ${variable} from request
-        // Map detectionSensitivity to threshold value
-        if (param.first == "score_threshold" && value == "${detectionSensitivity}") {
-            double threshold = mapDetectionSensitivity(req.detectionSensitivity);
-            std::ostringstream oss;
-            oss << threshold;
-            value = oss.str();
-        } else if (value == "${frameRateLimit}") {
-            std::ostringstream oss;
-            oss << req.frameRateLimit;
-            value = oss.str();
-        } else if (value == "${RTSP_URL}") {
-            value = getRTSPUrl(req);
-        } else if (value == "${FILE_PATH}") {
-            value = getFilePath(req);
-        } else if (value == "${RTMP_URL}" || value == "${RTMP_DES_URL}") {
-            value = getRTMPUrl(req);
-        } else if (value == "${WEIGHTS_PATH}") {
-            auto it = req.additionalParams.find("WEIGHTS_PATH");
-            if (it != req.additionalParams.end() && !it->second.empty()) {
-                value = it->second;
-            }
-        } else if (value == "${CONFIG_PATH}") {
-            auto it = req.additionalParams.find("CONFIG_PATH");
-            if (it != req.additionalParams.end() && !it->second.empty()) {
-                value = it->second;
-            }
-        } else if (value == "${LABELS_PATH}") {
-            auto it = req.additionalParams.find("LABELS_PATH");
-            if (it != req.additionalParams.end() && !it->second.empty()) {
-                value = it->second;
-            }
-        } else if (value == "${ENABLE_SCREEN_DES}") {
-            auto it = req.additionalParams.find("ENABLE_SCREEN_DES");
-            if (it != req.additionalParams.end() && !it->second.empty()) {
-                value = it->second;
-            } else {
-                // Default: empty string means enabled if display available
-                value = "";
-            }
-        } else if (param.first == "model_path" && value == "${MODEL_PATH}") {
-            // Priority: MODEL_NAME > MODEL_PATH > default
-            std::string modelPath;
-            
-            // 1. Check MODEL_NAME first (allows user to select model by name)
-            auto modelNameIt = req.additionalParams.find("MODEL_NAME");
-            if (modelNameIt != req.additionalParams.end() && !modelNameIt->second.empty()) {
-                std::string modelName = modelNameIt->second;
-                std::string category = "face"; // Default category
-                
-                // Check if category is specified (format: "category:modelname" or just "modelname")
-                size_t colonPos = modelName.find(':');
-                if (colonPos != std::string::npos) {
-                    category = modelName.substr(0, colonPos);
-                    modelName = modelName.substr(colonPos + 1);
-                }
-                
-                modelPath = resolveModelByName(modelName, category);
-                if (!modelPath.empty()) {
-                    std::cerr << "[PipelineBuilder] Using model by name: '" << modelNameIt->second 
-                              << "' -> " << modelPath << std::endl;
-                    value = modelPath;
-                } else {
-                    std::cerr << "[PipelineBuilder] WARNING: Model name '" << modelNameIt->second 
-                              << "' not found, falling back to default" << std::endl;
-                }
-            }
-            
-            // 2. If MODEL_NAME not found or not provided, check MODEL_PATH
-            if (modelPath.empty()) {
-                auto it = req.additionalParams.find("MODEL_PATH");
-                if (it != req.additionalParams.end() && !it->second.empty()) {
-                    value = it->second;
-                } else {
-                    // Default to yunet.onnx - resolve path intelligently
-                    value = resolveModelPath("models/face/yunet.onnx");
-                }
-            } else {
-                value = modelPath;
-            }
-        } else if (param.first == "model_path" && value == "${SFACE_MODEL_PATH}") {
-            // Handle SFace model path
-            std::string modelPath;
-            
-            // 1. Check SFACE_MODEL_NAME first
-            auto modelNameIt = req.additionalParams.find("SFACE_MODEL_NAME");
-            if (modelNameIt != req.additionalParams.end() && !modelNameIt->second.empty()) {
-                std::string modelName = modelNameIt->second;
-                std::string category = "face";
-                
-                size_t colonPos = modelName.find(':');
-                if (colonPos != std::string::npos) {
-                    category = modelName.substr(0, colonPos);
-                    modelName = modelName.substr(colonPos + 1);
-                }
-                
-                modelPath = resolveModelByName(modelName, category);
-                if (!modelPath.empty()) {
-                    value = modelPath;
-                }
-            }
-            
-            // 2. If SFACE_MODEL_NAME not found, check SFACE_MODEL_PATH
-            if (modelPath.empty()) {
-                auto it = req.additionalParams.find("SFACE_MODEL_PATH");
-                if (it != req.additionalParams.end() && !it->second.empty()) {
-                    value = it->second;
-                } else {
-                    // Default to sface model - resolve path intelligently
-                    value = resolveModelPath("models/face/face_recognition_sface_2021dec.onnx");
-                }
-            } else {
-                value = modelPath;
-            }
-        }
-        
-        // Override model_path if provided in additionalParams (even if not using ${MODEL_PATH} placeholder)
-        if (param.first == "model_path") {
-            // Priority: MODEL_NAME > MODEL_PATH
-            std::string modelPath;
-            
-            auto modelNameIt = req.additionalParams.find("MODEL_NAME");
-            if (modelNameIt != req.additionalParams.end() && !modelNameIt->second.empty()) {
-                std::string modelName = modelNameIt->second;
-                std::string category = "face";
-                
-                size_t colonPos = modelName.find(':');
-                if (colonPos != std::string::npos) {
-                    category = modelName.substr(0, colonPos);
-                    modelName = modelName.substr(colonPos + 1);
-                }
-                
-                modelPath = resolveModelByName(modelName, category);
-                if (!modelPath.empty()) {
-                    value = modelPath;
-                }
-            }
-            
-            if (modelPath.empty()) {
-                auto it = req.additionalParams.find("MODEL_PATH");
-                if (it != req.additionalParams.end() && !it->second.empty()) {
-                    value = it->second;
-                }
-            } else {
-                value = modelPath;
-            }
-        }
-        
-        // Generic placeholder substitution: Replace ${VARIABLE_NAME} with values from additionalParams
-        // This handles placeholders that weren't explicitly handled above (e.g., ${BROKE_FOR})
-        std::regex placeholderPattern("\\$\\{([A-Za-z0-9_]+)\\}");
-        std::sregex_iterator iter(value.begin(), value.end(), placeholderPattern);
-        std::sregex_iterator end;
-        std::set<std::string> processedVars; // Track processed variables to avoid duplicate replacements
-        
-        for (; iter != end; ++iter) {
-            std::string varName = (*iter)[1].str();
-            
-            // Skip if already processed
-            if (processedVars.find(varName) != processedVars.end()) {
-                continue;
-            }
-            processedVars.insert(varName);
-            
-            auto it = req.additionalParams.find(varName);
-            if (it != req.additionalParams.end() && !it->second.empty()) {
-                // Replace all occurrences of this placeholder
-                value = std::regex_replace(value, std::regex("\\$\\{" + varName + "\\}"), it->second);
-                std::cerr << "[PipelineBuilder] Replaced ${" << varName << "} with: " << it->second << std::endl;
-            } else {
-                // Placeholder not found in additionalParams - leave as is
-                std::cerr << "[PipelineBuilder] WARNING: Placeholder ${" << varName << "} not found in additionalParams, leaving as literal" << std::endl;
-            }
-        }
-        
-        params[param.first] = value;
+
+    // Source nodes
+    if (actualNodeType == "rtsp_src") {
+      return createRTSPSourceNode(nodeName, params, req);
+    } else if (actualNodeType == "file_src") {
+      return createFileSourceNode(nodeName, params, req);
+    } else if (actualNodeType == "app_src") {
+      return createAppSourceNode(nodeName, params, req);
+    } else if (actualNodeType == "image_src") {
+      return createImageSourceNode(nodeName, params, req);
+    } else if (actualNodeType == "rtmp_src") {
+      return createRTMPSourceNode(nodeName, params, req);
+    } else if (actualNodeType == "udp_src") {
+      return createUDPSourceNode(nodeName, params, req);
+    } else if (actualNodeType == "ff_src") {
+      return createFFmpegSourceNode(nodeName, params, req);
     }
-    
-    // Create node based on type
-    try {
-        // Source nodes - Auto-detect source type for file_src based on FILE_PATH or explicit parameters
-        std::string actualNodeType = nodeConfig.nodeType;
-        if (nodeConfig.nodeType == "file_src") {
-            // Priority 1: Check explicit source URL parameters
-            auto rtspSrcIt = req.additionalParams.find("RTSP_SRC_URL");
-            auto rtspIt = req.additionalParams.find("RTSP_URL");  // Backward compatibility
-            auto rtmpSrcIt = req.additionalParams.find("RTMP_SRC_URL");
-            auto rtmpIt = req.additionalParams.find("RTMP_URL");  // Backward compatibility (for input)
-            auto hlsIt = req.additionalParams.find("HLS_URL");
-            auto httpIt = req.additionalParams.find("HTTP_URL");
-            
-            // Validate and trim URLs before checking
-            // RTSP: Check RTSP_SRC_URL first, then RTSP_URL for backward compatibility
-            std::string rtspUrl = "";
-            if (rtspSrcIt != req.additionalParams.end() && !rtspSrcIt->second.empty()) {
-                rtspUrl = rtspSrcIt->second;
-            } else if (rtspIt != req.additionalParams.end() && !rtspIt->second.empty()) {
-                rtspUrl = rtspIt->second;  // Backward compatibility: RTSP_URL can be used for input
-            }
-            
-            // RTMP: Check RTMP_SRC_URL first, then RTMP_URL (but only if not used for output)
-            std::string rtmpUrl = "";
-            if (rtmpSrcIt != req.additionalParams.end() && !rtmpSrcIt->second.empty()) {
-                // RTMP_SRC_URL always means input (highest priority)
-                rtmpUrl = rtmpSrcIt->second;
-            } else if (rtmpIt != req.additionalParams.end() && !rtmpIt->second.empty()) {
-                // RTMP_URL can be used for input OR output
-                // Priority: Check RTMP_DES_URL first - if provided, RTMP_URL should be for output
-                auto rtmpDesIt = req.additionalParams.find("RTMP_DES_URL");
-                bool rtmpUrlUsedForOutput = false;
-                if (rtmpDesIt != req.additionalParams.end() && !rtmpDesIt->second.empty()) {
-                    // RTMP_DES_URL is provided, so RTMP_URL should be for output, not input
-                    rtmpUrlUsedForOutput = true;
-                    std::cerr << "[PipelineBuilder] RTMP_DES_URL detected, RTMP_URL will be used for output (rtmp_des), not input" << std::endl;
-                } else {
-                    // Check if FILE_PATH is provided - if yes, RTMP_URL is likely for output
-                    auto filePathIt = req.additionalParams.find("FILE_PATH");
-                    if (filePathIt != req.additionalParams.end() && !filePathIt->second.empty()) {
-                        std::string filePath = filePathIt->second;
-                        filePath.erase(0, filePath.find_first_not_of(" \t\n\r"));
-                        filePath.erase(filePath.find_last_not_of(" \t\n\r") + 1);
-                        // If FILE_PATH is not an RTMP URL, then RTMP_URL is likely for output
-                        if (!filePath.empty() && detectInputType(filePath) != "rtmp") {
-                            rtmpUrlUsedForOutput = true;
-                            std::cerr << "[PipelineBuilder] FILE_PATH detected (not RTMP), RTMP_URL will be used for output (rtmp_des), not input" << std::endl;
-                        }
-                    }
-                }
-                // If RTMP_URL is not used for output, use it for input (backward compatibility)
-                if (!rtmpUrlUsedForOutput) {
-                    rtmpUrl = rtmpIt->second;
-                }
-            }
-            
-            std::string hlsUrl = (hlsIt != req.additionalParams.end() && !hlsIt->second.empty()) ? hlsIt->second : "";
-            std::string httpUrl = (httpIt != req.additionalParams.end() && !httpIt->second.empty()) ? httpIt->second : "";
-            
-            // Trim whitespace
-            if (!rtspUrl.empty()) {
-                rtspUrl.erase(0, rtspUrl.find_first_not_of(" \t\n\r"));
-                rtspUrl.erase(rtspUrl.find_last_not_of(" \t\n\r") + 1);
-            }
-            if (!rtmpUrl.empty()) {
-                rtmpUrl.erase(0, rtmpUrl.find_first_not_of(" \t\n\r"));
-                rtmpUrl.erase(rtmpUrl.find_last_not_of(" \t\n\r") + 1);
-            }
-            if (!hlsUrl.empty()) {
-                hlsUrl.erase(0, hlsUrl.find_first_not_of(" \t\n\r"));
-                hlsUrl.erase(hlsUrl.find_last_not_of(" \t\n\r") + 1);
-            }
-            if (!httpUrl.empty()) {
-                httpUrl.erase(0, httpUrl.find_first_not_of(" \t\n\r"));
-                httpUrl.erase(httpUrl.find_last_not_of(" \t\n\r") + 1);
-            }
-            
-            if (!rtspUrl.empty()) {
-                // Check if FILE_PATH also contains RTSP URL (potential conflict)
-                auto filePathIt = req.additionalParams.find("FILE_PATH");
-                if (filePathIt != req.additionalParams.end() && !filePathIt->second.empty()) {
-                    std::string filePath = filePathIt->second;
-                    filePath.erase(0, filePath.find_first_not_of(" \t\n\r"));
-                    filePath.erase(filePath.find_last_not_of(" \t\n\r") + 1);
-                    if (!filePath.empty() && detectInputType(filePath) == "rtsp") {
-                        std::cerr << "[PipelineBuilder] ⚠ WARNING: Both RTSP_SRC_URL and FILE_PATH (with RTSP URL) are provided." << std::endl;
-                        std::cerr << "[PipelineBuilder] ⚠ Using RTSP_SRC_URL (priority). FILE_PATH will be ignored." << std::endl;
-                    }
-                }
-                std::cerr << "[PipelineBuilder] Auto-detected RTSP source from RTSP_SRC_URL parameter, overriding file_src" << std::endl;
-                actualNodeType = "rtsp_src";
-                params["rtsp_url"] = rtspUrl;
-                size_t fileSrcPos = nodeName.find("file_src");
-                if (fileSrcPos != std::string::npos) {
-                    nodeName.replace(fileSrcPos, 8, "rtsp_src");
-                    std::cerr << "[PipelineBuilder] Updated node name to reflect RTSP source: '" << nodeName << "'" << std::endl;
-                }
-            } else if (!rtmpUrl.empty()) {
-                // Check if FILE_PATH also contains RTMP URL (potential conflict)
-                auto filePathIt = req.additionalParams.find("FILE_PATH");
-                if (filePathIt != req.additionalParams.end() && !filePathIt->second.empty()) {
-                    std::string filePath = filePathIt->second;
-                    filePath.erase(0, filePath.find_first_not_of(" \t\n\r"));
-                    filePath.erase(filePath.find_last_not_of(" \t\n\r") + 1);
-                    if (!filePath.empty() && detectInputType(filePath) == "rtmp") {
-                        std::cerr << "[PipelineBuilder] ⚠ WARNING: Both RTMP_SRC_URL and FILE_PATH (with RTMP URL) are provided." << std::endl;
-                        std::cerr << "[PipelineBuilder] ⚠ Using RTMP_SRC_URL (priority). FILE_PATH will be ignored." << std::endl;
-                    }
-                }
-                std::cerr << "[PipelineBuilder] Auto-detected RTMP source from RTMP_SRC_URL parameter, overriding file_src" << std::endl;
-                actualNodeType = "rtmp_src";
-                params["rtmp_url"] = rtmpUrl;
-                size_t fileSrcPos = nodeName.find("file_src");
-                if (fileSrcPos != std::string::npos) {
-                    nodeName.replace(fileSrcPos, 8, "rtmp_src");
-                    std::cerr << "[PipelineBuilder] Updated node name to reflect RTMP source: '" << nodeName << "'" << std::endl;
-                }
-            } else if (!hlsUrl.empty()) {
-                // Check if FILE_PATH also contains HLS URL (potential conflict)
-                auto filePathIt = req.additionalParams.find("FILE_PATH");
-                if (filePathIt != req.additionalParams.end() && !filePathIt->second.empty()) {
-                    std::string filePath = filePathIt->second;
-                    filePath.erase(0, filePath.find_first_not_of(" \t\n\r"));
-                    filePath.erase(filePath.find_last_not_of(" \t\n\r") + 1);
-                    if (!filePath.empty() && (detectInputType(filePath) == "hls" || detectInputType(filePath) == "http")) {
-                        std::cerr << "[PipelineBuilder] ⚠ WARNING: Both HLS_URL and FILE_PATH (with HLS/HTTP URL) are provided." << std::endl;
-                        std::cerr << "[PipelineBuilder] ⚠ Using HLS_URL (priority). FILE_PATH will be ignored." << std::endl;
-                    }
-                }
-                std::cerr << "[PipelineBuilder] Auto-detected HLS source from HLS_URL parameter, using ff_src" << std::endl;
-                actualNodeType = "ff_src";
-                params["uri"] = hlsUrl;
-                size_t fileSrcPos = nodeName.find("file_src");
-                if (fileSrcPos != std::string::npos) {
-                    nodeName.replace(fileSrcPos, 8, "ff_src");
-                    std::cerr << "[PipelineBuilder] Updated node name to reflect FFmpeg source: '" << nodeName << "'" << std::endl;
-                }
-            } else if (!httpUrl.empty()) {
-                // Check if FILE_PATH also contains HTTP URL (potential conflict)
-                auto filePathIt = req.additionalParams.find("FILE_PATH");
-                if (filePathIt != req.additionalParams.end() && !filePathIt->second.empty()) {
-                    std::string filePath = filePathIt->second;
-                    filePath.erase(0, filePath.find_first_not_of(" \t\n\r"));
-                    filePath.erase(filePath.find_last_not_of(" \t\n\r") + 1);
-                    if (!filePath.empty() && (detectInputType(filePath) == "hls" || detectInputType(filePath) == "http")) {
-                        std::cerr << "[PipelineBuilder] ⚠ WARNING: Both HTTP_URL and FILE_PATH (with HLS/HTTP URL) are provided." << std::endl;
-                        std::cerr << "[PipelineBuilder] ⚠ Using HTTP_URL (priority). FILE_PATH will be ignored." << std::endl;
-                    }
-                }
-                std::cerr << "[PipelineBuilder] Auto-detected HTTP source from HTTP_URL parameter, using ff_src" << std::endl;
-                actualNodeType = "ff_src";
-                params["uri"] = httpUrl;
-                size_t fileSrcPos = nodeName.find("file_src");
-                if (fileSrcPos != std::string::npos) {
-                    nodeName.replace(fileSrcPos, 8, "ff_src");
-                    std::cerr << "[PipelineBuilder] Updated node name to reflect FFmpeg source: '" << nodeName << "'" << std::endl;
-                }
-            } else {
-                // Priority 2: Auto-detect from FILE_PATH
-                std::string filePath = params.count("file_path") ? params.at("file_path") : "";
-                if (filePath.empty()) {
-                    auto filePathIt = req.additionalParams.find("FILE_PATH");
-                    if (filePathIt != req.additionalParams.end() && !filePathIt->second.empty()) {
-                        filePath = filePathIt->second;
-                    }
-                }
-                
-                // Trim whitespace from filePath
-                if (!filePath.empty()) {
-                    filePath.erase(0, filePath.find_first_not_of(" \t\n\r"));
-                    filePath.erase(filePath.find_last_not_of(" \t\n\r") + 1);
-                }
-                
-                if (!filePath.empty()) {
-                    std::string inputType = detectInputType(filePath);
-                    if (inputType == "rtsp") {
-                        std::cerr << "[PipelineBuilder] Auto-detected RTSP source from FILE_PATH: '" << filePath << "'" << std::endl;
-                        actualNodeType = "rtsp_src";
-                        params["rtsp_url"] = filePath;
-                        size_t fileSrcPos = nodeName.find("file_src");
-                        if (fileSrcPos != std::string::npos) {
-                            nodeName.replace(fileSrcPos, 8, "rtsp_src");
-                        }
-                    } else if (inputType == "rtmp") {
-                        std::cerr << "[PipelineBuilder] Auto-detected RTMP source from FILE_PATH: '" << filePath << "'" << std::endl;
-                        actualNodeType = "rtmp_src";
-                        params["rtmp_url"] = filePath;
-                        size_t fileSrcPos = nodeName.find("file_src");
-                        if (fileSrcPos != std::string::npos) {
-                            nodeName.replace(fileSrcPos, 8, "rtmp_src");
-                        }
-                    } else if (inputType == "hls" || inputType == "http") {
-                        std::cerr << "[PipelineBuilder] Auto-detected " << inputType << " source from FILE_PATH: '" << filePath << "', using ff_src" << std::endl;
-                        actualNodeType = "ff_src";
-                        params["uri"] = filePath;
-                        size_t fileSrcPos = nodeName.find("file_src");
-                        if (fileSrcPos != std::string::npos) {
-                            nodeName.replace(fileSrcPos, 8, "ff_src");
-                        }
-                    } else {
-                        // If inputType == "file" or "udp", keep as file_src (default)
-                        std::cerr << "[PipelineBuilder] Using file_src for FILE_PATH: '" << filePath << "' (detected type: " << inputType << ")" << std::endl;
-                    }
-                }
-            }
-        }
-        
-        // Source nodes
-        if (actualNodeType == "rtsp_src") {
-            return createRTSPSourceNode(nodeName, params, req);
-        } else if (actualNodeType == "file_src") {
-            return createFileSourceNode(nodeName, params, req);
-        } else if (actualNodeType == "app_src") {
-            return createAppSourceNode(nodeName, params, req);
-        } else if (actualNodeType == "image_src") {
-            return createImageSourceNode(nodeName, params, req);
-        } else if (actualNodeType == "rtmp_src") {
-            return createRTMPSourceNode(nodeName, params, req);
-        } else if (actualNodeType == "udp_src") {
-            return createUDPSourceNode(nodeName, params, req);
-        } else if (actualNodeType == "ff_src") {
-            return createFFmpegSourceNode(nodeName, params, req);
-        }
-        // Face detection nodes
-        else if (nodeConfig.nodeType == "yunet_face_detector") {
-            return createFaceDetectorNode(nodeName, params, req);
-        } else if (nodeConfig.nodeType == "sface_feature_encoder") {
-            return createSFaceEncoderNode(nodeName, params, req);
-        } else if (nodeConfig.nodeType == "face_osd_v2") {
-            return createFaceOSDNode(nodeName, params);
-        }
+    // Face detection nodes
+    else if (nodeConfig.nodeType == "yunet_face_detector") {
+      return createFaceDetectorNode(nodeName, params, req);
+    } else if (nodeConfig.nodeType == "sface_feature_encoder") {
+      return createSFaceEncoderNode(nodeName, params, req);
+    } else if (nodeConfig.nodeType == "face_osd_v2") {
+      return createFaceOSDNode(nodeName, params);
+    }
 #ifdef CVEDIX_WITH_TRT
-        // TensorRT YOLOv8 nodes
-        else if (nodeConfig.nodeType == "trt_yolov8_detector") {
-            return createTRTYOLOv8DetectorNode(nodeName, params, req);
-        } else if (nodeConfig.nodeType == "trt_yolov8_seg_detector") {
-            return createTRTYOLOv8SegDetectorNode(nodeName, params, req);
-        } else if (nodeConfig.nodeType == "trt_yolov8_pose_detector") {
-            return createTRTYOLOv8PoseDetectorNode(nodeName, params, req);
-        } else if (nodeConfig.nodeType == "trt_yolov8_classifier") {
-            return createTRTYOLOv8ClassifierNode(nodeName, params, req);
-        }
-        // TensorRT Vehicle nodes
-        else if (nodeConfig.nodeType == "trt_vehicle_detector") {
-            return createTRTVehicleDetectorNode(nodeName, params, req);
-        } else if (nodeConfig.nodeType == "trt_vehicle_plate_detector") {
-            return createTRTVehiclePlateDetectorNode(nodeName, params, req);
-        } else if (nodeConfig.nodeType == "trt_vehicle_plate_detector_v2") {
-            return createTRTVehiclePlateDetectorV2Node(nodeName, params, req);
-        } else if (nodeConfig.nodeType == "trt_vehicle_color_classifier") {
-            return createTRTVehicleColorClassifierNode(nodeName, params, req);
-        } else if (nodeConfig.nodeType == "trt_vehicle_type_classifier") {
-            return createTRTVehicleTypeClassifierNode(nodeName, params, req);
-        } else if (nodeConfig.nodeType == "trt_vehicle_feature_encoder") {
-            return createTRTVehicleFeatureEncoderNode(nodeName, params, req);
-        } else if (nodeConfig.nodeType == "trt_vehicle_scanner") {
-            return createTRTVehicleScannerNode(nodeName, params, req);
-        } else if (nodeConfig.nodeType == "trt_insight_face_recognition") {
-            return createTRTInsightFaceRecognitionNode(nodeName, params, req);
-        }
+    // TensorRT YOLOv8 nodes
+    else if (nodeConfig.nodeType == "trt_yolov8_detector") {
+      return createTRTYOLOv8DetectorNode(nodeName, params, req);
+    } else if (nodeConfig.nodeType == "trt_yolov8_seg_detector") {
+      return createTRTYOLOv8SegDetectorNode(nodeName, params, req);
+    } else if (nodeConfig.nodeType == "trt_yolov8_pose_detector") {
+      return createTRTYOLOv8PoseDetectorNode(nodeName, params, req);
+    } else if (nodeConfig.nodeType == "trt_yolov8_classifier") {
+      return createTRTYOLOv8ClassifierNode(nodeName, params, req);
+    }
+    // TensorRT Vehicle nodes
+    else if (nodeConfig.nodeType == "trt_vehicle_detector") {
+      return createTRTVehicleDetectorNode(nodeName, params, req);
+    } else if (nodeConfig.nodeType == "trt_vehicle_plate_detector") {
+      return createTRTVehiclePlateDetectorNode(nodeName, params, req);
+    } else if (nodeConfig.nodeType == "trt_vehicle_plate_detector_v2") {
+      return createTRTVehiclePlateDetectorV2Node(nodeName, params, req);
+    } else if (nodeConfig.nodeType == "trt_vehicle_color_classifier") {
+      return createTRTVehicleColorClassifierNode(nodeName, params, req);
+    } else if (nodeConfig.nodeType == "trt_vehicle_type_classifier") {
+      return createTRTVehicleTypeClassifierNode(nodeName, params, req);
+    } else if (nodeConfig.nodeType == "trt_vehicle_feature_encoder") {
+      return createTRTVehicleFeatureEncoderNode(nodeName, params, req);
+    } else if (nodeConfig.nodeType == "trt_vehicle_scanner") {
+      return createTRTVehicleScannerNode(nodeName, params, req);
+    } else if (nodeConfig.nodeType == "trt_insight_face_recognition") {
+      return createTRTInsightFaceRecognitionNode(nodeName, params, req);
+    }
 #endif
 #ifdef CVEDIX_WITH_RKNN
-        // RKNN nodes
-        else if (nodeConfig.nodeType == "rknn_yolov8_detector") {
-            return createRKNNYOLOv8DetectorNode(nodeName, params, req);
-        } else if (nodeConfig.nodeType == "rknn_yolov11_detector") {
-            return createRKNNYOLOv11DetectorNode(nodeName, params, req);
-        } else if (nodeConfig.nodeType == "rknn_face_detector") {
-            return createRKNNFaceDetectorNode(nodeName, params, req);
-        }
+    // RKNN nodes
+    else if (nodeConfig.nodeType == "rknn_yolov8_detector") {
+      return createRKNNYOLOv8DetectorNode(nodeName, params, req);
+    } else if (nodeConfig.nodeType == "rknn_yolov11_detector") {
+      return createRKNNYOLOv11DetectorNode(nodeName, params, req);
+    } else if (nodeConfig.nodeType == "rknn_face_detector") {
+      return createRKNNFaceDetectorNode(nodeName, params, req);
+    }
 #endif
-        // Other inference nodes
-        else if (nodeConfig.nodeType == "yolo_detector") {
-            return createYOLODetectorNode(nodeName, params, req);
-        } else if (nodeConfig.nodeType == "yolov11_detector") {
-            return createYOLOv11DetectorNode(nodeName, params, req);
-        } else if (nodeConfig.nodeType == "enet_seg") {
-            return createENetSegNode(nodeName, params, req);
-        } else if (nodeConfig.nodeType == "mask_rcnn_detector") {
-            return createMaskRCNNDetectorNode(nodeName, params, req);
-        } else if (nodeConfig.nodeType == "openpose_detector") {
-            return createOpenPoseDetectorNode(nodeName, params, req);
-        } else if (nodeConfig.nodeType == "classifier") {
-            return createClassifierNode(nodeName, params, req);
-        } else if (nodeConfig.nodeType == "feature_encoder") {
-            std::cerr << "[PipelineBuilder] feature_encoder node type is not supported (abstract class). Use 'sface_feature_encoder' or 'trt_vehicle_feature_encoder' instead." << std::endl;
-            throw std::runtime_error("feature_encoder node type is not supported. Use 'sface_feature_encoder' or 'trt_vehicle_feature_encoder' instead.");
-        } else if (nodeConfig.nodeType == "lane_detector") {
-            return createLaneDetectorNode(nodeName, params, req);
-        } else if (nodeConfig.nodeType == "face_swap") {
-            return createFaceSwapNode(nodeName, params, req);
-        } else if (nodeConfig.nodeType == "insight_face_recognition") {
-            return createInsightFaceRecognitionNode(nodeName, params, req);
-        } else if (nodeConfig.nodeType == "mllm_analyser") {
-            return createMLLMAnalyserNode(nodeName, params, req);
+    // Other inference nodes
+    else if (nodeConfig.nodeType == "yolo_detector") {
+      return createYOLODetectorNode(nodeName, params, req);
+    } else if (nodeConfig.nodeType == "yolov11_detector") {
+      return createYOLOv11DetectorNode(nodeName, params, req);
+    } else if (nodeConfig.nodeType == "enet_seg") {
+      return createENetSegNode(nodeName, params, req);
+    } else if (nodeConfig.nodeType == "mask_rcnn_detector") {
+      return createMaskRCNNDetectorNode(nodeName, params, req);
+    } else if (nodeConfig.nodeType == "openpose_detector") {
+      return createOpenPoseDetectorNode(nodeName, params, req);
+    } else if (nodeConfig.nodeType == "classifier") {
+      return createClassifierNode(nodeName, params, req);
+    } else if (nodeConfig.nodeType == "feature_encoder") {
+      std::cerr << "[PipelineBuilder] feature_encoder node type is not "
+                   "supported (abstract class). Use 'sface_feature_encoder' or "
+                   "'trt_vehicle_feature_encoder' instead."
+                << std::endl;
+      throw std::runtime_error(
+          "feature_encoder node type is not supported. Use "
+          "'sface_feature_encoder' or 'trt_vehicle_feature_encoder' instead.");
+    } else if (nodeConfig.nodeType == "lane_detector") {
+      return createLaneDetectorNode(nodeName, params, req);
+    } else if (nodeConfig.nodeType == "face_swap") {
+      return createFaceSwapNode(nodeName, params, req);
+    } else if (nodeConfig.nodeType == "insight_face_recognition") {
+      return createInsightFaceRecognitionNode(nodeName, params, req);
+    } else if (nodeConfig.nodeType == "mllm_analyser") {
+      return createMLLMAnalyserNode(nodeName, params, req);
 #ifdef CVEDIX_WITH_PADDLE
-        } else if (nodeConfig.nodeType == "ppocr_text_detector") {
-            return createPaddleOCRTextDetectorNode(nodeName, params, req);
+    } else if (nodeConfig.nodeType == "ppocr_text_detector") {
+      return createPaddleOCRTextDetectorNode(nodeName, params, req);
 #endif
-        } else if (nodeConfig.nodeType == "restoration") {
-            return createRestorationNode(nodeName, params, req);
-        }
-        // Tracking nodes
-        else if (nodeConfig.nodeType == "sort_track") {
-            return createSORTTrackNode(nodeName, params);
-        }
-        // Behavior Analysis nodes
-        else if (nodeConfig.nodeType == "ba_crossline") {
-            return createBACrosslineNode(nodeName, params);
-        }
-        // OSD nodes
-        else if (nodeConfig.nodeType == "face_osd_v2") {
-            return createFaceOSDNode(nodeName, params);
-        }
-        else if (nodeConfig.nodeType == "osd_v3") {
-            return createOSDv3Node(nodeName, params, req);
-        }
-        else if (nodeConfig.nodeType == "ba_crossline_osd") {
-            return createBACrosslineOSDNode(nodeName, params);
-        }
-        // Broker nodes
-        else if (nodeConfig.nodeType == "json_console_broker") {
-            return createJSONConsoleBrokerNode(nodeName, params, req);
-        } else if (nodeConfig.nodeType == "json_enhanced_console_broker") {
-            std::cerr << "[PipelineBuilder] json_enhanced_console_broker is temporarily disabled due to cereal dependency issue" << std::endl;
-            return nullptr;
-        } else if (nodeConfig.nodeType == "json_mqtt_broker") {
+    } else if (nodeConfig.nodeType == "restoration") {
+      return createRestorationNode(nodeName, params, req);
+    }
+    // Tracking nodes
+    else if (nodeConfig.nodeType == "sort_track") {
+      return createSORTTrackNode(nodeName, params);
+    }
+    // Behavior Analysis nodes
+    else if (nodeConfig.nodeType == "ba_crossline") {
+      return createBACrosslineNode(nodeName, params);
+    }
+    // OSD nodes
+    else if (nodeConfig.nodeType == "face_osd_v2") {
+      return createFaceOSDNode(nodeName, params);
+    } else if (nodeConfig.nodeType == "osd_v3") {
+      return createOSDv3Node(nodeName, params, req);
+    } else if (nodeConfig.nodeType == "ba_crossline_osd") {
+      return createBACrosslineOSDNode(nodeName, params);
+    }
+    // Broker nodes
+    else if (nodeConfig.nodeType == "json_console_broker") {
+      return createJSONConsoleBrokerNode(nodeName, params, req);
+    } else if (nodeConfig.nodeType == "json_enhanced_console_broker") {
+      std::cerr << "[PipelineBuilder] json_enhanced_console_broker is "
+                   "temporarily disabled due to cereal dependency issue"
+                << std::endl;
+      return nullptr;
+    } else if (nodeConfig.nodeType == "json_mqtt_broker") {
 #ifdef CVEDIX_WITH_MQTT
-            // CRITICAL: cvedix_json_mqtt_broker_node is currently broken and causes crashes
-            // Disabled to prevent application crashes
-            // Use json_console_broker with MQTT publishing in instance_registry instead
-            std::cerr << "[PipelineBuilder] WARNING: json_mqtt_broker_node is DISABLED due to crash issues" << std::endl;
-            std::cerr << "[PipelineBuilder] Use json_console_broker node instead - MQTT will be handled by instance_registry" << std::endl;
-            return nullptr;
+      // CRITICAL: cvedix_json_mqtt_broker_node is currently broken and causes
+      // crashes Disabled to prevent application crashes Use json_console_broker
+      // with MQTT publishing in instance_registry instead
+      std::cerr << "[PipelineBuilder] WARNING: json_mqtt_broker_node is "
+                   "DISABLED due to crash issues"
+                << std::endl;
+      std::cerr << "[PipelineBuilder] Use json_console_broker node instead - "
+                   "MQTT will be handled by instance_registry"
+                << std::endl;
+      return nullptr;
 #else
-            std::cerr << "[PipelineBuilder] json_mqtt_broker requires CVEDIX_WITH_MQTT to be enabled" << std::endl;
-            return nullptr;
+      std::cerr << "[PipelineBuilder] json_mqtt_broker requires "
+                   "CVEDIX_WITH_MQTT to be enabled"
+                << std::endl;
+      return nullptr;
 #endif
-        } else if (nodeConfig.nodeType == "json_crossline_mqtt_broker") {
+    } else if (nodeConfig.nodeType == "json_crossline_mqtt_broker") {
 #ifdef CVEDIX_WITH_MQTT
-            return createJSONCrosslineMQTTBrokerNode(nodeName, params, req);
+      return createJSONCrosslineMQTTBrokerNode(nodeName, params, req);
 #else
-            std::cerr << "[PipelineBuilder] json_crossline_mqtt_broker requires CVEDIX_WITH_MQTT to be enabled" << std::endl;
-            return nullptr;
+      std::cerr << "[PipelineBuilder] json_crossline_mqtt_broker requires "
+                   "CVEDIX_WITH_MQTT to be enabled"
+                << std::endl;
+      return nullptr;
 #endif
-        } else if (nodeConfig.nodeType == "json_kafka_broker") {
-            std::cerr << "[PipelineBuilder] json_kafka_broker is temporarily disabled due to cereal dependency issue" << std::endl;
-            return nullptr;
-        } else if (nodeConfig.nodeType == "xml_file_broker") {
-            std::cerr << "[PipelineBuilder] xml_file_broker is temporarily disabled due to cereal dependency issue" << std::endl;
-            return nullptr;
-        } else if (nodeConfig.nodeType == "xml_socket_broker") {
-            std::cerr << "[PipelineBuilder] xml_socket_broker is temporarily disabled due to cereal dependency issue" << std::endl;
-            return nullptr;
-        } else if (nodeConfig.nodeType == "msg_broker") {
-            std::cerr << "[PipelineBuilder] msg_broker is temporarily disabled due to cereal dependency issue" << std::endl;
-            return nullptr;
-        } else if (nodeConfig.nodeType == "ba_socket_broker") {
-            std::cerr << "[PipelineBuilder] ba_socket_broker is temporarily disabled due to cereal dependency issue" << std::endl;
-            return nullptr;
-        } else if (nodeConfig.nodeType == "embeddings_socket_broker") {
-            std::cerr << "[PipelineBuilder] embeddings_socket_broker is temporarily disabled due to cereal dependency issue" << std::endl;
-            return nullptr;
-        } else if (nodeConfig.nodeType == "embeddings_properties_socket_broker") {
-            std::cerr << "[PipelineBuilder] embeddings_properties_socket_broker is temporarily disabled due to cereal dependency issue" << std::endl;
-            return nullptr;
-        } else if (nodeConfig.nodeType == "plate_socket_broker") {
-            std::cerr << "[PipelineBuilder] plate_socket_broker is temporarily disabled due to cereal dependency issue" << std::endl;
-            return nullptr;
-        } else if (nodeConfig.nodeType == "expr_socket_broker") {
-            std::cerr << "[PipelineBuilder] expr_socket_broker is temporarily disabled due to cereal dependency issue" << std::endl;
-            return nullptr;
-        }
-        // Destination nodes
-        else if (nodeConfig.nodeType == "file_des") {
-            return createFileDestinationNode(nodeName, params, instanceId);
-        } else if (nodeConfig.nodeType == "rtmp_des") {
-            return createRTMPDestinationNode(nodeName, params, req);
-        } else if (nodeConfig.nodeType == "screen_des") {
-            return createScreenDestinationNode(nodeName, params);
-        } else {
-            std::cerr << "[PipelineBuilder] Unknown node type: " << nodeConfig.nodeType << std::endl;
-            throw std::runtime_error("Unknown node type: " + nodeConfig.nodeType);
-        }
-    } catch (const std::exception& e) {
-        std::cerr << "[PipelineBuilder] Error in createNode for type " << nodeConfig.nodeType 
-                  << ": " << e.what() << std::endl;
-        throw;
-    } catch (...) {
-        std::cerr << "[PipelineBuilder] Unknown error in createNode for type " 
-                  << nodeConfig.nodeType << std::endl;
-        throw std::runtime_error("Unknown error creating node type: " + nodeConfig.nodeType);
+    } else if (nodeConfig.nodeType == "json_kafka_broker") {
+      std::cerr << "[PipelineBuilder] json_kafka_broker is temporarily "
+                   "disabled due to cereal dependency issue"
+                << std::endl;
+      return nullptr;
+    } else if (nodeConfig.nodeType == "xml_file_broker") {
+      std::cerr << "[PipelineBuilder] xml_file_broker is temporarily disabled "
+                   "due to cereal dependency issue"
+                << std::endl;
+      return nullptr;
+    } else if (nodeConfig.nodeType == "xml_socket_broker") {
+      std::cerr << "[PipelineBuilder] xml_socket_broker is temporarily "
+                   "disabled due to cereal dependency issue"
+                << std::endl;
+      return nullptr;
+    } else if (nodeConfig.nodeType == "msg_broker") {
+      std::cerr << "[PipelineBuilder] msg_broker is temporarily disabled due "
+                   "to cereal dependency issue"
+                << std::endl;
+      return nullptr;
+    } else if (nodeConfig.nodeType == "ba_socket_broker") {
+      std::cerr << "[PipelineBuilder] ba_socket_broker is temporarily disabled "
+                   "due to cereal dependency issue"
+                << std::endl;
+      return nullptr;
+    } else if (nodeConfig.nodeType == "embeddings_socket_broker") {
+      std::cerr << "[PipelineBuilder] embeddings_socket_broker is temporarily "
+                   "disabled due to cereal dependency issue"
+                << std::endl;
+      return nullptr;
+    } else if (nodeConfig.nodeType == "embeddings_properties_socket_broker") {
+      std::cerr << "[PipelineBuilder] embeddings_properties_socket_broker is "
+                   "temporarily disabled due to cereal dependency issue"
+                << std::endl;
+      return nullptr;
+    } else if (nodeConfig.nodeType == "plate_socket_broker") {
+      std::cerr << "[PipelineBuilder] plate_socket_broker is temporarily "
+                   "disabled due to cereal dependency issue"
+                << std::endl;
+      return nullptr;
+    } else if (nodeConfig.nodeType == "expr_socket_broker") {
+      std::cerr << "[PipelineBuilder] expr_socket_broker is temporarily "
+                   "disabled due to cereal dependency issue"
+                << std::endl;
+      return nullptr;
     }
-}
-
-std::shared_ptr<cvedix_nodes::cvedix_node> PipelineBuilder::createRTSPSourceNode(
-    const std::string& nodeName,
-    const std::map<std::string, std::string>& params,
-    const CreateInstanceRequest& req) {
-    
-    try {
-        // Get RTSP URL - prioritize RTSP_SRC_URL (like sample code)
-        std::string rtspUrl;
-        if (params.count("rtsp_url") && !params.at("rtsp_url").empty()) {
-            rtspUrl = params.at("rtsp_url");
-        } else {
-            // Check RTSP_SRC_URL first (like sample), then RTSP_URL
-            auto rtspSrcIt = req.additionalParams.find("RTSP_SRC_URL");
-            if (rtspSrcIt != req.additionalParams.end() && !rtspSrcIt->second.empty()) {
-                rtspUrl = rtspSrcIt->second;
-                std::cerr << "[PipelineBuilder] Using RTSP_SRC_URL from additionalParams: '" << rtspUrl << "'" << std::endl;
-            } else {
-                rtspUrl = getRTSPUrl(req);
-            }
-        }
-        
-        int channel = params.count("channel") ? std::stoi(params.at("channel")) : 0;
-        
-        // cvedix_rtsp_src_node constructor: (name, channel, rtsp_url, resize_ratio, gst_decoder_name, skip_interval, codec_type)
-        // resize_ratio must be > 0.0 and <= 1.0
-        // Default to 0.6 like sample code (rtsp_ba_crossline_sample.cpp uses 0.6f)
-        float resize_ratio = 0.6f; // Default to 0.6 like sample
-        
-        // Get decoder from config priority list if not specified
-        // Priority: additionalParams GST_DECODER_NAME > params gst_decoder_name > selectDecoderFromPriority > default
-        std::string defaultDecoder = "avdec_h264";
-        std::string gstDecoderName = defaultDecoder;
-        
-        // Check additionalParams first (highest priority)
-        auto decoderIt = req.additionalParams.find("GST_DECODER_NAME");
-        if (decoderIt != req.additionalParams.end() && !decoderIt->second.empty()) {
-            gstDecoderName = decoderIt->second;
-            std::cerr << "[PipelineBuilder] Using GST_DECODER_NAME from additionalParams: '" << gstDecoderName << "'" << std::endl;
-        } else if (params.count("gst_decoder_name") && !params.at("gst_decoder_name").empty()) {
-            gstDecoderName = params.at("gst_decoder_name");
-            std::cerr << "[PipelineBuilder] Using gst_decoder_name from params: '" << gstDecoderName << "'" << std::endl;
-        } else {
-            gstDecoderName = selectDecoderFromPriority(defaultDecoder);
-            std::cerr << "[PipelineBuilder] Using decoder from priority list: '" << gstDecoderName << "'" << std::endl;
-        }
-        
-        // Get skip_interval (0 means no skip)
-        // Priority: additionalParams SKIP_INTERVAL > params skip_interval > default (0)
-        int skipInterval = 0;
-        auto skipIt = req.additionalParams.find("SKIP_INTERVAL");
-        if (skipIt != req.additionalParams.end() && !skipIt->second.empty()) {
-            try {
-                skipInterval = std::stoi(skipIt->second);
-                std::cerr << "[PipelineBuilder] Using SKIP_INTERVAL from additionalParams: " << skipInterval << std::endl;
-            } catch (const std::exception& e) {
-                std::cerr << "[PipelineBuilder] Warning: Invalid SKIP_INTERVAL value '" << skipIt->second 
-                          << "', using default 0" << std::endl;
-            }
-        } else if (params.count("skip_interval")) {
-            skipInterval = std::stoi(params.at("skip_interval"));
-        }
-        
-        // Get codec_type (h264, h265, auto)
-        // Priority: additionalParams CODEC_TYPE > params codec_type > default ("h264")
-        std::string codecType = "h264";
-        auto codecIt = req.additionalParams.find("CODEC_TYPE");
-        if (codecIt != req.additionalParams.end() && !codecIt->second.empty()) {
-            codecType = codecIt->second;
-            std::cerr << "[PipelineBuilder] Using CODEC_TYPE from additionalParams: '" << codecType << "'" << std::endl;
-        } else if (params.count("codec_type") && !params.at("codec_type").empty()) {
-            codecType = params.at("codec_type");
-        }
-        
-        // Priority: additionalParams RESIZE_RATIO > params resize_ratio > params scale > default
-        // This allows runtime override of resize_ratio for RTSP streams
-        bool resizeRatioFromAdditionalParams = false;
-        auto resizeIt = req.additionalParams.find("RESIZE_RATIO");
-        if (resizeIt != req.additionalParams.end() && !resizeIt->second.empty()) {
-            try {
-                resize_ratio = std::stof(resizeIt->second);
-                resizeRatioFromAdditionalParams = true;
-                std::cerr << "[PipelineBuilder] Using RESIZE_RATIO from additionalParams: " << resize_ratio << std::endl;
-            } catch (const std::exception& e) {
-                std::cerr << "[PipelineBuilder] Warning: Invalid RESIZE_RATIO value '" << resizeIt->second 
-                          << "', using value from params or default" << std::endl;
-            }
-        }
-        
-        // Check if resize_ratio is specified in params (from solution config)
-        // Only override if RESIZE_RATIO was NOT set in additionalParams (highest priority)
-        if (!resizeRatioFromAdditionalParams) {
-            if (params.count("resize_ratio")) {
-                resize_ratio = std::stof(params.at("resize_ratio"));
-                std::cerr << "[PipelineBuilder] Using resize_ratio from solution config: " << resize_ratio << std::endl;
-            } else if (params.count("scale")) {
-                resize_ratio = std::stof(params.at("scale"));
-                std::cerr << "[PipelineBuilder] Using scale from solution config: " << resize_ratio << std::endl;
-            }
-        }
-        
-        // Validate resize_ratio (must be > 0 and <= 1.0)
-        // Note: Assertion in SDK checks: resize_ratio > 0 && resize_ratio <= 1.0
-        // So we need: 0 < resize_ratio <= 1.0
-        if (resize_ratio <= 0.0f) {
-            std::cerr << "[PipelineBuilder] Invalid resize_ratio (<= 0): " << resize_ratio 
-                      << ", using default 0.5" << std::endl;
-            resize_ratio = 0.5f; // Use a safe default
-        }
-        if (resize_ratio > 1.0f) {
-            std::cerr << "[PipelineBuilder] Invalid resize_ratio (> 1.0): " << resize_ratio 
-                      << ", using 1.0" << std::endl;
-            resize_ratio = 1.0f;
-        }
-        
-        // Final validation before creating node
-        if (nodeName.empty()) {
-            throw std::invalid_argument("Node name cannot be empty");
-        }
-        if (rtspUrl.empty()) {
-            throw std::invalid_argument("RTSP URL cannot be empty");
-        }
-        // Final check: must be strictly > 0 and <= 1.0
-        if (resize_ratio <= 0.0f || resize_ratio > 1.0f) {
-            throw std::invalid_argument("resize_ratio must be > 0.0 and <= 1.0, got: " + std::to_string(resize_ratio));
-        }
-        
-        // Check RTSP transport protocol configuration
-        // Priority: RTSP_TRANSPORT in additionalParams > GST_RTSP_PROTOCOLS env > RTSP_TRANSPORT env > default (none - let GStreamer choose)
-        std::string rtspTransport = ""; // Default: empty - let GStreamer use its default (UDP/tcp+udp)
-        const char* rtspProtocols = std::getenv("GST_RTSP_PROTOCOLS");
-        
-        // Check additionalParams first (highest priority)
-        auto rtspTransportIt = req.additionalParams.find("RTSP_TRANSPORT");
-        if (rtspTransportIt != req.additionalParams.end() && !rtspTransportIt->second.empty()) {
-            std::string transport = rtspTransportIt->second;
-            std::transform(transport.begin(), transport.end(), transport.begin(), ::tolower);
-            if (transport == "tcp" || transport == "udp") {
-                rtspTransport = transport;
-                setenv("GST_RTSP_PROTOCOLS", rtspTransport.c_str(), 1); // Overwrite to use user's choice
-                std::cerr << "[PipelineBuilder] Using RTSP_TRANSPORT=" << rtspTransport 
-                          << " from additionalParams" << std::endl;
-            } else {
-                std::cerr << "[PipelineBuilder] WARNING: Invalid RTSP_TRANSPORT='" << transport 
-                          << "', must be 'tcp' or 'udp'. Using default: tcp" << std::endl;
-            }
-        } else if (rtspProtocols && strlen(rtspProtocols) > 0) {
-            // Use environment variable if set
-            rtspTransport = std::string(rtspProtocols);
-            std::transform(rtspTransport.begin(), rtspTransport.end(), rtspTransport.begin(), ::tolower);
-            if (rtspTransport != "tcp" && rtspTransport != "udp") {
-                std::cerr << "[PipelineBuilder] WARNING: Invalid GST_RTSP_PROTOCOLS='" << rtspTransport 
-                          << "', must be 'tcp' or 'udp'. Using default: tcp" << std::endl;
-                rtspTransport = "tcp";
-            }
-        } else {
-            // Check RTSP_TRANSPORT environment variable
-            const char* rtspTransportEnv = std::getenv("RTSP_TRANSPORT");
-            if (rtspTransportEnv && strlen(rtspTransportEnv) > 0) {
-                rtspTransport = std::string(rtspTransportEnv);
-                std::transform(rtspTransport.begin(), rtspTransport.end(), rtspTransport.begin(), ::tolower);
-                if (rtspTransport == "tcp" || rtspTransport == "udp") {
-                    setenv("GST_RTSP_PROTOCOLS", rtspTransport.c_str(), 1);
-                } else {
-                    rtspTransport = "tcp";
-                }
-            }
-        }
-        
-        std::string transportInfo = rtspTransport.empty() ? "auto (GStreamer default)" : rtspTransport;
-        
-        std::cerr << "[PipelineBuilder] ========================================" << std::endl;
-        std::cerr << "[PipelineBuilder] Creating RTSP source node:" << std::endl;
-        std::cerr << "[PipelineBuilder]   Name: '" << nodeName << "' (length: " << nodeName.length() << ")" << std::endl;
-        std::cerr << "[PipelineBuilder]   URL: '" << rtspUrl << "' (length: " << rtspUrl.length() << ")" << std::endl;
-        std::cerr << "[PipelineBuilder]   Channel: " << channel << std::endl;
-        std::cerr << "[PipelineBuilder]   Resize ratio: " << std::fixed << std::setprecision(3) << resize_ratio 
-                  << " (type: float, value: " << static_cast<double>(resize_ratio) << ")" << std::endl;
-        std::cerr << "[PipelineBuilder]   Decoder: '" << gstDecoderName << "'" << std::endl;
-        std::cerr << "[PipelineBuilder]   Skip interval: " << skipInterval << " (0 = no skip)" << std::endl;
-        std::cerr << "[PipelineBuilder]   Codec type: '" << codecType << "' (h264/h265/auto)" << std::endl;
-        std::cerr << "[PipelineBuilder]   Transport: " << transportInfo << std::endl;
-        if (rtspTransport == "udp") {
-            std::cerr << "[PipelineBuilder]   NOTE: Using UDP transport (faster but may be blocked by firewall)" << std::endl;
-            std::cerr << "[PipelineBuilder]   NOTE: If connection fails, try TCP by setting RTSP_TRANSPORT=tcp in additionalParams" << std::endl;
-        } else if (rtspTransport == "tcp") {
-            std::cerr << "[PipelineBuilder]   NOTE: Using TCP transport (better firewall compatibility)" << std::endl;
-            std::cerr << "[PipelineBuilder]   NOTE: To use UDP, set RTSP_TRANSPORT=udp in additionalParams" << std::endl;
-        } else {
-            std::cerr << "[PipelineBuilder]   NOTE: Using GStreamer default transport (usually UDP or tcp+udp)" << std::endl;
-            std::cerr << "[PipelineBuilder]   NOTE: To force TCP, set RTSP_TRANSPORT=tcp in additionalParams" << std::endl;
-            std::cerr << "[PipelineBuilder]   NOTE: To force UDP, set RTSP_TRANSPORT=udp in additionalParams" << std::endl;
-        }
-        std::cerr << "[PipelineBuilder]   NOTE: If decoder fails, try different GST_DECODER_NAME (e.g., 'nvh264dec', 'qsvh264dec')" << std::endl;
-        std::cerr << "[PipelineBuilder] ========================================" << std::endl;
-        
-        // Double-check resize_ratio is valid float
-        if (std::isnan(resize_ratio) || std::isinf(resize_ratio)) {
-            std::cerr << "[PipelineBuilder] ERROR: resize_ratio is NaN or Inf!" << std::endl;
-            throw std::invalid_argument("resize_ratio is NaN or Inf");
-        }
-        
-        // Ensure resize_ratio is strictly > 0 (not == 0) and <= 1.0
-        if (resize_ratio <= 0.0f) {
-            std::cerr << "[PipelineBuilder] ERROR: resize_ratio must be > 0.0, got: " << resize_ratio << std::endl;
-            resize_ratio = 0.1f; // Use minimum valid value
-            std::cerr << "[PipelineBuilder] Using minimum valid value: " << resize_ratio << std::endl;
-        }
-        if (resize_ratio > 1.0f) {
-            std::cerr << "[PipelineBuilder] ERROR: resize_ratio must be <= 1.0, got: " << resize_ratio << std::endl;
-            resize_ratio = 1.0f;
-            std::cerr << "[PipelineBuilder] Using maximum valid value: " << resize_ratio << std::endl;
-        }
-        
-        // Ensure GST_RTSP_PROTOCOLS is set before creating node (only if user specified)
-        // This must be set BEFORE node creation as SDK reads it during initialization
-        const char* currentProtocols = std::getenv("GST_RTSP_PROTOCOLS");
-        if (!rtspTransport.empty()) {
-            // User specified transport - set it
-            if (!currentProtocols || strlen(currentProtocols) == 0 || std::string(currentProtocols) != rtspTransport) {
-                setenv("GST_RTSP_PROTOCOLS", rtspTransport.c_str(), 1);  // Set to chosen transport
-                std::cerr << "[PipelineBuilder] Set GST_RTSP_PROTOCOLS=" << rtspTransport 
-                          << " before node creation" << std::endl;
-            }
-        } else {
-            // No transport specified - let GStreamer use its default
-            if (currentProtocols && strlen(currentProtocols) > 0) {
-                std::cerr << "[PipelineBuilder] Using GST_RTSP_PROTOCOLS=" << currentProtocols 
-                          << " from environment" << std::endl;
-            } else {
-                std::cerr << "[PipelineBuilder] No RTSP transport specified - GStreamer will use default (UDP/tcp+udp)" << std::endl;
-            }
-        }
-        
-        // Configure GStreamer environment variables for unstable streams
-        // These settings help handle network issues and prevent crashes
-        std::cerr << "[PipelineBuilder] Configuring GStreamer for unstable RTSP streams..." << std::endl;
-        
-        // Set buffer and timeout settings to handle unstable streams
-        // rtspsrc buffer-mode: 0=auto, 1=synced, 2=slave
-        // Use synced mode for better stability with unstable streams
-        if (!std::getenv("GST_RTSP_BUFFER_MODE")) {
-            setenv("GST_RTSP_BUFFER_MODE", "1", 0);  // 1 = synced mode
-            std::cerr << "[PipelineBuilder] Set GST_RTSP_BUFFER_MODE=1 (synced mode for unstable streams)" << std::endl;
-        }
-        
-        // Increase buffer size to handle network jitter
-        if (!std::getenv("GST_RTSP_BUFFER_SIZE")) {
-            setenv("GST_RTSP_BUFFER_SIZE", "10485760", 0);  // 10MB buffer
-            std::cerr << "[PipelineBuilder] Set GST_RTSP_BUFFER_SIZE=10485760 (10MB buffer for unstable streams)" << std::endl;
-        }
-        
-        // Increase timeout to handle slow/unstable connections
-        if (!std::getenv("GST_RTSP_TIMEOUT")) {
-            setenv("GST_RTSP_TIMEOUT", "10000000000", 0);  // 10 seconds (in nanoseconds)
-            std::cerr << "[PipelineBuilder] Set GST_RTSP_TIMEOUT=10000000000 (10s timeout)" << std::endl;
-        }
-        
-        // Enable drop-on-latency to prevent buffer overflow
-        if (!std::getenv("GST_RTSP_DROP_ON_LATENCY")) {
-            setenv("GST_RTSP_DROP_ON_LATENCY", "true", 0);
-            std::cerr << "[PipelineBuilder] Set GST_RTSP_DROP_ON_LATENCY=true (drop frames on latency)" << std::endl;
-        }
-        
-        // Set latency to handle network jitter (in nanoseconds)
-        if (!std::getenv("GST_RTSP_LATENCY")) {
-            setenv("GST_RTSP_LATENCY", "2000000000", 0);  // 2 seconds latency
-            std::cerr << "[PipelineBuilder] Set GST_RTSP_LATENCY=2000000000 (2s latency buffer)" << std::endl;
-        }
-        
-        // Disable do-rtsp-keep-alive to reduce connection overhead (may help with unstable streams)
-        // Note: This is a trade-off - keep-alive helps detect disconnections, but can cause issues with unstable streams
-        
-        // Create node - wrap in try-catch to catch any assertion failures
-        std::shared_ptr<cvedix_nodes::cvedix_rtsp_src_node> node;
-        try {
-            std::cerr << "[PipelineBuilder] Calling cvedix_rtsp_src_node constructor..." << std::endl;
-            std::cerr << "[PipelineBuilder] Current GST_RTSP_PROTOCOLS=" << (std::getenv("GST_RTSP_PROTOCOLS") ? std::getenv("GST_RTSP_PROTOCOLS") : "not set") << std::endl;
-            std::cerr << "[PipelineBuilder] GStreamer RTSP settings configured for unstable streams" << std::endl;
-            node = std::make_shared<cvedix_nodes::cvedix_rtsp_src_node>(
-                nodeName,
-                channel,
-                rtspUrl,
-                resize_ratio,
-                gstDecoderName,
-                skipInterval,
-                codecType
-            );
-            std::cerr << "[PipelineBuilder] RTSP source node created successfully" << std::endl;
-            std::cerr << "[PipelineBuilder] WARNING: SDK may use 'protocols=tcp+udp' in GStreamer pipeline despite GST_RTSP_PROTOCOLS=tcp" << std::endl;
-            std::cerr << "[PipelineBuilder] WARNING: This is a CVEDIX SDK limitation - it hardcodes protocols in the pipeline string" << std::endl;
-            std::cerr << "[PipelineBuilder] NOTE: RTSP connection may take 10-30 seconds to establish" << std::endl;
-            std::cerr << "[PipelineBuilder] NOTE: SDK will automatically retry connection if stream is not immediately available" << std::endl;
-            std::cerr << "[PipelineBuilder] NOTE: If connection succeeds but no frames are received, check:" << std::endl;
-            std::cerr << "[PipelineBuilder]   1. Decoder compatibility (avdec_h264 may not work with all H264 streams)" << std::endl;
-            std::cerr << "[PipelineBuilder]   2. Stream format (check if stream uses H264 High profile)" << std::endl;
-            std::cerr << "[PipelineBuilder]   3. Enable GStreamer debug: export GST_DEBUG=rtspsrc:4,avdec_h264:4" << std::endl;
-        } catch (const std::bad_alloc& e) {
-            std::cerr << "[PipelineBuilder] Memory allocation failed: " << e.what() << std::endl;
-            throw;
-        } catch (const std::exception& e) {
-            std::cerr << "[PipelineBuilder] Standard exception in constructor: " << e.what() << std::endl;
-            throw;
-        } catch (...) {
-            // This might catch assertion failures on some systems
-            std::cerr << "[PipelineBuilder] Non-standard exception in cvedix_rtsp_src_node constructor" << std::endl;
-            std::cerr << "[PipelineBuilder] Parameters were: name='" << nodeName 
-                      << "', channel=" << channel << ", url='" << rtspUrl 
-                      << "', resize_ratio=" << resize_ratio << std::endl;
-            throw std::runtime_error("Failed to create RTSP source node - check parameters and CVEDIX SDK");
-        }
-        
-        return node;
-    } catch (const std::exception& e) {
-        std::cerr << "[PipelineBuilder] Exception in createRTSPSourceNode: " << e.what() << std::endl;
-        throw;
-    } catch (...) {
-        std::cerr << "[PipelineBuilder] Unknown exception in createRTSPSourceNode" << std::endl;
-        throw std::runtime_error("Unknown error creating RTSP source node");
-    }
-}
-
-std::shared_ptr<cvedix_nodes::cvedix_node> PipelineBuilder::createFaceDetectorNode(
-    const std::string& nodeName,
-    const std::map<std::string, std::string>& params,
-    const CreateInstanceRequest& req) {
-    
-    try {
-        // Get parameters with defaults - resolve path intelligently
-        std::string modelPath = params.count("model_path") ? 
-            params.at("model_path") : 
-            resolveModelPath("models/face/yunet.onnx");
-        float scoreThreshold = params.count("score_threshold") ? 
-            static_cast<float>(std::stod(params.at("score_threshold"))) : 
-            static_cast<float>(mapDetectionSensitivity(req.detectionSensitivity));
-        float nmsThreshold = params.count("nms_threshold") ? 
-            static_cast<float>(std::stod(params.at("nms_threshold"))) : 0.5f;
-        int topK = params.count("top_k") ? std::stoi(params.at("top_k")) : 50;
-        
-        // Validate node name
-        if (nodeName.empty()) {
-            throw std::invalid_argument("Node name cannot be empty");
-        }
-        
-        // Validate model path
-        if (modelPath.empty()) {
-            throw std::invalid_argument("Model path cannot be empty");
-        }
-        
-        // Check if model file exists (warning only, SDK will also check)
-        fs::path modelFilePath(modelPath);
-        if (!fs::exists(modelFilePath)) {
-            std::cerr << "[PipelineBuilder] ========================================" << std::endl;
-            std::cerr << "[PipelineBuilder] WARNING: Model file not found!" << std::endl;
-            std::cerr << "[PipelineBuilder] Expected path: " << modelPath << std::endl;
-            std::cerr << "[PipelineBuilder] Absolute path: " << fs::absolute(modelFilePath).string() << std::endl;
-            std::cerr << "[PipelineBuilder] ========================================" << std::endl;
-            std::cerr << "[PipelineBuilder] SOLUTION: Copy your yunet.onnx file to one of these locations:" << std::endl;
-            std::cerr << "[PipelineBuilder]   1. System-wide location - RECOMMENDED (FHS standard):" << std::endl;
-            std::cerr << "[PipelineBuilder]      /usr/share/cvedix/cvedix_data/models/face/yunet.onnx" << std::endl;
-            std::cerr << "[PipelineBuilder]      (Create: sudo mkdir -p /usr/share/cvedix/cvedix_data/models/face)" << std::endl;
-            std::cerr << "[PipelineBuilder]      (Copy: sudo cp /path/to/yunet.onnx /usr/share/cvedix/cvedix_data/models/face/)" << std::endl;
-            std::cerr << "[PipelineBuilder]      NOTE: /usr/share/ is for data files (FHS standard)" << std::endl;
-            std::cerr << "[PipelineBuilder]   1b. Alternative (not recommended, but supported):" << std::endl;
-            std::cerr << "[PipelineBuilder]      /usr/include/cvedix/cvedix_data/models/face/yunet.onnx" << std::endl;
-            std::cerr << "[PipelineBuilder]      (Create: sudo mkdir -p /usr/include/cvedix/cvedix_data/models/face)" << std::endl;
-            std::cerr << "[PipelineBuilder]      NOTE: /usr/include/ is for header files, not data files" << std::endl;
-            std::cerr << "[PipelineBuilder]   2. SDK source location (relative to API directory):" << std::endl;
-            std::cerr << "[PipelineBuilder]      ../edge_ai_sdk/cvedix_data/models/face/yunet.onnx" << std::endl;
-            std::cerr << "[PipelineBuilder]      (Copy: cp /path/to/yunet.onnx ../edge_ai_sdk/cvedix_data/models/face/)" << std::endl;
-            std::cerr << "[PipelineBuilder]   3. API working directory: ./cvedix_data/models/face/yunet.onnx" << std::endl;
-            std::cerr << "[PipelineBuilder]      (Create: mkdir -p ./cvedix_data/models/face)" << std::endl;
-            std::cerr << "[PipelineBuilder]   4. Set environment variable CVEDIX_DATA_ROOT=/path/to/cvedix_data" << std::endl;
-            std::cerr << "[PipelineBuilder]   2. Upload via API: POST /v1/core/models/upload" << std::endl;
-            std::cerr << "[PipelineBuilder]      Then use MODEL_PATH in additionalParams when creating instance" << std::endl;
-            std::cerr << "[PipelineBuilder]      Example: additionalParams: {\"MODEL_PATH\": \"./models/yunet.onnx\"}" << std::endl;
-            std::cerr << "[PipelineBuilder] ========================================" << std::endl;
-            std::cerr << "[PipelineBuilder] NOTE: Face detection will NOT work until model file is available" << std::endl;
-            std::cerr << "[PipelineBuilder] NOTE: Pipeline will continue but face detection will fail" << std::endl;
-            std::cerr << "[PipelineBuilder] ========================================" << std::endl;
-        } else {
-            std::cerr << "[PipelineBuilder] ✓ Model file found: " << fs::canonical(modelFilePath).string() << std::endl;
-            std::cerr << "[PipelineBuilder]   File size: " << fs::file_size(modelFilePath) << " bytes" << std::endl;
-        }
-        
-        // Validate thresholds
-        if (scoreThreshold < 0.0f || scoreThreshold > 1.0f) {
-            std::cerr << "[PipelineBuilder] Warning: score_threshold out of range [0,1]: " 
-                      << scoreThreshold << ", clamping to [0,1]" << std::endl;
-            scoreThreshold = std::max(0.0f, std::min(1.0f, scoreThreshold));
-        }
-        if (nmsThreshold < 0.0f || nmsThreshold > 1.0f) {
-            std::cerr << "[PipelineBuilder] Warning: nms_threshold out of range [0,1]: " 
-                      << nmsThreshold << ", clamping to [0,1]" << std::endl;
-            nmsThreshold = std::max(0.0f, std::min(1.0f, nmsThreshold));
-        }
-        if (topK < 0) {
-            std::cerr << "[PipelineBuilder] Warning: top_k must be >= 0, got: " 
-                      << topK << ", using default 50" << std::endl;
-            topK = 50;
-        }
-        
-        std::cerr << "[PipelineBuilder] Creating YuNet face detector node:" << std::endl;
-        std::cerr << "  Name: '" << nodeName << "'" << std::endl;
-        std::cerr << "  Model path: '" << modelPath << "'" << std::endl;
-        std::cerr << "  Score threshold: " << scoreThreshold << std::endl;
-        std::cerr << "  NMS threshold: " << nmsThreshold << std::endl;
-        std::cerr << "  Top K: " << topK << std::endl;
-        
-        // Create the YuNet face detector node
-        std::shared_ptr<cvedix_nodes::cvedix_yunet_face_detector_node> node;
-        try {
-            std::cerr << "[PipelineBuilder] Calling cvedix_yunet_face_detector_node constructor..." << std::endl;
-            node = std::make_shared<cvedix_nodes::cvedix_yunet_face_detector_node>(
-                nodeName,
-                modelPath,
-                scoreThreshold,
-                nmsThreshold,
-                topK
-            );
-            std::cerr << "[PipelineBuilder] ✓ YuNet face detector node created successfully" << std::endl;
-            if (!fs::exists(modelFilePath)) {
-                std::cerr << "[PipelineBuilder] ⚠ WARNING: Model file was not found, node created but may fail during inference" << std::endl;
-            }
-        } catch (const std::bad_alloc& e) {
-            std::cerr << "[PipelineBuilder] Memory allocation failed: " << e.what() << std::endl;
-            throw;
-        } catch (const std::exception& e) {
-            std::cerr << "[PipelineBuilder] Standard exception in constructor: " << e.what() << std::endl;
-            throw;
-        } catch (...) {
-            std::cerr << "[PipelineBuilder] Non-standard exception in cvedix_yunet_face_detector_node constructor" << std::endl;
-            std::cerr << "[PipelineBuilder] Parameters were: name='" << nodeName 
-                      << "', model_path='" << modelPath 
-                      << "', score_threshold=" << scoreThreshold
-                      << ", nms_threshold=" << nmsThreshold
-                      << ", top_k=" << topK << std::endl;
-            throw std::runtime_error("Failed to create YuNet face detector node - check parameters and CVEDIX SDK");
-        }
-        
-        return node;
-    } catch (const std::exception& e) {
-        std::cerr << "[PipelineBuilder] Exception in createFaceDetectorNode: " << e.what() << std::endl;
-        throw;
-    } catch (...) {
-        std::cerr << "[PipelineBuilder] Unknown exception in createFaceDetectorNode" << std::endl;
-        throw std::runtime_error("Unknown error creating face detector node");
-    }
-}
-
-std::shared_ptr<cvedix_nodes::cvedix_node> PipelineBuilder::createFileDestinationNode(
-    const std::string& nodeName,
-    const std::map<std::string, std::string>& params,
-    const std::string& instanceId) {
-    
-    try {
-        // Get parameters with defaults
-        // Constructor: cvedix_file_des_node(node_name, channel_index, save_dir, name_prefix, 
-        //                                   max_duration_for_single_file, resolution_w_h, 
-        //                                   bitrate, osd, gst_encoder_name)
-        int channelIndex = params.count("channel") ? std::stoi(params.at("channel")) : 0;
-        std::string saveDir = params.count("save_dir") ? params.at("save_dir") : "./output/" + instanceId;
-        std::string namePrefix = params.count("name_prefix") ? params.at("name_prefix") : "output";
-        int maxDuration = params.count("max_duration") ? std::stoi(params.at("max_duration")) : 2; // minutes
-        int bitrate = params.count("bitrate") ? std::stoi(params.at("bitrate")) : 1024;
-        bool osd = params.count("osd") && (params.at("osd") == "true" || params.at("osd") == "1");
-        std::string encoderName = params.count("encoder") ? params.at("encoder") : "x264enc";
-        
-        // Parse resolution if provided (format: "widthxheight" or "width,height")
-        cvedix_objects::cvedix_size resolution = {};
-        if (params.count("resolution")) {
-            std::string resStr = params.at("resolution");
-            size_t xPos = resStr.find('x');
-            size_t commaPos = resStr.find(',');
-            if (xPos != std::string::npos) {
-                resolution.width = std::stoi(resStr.substr(0, xPos));
-                resolution.height = std::stoi(resStr.substr(xPos + 1));
-            } else if (commaPos != std::string::npos) {
-                resolution.width = std::stoi(resStr.substr(0, commaPos));
-                resolution.height = std::stoi(resStr.substr(commaPos + 1));
-            }
-        }
-        
-        // Validate node name
-        if (nodeName.empty()) {
-            throw std::invalid_argument("Node name cannot be empty");
-        }
-        
-        // Validate save directory
-        if (saveDir.empty()) {
-            throw std::invalid_argument("Save directory cannot be empty");
-        }
-        
-        // Ensure save directory exists (required by cvedix_file_des_node)
-        // Use resolveDirectory with fallback if needed
-        std::string resolvedSaveDir = saveDir;
-        fs::path saveDirPath(saveDir);
-        std::string subdir = saveDirPath.filename().string();
-        if (subdir.empty()) {
-            subdir = "output"; // Default fallback subdir
-        }
-        resolvedSaveDir = EnvConfig::resolveDirectory(saveDir, subdir);
-        if (resolvedSaveDir != saveDir) {
-            std::cerr << "[PipelineBuilder] ⚠ Save directory changed from " << saveDir 
-                      << " to " << resolvedSaveDir << " (fallback)" << std::endl;
-            saveDir = resolvedSaveDir;
-            saveDirPath = fs::path(saveDir);
-        }
-        if (!fs::exists(saveDirPath)) {
-            std::cerr << "[PipelineBuilder] Creating save directory: " << saveDir << std::endl;
-            fs::create_directories(saveDirPath);
-        }
-        
-        // Validate channel index
-        if (channelIndex < 0) {
-            std::cerr << "[PipelineBuilder] Warning: channel_index < 0: " << channelIndex 
-                      << ", using 0" << std::endl;
-            channelIndex = 0;
-        }
-        
-        // Validate max duration
-        if (maxDuration <= 0) {
-            std::cerr << "[PipelineBuilder] Warning: max_duration <= 0: " << maxDuration 
-                      << ", using default 2 minutes" << std::endl;
-            maxDuration = 2;
-        }
-        
-        // Validate bitrate
-        if (bitrate <= 0) {
-            std::cerr << "[PipelineBuilder] Warning: bitrate <= 0: " << bitrate 
-                      << ", using default 1024" << std::endl;
-            bitrate = 1024;
-        }
-        
-        std::cerr << "[PipelineBuilder] Creating file destination node:" << std::endl;
-        std::cerr << "  Name: '" << nodeName << "'" << std::endl;
-        std::cerr << "  Channel index: " << channelIndex << std::endl;
-        std::cerr << "  Save directory: '" << saveDir << "'" << std::endl;
-        std::cerr << "  Name prefix: '" << namePrefix << "'" << std::endl;
-        std::cerr << "  Max duration: " << maxDuration << " minutes" << std::endl;
-        std::cerr << "  Bitrate: " << bitrate << std::endl;
-        std::cerr << "  OSD: " << (osd ? "true" : "false") << std::endl;
-        std::cerr << "  Encoder: '" << encoderName << "'" << std::endl;
-        if (resolution.width > 0 && resolution.height > 0) {
-            std::cerr << "  Resolution: " << resolution.width << "x" << resolution.height << std::endl;
-        }
-        
-        // Create the file destination node
-        std::shared_ptr<cvedix_nodes::cvedix_file_des_node> node;
-        try {
-            std::cerr << "[PipelineBuilder] Calling cvedix_file_des_node constructor..." << std::endl;
-            node = std::make_shared<cvedix_nodes::cvedix_file_des_node>(
-                nodeName,
-                channelIndex,
-                saveDir,
-                namePrefix,
-                maxDuration,
-                resolution,
-                bitrate,
-                osd,
-                encoderName
-            );
-            std::cerr << "[PipelineBuilder] File destination node created successfully" << std::endl;
-        } catch (const std::bad_alloc& e) {
-            std::cerr << "[PipelineBuilder] Memory allocation failed: " << e.what() << std::endl;
-            throw;
-        } catch (const std::exception& e) {
-            std::cerr << "[PipelineBuilder] Standard exception in constructor: " << e.what() << std::endl;
-            throw;
-        } catch (...) {
-            std::cerr << "[PipelineBuilder] Non-standard exception in cvedix_file_des_node constructor" << std::endl;
-            std::cerr << "[PipelineBuilder] Parameters were: name='" << nodeName 
-                      << "', channel=" << channelIndex
-                      << ", save_dir='" << saveDir 
-                      << "', name_prefix='" << namePrefix
-                      << "', max_duration=" << maxDuration
-                      << ", bitrate=" << bitrate
-                      << ", osd=" << osd
-                      << ", encoder='" << encoderName << "'" << std::endl;
-            throw std::runtime_error("Failed to create file destination node - check parameters and CVEDIX SDK");
-        }
-        
-        return node;
-    } catch (const std::exception& e) {
-        std::cerr << "[PipelineBuilder] Exception in createFileDestinationNode: " << e.what() << std::endl;
-        throw;
-    } catch (...) {
-        std::cerr << "[PipelineBuilder] Unknown exception in createFileDestinationNode" << std::endl;
-        throw std::runtime_error("Unknown error creating file destination node");
-    }
-}
-
-double PipelineBuilder::mapDetectionSensitivity(const std::string& sensitivity) const {
-    if (sensitivity == "Low") {
-        return 0.5;
-    } else if (sensitivity == "Medium") {
-        return 0.7;
-    } else if (sensitivity == "High") {
-        return 0.9;
-    }
-    return 0.7; // Default to Medium
-}
-
-std::string PipelineBuilder::getRTSPUrl(const CreateInstanceRequest& req) const {
-    // Get RTSP URL from additionalParams - check both RTSP_URL and RTSP_SRC_URL
-    auto it = req.additionalParams.find("RTSP_URL");
-    if (it != req.additionalParams.end() && !it->second.empty()) {
-        std::cerr << "[PipelineBuilder] RTSP URL from request additionalParams (RTSP_URL): '" << it->second << "'" << std::endl;
-        return it->second;
-    }
-    
-    // Also check RTSP_SRC_URL (for consistency with RTMP_SRC_URL)
-    auto srcIt = req.additionalParams.find("RTSP_SRC_URL");
-    if (srcIt != req.additionalParams.end() && !srcIt->second.empty()) {
-        std::cerr << "[PipelineBuilder] RTSP URL from request additionalParams (RTSP_SRC_URL): '" << srcIt->second << "'" << std::endl;
-        return srcIt->second;
-    }
-    
-    // Default or from environment
-    const char* envUrl = std::getenv("RTSP_URL");
-    if (envUrl && strlen(envUrl) > 0) {
-        std::cerr << "[PipelineBuilder] RTSP URL from environment variable: '" << envUrl << "'" << std::endl;
-        return std::string(envUrl);
-    }
-    
-    // Also check RTSP_SRC_URL environment variable
-    const char* envSrcUrl = std::getenv("RTSP_SRC_URL");
-    if (envSrcUrl && strlen(envSrcUrl) > 0) {
-        std::cerr << "[PipelineBuilder] RTSP URL from environment variable (RTSP_SRC_URL): '" << envSrcUrl << "'" << std::endl;
-        return std::string(envSrcUrl);
-    }
-    
-    // Default fallback (development only - should be overridden in production)
-    // SECURITY: This is a development default. In production, always provide RTSP_URL via request or environment variable.
-    std::cerr << "[PipelineBuilder] WARNING: Using default RTSP URL (rtsp://localhost:8554/stream)" << std::endl;
-    std::cerr << "[PipelineBuilder] WARNING: This is a development default. For production, provide 'RTSP_URL' or 'RTSP_SRC_URL' in request body or set RTSP_URL/RTSP_SRC_URL environment variable" << std::endl;
-    return "rtsp://localhost:8554/stream";
-}
-
-std::string PipelineBuilder::resolveModelPath(const std::string& relativePath) const {
-    // Helper function to resolve model file paths
-    // Priority:
-    // 1. CVEDIX_DATA_ROOT environment variable
-    // 2. CVEDIX_SDK_ROOT environment variable + /cvedix_data
-    // 3. Production path: /opt/edge_ai_api/models (where user-uploaded models are stored)
-    // 4. System-wide installation paths (/usr/share/cvedix/cvedix_data/)
-    // 5. SDK source locations (relative paths)
-    // 6. Development fallback: ./cvedix_data/ (will NOT exist in production)
-    
-    // 1. Check CVEDIX_DATA_ROOT
-    const char* dataRoot = std::getenv("CVEDIX_DATA_ROOT");
-    if (dataRoot && strlen(dataRoot) > 0) {
-        std::string path = std::string(dataRoot);
-        if (path.back() != '/') path += '/';
-        path += relativePath;
-        if (fs::exists(path)) {
-            std::cerr << "[PipelineBuilder] Using CVEDIX_DATA_ROOT: " << path << std::endl;
-            return path;
-        }
-    }
-    
-    // 2. Check CVEDIX_SDK_ROOT
-    const char* sdkRoot = std::getenv("CVEDIX_SDK_ROOT");
-    if (sdkRoot && strlen(sdkRoot) > 0) {
-        std::string path = std::string(sdkRoot);
-        if (path.back() != '/') path += '/';
-        path += "cvedix_data/" + relativePath;
-        if (fs::exists(path)) {
-            std::cerr << "[PipelineBuilder] Using CVEDIX_SDK_ROOT: " << path << std::endl;
-            return path;
-        }
-    }
-    
-    // 3. Try production installation path (/opt/edge_ai_api/models)
-    // This is where user-uploaded models are stored
-    // Check if relativePath starts with "models/" or is a direct model file
-    if (relativePath.find("models/") == 0 || relativePath.find("models\\") == 0) {
-        // Extract the model path after "models/"
-        std::string modelPath = relativePath.substr(relativePath.find_first_of("/\\") + 1);
-        std::string optPath = "/opt/edge_ai_api/models/" + modelPath;
-        if (fs::exists(optPath)) {
-            std::cerr << "[PipelineBuilder] Using production path: " << optPath << std::endl;
-            return optPath;
-        }
-        // Also try direct path if relativePath is just a filename
-        std::string optPathDirect = "/opt/edge_ai_api/models/" + relativePath;
-        if (fs::exists(optPathDirect)) {
-            std::cerr << "[PipelineBuilder] Using production path: " << optPathDirect << std::endl;
-            return optPathDirect;
-        }
+    // Destination nodes
+    else if (nodeConfig.nodeType == "file_des") {
+      return createFileDestinationNode(nodeName, params, instanceId);
+    } else if (nodeConfig.nodeType == "rtmp_des") {
+      return createRTMPDestinationNode(nodeName, params, req);
+    } else if (nodeConfig.nodeType == "screen_des") {
+      return createScreenDestinationNode(nodeName, params);
     } else {
-        // Try direct model file in /opt/edge_ai_api/models
-        std::string optPath = "/opt/edge_ai_api/models/" + relativePath;
-        if (fs::exists(optPath)) {
-            std::cerr << "[PipelineBuilder] Using production path: " << optPath << std::endl;
-            return optPath;
-        }
+      std::cerr << "[PipelineBuilder] Unknown node type: "
+                << nodeConfig.nodeType << std::endl;
+      throw std::runtime_error("Unknown node type: " + nodeConfig.nodeType);
     }
-    
-    // 4. Try system-wide installation paths (when SDK is installed to /usr)
-    // Note: /usr/share/ is preferred (FHS standard for data files)
-    // /usr/include/ is for header files, but we support it as fallback
-    std::vector<std::string> systemPaths = {
-        "/usr/share/cvedix/cvedix_data/" + relativePath,        // Preferred (FHS standard)
-        "/usr/local/share/cvedix/cvedix_data/" + relativePath,   // Local install
-        "/usr/include/cvedix/cvedix_data/" + relativePath,       // Fallback (not recommended)
-        "/usr/local/include/cvedix/cvedix_data/" + relativePath, // Local install fallback
-    };
-    
-    for (const auto& path : systemPaths) {
-        if (fs::exists(path)) {
-            std::cerr << "[PipelineBuilder] Found in system-wide location: " << path << std::endl;
-            return path;
-        }
-        
-        // If exact file not found, try to find alternative yunet files in the same directory
-        // This handles cases where file is named like "face_detection_yunet_2023mar.onnx" instead of "yunet.onnx"
-        if (relativePath.find("yunet.onnx") != std::string::npos) {
-            fs::path dirPath = fs::path(path).parent_path();
-            if (fs::exists(dirPath) && fs::is_directory(dirPath)) {
-                // Look for alternative yunet files (prefer newer versions)
-                std::vector<std::string> alternatives = {
-                    "face_detection_yunet_2023mar.onnx",  // Newer version (preferred)
-                    "face_detection_yunet_2022mar.onnx",  // Older version
-                    "yunet_2023mar.onnx",
-                    "yunet_2022mar.onnx",
-                };
-                
-                for (const auto& alt : alternatives) {
-                    fs::path altPath = dirPath / alt;
-                    if (fs::exists(altPath)) {
-                        std::cerr << "[PipelineBuilder] Found alternative yunet model: " << altPath.string() << std::endl;
-                        return altPath.string();
-                    }
-                }
-            }
-        }
+  } catch (const std::exception &e) {
+    std::cerr << "[PipelineBuilder] Error in createNode for type "
+              << nodeConfig.nodeType << ": " << e.what() << std::endl;
+    throw;
+  } catch (...) {
+    std::cerr << "[PipelineBuilder] Unknown error in createNode for type "
+              << nodeConfig.nodeType << std::endl;
+    throw std::runtime_error("Unknown error creating node type: " +
+                             nodeConfig.nodeType);
+  }
+}
+
+std::shared_ptr<cvedix_nodes::cvedix_node>
+PipelineBuilder::createRTSPSourceNode(
+    const std::string &nodeName,
+    const std::map<std::string, std::string> &params,
+    const CreateInstanceRequest &req) {
+
+  try {
+    // Get RTSP URL - prioritize RTSP_SRC_URL (like sample code)
+    std::string rtspUrl;
+    if (params.count("rtsp_url") && !params.at("rtsp_url").empty()) {
+      rtspUrl = params.at("rtsp_url");
+    } else {
+      // Check RTSP_SRC_URL first (like sample), then RTSP_URL
+      auto rtspSrcIt = req.additionalParams.find("RTSP_SRC_URL");
+      if (rtspSrcIt != req.additionalParams.end() &&
+          !rtspSrcIt->second.empty()) {
+        rtspUrl = rtspSrcIt->second;
+        std::cerr
+            << "[PipelineBuilder] Using RTSP_SRC_URL from additionalParams: '"
+            << rtspUrl << "'" << std::endl;
+      } else {
+        rtspUrl = getRTSPUrl(req);
+      }
     }
-    
-    // 5. Try common SDK source locations (relative paths only, no hardcoded absolute paths)
-    std::vector<std::string> commonPaths = {
-        "../edge_ai_sdk/cvedix_data/" + relativePath,
-        "../../edge_ai_sdk/cvedix_data/" + relativePath,
-        "../../../edge_ai_sdk/cvedix_data/" + relativePath,
-    };
-    
-    for (const auto& path : commonPaths) {
-        if (fs::exists(path)) {
-            std::cerr << "[PipelineBuilder] Found in SDK directory: " << fs::absolute(path).string() << std::endl;
-            return path;
+
+    int channel = params.count("channel") ? std::stoi(params.at("channel")) : 0;
+
+    // cvedix_rtsp_src_node constructor: (name, channel, rtsp_url, resize_ratio,
+    // gst_decoder_name, skip_interval, codec_type) resize_ratio must be > 0.0
+    // and <= 1.0 Default to 0.6 like sample code (rtsp_ba_crossline_sample.cpp
+    // uses 0.6f)
+    float resize_ratio = 0.6f; // Default to 0.6 like sample
+
+    // Get decoder from config priority list if not specified
+    // Priority: additionalParams GST_DECODER_NAME > params gst_decoder_name >
+    // selectDecoderFromPriority > default
+    std::string defaultDecoder = "avdec_h264";
+    std::string gstDecoderName = defaultDecoder;
+
+    // Check additionalParams first (highest priority)
+    auto decoderIt = req.additionalParams.find("GST_DECODER_NAME");
+    if (decoderIt != req.additionalParams.end() && !decoderIt->second.empty()) {
+      gstDecoderName = decoderIt->second;
+      std::cerr
+          << "[PipelineBuilder] Using GST_DECODER_NAME from additionalParams: '"
+          << gstDecoderName << "'" << std::endl;
+    } else if (params.count("gst_decoder_name") &&
+               !params.at("gst_decoder_name").empty()) {
+      gstDecoderName = params.at("gst_decoder_name");
+      std::cerr << "[PipelineBuilder] Using gst_decoder_name from params: '"
+                << gstDecoderName << "'" << std::endl;
+    } else {
+      gstDecoderName = selectDecoderFromPriority(defaultDecoder);
+      std::cerr << "[PipelineBuilder] Using decoder from priority list: '"
+                << gstDecoderName << "'" << std::endl;
+    }
+
+    // Get skip_interval (0 means no skip)
+    // Priority: additionalParams SKIP_INTERVAL > params skip_interval > default
+    // (0)
+    int skipInterval = 0;
+    auto skipIt = req.additionalParams.find("SKIP_INTERVAL");
+    if (skipIt != req.additionalParams.end() && !skipIt->second.empty()) {
+      try {
+        skipInterval = std::stoi(skipIt->second);
+        std::cerr
+            << "[PipelineBuilder] Using SKIP_INTERVAL from additionalParams: "
+            << skipInterval << std::endl;
+      } catch (const std::exception &e) {
+        std::cerr << "[PipelineBuilder] Warning: Invalid SKIP_INTERVAL value '"
+                  << skipIt->second << "', using default 0" << std::endl;
+      }
+    } else if (params.count("skip_interval")) {
+      skipInterval = std::stoi(params.at("skip_interval"));
+    }
+
+    // Get codec_type (h264, h265, auto)
+    // Priority: additionalParams CODEC_TYPE > params codec_type > default
+    // ("h264")
+    std::string codecType = "h264";
+    auto codecIt = req.additionalParams.find("CODEC_TYPE");
+    if (codecIt != req.additionalParams.end() && !codecIt->second.empty()) {
+      codecType = codecIt->second;
+      std::cerr << "[PipelineBuilder] Using CODEC_TYPE from additionalParams: '"
+                << codecType << "'" << std::endl;
+    } else if (params.count("codec_type") && !params.at("codec_type").empty()) {
+      codecType = params.at("codec_type");
+    }
+
+    // Priority: additionalParams RESIZE_RATIO > params resize_ratio > params
+    // scale > default This allows runtime override of resize_ratio for RTSP
+    // streams
+    bool resizeRatioFromAdditionalParams = false;
+    auto resizeIt = req.additionalParams.find("RESIZE_RATIO");
+    if (resizeIt != req.additionalParams.end() && !resizeIt->second.empty()) {
+      try {
+        resize_ratio = std::stof(resizeIt->second);
+        resizeRatioFromAdditionalParams = true;
+        std::cerr
+            << "[PipelineBuilder] Using RESIZE_RATIO from additionalParams: "
+            << resize_ratio << std::endl;
+      } catch (const std::exception &e) {
+        std::cerr << "[PipelineBuilder] Warning: Invalid RESIZE_RATIO value '"
+                  << resizeIt->second << "', using value from params or default"
+                  << std::endl;
+      }
+    }
+
+    // Check if resize_ratio is specified in params (from solution config)
+    // Only override if RESIZE_RATIO was NOT set in additionalParams (highest
+    // priority)
+    if (!resizeRatioFromAdditionalParams) {
+      if (params.count("resize_ratio")) {
+        resize_ratio = std::stof(params.at("resize_ratio"));
+        std::cerr
+            << "[PipelineBuilder] Using resize_ratio from solution config: "
+            << resize_ratio << std::endl;
+      } else if (params.count("scale")) {
+        resize_ratio = std::stof(params.at("scale"));
+        std::cerr << "[PipelineBuilder] Using scale from solution config: "
+                  << resize_ratio << std::endl;
+      }
+    }
+
+    // Validate resize_ratio (must be > 0 and <= 1.0)
+    // Note: Assertion in SDK checks: resize_ratio > 0 && resize_ratio <= 1.0
+    // So we need: 0 < resize_ratio <= 1.0
+    if (resize_ratio <= 0.0f) {
+      std::cerr << "[PipelineBuilder] Invalid resize_ratio (<= 0): "
+                << resize_ratio << ", using default 0.5" << std::endl;
+      resize_ratio = 0.5f; // Use a safe default
+    }
+    if (resize_ratio > 1.0f) {
+      std::cerr << "[PipelineBuilder] Invalid resize_ratio (> 1.0): "
+                << resize_ratio << ", using 1.0" << std::endl;
+      resize_ratio = 1.0f;
+    }
+
+    // Final validation before creating node
+    if (nodeName.empty()) {
+      throw std::invalid_argument("Node name cannot be empty");
+    }
+    if (rtspUrl.empty()) {
+      throw std::invalid_argument("RTSP URL cannot be empty");
+    }
+    // Final check: must be strictly > 0 and <= 1.0
+    if (resize_ratio <= 0.0f || resize_ratio > 1.0f) {
+      throw std::invalid_argument(
+          "resize_ratio must be > 0.0 and <= 1.0, got: " +
+          std::to_string(resize_ratio));
+    }
+
+    // Check RTSP transport protocol configuration
+    // Priority: RTSP_TRANSPORT in additionalParams > GST_RTSP_PROTOCOLS env >
+    // RTSP_TRANSPORT env > default (none - let GStreamer choose)
+    std::string rtspTransport =
+        ""; // Default: empty - let GStreamer use its default (UDP/tcp+udp)
+    const char *rtspProtocols = std::getenv("GST_RTSP_PROTOCOLS");
+
+    // Check additionalParams first (highest priority)
+    auto rtspTransportIt = req.additionalParams.find("RTSP_TRANSPORT");
+    if (rtspTransportIt != req.additionalParams.end() &&
+        !rtspTransportIt->second.empty()) {
+      std::string transport = rtspTransportIt->second;
+      std::transform(transport.begin(), transport.end(), transport.begin(),
+                     ::tolower);
+      if (transport == "tcp" || transport == "udp") {
+        rtspTransport = transport;
+        setenv("GST_RTSP_PROTOCOLS", rtspTransport.c_str(),
+               1); // Overwrite to use user's choice
+        std::cerr << "[PipelineBuilder] Using RTSP_TRANSPORT=" << rtspTransport
+                  << " from additionalParams" << std::endl;
+      } else {
+        std::cerr << "[PipelineBuilder] WARNING: Invalid RTSP_TRANSPORT='"
+                  << transport
+                  << "', must be 'tcp' or 'udp'. Using default: tcp"
+                  << std::endl;
+      }
+    } else if (rtspProtocols && strlen(rtspProtocols) > 0) {
+      // Use environment variable if set
+      rtspTransport = std::string(rtspProtocols);
+      std::transform(rtspTransport.begin(), rtspTransport.end(),
+                     rtspTransport.begin(), ::tolower);
+      if (rtspTransport != "tcp" && rtspTransport != "udp") {
+        std::cerr << "[PipelineBuilder] WARNING: Invalid GST_RTSP_PROTOCOLS='"
+                  << rtspTransport
+                  << "', must be 'tcp' or 'udp'. Using default: tcp"
+                  << std::endl;
+        rtspTransport = "tcp";
+      }
+    } else {
+      // Check RTSP_TRANSPORT environment variable
+      const char *rtspTransportEnv = std::getenv("RTSP_TRANSPORT");
+      if (rtspTransportEnv && strlen(rtspTransportEnv) > 0) {
+        rtspTransport = std::string(rtspTransportEnv);
+        std::transform(rtspTransport.begin(), rtspTransport.end(),
+                       rtspTransport.begin(), ::tolower);
+        if (rtspTransport == "tcp" || rtspTransport == "udp") {
+          setenv("GST_RTSP_PROTOCOLS", rtspTransport.c_str(), 1);
+        } else {
+          rtspTransport = "tcp";
         }
+      }
     }
-    
-    // 6. Development fallback: relative to current working directory (./cvedix_data/)
-    // NOTE: This path will NOT exist in production - all data should be in /opt/edge_ai_api
-    std::string relativePathFull = "./cvedix_data/" + relativePath;
-    if (fs::exists(relativePathFull)) {
-        std::cerr << "[PipelineBuilder] Using development relative path: " << fs::absolute(relativePathFull).string() << std::endl;
-        return relativePathFull;
+
+    std::string transportInfo =
+        rtspTransport.empty() ? "auto (GStreamer default)" : rtspTransport;
+
+    std::cerr << "[PipelineBuilder] ========================================"
+              << std::endl;
+    std::cerr << "[PipelineBuilder] Creating RTSP source node:" << std::endl;
+    std::cerr << "[PipelineBuilder]   Name: '" << nodeName
+              << "' (length: " << nodeName.length() << ")" << std::endl;
+    std::cerr << "[PipelineBuilder]   URL: '" << rtspUrl
+              << "' (length: " << rtspUrl.length() << ")" << std::endl;
+    std::cerr << "[PipelineBuilder]   Channel: " << channel << std::endl;
+    std::cerr << "[PipelineBuilder]   Resize ratio: " << std::fixed
+              << std::setprecision(3) << resize_ratio
+              << " (type: float, value: " << static_cast<double>(resize_ratio)
+              << ")" << std::endl;
+    std::cerr << "[PipelineBuilder]   Decoder: '" << gstDecoderName << "'"
+              << std::endl;
+    std::cerr << "[PipelineBuilder]   Skip interval: " << skipInterval
+              << " (0 = no skip)" << std::endl;
+    std::cerr << "[PipelineBuilder]   Codec type: '" << codecType
+              << "' (h264/h265/auto)" << std::endl;
+    std::cerr << "[PipelineBuilder]   Transport: " << transportInfo
+              << std::endl;
+    if (rtspTransport == "udp") {
+      std::cerr << "[PipelineBuilder]   NOTE: Using UDP transport (faster but "
+                   "may be blocked by firewall)"
+                << std::endl;
+      std::cerr << "[PipelineBuilder]   NOTE: If connection fails, try TCP by "
+                   "setting RTSP_TRANSPORT=tcp in additionalParams"
+                << std::endl;
+    } else if (rtspTransport == "tcp") {
+      std::cerr << "[PipelineBuilder]   NOTE: Using TCP transport (better "
+                   "firewall compatibility)"
+                << std::endl;
+      std::cerr << "[PipelineBuilder]   NOTE: To use UDP, set "
+                   "RTSP_TRANSPORT=udp in additionalParams"
+                << std::endl;
+    } else {
+      std::cerr << "[PipelineBuilder]   NOTE: Using GStreamer default "
+                   "transport (usually UDP or tcp+udp)"
+                << std::endl;
+      std::cerr << "[PipelineBuilder]   NOTE: To force TCP, set "
+                   "RTSP_TRANSPORT=tcp in additionalParams"
+                << std::endl;
+      std::cerr << "[PipelineBuilder]   NOTE: To force UDP, set "
+                   "RTSP_TRANSPORT=udp in additionalParams"
+                << std::endl;
     }
-    
-    // Return default relative path (will show warning later if not found)
-    std::cerr << "[PipelineBuilder] ⚠ Using default path (may not exist): ./cvedix_data/" << relativePath << std::endl;
-    std::cerr << "[PipelineBuilder] ℹ NOTE: In production, use /opt/edge_ai_api/models/ or set CVEDIX_DATA_ROOT" << std::endl;
+    std::cerr << "[PipelineBuilder]   NOTE: If decoder fails, try different "
+                 "GST_DECODER_NAME (e.g., 'nvh264dec', 'qsvh264dec')"
+              << std::endl;
+    std::cerr << "[PipelineBuilder] ========================================"
+              << std::endl;
+
+    // Double-check resize_ratio is valid float
+    if (std::isnan(resize_ratio) || std::isinf(resize_ratio)) {
+      std::cerr << "[PipelineBuilder] ERROR: resize_ratio is NaN or Inf!"
+                << std::endl;
+      throw std::invalid_argument("resize_ratio is NaN or Inf");
+    }
+
+    // Ensure resize_ratio is strictly > 0 (not == 0) and <= 1.0
+    if (resize_ratio <= 0.0f) {
+      std::cerr << "[PipelineBuilder] ERROR: resize_ratio must be > 0.0, got: "
+                << resize_ratio << std::endl;
+      resize_ratio = 0.1f; // Use minimum valid value
+      std::cerr << "[PipelineBuilder] Using minimum valid value: "
+                << resize_ratio << std::endl;
+    }
+    if (resize_ratio > 1.0f) {
+      std::cerr << "[PipelineBuilder] ERROR: resize_ratio must be <= 1.0, got: "
+                << resize_ratio << std::endl;
+      resize_ratio = 1.0f;
+      std::cerr << "[PipelineBuilder] Using maximum valid value: "
+                << resize_ratio << std::endl;
+    }
+
+    // Ensure GST_RTSP_PROTOCOLS is set before creating node (only if user
+    // specified) This must be set BEFORE node creation as SDK reads it during
+    // initialization
+    const char *currentProtocols = std::getenv("GST_RTSP_PROTOCOLS");
+    if (!rtspTransport.empty()) {
+      // User specified transport - set it
+      if (!currentProtocols || strlen(currentProtocols) == 0 ||
+          std::string(currentProtocols) != rtspTransport) {
+        setenv("GST_RTSP_PROTOCOLS", rtspTransport.c_str(),
+               1); // Set to chosen transport
+        std::cerr << "[PipelineBuilder] Set GST_RTSP_PROTOCOLS="
+                  << rtspTransport << " before node creation" << std::endl;
+      }
+    } else {
+      // No transport specified - let GStreamer use its default
+      if (currentProtocols && strlen(currentProtocols) > 0) {
+        std::cerr << "[PipelineBuilder] Using GST_RTSP_PROTOCOLS="
+                  << currentProtocols << " from environment" << std::endl;
+      } else {
+        std::cerr << "[PipelineBuilder] No RTSP transport specified - "
+                     "GStreamer will use default (UDP/tcp+udp)"
+                  << std::endl;
+      }
+    }
+
+    // Configure GStreamer environment variables for unstable streams
+    // These settings help handle network issues and prevent crashes
+    std::cerr << "[PipelineBuilder] Configuring GStreamer for unstable RTSP "
+                 "streams..."
+              << std::endl;
+
+    // Set buffer and timeout settings to handle unstable streams
+    // rtspsrc buffer-mode: 0=auto, 1=synced, 2=slave
+    // Use synced mode for better stability with unstable streams
+    if (!std::getenv("GST_RTSP_BUFFER_MODE")) {
+      setenv("GST_RTSP_BUFFER_MODE", "1", 0); // 1 = synced mode
+      std::cerr << "[PipelineBuilder] Set GST_RTSP_BUFFER_MODE=1 (synced mode "
+                   "for unstable streams)"
+                << std::endl;
+    }
+
+    // Increase buffer size to handle network jitter
+    if (!std::getenv("GST_RTSP_BUFFER_SIZE")) {
+      setenv("GST_RTSP_BUFFER_SIZE", "10485760", 0); // 10MB buffer
+      std::cerr << "[PipelineBuilder] Set GST_RTSP_BUFFER_SIZE=10485760 (10MB "
+                   "buffer for unstable streams)"
+                << std::endl;
+    }
+
+    // Increase timeout to handle slow/unstable connections
+    if (!std::getenv("GST_RTSP_TIMEOUT")) {
+      setenv("GST_RTSP_TIMEOUT", "10000000000",
+             0); // 10 seconds (in nanoseconds)
+      std::cerr
+          << "[PipelineBuilder] Set GST_RTSP_TIMEOUT=10000000000 (10s timeout)"
+          << std::endl;
+    }
+
+    // Enable drop-on-latency to prevent buffer overflow
+    if (!std::getenv("GST_RTSP_DROP_ON_LATENCY")) {
+      setenv("GST_RTSP_DROP_ON_LATENCY", "true", 0);
+      std::cerr << "[PipelineBuilder] Set GST_RTSP_DROP_ON_LATENCY=true (drop "
+                   "frames on latency)"
+                << std::endl;
+    }
+
+    // Set latency to handle network jitter (in nanoseconds)
+    if (!std::getenv("GST_RTSP_LATENCY")) {
+      setenv("GST_RTSP_LATENCY", "2000000000", 0); // 2 seconds latency
+      std::cerr << "[PipelineBuilder] Set GST_RTSP_LATENCY=2000000000 (2s "
+                   "latency buffer)"
+                << std::endl;
+    }
+
+    // Disable do-rtsp-keep-alive to reduce connection overhead (may help with
+    // unstable streams) Note: This is a trade-off - keep-alive helps detect
+    // disconnections, but can cause issues with unstable streams
+
+    // Create node - wrap in try-catch to catch any assertion failures
+    std::shared_ptr<cvedix_nodes::cvedix_rtsp_src_node> node;
+    try {
+      std::cerr
+          << "[PipelineBuilder] Calling cvedix_rtsp_src_node constructor..."
+          << std::endl;
+      std::cerr << "[PipelineBuilder] Current GST_RTSP_PROTOCOLS="
+                << (std::getenv("GST_RTSP_PROTOCOLS")
+                        ? std::getenv("GST_RTSP_PROTOCOLS")
+                        : "not set")
+                << std::endl;
+      std::cerr << "[PipelineBuilder] GStreamer RTSP settings configured for "
+                   "unstable streams"
+                << std::endl;
+      node = std::make_shared<cvedix_nodes::cvedix_rtsp_src_node>(
+          nodeName, channel, rtspUrl, resize_ratio, gstDecoderName,
+          skipInterval, codecType);
+      std::cerr << "[PipelineBuilder] RTSP source node created successfully"
+                << std::endl;
+      std::cerr << "[PipelineBuilder] WARNING: SDK may use 'protocols=tcp+udp' "
+                   "in GStreamer pipeline despite GST_RTSP_PROTOCOLS=tcp"
+                << std::endl;
+      std::cerr << "[PipelineBuilder] WARNING: This is a CVEDIX SDK limitation "
+                   "- it hardcodes protocols in the pipeline string"
+                << std::endl;
+      std::cerr << "[PipelineBuilder] NOTE: RTSP connection may take 10-30 "
+                   "seconds to establish"
+                << std::endl;
+      std::cerr << "[PipelineBuilder] NOTE: SDK will automatically retry "
+                   "connection if stream is not immediately available"
+                << std::endl;
+      std::cerr << "[PipelineBuilder] NOTE: If connection succeeds but no "
+                   "frames are received, check:"
+                << std::endl;
+      std::cerr << "[PipelineBuilder]   1. Decoder compatibility (avdec_h264 "
+                   "may not work with all H264 streams)"
+                << std::endl;
+      std::cerr << "[PipelineBuilder]   2. Stream format (check if stream uses "
+                   "H264 High profile)"
+                << std::endl;
+      std::cerr << "[PipelineBuilder]   3. Enable GStreamer debug: export "
+                   "GST_DEBUG=rtspsrc:4,avdec_h264:4"
+                << std::endl;
+    } catch (const std::bad_alloc &e) {
+      std::cerr << "[PipelineBuilder] Memory allocation failed: " << e.what()
+                << std::endl;
+      throw;
+    } catch (const std::exception &e) {
+      std::cerr << "[PipelineBuilder] Standard exception in constructor: "
+                << e.what() << std::endl;
+      throw;
+    } catch (...) {
+      // This might catch assertion failures on some systems
+      std::cerr << "[PipelineBuilder] Non-standard exception in "
+                   "cvedix_rtsp_src_node constructor"
+                << std::endl;
+      std::cerr << "[PipelineBuilder] Parameters were: name='" << nodeName
+                << "', channel=" << channel << ", url='" << rtspUrl
+                << "', resize_ratio=" << resize_ratio << std::endl;
+      throw std::runtime_error("Failed to create RTSP source node - check "
+                               "parameters and CVEDIX SDK");
+    }
+
+    return node;
+  } catch (const std::exception &e) {
+    std::cerr << "[PipelineBuilder] Exception in createRTSPSourceNode: "
+              << e.what() << std::endl;
+    throw;
+  } catch (...) {
+    std::cerr << "[PipelineBuilder] Unknown exception in createRTSPSourceNode"
+              << std::endl;
+    throw std::runtime_error("Unknown error creating RTSP source node");
+  }
+}
+
+std::shared_ptr<cvedix_nodes::cvedix_node>
+PipelineBuilder::createFaceDetectorNode(
+    const std::string &nodeName,
+    const std::map<std::string, std::string> &params,
+    const CreateInstanceRequest &req) {
+
+  try {
+    // Get parameters with defaults - resolve path intelligently
+    std::string modelPath = params.count("model_path")
+                                ? params.at("model_path")
+                                : resolveModelPath("models/face/yunet.onnx");
+    float scoreThreshold =
+        params.count("score_threshold")
+            ? static_cast<float>(std::stod(params.at("score_threshold")))
+            : static_cast<float>(
+                  mapDetectionSensitivity(req.detectionSensitivity));
+    float nmsThreshold =
+        params.count("nms_threshold")
+            ? static_cast<float>(std::stod(params.at("nms_threshold")))
+            : 0.5f;
+    int topK = params.count("top_k") ? std::stoi(params.at("top_k")) : 50;
+
+    // Validate node name
+    if (nodeName.empty()) {
+      throw std::invalid_argument("Node name cannot be empty");
+    }
+
+    // Validate model path
+    if (modelPath.empty()) {
+      throw std::invalid_argument("Model path cannot be empty");
+    }
+
+    // Check if model file exists (warning only, SDK will also check)
+    fs::path modelFilePath(modelPath);
+    if (!fs::exists(modelFilePath)) {
+      std::cerr << "[PipelineBuilder] ========================================"
+                << std::endl;
+      std::cerr << "[PipelineBuilder] WARNING: Model file not found!"
+                << std::endl;
+      std::cerr << "[PipelineBuilder] Expected path: " << modelPath
+                << std::endl;
+      std::cerr << "[PipelineBuilder] Absolute path: "
+                << fs::absolute(modelFilePath).string() << std::endl;
+      std::cerr << "[PipelineBuilder] ========================================"
+                << std::endl;
+      std::cerr << "[PipelineBuilder] SOLUTION: Copy your yunet.onnx file to "
+                   "one of these locations:"
+                << std::endl;
+      std::cerr << "[PipelineBuilder]   1. System-wide location - RECOMMENDED "
+                   "(FHS standard):"
+                << std::endl;
+      std::cerr << "[PipelineBuilder]      "
+                   "/usr/share/cvedix/cvedix_data/models/face/yunet.onnx"
+                << std::endl;
+      std::cerr << "[PipelineBuilder]      (Create: sudo mkdir -p "
+                   "/usr/share/cvedix/cvedix_data/models/face)"
+                << std::endl;
+      std::cerr << "[PipelineBuilder]      (Copy: sudo cp /path/to/yunet.onnx "
+                   "/usr/share/cvedix/cvedix_data/models/face/)"
+                << std::endl;
+      std::cerr << "[PipelineBuilder]      NOTE: /usr/share/ is for data files "
+                   "(FHS standard)"
+                << std::endl;
+      std::cerr << "[PipelineBuilder]   1b. Alternative (not recommended, but "
+                   "supported):"
+                << std::endl;
+      std::cerr << "[PipelineBuilder]      "
+                   "/usr/include/cvedix/cvedix_data/models/face/yunet.onnx"
+                << std::endl;
+      std::cerr << "[PipelineBuilder]      (Create: sudo mkdir -p "
+                   "/usr/include/cvedix/cvedix_data/models/face)"
+                << std::endl;
+      std::cerr << "[PipelineBuilder]      NOTE: /usr/include/ is for header "
+                   "files, not data files"
+                << std::endl;
+      std::cerr << "[PipelineBuilder]   2. SDK source location (relative to "
+                   "API directory):"
+                << std::endl;
+      std::cerr << "[PipelineBuilder]      "
+                   "../edge_ai_sdk/cvedix_data/models/face/yunet.onnx"
+                << std::endl;
+      std::cerr << "[PipelineBuilder]      (Copy: cp /path/to/yunet.onnx "
+                   "../edge_ai_sdk/cvedix_data/models/face/)"
+                << std::endl;
+      std::cerr << "[PipelineBuilder]   3. API working directory: "
+                   "./cvedix_data/models/face/yunet.onnx"
+                << std::endl;
+      std::cerr << "[PipelineBuilder]      (Create: mkdir -p "
+                   "./cvedix_data/models/face)"
+                << std::endl;
+      std::cerr << "[PipelineBuilder]   4. Set environment variable "
+                   "CVEDIX_DATA_ROOT=/path/to/cvedix_data"
+                << std::endl;
+      std::cerr << "[PipelineBuilder]   2. Upload via API: POST "
+                   "/v1/core/models/upload"
+                << std::endl;
+      std::cerr << "[PipelineBuilder]      Then use MODEL_PATH in "
+                   "additionalParams when creating instance"
+                << std::endl;
+      std::cerr << "[PipelineBuilder]      Example: additionalParams: "
+                   "{\"MODEL_PATH\": \"./models/yunet.onnx\"}"
+                << std::endl;
+      std::cerr << "[PipelineBuilder] ========================================"
+                << std::endl;
+      std::cerr << "[PipelineBuilder] NOTE: Face detection will NOT work until "
+                   "model file is available"
+                << std::endl;
+      std::cerr << "[PipelineBuilder] NOTE: Pipeline will continue but face "
+                   "detection will fail"
+                << std::endl;
+      std::cerr << "[PipelineBuilder] ========================================"
+                << std::endl;
+    } else {
+      std::cerr << "[PipelineBuilder] ✓ Model file found: "
+                << fs::canonical(modelFilePath).string() << std::endl;
+      std::cerr << "[PipelineBuilder]   File size: "
+                << fs::file_size(modelFilePath) << " bytes" << std::endl;
+    }
+
+    // Validate thresholds
+    if (scoreThreshold < 0.0f || scoreThreshold > 1.0f) {
+      std::cerr
+          << "[PipelineBuilder] Warning: score_threshold out of range [0,1]: "
+          << scoreThreshold << ", clamping to [0,1]" << std::endl;
+      scoreThreshold = std::max(0.0f, std::min(1.0f, scoreThreshold));
+    }
+    if (nmsThreshold < 0.0f || nmsThreshold > 1.0f) {
+      std::cerr
+          << "[PipelineBuilder] Warning: nms_threshold out of range [0,1]: "
+          << nmsThreshold << ", clamping to [0,1]" << std::endl;
+      nmsThreshold = std::max(0.0f, std::min(1.0f, nmsThreshold));
+    }
+    if (topK < 0) {
+      std::cerr << "[PipelineBuilder] Warning: top_k must be >= 0, got: "
+                << topK << ", using default 50" << std::endl;
+      topK = 50;
+    }
+
+    std::cerr << "[PipelineBuilder] Creating YuNet face detector node:"
+              << std::endl;
+    std::cerr << "  Name: '" << nodeName << "'" << std::endl;
+    std::cerr << "  Model path: '" << modelPath << "'" << std::endl;
+    std::cerr << "  Score threshold: " << scoreThreshold << std::endl;
+    std::cerr << "  NMS threshold: " << nmsThreshold << std::endl;
+    std::cerr << "  Top K: " << topK << std::endl;
+
+    // Create the YuNet face detector node
+    std::shared_ptr<cvedix_nodes::cvedix_yunet_face_detector_node> node;
+    try {
+      std::cerr << "[PipelineBuilder] Calling cvedix_yunet_face_detector_node "
+                   "constructor..."
+                << std::endl;
+      node = std::make_shared<cvedix_nodes::cvedix_yunet_face_detector_node>(
+          nodeName, modelPath, scoreThreshold, nmsThreshold, topK);
+      std::cerr
+          << "[PipelineBuilder] ✓ YuNet face detector node created successfully"
+          << std::endl;
+      if (!fs::exists(modelFilePath)) {
+        std::cerr << "[PipelineBuilder] ⚠ WARNING: Model file was not found, "
+                     "node created but may fail during inference"
+                  << std::endl;
+      }
+    } catch (const std::bad_alloc &e) {
+      std::cerr << "[PipelineBuilder] Memory allocation failed: " << e.what()
+                << std::endl;
+      throw;
+    } catch (const std::exception &e) {
+      std::cerr << "[PipelineBuilder] Standard exception in constructor: "
+                << e.what() << std::endl;
+      throw;
+    } catch (...) {
+      std::cerr << "[PipelineBuilder] Non-standard exception in "
+                   "cvedix_yunet_face_detector_node constructor"
+                << std::endl;
+      std::cerr << "[PipelineBuilder] Parameters were: name='" << nodeName
+                << "', model_path='" << modelPath
+                << "', score_threshold=" << scoreThreshold
+                << ", nms_threshold=" << nmsThreshold << ", top_k=" << topK
+                << std::endl;
+      throw std::runtime_error("Failed to create YuNet face detector node - "
+                               "check parameters and CVEDIX SDK");
+    }
+
+    return node;
+  } catch (const std::exception &e) {
+    std::cerr << "[PipelineBuilder] Exception in createFaceDetectorNode: "
+              << e.what() << std::endl;
+    throw;
+  } catch (...) {
+    std::cerr << "[PipelineBuilder] Unknown exception in createFaceDetectorNode"
+              << std::endl;
+    throw std::runtime_error("Unknown error creating face detector node");
+  }
+}
+
+std::shared_ptr<cvedix_nodes::cvedix_node>
+PipelineBuilder::createFileDestinationNode(
+    const std::string &nodeName,
+    const std::map<std::string, std::string> &params,
+    const std::string &instanceId) {
+
+  try {
+    // Get parameters with defaults
+    // Constructor: cvedix_file_des_node(node_name, channel_index, save_dir,
+    // name_prefix,
+    //                                   max_duration_for_single_file,
+    //                                   resolution_w_h, bitrate, osd,
+    //                                   gst_encoder_name)
+    int channelIndex =
+        params.count("channel") ? std::stoi(params.at("channel")) : 0;
+    std::string saveDir = params.count("save_dir") ? params.at("save_dir")
+                                                   : "./output/" + instanceId;
+    std::string namePrefix =
+        params.count("name_prefix") ? params.at("name_prefix") : "output";
+    int maxDuration = params.count("max_duration")
+                          ? std::stoi(params.at("max_duration"))
+                          : 2; // minutes
+    int bitrate =
+        params.count("bitrate") ? std::stoi(params.at("bitrate")) : 1024;
+    bool osd = params.count("osd") &&
+               (params.at("osd") == "true" || params.at("osd") == "1");
+    std::string encoderName =
+        params.count("encoder") ? params.at("encoder") : "x264enc";
+
+    // Parse resolution if provided (format: "widthxheight" or "width,height")
+    cvedix_objects::cvedix_size resolution = {};
+    if (params.count("resolution")) {
+      std::string resStr = params.at("resolution");
+      size_t xPos = resStr.find('x');
+      size_t commaPos = resStr.find(',');
+      if (xPos != std::string::npos) {
+        resolution.width = std::stoi(resStr.substr(0, xPos));
+        resolution.height = std::stoi(resStr.substr(xPos + 1));
+      } else if (commaPos != std::string::npos) {
+        resolution.width = std::stoi(resStr.substr(0, commaPos));
+        resolution.height = std::stoi(resStr.substr(commaPos + 1));
+      }
+    }
+
+    // Validate node name
+    if (nodeName.empty()) {
+      throw std::invalid_argument("Node name cannot be empty");
+    }
+
+    // Validate save directory
+    if (saveDir.empty()) {
+      throw std::invalid_argument("Save directory cannot be empty");
+    }
+
+    // Ensure save directory exists (required by cvedix_file_des_node)
+    // Use resolveDirectory with fallback if needed
+    std::string resolvedSaveDir = saveDir;
+    fs::path saveDirPath(saveDir);
+    std::string subdir = saveDirPath.filename().string();
+    if (subdir.empty()) {
+      subdir = "output"; // Default fallback subdir
+    }
+    resolvedSaveDir = EnvConfig::resolveDirectory(saveDir, subdir);
+    if (resolvedSaveDir != saveDir) {
+      std::cerr << "[PipelineBuilder] ⚠ Save directory changed from " << saveDir
+                << " to " << resolvedSaveDir << " (fallback)" << std::endl;
+      saveDir = resolvedSaveDir;
+      saveDirPath = fs::path(saveDir);
+    }
+    if (!fs::exists(saveDirPath)) {
+      std::cerr << "[PipelineBuilder] Creating save directory: " << saveDir
+                << std::endl;
+      fs::create_directories(saveDirPath);
+    }
+
+    // Validate channel index
+    if (channelIndex < 0) {
+      std::cerr << "[PipelineBuilder] Warning: channel_index < 0: "
+                << channelIndex << ", using 0" << std::endl;
+      channelIndex = 0;
+    }
+
+    // Validate max duration
+    if (maxDuration <= 0) {
+      std::cerr << "[PipelineBuilder] Warning: max_duration <= 0: "
+                << maxDuration << ", using default 2 minutes" << std::endl;
+      maxDuration = 2;
+    }
+
+    // Validate bitrate
+    if (bitrate <= 0) {
+      std::cerr << "[PipelineBuilder] Warning: bitrate <= 0: " << bitrate
+                << ", using default 1024" << std::endl;
+      bitrate = 1024;
+    }
+
+    std::cerr << "[PipelineBuilder] Creating file destination node:"
+              << std::endl;
+    std::cerr << "  Name: '" << nodeName << "'" << std::endl;
+    std::cerr << "  Channel index: " << channelIndex << std::endl;
+    std::cerr << "  Save directory: '" << saveDir << "'" << std::endl;
+    std::cerr << "  Name prefix: '" << namePrefix << "'" << std::endl;
+    std::cerr << "  Max duration: " << maxDuration << " minutes" << std::endl;
+    std::cerr << "  Bitrate: " << bitrate << std::endl;
+    std::cerr << "  OSD: " << (osd ? "true" : "false") << std::endl;
+    std::cerr << "  Encoder: '" << encoderName << "'" << std::endl;
+    if (resolution.width > 0 && resolution.height > 0) {
+      std::cerr << "  Resolution: " << resolution.width << "x"
+                << resolution.height << std::endl;
+    }
+
+    // Create the file destination node
+    std::shared_ptr<cvedix_nodes::cvedix_file_des_node> node;
+    try {
+      std::cerr
+          << "[PipelineBuilder] Calling cvedix_file_des_node constructor..."
+          << std::endl;
+      node = std::make_shared<cvedix_nodes::cvedix_file_des_node>(
+          nodeName, channelIndex, saveDir, namePrefix, maxDuration, resolution,
+          bitrate, osd, encoderName);
+      std::cerr
+          << "[PipelineBuilder] File destination node created successfully"
+          << std::endl;
+    } catch (const std::bad_alloc &e) {
+      std::cerr << "[PipelineBuilder] Memory allocation failed: " << e.what()
+                << std::endl;
+      throw;
+    } catch (const std::exception &e) {
+      std::cerr << "[PipelineBuilder] Standard exception in constructor: "
+                << e.what() << std::endl;
+      throw;
+    } catch (...) {
+      std::cerr << "[PipelineBuilder] Non-standard exception in "
+                   "cvedix_file_des_node constructor"
+                << std::endl;
+      std::cerr << "[PipelineBuilder] Parameters were: name='" << nodeName
+                << "', channel=" << channelIndex << ", save_dir='" << saveDir
+                << "', name_prefix='" << namePrefix
+                << "', max_duration=" << maxDuration << ", bitrate=" << bitrate
+                << ", osd=" << osd << ", encoder='" << encoderName << "'"
+                << std::endl;
+      throw std::runtime_error("Failed to create file destination node - check "
+                               "parameters and CVEDIX SDK");
+    }
+
+    return node;
+  } catch (const std::exception &e) {
+    std::cerr << "[PipelineBuilder] Exception in createFileDestinationNode: "
+              << e.what() << std::endl;
+    throw;
+  } catch (...) {
+    std::cerr
+        << "[PipelineBuilder] Unknown exception in createFileDestinationNode"
+        << std::endl;
+    throw std::runtime_error("Unknown error creating file destination node");
+  }
+}
+
+double
+PipelineBuilder::mapDetectionSensitivity(const std::string &sensitivity) const {
+  if (sensitivity == "Low") {
+    return 0.5;
+  } else if (sensitivity == "Medium") {
+    return 0.7;
+  } else if (sensitivity == "High") {
+    return 0.9;
+  }
+  return 0.7; // Default to Medium
+}
+
+std::string
+PipelineBuilder::getRTSPUrl(const CreateInstanceRequest &req) const {
+  // Get RTSP URL from additionalParams - check both RTSP_URL and RTSP_SRC_URL
+  auto it = req.additionalParams.find("RTSP_URL");
+  if (it != req.additionalParams.end() && !it->second.empty()) {
+    std::cerr << "[PipelineBuilder] RTSP URL from request additionalParams "
+                 "(RTSP_URL): '"
+              << it->second << "'" << std::endl;
+    return it->second;
+  }
+
+  // Also check RTSP_SRC_URL (for consistency with RTMP_SRC_URL)
+  auto srcIt = req.additionalParams.find("RTSP_SRC_URL");
+  if (srcIt != req.additionalParams.end() && !srcIt->second.empty()) {
+    std::cerr << "[PipelineBuilder] RTSP URL from request additionalParams "
+                 "(RTSP_SRC_URL): '"
+              << srcIt->second << "'" << std::endl;
+    return srcIt->second;
+  }
+
+  // Default or from environment
+  const char *envUrl = std::getenv("RTSP_URL");
+  if (envUrl && strlen(envUrl) > 0) {
+    std::cerr << "[PipelineBuilder] RTSP URL from environment variable: '"
+              << envUrl << "'" << std::endl;
+    return std::string(envUrl);
+  }
+
+  // Also check RTSP_SRC_URL environment variable
+  const char *envSrcUrl = std::getenv("RTSP_SRC_URL");
+  if (envSrcUrl && strlen(envSrcUrl) > 0) {
+    std::cerr << "[PipelineBuilder] RTSP URL from environment variable "
+                 "(RTSP_SRC_URL): '"
+              << envSrcUrl << "'" << std::endl;
+    return std::string(envSrcUrl);
+  }
+
+  // Default fallback (development only - should be overridden in production)
+  // SECURITY: This is a development default. In production, always provide
+  // RTSP_URL via request or environment variable.
+  std::cerr << "[PipelineBuilder] WARNING: Using default RTSP URL "
+               "(rtsp://localhost:8554/stream)"
+            << std::endl;
+  std::cerr << "[PipelineBuilder] WARNING: This is a development default. For "
+               "production, provide 'RTSP_URL' or 'RTSP_SRC_URL' in request "
+               "body or set RTSP_URL/RTSP_SRC_URL environment variable"
+            << std::endl;
+  return "rtsp://localhost:8554/stream";
+}
+
+std::string
+PipelineBuilder::resolveModelPath(const std::string &relativePath) const {
+  // Helper function to resolve model file paths
+  // Priority:
+  // 1. CVEDIX_DATA_ROOT environment variable
+  // 2. CVEDIX_SDK_ROOT environment variable + /cvedix_data
+  // 3. Production path: /opt/edge_ai_api/models (where user-uploaded models are
+  // stored)
+  // 4. System-wide installation paths (/usr/share/cvedix/cvedix_data/)
+  // 5. SDK source locations (relative paths)
+  // 6. Development fallback: ./cvedix_data/ (will NOT exist in production)
+
+  // 1. Check CVEDIX_DATA_ROOT
+  const char *dataRoot = std::getenv("CVEDIX_DATA_ROOT");
+  if (dataRoot && strlen(dataRoot) > 0) {
+    std::string path = std::string(dataRoot);
+    if (path.back() != '/')
+      path += '/';
+    path += relativePath;
+    if (fs::exists(path)) {
+      std::cerr << "[PipelineBuilder] Using CVEDIX_DATA_ROOT: " << path
+                << std::endl;
+      return path;
+    }
+  }
+
+  // 2. Check CVEDIX_SDK_ROOT
+  const char *sdkRoot = std::getenv("CVEDIX_SDK_ROOT");
+  if (sdkRoot && strlen(sdkRoot) > 0) {
+    std::string path = std::string(sdkRoot);
+    if (path.back() != '/')
+      path += '/';
+    path += "cvedix_data/" + relativePath;
+    if (fs::exists(path)) {
+      std::cerr << "[PipelineBuilder] Using CVEDIX_SDK_ROOT: " << path
+                << std::endl;
+      return path;
+    }
+  }
+
+  // 3. Try production installation path (/opt/edge_ai_api/models)
+  // This is where user-uploaded models are stored
+  // Check if relativePath starts with "models/" or is a direct model file
+  if (relativePath.find("models/") == 0 || relativePath.find("models\\") == 0) {
+    // Extract the model path after "models/"
+    std::string modelPath =
+        relativePath.substr(relativePath.find_first_of("/\\") + 1);
+    std::string optPath = "/opt/edge_ai_api/models/" + modelPath;
+    if (fs::exists(optPath)) {
+      std::cerr << "[PipelineBuilder] Using production path: " << optPath
+                << std::endl;
+      return optPath;
+    }
+    // Also try direct path if relativePath is just a filename
+    std::string optPathDirect = "/opt/edge_ai_api/models/" + relativePath;
+    if (fs::exists(optPathDirect)) {
+      std::cerr << "[PipelineBuilder] Using production path: " << optPathDirect
+                << std::endl;
+      return optPathDirect;
+    }
+  } else {
+    // Try direct model file in /opt/edge_ai_api/models
+    std::string optPath = "/opt/edge_ai_api/models/" + relativePath;
+    if (fs::exists(optPath)) {
+      std::cerr << "[PipelineBuilder] Using production path: " << optPath
+                << std::endl;
+      return optPath;
+    }
+  }
+
+  // 4. Try system-wide installation paths (when SDK is installed to /usr)
+  // Note: /usr/share/ is preferred (FHS standard for data files)
+  // /usr/include/ is for header files, but we support it as fallback
+  std::vector<std::string> systemPaths = {
+      "/usr/share/cvedix/cvedix_data/" +
+          relativePath, // Preferred (FHS standard)
+      "/usr/local/share/cvedix/cvedix_data/" + relativePath, // Local install
+      "/usr/include/cvedix/cvedix_data/" +
+          relativePath, // Fallback (not recommended)
+      "/usr/local/include/cvedix/cvedix_data/" +
+          relativePath, // Local install fallback
+  };
+
+  for (const auto &path : systemPaths) {
+    if (fs::exists(path)) {
+      std::cerr << "[PipelineBuilder] Found in system-wide location: " << path
+                << std::endl;
+      return path;
+    }
+
+    // If exact file not found, try to find alternative yunet files in the same
+    // directory This handles cases where file is named like
+    // "face_detection_yunet_2023mar.onnx" instead of "yunet.onnx"
+    if (relativePath.find("yunet.onnx") != std::string::npos) {
+      fs::path dirPath = fs::path(path).parent_path();
+      if (fs::exists(dirPath) && fs::is_directory(dirPath)) {
+        // Look for alternative yunet files (prefer newer versions)
+        std::vector<std::string> alternatives = {
+            "face_detection_yunet_2023mar.onnx", // Newer version (preferred)
+            "face_detection_yunet_2022mar.onnx", // Older version
+            "yunet_2023mar.onnx",
+            "yunet_2022mar.onnx",
+        };
+
+        for (const auto &alt : alternatives) {
+          fs::path altPath = dirPath / alt;
+          if (fs::exists(altPath)) {
+            std::cerr << "[PipelineBuilder] Found alternative yunet model: "
+                      << altPath.string() << std::endl;
+            return altPath.string();
+          }
+        }
+      }
+    }
+  }
+
+  // 5. Try common SDK source locations (relative paths only, no hardcoded
+  // absolute paths)
+  std::vector<std::string> commonPaths = {
+      "../edge_ai_sdk/cvedix_data/" + relativePath,
+      "../../edge_ai_sdk/cvedix_data/" + relativePath,
+      "../../../edge_ai_sdk/cvedix_data/" + relativePath,
+  };
+
+  for (const auto &path : commonPaths) {
+    if (fs::exists(path)) {
+      std::cerr << "[PipelineBuilder] Found in SDK directory: "
+                << fs::absolute(path).string() << std::endl;
+      return path;
+    }
+  }
+
+  // 6. Development fallback: relative to current working directory
+  // (./cvedix_data/) NOTE: This path will NOT exist in production - all data
+  // should be in /opt/edge_ai_api
+  std::string relativePathFull = "./cvedix_data/" + relativePath;
+  if (fs::exists(relativePathFull)) {
+    std::cerr << "[PipelineBuilder] Using development relative path: "
+              << fs::absolute(relativePathFull).string() << std::endl;
     return relativePathFull;
+  }
+
+  // Return default relative path (will show warning later if not found)
+  std::cerr << "[PipelineBuilder] ⚠ Using default path (may not exist): "
+               "./cvedix_data/"
+            << relativePath << std::endl;
+  std::cerr << "[PipelineBuilder] ℹ NOTE: In production, use "
+               "/opt/edge_ai_api/models/ or set CVEDIX_DATA_ROOT"
+            << std::endl;
+  return relativePathFull;
 }
 
-std::string PipelineBuilder::resolveModelByName(const std::string& modelName, const std::string& category) const {
-    // Resolve model file by name (e.g., "yunet_2023mar", "yunet_2022mar", "yolov8n_face")
-    // Supports various naming patterns and extensions
-    
-    // List of possible file extensions to try
-    std::vector<std::string> extensions = {".onnx", ".rknn", ".weights", ".pt", ".pth", ".pb", ".tflite"};
-    
-    // List of possible file name patterns to try
-    std::vector<std::string> patterns;
-    
-    // Direct match
-    patterns.push_back(modelName);
-    
-    // Add common prefixes/suffixes
-    if (modelName.find("yunet") != std::string::npos || modelName.find("face") != std::string::npos) {
-        patterns.push_back("face_detection_" + modelName);
-        patterns.push_back(modelName + "_face_detection");
-        if (modelName.find("yunet") == std::string::npos) {
-            patterns.push_back("face_detection_yunet_" + modelName);
-        }
-    }
-    
-    // Try different search locations
-    std::vector<std::string> searchDirs;
-    
-    // 1. Check CVEDIX_DATA_ROOT
-    const char* dataRoot = std::getenv("CVEDIX_DATA_ROOT");
-    if (dataRoot && strlen(dataRoot) > 0) {
-        std::string dir = std::string(dataRoot);
-        if (dir.back() != '/') dir += '/';
-        dir += "models/" + category;
-        searchDirs.push_back(dir);
-    }
-    
-    // 2. Check CVEDIX_SDK_ROOT
-    const char* sdkRoot = std::getenv("CVEDIX_SDK_ROOT");
-    if (sdkRoot && strlen(sdkRoot) > 0) {
-        std::string dir = std::string(sdkRoot);
-        if (dir.back() != '/') dir += '/';
-        dir += "cvedix_data/models/" + category;
-        searchDirs.push_back(dir);
-    }
-    
-    // 3. Production installation path (/opt/edge_ai_api/models)
-    // This is where user-uploaded models are stored
-    searchDirs.push_back("/opt/edge_ai_api/models/" + category);
-    searchDirs.push_back("/opt/edge_ai_api/models"); // Also check root models directory
-    
-    // 4. System-wide locations
-    searchDirs.push_back("/usr/share/cvedix/cvedix_data/models/" + category);
-    searchDirs.push_back("/usr/local/share/cvedix/cvedix_data/models/" + category);
-    searchDirs.push_back("/usr/include/cvedix/cvedix_data/models/" + category);
-    searchDirs.push_back("/usr/local/include/cvedix/cvedix_data/models/" + category);
-    
-    // 5. SDK source locations (relative paths only, no hardcoded absolute paths)
-    searchDirs.push_back("../edge_ai_sdk/cvedix_data/models/" + category);
-    searchDirs.push_back("../../edge_ai_sdk/cvedix_data/models/" + category);
-    searchDirs.push_back("../../../edge_ai_sdk/cvedix_data/models/" + category);
-    
-    // 6. Development fallback: relative to current working directory (./cvedix_data/)
-    // NOTE: This path will NOT exist in production - all data should be in /opt/edge_ai_api
-    searchDirs.push_back("./cvedix_data/models/" + category);
-    searchDirs.push_back("./models"); // Also check API models directory
-    
-    // Search for model file
-    for (const auto& dir : searchDirs) {
-        fs::path dirPath(dir);
-        if (!fs::exists(dirPath) || !fs::is_directory(dirPath)) {
-            continue;
-        }
-        
-        // Try each pattern with each extension
-        for (const auto& pattern : patterns) {
-            for (const auto& ext : extensions) {
-                fs::path filePath = dirPath / (pattern + ext);
-                if (fs::exists(filePath)) {
-                    std::cerr << "[PipelineBuilder] Found model by name '" << modelName 
-                              << "' (pattern: " << pattern << ext << ") at: " 
-                              << fs::canonical(filePath).string() << std::endl;
-                    return fs::canonical(filePath).string();
-                }
-                
-                // Also try case-insensitive search (list directory)
-                try {
-                    for (const auto& entry : fs::directory_iterator(dirPath)) {
-                        if (fs::is_regular_file(entry.path())) {
-                            std::string filename = entry.path().filename().string();
-                            std::string filenameLower = filename;
-                            std::transform(filenameLower.begin(), filenameLower.end(), filenameLower.begin(), ::tolower);
-                            
-                            std::string patternLower = pattern + ext;
-                            std::transform(patternLower.begin(), patternLower.end(), patternLower.begin(), ::tolower);
-                            
-                            if (filenameLower == patternLower || 
-                                filenameLower.find(patternLower) != std::string::npos) {
-                                std::cerr << "[PipelineBuilder] Found model by name '" << modelName 
-                                          << "' (matched: " << filename << ") at: " 
-                                          << fs::canonical(entry.path()).string() << std::endl;
-                                return fs::canonical(entry.path()).string();
-                            }
-                        }
-                    }
-                } catch (const std::exception& e) {
-                    // Ignore directory iteration errors
-                }
-            }
-        }
-    }
-    
-    return ""; // Not found
-}
+std::string
+PipelineBuilder::resolveModelByName(const std::string &modelName,
+                                    const std::string &category) const {
+  // Resolve model file by name (e.g., "yunet_2023mar", "yunet_2022mar",
+  // "yolov8n_face") Supports various naming patterns and extensions
 
-std::vector<std::string> PipelineBuilder::listAvailableModels(const std::string& category) const {
-    std::vector<std::string> models;
-    std::vector<std::string> extensions = {".onnx", ".rknn", ".weights", ".pt", ".pth", ".pb", ".tflite"};
-    
-    // List of search directories (same as resolveModelByName)
-    std::vector<std::string> searchDirs;
-    
-    const char* dataRoot = std::getenv("CVEDIX_DATA_ROOT");
-    if (dataRoot && strlen(dataRoot) > 0) {
-        std::string dir = std::string(dataRoot);
-        if (dir.back() != '/') dir += '/';
-        if (category.empty()) {
-            searchDirs.push_back(dir + "models");
-        } else {
-            searchDirs.push_back(dir + "models/" + category);
+  // List of possible file extensions to try
+  std::vector<std::string> extensions = {".onnx", ".rknn", ".weights", ".pt",
+                                         ".pth",  ".pb",   ".tflite"};
+
+  // List of possible file name patterns to try
+  std::vector<std::string> patterns;
+
+  // Direct match
+  patterns.push_back(modelName);
+
+  // Add common prefixes/suffixes
+  if (modelName.find("yunet") != std::string::npos ||
+      modelName.find("face") != std::string::npos) {
+    patterns.push_back("face_detection_" + modelName);
+    patterns.push_back(modelName + "_face_detection");
+    if (modelName.find("yunet") == std::string::npos) {
+      patterns.push_back("face_detection_yunet_" + modelName);
+    }
+  }
+
+  // Try different search locations
+  std::vector<std::string> searchDirs;
+
+  // 1. Check CVEDIX_DATA_ROOT
+  const char *dataRoot = std::getenv("CVEDIX_DATA_ROOT");
+  if (dataRoot && strlen(dataRoot) > 0) {
+    std::string dir = std::string(dataRoot);
+    if (dir.back() != '/')
+      dir += '/';
+    dir += "models/" + category;
+    searchDirs.push_back(dir);
+  }
+
+  // 2. Check CVEDIX_SDK_ROOT
+  const char *sdkRoot = std::getenv("CVEDIX_SDK_ROOT");
+  if (sdkRoot && strlen(sdkRoot) > 0) {
+    std::string dir = std::string(sdkRoot);
+    if (dir.back() != '/')
+      dir += '/';
+    dir += "cvedix_data/models/" + category;
+    searchDirs.push_back(dir);
+  }
+
+  // 3. Production installation path (/opt/edge_ai_api/models)
+  // This is where user-uploaded models are stored
+  searchDirs.push_back("/opt/edge_ai_api/models/" + category);
+  searchDirs.push_back(
+      "/opt/edge_ai_api/models"); // Also check root models directory
+
+  // 4. System-wide locations
+  searchDirs.push_back("/usr/share/cvedix/cvedix_data/models/" + category);
+  searchDirs.push_back("/usr/local/share/cvedix/cvedix_data/models/" +
+                       category);
+  searchDirs.push_back("/usr/include/cvedix/cvedix_data/models/" + category);
+  searchDirs.push_back("/usr/local/include/cvedix/cvedix_data/models/" +
+                       category);
+
+  // 5. SDK source locations (relative paths only, no hardcoded absolute paths)
+  searchDirs.push_back("../edge_ai_sdk/cvedix_data/models/" + category);
+  searchDirs.push_back("../../edge_ai_sdk/cvedix_data/models/" + category);
+  searchDirs.push_back("../../../edge_ai_sdk/cvedix_data/models/" + category);
+
+  // 6. Development fallback: relative to current working directory
+  // (./cvedix_data/) NOTE: This path will NOT exist in production - all data
+  // should be in /opt/edge_ai_api
+  searchDirs.push_back("./cvedix_data/models/" + category);
+  searchDirs.push_back("./models"); // Also check API models directory
+
+  // Search for model file
+  for (const auto &dir : searchDirs) {
+    fs::path dirPath(dir);
+    if (!fs::exists(dirPath) || !fs::is_directory(dirPath)) {
+      continue;
+    }
+
+    // Try each pattern with each extension
+    for (const auto &pattern : patterns) {
+      for (const auto &ext : extensions) {
+        fs::path filePath = dirPath / (pattern + ext);
+        if (fs::exists(filePath)) {
+          std::cerr << "[PipelineBuilder] Found model by name '" << modelName
+                    << "' (pattern: " << pattern << ext
+                    << ") at: " << fs::canonical(filePath).string()
+                    << std::endl;
+          return fs::canonical(filePath).string();
         }
-    }
-    
-    const char* sdkRoot = std::getenv("CVEDIX_SDK_ROOT");
-    if (sdkRoot && strlen(sdkRoot) > 0) {
-        std::string dir = std::string(sdkRoot);
-        if (dir.back() != '/') dir += '/';
-        if (category.empty()) {
-            searchDirs.push_back(dir + "cvedix_data/models");
-        } else {
-            searchDirs.push_back(dir + "cvedix_data/models/" + category);
-        }
-    }
-    
-    // Production installation path (/opt/edge_ai_api/models)
-    // This is where user-uploaded models are stored
-    if (category.empty()) {
-        searchDirs.push_back("/opt/edge_ai_api/models");
-    } else {
-        searchDirs.push_back("/opt/edge_ai_api/models/" + category);
-        searchDirs.push_back("/opt/edge_ai_api/models"); // Also check root models directory
-    }
-    
-    if (category.empty()) {
-        searchDirs.push_back("/usr/share/cvedix/cvedix_data/models");
-        searchDirs.push_back("/usr/local/share/cvedix/cvedix_data/models");
-    } else {
-        searchDirs.push_back("/usr/share/cvedix/cvedix_data/models/" + category);
-        searchDirs.push_back("/usr/local/share/cvedix/cvedix_data/models/" + category);
-    }
-    
-    // Development fallback: relative to current working directory (./cvedix_data/)
-    // NOTE: This path will NOT exist in production - all data should be in /opt/edge_ai_api
-    searchDirs.push_back("./cvedix_data/models/" + (category.empty() ? "" : category));
-    searchDirs.push_back("./models");
-    
-    // Collect all model files
-    std::set<std::string> uniqueModels; // Use set to avoid duplicates
-    
-    for (const auto& dir : searchDirs) {
-        fs::path dirPath(dir);
-        if (!fs::exists(dirPath) || !fs::is_directory(dirPath)) {
-            continue;
-        }
-        
+
+        // Also try case-insensitive search (list directory)
         try {
-            for (const auto& entry : fs::directory_iterator(dirPath)) {
-                if (fs::is_regular_file(entry.path())) {
-                    std::string filename = entry.path().filename().string();
-                    std::string ext = entry.path().extension().string();
-                    
-                    // Check if it's a model file
-                    bool isModelFile = false;
-                    for (const auto& modelExt : extensions) {
-                        if (ext == modelExt || filename.find(modelExt) != std::string::npos) {
-                            isModelFile = true;
-                            break;
-                        }
-                    }
-                    
-                    if (isModelFile) {
-                        uniqueModels.insert(fs::canonical(entry.path()).string());
-                    }
-                }
+          for (const auto &entry : fs::directory_iterator(dirPath)) {
+            if (fs::is_regular_file(entry.path())) {
+              std::string filename = entry.path().filename().string();
+              std::string filenameLower = filename;
+              std::transform(filenameLower.begin(), filenameLower.end(),
+                             filenameLower.begin(), ::tolower);
+
+              std::string patternLower = pattern + ext;
+              std::transform(patternLower.begin(), patternLower.end(),
+                             patternLower.begin(), ::tolower);
+
+              if (filenameLower == patternLower ||
+                  filenameLower.find(patternLower) != std::string::npos) {
+                std::cerr << "[PipelineBuilder] Found model by name '"
+                          << modelName << "' (matched: " << filename
+                          << ") at: " << fs::canonical(entry.path()).string()
+                          << std::endl;
+                return fs::canonical(entry.path()).string();
+              }
             }
-        } catch (const std::exception& e) {
-            // Ignore directory iteration errors
+          }
+        } catch (const std::exception &e) {
+          // Ignore directory iteration errors
         }
+      }
     }
-    
-    // Convert set to vector
-    models.assign(uniqueModels.begin(), uniqueModels.end());
-    return models;
+  }
+
+  return ""; // Not found
 }
 
-std::shared_ptr<cvedix_nodes::cvedix_node> PipelineBuilder::createFileSourceNode(
-    const std::string& nodeName,
-    const std::map<std::string, std::string>& params,
-    const CreateInstanceRequest& req) {
-    
+std::vector<std::string>
+PipelineBuilder::listAvailableModels(const std::string &category) const {
+  std::vector<std::string> models;
+  std::vector<std::string> extensions = {".onnx", ".rknn", ".weights", ".pt",
+                                         ".pth",  ".pb",   ".tflite"};
+
+  // List of search directories (same as resolveModelByName)
+  std::vector<std::string> searchDirs;
+
+  const char *dataRoot = std::getenv("CVEDIX_DATA_ROOT");
+  if (dataRoot && strlen(dataRoot) > 0) {
+    std::string dir = std::string(dataRoot);
+    if (dir.back() != '/')
+      dir += '/';
+    if (category.empty()) {
+      searchDirs.push_back(dir + "models");
+    } else {
+      searchDirs.push_back(dir + "models/" + category);
+    }
+  }
+
+  const char *sdkRoot = std::getenv("CVEDIX_SDK_ROOT");
+  if (sdkRoot && strlen(sdkRoot) > 0) {
+    std::string dir = std::string(sdkRoot);
+    if (dir.back() != '/')
+      dir += '/';
+    if (category.empty()) {
+      searchDirs.push_back(dir + "cvedix_data/models");
+    } else {
+      searchDirs.push_back(dir + "cvedix_data/models/" + category);
+    }
+  }
+
+  // Production installation path (/opt/edge_ai_api/models)
+  // This is where user-uploaded models are stored
+  if (category.empty()) {
+    searchDirs.push_back("/opt/edge_ai_api/models");
+  } else {
+    searchDirs.push_back("/opt/edge_ai_api/models/" + category);
+    searchDirs.push_back(
+        "/opt/edge_ai_api/models"); // Also check root models directory
+  }
+
+  if (category.empty()) {
+    searchDirs.push_back("/usr/share/cvedix/cvedix_data/models");
+    searchDirs.push_back("/usr/local/share/cvedix/cvedix_data/models");
+  } else {
+    searchDirs.push_back("/usr/share/cvedix/cvedix_data/models/" + category);
+    searchDirs.push_back("/usr/local/share/cvedix/cvedix_data/models/" +
+                         category);
+  }
+
+  // Development fallback: relative to current working directory
+  // (./cvedix_data/) NOTE: This path will NOT exist in production - all data
+  // should be in /opt/edge_ai_api
+  searchDirs.push_back("./cvedix_data/models/" +
+                       (category.empty() ? "" : category));
+  searchDirs.push_back("./models");
+
+  // Collect all model files
+  std::set<std::string> uniqueModels; // Use set to avoid duplicates
+
+  for (const auto &dir : searchDirs) {
+    fs::path dirPath(dir);
+    if (!fs::exists(dirPath) || !fs::is_directory(dirPath)) {
+      continue;
+    }
+
     try {
-        // Get file path from params or request
-        std::string filePath = params.count("file_path") ? 
-            params.at("file_path") : getFilePath(req);
-        int channel = params.count("channel") ? std::stoi(params.at("channel")) : 0;
-        
-        // Get resize_ratio: Priority: additionalParams > params > default
-        // additionalParams takes highest priority to allow runtime override
-        float resizeRatio = 0.25f;  // Default to 0.25 for fixed size (320x180 from 1280x720)
-        
-        // Debug: Log what we have
-        std::cerr << "[PipelineBuilder] DEBUG: Checking resize_ratio sources..." << std::endl;
+      for (const auto &entry : fs::directory_iterator(dirPath)) {
+        if (fs::is_regular_file(entry.path())) {
+          std::string filename = entry.path().filename().string();
+          std::string ext = entry.path().extension().string();
+
+          // Check if it's a model file
+          bool isModelFile = false;
+          for (const auto &modelExt : extensions) {
+            if (ext == modelExt ||
+                filename.find(modelExt) != std::string::npos) {
+              isModelFile = true;
+              break;
+            }
+          }
+
+          if (isModelFile) {
+            uniqueModels.insert(fs::canonical(entry.path()).string());
+          }
+        }
+      }
+    } catch (const std::exception &e) {
+      // Ignore directory iteration errors
+    }
+  }
+
+  // Convert set to vector
+  models.assign(uniqueModels.begin(), uniqueModels.end());
+  return models;
+}
+
+std::shared_ptr<cvedix_nodes::cvedix_node>
+PipelineBuilder::createFileSourceNode(
+    const std::string &nodeName,
+    const std::map<std::string, std::string> &params,
+    const CreateInstanceRequest &req) {
+
+  try {
+    // Get file path from params or request
+    std::string filePath =
+        params.count("file_path") ? params.at("file_path") : getFilePath(req);
+    int channel = params.count("channel") ? std::stoi(params.at("channel")) : 0;
+
+    // Get resize_ratio: Priority: additionalParams > params > default
+    // additionalParams takes highest priority to allow runtime override
+    float resizeRatio =
+        0.25f; // Default to 0.25 for fixed size (320x180 from 1280x720)
+
+    // Debug: Log what we have
+    std::cerr << "[PipelineBuilder] DEBUG: Checking resize_ratio sources..."
+              << std::endl;
+    if (params.count("resize_ratio")) {
+      std::cerr << "[PipelineBuilder] DEBUG: params has resize_ratio = "
+                << params.at("resize_ratio") << std::endl;
+    } else {
+      std::cerr << "[PipelineBuilder] DEBUG: params does NOT have resize_ratio"
+                << std::endl;
+    }
+    std::cerr << "[PipelineBuilder] DEBUG: additionalParams size = "
+              << req.additionalParams.size() << std::endl;
+    for (const auto &p : req.additionalParams) {
+      std::cerr << "[PipelineBuilder] DEBUG: additionalParams[" << p.first
+                << "] = " << p.second << std::endl;
+    }
+
+    // First check additionalParams (highest priority - allows runtime override)
+    auto it = req.additionalParams.find("RESIZE_RATIO");
+    if (it != req.additionalParams.end() && !it->second.empty()) {
+      try {
+        resizeRatio = std::stof(it->second);
+        std::cerr
+            << "[PipelineBuilder] ✓ Using RESIZE_RATIO from additionalParams: "
+            << resizeRatio << std::endl;
+      } catch (const std::exception &e) {
+        std::cerr << "[PipelineBuilder] Warning: Invalid RESIZE_RATIO in "
+                     "additionalParams: "
+                  << it->second << ", trying params..." << std::endl;
+        // Fall through to check params
         if (params.count("resize_ratio")) {
-            std::cerr << "[PipelineBuilder] DEBUG: params has resize_ratio = " << params.at("resize_ratio") << std::endl;
-        } else {
-            std::cerr << "[PipelineBuilder] DEBUG: params does NOT have resize_ratio" << std::endl;
+          resizeRatio = std::stof(params.at("resize_ratio"));
+          std::cerr
+              << "[PipelineBuilder] Using resize_ratio from solution config: "
+              << resizeRatio << std::endl;
         }
-        std::cerr << "[PipelineBuilder] DEBUG: additionalParams size = " << req.additionalParams.size() << std::endl;
-        for (const auto& p : req.additionalParams) {
-            std::cerr << "[PipelineBuilder] DEBUG: additionalParams[" << p.first << "] = " << p.second << std::endl;
-        }
-        
-        // First check additionalParams (highest priority - allows runtime override)
-        auto it = req.additionalParams.find("RESIZE_RATIO");
-        if (it != req.additionalParams.end() && !it->second.empty()) {
-            try {
-                resizeRatio = std::stof(it->second);
-                std::cerr << "[PipelineBuilder] ✓ Using RESIZE_RATIO from additionalParams: " << resizeRatio << std::endl;
-            } catch (const std::exception& e) {
-                std::cerr << "[PipelineBuilder] Warning: Invalid RESIZE_RATIO in additionalParams: " << it->second << ", trying params..." << std::endl;
-                // Fall through to check params
-                if (params.count("resize_ratio")) {
-                    resizeRatio = std::stof(params.at("resize_ratio"));
-                    std::cerr << "[PipelineBuilder] Using resize_ratio from solution config: " << resizeRatio << std::endl;
-                }
-            }
-        } else {
-            // RESIZE_RATIO not in additionalParams, check params
-            if (params.count("resize_ratio")) {
-                resizeRatio = std::stof(params.at("resize_ratio"));
-                std::cerr << "[PipelineBuilder] Using resize_ratio from solution config: " << resizeRatio << std::endl;
-            } else {
-                std::cerr << "[PipelineBuilder] Using default resize_ratio: " << resizeRatio << std::endl;
-            }
-        }
-        
-        // Validate parameters
-        if (nodeName.empty()) {
-            throw std::invalid_argument("Node name cannot be empty");
-        }
-        if (filePath.empty()) {
-            throw std::invalid_argument("File path cannot be empty");
-        }
-        if (resizeRatio <= 0.0f || resizeRatio > 1.0f) {
-            std::cerr << "[PipelineBuilder] Warning: resize_ratio out of range (" << resizeRatio << "), using 0.25" << std::endl;
-            resizeRatio = 0.25f;
-        }
-        
-        std::cerr << "[PipelineBuilder] Creating file source node:" << std::endl;
-        std::cerr << "  Name: '" << nodeName << "'" << std::endl;
-        std::cerr << "  File path: '" << filePath << "'" << std::endl;
-        std::cerr << "  Channel: " << channel << std::endl;
-        std::cerr << "  Resize ratio: " << resizeRatio << std::endl;
-        
-        auto node = std::make_shared<cvedix_nodes::cvedix_file_src_node>(
-            nodeName,
-            channel,
-            filePath,
-            resizeRatio
-        );
-        
-        std::cerr << "[PipelineBuilder] ✓ File source node created successfully" << std::endl;
-        return node;
-    } catch (const std::exception& e) {
-        std::cerr << "[PipelineBuilder] Exception in createFileSourceNode: " << e.what() << std::endl;
-        throw;
+      }
+    } else {
+      // RESIZE_RATIO not in additionalParams, check params
+      if (params.count("resize_ratio")) {
+        resizeRatio = std::stof(params.at("resize_ratio"));
+        std::cerr
+            << "[PipelineBuilder] Using resize_ratio from solution config: "
+            << resizeRatio << std::endl;
+      } else {
+        std::cerr << "[PipelineBuilder] Using default resize_ratio: "
+                  << resizeRatio << std::endl;
+      }
     }
+
+    // Validate parameters
+    if (nodeName.empty()) {
+      throw std::invalid_argument("Node name cannot be empty");
+    }
+    if (filePath.empty()) {
+      throw std::invalid_argument("File path cannot be empty");
+    }
+    if (resizeRatio <= 0.0f || resizeRatio > 1.0f) {
+      std::cerr << "[PipelineBuilder] Warning: resize_ratio out of range ("
+                << resizeRatio << "), using 0.25" << std::endl;
+      resizeRatio = 0.25f;
+    }
+
+    std::cerr << "[PipelineBuilder] Creating file source node:" << std::endl;
+    std::cerr << "  Name: '" << nodeName << "'" << std::endl;
+    std::cerr << "  File path: '" << filePath << "'" << std::endl;
+    std::cerr << "  Channel: " << channel << std::endl;
+    std::cerr << "  Resize ratio: " << resizeRatio << std::endl;
+
+    auto node = std::make_shared<cvedix_nodes::cvedix_file_src_node>(
+        nodeName, channel, filePath, resizeRatio);
+
+    std::cerr << "[PipelineBuilder] ✓ File source node created successfully"
+              << std::endl;
+    return node;
+  } catch (const std::exception &e) {
+    std::cerr << "[PipelineBuilder] Exception in createFileSourceNode: "
+              << e.what() << std::endl;
+    throw;
+  }
 }
 
-std::shared_ptr<cvedix_nodes::cvedix_node> PipelineBuilder::createSFaceEncoderNode(
-    const std::string& nodeName,
-    const std::map<std::string, std::string>& params,
-    const CreateInstanceRequest& req) {
-    
-    try {
-        // Get model path - resolve intelligently
-        std::string modelPath = params.count("model_path") ? 
-            params.at("model_path") : 
-            resolveModelPath("models/face/face_recognition_sface_2021dec.onnx");
-        
-        // Check MODEL_NAME or MODEL_PATH in additionalParams
-        auto modelNameIt = req.additionalParams.find("SFACE_MODEL_NAME");
-        if (modelNameIt != req.additionalParams.end() && !modelNameIt->second.empty()) {
-            std::string modelName = modelNameIt->second;
-            std::string category = "face";
-            size_t colonPos = modelName.find(':');
-            if (colonPos != std::string::npos) {
-                category = modelName.substr(0, colonPos);
-                modelName = modelName.substr(colonPos + 1);
-            }
-            std::string resolvedPath = resolveModelByName(modelName, category);
-            if (!resolvedPath.empty()) {
-                modelPath = resolvedPath;
-            }
-        } else {
-            auto it = req.additionalParams.find("SFACE_MODEL_PATH");
-            if (it != req.additionalParams.end() && !it->second.empty()) {
-                modelPath = it->second;
-            }
-        }
-        
-        // Validate parameters
-        if (nodeName.empty()) {
-            throw std::invalid_argument("Node name cannot be empty");
-        }
-        if (modelPath.empty()) {
-            throw std::invalid_argument("Model path cannot be empty");
-        }
-        
-        std::cerr << "[PipelineBuilder] Creating SFace encoder node:" << std::endl;
-        std::cerr << "  Name: '" << nodeName << "'" << std::endl;
-        std::cerr << "  Model path: '" << modelPath << "'" << std::endl;
-        
-        auto node = std::make_shared<cvedix_nodes::cvedix_sface_feature_encoder_node>(
-            nodeName,
-            modelPath
-        );
-        
-        std::cerr << "[PipelineBuilder] ✓ SFace encoder node created successfully" << std::endl;
-        return node;
-    } catch (const std::exception& e) {
-        std::cerr << "[PipelineBuilder] Exception in createSFaceEncoderNode: " << e.what() << std::endl;
-        throw;
+std::shared_ptr<cvedix_nodes::cvedix_node>
+PipelineBuilder::createSFaceEncoderNode(
+    const std::string &nodeName,
+    const std::map<std::string, std::string> &params,
+    const CreateInstanceRequest &req) {
+
+  try {
+    // Get model path - resolve intelligently
+    std::string modelPath =
+        params.count("model_path")
+            ? params.at("model_path")
+            : resolveModelPath(
+                  "models/face/face_recognition_sface_2021dec.onnx");
+
+    // Check MODEL_NAME or MODEL_PATH in additionalParams
+    auto modelNameIt = req.additionalParams.find("SFACE_MODEL_NAME");
+    if (modelNameIt != req.additionalParams.end() &&
+        !modelNameIt->second.empty()) {
+      std::string modelName = modelNameIt->second;
+      std::string category = "face";
+      size_t colonPos = modelName.find(':');
+      if (colonPos != std::string::npos) {
+        category = modelName.substr(0, colonPos);
+        modelName = modelName.substr(colonPos + 1);
+      }
+      std::string resolvedPath = resolveModelByName(modelName, category);
+      if (!resolvedPath.empty()) {
+        modelPath = resolvedPath;
+      }
+    } else {
+      auto it = req.additionalParams.find("SFACE_MODEL_PATH");
+      if (it != req.additionalParams.end() && !it->second.empty()) {
+        modelPath = it->second;
+      }
     }
+
+    // Validate parameters
+    if (nodeName.empty()) {
+      throw std::invalid_argument("Node name cannot be empty");
+    }
+    if (modelPath.empty()) {
+      throw std::invalid_argument("Model path cannot be empty");
+    }
+
+    std::cerr << "[PipelineBuilder] Creating SFace encoder node:" << std::endl;
+    std::cerr << "  Name: '" << nodeName << "'" << std::endl;
+    std::cerr << "  Model path: '" << modelPath << "'" << std::endl;
+
+    auto node =
+        std::make_shared<cvedix_nodes::cvedix_sface_feature_encoder_node>(
+            nodeName, modelPath);
+
+    std::cerr << "[PipelineBuilder] ✓ SFace encoder node created successfully"
+              << std::endl;
+    return node;
+  } catch (const std::exception &e) {
+    std::cerr << "[PipelineBuilder] Exception in createSFaceEncoderNode: "
+              << e.what() << std::endl;
+    throw;
+  }
 }
 
 std::shared_ptr<cvedix_nodes::cvedix_node> PipelineBuilder::createFaceOSDNode(
-    const std::string& nodeName,
-    const std::map<std::string, std::string>& params) {
-    
-    try {
-        // Validate node name
-        if (nodeName.empty()) {
-            throw std::invalid_argument("Node name cannot be empty");
-        }
-        
-        std::cerr << "[PipelineBuilder] Creating face OSD v2 node:" << std::endl;
-        std::cerr << "  Name: '" << nodeName << "'" << std::endl;
-        
-        auto node = std::make_shared<cvedix_nodes::cvedix_face_osd_node_v2>(nodeName);
-        
-        std::cerr << "[PipelineBuilder] ✓ Face OSD v2 node created successfully" << std::endl;
-        return node;
-    } catch (const std::exception& e) {
-        std::cerr << "[PipelineBuilder] Exception in createFaceOSDNode: " << e.what() << std::endl;
-        throw;
+    const std::string &nodeName,
+    const std::map<std::string, std::string> &params) {
+
+  try {
+    // Validate node name
+    if (nodeName.empty()) {
+      throw std::invalid_argument("Node name cannot be empty");
     }
+
+    std::cerr << "[PipelineBuilder] Creating face OSD v2 node:" << std::endl;
+    std::cerr << "  Name: '" << nodeName << "'" << std::endl;
+
+    auto node =
+        std::make_shared<cvedix_nodes::cvedix_face_osd_node_v2>(nodeName);
+
+    std::cerr << "[PipelineBuilder] ✓ Face OSD v2 node created successfully"
+              << std::endl;
+    return node;
+  } catch (const std::exception &e) {
+    std::cerr << "[PipelineBuilder] Exception in createFaceOSDNode: "
+              << e.what() << std::endl;
+    throw;
+  }
 }
 
-std::shared_ptr<cvedix_nodes::cvedix_node> PipelineBuilder::createRTMPDestinationNode(
-    const std::string& nodeName,
-    const std::map<std::string, std::string>& params,
-    const CreateInstanceRequest& req) {
-    
-    try {
-        // Helper function to trim whitespace from string
-        auto trim = [](const std::string& str) -> std::string {
-            if (str.empty()) return str;
-            size_t first = str.find_first_not_of(" \t\n\r\f\v");
-            if (first == std::string::npos) return "";
-            size_t last = str.find_last_not_of(" \t\n\r\f\v");
-            return str.substr(first, (last - first + 1));
-        };
-        
-        // Get RTMP URL from params or request
-        std::string rtmpUrl = params.count("rtmp_url") ? 
-            params.at("rtmp_url") : getRTMPUrl(req);
-        
-        // Substitute placeholder if present (e.g., "${RTMP_URL}" or "${RTMP_DES_URL}")
-        if (rtmpUrl == "${RTMP_URL}" || rtmpUrl == "${RTMP_DES_URL}") {
-            rtmpUrl = getRTMPUrl(req);
-        }
-        
-        // Trim whitespace from RTMP URL to prevent GStreamer pipeline errors
-        rtmpUrl = trim(rtmpUrl);
-        
-        int channel = params.count("channel") ? std::stoi(params.at("channel")) : 0;
-        
-        // Check if OSD overlay should be enabled
-        // OSD parameter can be "true"/"1" or "false"/"0"
-        // If not specified, default to false (assume OSD node exists in pipeline)
-        bool enableOSD = params.count("osd") && 
-                         (params.at("osd") == "true" || params.at("osd") == "1");
-        
-        // Validate parameters
-        if (nodeName.empty()) {
-            throw std::invalid_argument("Node name cannot be empty");
-        }
-        
-        // If RTMP URL is empty, return nullptr to skip this node (optional)
-        if (rtmpUrl.empty()) {
-            std::cerr << "[PipelineBuilder] RTMP URL is empty, skipping RTMP destination node: " << nodeName << std::endl;
-            return nullptr;
-        }
-        
-        std::cerr << "[PipelineBuilder] Creating RTMP destination node:" << std::endl;
-        std::cerr << "  Name: '" << nodeName << "'" << std::endl;
-        std::cerr << "  RTMP URL: '" << rtmpUrl << "'" << std::endl;
-        std::cerr << "  Channel: " << channel << std::endl;
-        std::cerr << "  OSD overlay: " << (enableOSD ? "enabled" : "disabled") << std::endl;
-        std::cerr << "  NOTE: RTMP node automatically adds '_0' suffix to stream key" << std::endl;
-        
-        std::shared_ptr<cvedix_nodes::cvedix_rtmp_des_node> node;
-        if (enableOSD) {
-            // Use constructor with OSD parameter: (node_name, channel, rtmp_url, resolution, bitrate, osd)
-            // Get bitrate from params if provided, otherwise use default 1024
-            int bitrate = 1024; // Default bitrate
-            if (params.count("bitrate")) {
-                bitrate = std::stoi(params.at("bitrate"));
-                if (bitrate <= 0) {
-                    std::cerr << "[PipelineBuilder] Warning: bitrate <= 0: " << bitrate 
-                              << ", using default 1024" << std::endl;
-                    bitrate = 1024;
-                }
-            }
-            // resolution: empty (use source resolution), bitrate: from params or 1024, osd: true
-            cvedix_objects::cvedix_size resolution = {}; // Empty resolution = use source resolution
-            std::cerr << "[PipelineBuilder] Using bitrate: " << bitrate << " kbps" << std::endl;
-            node = std::make_shared<cvedix_nodes::cvedix_rtmp_des_node>(
-                nodeName,
-                channel,
-                rtmpUrl,
-                resolution,
-                bitrate,
-                true  // Enable OSD overlay
-            );
-        } else {
-            // Use simple constructor: (node_name, channel, rtmp_url)
-            node = std::make_shared<cvedix_nodes::cvedix_rtmp_des_node>(
-                nodeName,
-                channel,
-                rtmpUrl
-            );
-        }
-        
-        std::cerr << "[PipelineBuilder] ✓ RTMP destination node created successfully" << std::endl;
-        return node;
-    } catch (const std::exception& e) {
-        std::cerr << "[PipelineBuilder] Exception in createRTMPDestinationNode: " << e.what() << std::endl;
-        throw;
+std::shared_ptr<cvedix_nodes::cvedix_node>
+PipelineBuilder::createRTMPDestinationNode(
+    const std::string &nodeName,
+    const std::map<std::string, std::string> &params,
+    const CreateInstanceRequest &req) {
+
+  try {
+    // Helper function to trim whitespace from string
+    auto trim = [](const std::string &str) -> std::string {
+      if (str.empty())
+        return str;
+      size_t first = str.find_first_not_of(" \t\n\r\f\v");
+      if (first == std::string::npos)
+        return "";
+      size_t last = str.find_last_not_of(" \t\n\r\f\v");
+      return str.substr(first, (last - first + 1));
+    };
+
+    // Get RTMP URL from params or request
+    std::string rtmpUrl =
+        params.count("rtmp_url") ? params.at("rtmp_url") : getRTMPUrl(req);
+
+    // Substitute placeholder if present (e.g., "${RTMP_URL}" or
+    // "${RTMP_DES_URL}")
+    if (rtmpUrl == "${RTMP_URL}" || rtmpUrl == "${RTMP_DES_URL}") {
+      rtmpUrl = getRTMPUrl(req);
     }
+
+    // Trim whitespace from RTMP URL to prevent GStreamer pipeline errors
+    rtmpUrl = trim(rtmpUrl);
+
+    int channel = params.count("channel") ? std::stoi(params.at("channel")) : 0;
+
+    // Check if OSD overlay should be enabled
+    // OSD parameter can be "true"/"1" or "false"/"0"
+    // If not specified, default to false (assume OSD node exists in pipeline)
+    bool enableOSD = params.count("osd") &&
+                     (params.at("osd") == "true" || params.at("osd") == "1");
+
+    // Validate parameters
+    if (nodeName.empty()) {
+      throw std::invalid_argument("Node name cannot be empty");
+    }
+
+    // If RTMP URL is empty, return nullptr to skip this node (optional)
+    if (rtmpUrl.empty()) {
+      std::cerr << "[PipelineBuilder] RTMP URL is empty, skipping RTMP "
+                   "destination node: "
+                << nodeName << std::endl;
+      return nullptr;
+    }
+
+    std::cerr << "[PipelineBuilder] Creating RTMP destination node:"
+              << std::endl;
+    std::cerr << "  Name: '" << nodeName << "'" << std::endl;
+    std::cerr << "  RTMP URL: '" << rtmpUrl << "'" << std::endl;
+    std::cerr << "  Channel: " << channel << std::endl;
+    std::cerr << "  OSD overlay: " << (enableOSD ? "enabled" : "disabled")
+              << std::endl;
+    std::cerr
+        << "  NOTE: RTMP node automatically adds '_0' suffix to stream key"
+        << std::endl;
+
+    std::shared_ptr<cvedix_nodes::cvedix_rtmp_des_node> node;
+    if (enableOSD) {
+      // Use constructor with OSD parameter: (node_name, channel, rtmp_url,
+      // resolution, bitrate, osd) Get bitrate from params if provided,
+      // otherwise use default 1024
+      int bitrate = 1024; // Default bitrate
+      if (params.count("bitrate")) {
+        bitrate = std::stoi(params.at("bitrate"));
+        if (bitrate <= 0) {
+          std::cerr << "[PipelineBuilder] Warning: bitrate <= 0: " << bitrate
+                    << ", using default 1024" << std::endl;
+          bitrate = 1024;
+        }
+      }
+      // resolution: empty (use source resolution), bitrate: from params or
+      // 1024, osd: true
+      cvedix_objects::cvedix_size resolution =
+          {}; // Empty resolution = use source resolution
+      std::cerr << "[PipelineBuilder] Using bitrate: " << bitrate << " kbps"
+                << std::endl;
+      node = std::make_shared<cvedix_nodes::cvedix_rtmp_des_node>(
+          nodeName, channel, rtmpUrl, resolution, bitrate,
+          true // Enable OSD overlay
+      );
+    } else {
+      // Use simple constructor: (node_name, channel, rtmp_url)
+      node = std::make_shared<cvedix_nodes::cvedix_rtmp_des_node>(
+          nodeName, channel, rtmpUrl);
+    }
+
+    std::cerr
+        << "[PipelineBuilder] ✓ RTMP destination node created successfully"
+        << std::endl;
+    return node;
+  } catch (const std::exception &e) {
+    std::cerr << "[PipelineBuilder] Exception in createRTMPDestinationNode: "
+              << e.what() << std::endl;
+    throw;
+  }
 }
 
 std::shared_ptr<cvedix_nodes::cvedix_node> PipelineBuilder::createAppDesNode(
-    const std::string& nodeName,
-    const std::map<std::string, std::string>& params) {
-    
-    try {
-        // Get channel parameter (default: 0)
-        int channel = params.count("channel") ? std::stoi(params.at("channel")) : 0;
-        
-        // Validate parameters
-        if (nodeName.empty()) {
-            throw std::invalid_argument("Node name cannot be empty");
-        }
-        
-        std::cerr << "[PipelineBuilder] Creating app_des node:" << std::endl;
-        std::cerr << "  Name: '" << nodeName << "'" << std::endl;
-        std::cerr << "  Channel: " << channel << std::endl;
-        std::cerr << "  NOTE: app_des node is used for frame capture via callback hook" << std::endl;
-        
-        auto node = std::make_shared<cvedix_nodes::cvedix_app_des_node>(
-            nodeName,
-            channel
-        );
-        
-        std::cerr << "[PipelineBuilder] ✓ app_des node created successfully" << std::endl;
-        return node;
-    } catch (const std::exception& e) {
-        std::cerr << "[PipelineBuilder] Exception in createAppDesNode: " << e.what() << std::endl;
-        throw;
-    } catch (...) {
-        std::cerr << "[PipelineBuilder] Unknown exception in createAppDesNode" << std::endl;
-        throw std::runtime_error("Unknown error creating app_des node");
+    const std::string &nodeName,
+    const std::map<std::string, std::string> &params) {
+
+  try {
+    // Get channel parameter (default: 0)
+    int channel = params.count("channel") ? std::stoi(params.at("channel")) : 0;
+
+    // Validate parameters
+    if (nodeName.empty()) {
+      throw std::invalid_argument("Node name cannot be empty");
     }
+
+    std::cerr << "[PipelineBuilder] Creating app_des node:" << std::endl;
+    std::cerr << "  Name: '" << nodeName << "'" << std::endl;
+    std::cerr << "  Channel: " << channel << std::endl;
+    std::cerr
+        << "  NOTE: app_des node is used for frame capture via callback hook"
+        << std::endl;
+
+    auto node =
+        std::make_shared<cvedix_nodes::cvedix_app_des_node>(nodeName, channel);
+
+    std::cerr << "[PipelineBuilder] ✓ app_des node created successfully"
+              << std::endl;
+    return node;
+  } catch (const std::exception &e) {
+    std::cerr << "[PipelineBuilder] Exception in createAppDesNode: " << e.what()
+              << std::endl;
+    throw;
+  } catch (...) {
+    std::cerr << "[PipelineBuilder] Unknown exception in createAppDesNode"
+              << std::endl;
+    throw std::runtime_error("Unknown error creating app_des node");
+  }
 }
 
-std::shared_ptr<cvedix_nodes::cvedix_node> PipelineBuilder::createScreenDestinationNode(
-    const std::string& nodeName,
-    const std::map<std::string, std::string>& params) {
-    
-    try {
-        // Check if screen_des is explicitly disabled via parameter
-        if (params.count("enabled")) {
-            std::string enabledStr = params.at("enabled");
-            // Convert to lowercase for case-insensitive comparison
-            std::transform(enabledStr.begin(), enabledStr.end(), enabledStr.begin(), ::tolower);
-            if (enabledStr == "false" || enabledStr == "0" || enabledStr == "no" || enabledStr == "off") {
-                std::cerr << "[PipelineBuilder] screen_des node skipped: Explicitly disabled via parameter (enabled=false)" << std::endl;
-                return nullptr;
-            }
-        }
-        
-        // Check if display is available
-        const char *display = std::getenv("DISPLAY");
-        const char *wayland = std::getenv("WAYLAND_DISPLAY");
-        
-        if (!display && !wayland) {
-            std::cerr << "[PipelineBuilder] screen_des node skipped: No DISPLAY or WAYLAND_DISPLAY environment variable found" << std::endl;
-            std::cerr << "[PipelineBuilder] NOTE: screen_des requires a display to work. Set DISPLAY or WAYLAND_DISPLAY to enable." << std::endl;
-            return nullptr;
-        }
-        
-        // Additional check for X11 display
-        if (display && display[0] != '\0') {
-            std::string displayStr(display);
-            if (displayStr[0] == ':') {
-                std::string socketPath = "/tmp/.X11-unix/X" + displayStr.substr(1);
-                // Check if X11 socket exists (basic check)
-                std::ifstream socketFile(socketPath);
-                if (!socketFile.good()) {
-                    std::cerr << "[PipelineBuilder] screen_des node skipped: X11 socket not found at " << socketPath << std::endl;
-                    std::cerr << "[PipelineBuilder] NOTE: X server may not be running or accessible" << std::endl;
-                    return nullptr;
-                }
-            }
-        }
-        
-        int channel = params.count("channel") ? std::stoi(params.at("channel")) : 0;
-        
-        if (nodeName.empty()) {
-            throw std::invalid_argument("Node name cannot be empty");
-        }
-        
-        std::cerr << "[PipelineBuilder] Creating screen destination node:" << std::endl;
-        std::cerr << "  Name: '" << nodeName << "'" << std::endl;
-        std::cerr << "  Channel: " << channel << std::endl;
-        
-        auto node = std::make_shared<cvedix_nodes::cvedix_screen_des_node>(
-            nodeName,
-            channel
-        );
-        
-        std::cerr << "[PipelineBuilder] ✓ Screen destination node created successfully" << std::endl;
-        return node;
-    } catch (const std::exception& e) {
-        std::cerr << "[PipelineBuilder] Exception in createScreenDestinationNode: " << e.what() << std::endl;
-        std::cerr << "[PipelineBuilder] screen_des node will be skipped due to error" << std::endl;
-        return nullptr; // Return nullptr instead of throwing to allow pipeline to continue
+std::shared_ptr<cvedix_nodes::cvedix_node>
+PipelineBuilder::createScreenDestinationNode(
+    const std::string &nodeName,
+    const std::map<std::string, std::string> &params) {
+
+  try {
+    // Check if screen_des is explicitly disabled via parameter
+    if (params.count("enabled")) {
+      std::string enabledStr = params.at("enabled");
+      // Convert to lowercase for case-insensitive comparison
+      std::transform(enabledStr.begin(), enabledStr.end(), enabledStr.begin(),
+                     ::tolower);
+      if (enabledStr == "false" || enabledStr == "0" || enabledStr == "no" ||
+          enabledStr == "off") {
+        std::cerr << "[PipelineBuilder] screen_des node skipped: Explicitly "
+                     "disabled via parameter (enabled=false)"
+                  << std::endl;
+        return nullptr;
+      }
     }
+
+    // Check if display is available
+    const char *display = std::getenv("DISPLAY");
+    const char *wayland = std::getenv("WAYLAND_DISPLAY");
+
+    if (!display && !wayland) {
+      std::cerr << "[PipelineBuilder] screen_des node skipped: No DISPLAY or "
+                   "WAYLAND_DISPLAY environment variable found"
+                << std::endl;
+      std::cerr << "[PipelineBuilder] NOTE: screen_des requires a display to "
+                   "work. Set DISPLAY or WAYLAND_DISPLAY to enable."
+                << std::endl;
+      return nullptr;
+    }
+
+    // Additional check for X11 display
+    if (display && display[0] != '\0') {
+      std::string displayStr(display);
+      if (displayStr[0] == ':') {
+        std::string socketPath = "/tmp/.X11-unix/X" + displayStr.substr(1);
+        // Check if X11 socket exists (basic check)
+        std::ifstream socketFile(socketPath);
+        if (!socketFile.good()) {
+          std::cerr << "[PipelineBuilder] screen_des node skipped: X11 socket "
+                       "not found at "
+                    << socketPath << std::endl;
+          std::cerr << "[PipelineBuilder] NOTE: X server may not be running or "
+                       "accessible"
+                    << std::endl;
+          return nullptr;
+        }
+      }
+    }
+
+    int channel = params.count("channel") ? std::stoi(params.at("channel")) : 0;
+
+    if (nodeName.empty()) {
+      throw std::invalid_argument("Node name cannot be empty");
+    }
+
+    std::cerr << "[PipelineBuilder] Creating screen destination node:"
+              << std::endl;
+    std::cerr << "  Name: '" << nodeName << "'" << std::endl;
+    std::cerr << "  Channel: " << channel << std::endl;
+
+    auto node = std::make_shared<cvedix_nodes::cvedix_screen_des_node>(nodeName,
+                                                                       channel);
+
+    std::cerr
+        << "[PipelineBuilder] ✓ Screen destination node created successfully"
+        << std::endl;
+    return node;
+  } catch (const std::exception &e) {
+    std::cerr << "[PipelineBuilder] Exception in createScreenDestinationNode: "
+              << e.what() << std::endl;
+    std::cerr
+        << "[PipelineBuilder] screen_des node will be skipped due to error"
+        << std::endl;
+    return nullptr; // Return nullptr instead of throwing to allow pipeline to
+                    // continue
+  }
 }
 
 std::shared_ptr<cvedix_nodes::cvedix_node> PipelineBuilder::createSORTTrackNode(
-    const std::string& nodeName,
-    const std::map<std::string, std::string>& params) {
-    
-    try {
-        if (nodeName.empty()) {
-            throw std::invalid_argument("Node name cannot be empty");
-        }
-        
-        std::cerr << "[PipelineBuilder] Creating SORT tracker node:" << std::endl;
-        std::cerr << "  Name: '" << nodeName << "'" << std::endl;
-        
-        auto node = std::make_shared<cvedix_nodes::cvedix_sort_track_node>(nodeName);
-        
-        std::cerr << "[PipelineBuilder] ✓ SORT tracker node created successfully" << std::endl;
-        return node;
-    } catch (const std::exception& e) {
-        std::cerr << "[PipelineBuilder] Exception in createSORTTrackNode: " << e.what() << std::endl;
-        throw;
+    const std::string &nodeName,
+    const std::map<std::string, std::string> &params) {
+
+  try {
+    if (nodeName.empty()) {
+      throw std::invalid_argument("Node name cannot be empty");
     }
+
+    std::cerr << "[PipelineBuilder] Creating SORT tracker node:" << std::endl;
+    std::cerr << "  Name: '" << nodeName << "'" << std::endl;
+
+    auto node =
+        std::make_shared<cvedix_nodes::cvedix_sort_track_node>(nodeName);
+
+    std::cerr << "[PipelineBuilder] ✓ SORT tracker node created successfully"
+              << std::endl;
+    return node;
+  } catch (const std::exception &e) {
+    std::cerr << "[PipelineBuilder] Exception in createSORTTrackNode: "
+              << e.what() << std::endl;
+    throw;
+  }
 }
 
-std::shared_ptr<cvedix_nodes::cvedix_node> PipelineBuilder::createBACrosslineNode(
-    const std::string& nodeName,
-    const std::map<std::string, std::string>& params) {
-    
-    try {
-        if (nodeName.empty()) {
-            throw std::invalid_argument("Node name cannot be empty");
-        }
-        
-        // Parse lines from parameters
-        // Expected format: "channel:start_x,start_y:end_x,end_y" or JSON-like format
-        // For simplicity, we'll support a format like: "0:0,250:700,220"
-        // Or use separate parameters: line_channel, line_start_x, line_start_y, line_end_x, line_end_y
-        std::map<int, cvedix_objects::cvedix_line> lines;
-        
-        // Check if we have line parameters
-        if (params.count("line_channel") && params.count("line_start_x") && 
-            params.count("line_start_y") && params.count("line_end_x") && params.count("line_end_y")) {
-            int channel = std::stoi(params.at("line_channel"));
-            int start_x = std::stoi(params.at("line_start_x"));
-            int start_y = std::stoi(params.at("line_start_y"));
-            int end_x = std::stoi(params.at("line_end_x"));
-            int end_y = std::stoi(params.at("line_end_y"));
-            
-            cvedix_objects::cvedix_point start(start_x, start_y);
-            cvedix_objects::cvedix_point end(end_x, end_y);
-            lines[channel] = cvedix_objects::cvedix_line(start, end);
-        } else {
-            // Default line for channel 0 (from sample)
-            cvedix_objects::cvedix_point start(0, 250);
-            cvedix_objects::cvedix_point end(700, 220);
-            lines[0] = cvedix_objects::cvedix_line(start, end);
-            std::cerr << "[PipelineBuilder] Using default line configuration (channel 0: (0,250) -> (700,220))" << std::endl;
-        }
-        
-        std::cerr << "[PipelineBuilder] Creating BA crossline node:" << std::endl;
-        std::cerr << "  Name: '" << nodeName << "'" << std::endl;
-        std::cerr << "  Lines configured for " << lines.size() << " channel(s)" << std::endl;
-        
-        auto node = std::make_shared<cvedix_nodes::cvedix_ba_crossline_node>(nodeName, lines);
-        
-        std::cerr << "[PipelineBuilder] ✓ BA crossline node created successfully" << std::endl;
-        return node;
-    } catch (const std::exception& e) {
-        std::cerr << "[PipelineBuilder] Exception in createBACrosslineNode: " << e.what() << std::endl;
-        throw;
+std::shared_ptr<cvedix_nodes::cvedix_node>
+PipelineBuilder::createBACrosslineNode(
+    const std::string &nodeName,
+    const std::map<std::string, std::string> &params) {
+
+  try {
+    if (nodeName.empty()) {
+      throw std::invalid_argument("Node name cannot be empty");
     }
+
+    // Parse lines from parameters
+    // Expected format: "channel:start_x,start_y:end_x,end_y" or JSON-like
+    // format For simplicity, we'll support a format like: "0:0,250:700,220" Or
+    // use separate parameters: line_channel, line_start_x, line_start_y,
+    // line_end_x, line_end_y
+    std::map<int, cvedix_objects::cvedix_line> lines;
+
+    // Check if we have line parameters
+    if (params.count("line_channel") && params.count("line_start_x") &&
+        params.count("line_start_y") && params.count("line_end_x") &&
+        params.count("line_end_y")) {
+      int channel = std::stoi(params.at("line_channel"));
+      int start_x = std::stoi(params.at("line_start_x"));
+      int start_y = std::stoi(params.at("line_start_y"));
+      int end_x = std::stoi(params.at("line_end_x"));
+      int end_y = std::stoi(params.at("line_end_y"));
+
+      cvedix_objects::cvedix_point start(start_x, start_y);
+      cvedix_objects::cvedix_point end(end_x, end_y);
+      lines[channel] = cvedix_objects::cvedix_line(start, end);
+    } else {
+      // Default line for channel 0 (from sample)
+      cvedix_objects::cvedix_point start(0, 250);
+      cvedix_objects::cvedix_point end(700, 220);
+      lines[0] = cvedix_objects::cvedix_line(start, end);
+      std::cerr << "[PipelineBuilder] Using default line configuration "
+                   "(channel 0: (0,250) -> (700,220))"
+                << std::endl;
+    }
+
+    std::cerr << "[PipelineBuilder] Creating BA crossline node:" << std::endl;
+    std::cerr << "  Name: '" << nodeName << "'" << std::endl;
+    std::cerr << "  Lines configured for " << lines.size() << " channel(s)"
+              << std::endl;
+
+    auto node = std::make_shared<cvedix_nodes::cvedix_ba_crossline_node>(
+        nodeName, lines);
+
+    std::cerr << "[PipelineBuilder] ✓ BA crossline node created successfully"
+              << std::endl;
+    return node;
+  } catch (const std::exception &e) {
+    std::cerr << "[PipelineBuilder] Exception in createBACrosslineNode: "
+              << e.what() << std::endl;
+    throw;
+  }
 }
 
 std::shared_ptr<cvedix_nodes::cvedix_node> PipelineBuilder::createOSDv3Node(
-    const std::string& nodeName,
-    const std::map<std::string, std::string>& params,
-    const CreateInstanceRequest& req) {
-    
-    try {
-        if (nodeName.empty()) {
-            throw std::invalid_argument("Node name cannot be empty");
-        }
-        
-        // Priority 1: Check additionalParams for FONT_PATH (highest priority - allows runtime override)
-        std::string fontPath = "";
-        auto it = req.additionalParams.find("FONT_PATH");
-        if (it != req.additionalParams.end() && !it->second.empty()) {
-            fontPath = it->second;
-            std::cerr << "[PipelineBuilder] Using FONT_PATH from additionalParams: " << fontPath << std::endl;
-        }
-        
-        // Priority 2: Get font_path from params if not in additionalParams
-        if (fontPath.empty() && params.count("font_path") && !params.at("font_path").empty()) {
-            fontPath = params.at("font_path");
-            
-            // Check if font file exists, try to resolve path
-            fs::path fontFilePath(fontPath);
-            
-            // If relative path, try to resolve it
-            if (!fontFilePath.is_absolute()) {
-                // Try current directory first
-                if (fs::exists(fontPath)) {
-                    fontPath = fs::absolute(fontPath).string();
-                } else {
-                    // Try with CVEDIX_DATA_ROOT or CVEDIX_SDK_ROOT
-                    const char* dataRoot = std::getenv("CVEDIX_DATA_ROOT");
-                    if (dataRoot && strlen(dataRoot) > 0) {
-                        std::string resolvedPath = std::string(dataRoot);
-                        if (resolvedPath.back() != '/') resolvedPath += '/';
-                        resolvedPath += fontPath;
-                        if (fs::exists(resolvedPath)) {
-                            fontPath = resolvedPath;
-                        }
-                    }
-                    
-                    // Try CVEDIX_SDK_ROOT
-                    if (!fs::exists(fontPath)) {
-                        const char* sdkRoot = std::getenv("CVEDIX_SDK_ROOT");
-                        if (sdkRoot && strlen(sdkRoot) > 0) {
-                            std::string resolvedPath = std::string(sdkRoot);
-                            if (resolvedPath.back() != '/') resolvedPath += '/';
-                            resolvedPath += "cvedix_data/" + fontPath;
-                            if (fs::exists(resolvedPath)) {
-                                fontPath = resolvedPath;
-                            }
-                        }
-                    }
-                }
-            }
-            
-            // Check if font file exists after resolution
-            if (!fs::exists(fontPath)) {
-                std::cerr << "[PipelineBuilder] ⚠ WARNING: Font file not found: '" << params.at("font_path") << "'" << std::endl;
-                std::cerr << "[PipelineBuilder] ⚠ Resolved path: '" << fontPath << "'" << std::endl;
-                std::cerr << "[PipelineBuilder] ⚠ Trying default font from environment..." << std::endl;
-                fontPath = ""; // Will try default font below
-            }
-        }
-        
-        // Priority 3: If no font_path in params/additionalParams or font file not found, try default font
-        if (fontPath.empty()) {
-            // Try default font from /opt/edge_ai_api/fonts/ first
-            std::string defaultFontPath = "/opt/edge_ai_api/fonts/NotoSansCJKsc-Medium.otf";
-            if (fs::exists(defaultFontPath)) {
-                fontPath = defaultFontPath;
-                std::cerr << "[PipelineBuilder] Using default font from /opt/edge_ai_api/fonts/" << std::endl;
-            } else {
-                // Fallback to environment variable resolution
-                fontPath = EnvConfig::resolveDefaultFontPath();
-            }
-        }
-        
-        std::cerr << "[PipelineBuilder] Creating OSD v3 node:" << std::endl;
-        std::cerr << "  Name: '" << nodeName << "'" << std::endl;
-        if (!fontPath.empty()) {
-            std::cerr << "  Font path: '" << fontPath << "'" << std::endl;
+    const std::string &nodeName,
+    const std::map<std::string, std::string> &params,
+    const CreateInstanceRequest &req) {
+
+  try {
+    if (nodeName.empty()) {
+      throw std::invalid_argument("Node name cannot be empty");
+    }
+
+    // Priority 1: Check additionalParams for FONT_PATH (highest priority -
+    // allows runtime override)
+    std::string fontPath = "";
+    auto it = req.additionalParams.find("FONT_PATH");
+    if (it != req.additionalParams.end() && !it->second.empty()) {
+      fontPath = it->second;
+      std::cerr << "[PipelineBuilder] Using FONT_PATH from additionalParams: "
+                << fontPath << std::endl;
+    }
+
+    // Priority 2: Get font_path from params if not in additionalParams
+    if (fontPath.empty() && params.count("font_path") &&
+        !params.at("font_path").empty()) {
+      fontPath = params.at("font_path");
+
+      // Check if font file exists, try to resolve path
+      fs::path fontFilePath(fontPath);
+
+      // If relative path, try to resolve it
+      if (!fontFilePath.is_absolute()) {
+        // Try current directory first
+        if (fs::exists(fontPath)) {
+          fontPath = fs::absolute(fontPath).string();
         } else {
-            std::cerr << "  Font: Using default font" << std::endl;
-        }
-        
-        // Try to create node with font path, if it fails, fallback to default font
-        std::shared_ptr<cvedix_nodes::cvedix_node> node;
-        try {
-            node = std::make_shared<cvedix_nodes::cvedix_osd_node_v3>(nodeName, fontPath);
-            std::cerr << "[PipelineBuilder] ✓ OSD v3 node created successfully" << std::endl;
-            return node;
-        } catch (const cv::Exception& e) {
-            // OpenCV exception (likely font loading failed)
-            if (!fontPath.empty()) {
-                std::cerr << "[PipelineBuilder] ⚠ WARNING: Failed to load font from '" << fontPath 
-                         << "': " << e.what() << std::endl;
-                std::cerr << "[PipelineBuilder] ⚠ Falling back to default font (no Chinese/Unicode support)" << std::endl;
-                // Try again with empty font path (default font)
-                try {
-                    node = std::make_shared<cvedix_nodes::cvedix_osd_node_v3>(nodeName, "");
-                    std::cerr << "[PipelineBuilder] ✓ OSD v3 node created successfully with default font" << std::endl;
-                    return node;
-                } catch (const std::exception& e2) {
-                    std::cerr << "[PipelineBuilder] ✗ ERROR: Failed to create OSD v3 node even with default font: " 
-                             << e2.what() << std::endl;
-                    throw;
-                }
-            } else {
-                // Already using default font, rethrow
-                throw;
+          // Try with CVEDIX_DATA_ROOT or CVEDIX_SDK_ROOT
+          const char *dataRoot = std::getenv("CVEDIX_DATA_ROOT");
+          if (dataRoot && strlen(dataRoot) > 0) {
+            std::string resolvedPath = std::string(dataRoot);
+            if (resolvedPath.back() != '/')
+              resolvedPath += '/';
+            resolvedPath += fontPath;
+            if (fs::exists(resolvedPath)) {
+              fontPath = resolvedPath;
             }
-        } catch (const std::exception& e) {
-            // Other exceptions
-            std::cerr << "[PipelineBuilder] Exception in createOSDv3Node: " << e.what() << std::endl;
-            throw;
-        }
-    } catch (const std::exception& e) {
-        std::cerr << "[PipelineBuilder] Exception in createOSDv3Node: " << e.what() << std::endl;
-        throw;
-    }
-}
+          }
 
-std::shared_ptr<cvedix_nodes::cvedix_node> PipelineBuilder::createBACrosslineOSDNode(
-    const std::string& nodeName,
-    const std::map<std::string, std::string>& params) {
-    
+          // Try CVEDIX_SDK_ROOT
+          if (!fs::exists(fontPath)) {
+            const char *sdkRoot = std::getenv("CVEDIX_SDK_ROOT");
+            if (sdkRoot && strlen(sdkRoot) > 0) {
+              std::string resolvedPath = std::string(sdkRoot);
+              if (resolvedPath.back() != '/')
+                resolvedPath += '/';
+              resolvedPath += "cvedix_data/" + fontPath;
+              if (fs::exists(resolvedPath)) {
+                fontPath = resolvedPath;
+              }
+            }
+          }
+        }
+      }
+
+      // Check if font file exists after resolution
+      if (!fs::exists(fontPath)) {
+        std::cerr << "[PipelineBuilder] ⚠ WARNING: Font file not found: '"
+                  << params.at("font_path") << "'" << std::endl;
+        std::cerr << "[PipelineBuilder] ⚠ Resolved path: '" << fontPath << "'"
+                  << std::endl;
+        std::cerr
+            << "[PipelineBuilder] ⚠ Trying default font from environment..."
+            << std::endl;
+        fontPath = ""; // Will try default font below
+      }
+    }
+
+    // Priority 3: If no font_path in params/additionalParams or font file not
+    // found, try default font
+    if (fontPath.empty()) {
+      // Try default font from /opt/edge_ai_api/fonts/ first
+      std::string defaultFontPath =
+          "/opt/edge_ai_api/fonts/NotoSansCJKsc-Medium.otf";
+      if (fs::exists(defaultFontPath)) {
+        fontPath = defaultFontPath;
+        std::cerr << "[PipelineBuilder] Using default font from "
+                     "/opt/edge_ai_api/fonts/"
+                  << std::endl;
+      } else {
+        // Fallback to environment variable resolution
+        fontPath = EnvConfig::resolveDefaultFontPath();
+      }
+    }
+
+    std::cerr << "[PipelineBuilder] Creating OSD v3 node:" << std::endl;
+    std::cerr << "  Name: '" << nodeName << "'" << std::endl;
+    if (!fontPath.empty()) {
+      std::cerr << "  Font path: '" << fontPath << "'" << std::endl;
+    } else {
+      std::cerr << "  Font: Using default font" << std::endl;
+    }
+
+    // Try to create node with font path, if it fails, fallback to default font
+    std::shared_ptr<cvedix_nodes::cvedix_node> node;
     try {
-        if (nodeName.empty()) {
-            throw std::invalid_argument("Node name cannot be empty");
+      node = std::make_shared<cvedix_nodes::cvedix_osd_node_v3>(nodeName,
+                                                                fontPath);
+      std::cerr << "[PipelineBuilder] ✓ OSD v3 node created successfully"
+                << std::endl;
+      return node;
+    } catch (const cv::Exception &e) {
+      // OpenCV exception (likely font loading failed)
+      if (!fontPath.empty()) {
+        std::cerr << "[PipelineBuilder] ⚠ WARNING: Failed to load font from '"
+                  << fontPath << "': " << e.what() << std::endl;
+        std::cerr << "[PipelineBuilder] ⚠ Falling back to default font (no "
+                     "Chinese/Unicode support)"
+                  << std::endl;
+        // Try again with empty font path (default font)
+        try {
+          node =
+              std::make_shared<cvedix_nodes::cvedix_osd_node_v3>(nodeName, "");
+          std::cerr << "[PipelineBuilder] ✓ OSD v3 node created successfully "
+                       "with default font"
+                    << std::endl;
+          return node;
+        } catch (const std::exception &e2) {
+          std::cerr << "[PipelineBuilder] ✗ ERROR: Failed to create OSD v3 "
+                       "node even with default font: "
+                    << e2.what() << std::endl;
+          throw;
         }
-        
-        std::cerr << "[PipelineBuilder] Creating BA crossline OSD node:" << std::endl;
-        std::cerr << "  Name: '" << nodeName << "'" << std::endl;
-        
-        auto node = std::make_shared<cvedix_nodes::cvedix_ba_crossline_osd_node>(nodeName);
-        
-        std::cerr << "[PipelineBuilder] ✓ BA crossline OSD node created successfully" << std::endl;
-        return node;
-    } catch (const std::exception& e) {
-        std::cerr << "[PipelineBuilder] Exception in createBACrosslineOSDNode: " << e.what() << std::endl;
+      } else {
+        // Already using default font, rethrow
         throw;
+      }
+    } catch (const std::exception &e) {
+      // Other exceptions
+      std::cerr << "[PipelineBuilder] Exception in createOSDv3Node: "
+                << e.what() << std::endl;
+      throw;
     }
+  } catch (const std::exception &e) {
+    std::cerr << "[PipelineBuilder] Exception in createOSDv3Node: " << e.what()
+              << std::endl;
+    throw;
+  }
 }
 
-std::string PipelineBuilder::getFilePath(const CreateInstanceRequest& req) const {
-    // Get file path from additionalParams
-    auto it = req.additionalParams.find("FILE_PATH");
-    if (it != req.additionalParams.end() && !it->second.empty()) {
-        std::cerr << "[PipelineBuilder] File path from request additionalParams: '" << it->second << "'" << std::endl;
-        return it->second;
+std::shared_ptr<cvedix_nodes::cvedix_node>
+PipelineBuilder::createBACrosslineOSDNode(
+    const std::string &nodeName,
+    const std::map<std::string, std::string> &params) {
+
+  try {
+    if (nodeName.empty()) {
+      throw std::invalid_argument("Node name cannot be empty");
     }
-    
-    // Default fallback: Try production path first, then development path
-    std::string productionPath = "/opt/edge_ai_api/videos/face.mp4";
-    if (fs::exists(productionPath)) {
-        std::cerr << "[PipelineBuilder] Using default production file path: " << productionPath << std::endl;
-        return productionPath;
-    }
-    
-    // Development fallback (will not exist in production)
-    std::cerr << "[PipelineBuilder] ⚠ WARNING: Using development default file path (./cvedix_data/test_video/face.mp4)" << std::endl;
-    std::cerr << "[PipelineBuilder] ℹ NOTE: In production, provide 'FILE_PATH' in request body or upload videos to /opt/edge_ai_api/videos/" << std::endl;
-    return "./cvedix_data/test_video/face.mp4";
+
+    std::cerr << "[PipelineBuilder] Creating BA crossline OSD node:"
+              << std::endl;
+    std::cerr << "  Name: '" << nodeName << "'" << std::endl;
+
+    auto node =
+        std::make_shared<cvedix_nodes::cvedix_ba_crossline_osd_node>(nodeName);
+
+    std::cerr
+        << "[PipelineBuilder] ✓ BA crossline OSD node created successfully"
+        << std::endl;
+    return node;
+  } catch (const std::exception &e) {
+    std::cerr << "[PipelineBuilder] Exception in createBACrosslineOSDNode: "
+              << e.what() << std::endl;
+    throw;
+  }
 }
 
-std::string PipelineBuilder::getRTMPUrl(const CreateInstanceRequest& req) const {
-    // Helper function to trim whitespace from string
-    auto trim = [](const std::string& str) -> std::string {
-        if (str.empty()) return str;
-        size_t first = str.find_first_not_of(" \t\n\r\f\v");
-        if (first == std::string::npos) return "";
-        size_t last = str.find_last_not_of(" \t\n\r\f\v");
-        return str.substr(first, (last - first + 1));
-    };
-    
-    // Get RTMP URL from additionalParams - check RTMP_DES_URL first (new format), then RTMP_URL (backward compatibility)
-    auto desIt = req.additionalParams.find("RTMP_DES_URL");
-    if (desIt != req.additionalParams.end() && !desIt->second.empty()) {
-        std::string trimmed = trim(desIt->second);
-        std::cerr << "[PipelineBuilder] RTMP URL from request additionalParams (RTMP_DES_URL): '" << trimmed << "'" << std::endl;
-        if (!trimmed.empty()) {
-            return trimmed;
-        }
+std::string
+PipelineBuilder::getFilePath(const CreateInstanceRequest &req) const {
+  // Get file path from additionalParams
+  auto it = req.additionalParams.find("FILE_PATH");
+  if (it != req.additionalParams.end() && !it->second.empty()) {
+    std::cerr << "[PipelineBuilder] File path from request additionalParams: '"
+              << it->second << "'" << std::endl;
+    return it->second;
+  }
+
+  // Default fallback: Try production path first, then development path
+  std::string productionPath = "/opt/edge_ai_api/videos/face.mp4";
+  if (fs::exists(productionPath)) {
+    std::cerr << "[PipelineBuilder] Using default production file path: "
+              << productionPath << std::endl;
+    return productionPath;
+  }
+
+  // Development fallback (will not exist in production)
+  std::cerr << "[PipelineBuilder] ⚠ WARNING: Using development default file "
+               "path (./cvedix_data/test_video/face.mp4)"
+            << std::endl;
+  std::cerr << "[PipelineBuilder] ℹ NOTE: In production, provide 'FILE_PATH' "
+               "in request body or upload videos to /opt/edge_ai_api/videos/"
+            << std::endl;
+  return "./cvedix_data/test_video/face.mp4";
+}
+
+std::string
+PipelineBuilder::getRTMPUrl(const CreateInstanceRequest &req) const {
+  // Helper function to trim whitespace from string
+  auto trim = [](const std::string &str) -> std::string {
+    if (str.empty())
+      return str;
+    size_t first = str.find_first_not_of(" \t\n\r\f\v");
+    if (first == std::string::npos)
+      return "";
+    size_t last = str.find_last_not_of(" \t\n\r\f\v");
+    return str.substr(first, (last - first + 1));
+  };
+
+  // Get RTMP URL from additionalParams - check RTMP_DES_URL first (new format),
+  // then RTMP_URL (backward compatibility)
+  auto desIt = req.additionalParams.find("RTMP_DES_URL");
+  if (desIt != req.additionalParams.end() && !desIt->second.empty()) {
+    std::string trimmed = trim(desIt->second);
+    std::cerr << "[PipelineBuilder] RTMP URL from request additionalParams "
+                 "(RTMP_DES_URL): '"
+              << trimmed << "'" << std::endl;
+    if (!trimmed.empty()) {
+      return trimmed;
     }
-    
-    // Fallback to RTMP_URL for backward compatibility
-    auto it = req.additionalParams.find("RTMP_URL");
-    if (it != req.additionalParams.end() && !it->second.empty()) {
-        std::string trimmed = trim(it->second);
-        std::cerr << "[PipelineBuilder] RTMP URL from request additionalParams (RTMP_URL): '" << trimmed << "'" << std::endl;
-        if (!trimmed.empty()) {
-            return trimmed;
-        }
+  }
+
+  // Fallback to RTMP_URL for backward compatibility
+  auto it = req.additionalParams.find("RTMP_URL");
+  if (it != req.additionalParams.end() && !it->second.empty()) {
+    std::string trimmed = trim(it->second);
+    std::cerr << "[PipelineBuilder] RTMP URL from request additionalParams "
+                 "(RTMP_URL): '"
+              << trimmed << "'" << std::endl;
+    if (!trimmed.empty()) {
+      return trimmed;
     }
-    
-    // Return empty string if RTMP URL is not provided (allows skipping RTMP output)
-    std::cerr << "[PipelineBuilder] RTMP URL not provided, RTMP destination node will be skipped" << std::endl;
-    std::cerr << "[PipelineBuilder] NOTE: To enable RTMP output, provide 'RTMP_DES_URL' or 'RTMP_URL' in request body additionalParams" << std::endl;
-    return "";
+  }
+
+  // Return empty string if RTMP URL is not provided (allows skipping RTMP
+  // output)
+  std::cerr << "[PipelineBuilder] RTMP URL not provided, RTMP destination node "
+               "will be skipped"
+            << std::endl;
+  std::cerr << "[PipelineBuilder] NOTE: To enable RTMP output, provide "
+               "'RTMP_DES_URL' or 'RTMP_URL' in request body additionalParams"
+            << std::endl;
+  return "";
 }
 
 // ========== TensorRT YOLOv8 Nodes Implementation ==========
 
 #ifdef CVEDIX_WITH_TRT
-std::shared_ptr<cvedix_nodes::cvedix_node> PipelineBuilder::createTRTYOLOv8DetectorNode(
-    const std::string& nodeName,
-    const std::map<std::string, std::string>& params,
-    const CreateInstanceRequest& req) {
-    
-    try {
-        std::string modelPath = params.count("model_path") ? params.at("model_path") : "";
-        std::string labelsPath = params.count("labels_path") ? params.at("labels_path") : "";
-        
-        // Get from additionalParams if not in params
-        if (modelPath.empty()) {
-            auto it = req.additionalParams.find("MODEL_PATH");
-            if (it != req.additionalParams.end() && !it->second.empty()) {
-                modelPath = it->second;
-            }
-        }
-        if (labelsPath.empty()) {
-            auto it = req.additionalParams.find("LABELS_PATH");
-            if (it != req.additionalParams.end() && !it->second.empty()) {
-                labelsPath = it->second;
-            }
-        }
-        
-        if (nodeName.empty()) {
-            throw std::invalid_argument("Node name cannot be empty");
-        }
-        if (modelPath.empty()) {
-            throw std::invalid_argument("Model path cannot be empty for TRT YOLOv8 detector");
-        }
-        
-        std::cerr << "[PipelineBuilder] Creating TRT YOLOv8 detector node:" << std::endl;
-        std::cerr << "  Name: '" << nodeName << "'" << std::endl;
-        std::cerr << "  Model path: '" << modelPath << "'" << std::endl;
-        if (!labelsPath.empty()) {
-            std::cerr << "  Labels path: '" << labelsPath << "'" << std::endl;
-        }
-        
-        auto node = std::make_shared<cvedix_nodes::cvedix_trt_yolov8_detector>(
-            nodeName,
-            modelPath,
-            labelsPath
-        );
-        
-        std::cerr << "[PipelineBuilder] ✓ TRT YOLOv8 detector node created successfully" << std::endl;
-        return node;
-    } catch (const std::exception& e) {
-        std::cerr << "[PipelineBuilder] Exception in createTRTYOLOv8DetectorNode: " << e.what() << std::endl;
-        throw;
+std::shared_ptr<cvedix_nodes::cvedix_node>
+PipelineBuilder::createTRTYOLOv8DetectorNode(
+    const std::string &nodeName,
+    const std::map<std::string, std::string> &params,
+    const CreateInstanceRequest &req) {
+
+  try {
+    std::string modelPath =
+        params.count("model_path") ? params.at("model_path") : "";
+    std::string labelsPath =
+        params.count("labels_path") ? params.at("labels_path") : "";
+
+    // Get from additionalParams if not in params
+    if (modelPath.empty()) {
+      auto it = req.additionalParams.find("MODEL_PATH");
+      if (it != req.additionalParams.end() && !it->second.empty()) {
+        modelPath = it->second;
+      }
     }
+    if (labelsPath.empty()) {
+      auto it = req.additionalParams.find("LABELS_PATH");
+      if (it != req.additionalParams.end() && !it->second.empty()) {
+        labelsPath = it->second;
+      }
+    }
+
+    if (nodeName.empty()) {
+      throw std::invalid_argument("Node name cannot be empty");
+    }
+    if (modelPath.empty()) {
+      throw std::invalid_argument(
+          "Model path cannot be empty for TRT YOLOv8 detector");
+    }
+
+    std::cerr << "[PipelineBuilder] Creating TRT YOLOv8 detector node:"
+              << std::endl;
+    std::cerr << "  Name: '" << nodeName << "'" << std::endl;
+    std::cerr << "  Model path: '" << modelPath << "'" << std::endl;
+    if (!labelsPath.empty()) {
+      std::cerr << "  Labels path: '" << labelsPath << "'" << std::endl;
+    }
+
+    auto node = std::make_shared<cvedix_nodes::cvedix_trt_yolov8_detector>(
+        nodeName, modelPath, labelsPath);
+
+    std::cerr
+        << "[PipelineBuilder] ✓ TRT YOLOv8 detector node created successfully"
+        << std::endl;
+    return node;
+  } catch (const std::exception &e) {
+    std::cerr << "[PipelineBuilder] Exception in createTRTYOLOv8DetectorNode: "
+              << e.what() << std::endl;
+    throw;
+  }
 }
 
-std::shared_ptr<cvedix_nodes::cvedix_node> PipelineBuilder::createTRTYOLOv8SegDetectorNode(
-    const std::string& nodeName,
-    const std::map<std::string, std::string>& params,
-    const CreateInstanceRequest& req) {
-    
-    try {
-        std::string modelPath = params.count("model_path") ? params.at("model_path") : "";
-        std::string labelsPath = params.count("labels_path") ? params.at("labels_path") : "";
-        
-        if (modelPath.empty()) {
-            auto it = req.additionalParams.find("MODEL_PATH");
-            if (it != req.additionalParams.end() && !it->second.empty()) {
-                modelPath = it->second;
-            }
-        }
-        if (labelsPath.empty()) {
-            auto it = req.additionalParams.find("LABELS_PATH");
-            if (it != req.additionalParams.end() && !it->second.empty()) {
-                labelsPath = it->second;
-            }
-        }
-        
-        if (nodeName.empty() || modelPath.empty()) {
-            throw std::invalid_argument("Node name and model path are required");
-        }
-        
-        std::cerr << "[PipelineBuilder] Creating TRT YOLOv8 segmentation detector node:" << std::endl;
-        std::cerr << "  Name: '" << nodeName << "'" << std::endl;
-        std::cerr << "  Model path: '" << modelPath << "'" << std::endl;
-        
-        auto node = std::make_shared<cvedix_nodes::cvedix_trt_yolov8_seg_detector>(
-            nodeName,
-            modelPath,
-            labelsPath
-        );
-        
-        std::cerr << "[PipelineBuilder] ✓ TRT YOLOv8 segmentation detector node created successfully" << std::endl;
-        return node;
-    } catch (const std::exception& e) {
-        std::cerr << "[PipelineBuilder] Exception in createTRTYOLOv8SegDetectorNode: " << e.what() << std::endl;
-        throw;
+std::shared_ptr<cvedix_nodes::cvedix_node>
+PipelineBuilder::createTRTYOLOv8SegDetectorNode(
+    const std::string &nodeName,
+    const std::map<std::string, std::string> &params,
+    const CreateInstanceRequest &req) {
+
+  try {
+    std::string modelPath =
+        params.count("model_path") ? params.at("model_path") : "";
+    std::string labelsPath =
+        params.count("labels_path") ? params.at("labels_path") : "";
+
+    if (modelPath.empty()) {
+      auto it = req.additionalParams.find("MODEL_PATH");
+      if (it != req.additionalParams.end() && !it->second.empty()) {
+        modelPath = it->second;
+      }
     }
+    if (labelsPath.empty()) {
+      auto it = req.additionalParams.find("LABELS_PATH");
+      if (it != req.additionalParams.end() && !it->second.empty()) {
+        labelsPath = it->second;
+      }
+    }
+
+    if (nodeName.empty() || modelPath.empty()) {
+      throw std::invalid_argument("Node name and model path are required");
+    }
+
+    std::cerr
+        << "[PipelineBuilder] Creating TRT YOLOv8 segmentation detector node:"
+        << std::endl;
+    std::cerr << "  Name: '" << nodeName << "'" << std::endl;
+    std::cerr << "  Model path: '" << modelPath << "'" << std::endl;
+
+    auto node = std::make_shared<cvedix_nodes::cvedix_trt_yolov8_seg_detector>(
+        nodeName, modelPath, labelsPath);
+
+    std::cerr << "[PipelineBuilder] ✓ TRT YOLOv8 segmentation detector node "
+                 "created successfully"
+              << std::endl;
+    return node;
+  } catch (const std::exception &e) {
+    std::cerr
+        << "[PipelineBuilder] Exception in createTRTYOLOv8SegDetectorNode: "
+        << e.what() << std::endl;
+    throw;
+  }
 }
 
-std::shared_ptr<cvedix_nodes::cvedix_node> PipelineBuilder::createTRTYOLOv8PoseDetectorNode(
-    const std::string& nodeName,
-    const std::map<std::string, std::string>& params,
-    const CreateInstanceRequest& req) {
-    
-    try {
-        std::string modelPath = params.count("model_path") ? params.at("model_path") : "";
-        if (modelPath.empty()) {
-            auto it = req.additionalParams.find("MODEL_PATH");
-            if (it != req.additionalParams.end() && !it->second.empty()) {
-                modelPath = it->second;
-            }
-        }
-        
-        if (nodeName.empty() || modelPath.empty()) {
-            throw std::invalid_argument("Node name and model path are required");
-        }
-        
-        std::cerr << "[PipelineBuilder] Creating TRT YOLOv8 pose detector node:" << std::endl;
-        std::cerr << "  Name: '" << nodeName << "'" << std::endl;
-        std::cerr << "  Model path: '" << modelPath << "'" << std::endl;
-        
-        auto node = std::make_shared<cvedix_nodes::cvedix_trt_yolov8_pose_detector>(
-            nodeName,
-            modelPath
-        );
-        
-        std::cerr << "[PipelineBuilder] ✓ TRT YOLOv8 pose detector node created successfully" << std::endl;
-        return node;
-    } catch (const std::exception& e) {
-        std::cerr << "[PipelineBuilder] Exception in createTRTYOLOv8PoseDetectorNode: " << e.what() << std::endl;
-        throw;
+std::shared_ptr<cvedix_nodes::cvedix_node>
+PipelineBuilder::createTRTYOLOv8PoseDetectorNode(
+    const std::string &nodeName,
+    const std::map<std::string, std::string> &params,
+    const CreateInstanceRequest &req) {
+
+  try {
+    std::string modelPath =
+        params.count("model_path") ? params.at("model_path") : "";
+    if (modelPath.empty()) {
+      auto it = req.additionalParams.find("MODEL_PATH");
+      if (it != req.additionalParams.end() && !it->second.empty()) {
+        modelPath = it->second;
+      }
     }
+
+    if (nodeName.empty() || modelPath.empty()) {
+      throw std::invalid_argument("Node name and model path are required");
+    }
+
+    std::cerr << "[PipelineBuilder] Creating TRT YOLOv8 pose detector node:"
+              << std::endl;
+    std::cerr << "  Name: '" << nodeName << "'" << std::endl;
+    std::cerr << "  Model path: '" << modelPath << "'" << std::endl;
+
+    auto node = std::make_shared<cvedix_nodes::cvedix_trt_yolov8_pose_detector>(
+        nodeName, modelPath);
+
+    std::cerr << "[PipelineBuilder] ✓ TRT YOLOv8 pose detector node created "
+                 "successfully"
+              << std::endl;
+    return node;
+  } catch (const std::exception &e) {
+    std::cerr
+        << "[PipelineBuilder] Exception in createTRTYOLOv8PoseDetectorNode: "
+        << e.what() << std::endl;
+    throw;
+  }
 }
 
-std::shared_ptr<cvedix_nodes::cvedix_node> PipelineBuilder::createTRTYOLOv8ClassifierNode(
-    const std::string& nodeName,
-    const std::map<std::string, std::string>& params,
-    const CreateInstanceRequest& req) {
-    
-    try {
-        std::string modelPath = params.count("model_path") ? params.at("model_path") : "";
-        std::string labelsPath = params.count("labels_path") ? params.at("labels_path") : "";
-        
-        // Parse class_ids_applied_to from params (comma-separated)
-        std::vector<int> classIdsAppliedTo;
-        if (params.count("class_ids_applied_to")) {
-            std::string idsStr = params.at("class_ids_applied_to");
-            std::istringstream iss(idsStr);
-            std::string token;
-            while (std::getline(iss, token, ',')) {
-                try {
-                    classIdsAppliedTo.push_back(std::stoi(token));
-                } catch (...) {
-                    // Ignore invalid tokens
-                }
-            }
+std::shared_ptr<cvedix_nodes::cvedix_node>
+PipelineBuilder::createTRTYOLOv8ClassifierNode(
+    const std::string &nodeName,
+    const std::map<std::string, std::string> &params,
+    const CreateInstanceRequest &req) {
+
+  try {
+    std::string modelPath =
+        params.count("model_path") ? params.at("model_path") : "";
+    std::string labelsPath =
+        params.count("labels_path") ? params.at("labels_path") : "";
+
+    // Parse class_ids_applied_to from params (comma-separated)
+    std::vector<int> classIdsAppliedTo;
+    if (params.count("class_ids_applied_to")) {
+      std::string idsStr = params.at("class_ids_applied_to");
+      std::istringstream iss(idsStr);
+      std::string token;
+      while (std::getline(iss, token, ',')) {
+        try {
+          classIdsAppliedTo.push_back(std::stoi(token));
+        } catch (...) {
+          // Ignore invalid tokens
         }
-        
-        int minWidth = params.count("min_width_applied_to") ? std::stoi(params.at("min_width_applied_to")) : 0;
-        int minHeight = params.count("min_height_applied_to") ? std::stoi(params.at("min_height_applied_to")) : 0;
-        
-        if (modelPath.empty()) {
-            auto it = req.additionalParams.find("MODEL_PATH");
-            if (it != req.additionalParams.end() && !it->second.empty()) {
-                modelPath = it->second;
-            }
-        }
-        
-        if (nodeName.empty() || modelPath.empty()) {
-            throw std::invalid_argument("Node name and model path are required");
-        }
-        
-        std::cerr << "[PipelineBuilder] Creating TRT YOLOv8 classifier node:" << std::endl;
-        std::cerr << "  Name: '" << nodeName << "'" << std::endl;
-        std::cerr << "  Model path: '" << modelPath << "'" << std::endl;
-        
-        auto node = std::make_shared<cvedix_nodes::cvedix_trt_yolov8_classifier>(
-            nodeName,
-            modelPath,
-            labelsPath,
-            classIdsAppliedTo,
-            minWidth,
-            minHeight
-        );
-        
-        std::cerr << "[PipelineBuilder] ✓ TRT YOLOv8 classifier node created successfully" << std::endl;
-        return node;
-    } catch (const std::exception& e) {
-        std::cerr << "[PipelineBuilder] Exception in createTRTYOLOv8ClassifierNode: " << e.what() << std::endl;
-        throw;
+      }
     }
+
+    int minWidth = params.count("min_width_applied_to")
+                       ? std::stoi(params.at("min_width_applied_to"))
+                       : 0;
+    int minHeight = params.count("min_height_applied_to")
+                        ? std::stoi(params.at("min_height_applied_to"))
+                        : 0;
+
+    if (modelPath.empty()) {
+      auto it = req.additionalParams.find("MODEL_PATH");
+      if (it != req.additionalParams.end() && !it->second.empty()) {
+        modelPath = it->second;
+      }
+    }
+
+    if (nodeName.empty() || modelPath.empty()) {
+      throw std::invalid_argument("Node name and model path are required");
+    }
+
+    std::cerr << "[PipelineBuilder] Creating TRT YOLOv8 classifier node:"
+              << std::endl;
+    std::cerr << "  Name: '" << nodeName << "'" << std::endl;
+    std::cerr << "  Model path: '" << modelPath << "'" << std::endl;
+
+    auto node = std::make_shared<cvedix_nodes::cvedix_trt_yolov8_classifier>(
+        nodeName, modelPath, labelsPath, classIdsAppliedTo, minWidth,
+        minHeight);
+
+    std::cerr
+        << "[PipelineBuilder] ✓ TRT YOLOv8 classifier node created successfully"
+        << std::endl;
+    return node;
+  } catch (const std::exception &e) {
+    std::cerr
+        << "[PipelineBuilder] Exception in createTRTYOLOv8ClassifierNode: "
+        << e.what() << std::endl;
+    throw;
+  }
 }
 
 // ========== TensorRT Vehicle Nodes Implementation ==========
 
-std::shared_ptr<cvedix_nodes::cvedix_node> PipelineBuilder::createTRTVehicleDetectorNode(
-    const std::string& nodeName,
-    const std::map<std::string, std::string>& params,
-    const CreateInstanceRequest& req) {
-    
-    try {
-        std::string modelPath = params.count("model_path") ? params.at("model_path") : "";
-        if (modelPath.empty()) {
-            auto it = req.additionalParams.find("MODEL_PATH");
-            if (it != req.additionalParams.end() && !it->second.empty()) {
-                modelPath = it->second;
-            }
-        }
-        
-        if (nodeName.empty() || modelPath.empty()) {
-            throw std::invalid_argument("Node name and model path are required");
-        }
-        
-        std::cerr << "[PipelineBuilder] Creating TRT vehicle detector node:" << std::endl;
-        std::cerr << "  Name: '" << nodeName << "'" << std::endl;
-        std::cerr << "  Model path: '" << modelPath << "'" << std::endl;
-        
-        auto node = std::make_shared<cvedix_nodes::cvedix_trt_vehicle_detector>(
-            nodeName,
-            modelPath
-        );
-        
-        std::cerr << "[PipelineBuilder] ✓ TRT vehicle detector node created successfully" << std::endl;
-        return node;
-    } catch (const std::exception& e) {
-        std::cerr << "[PipelineBuilder] Exception in createTRTVehicleDetectorNode: " << e.what() << std::endl;
-        throw;
+std::shared_ptr<cvedix_nodes::cvedix_node>
+PipelineBuilder::createTRTVehicleDetectorNode(
+    const std::string &nodeName,
+    const std::map<std::string, std::string> &params,
+    const CreateInstanceRequest &req) {
+
+  try {
+    std::string modelPath =
+        params.count("model_path") ? params.at("model_path") : "";
+    if (modelPath.empty()) {
+      auto it = req.additionalParams.find("MODEL_PATH");
+      if (it != req.additionalParams.end() && !it->second.empty()) {
+        modelPath = it->second;
+      }
     }
+
+    if (nodeName.empty() || modelPath.empty()) {
+      throw std::invalid_argument("Node name and model path are required");
+    }
+
+    std::cerr << "[PipelineBuilder] Creating TRT vehicle detector node:"
+              << std::endl;
+    std::cerr << "  Name: '" << nodeName << "'" << std::endl;
+    std::cerr << "  Model path: '" << modelPath << "'" << std::endl;
+
+    auto node = std::make_shared<cvedix_nodes::cvedix_trt_vehicle_detector>(
+        nodeName, modelPath);
+
+    std::cerr
+        << "[PipelineBuilder] ✓ TRT vehicle detector node created successfully"
+        << std::endl;
+    return node;
+  } catch (const std::exception &e) {
+    std::cerr << "[PipelineBuilder] Exception in createTRTVehicleDetectorNode: "
+              << e.what() << std::endl;
+    throw;
+  }
 }
 
-std::shared_ptr<cvedix_nodes::cvedix_node> PipelineBuilder::createTRTVehiclePlateDetectorNode(
-    const std::string& nodeName,
-    const std::map<std::string, std::string>& params,
-    const CreateInstanceRequest& req) {
-    
-    try {
-        std::string detModelPath = params.count("det_model_path") ? params.at("det_model_path") : "";
-        std::string recModelPath = params.count("rec_model_path") ? params.at("rec_model_path") : "";
-        
-        if (detModelPath.empty()) {
-            auto it = req.additionalParams.find("DET_MODEL_PATH");
-            if (it != req.additionalParams.end() && !it->second.empty()) {
-                detModelPath = it->second;
-            }
-        }
-        if (recModelPath.empty()) {
-            auto it = req.additionalParams.find("REC_MODEL_PATH");
-            if (it != req.additionalParams.end() && !it->second.empty()) {
-                recModelPath = it->second;
-            }
-        }
-        
-        if (nodeName.empty() || detModelPath.empty()) {
-            throw std::invalid_argument("Node name and detection model path are required");
-        }
-        
-        std::cerr << "[PipelineBuilder] Creating TRT vehicle plate detector node:" << std::endl;
-        std::cerr << "  Name: '" << nodeName << "'" << std::endl;
-        std::cerr << "  Detection model path: '" << detModelPath << "'" << std::endl;
-        if (!recModelPath.empty()) {
-            std::cerr << "  Recognition model path: '" << recModelPath << "'" << std::endl;
-        }
-        
-        auto node = std::make_shared<cvedix_nodes::cvedix_trt_vehicle_plate_detector>(
-            nodeName,
-            detModelPath,
-            recModelPath
-        );
-        
-        std::cerr << "[PipelineBuilder] ✓ TRT vehicle plate detector node created successfully" << std::endl;
-        return node;
-    } catch (const std::exception& e) {
-        std::cerr << "[PipelineBuilder] Exception in createTRTVehiclePlateDetectorNode: " << e.what() << std::endl;
-        throw;
+std::shared_ptr<cvedix_nodes::cvedix_node>
+PipelineBuilder::createTRTVehiclePlateDetectorNode(
+    const std::string &nodeName,
+    const std::map<std::string, std::string> &params,
+    const CreateInstanceRequest &req) {
+
+  try {
+    std::string detModelPath =
+        params.count("det_model_path") ? params.at("det_model_path") : "";
+    std::string recModelPath =
+        params.count("rec_model_path") ? params.at("rec_model_path") : "";
+
+    if (detModelPath.empty()) {
+      auto it = req.additionalParams.find("DET_MODEL_PATH");
+      if (it != req.additionalParams.end() && !it->second.empty()) {
+        detModelPath = it->second;
+      }
     }
+    if (recModelPath.empty()) {
+      auto it = req.additionalParams.find("REC_MODEL_PATH");
+      if (it != req.additionalParams.end() && !it->second.empty()) {
+        recModelPath = it->second;
+      }
+    }
+
+    if (nodeName.empty() || detModelPath.empty()) {
+      throw std::invalid_argument(
+          "Node name and detection model path are required");
+    }
+
+    std::cerr << "[PipelineBuilder] Creating TRT vehicle plate detector node:"
+              << std::endl;
+    std::cerr << "  Name: '" << nodeName << "'" << std::endl;
+    std::cerr << "  Detection model path: '" << detModelPath << "'"
+              << std::endl;
+    if (!recModelPath.empty()) {
+      std::cerr << "  Recognition model path: '" << recModelPath << "'"
+                << std::endl;
+    }
+
+    auto node =
+        std::make_shared<cvedix_nodes::cvedix_trt_vehicle_plate_detector>(
+            nodeName, detModelPath, recModelPath);
+
+    std::cerr << "[PipelineBuilder] ✓ TRT vehicle plate detector node created "
+                 "successfully"
+              << std::endl;
+    return node;
+  } catch (const std::exception &e) {
+    std::cerr
+        << "[PipelineBuilder] Exception in createTRTVehiclePlateDetectorNode: "
+        << e.what() << std::endl;
+    throw;
+  }
 }
 
-std::shared_ptr<cvedix_nodes::cvedix_node> PipelineBuilder::createTRTVehiclePlateDetectorV2Node(
-    const std::string& nodeName,
-    const std::map<std::string, std::string>& params,
-    const CreateInstanceRequest& req) {
-    
-    try {
-        std::string detModelPath = params.count("det_model_path") ? params.at("det_model_path") : "";
-        std::string recModelPath = params.count("rec_model_path") ? params.at("rec_model_path") : "";
-        
-        if (detModelPath.empty()) {
-            auto it = req.additionalParams.find("DET_MODEL_PATH");
-            if (it != req.additionalParams.end() && !it->second.empty()) {
-                detModelPath = it->second;
-            }
-        }
-        if (recModelPath.empty()) {
-            auto it = req.additionalParams.find("REC_MODEL_PATH");
-            if (it != req.additionalParams.end() && !it->second.empty()) {
-                recModelPath = it->second;
-            }
-        }
-        
-        if (nodeName.empty() || detModelPath.empty()) {
-            throw std::invalid_argument("Node name and detection model path are required");
-        }
-        
-        std::cerr << "[PipelineBuilder] Creating TRT vehicle plate detector v2 node:" << std::endl;
-        std::cerr << "  Name: '" << nodeName << "'" << std::endl;
-        std::cerr << "  Detection model path: '" << detModelPath << "'" << std::endl;
-        
-        auto node = std::make_shared<cvedix_nodes::cvedix_trt_vehicle_plate_detector_v2>(
-            nodeName,
-            detModelPath,
-            recModelPath
-        );
-        
-        std::cerr << "[PipelineBuilder] ✓ TRT vehicle plate detector v2 node created successfully" << std::endl;
-        return node;
-    } catch (const std::exception& e) {
-        std::cerr << "[PipelineBuilder] Exception in createTRTVehiclePlateDetectorV2Node: " << e.what() << std::endl;
-        throw;
+std::shared_ptr<cvedix_nodes::cvedix_node>
+PipelineBuilder::createTRTVehiclePlateDetectorV2Node(
+    const std::string &nodeName,
+    const std::map<std::string, std::string> &params,
+    const CreateInstanceRequest &req) {
+
+  try {
+    std::string detModelPath =
+        params.count("det_model_path") ? params.at("det_model_path") : "";
+    std::string recModelPath =
+        params.count("rec_model_path") ? params.at("rec_model_path") : "";
+
+    if (detModelPath.empty()) {
+      auto it = req.additionalParams.find("DET_MODEL_PATH");
+      if (it != req.additionalParams.end() && !it->second.empty()) {
+        detModelPath = it->second;
+      }
     }
+    if (recModelPath.empty()) {
+      auto it = req.additionalParams.find("REC_MODEL_PATH");
+      if (it != req.additionalParams.end() && !it->second.empty()) {
+        recModelPath = it->second;
+      }
+    }
+
+    if (nodeName.empty() || detModelPath.empty()) {
+      throw std::invalid_argument(
+          "Node name and detection model path are required");
+    }
+
+    std::cerr
+        << "[PipelineBuilder] Creating TRT vehicle plate detector v2 node:"
+        << std::endl;
+    std::cerr << "  Name: '" << nodeName << "'" << std::endl;
+    std::cerr << "  Detection model path: '" << detModelPath << "'"
+              << std::endl;
+
+    auto node =
+        std::make_shared<cvedix_nodes::cvedix_trt_vehicle_plate_detector_v2>(
+            nodeName, detModelPath, recModelPath);
+
+    std::cerr << "[PipelineBuilder] ✓ TRT vehicle plate detector v2 node "
+                 "created successfully"
+              << std::endl;
+    return node;
+  } catch (const std::exception &e) {
+    std::cerr << "[PipelineBuilder] Exception in "
+                 "createTRTVehiclePlateDetectorV2Node: "
+              << e.what() << std::endl;
+    throw;
+  }
 }
 
-std::shared_ptr<cvedix_nodes::cvedix_node> PipelineBuilder::createTRTVehicleColorClassifierNode(
-    const std::string& nodeName,
-    const std::map<std::string, std::string>& params,
-    const CreateInstanceRequest& req) {
-    
-    try {
-        std::string modelPath = params.count("model_path") ? params.at("model_path") : "";
-        
-        // Parse class_ids_applied_to
-        std::vector<int> classIdsAppliedTo;
-        if (params.count("class_ids_applied_to")) {
-            std::string idsStr = params.at("class_ids_applied_to");
-            std::istringstream iss(idsStr);
-            std::string token;
-            while (std::getline(iss, token, ',')) {
-                try {
-                    classIdsAppliedTo.push_back(std::stoi(token));
-                } catch (...) {}
-            }
+std::shared_ptr<cvedix_nodes::cvedix_node>
+PipelineBuilder::createTRTVehicleColorClassifierNode(
+    const std::string &nodeName,
+    const std::map<std::string, std::string> &params,
+    const CreateInstanceRequest &req) {
+
+  try {
+    std::string modelPath =
+        params.count("model_path") ? params.at("model_path") : "";
+
+    // Parse class_ids_applied_to
+    std::vector<int> classIdsAppliedTo;
+    if (params.count("class_ids_applied_to")) {
+      std::string idsStr = params.at("class_ids_applied_to");
+      std::istringstream iss(idsStr);
+      std::string token;
+      while (std::getline(iss, token, ',')) {
+        try {
+          classIdsAppliedTo.push_back(std::stoi(token));
+        } catch (...) {
         }
-        
-        int minWidth = params.count("min_width_applied_to") ? std::stoi(params.at("min_width_applied_to")) : 0;
-        int minHeight = params.count("min_height_applied_to") ? std::stoi(params.at("min_height_applied_to")) : 0;
-        
-        if (modelPath.empty()) {
-            auto it = req.additionalParams.find("MODEL_PATH");
-            if (it != req.additionalParams.end() && !it->second.empty()) {
-                modelPath = it->second;
-            }
-        }
-        
-        if (nodeName.empty() || modelPath.empty()) {
-            throw std::invalid_argument("Node name and model path are required");
-        }
-        
-        std::cerr << "[PipelineBuilder] Creating TRT vehicle color classifier node:" << std::endl;
-        std::cerr << "  Name: '" << nodeName << "'" << std::endl;
-        std::cerr << "  Model path: '" << modelPath << "'" << std::endl;
-        
-        auto node = std::make_shared<cvedix_nodes::cvedix_trt_vehicle_color_classifier>(
-            nodeName,
-            modelPath,
-            classIdsAppliedTo,
-            minWidth,
-            minHeight
-        );
-        
-        std::cerr << "[PipelineBuilder] ✓ TRT vehicle color classifier node created successfully" << std::endl;
-        return node;
-    } catch (const std::exception& e) {
-        std::cerr << "[PipelineBuilder] Exception in createTRTVehicleColorClassifierNode: " << e.what() << std::endl;
-        throw;
+      }
     }
+
+    int minWidth = params.count("min_width_applied_to")
+                       ? std::stoi(params.at("min_width_applied_to"))
+                       : 0;
+    int minHeight = params.count("min_height_applied_to")
+                        ? std::stoi(params.at("min_height_applied_to"))
+                        : 0;
+
+    if (modelPath.empty()) {
+      auto it = req.additionalParams.find("MODEL_PATH");
+      if (it != req.additionalParams.end() && !it->second.empty()) {
+        modelPath = it->second;
+      }
+    }
+
+    if (nodeName.empty() || modelPath.empty()) {
+      throw std::invalid_argument("Node name and model path are required");
+    }
+
+    std::cerr << "[PipelineBuilder] Creating TRT vehicle color classifier node:"
+              << std::endl;
+    std::cerr << "  Name: '" << nodeName << "'" << std::endl;
+    std::cerr << "  Model path: '" << modelPath << "'" << std::endl;
+
+    auto node =
+        std::make_shared<cvedix_nodes::cvedix_trt_vehicle_color_classifier>(
+            nodeName, modelPath, classIdsAppliedTo, minWidth, minHeight);
+
+    std::cerr << "[PipelineBuilder] ✓ TRT vehicle color classifier node "
+                 "created successfully"
+              << std::endl;
+    return node;
+  } catch (const std::exception &e) {
+    std::cerr << "[PipelineBuilder] Exception in "
+                 "createTRTVehicleColorClassifierNode: "
+              << e.what() << std::endl;
+    throw;
+  }
 }
 
-std::shared_ptr<cvedix_nodes::cvedix_node> PipelineBuilder::createTRTVehicleTypeClassifierNode(
-    const std::string& nodeName,
-    const std::map<std::string, std::string>& params,
-    const CreateInstanceRequest& req) {
-    
-    try {
-        std::string modelPath = params.count("model_path") ? params.at("model_path") : "";
-        
-        std::vector<int> classIdsAppliedTo;
-        if (params.count("class_ids_applied_to")) {
-            std::string idsStr = params.at("class_ids_applied_to");
-            std::istringstream iss(idsStr);
-            std::string token;
-            while (std::getline(iss, token, ',')) {
-                try {
-                    classIdsAppliedTo.push_back(std::stoi(token));
-                } catch (...) {}
-            }
+std::shared_ptr<cvedix_nodes::cvedix_node>
+PipelineBuilder::createTRTVehicleTypeClassifierNode(
+    const std::string &nodeName,
+    const std::map<std::string, std::string> &params,
+    const CreateInstanceRequest &req) {
+
+  try {
+    std::string modelPath =
+        params.count("model_path") ? params.at("model_path") : "";
+
+    std::vector<int> classIdsAppliedTo;
+    if (params.count("class_ids_applied_to")) {
+      std::string idsStr = params.at("class_ids_applied_to");
+      std::istringstream iss(idsStr);
+      std::string token;
+      while (std::getline(iss, token, ',')) {
+        try {
+          classIdsAppliedTo.push_back(std::stoi(token));
+        } catch (...) {
         }
-        
-        int minWidth = params.count("min_width_applied_to") ? std::stoi(params.at("min_width_applied_to")) : 0;
-        int minHeight = params.count("min_height_applied_to") ? std::stoi(params.at("min_height_applied_to")) : 0;
-        
-        if (modelPath.empty()) {
-            auto it = req.additionalParams.find("MODEL_PATH");
-            if (it != req.additionalParams.end() && !it->second.empty()) {
-                modelPath = it->second;
-            }
-        }
-        
-        if (nodeName.empty() || modelPath.empty()) {
-            throw std::invalid_argument("Node name and model path are required");
-        }
-        
-        std::cerr << "[PipelineBuilder] Creating TRT vehicle type classifier node:" << std::endl;
-        std::cerr << "  Name: '" << nodeName << "'" << std::endl;
-        std::cerr << "  Model path: '" << modelPath << "'" << std::endl;
-        
-        auto node = std::make_shared<cvedix_nodes::cvedix_trt_vehicle_type_classifier>(
-            nodeName,
-            modelPath,
-            classIdsAppliedTo,
-            minWidth,
-            minHeight
-        );
-        
-        std::cerr << "[PipelineBuilder] ✓ TRT vehicle type classifier node created successfully" << std::endl;
-        return node;
-    } catch (const std::exception& e) {
-        std::cerr << "[PipelineBuilder] Exception in createTRTVehicleTypeClassifierNode: " << e.what() << std::endl;
-        throw;
+      }
     }
+
+    int minWidth = params.count("min_width_applied_to")
+                       ? std::stoi(params.at("min_width_applied_to"))
+                       : 0;
+    int minHeight = params.count("min_height_applied_to")
+                        ? std::stoi(params.at("min_height_applied_to"))
+                        : 0;
+
+    if (modelPath.empty()) {
+      auto it = req.additionalParams.find("MODEL_PATH");
+      if (it != req.additionalParams.end() && !it->second.empty()) {
+        modelPath = it->second;
+      }
+    }
+
+    if (nodeName.empty() || modelPath.empty()) {
+      throw std::invalid_argument("Node name and model path are required");
+    }
+
+    std::cerr << "[PipelineBuilder] Creating TRT vehicle type classifier node:"
+              << std::endl;
+    std::cerr << "  Name: '" << nodeName << "'" << std::endl;
+    std::cerr << "  Model path: '" << modelPath << "'" << std::endl;
+
+    auto node =
+        std::make_shared<cvedix_nodes::cvedix_trt_vehicle_type_classifier>(
+            nodeName, modelPath, classIdsAppliedTo, minWidth, minHeight);
+
+    std::cerr << "[PipelineBuilder] ✓ TRT vehicle type classifier node created "
+                 "successfully"
+              << std::endl;
+    return node;
+  } catch (const std::exception &e) {
+    std::cerr
+        << "[PipelineBuilder] Exception in createTRTVehicleTypeClassifierNode: "
+        << e.what() << std::endl;
+    throw;
+  }
 }
 
-std::shared_ptr<cvedix_nodes::cvedix_node> PipelineBuilder::createTRTVehicleFeatureEncoderNode(
-    const std::string& nodeName,
-    const std::map<std::string, std::string>& params,
-    const CreateInstanceRequest& req) {
-    
-    try {
-        std::string modelPath = params.count("model_path") ? params.at("model_path") : "";
-        
-        std::vector<int> classIdsAppliedTo;
-        if (params.count("class_ids_applied_to")) {
-            std::string idsStr = params.at("class_ids_applied_to");
-            std::istringstream iss(idsStr);
-            std::string token;
-            while (std::getline(iss, token, ',')) {
-                try {
-                    classIdsAppliedTo.push_back(std::stoi(token));
-                } catch (...) {}
-            }
+std::shared_ptr<cvedix_nodes::cvedix_node>
+PipelineBuilder::createTRTVehicleFeatureEncoderNode(
+    const std::string &nodeName,
+    const std::map<std::string, std::string> &params,
+    const CreateInstanceRequest &req) {
+
+  try {
+    std::string modelPath =
+        params.count("model_path") ? params.at("model_path") : "";
+
+    std::vector<int> classIdsAppliedTo;
+    if (params.count("class_ids_applied_to")) {
+      std::string idsStr = params.at("class_ids_applied_to");
+      std::istringstream iss(idsStr);
+      std::string token;
+      while (std::getline(iss, token, ',')) {
+        try {
+          classIdsAppliedTo.push_back(std::stoi(token));
+        } catch (...) {
         }
-        
-        int minWidth = params.count("min_width_applied_to") ? std::stoi(params.at("min_width_applied_to")) : 0;
-        int minHeight = params.count("min_height_applied_to") ? std::stoi(params.at("min_height_applied_to")) : 0;
-        
-        if (modelPath.empty()) {
-            auto it = req.additionalParams.find("MODEL_PATH");
-            if (it != req.additionalParams.end() && !it->second.empty()) {
-                modelPath = it->second;
-            }
-        }
-        
-        if (nodeName.empty() || modelPath.empty()) {
-            throw std::invalid_argument("Node name and model path are required");
-        }
-        
-        std::cerr << "[PipelineBuilder] Creating TRT vehicle feature encoder node:" << std::endl;
-        std::cerr << "  Name: '" << nodeName << "'" << std::endl;
-        std::cerr << "  Model path: '" << modelPath << "'" << std::endl;
-        
-        auto node = std::make_shared<cvedix_nodes::cvedix_trt_vehicle_feature_encoder>(
-            nodeName,
-            modelPath,
-            classIdsAppliedTo,
-            minWidth,
-            minHeight
-        );
-        
-        std::cerr << "[PipelineBuilder] ✓ TRT vehicle feature encoder node created successfully" << std::endl;
-        return node;
-    } catch (const std::exception& e) {
-        std::cerr << "[PipelineBuilder] Exception in createTRTVehicleFeatureEncoderNode: " << e.what() << std::endl;
-        throw;
+      }
     }
+
+    int minWidth = params.count("min_width_applied_to")
+                       ? std::stoi(params.at("min_width_applied_to"))
+                       : 0;
+    int minHeight = params.count("min_height_applied_to")
+                        ? std::stoi(params.at("min_height_applied_to"))
+                        : 0;
+
+    if (modelPath.empty()) {
+      auto it = req.additionalParams.find("MODEL_PATH");
+      if (it != req.additionalParams.end() && !it->second.empty()) {
+        modelPath = it->second;
+      }
+    }
+
+    if (nodeName.empty() || modelPath.empty()) {
+      throw std::invalid_argument("Node name and model path are required");
+    }
+
+    std::cerr << "[PipelineBuilder] Creating TRT vehicle feature encoder node:"
+              << std::endl;
+    std::cerr << "  Name: '" << nodeName << "'" << std::endl;
+    std::cerr << "  Model path: '" << modelPath << "'" << std::endl;
+
+    auto node =
+        std::make_shared<cvedix_nodes::cvedix_trt_vehicle_feature_encoder>(
+            nodeName, modelPath, classIdsAppliedTo, minWidth, minHeight);
+
+    std::cerr << "[PipelineBuilder] ✓ TRT vehicle feature encoder node created "
+                 "successfully"
+              << std::endl;
+    return node;
+  } catch (const std::exception &e) {
+    std::cerr
+        << "[PipelineBuilder] Exception in createTRTVehicleFeatureEncoderNode: "
+        << e.what() << std::endl;
+    throw;
+  }
 }
 
-std::shared_ptr<cvedix_nodes::cvedix_node> PipelineBuilder::createTRTVehicleScannerNode(
-    const std::string& nodeName,
-    const std::map<std::string, std::string>& params,
-    const CreateInstanceRequest& req) {
-    
-    try {
-        std::string modelPath = params.count("model_path") ? params.at("model_path") : "";
-        if (modelPath.empty()) {
-            auto it = req.additionalParams.find("MODEL_PATH");
-            if (it != req.additionalParams.end() && !it->second.empty()) {
-                modelPath = it->second;
-            }
-        }
-        
-        if (nodeName.empty() || modelPath.empty()) {
-            throw std::invalid_argument("Node name and model path are required");
-        }
-        
-        std::cerr << "[PipelineBuilder] Creating TRT vehicle scanner node:" << std::endl;
-        std::cerr << "  Name: '" << nodeName << "'" << std::endl;
-        std::cerr << "  Model path: '" << modelPath << "'" << std::endl;
-        
-        auto node = std::make_shared<cvedix_nodes::cvedix_trt_vehicle_scanner>(
-            nodeName,
-            modelPath
-        );
-        
-        std::cerr << "[PipelineBuilder] ✓ TRT vehicle scanner node created successfully" << std::endl;
-        return node;
-    } catch (const std::exception& e) {
-        std::cerr << "[PipelineBuilder] Exception in createTRTVehicleScannerNode: " << e.what() << std::endl;
-        throw;
+std::shared_ptr<cvedix_nodes::cvedix_node>
+PipelineBuilder::createTRTVehicleScannerNode(
+    const std::string &nodeName,
+    const std::map<std::string, std::string> &params,
+    const CreateInstanceRequest &req) {
+
+  try {
+    std::string modelPath =
+        params.count("model_path") ? params.at("model_path") : "";
+    if (modelPath.empty()) {
+      auto it = req.additionalParams.find("MODEL_PATH");
+      if (it != req.additionalParams.end() && !it->second.empty()) {
+        modelPath = it->second;
+      }
     }
+
+    if (nodeName.empty() || modelPath.empty()) {
+      throw std::invalid_argument("Node name and model path are required");
+    }
+
+    std::cerr << "[PipelineBuilder] Creating TRT vehicle scanner node:"
+              << std::endl;
+    std::cerr << "  Name: '" << nodeName << "'" << std::endl;
+    std::cerr << "  Model path: '" << modelPath << "'" << std::endl;
+
+    auto node = std::make_shared<cvedix_nodes::cvedix_trt_vehicle_scanner>(
+        nodeName, modelPath);
+
+    std::cerr
+        << "[PipelineBuilder] ✓ TRT vehicle scanner node created successfully"
+        << std::endl;
+    return node;
+  } catch (const std::exception &e) {
+    std::cerr << "[PipelineBuilder] Exception in createTRTVehicleScannerNode: "
+              << e.what() << std::endl;
+    throw;
+  }
 }
 #endif // CVEDIX_WITH_TRT
 
 // ========== RKNN Nodes Implementation ==========
 
 #ifdef CVEDIX_WITH_RKNN
-std::shared_ptr<cvedix_nodes::cvedix_node> PipelineBuilder::createRKNNYOLOv8DetectorNode(
-    const std::string& nodeName,
-    const std::map<std::string, std::string>& params,
-    const CreateInstanceRequest& req) {
-    
-    try {
-        std::string modelPath = params.count("model_path") ? params.at("model_path") : "";
-        float scoreThreshold = params.count("score_threshold") ? std::stof(params.at("score_threshold")) : 0.5f;
-        float nmsThreshold = params.count("nms_threshold") ? std::stof(params.at("nms_threshold")) : 0.5f;
-        int inputWidth = params.count("input_width") ? std::stoi(params.at("input_width")) : 640;
-        int inputHeight = params.count("input_height") ? std::stoi(params.at("input_height")) : 640;
-        int numClasses = params.count("num_classes") ? std::stoi(params.at("num_classes")) : 80;
-        
-        if (modelPath.empty()) {
-            auto it = req.additionalParams.find("MODEL_PATH");
-            if (it != req.additionalParams.end() && !it->second.empty()) {
-                modelPath = it->second;
-            }
-        }
-        
-        if (nodeName.empty() || modelPath.empty()) {
-            throw std::invalid_argument("Node name and model path are required");
-        }
-        
-        std::cerr << "[PipelineBuilder] Creating RKNN YOLOv8 detector node:" << std::endl;
-        std::cerr << "  Name: '" << nodeName << "'" << std::endl;
-        std::cerr << "  Model path: '" << modelPath << "'" << std::endl;
-        std::cerr << "  Score threshold: " << scoreThreshold << std::endl;
-        std::cerr << "  NMS threshold: " << nmsThreshold << std::endl;
-        std::cerr << "  Input size: " << inputWidth << "x" << inputHeight << std::endl;
-        std::cerr << "  Num classes: " << numClasses << std::endl;
-        
-        auto node = std::make_shared<cvedix_nodes::cvedix_rknn_yolov8_detector_node>(
-            nodeName,
-            modelPath,
-            scoreThreshold,
-            nmsThreshold,
-            inputWidth,
-            inputHeight,
-            numClasses
-        );
-        
-        std::cerr << "[PipelineBuilder] ✓ RKNN YOLOv8 detector node created successfully" << std::endl;
-        return node;
-    } catch (const std::exception& e) {
-        std::cerr << "[PipelineBuilder] Exception in createRKNNYOLOv8DetectorNode: " << e.what() << std::endl;
-        throw;
+std::shared_ptr<cvedix_nodes::cvedix_node>
+PipelineBuilder::createRKNNYOLOv8DetectorNode(
+    const std::string &nodeName,
+    const std::map<std::string, std::string> &params,
+    const CreateInstanceRequest &req) {
+
+  try {
+    std::string modelPath =
+        params.count("model_path") ? params.at("model_path") : "";
+    float scoreThreshold = params.count("score_threshold")
+                               ? std::stof(params.at("score_threshold"))
+                               : 0.5f;
+    float nmsThreshold = params.count("nms_threshold")
+                             ? std::stof(params.at("nms_threshold"))
+                             : 0.5f;
+    int inputWidth =
+        params.count("input_width") ? std::stoi(params.at("input_width")) : 640;
+    int inputHeight = params.count("input_height")
+                          ? std::stoi(params.at("input_height"))
+                          : 640;
+    int numClasses =
+        params.count("num_classes") ? std::stoi(params.at("num_classes")) : 80;
+
+    if (modelPath.empty()) {
+      auto it = req.additionalParams.find("MODEL_PATH");
+      if (it != req.additionalParams.end() && !it->second.empty()) {
+        modelPath = it->second;
+      }
     }
+
+    if (nodeName.empty() || modelPath.empty()) {
+      throw std::invalid_argument("Node name and model path are required");
+    }
+
+    std::cerr << "[PipelineBuilder] Creating RKNN YOLOv8 detector node:"
+              << std::endl;
+    std::cerr << "  Name: '" << nodeName << "'" << std::endl;
+    std::cerr << "  Model path: '" << modelPath << "'" << std::endl;
+    std::cerr << "  Score threshold: " << scoreThreshold << std::endl;
+    std::cerr << "  NMS threshold: " << nmsThreshold << std::endl;
+    std::cerr << "  Input size: " << inputWidth << "x" << inputHeight
+              << std::endl;
+    std::cerr << "  Num classes: " << numClasses << std::endl;
+
+    auto node =
+        std::make_shared<cvedix_nodes::cvedix_rknn_yolov8_detector_node>(
+            nodeName, modelPath, scoreThreshold, nmsThreshold, inputWidth,
+            inputHeight, numClasses);
+
+    std::cerr
+        << "[PipelineBuilder] ✓ RKNN YOLOv8 detector node created successfully"
+        << std::endl;
+    return node;
+  } catch (const std::exception &e) {
+    std::cerr << "[PipelineBuilder] Exception in createRKNNYOLOv8DetectorNode: "
+              << e.what() << std::endl;
+    throw;
+  }
 }
 
-std::shared_ptr<cvedix_nodes::cvedix_node> PipelineBuilder::createRKNNFaceDetectorNode(
-    const std::string& nodeName,
-    const std::map<std::string, std::string>& params,
-    const CreateInstanceRequest& req) {
-    
-    try {
-        std::string modelPath = params.count("model_path") ? params.at("model_path") : "";
-        float scoreThreshold = params.count("score_threshold") ? std::stof(params.at("score_threshold")) : 0.5f;
-        float nmsThreshold = params.count("nms_threshold") ? std::stof(params.at("nms_threshold")) : 0.5f;
-        int inputWidth = params.count("input_width") ? std::stoi(params.at("input_width")) : 640;
-        int inputHeight = params.count("input_height") ? std::stoi(params.at("input_height")) : 640;
-        int topK = params.count("top_k") ? std::stoi(params.at("top_k")) : 50;
-        
-        if (modelPath.empty()) {
-            auto it = req.additionalParams.find("MODEL_PATH");
-            if (it != req.additionalParams.end() && !it->second.empty()) {
-                modelPath = it->second;
-            }
-        }
-        
-        if (nodeName.empty() || modelPath.empty()) {
-            throw std::invalid_argument("Node name and model path are required");
-        }
-        
-        std::cerr << "[PipelineBuilder] Creating RKNN face detector node:" << std::endl;
-        std::cerr << "  Name: '" << nodeName << "'" << std::endl;
-        std::cerr << "  Model path: '" << modelPath << "'" << std::endl;
-        std::cerr << "  Score threshold: " << scoreThreshold << std::endl;
-        std::cerr << "  NMS threshold: " << nmsThreshold << std::endl;
-        std::cerr << "  Input size: " << inputWidth << "x" << inputHeight << std::endl;
-        std::cerr << "  Top K: " << topK << std::endl;
-        
-        auto node = std::make_shared<cvedix_nodes::cvedix_rknn_face_detector_node>(
-            nodeName,
-            modelPath,
-            scoreThreshold,
-            nmsThreshold,
-            inputWidth,
-            inputHeight,
-            topK
-        );
-        
-        std::cerr << "[PipelineBuilder] ✓ RKNN face detector node created successfully" << std::endl;
-        return node;
-    } catch (const std::exception& e) {
-        std::cerr << "[PipelineBuilder] Exception in createRKNNFaceDetectorNode: " << e.what() << std::endl;
-        throw;
+std::shared_ptr<cvedix_nodes::cvedix_node>
+PipelineBuilder::createRKNNFaceDetectorNode(
+    const std::string &nodeName,
+    const std::map<std::string, std::string> &params,
+    const CreateInstanceRequest &req) {
+
+  try {
+    std::string modelPath =
+        params.count("model_path") ? params.at("model_path") : "";
+    float scoreThreshold = params.count("score_threshold")
+                               ? std::stof(params.at("score_threshold"))
+                               : 0.5f;
+    float nmsThreshold = params.count("nms_threshold")
+                             ? std::stof(params.at("nms_threshold"))
+                             : 0.5f;
+    int inputWidth =
+        params.count("input_width") ? std::stoi(params.at("input_width")) : 640;
+    int inputHeight = params.count("input_height")
+                          ? std::stoi(params.at("input_height"))
+                          : 640;
+    int topK = params.count("top_k") ? std::stoi(params.at("top_k")) : 50;
+
+    if (modelPath.empty()) {
+      auto it = req.additionalParams.find("MODEL_PATH");
+      if (it != req.additionalParams.end() && !it->second.empty()) {
+        modelPath = it->second;
+      }
     }
+
+    if (nodeName.empty() || modelPath.empty()) {
+      throw std::invalid_argument("Node name and model path are required");
+    }
+
+    std::cerr << "[PipelineBuilder] Creating RKNN face detector node:"
+              << std::endl;
+    std::cerr << "  Name: '" << nodeName << "'" << std::endl;
+    std::cerr << "  Model path: '" << modelPath << "'" << std::endl;
+    std::cerr << "  Score threshold: " << scoreThreshold << std::endl;
+    std::cerr << "  NMS threshold: " << nmsThreshold << std::endl;
+    std::cerr << "  Input size: " << inputWidth << "x" << inputHeight
+              << std::endl;
+    std::cerr << "  Top K: " << topK << std::endl;
+
+    auto node = std::make_shared<cvedix_nodes::cvedix_rknn_face_detector_node>(
+        nodeName, modelPath, scoreThreshold, nmsThreshold, inputWidth,
+        inputHeight, topK);
+
+    std::cerr
+        << "[PipelineBuilder] ✓ RKNN face detector node created successfully"
+        << std::endl;
+    return node;
+  } catch (const std::exception &e) {
+    std::cerr << "[PipelineBuilder] Exception in createRKNNFaceDetectorNode: "
+              << e.what() << std::endl;
+    throw;
+  }
 }
 #endif // CVEDIX_WITH_RKNN
 
 // ========== Other Inference Nodes Implementation ==========
 
-std::shared_ptr<cvedix_nodes::cvedix_node> PipelineBuilder::createYOLODetectorNode(
-    const std::string& nodeName,
-    const std::map<std::string, std::string>& params,
-    const CreateInstanceRequest& req) {
-    
-    try {
-        // Support both naming conventions: weights_path/config_path and model_path/model_config_path
-        std::string modelPath = "";
-        if (params.count("weights_path")) {
-            modelPath = params.at("weights_path");
-        } else if (params.count("model_path")) {
-            modelPath = params.at("model_path");
-        }
-        
-        std::string modelConfigPath = "";
-        if (params.count("config_path")) {
-            modelConfigPath = params.at("config_path");
-        } else if (params.count("model_config_path")) {
-            modelConfigPath = params.at("model_config_path");
-        }
-        
-        std::string labelsPath = params.count("labels_path") ? params.at("labels_path") : "";
-        int inputWidth = params.count("input_width") ? std::stoi(params.at("input_width")) : 416;
-        int inputHeight = params.count("input_height") ? std::stoi(params.at("input_height")) : 416;
-        int batchSize = params.count("batch_size") ? std::stoi(params.at("batch_size")) : 1;
-        int classIdOffset = params.count("class_id_offset") ? std::stoi(params.at("class_id_offset")) : 0;
-        float scoreThreshold = params.count("score_threshold") ? std::stof(params.at("score_threshold")) : 0.5f;
-        float confidenceThreshold = params.count("confidence_threshold") ? std::stof(params.at("confidence_threshold")) : 0.5f;
-        float nmsThreshold = params.count("nms_threshold") ? std::stof(params.at("nms_threshold")) : 0.5f;
-        
-        // Try to get from additionalParams if still empty
-        if (modelPath.empty()) {
-            auto it = req.additionalParams.find("WEIGHTS_PATH");
-            if (it != req.additionalParams.end() && !it->second.empty()) {
-                modelPath = it->second;
-            } else {
-                it = req.additionalParams.find("MODEL_PATH");
-                if (it != req.additionalParams.end() && !it->second.empty()) {
-                    modelPath = it->second;
-                }
-            }
-        }
-        if (modelConfigPath.empty()) {
-            auto it = req.additionalParams.find("CONFIG_PATH");
-            if (it != req.additionalParams.end() && !it->second.empty()) {
-                modelConfigPath = it->second;
-            }
-        }
-        if (labelsPath.empty()) {
-            auto it = req.additionalParams.find("LABELS_PATH");
-            if (it != req.additionalParams.end() && !it->second.empty()) {
-                labelsPath = it->second;
-            }
-        }
-        
-        if (nodeName.empty() || modelPath.empty()) {
-            throw std::invalid_argument("Node name and model path are required");
-        }
-        
-        std::cerr << "[PipelineBuilder] Creating YOLO detector node:" << std::endl;
-        std::cerr << "  Name: '" << nodeName << "'" << std::endl;
-        std::cerr << "  Model path: '" << modelPath << "'" << std::endl;
-        
-        auto node = std::make_shared<cvedix_nodes::cvedix_yolo_detector_node>(
-            nodeName,
-            modelPath,
-            modelConfigPath,
-            labelsPath,
-            inputWidth,
-            inputHeight,
-            batchSize,
-            classIdOffset,
-            scoreThreshold,
-            confidenceThreshold,
-            nmsThreshold
-        );
-        
-        std::cerr << "[PipelineBuilder] ✓ YOLO detector node created successfully" << std::endl;
-        return node;
-    } catch (const std::exception& e) {
-        std::cerr << "[PipelineBuilder] Exception in createYOLODetectorNode: " << e.what() << std::endl;
-        throw;
+std::shared_ptr<cvedix_nodes::cvedix_node>
+PipelineBuilder::createYOLODetectorNode(
+    const std::string &nodeName,
+    const std::map<std::string, std::string> &params,
+    const CreateInstanceRequest &req) {
+
+  try {
+    // Support both naming conventions: weights_path/config_path and
+    // model_path/model_config_path
+    std::string modelPath = "";
+    if (params.count("weights_path")) {
+      modelPath = params.at("weights_path");
+    } else if (params.count("model_path")) {
+      modelPath = params.at("model_path");
     }
+
+    std::string modelConfigPath = "";
+    if (params.count("config_path")) {
+      modelConfigPath = params.at("config_path");
+    } else if (params.count("model_config_path")) {
+      modelConfigPath = params.at("model_config_path");
+    }
+
+    std::string labelsPath =
+        params.count("labels_path") ? params.at("labels_path") : "";
+    int inputWidth =
+        params.count("input_width") ? std::stoi(params.at("input_width")) : 416;
+    int inputHeight = params.count("input_height")
+                          ? std::stoi(params.at("input_height"))
+                          : 416;
+    int batchSize =
+        params.count("batch_size") ? std::stoi(params.at("batch_size")) : 1;
+    int classIdOffset = params.count("class_id_offset")
+                            ? std::stoi(params.at("class_id_offset"))
+                            : 0;
+    float scoreThreshold = params.count("score_threshold")
+                               ? std::stof(params.at("score_threshold"))
+                               : 0.5f;
+    float confidenceThreshold =
+        params.count("confidence_threshold")
+            ? std::stof(params.at("confidence_threshold"))
+            : 0.5f;
+    float nmsThreshold = params.count("nms_threshold")
+                             ? std::stof(params.at("nms_threshold"))
+                             : 0.5f;
+
+    // Try to get from additionalParams if still empty
+    if (modelPath.empty()) {
+      auto it = req.additionalParams.find("WEIGHTS_PATH");
+      if (it != req.additionalParams.end() && !it->second.empty()) {
+        modelPath = it->second;
+      } else {
+        it = req.additionalParams.find("MODEL_PATH");
+        if (it != req.additionalParams.end() && !it->second.empty()) {
+          modelPath = it->second;
+        }
+      }
+    }
+    if (modelConfigPath.empty()) {
+      auto it = req.additionalParams.find("CONFIG_PATH");
+      if (it != req.additionalParams.end() && !it->second.empty()) {
+        modelConfigPath = it->second;
+      }
+    }
+    if (labelsPath.empty()) {
+      auto it = req.additionalParams.find("LABELS_PATH");
+      if (it != req.additionalParams.end() && !it->second.empty()) {
+        labelsPath = it->second;
+      }
+    }
+
+    if (nodeName.empty() || modelPath.empty()) {
+      throw std::invalid_argument("Node name and model path are required");
+    }
+
+    std::cerr << "[PipelineBuilder] Creating YOLO detector node:" << std::endl;
+    std::cerr << "  Name: '" << nodeName << "'" << std::endl;
+    std::cerr << "  Model path: '" << modelPath << "'" << std::endl;
+
+    auto node = std::make_shared<cvedix_nodes::cvedix_yolo_detector_node>(
+        nodeName, modelPath, modelConfigPath, labelsPath, inputWidth,
+        inputHeight, batchSize, classIdOffset, scoreThreshold,
+        confidenceThreshold, nmsThreshold);
+
+    std::cerr << "[PipelineBuilder] ✓ YOLO detector node created successfully"
+              << std::endl;
+    return node;
+  } catch (const std::exception &e) {
+    std::cerr << "[PipelineBuilder] Exception in createYOLODetectorNode: "
+              << e.what() << std::endl;
+    throw;
+  }
 }
 
 std::shared_ptr<cvedix_nodes::cvedix_node> PipelineBuilder::createENetSegNode(
-    const std::string& nodeName,
-    const std::map<std::string, std::string>& params,
-    const CreateInstanceRequest& req) {
-    
-    try {
-        std::string modelPath = params.count("model_path") ? params.at("model_path") : "";
-        std::string modelConfigPath = params.count("model_config_path") ? params.at("model_config_path") : "";
-        std::string labelsPath = params.count("labels_path") ? params.at("labels_path") : "";
-        int inputWidth = params.count("input_width") ? std::stoi(params.at("input_width")) : 1024;
-        int inputHeight = params.count("input_height") ? std::stoi(params.at("input_height")) : 512;
-        int batchSize = params.count("batch_size") ? std::stoi(params.at("batch_size")) : 1;
-        int classIdOffset = params.count("class_id_offset") ? std::stoi(params.at("class_id_offset")) : 0;
-        
-        if (modelPath.empty()) {
-            auto it = req.additionalParams.find("MODEL_PATH");
-            if (it != req.additionalParams.end() && !it->second.empty()) {
-                modelPath = it->second;
-            }
-        }
-        
-        if (nodeName.empty() || modelPath.empty()) {
-            throw std::invalid_argument("Node name and model path are required");
-        }
-        
-        std::cerr << "[PipelineBuilder] Creating ENet segmentation node:" << std::endl;
-        std::cerr << "  Name: '" << nodeName << "'" << std::endl;
-        std::cerr << "  Model path: '" << modelPath << "'" << std::endl;
-        
-        auto node = std::make_shared<cvedix_nodes::cvedix_enet_seg_node>(
-            nodeName,
-            modelPath,
-            modelConfigPath,
-            labelsPath,
-            inputWidth,
-            inputHeight,
-            batchSize,
-            classIdOffset
-        );
-        
-        std::cerr << "[PipelineBuilder] ✓ ENet segmentation node created successfully" << std::endl;
-        return node;
-    } catch (const std::exception& e) {
-        std::cerr << "[PipelineBuilder] Exception in createENetSegNode: " << e.what() << std::endl;
-        throw;
+    const std::string &nodeName,
+    const std::map<std::string, std::string> &params,
+    const CreateInstanceRequest &req) {
+
+  try {
+    std::string modelPath =
+        params.count("model_path") ? params.at("model_path") : "";
+    std::string modelConfigPath =
+        params.count("model_config_path") ? params.at("model_config_path") : "";
+    std::string labelsPath =
+        params.count("labels_path") ? params.at("labels_path") : "";
+    int inputWidth = params.count("input_width")
+                         ? std::stoi(params.at("input_width"))
+                         : 1024;
+    int inputHeight = params.count("input_height")
+                          ? std::stoi(params.at("input_height"))
+                          : 512;
+    int batchSize =
+        params.count("batch_size") ? std::stoi(params.at("batch_size")) : 1;
+    int classIdOffset = params.count("class_id_offset")
+                            ? std::stoi(params.at("class_id_offset"))
+                            : 0;
+
+    if (modelPath.empty()) {
+      auto it = req.additionalParams.find("MODEL_PATH");
+      if (it != req.additionalParams.end() && !it->second.empty()) {
+        modelPath = it->second;
+      }
     }
+
+    if (nodeName.empty() || modelPath.empty()) {
+      throw std::invalid_argument("Node name and model path are required");
+    }
+
+    std::cerr << "[PipelineBuilder] Creating ENet segmentation node:"
+              << std::endl;
+    std::cerr << "  Name: '" << nodeName << "'" << std::endl;
+    std::cerr << "  Model path: '" << modelPath << "'" << std::endl;
+
+    auto node = std::make_shared<cvedix_nodes::cvedix_enet_seg_node>(
+        nodeName, modelPath, modelConfigPath, labelsPath, inputWidth,
+        inputHeight, batchSize, classIdOffset);
+
+    std::cerr
+        << "[PipelineBuilder] ✓ ENet segmentation node created successfully"
+        << std::endl;
+    return node;
+  } catch (const std::exception &e) {
+    std::cerr << "[PipelineBuilder] Exception in createENetSegNode: "
+              << e.what() << std::endl;
+    throw;
+  }
 }
 
-std::shared_ptr<cvedix_nodes::cvedix_node> PipelineBuilder::createMaskRCNNDetectorNode(
-    const std::string& nodeName,
-    const std::map<std::string, std::string>& params,
-    const CreateInstanceRequest& req) {
-    
-    try {
-        std::string modelPath = params.count("model_path") ? params.at("model_path") : "";
-        std::string modelConfigPath = params.count("model_config_path") ? params.at("model_config_path") : "";
-        std::string labelsPath = params.count("labels_path") ? params.at("labels_path") : "";
-        int inputWidth = params.count("input_width") ? std::stoi(params.at("input_width")) : 416;
-        int inputHeight = params.count("input_height") ? std::stoi(params.at("input_height")) : 416;
-        int batchSize = params.count("batch_size") ? std::stoi(params.at("batch_size")) : 1;
-        int classIdOffset = params.count("class_id_offset") ? std::stoi(params.at("class_id_offset")) : 0;
-        float scoreThreshold = params.count("score_threshold") ? std::stof(params.at("score_threshold")) : 0.5f;
-        
-        if (modelPath.empty()) {
-            auto it = req.additionalParams.find("MODEL_PATH");
-            if (it != req.additionalParams.end() && !it->second.empty()) {
-                modelPath = it->second;
-            }
-        }
-        
-        if (nodeName.empty() || modelPath.empty()) {
-            throw std::invalid_argument("Node name and model path are required");
-        }
-        
-        std::cerr << "[PipelineBuilder] Creating Mask RCNN detector node:" << std::endl;
-        std::cerr << "  Name: '" << nodeName << "'" << std::endl;
-        std::cerr << "  Model path: '" << modelPath << "'" << std::endl;
-        
-        auto node = std::make_shared<cvedix_nodes::cvedix_mask_rcnn_detector_node>(
-            nodeName,
-            modelPath,
-            modelConfigPath,
-            labelsPath,
-            inputWidth,
-            inputHeight,
-            batchSize,
-            classIdOffset,
-            scoreThreshold
-        );
-        
-        std::cerr << "[PipelineBuilder] ✓ Mask RCNN detector node created successfully" << std::endl;
-        return node;
-    } catch (const std::exception& e) {
-        std::cerr << "[PipelineBuilder] Exception in createMaskRCNNDetectorNode: " << e.what() << std::endl;
-        throw;
+std::shared_ptr<cvedix_nodes::cvedix_node>
+PipelineBuilder::createMaskRCNNDetectorNode(
+    const std::string &nodeName,
+    const std::map<std::string, std::string> &params,
+    const CreateInstanceRequest &req) {
+
+  try {
+    std::string modelPath =
+        params.count("model_path") ? params.at("model_path") : "";
+    std::string modelConfigPath =
+        params.count("model_config_path") ? params.at("model_config_path") : "";
+    std::string labelsPath =
+        params.count("labels_path") ? params.at("labels_path") : "";
+    int inputWidth =
+        params.count("input_width") ? std::stoi(params.at("input_width")) : 416;
+    int inputHeight = params.count("input_height")
+                          ? std::stoi(params.at("input_height"))
+                          : 416;
+    int batchSize =
+        params.count("batch_size") ? std::stoi(params.at("batch_size")) : 1;
+    int classIdOffset = params.count("class_id_offset")
+                            ? std::stoi(params.at("class_id_offset"))
+                            : 0;
+    float scoreThreshold = params.count("score_threshold")
+                               ? std::stof(params.at("score_threshold"))
+                               : 0.5f;
+
+    if (modelPath.empty()) {
+      auto it = req.additionalParams.find("MODEL_PATH");
+      if (it != req.additionalParams.end() && !it->second.empty()) {
+        modelPath = it->second;
+      }
     }
+
+    if (nodeName.empty() || modelPath.empty()) {
+      throw std::invalid_argument("Node name and model path are required");
+    }
+
+    std::cerr << "[PipelineBuilder] Creating Mask RCNN detector node:"
+              << std::endl;
+    std::cerr << "  Name: '" << nodeName << "'" << std::endl;
+    std::cerr << "  Model path: '" << modelPath << "'" << std::endl;
+
+    auto node = std::make_shared<cvedix_nodes::cvedix_mask_rcnn_detector_node>(
+        nodeName, modelPath, modelConfigPath, labelsPath, inputWidth,
+        inputHeight, batchSize, classIdOffset, scoreThreshold);
+
+    std::cerr
+        << "[PipelineBuilder] ✓ Mask RCNN detector node created successfully"
+        << std::endl;
+    return node;
+  } catch (const std::exception &e) {
+    std::cerr << "[PipelineBuilder] Exception in createMaskRCNNDetectorNode: "
+              << e.what() << std::endl;
+    throw;
+  }
 }
 
-std::shared_ptr<cvedix_nodes::cvedix_node> PipelineBuilder::createOpenPoseDetectorNode(
-    const std::string& nodeName,
-    const std::map<std::string, std::string>& params,
-    const CreateInstanceRequest& req) {
-    
-    try {
-        std::string modelPath = params.count("model_path") ? params.at("model_path") : "";
-        std::string modelConfigPath = params.count("model_config_path") ? params.at("model_config_path") : "";
-        std::string labelsPath = params.count("labels_path") ? params.at("labels_path") : "";
-        int inputWidth = params.count("input_width") ? std::stoi(params.at("input_width")) : 368;
-        int inputHeight = params.count("input_height") ? std::stoi(params.at("input_height")) : 368;
-        int batchSize = params.count("batch_size") ? std::stoi(params.at("batch_size")) : 1;
-        int classIdOffset = params.count("class_id_offset") ? std::stoi(params.at("class_id_offset")) : 0;
-        float scoreThreshold = params.count("score_threshold") ? std::stof(params.at("score_threshold")) : 0.1f;
-        
-        if (modelPath.empty()) {
-            auto it = req.additionalParams.find("MODEL_PATH");
-            if (it != req.additionalParams.end() && !it->second.empty()) {
-                modelPath = it->second;
-            }
-        }
-        
-        if (nodeName.empty() || modelPath.empty()) {
-            throw std::invalid_argument("Node name and model path are required");
-        }
-        
-        std::cerr << "[PipelineBuilder] Creating OpenPose detector node:" << std::endl;
-        std::cerr << "  Name: '" << nodeName << "'" << std::endl;
-        std::cerr << "  Model path: '" << modelPath << "'" << std::endl;
-        
-        auto node = std::make_shared<cvedix_nodes::cvedix_openpose_detector_node>(
-            nodeName,
-            modelPath,
-            modelConfigPath,
-            labelsPath,
-            inputWidth,
-            inputHeight,
-            batchSize,
-            classIdOffset,
-            scoreThreshold
-        );
-        
-        std::cerr << "[PipelineBuilder] ✓ OpenPose detector node created successfully" << std::endl;
-        return node;
-    } catch (const std::exception& e) {
-        std::cerr << "[PipelineBuilder] Exception in createOpenPoseDetectorNode: " << e.what() << std::endl;
-        throw;
+std::shared_ptr<cvedix_nodes::cvedix_node>
+PipelineBuilder::createOpenPoseDetectorNode(
+    const std::string &nodeName,
+    const std::map<std::string, std::string> &params,
+    const CreateInstanceRequest &req) {
+
+  try {
+    std::string modelPath =
+        params.count("model_path") ? params.at("model_path") : "";
+    std::string modelConfigPath =
+        params.count("model_config_path") ? params.at("model_config_path") : "";
+    std::string labelsPath =
+        params.count("labels_path") ? params.at("labels_path") : "";
+    int inputWidth =
+        params.count("input_width") ? std::stoi(params.at("input_width")) : 368;
+    int inputHeight = params.count("input_height")
+                          ? std::stoi(params.at("input_height"))
+                          : 368;
+    int batchSize =
+        params.count("batch_size") ? std::stoi(params.at("batch_size")) : 1;
+    int classIdOffset = params.count("class_id_offset")
+                            ? std::stoi(params.at("class_id_offset"))
+                            : 0;
+    float scoreThreshold = params.count("score_threshold")
+                               ? std::stof(params.at("score_threshold"))
+                               : 0.1f;
+
+    if (modelPath.empty()) {
+      auto it = req.additionalParams.find("MODEL_PATH");
+      if (it != req.additionalParams.end() && !it->second.empty()) {
+        modelPath = it->second;
+      }
     }
+
+    if (nodeName.empty() || modelPath.empty()) {
+      throw std::invalid_argument("Node name and model path are required");
+    }
+
+    std::cerr << "[PipelineBuilder] Creating OpenPose detector node:"
+              << std::endl;
+    std::cerr << "  Name: '" << nodeName << "'" << std::endl;
+    std::cerr << "  Model path: '" << modelPath << "'" << std::endl;
+
+    auto node = std::make_shared<cvedix_nodes::cvedix_openpose_detector_node>(
+        nodeName, modelPath, modelConfigPath, labelsPath, inputWidth,
+        inputHeight, batchSize, classIdOffset, scoreThreshold);
+
+    std::cerr
+        << "[PipelineBuilder] ✓ OpenPose detector node created successfully"
+        << std::endl;
+    return node;
+  } catch (const std::exception &e) {
+    std::cerr << "[PipelineBuilder] Exception in createOpenPoseDetectorNode: "
+              << e.what() << std::endl;
+    throw;
+  }
 }
 
-std::shared_ptr<cvedix_nodes::cvedix_node> PipelineBuilder::createClassifierNode(
-    const std::string& nodeName,
-    const std::map<std::string, std::string>& params,
-    const CreateInstanceRequest& req) {
-    
-    try {
-        std::string modelPath = params.count("model_path") ? params.at("model_path") : "";
-        std::string modelConfigPath = params.count("model_config_path") ? params.at("model_config_path") : "";
-        std::string labelsPath = params.count("labels_path") ? params.at("labels_path") : "";
-        int inputWidth = params.count("input_width") ? std::stoi(params.at("input_width")) : 128;
-        int inputHeight = params.count("input_height") ? std::stoi(params.at("input_height")) : 128;
-        int batchSize = params.count("batch_size") ? std::stoi(params.at("batch_size")) : 1;
-        
-        // Parse class_ids_applied_to
-        std::vector<int> classIdsAppliedTo;
-        if (params.count("class_ids_applied_to")) {
-            std::string idsStr = params.at("class_ids_applied_to");
-            std::istringstream iss(idsStr);
-            std::string token;
-            while (std::getline(iss, token, ',')) {
-                try {
-                    classIdsAppliedTo.push_back(std::stoi(token));
-                } catch (...) {}
-            }
+std::shared_ptr<cvedix_nodes::cvedix_node>
+PipelineBuilder::createClassifierNode(
+    const std::string &nodeName,
+    const std::map<std::string, std::string> &params,
+    const CreateInstanceRequest &req) {
+
+  try {
+    std::string modelPath =
+        params.count("model_path") ? params.at("model_path") : "";
+    std::string modelConfigPath =
+        params.count("model_config_path") ? params.at("model_config_path") : "";
+    std::string labelsPath =
+        params.count("labels_path") ? params.at("labels_path") : "";
+    int inputWidth =
+        params.count("input_width") ? std::stoi(params.at("input_width")) : 128;
+    int inputHeight = params.count("input_height")
+                          ? std::stoi(params.at("input_height"))
+                          : 128;
+    int batchSize =
+        params.count("batch_size") ? std::stoi(params.at("batch_size")) : 1;
+
+    // Parse class_ids_applied_to
+    std::vector<int> classIdsAppliedTo;
+    if (params.count("class_ids_applied_to")) {
+      std::string idsStr = params.at("class_ids_applied_to");
+      std::istringstream iss(idsStr);
+      std::string token;
+      while (std::getline(iss, token, ',')) {
+        try {
+          classIdsAppliedTo.push_back(std::stoi(token));
+        } catch (...) {
         }
-        
-        int minWidth = params.count("min_width_applied_to") ? std::stoi(params.at("min_width_applied_to")) : 0;
-        int minHeight = params.count("min_height_applied_to") ? std::stoi(params.at("min_height_applied_to")) : 0;
-        int cropPadding = params.count("crop_padding") ? std::stoi(params.at("crop_padding")) : 10;
-        bool needSoftmax = params.count("need_softmax") ? (params.at("need_softmax") == "true" || params.at("need_softmax") == "1") : true;
-        
-        if (modelPath.empty()) {
-            auto it = req.additionalParams.find("MODEL_PATH");
-            if (it != req.additionalParams.end() && !it->second.empty()) {
-                modelPath = it->second;
-            }
-        }
-        
-        if (nodeName.empty() || modelPath.empty()) {
-            throw std::invalid_argument("Node name and model path are required");
-        }
-        
-        std::cerr << "[PipelineBuilder] Creating classifier node:" << std::endl;
-        std::cerr << "  Name: '" << nodeName << "'" << std::endl;
-        std::cerr << "  Model path: '" << modelPath << "'" << std::endl;
-        
-        auto node = std::make_shared<cvedix_nodes::cvedix_classifier_node>(
-            nodeName,
-            modelPath,
-            modelConfigPath,
-            labelsPath,
-            inputWidth,
-            inputHeight,
-            batchSize,
-            classIdsAppliedTo,
-            minWidth,
-            minHeight,
-            cropPadding,
-            needSoftmax
-        );
-        
-        std::cerr << "[PipelineBuilder] ✓ Classifier node created successfully" << std::endl;
-        return node;
-    } catch (const std::exception& e) {
-        std::cerr << "[PipelineBuilder] Exception in createClassifierNode: " << e.what() << std::endl;
-        throw;
+      }
     }
+
+    int minWidth = params.count("min_width_applied_to")
+                       ? std::stoi(params.at("min_width_applied_to"))
+                       : 0;
+    int minHeight = params.count("min_height_applied_to")
+                        ? std::stoi(params.at("min_height_applied_to"))
+                        : 0;
+    int cropPadding = params.count("crop_padding")
+                          ? std::stoi(params.at("crop_padding"))
+                          : 10;
+    bool needSoftmax = params.count("need_softmax")
+                           ? (params.at("need_softmax") == "true" ||
+                              params.at("need_softmax") == "1")
+                           : true;
+
+    if (modelPath.empty()) {
+      auto it = req.additionalParams.find("MODEL_PATH");
+      if (it != req.additionalParams.end() && !it->second.empty()) {
+        modelPath = it->second;
+      }
+    }
+
+    if (nodeName.empty() || modelPath.empty()) {
+      throw std::invalid_argument("Node name and model path are required");
+    }
+
+    std::cerr << "[PipelineBuilder] Creating classifier node:" << std::endl;
+    std::cerr << "  Name: '" << nodeName << "'" << std::endl;
+    std::cerr << "  Model path: '" << modelPath << "'" << std::endl;
+
+    auto node = std::make_shared<cvedix_nodes::cvedix_classifier_node>(
+        nodeName, modelPath, modelConfigPath, labelsPath, inputWidth,
+        inputHeight, batchSize, classIdsAppliedTo, minWidth, minHeight,
+        cropPadding, needSoftmax);
+
+    std::cerr << "[PipelineBuilder] ✓ Classifier node created successfully"
+              << std::endl;
+    return node;
+  } catch (const std::exception &e) {
+    std::cerr << "[PipelineBuilder] Exception in createClassifierNode: "
+              << e.what() << std::endl;
+    throw;
+  }
 }
 
-// Note: createFeatureEncoderNode is disabled because cvedix_feature_encoder_node is abstract
-// Use createSFaceEncoderNode (for "sface_feature_encoder") or createTRTVehicleFeatureEncoderNode (for "trt_vehicle_feature_encoder") instead
+// Note: createFeatureEncoderNode is disabled because
+// cvedix_feature_encoder_node is abstract Use createSFaceEncoderNode (for
+// "sface_feature_encoder") or createTRTVehicleFeatureEncoderNode (for
+// "trt_vehicle_feature_encoder") instead
 /*
-std::shared_ptr<cvedix_nodes::cvedix_node> PipelineBuilder::createFeatureEncoderNode(
-    const std::string& nodeName,
-    const std::map<std::string, std::string>& params,
-    const CreateInstanceRequest& req) {
-    
+std::shared_ptr<cvedix_nodes::cvedix_node>
+PipelineBuilder::createFeatureEncoderNode( const std::string& nodeName, const
+std::map<std::string, std::string>& params, const CreateInstanceRequest& req) {
+
     try {
-        std::string modelPath = params.count("model_path") ? params.at("model_path") : "";
-        
+        std::string modelPath = params.count("model_path") ?
+params.at("model_path") : "";
+
         if (modelPath.empty()) {
             auto it = req.additionalParams.find("MODEL_PATH");
             if (it != req.additionalParams.end() && !it->second.empty()) {
                 modelPath = it->second;
             }
         }
-        
+
         if (nodeName.empty() || modelPath.empty()) {
-            throw std::invalid_argument("Node name and model path are required");
+            throw std::invalid_argument("Node name and model path are
+required");
         }
-        
-        std::cerr << "[PipelineBuilder] Creating feature encoder node:" << std::endl;
-        std::cerr << "  Name: '" << nodeName << "'" << std::endl;
-        std::cerr << "  Model path: '" << modelPath << "'" << std::endl;
-        
+
+        std::cerr << "[PipelineBuilder] Creating feature encoder node:" <<
+std::endl; std::cerr << "  Name: '" << nodeName << "'" << std::endl; std::cerr
+<< "  Model path: '" << modelPath << "'" << std::endl;
+
         auto node = std::make_shared<cvedix_nodes::cvedix_feature_encoder_node>(
             nodeName,
             modelPath
         );
-        
-        std::cerr << "[PipelineBuilder] ✓ Feature encoder node created successfully" << std::endl;
-        return node;
-    } catch (const std::exception& e) {
-        std::cerr << "[PipelineBuilder] Exception in createFeatureEncoderNode: " << e.what() << std::endl;
-        throw;
+
+        std::cerr << "[PipelineBuilder] ✓ Feature encoder node created
+successfully" << std::endl; return node; } catch (const std::exception& e) {
+        std::cerr << "[PipelineBuilder] Exception in createFeatureEncoderNode: "
+<< e.what() << std::endl; throw;
     }
 }
 */
 
-std::shared_ptr<cvedix_nodes::cvedix_node> PipelineBuilder::createLaneDetectorNode(
-    const std::string& nodeName,
-    const std::map<std::string, std::string>& params,
-    const CreateInstanceRequest& req) {
-    
-    try {
-        std::string modelPath = params.count("model_path") ? params.at("model_path") : "";
-        std::string modelConfigPath = params.count("model_config_path") ? params.at("model_config_path") : "";
-        std::string labelsPath = params.count("labels_path") ? params.at("labels_path") : "";
-        int inputWidth = params.count("input_width") ? std::stoi(params.at("input_width")) : 736;
-        int inputHeight = params.count("input_height") ? std::stoi(params.at("input_height")) : 416;
-        int batchSize = params.count("batch_size") ? std::stoi(params.at("batch_size")) : 1;
-        int classIdOffset = params.count("class_id_offset") ? std::stoi(params.at("class_id_offset")) : 0;
-        
-        if (modelPath.empty()) {
-            auto it = req.additionalParams.find("MODEL_PATH");
-            if (it != req.additionalParams.end() && !it->second.empty()) {
-                modelPath = it->second;
-            }
-        }
-        
-        if (nodeName.empty() || modelPath.empty()) {
-            throw std::invalid_argument("Node name and model path are required");
-        }
-        
-        std::cerr << "[PipelineBuilder] Creating lane detector node:" << std::endl;
-        std::cerr << "  Name: '" << nodeName << "'" << std::endl;
-        std::cerr << "  Model path: '" << modelPath << "'" << std::endl;
-        
-        auto node = std::make_shared<cvedix_nodes::cvedix_lane_detector_node>(
-            nodeName,
-            modelPath,
-            modelConfigPath,
-            labelsPath,
-            inputWidth,
-            inputHeight,
-            batchSize,
-            classIdOffset
-        );
-        
-        std::cerr << "[PipelineBuilder] ✓ Lane detector node created successfully" << std::endl;
-        return node;
-    } catch (const std::exception& e) {
-        std::cerr << "[PipelineBuilder] Exception in createLaneDetectorNode: " << e.what() << std::endl;
-        throw;
+std::shared_ptr<cvedix_nodes::cvedix_node>
+PipelineBuilder::createLaneDetectorNode(
+    const std::string &nodeName,
+    const std::map<std::string, std::string> &params,
+    const CreateInstanceRequest &req) {
+
+  try {
+    std::string modelPath =
+        params.count("model_path") ? params.at("model_path") : "";
+    std::string modelConfigPath =
+        params.count("model_config_path") ? params.at("model_config_path") : "";
+    std::string labelsPath =
+        params.count("labels_path") ? params.at("labels_path") : "";
+    int inputWidth =
+        params.count("input_width") ? std::stoi(params.at("input_width")) : 736;
+    int inputHeight = params.count("input_height")
+                          ? std::stoi(params.at("input_height"))
+                          : 416;
+    int batchSize =
+        params.count("batch_size") ? std::stoi(params.at("batch_size")) : 1;
+    int classIdOffset = params.count("class_id_offset")
+                            ? std::stoi(params.at("class_id_offset"))
+                            : 0;
+
+    if (modelPath.empty()) {
+      auto it = req.additionalParams.find("MODEL_PATH");
+      if (it != req.additionalParams.end() && !it->second.empty()) {
+        modelPath = it->second;
+      }
     }
+
+    if (nodeName.empty() || modelPath.empty()) {
+      throw std::invalid_argument("Node name and model path are required");
+    }
+
+    std::cerr << "[PipelineBuilder] Creating lane detector node:" << std::endl;
+    std::cerr << "  Name: '" << nodeName << "'" << std::endl;
+    std::cerr << "  Model path: '" << modelPath << "'" << std::endl;
+
+    auto node = std::make_shared<cvedix_nodes::cvedix_lane_detector_node>(
+        nodeName, modelPath, modelConfigPath, labelsPath, inputWidth,
+        inputHeight, batchSize, classIdOffset);
+
+    std::cerr << "[PipelineBuilder] ✓ Lane detector node created successfully"
+              << std::endl;
+    return node;
+  } catch (const std::exception &e) {
+    std::cerr << "[PipelineBuilder] Exception in createLaneDetectorNode: "
+              << e.what() << std::endl;
+    throw;
+  }
 }
 
 #ifdef CVEDIX_WITH_PADDLE
-std::shared_ptr<cvedix_nodes::cvedix_node> PipelineBuilder::createPaddleOCRTextDetectorNode(
-    const std::string& nodeName,
-    const std::map<std::string, std::string>& params,
-    const CreateInstanceRequest& req) {
-    
-    try {
-        std::string detModelDir = params.count("det_model_dir") ? params.at("det_model_dir") : "";
-        std::string clsModelDir = params.count("cls_model_dir") ? params.at("cls_model_dir") : "";
-        std::string recModelDir = params.count("rec_model_dir") ? params.at("rec_model_dir") : "";
-        std::string recCharDictPath = params.count("rec_char_dict_path") ? params.at("rec_char_dict_path") : "";
-        
-        if (nodeName.empty()) {
-            throw std::invalid_argument("Node name is required");
-        }
-        
-        std::cerr << "[PipelineBuilder] Creating PaddleOCR text detector node:" << std::endl;
-        std::cerr << "  Name: '" << nodeName << "'" << std::endl;
-        if (!detModelDir.empty()) {
-            std::cerr << "  Detection model dir: '" << detModelDir << "'" << std::endl;
-        }
-        if (!recModelDir.empty()) {
-            std::cerr << "  Recognition model dir: '" << recModelDir << "'" << std::endl;
-        }
-        
-        auto node = std::make_shared<cvedix_nodes::cvedix_ppocr_text_detector_node>(
-            nodeName,
-            detModelDir,
-            clsModelDir,
-            recModelDir,
-            recCharDictPath
-        );
-        
-        std::cerr << "[PipelineBuilder] ✓ PaddleOCR text detector node created successfully" << std::endl;
-        return node;
-    } catch (const std::exception& e) {
-        std::cerr << "[PipelineBuilder] Exception in createPaddleOCRTextDetectorNode: " << e.what() << std::endl;
-        throw;
+std::shared_ptr<cvedix_nodes::cvedix_node>
+PipelineBuilder::createPaddleOCRTextDetectorNode(
+    const std::string &nodeName,
+    const std::map<std::string, std::string> &params,
+    const CreateInstanceRequest &req) {
+
+  try {
+    std::string detModelDir =
+        params.count("det_model_dir") ? params.at("det_model_dir") : "";
+    std::string clsModelDir =
+        params.count("cls_model_dir") ? params.at("cls_model_dir") : "";
+    std::string recModelDir =
+        params.count("rec_model_dir") ? params.at("rec_model_dir") : "";
+    std::string recCharDictPath = params.count("rec_char_dict_path")
+                                      ? params.at("rec_char_dict_path")
+                                      : "";
+
+    if (nodeName.empty()) {
+      throw std::invalid_argument("Node name is required");
     }
+
+    std::cerr << "[PipelineBuilder] Creating PaddleOCR text detector node:"
+              << std::endl;
+    std::cerr << "  Name: '" << nodeName << "'" << std::endl;
+    if (!detModelDir.empty()) {
+      std::cerr << "  Detection model dir: '" << detModelDir << "'"
+                << std::endl;
+    }
+    if (!recModelDir.empty()) {
+      std::cerr << "  Recognition model dir: '" << recModelDir << "'"
+                << std::endl;
+    }
+
+    auto node = std::make_shared<cvedix_nodes::cvedix_ppocr_text_detector_node>(
+        nodeName, detModelDir, clsModelDir, recModelDir, recCharDictPath);
+
+    std::cerr << "[PipelineBuilder] ✓ PaddleOCR text detector node created "
+                 "successfully"
+              << std::endl;
+    return node;
+  } catch (const std::exception &e) {
+    std::cerr
+        << "[PipelineBuilder] Exception in createPaddleOCRTextDetectorNode: "
+        << e.what() << std::endl;
+    throw;
+  }
 }
 #endif
 
-std::shared_ptr<cvedix_nodes::cvedix_node> PipelineBuilder::createRestorationNode(
-    const std::string& nodeName,
-    const std::map<std::string, std::string>& params,
-    const CreateInstanceRequest& req) {
-    
-    try {
-        std::string bgRestorationModel = params.count("bg_restoration_model") ? params.at("bg_restoration_model") : "";
-        std::string faceRestorationModel = params.count("face_restoration_model") ? params.at("face_restoration_model") : "";
-        bool restorationToOSD = params.count("restoration_to_osd") ? (params.at("restoration_to_osd") == "true" || params.at("restoration_to_osd") == "1") : true;
-        
-        if (bgRestorationModel.empty()) {
-            auto it = req.additionalParams.find("BG_RESTORATION_MODEL");
-            if (it != req.additionalParams.end() && !it->second.empty()) {
-                bgRestorationModel = it->second;
-            }
-        }
-        
-        if (nodeName.empty() || bgRestorationModel.empty()) {
-            throw std::invalid_argument("Node name and background restoration model path are required");
-        }
-        
-        std::cerr << "[PipelineBuilder] Creating restoration node:" << std::endl;
-        std::cerr << "  Name: '" << nodeName << "'" << std::endl;
-        std::cerr << "  Background restoration model: '" << bgRestorationModel << "'" << std::endl;
-        if (!faceRestorationModel.empty()) {
-            std::cerr << "  Face restoration model: '" << faceRestorationModel << "'" << std::endl;
-        }
-        
-        auto node = std::make_shared<cvedix_nodes::cvedix_restoration_node>(
-            nodeName,
-            bgRestorationModel,
-            faceRestorationModel,
-            restorationToOSD
-        );
-        
-        std::cerr << "[PipelineBuilder] ✓ Restoration node created successfully" << std::endl;
-        return node;
-    } catch (const std::exception& e) {
-        std::cerr << "[PipelineBuilder] Exception in createRestorationNode: " << e.what() << std::endl;
-        throw;
+std::shared_ptr<cvedix_nodes::cvedix_node>
+PipelineBuilder::createRestorationNode(
+    const std::string &nodeName,
+    const std::map<std::string, std::string> &params,
+    const CreateInstanceRequest &req) {
+
+  try {
+    std::string bgRestorationModel = params.count("bg_restoration_model")
+                                         ? params.at("bg_restoration_model")
+                                         : "";
+    std::string faceRestorationModel = params.count("face_restoration_model")
+                                           ? params.at("face_restoration_model")
+                                           : "";
+    bool restorationToOSD = params.count("restoration_to_osd")
+                                ? (params.at("restoration_to_osd") == "true" ||
+                                   params.at("restoration_to_osd") == "1")
+                                : true;
+
+    if (bgRestorationModel.empty()) {
+      auto it = req.additionalParams.find("BG_RESTORATION_MODEL");
+      if (it != req.additionalParams.end() && !it->second.empty()) {
+        bgRestorationModel = it->second;
+      }
     }
+
+    if (nodeName.empty() || bgRestorationModel.empty()) {
+      throw std::invalid_argument(
+          "Node name and background restoration model path are required");
+    }
+
+    std::cerr << "[PipelineBuilder] Creating restoration node:" << std::endl;
+    std::cerr << "  Name: '" << nodeName << "'" << std::endl;
+    std::cerr << "  Background restoration model: '" << bgRestorationModel
+              << "'" << std::endl;
+    if (!faceRestorationModel.empty()) {
+      std::cerr << "  Face restoration model: '" << faceRestorationModel << "'"
+                << std::endl;
+    }
+
+    auto node = std::make_shared<cvedix_nodes::cvedix_restoration_node>(
+        nodeName, bgRestorationModel, faceRestorationModel, restorationToOSD);
+
+    std::cerr << "[PipelineBuilder] ✓ Restoration node created successfully"
+              << std::endl;
+    return node;
+  } catch (const std::exception &e) {
+    std::cerr << "[PipelineBuilder] Exception in createRestorationNode: "
+              << e.what() << std::endl;
+    throw;
+  }
 }
 
 // ========== New Inference Nodes Implementation ==========
 
-std::shared_ptr<cvedix_nodes::cvedix_node> PipelineBuilder::createYOLOv11DetectorNode(
-    const std::string& nodeName,
-    const std::map<std::string, std::string>& params,
-    const CreateInstanceRequest& req) {
-    
-    // Note: cvedix_yolov11_detector_node is not available in CVEDIX SDK
-    // Use rknn_yolov11_detector (with CVEDIX_WITH_RKNN) or yolo_detector instead
-    throw std::runtime_error(
-        "yolov11_detector node type is not available. "
-        "Please use 'rknn_yolov11_detector' (requires CVEDIX_WITH_RKNN) or 'yolo_detector' instead."
-    );
+std::shared_ptr<cvedix_nodes::cvedix_node>
+PipelineBuilder::createYOLOv11DetectorNode(
+    const std::string &nodeName,
+    const std::map<std::string, std::string> &params,
+    const CreateInstanceRequest &req) {
+
+  // Note: cvedix_yolov11_detector_node is not available in CVEDIX SDK
+  // Use rknn_yolov11_detector (with CVEDIX_WITH_RKNN) or yolo_detector instead
+  throw std::runtime_error("yolov11_detector node type is not available. "
+                           "Please use 'rknn_yolov11_detector' (requires "
+                           "CVEDIX_WITH_RKNN) or 'yolo_detector' instead.");
 }
 
 std::shared_ptr<cvedix_nodes::cvedix_node> PipelineBuilder::createFaceSwapNode(
-    const std::string& nodeName,
-    const std::map<std::string, std::string>& params,
-    const CreateInstanceRequest& req) {
-    
-    try {
-        std::string yunetFaceDetectModel = params.count("yunet_face_detect_model") ? params.at("yunet_face_detect_model") : "";
-        std::string buffaloLFaceEncodingModel = params.count("buffalo_l_face_encoding_model") ? params.at("buffalo_l_face_encoding_model") : "";
-        std::string emapFileForEmbeddings = params.count("emap_file_for_embeddings") ? params.at("emap_file_for_embeddings") : "";
-        std::string insightfaceSwapModel = params.count("insightface_swap_model") ? params.at("insightface_swap_model") : "";
-        std::string swapSourceImage = params.count("swap_source_image") ? params.at("swap_source_image") : "";
-        int swapSourceFaceIndex = params.count("swap_source_face_index") ? std::stoi(params.at("swap_source_face_index")) : 0;
-        int minFaceWH = params.count("min_face_w_h") ? std::stoi(params.at("min_face_w_h")) : 50;
-        bool swapOnOSD = params.count("swap_on_osd") ? (params.at("swap_on_osd") == "true" || params.at("swap_on_osd") == "1") : true;
-        bool actAsPrimaryDetector = params.count("act_as_primary_detector") ? (params.at("act_as_primary_detector") == "true" || params.at("act_as_primary_detector") == "1") : false;
-        
-        // Try to get from additionalParams if still empty
-        if (yunetFaceDetectModel.empty()) {
-            auto it = req.additionalParams.find("YUNET_FACE_DETECT_MODEL");
-            if (it != req.additionalParams.end() && !it->second.empty()) {
-                yunetFaceDetectModel = it->second;
-            }
-        }
-        if (buffaloLFaceEncodingModel.empty()) {
-            auto it = req.additionalParams.find("BUFFALO_L_FACE_ENCODING_MODEL");
-            if (it != req.additionalParams.end() && !it->second.empty()) {
-                buffaloLFaceEncodingModel = it->second;
-            }
-        }
-        if (emapFileForEmbeddings.empty()) {
-            auto it = req.additionalParams.find("EMAP_FILE_FOR_EMBEDDINGS");
-            if (it != req.additionalParams.end() && !it->second.empty()) {
-                emapFileForEmbeddings = it->second;
-            }
-        }
-        if (insightfaceSwapModel.empty()) {
-            auto it = req.additionalParams.find("INSIGHTFACE_SWAP_MODEL");
-            if (it != req.additionalParams.end() && !it->second.empty()) {
-                insightfaceSwapModel = it->second;
-            }
-        }
-        if (swapSourceImage.empty()) {
-            auto it = req.additionalParams.find("SWAP_SOURCE_IMAGE");
-            if (it != req.additionalParams.end() && !it->second.empty()) {
-                swapSourceImage = it->second;
-            }
-        }
-        
-        if (nodeName.empty() || yunetFaceDetectModel.empty() || buffaloLFaceEncodingModel.empty() || 
-            emapFileForEmbeddings.empty() || insightfaceSwapModel.empty() || swapSourceImage.empty()) {
-            throw std::invalid_argument("Node name and all model paths are required for face swap node");
-        }
-        
-        std::cerr << "[PipelineBuilder] Creating face swap node:" << std::endl;
-        std::cerr << "  Name: '" << nodeName << "'" << std::endl;
-        std::cerr << "  YUNet face detect model: '" << yunetFaceDetectModel << "'" << std::endl;
-        std::cerr << "  Buffalo L face encoding model: '" << buffaloLFaceEncodingModel << "'" << std::endl;
-        std::cerr << "  EMap file for embeddings: '" << emapFileForEmbeddings << "'" << std::endl;
-        std::cerr << "  InsightFace swap model: '" << insightfaceSwapModel << "'" << std::endl;
-        std::cerr << "  Swap source image: '" << swapSourceImage << "'" << std::endl;
-        
-        auto node = std::make_shared<cvedix_nodes::cvedix_face_swap_node>(
-            nodeName,
-            yunetFaceDetectModel,
-            buffaloLFaceEncodingModel,
-            emapFileForEmbeddings,
-            insightfaceSwapModel,
-            swapSourceImage,
-            swapSourceFaceIndex,
-            minFaceWH,
-            swapOnOSD,
-            actAsPrimaryDetector
-        );
-        
-        std::cerr << "[PipelineBuilder] ✓ Face swap node created successfully" << std::endl;
-        return node;
-    } catch (const std::exception& e) {
-        std::cerr << "[PipelineBuilder] Exception in createFaceSwapNode: " << e.what() << std::endl;
-        throw;
+    const std::string &nodeName,
+    const std::map<std::string, std::string> &params,
+    const CreateInstanceRequest &req) {
+
+  try {
+    std::string yunetFaceDetectModel =
+        params.count("yunet_face_detect_model")
+            ? params.at("yunet_face_detect_model")
+            : "";
+    std::string buffaloLFaceEncodingModel =
+        params.count("buffalo_l_face_encoding_model")
+            ? params.at("buffalo_l_face_encoding_model")
+            : "";
+    std::string emapFileForEmbeddings =
+        params.count("emap_file_for_embeddings")
+            ? params.at("emap_file_for_embeddings")
+            : "";
+    std::string insightfaceSwapModel = params.count("insightface_swap_model")
+                                           ? params.at("insightface_swap_model")
+                                           : "";
+    std::string swapSourceImage =
+        params.count("swap_source_image") ? params.at("swap_source_image") : "";
+    int swapSourceFaceIndex =
+        params.count("swap_source_face_index")
+            ? std::stoi(params.at("swap_source_face_index"))
+            : 0;
+    int minFaceWH = params.count("min_face_w_h")
+                        ? std::stoi(params.at("min_face_w_h"))
+                        : 50;
+    bool swapOnOSD = params.count("swap_on_osd")
+                         ? (params.at("swap_on_osd") == "true" ||
+                            params.at("swap_on_osd") == "1")
+                         : true;
+    bool actAsPrimaryDetector =
+        params.count("act_as_primary_detector")
+            ? (params.at("act_as_primary_detector") == "true" ||
+               params.at("act_as_primary_detector") == "1")
+            : false;
+
+    // Try to get from additionalParams if still empty
+    if (yunetFaceDetectModel.empty()) {
+      auto it = req.additionalParams.find("YUNET_FACE_DETECT_MODEL");
+      if (it != req.additionalParams.end() && !it->second.empty()) {
+        yunetFaceDetectModel = it->second;
+      }
     }
+    if (buffaloLFaceEncodingModel.empty()) {
+      auto it = req.additionalParams.find("BUFFALO_L_FACE_ENCODING_MODEL");
+      if (it != req.additionalParams.end() && !it->second.empty()) {
+        buffaloLFaceEncodingModel = it->second;
+      }
+    }
+    if (emapFileForEmbeddings.empty()) {
+      auto it = req.additionalParams.find("EMAP_FILE_FOR_EMBEDDINGS");
+      if (it != req.additionalParams.end() && !it->second.empty()) {
+        emapFileForEmbeddings = it->second;
+      }
+    }
+    if (insightfaceSwapModel.empty()) {
+      auto it = req.additionalParams.find("INSIGHTFACE_SWAP_MODEL");
+      if (it != req.additionalParams.end() && !it->second.empty()) {
+        insightfaceSwapModel = it->second;
+      }
+    }
+    if (swapSourceImage.empty()) {
+      auto it = req.additionalParams.find("SWAP_SOURCE_IMAGE");
+      if (it != req.additionalParams.end() && !it->second.empty()) {
+        swapSourceImage = it->second;
+      }
+    }
+
+    if (nodeName.empty() || yunetFaceDetectModel.empty() ||
+        buffaloLFaceEncodingModel.empty() || emapFileForEmbeddings.empty() ||
+        insightfaceSwapModel.empty() || swapSourceImage.empty()) {
+      throw std::invalid_argument(
+          "Node name and all model paths are required for face swap node");
+    }
+
+    std::cerr << "[PipelineBuilder] Creating face swap node:" << std::endl;
+    std::cerr << "  Name: '" << nodeName << "'" << std::endl;
+    std::cerr << "  YUNet face detect model: '" << yunetFaceDetectModel << "'"
+              << std::endl;
+    std::cerr << "  Buffalo L face encoding model: '"
+              << buffaloLFaceEncodingModel << "'" << std::endl;
+    std::cerr << "  EMap file for embeddings: '" << emapFileForEmbeddings << "'"
+              << std::endl;
+    std::cerr << "  InsightFace swap model: '" << insightfaceSwapModel << "'"
+              << std::endl;
+    std::cerr << "  Swap source image: '" << swapSourceImage << "'"
+              << std::endl;
+
+    auto node = std::make_shared<cvedix_nodes::cvedix_face_swap_node>(
+        nodeName, yunetFaceDetectModel, buffaloLFaceEncodingModel,
+        emapFileForEmbeddings, insightfaceSwapModel, swapSourceImage,
+        swapSourceFaceIndex, minFaceWH, swapOnOSD, actAsPrimaryDetector);
+
+    std::cerr << "[PipelineBuilder] ✓ Face swap node created successfully"
+              << std::endl;
+    return node;
+  } catch (const std::exception &e) {
+    std::cerr << "[PipelineBuilder] Exception in createFaceSwapNode: "
+              << e.what() << std::endl;
+    throw;
+  }
 }
 
-std::shared_ptr<cvedix_nodes::cvedix_node> PipelineBuilder::createInsightFaceRecognitionNode(
-    const std::string& nodeName,
-    const std::map<std::string, std::string>& params,
-    const CreateInstanceRequest& req) {
-    
-    try {
-        std::string modelPath = params.count("model_path") ? params.at("model_path") : "";
-        
-        if (modelPath.empty()) {
-            auto it = req.additionalParams.find("MODEL_PATH");
-            if (it != req.additionalParams.end() && !it->second.empty()) {
-                modelPath = it->second;
-            }
-        }
-        
-        if (nodeName.empty() || modelPath.empty()) {
-            throw std::invalid_argument("Node name and model path are required");
-        }
-        
-        std::cerr << "[PipelineBuilder] Creating InsightFace recognition node:" << std::endl;
-        std::cerr << "  Name: '" << nodeName << "'" << std::endl;
-        std::cerr << "  Model path: '" << modelPath << "'" << std::endl;
-        
-        auto node = std::make_shared<cvedix_nodes::cvedix_insight_face_recognition_node>(
-            nodeName,
-            modelPath
-        );
-        
-        std::cerr << "[PipelineBuilder] ✓ InsightFace recognition node created successfully" << std::endl;
-        return node;
-    } catch (const std::exception& e) {
-        std::cerr << "[PipelineBuilder] Exception in createInsightFaceRecognitionNode: " << e.what() << std::endl;
-        throw;
+std::shared_ptr<cvedix_nodes::cvedix_node>
+PipelineBuilder::createInsightFaceRecognitionNode(
+    const std::string &nodeName,
+    const std::map<std::string, std::string> &params,
+    const CreateInstanceRequest &req) {
+
+  try {
+    std::string modelPath =
+        params.count("model_path") ? params.at("model_path") : "";
+
+    if (modelPath.empty()) {
+      auto it = req.additionalParams.find("MODEL_PATH");
+      if (it != req.additionalParams.end() && !it->second.empty()) {
+        modelPath = it->second;
+      }
     }
+
+    if (nodeName.empty() || modelPath.empty()) {
+      throw std::invalid_argument("Node name and model path are required");
+    }
+
+    std::cerr << "[PipelineBuilder] Creating InsightFace recognition node:"
+              << std::endl;
+    std::cerr << "  Name: '" << nodeName << "'" << std::endl;
+    std::cerr << "  Model path: '" << modelPath << "'" << std::endl;
+
+    auto node =
+        std::make_shared<cvedix_nodes::cvedix_insight_face_recognition_node>(
+            nodeName, modelPath);
+
+    std::cerr << "[PipelineBuilder] ✓ InsightFace recognition node created "
+                 "successfully"
+              << std::endl;
+    return node;
+  } catch (const std::exception &e) {
+    std::cerr
+        << "[PipelineBuilder] Exception in createInsightFaceRecognitionNode: "
+        << e.what() << std::endl;
+    throw;
+  }
 }
 
-std::shared_ptr<cvedix_nodes::cvedix_node> PipelineBuilder::createMLLMAnalyserNode(
-    const std::string& nodeName,
-    const std::map<std::string, std::string>& params,
-    const CreateInstanceRequest& req) {
-    
+std::shared_ptr<cvedix_nodes::cvedix_node>
+PipelineBuilder::createMLLMAnalyserNode(
+    const std::string &nodeName,
+    const std::map<std::string, std::string> &params,
+    const CreateInstanceRequest &req) {
+
 #ifdef CVEDIX_WITH_LLM
-    try {
-        std::string modelName = params.count("model_name") ? params.at("model_name") : "";
-        std::string prompt = params.count("prompt") ? params.at("prompt") : "";
-        std::string apiBaseUrl = params.count("api_base_url") ? params.at("api_base_url") : "";
-        std::string apiKey = params.count("api_key") ? params.at("api_key") : "";
-        
-        // Try to get from additionalParams if still empty
-        if (modelName.empty()) {
-            auto it = req.additionalParams.find("MODEL_NAME");
-            if (it != req.additionalParams.end() && !it->second.empty()) {
-                modelName = it->second;
-            }
-        }
-        if (prompt.empty()) {
-            auto it = req.additionalParams.find("PROMPT");
-            if (it != req.additionalParams.end() && !it->second.empty()) {
-                prompt = it->second;
-            }
-        }
-        if (apiBaseUrl.empty()) {
-            auto it = req.additionalParams.find("API_BASE_URL");
-            if (it != req.additionalParams.end() && !it->second.empty()) {
-                apiBaseUrl = it->second;
-            }
-        }
-        if (apiKey.empty()) {
-            auto it = req.additionalParams.find("API_KEY");
-            if (it != req.additionalParams.end() && !it->second.empty()) {
-                apiKey = it->second;
-            }
-        }
-        
-        // Parse backend type
-        std::string backendTypeStr = params.count("backend_type") ? params.at("backend_type") : "ollama";
-        llmlib::LLMBackendType backendType = llmlib::LLMBackendType::Ollama;
-        if (backendTypeStr == "openai") {
-            backendType = llmlib::LLMBackendType::OpenAI;
-        } else if (backendTypeStr == "anthropic") {
-            backendType = llmlib::LLMBackendType::Anthropic;
-        }
-        
-        if (nodeName.empty() || modelName.empty() || prompt.empty() || apiBaseUrl.empty()) {
-            throw std::invalid_argument("Node name, model name, prompt, and API base URL are required");
-        }
-        
-        std::cerr << "[PipelineBuilder] Creating MLLM analyser node:" << std::endl;
-        std::cerr << "  Name: '" << nodeName << "'" << std::endl;
-        std::cerr << "  Model name: '" << modelName << "'" << std::endl;
-        std::cerr << "  Prompt: '" << prompt << "'" << std::endl;
-        std::cerr << "  API base URL: '" << apiBaseUrl << "'" << std::endl;
-        
-        auto node = std::make_shared<cvedix_nodes::cvedix_mllm_analyser_node>(
-            nodeName,
-            modelName,
-            prompt,
-            apiBaseUrl,
-            apiKey,
-            backendType
-        );
-        
-        std::cerr << "[PipelineBuilder] ✓ MLLM analyser node created successfully" << std::endl;
-        return node;
-    } catch (const std::exception& e) {
-        std::cerr << "[PipelineBuilder] Exception in createMLLMAnalyserNode: " << e.what() << std::endl;
-        throw;
+  try {
+    std::string modelName =
+        params.count("model_name") ? params.at("model_name") : "";
+    std::string prompt = params.count("prompt") ? params.at("prompt") : "";
+    std::string apiBaseUrl =
+        params.count("api_base_url") ? params.at("api_base_url") : "";
+    std::string apiKey = params.count("api_key") ? params.at("api_key") : "";
+
+    // Try to get from additionalParams if still empty
+    if (modelName.empty()) {
+      auto it = req.additionalParams.find("MODEL_NAME");
+      if (it != req.additionalParams.end() && !it->second.empty()) {
+        modelName = it->second;
+      }
     }
+    if (prompt.empty()) {
+      auto it = req.additionalParams.find("PROMPT");
+      if (it != req.additionalParams.end() && !it->second.empty()) {
+        prompt = it->second;
+      }
+    }
+    if (apiBaseUrl.empty()) {
+      auto it = req.additionalParams.find("API_BASE_URL");
+      if (it != req.additionalParams.end() && !it->second.empty()) {
+        apiBaseUrl = it->second;
+      }
+    }
+    if (apiKey.empty()) {
+      auto it = req.additionalParams.find("API_KEY");
+      if (it != req.additionalParams.end() && !it->second.empty()) {
+        apiKey = it->second;
+      }
+    }
+
+    // Parse backend type
+    std::string backendTypeStr =
+        params.count("backend_type") ? params.at("backend_type") : "ollama";
+    llmlib::LLMBackendType backendType = llmlib::LLMBackendType::Ollama;
+    if (backendTypeStr == "openai") {
+      backendType = llmlib::LLMBackendType::OpenAI;
+    } else if (backendTypeStr == "anthropic") {
+      backendType = llmlib::LLMBackendType::Anthropic;
+    }
+
+    if (nodeName.empty() || modelName.empty() || prompt.empty() ||
+        apiBaseUrl.empty()) {
+      throw std::invalid_argument(
+          "Node name, model name, prompt, and API base URL are required");
+    }
+
+    std::cerr << "[PipelineBuilder] Creating MLLM analyser node:" << std::endl;
+    std::cerr << "  Name: '" << nodeName << "'" << std::endl;
+    std::cerr << "  Model name: '" << modelName << "'" << std::endl;
+    std::cerr << "  Prompt: '" << prompt << "'" << std::endl;
+    std::cerr << "  API base URL: '" << apiBaseUrl << "'" << std::endl;
+
+    auto node = std::make_shared<cvedix_nodes::cvedix_mllm_analyser_node>(
+        nodeName, modelName, prompt, apiBaseUrl, apiKey, backendType);
+
+    std::cerr << "[PipelineBuilder] ✓ MLLM analyser node created successfully"
+              << std::endl;
+    return node;
+  } catch (const std::exception &e) {
+    std::cerr << "[PipelineBuilder] Exception in createMLLMAnalyserNode: "
+              << e.what() << std::endl;
+    throw;
+  }
 #else
-    throw std::runtime_error("MLLM analyser node is not available (CVEDIX_WITH_LLM not defined)");
+  throw std::runtime_error(
+      "MLLM analyser node is not available (CVEDIX_WITH_LLM not defined)");
 #endif
 }
 
 #ifdef CVEDIX_WITH_RKNN
-std::shared_ptr<cvedix_nodes::cvedix_node> PipelineBuilder::createRKNNYOLOv11DetectorNode(
-    const std::string& nodeName,
-    const std::map<std::string, std::string>& params,
-    const CreateInstanceRequest& req) {
-    
-    try {
-        std::string modelPath = params.count("model_path") ? params.at("model_path") : "";
-        float scoreThreshold = params.count("score_threshold") ? std::stof(params.at("score_threshold")) : 0.5f;
-        float nmsThreshold = params.count("nms_threshold") ? std::stof(params.at("nms_threshold")) : 0.5f;
-        int inputWidth = params.count("input_width") ? std::stoi(params.at("input_width")) : 640;
-        int inputHeight = params.count("input_height") ? std::stoi(params.at("input_height")) : 640;
-        int numClasses = params.count("num_classes") ? std::stoi(params.at("num_classes")) : 80;
-        
-        if (modelPath.empty()) {
-            auto it = req.additionalParams.find("MODEL_PATH");
-            if (it != req.additionalParams.end() && !it->second.empty()) {
-                modelPath = it->second;
-            }
-        }
-        
-        if (nodeName.empty() || modelPath.empty()) {
-            throw std::invalid_argument("Node name and model path are required");
-        }
-        
-        std::cerr << "[PipelineBuilder] Creating RKNN YOLOv11 detector node:" << std::endl;
-        std::cerr << "  Name: '" << nodeName << "'" << std::endl;
-        std::cerr << "  Model path: '" << modelPath << "'" << std::endl;
-        std::cerr << "  Score threshold: " << scoreThreshold << std::endl;
-        std::cerr << "  NMS threshold: " << nmsThreshold << std::endl;
-        std::cerr << "  Input size: " << inputWidth << "x" << inputHeight << std::endl;
-        std::cerr << "  Num classes: " << numClasses << std::endl;
-        
-        auto node = std::make_shared<cvedix_nodes::cvedix_rknn_yolov11_detector_node>(
-            nodeName,
-            modelPath,
-            scoreThreshold,
-            nmsThreshold,
-            inputWidth,
-            inputHeight,
-            numClasses
-        );
-        
-        std::cerr << "[PipelineBuilder] ✓ RKNN YOLOv11 detector node created successfully" << std::endl;
-        return node;
-    } catch (const std::exception& e) {
-        std::cerr << "[PipelineBuilder] Exception in createRKNNYOLOv11DetectorNode: " << e.what() << std::endl;
-        throw;
+std::shared_ptr<cvedix_nodes::cvedix_node>
+PipelineBuilder::createRKNNYOLOv11DetectorNode(
+    const std::string &nodeName,
+    const std::map<std::string, std::string> &params,
+    const CreateInstanceRequest &req) {
+
+  try {
+    std::string modelPath =
+        params.count("model_path") ? params.at("model_path") : "";
+    float scoreThreshold = params.count("score_threshold")
+                               ? std::stof(params.at("score_threshold"))
+                               : 0.5f;
+    float nmsThreshold = params.count("nms_threshold")
+                             ? std::stof(params.at("nms_threshold"))
+                             : 0.5f;
+    int inputWidth =
+        params.count("input_width") ? std::stoi(params.at("input_width")) : 640;
+    int inputHeight = params.count("input_height")
+                          ? std::stoi(params.at("input_height"))
+                          : 640;
+    int numClasses =
+        params.count("num_classes") ? std::stoi(params.at("num_classes")) : 80;
+
+    if (modelPath.empty()) {
+      auto it = req.additionalParams.find("MODEL_PATH");
+      if (it != req.additionalParams.end() && !it->second.empty()) {
+        modelPath = it->second;
+      }
     }
+
+    if (nodeName.empty() || modelPath.empty()) {
+      throw std::invalid_argument("Node name and model path are required");
+    }
+
+    std::cerr << "[PipelineBuilder] Creating RKNN YOLOv11 detector node:"
+              << std::endl;
+    std::cerr << "  Name: '" << nodeName << "'" << std::endl;
+    std::cerr << "  Model path: '" << modelPath << "'" << std::endl;
+    std::cerr << "  Score threshold: " << scoreThreshold << std::endl;
+    std::cerr << "  NMS threshold: " << nmsThreshold << std::endl;
+    std::cerr << "  Input size: " << inputWidth << "x" << inputHeight
+              << std::endl;
+    std::cerr << "  Num classes: " << numClasses << std::endl;
+
+    auto node =
+        std::make_shared<cvedix_nodes::cvedix_rknn_yolov11_detector_node>(
+            nodeName, modelPath, scoreThreshold, nmsThreshold, inputWidth,
+            inputHeight, numClasses);
+
+    std::cerr
+        << "[PipelineBuilder] ✓ RKNN YOLOv11 detector node created successfully"
+        << std::endl;
+    return node;
+  } catch (const std::exception &e) {
+    std::cerr
+        << "[PipelineBuilder] Exception in createRKNNYOLOv11DetectorNode: "
+        << e.what() << std::endl;
+    throw;
+  }
 }
 #endif // CVEDIX_WITH_RKNN
 
 #ifdef CVEDIX_WITH_TRT
-std::shared_ptr<cvedix_nodes::cvedix_node> PipelineBuilder::createTRTInsightFaceRecognitionNode(
-    const std::string& nodeName,
-    const std::map<std::string, std::string>& params,
-    const CreateInstanceRequest& req) {
-    
-    try {
-        std::string modelPath = params.count("model_path") ? params.at("model_path") : "";
-        
-        if (modelPath.empty()) {
-            auto it = req.additionalParams.find("MODEL_PATH");
-            if (it != req.additionalParams.end() && !it->second.empty()) {
-                modelPath = it->second;
-            }
-        }
-        
-        if (nodeName.empty() || modelPath.empty()) {
-            throw std::invalid_argument("Node name and model path are required");
-        }
-        
-        std::cerr << "[PipelineBuilder] Creating TensorRT InsightFace recognition node:" << std::endl;
-        std::cerr << "  Name: '" << nodeName << "'" << std::endl;
-        std::cerr << "  Model path: '" << modelPath << "'" << std::endl;
-        
-        auto node = std::make_shared<cvedix_nodes::cvedix_trt_insight_face_recognition_node>(
-            nodeName,
-            modelPath
-        );
-        
-        std::cerr << "[PipelineBuilder] ✓ TensorRT InsightFace recognition node created successfully" << std::endl;
-        return node;
-    } catch (const std::exception& e) {
-        std::cerr << "[PipelineBuilder] Exception in createTRTInsightFaceRecognitionNode: " << e.what() << std::endl;
-        throw;
+std::shared_ptr<cvedix_nodes::cvedix_node>
+PipelineBuilder::createTRTInsightFaceRecognitionNode(
+    const std::string &nodeName,
+    const std::map<std::string, std::string> &params,
+    const CreateInstanceRequest &req) {
+
+  try {
+    std::string modelPath =
+        params.count("model_path") ? params.at("model_path") : "";
+
+    if (modelPath.empty()) {
+      auto it = req.additionalParams.find("MODEL_PATH");
+      if (it != req.additionalParams.end() && !it->second.empty()) {
+        modelPath = it->second;
+      }
     }
+
+    if (nodeName.empty() || modelPath.empty()) {
+      throw std::invalid_argument("Node name and model path are required");
+    }
+
+    std::cerr
+        << "[PipelineBuilder] Creating TensorRT InsightFace recognition node:"
+        << std::endl;
+    std::cerr << "  Name: '" << nodeName << "'" << std::endl;
+    std::cerr << "  Model path: '" << modelPath << "'" << std::endl;
+
+    auto node = std::make_shared<
+        cvedix_nodes::cvedix_trt_insight_face_recognition_node>(nodeName,
+                                                                modelPath);
+
+    std::cerr << "[PipelineBuilder] ✓ TensorRT InsightFace recognition node "
+                 "created successfully"
+              << std::endl;
+    return node;
+  } catch (const std::exception &e) {
+    std::cerr << "[PipelineBuilder] Exception in "
+                 "createTRTInsightFaceRecognitionNode: "
+              << e.what() << std::endl;
+    throw;
+  }
 }
 #endif // CVEDIX_WITH_TRT
 
 // ========== Source Nodes Implementation ==========
 
 std::shared_ptr<cvedix_nodes::cvedix_node> PipelineBuilder::createAppSourceNode(
-    const std::string& nodeName,
-    const std::map<std::string, std::string>& params,
-    const CreateInstanceRequest& req) {
-    
-    try {
-        int channelIndex = params.count("channel") ? std::stoi(params.at("channel")) : 0;
-        
-        if (nodeName.empty()) {
-            throw std::invalid_argument("Node name cannot be empty");
-        }
-        
-        std::cerr << "[PipelineBuilder] Creating app source node:" << std::endl;
-        std::cerr << "  Name: '" << nodeName << "'" << std::endl;
-        std::cerr << "  Channel index: " << channelIndex << std::endl;
-        std::cerr << "  NOTE: Use push_frames() method to push frames into pipeline" << std::endl;
-        
-        auto node = std::make_shared<cvedix_nodes::cvedix_app_src_node>(
-            nodeName,
-            channelIndex
-        );
-        
-        std::cerr << "[PipelineBuilder] ✓ App source node created successfully" << std::endl;
-        return node;
-    } catch (const std::exception& e) {
-        std::cerr << "[PipelineBuilder] Exception in createAppSourceNode: " << e.what() << std::endl;
-        throw;
+    const std::string &nodeName,
+    const std::map<std::string, std::string> &params,
+    const CreateInstanceRequest &req) {
+
+  try {
+    int channelIndex =
+        params.count("channel") ? std::stoi(params.at("channel")) : 0;
+
+    if (nodeName.empty()) {
+      throw std::invalid_argument("Node name cannot be empty");
     }
+
+    std::cerr << "[PipelineBuilder] Creating app source node:" << std::endl;
+    std::cerr << "  Name: '" << nodeName << "'" << std::endl;
+    std::cerr << "  Channel index: " << channelIndex << std::endl;
+    std::cerr << "  NOTE: Use push_frames() method to push frames into pipeline"
+              << std::endl;
+
+    auto node = std::make_shared<cvedix_nodes::cvedix_app_src_node>(
+        nodeName, channelIndex);
+
+    std::cerr << "[PipelineBuilder] ✓ App source node created successfully"
+              << std::endl;
+    return node;
+  } catch (const std::exception &e) {
+    std::cerr << "[PipelineBuilder] Exception in createAppSourceNode: "
+              << e.what() << std::endl;
+    throw;
+  }
 }
 
-std::shared_ptr<cvedix_nodes::cvedix_node> PipelineBuilder::createImageSourceNode(
-    const std::string& nodeName,
-    const std::map<std::string, std::string>& params,
-    const CreateInstanceRequest& req) {
-    
-    try {
-        int channelIndex = params.count("channel") ? std::stoi(params.at("channel")) : 0;
-        std::string portOrLocation = params.count("port_or_location") ? params.at("port_or_location") : "";
-        int interval = params.count("interval") ? std::stoi(params.at("interval")) : 1;
-        float resizeRatio = params.count("resize_ratio") ? std::stof(params.at("resize_ratio")) : 1.0f;
-        bool cycle = params.count("cycle") ? (params.at("cycle") == "true" || params.at("cycle") == "1") : true;
-        // Get decoder from config priority list if not specified
-        std::string defaultDecoder = "jpegdec";
-        std::string gstDecoderName = params.count("gst_decoder_name") ? params.at("gst_decoder_name") : selectDecoderFromPriority(defaultDecoder);
-        
-        // Get from additionalParams if not in params
-        if (portOrLocation.empty()) {
-            auto it = req.additionalParams.find("IMAGE_SRC_PORT_OR_LOCATION");
-            if (it != req.additionalParams.end() && !it->second.empty()) {
-                portOrLocation = it->second;
-            } else {
-                // Default: Try production path first, then development path
-                std::string productionPath = "/opt/edge_ai_api/data/test_images/%d.jpg";
-                if (fs::exists("/opt/edge_ai_api/data/test_images")) {
-                    portOrLocation = productionPath;
-                    std::cerr << "[PipelineBuilder] Using default production image path: " << productionPath << std::endl;
-                } else {
-                    // Development fallback (will not exist in production)
-                    portOrLocation = "./cvedix_data/test_images/%d.jpg";
-                    std::cerr << "[PipelineBuilder] ⚠ WARNING: Using development default image path (./cvedix_data/test_images/%d.jpg)" << std::endl;
-                    std::cerr << "[PipelineBuilder] ℹ NOTE: In production, provide 'IMAGE_SRC_PORT_OR_LOCATION' or upload images to /opt/edge_ai_api/data/test_images/" << std::endl;
-                }
-            }
+std::shared_ptr<cvedix_nodes::cvedix_node>
+PipelineBuilder::createImageSourceNode(
+    const std::string &nodeName,
+    const std::map<std::string, std::string> &params,
+    const CreateInstanceRequest &req) {
+
+  try {
+    int channelIndex =
+        params.count("channel") ? std::stoi(params.at("channel")) : 0;
+    std::string portOrLocation =
+        params.count("port_or_location") ? params.at("port_or_location") : "";
+    int interval =
+        params.count("interval") ? std::stoi(params.at("interval")) : 1;
+    float resizeRatio = params.count("resize_ratio")
+                            ? std::stof(params.at("resize_ratio"))
+                            : 1.0f;
+    bool cycle = params.count("cycle") ? (params.at("cycle") == "true" ||
+                                          params.at("cycle") == "1")
+                                       : true;
+    // Get decoder from config priority list if not specified
+    std::string defaultDecoder = "jpegdec";
+    std::string gstDecoderName =
+        params.count("gst_decoder_name")
+            ? params.at("gst_decoder_name")
+            : selectDecoderFromPriority(defaultDecoder);
+
+    // Get from additionalParams if not in params
+    if (portOrLocation.empty()) {
+      auto it = req.additionalParams.find("IMAGE_SRC_PORT_OR_LOCATION");
+      if (it != req.additionalParams.end() && !it->second.empty()) {
+        portOrLocation = it->second;
+      } else {
+        // Default: Try production path first, then development path
+        std::string productionPath = "/opt/edge_ai_api/data/test_images/%d.jpg";
+        if (fs::exists("/opt/edge_ai_api/data/test_images")) {
+          portOrLocation = productionPath;
+          std::cerr << "[PipelineBuilder] Using default production image path: "
+                    << productionPath << std::endl;
+        } else {
+          // Development fallback (will not exist in production)
+          portOrLocation = "./cvedix_data/test_images/%d.jpg";
+          std::cerr << "[PipelineBuilder] ⚠ WARNING: Using development default "
+                       "image path (./cvedix_data/test_images/%d.jpg)"
+                    << std::endl;
+          std::cerr << "[PipelineBuilder] ℹ NOTE: In production, provide "
+                       "'IMAGE_SRC_PORT_OR_LOCATION' or upload images to "
+                       "/opt/edge_ai_api/data/test_images/"
+                    << std::endl;
         }
-        
-        if (nodeName.empty()) {
-            throw std::invalid_argument("Node name cannot be empty");
-        }
-        if (portOrLocation.empty()) {
-            throw std::invalid_argument("port_or_location cannot be empty");
-        }
-        
-        // Validate resize_ratio
-        if (resizeRatio <= 0.0f || resizeRatio > 1.0f) {
-            std::cerr << "[PipelineBuilder] Warning: resize_ratio out of range, using 1.0" << std::endl;
-            resizeRatio = 1.0f;
-        }
-        
-        std::cerr << "[PipelineBuilder] Creating image source node:" << std::endl;
-        std::cerr << "  Name: '" << nodeName << "'" << std::endl;
-        std::cerr << "  Channel index: " << channelIndex << std::endl;
-        std::cerr << "  Port/Location: '" << portOrLocation << "'" << std::endl;
-        std::cerr << "  Interval: " << interval << " seconds" << std::endl;
-        std::cerr << "  Resize ratio: " << resizeRatio << std::endl;
-        std::cerr << "  Cycle: " << (cycle ? "true" : "false") << std::endl;
-        
-        auto node = std::make_shared<cvedix_nodes::cvedix_image_src_node>(
-            nodeName,
-            channelIndex,
-            portOrLocation,
-            interval,
-            resizeRatio,
-            cycle,
-            gstDecoderName
-        );
-        
-        std::cerr << "[PipelineBuilder] ✓ Image source node created successfully" << std::endl;
-        return node;
-    } catch (const std::exception& e) {
-        std::cerr << "[PipelineBuilder] Exception in createImageSourceNode: " << e.what() << std::endl;
-        throw;
+      }
     }
+
+    if (nodeName.empty()) {
+      throw std::invalid_argument("Node name cannot be empty");
+    }
+    if (portOrLocation.empty()) {
+      throw std::invalid_argument("port_or_location cannot be empty");
+    }
+
+    // Validate resize_ratio
+    if (resizeRatio <= 0.0f || resizeRatio > 1.0f) {
+      std::cerr
+          << "[PipelineBuilder] Warning: resize_ratio out of range, using 1.0"
+          << std::endl;
+      resizeRatio = 1.0f;
+    }
+
+    std::cerr << "[PipelineBuilder] Creating image source node:" << std::endl;
+    std::cerr << "  Name: '" << nodeName << "'" << std::endl;
+    std::cerr << "  Channel index: " << channelIndex << std::endl;
+    std::cerr << "  Port/Location: '" << portOrLocation << "'" << std::endl;
+    std::cerr << "  Interval: " << interval << " seconds" << std::endl;
+    std::cerr << "  Resize ratio: " << resizeRatio << std::endl;
+    std::cerr << "  Cycle: " << (cycle ? "true" : "false") << std::endl;
+
+    auto node = std::make_shared<cvedix_nodes::cvedix_image_src_node>(
+        nodeName, channelIndex, portOrLocation, interval, resizeRatio, cycle,
+        gstDecoderName);
+
+    std::cerr << "[PipelineBuilder] ✓ Image source node created successfully"
+              << std::endl;
+    return node;
+  } catch (const std::exception &e) {
+    std::cerr << "[PipelineBuilder] Exception in createImageSourceNode: "
+              << e.what() << std::endl;
+    throw;
+  }
 }
 
-std::shared_ptr<cvedix_nodes::cvedix_node> PipelineBuilder::createRTMPSourceNode(
-    const std::string& nodeName,
-    const std::map<std::string, std::string>& params,
-    const CreateInstanceRequest& req) {
-    
-    try {
-        int channelIndex = params.count("channel") ? std::stoi(params.at("channel")) : 0;
-        std::string rtmpUrl = params.count("rtmp_url") ? params.at("rtmp_url") : "";
-        float resizeRatio = params.count("resize_ratio") ? std::stof(params.at("resize_ratio")) : 1.0f;
-        // Get decoder from config priority list if not specified
-        std::string defaultDecoder = "avdec_h264";
-        std::string gstDecoderName = params.count("gst_decoder_name") ? params.at("gst_decoder_name") : selectDecoderFromPriority(defaultDecoder);
-        int skipInterval = params.count("skip_interval") ? std::stoi(params.at("skip_interval")) : 0;
-        
-        // Get from additionalParams if not in params
-        if (rtmpUrl.empty()) {
-            auto it = req.additionalParams.find("RTMP_SRC_URL");
-            if (it != req.additionalParams.end() && !it->second.empty()) {
-                rtmpUrl = it->second;
-            } else {
-                // Default fallback (development only - should be overridden in production)
-                // SECURITY: This is a development default. In production, always provide RTMP_URL via request or environment variable.
-                rtmpUrl = "rtmp://localhost:1935/live/stream";
-            }
-        }
-        
-        if (nodeName.empty()) {
-            throw std::invalid_argument("Node name cannot be empty");
-        }
-        if (rtmpUrl.empty()) {
-            throw std::invalid_argument("RTMP URL cannot be empty");
-        }
-        
-        // Validate resize_ratio
-        if (resizeRatio <= 0.0f || resizeRatio > 1.0f) {
-            std::cerr << "[PipelineBuilder] Warning: resize_ratio out of range, using 1.0" << std::endl;
-            resizeRatio = 1.0f;
-        }
-        
-        std::cerr << "[PipelineBuilder] Creating RTMP source node:" << std::endl;
-        std::cerr << "  Name: '" << nodeName << "'" << std::endl;
-        std::cerr << "  Channel index: " << channelIndex << std::endl;
-        std::cerr << "  RTMP URL: '" << rtmpUrl << "'" << std::endl;
-        std::cerr << "  Resize ratio: " << resizeRatio << std::endl;
-        std::cerr << "  Skip interval: " << skipInterval << std::endl;
-        
-        auto node = std::make_shared<cvedix_nodes::cvedix_rtmp_src_node>(
-            nodeName,
-            channelIndex,
-            rtmpUrl,
-            resizeRatio,
-            gstDecoderName,
-            skipInterval
-        );
-        
-        std::cerr << "[PipelineBuilder] ✓ RTMP source node created successfully" << std::endl;
-        return node;
-    } catch (const std::exception& e) {
-        std::cerr << "[PipelineBuilder] Exception in createRTMPSourceNode: " << e.what() << std::endl;
-        throw;
+std::shared_ptr<cvedix_nodes::cvedix_node>
+PipelineBuilder::createRTMPSourceNode(
+    const std::string &nodeName,
+    const std::map<std::string, std::string> &params,
+    const CreateInstanceRequest &req) {
+
+  try {
+    int channelIndex =
+        params.count("channel") ? std::stoi(params.at("channel")) : 0;
+    std::string rtmpUrl = params.count("rtmp_url") ? params.at("rtmp_url") : "";
+    float resizeRatio = params.count("resize_ratio")
+                            ? std::stof(params.at("resize_ratio"))
+                            : 1.0f;
+    // Get decoder from config priority list if not specified
+    std::string defaultDecoder = "avdec_h264";
+    std::string gstDecoderName =
+        params.count("gst_decoder_name")
+            ? params.at("gst_decoder_name")
+            : selectDecoderFromPriority(defaultDecoder);
+    int skipInterval = params.count("skip_interval")
+                           ? std::stoi(params.at("skip_interval"))
+                           : 0;
+
+    // Get from additionalParams if not in params
+    if (rtmpUrl.empty()) {
+      auto it = req.additionalParams.find("RTMP_SRC_URL");
+      if (it != req.additionalParams.end() && !it->second.empty()) {
+        rtmpUrl = it->second;
+      } else {
+        // Default fallback (development only - should be overridden in
+        // production) SECURITY: This is a development default. In production,
+        // always provide RTMP_URL via request or environment variable.
+        rtmpUrl = "rtmp://localhost:1935/live/stream";
+      }
     }
+
+    if (nodeName.empty()) {
+      throw std::invalid_argument("Node name cannot be empty");
+    }
+    if (rtmpUrl.empty()) {
+      throw std::invalid_argument("RTMP URL cannot be empty");
+    }
+
+    // Validate resize_ratio
+    if (resizeRatio <= 0.0f || resizeRatio > 1.0f) {
+      std::cerr
+          << "[PipelineBuilder] Warning: resize_ratio out of range, using 1.0"
+          << std::endl;
+      resizeRatio = 1.0f;
+    }
+
+    std::cerr << "[PipelineBuilder] Creating RTMP source node:" << std::endl;
+    std::cerr << "  Name: '" << nodeName << "'" << std::endl;
+    std::cerr << "  Channel index: " << channelIndex << std::endl;
+    std::cerr << "  RTMP URL: '" << rtmpUrl << "'" << std::endl;
+    std::cerr << "  Resize ratio: " << resizeRatio << std::endl;
+    std::cerr << "  Skip interval: " << skipInterval << std::endl;
+
+    auto node = std::make_shared<cvedix_nodes::cvedix_rtmp_src_node>(
+        nodeName, channelIndex, rtmpUrl, resizeRatio, gstDecoderName,
+        skipInterval);
+
+    std::cerr << "[PipelineBuilder] ✓ RTMP source node created successfully"
+              << std::endl;
+    return node;
+  } catch (const std::exception &e) {
+    std::cerr << "[PipelineBuilder] Exception in createRTMPSourceNode: "
+              << e.what() << std::endl;
+    throw;
+  }
 }
 
-std::string PipelineBuilder::detectInputType(const std::string& uri) const {
-    if (uri.empty()) {
-        return "file";
-    }
-    
-    // Trim whitespace
-    std::string trimmedUri = uri;
-    trimmedUri.erase(0, trimmedUri.find_first_not_of(" \t\n\r"));
-    trimmedUri.erase(trimmedUri.find_last_not_of(" \t\n\r") + 1);
-    
-    if (trimmedUri.empty()) {
-        return "file";
-    }
-    
-    // Convert to lowercase for comparison
-    std::string lowerUri = trimmedUri;
-    std::transform(lowerUri.begin(), lowerUri.end(), lowerUri.begin(), ::tolower);
-    
-    // Check protocol prefixes (must be at start of string)
-    if (lowerUri.find("rtsp://") == 0) {
-        return "rtsp";
-    } else if (lowerUri.find("rtmp://") == 0) {
-        return "rtmp";
-    } else if (lowerUri.find("hls://") == 0) {
-        return "hls";
-    } else if (lowerUri.find("http://") == 0 || lowerUri.find("https://") == 0) {
-        // Check if it's HLS playlist (.m3u8 extension)
-        // Check for .m3u8 at the end or before query parameters
-        size_t m3u8Pos = lowerUri.find(".m3u8");
-        if (m3u8Pos != std::string::npos) {
-            // Check if .m3u8 is at the end or followed by ? or #
-            size_t afterM3u8 = m3u8Pos + 5;
-            if (afterM3u8 >= lowerUri.length() || 
-                lowerUri[afterM3u8] == '?' || 
-                lowerUri[afterM3u8] == '#' ||
-                lowerUri[afterM3u8] == '/') {
-                return "hls";
-            }
-        }
-        return "http";
-    } else if (lowerUri.find("udp://") == 0) {
-        return "udp";
-    }
-    
-    // Check file extension for HLS (must be at end or before query params)
+std::string PipelineBuilder::detectInputType(const std::string &uri) const {
+  if (uri.empty()) {
+    return "file";
+  }
+
+  // Trim whitespace
+  std::string trimmedUri = uri;
+  trimmedUri.erase(0, trimmedUri.find_first_not_of(" \t\n\r"));
+  trimmedUri.erase(trimmedUri.find_last_not_of(" \t\n\r") + 1);
+
+  if (trimmedUri.empty()) {
+    return "file";
+  }
+
+  // Convert to lowercase for comparison
+  std::string lowerUri = trimmedUri;
+  std::transform(lowerUri.begin(), lowerUri.end(), lowerUri.begin(), ::tolower);
+
+  // Check protocol prefixes (must be at start of string)
+  if (lowerUri.find("rtsp://") == 0) {
+    return "rtsp";
+  } else if (lowerUri.find("rtmp://") == 0) {
+    return "rtmp";
+  } else if (lowerUri.find("hls://") == 0) {
+    return "hls";
+  } else if (lowerUri.find("http://") == 0 || lowerUri.find("https://") == 0) {
+    // Check if it's HLS playlist (.m3u8 extension)
+    // Check for .m3u8 at the end or before query parameters
     size_t m3u8Pos = lowerUri.find(".m3u8");
     if (m3u8Pos != std::string::npos) {
-        size_t afterM3u8 = m3u8Pos + 5;
-        if (afterM3u8 >= lowerUri.length() || 
-            lowerUri[afterM3u8] == '?' || 
-            lowerUri[afterM3u8] == '#' ||
-            lowerUri[afterM3u8] == '/') {
-            return "hls";
-        }
+      // Check if .m3u8 is at the end or followed by ? or #
+      size_t afterM3u8 = m3u8Pos + 5;
+      if (afterM3u8 >= lowerUri.length() || lowerUri[afterM3u8] == '?' ||
+          lowerUri[afterM3u8] == '#' || lowerUri[afterM3u8] == '/') {
+        return "hls";
+      }
     }
-    
-    // Default to local file
-    return "file";
+    return "http";
+  } else if (lowerUri.find("udp://") == 0) {
+    return "udp";
+  }
+
+  // Check file extension for HLS (must be at end or before query params)
+  size_t m3u8Pos = lowerUri.find(".m3u8");
+  if (m3u8Pos != std::string::npos) {
+    size_t afterM3u8 = m3u8Pos + 5;
+    if (afterM3u8 >= lowerUri.length() || lowerUri[afterM3u8] == '?' ||
+        lowerUri[afterM3u8] == '#' || lowerUri[afterM3u8] == '/') {
+      return "hls";
+    }
+  }
+
+  // Default to local file
+  return "file";
 }
 
-std::shared_ptr<cvedix_nodes::cvedix_node> PipelineBuilder::createFFmpegSourceNode(
-    const std::string& nodeName,
-    const std::map<std::string, std::string>& params,
-    const CreateInstanceRequest& req) {
-    
-    try {
-        // Get URI from params or request
-        std::string uri = params.count("uri") ? params.at("uri") : "";
-        if (uri.empty()) {
-            // Try to get from FILE_PATH or HLS_URL or HTTP_URL
-            auto filePathIt = req.additionalParams.find("FILE_PATH");
-            auto hlsIt = req.additionalParams.find("HLS_URL");
-            auto httpIt = req.additionalParams.find("HTTP_URL");
-            
-            if (hlsIt != req.additionalParams.end() && !hlsIt->second.empty()) {
-                uri = hlsIt->second;
-            } else if (httpIt != req.additionalParams.end() && !httpIt->second.empty()) {
-                uri = httpIt->second;
-            } else if (filePathIt != req.additionalParams.end() && !filePathIt->second.empty()) {
-                uri = filePathIt->second;
-            }
-        }
-        
-        int channel = params.count("channel") ? std::stoi(params.at("channel")) : 0;
-        float resizeRatio = params.count("resize_ratio") ? std::stof(params.at("resize_ratio")) : 1.0f;
-        
-        // Get resize_ratio from additionalParams if available
-        auto resizeIt = req.additionalParams.find("RESIZE_RATIO");
-        if (resizeIt != req.additionalParams.end() && !resizeIt->second.empty()) {
-            try {
-                resizeRatio = std::stof(resizeIt->second);
-            } catch (...) {
-                std::cerr << "[PipelineBuilder] Warning: Invalid RESIZE_RATIO, using default" << std::endl;
-            }
-        }
-        
-        if (nodeName.empty()) {
-            throw std::invalid_argument("Node name cannot be empty");
-        }
-        if (uri.empty()) {
-            throw std::invalid_argument("URI cannot be empty for FFmpeg source");
-        }
-        if (resizeRatio <= 0.0f || resizeRatio > 1.0f) {
-            std::cerr << "[PipelineBuilder] Warning: resize_ratio out of range, using 1.0" << std::endl;
-            resizeRatio = 1.0f;
-        }
-        
-        std::cerr << "[PipelineBuilder] Creating FFmpeg source node:" << std::endl;
-        std::cerr << "  Name: '" << nodeName << "'" << std::endl;
-        std::cerr << "  URI: '" << uri << "'" << std::endl;
-        std::cerr << "  Channel: " << channel << std::endl;
-        std::cerr << "  Resize ratio: " << resizeRatio << std::endl;
-        
-        // Note: CVEDIX SDK may not have ff_src node header
-        // Fallback: Use file_src with GStreamer urisourcebin pipeline
-        // For HLS/HTTP streams, we'll use file_src node which internally uses GStreamer
-        // The GStreamer backend should handle HLS/HTTP streams via urisourcebin
-        
-        // Since CVEDIX SDK file_src uses GStreamer internally, it should support HLS/HTTP
-        // We'll use file_src node with the URI directly
-        auto node = std::make_shared<cvedix_nodes::cvedix_file_src_node>(
-            nodeName,
-            channel,
-            uri,  // Pass URI directly - GStreamer should handle it
-            resizeRatio
-        );
-        
-        std::cerr << "[PipelineBuilder] ✓ FFmpeg source node created successfully (using file_src with GStreamer)" << std::endl;
-        return node;
-    } catch (const std::exception& e) {
-        std::cerr << "[PipelineBuilder] Exception in createFFmpegSourceNode: " << e.what() << std::endl;
-        throw;
+std::shared_ptr<cvedix_nodes::cvedix_node>
+PipelineBuilder::createFFmpegSourceNode(
+    const std::string &nodeName,
+    const std::map<std::string, std::string> &params,
+    const CreateInstanceRequest &req) {
+
+  try {
+    // Get URI from params or request
+    std::string uri = params.count("uri") ? params.at("uri") : "";
+    if (uri.empty()) {
+      // Try to get from FILE_PATH or HLS_URL or HTTP_URL
+      auto filePathIt = req.additionalParams.find("FILE_PATH");
+      auto hlsIt = req.additionalParams.find("HLS_URL");
+      auto httpIt = req.additionalParams.find("HTTP_URL");
+
+      if (hlsIt != req.additionalParams.end() && !hlsIt->second.empty()) {
+        uri = hlsIt->second;
+      } else if (httpIt != req.additionalParams.end() &&
+                 !httpIt->second.empty()) {
+        uri = httpIt->second;
+      } else if (filePathIt != req.additionalParams.end() &&
+                 !filePathIt->second.empty()) {
+        uri = filePathIt->second;
+      }
     }
+
+    int channel = params.count("channel") ? std::stoi(params.at("channel")) : 0;
+    float resizeRatio = params.count("resize_ratio")
+                            ? std::stof(params.at("resize_ratio"))
+                            : 1.0f;
+
+    // Get resize_ratio from additionalParams if available
+    auto resizeIt = req.additionalParams.find("RESIZE_RATIO");
+    if (resizeIt != req.additionalParams.end() && !resizeIt->second.empty()) {
+      try {
+        resizeRatio = std::stof(resizeIt->second);
+      } catch (...) {
+        std::cerr
+            << "[PipelineBuilder] Warning: Invalid RESIZE_RATIO, using default"
+            << std::endl;
+      }
+    }
+
+    if (nodeName.empty()) {
+      throw std::invalid_argument("Node name cannot be empty");
+    }
+    if (uri.empty()) {
+      throw std::invalid_argument("URI cannot be empty for FFmpeg source");
+    }
+    if (resizeRatio <= 0.0f || resizeRatio > 1.0f) {
+      std::cerr
+          << "[PipelineBuilder] Warning: resize_ratio out of range, using 1.0"
+          << std::endl;
+      resizeRatio = 1.0f;
+    }
+
+    std::cerr << "[PipelineBuilder] Creating FFmpeg source node:" << std::endl;
+    std::cerr << "  Name: '" << nodeName << "'" << std::endl;
+    std::cerr << "  URI: '" << uri << "'" << std::endl;
+    std::cerr << "  Channel: " << channel << std::endl;
+    std::cerr << "  Resize ratio: " << resizeRatio << std::endl;
+
+    // Note: CVEDIX SDK may not have ff_src node header
+    // Fallback: Use file_src with GStreamer urisourcebin pipeline
+    // For HLS/HTTP streams, we'll use file_src node which internally uses
+    // GStreamer The GStreamer backend should handle HLS/HTTP streams via
+    // urisourcebin
+
+    // Since CVEDIX SDK file_src uses GStreamer internally, it should support
+    // HLS/HTTP We'll use file_src node with the URI directly
+    auto node = std::make_shared<cvedix_nodes::cvedix_file_src_node>(
+        nodeName, channel,
+        uri, // Pass URI directly - GStreamer should handle it
+        resizeRatio);
+
+    std::cerr << "[PipelineBuilder] ✓ FFmpeg source node created successfully "
+                 "(using file_src with GStreamer)"
+              << std::endl;
+    return node;
+  } catch (const std::exception &e) {
+    std::cerr << "[PipelineBuilder] Exception in createFFmpegSourceNode: "
+              << e.what() << std::endl;
+    throw;
+  }
 }
 
 std::shared_ptr<cvedix_nodes::cvedix_node> PipelineBuilder::createUDPSourceNode(
-    const std::string& nodeName,
-    const std::map<std::string, std::string>& params,
-    const CreateInstanceRequest& req) {
-    
-    try {
-        int channelIndex = params.count("channel") ? std::stoi(params.at("channel")) : 0;
-        int port = params.count("port") ? std::stoi(params.at("port")) : 6000;
-        float resizeRatio = params.count("resize_ratio") ? std::stof(params.at("resize_ratio")) : 1.0f;
-        // Get decoder from config priority list if not specified
-        std::string defaultDecoder = "avdec_h264";
-        std::string gstDecoderName = params.count("gst_decoder_name") ? params.at("gst_decoder_name") : selectDecoderFromPriority(defaultDecoder);
-        int skipInterval = params.count("skip_interval") ? std::stoi(params.at("skip_interval")) : 0;
-        
-        // Get from additionalParams if not in params
-        if (params.count("port") == 0) {
-            auto it = req.additionalParams.find("UDP_PORT");
-            if (it != req.additionalParams.end() && !it->second.empty()) {
-                try {
-                    port = std::stoi(it->second);
-                } catch (...) {
-                    std::cerr << "[PipelineBuilder] Warning: Invalid UDP_PORT, using default 6000" << std::endl;
-                }
-            }
+    const std::string &nodeName,
+    const std::map<std::string, std::string> &params,
+    const CreateInstanceRequest &req) {
+
+  try {
+    int channelIndex =
+        params.count("channel") ? std::stoi(params.at("channel")) : 0;
+    int port = params.count("port") ? std::stoi(params.at("port")) : 6000;
+    float resizeRatio = params.count("resize_ratio")
+                            ? std::stof(params.at("resize_ratio"))
+                            : 1.0f;
+    // Get decoder from config priority list if not specified
+    std::string defaultDecoder = "avdec_h264";
+    std::string gstDecoderName =
+        params.count("gst_decoder_name")
+            ? params.at("gst_decoder_name")
+            : selectDecoderFromPriority(defaultDecoder);
+    int skipInterval = params.count("skip_interval")
+                           ? std::stoi(params.at("skip_interval"))
+                           : 0;
+
+    // Get from additionalParams if not in params
+    if (params.count("port") == 0) {
+      auto it = req.additionalParams.find("UDP_PORT");
+      if (it != req.additionalParams.end() && !it->second.empty()) {
+        try {
+          port = std::stoi(it->second);
+        } catch (...) {
+          std::cerr << "[PipelineBuilder] Warning: Invalid UDP_PORT, using "
+                       "default 6000"
+                    << std::endl;
         }
-        
-        if (nodeName.empty()) {
-            throw std::invalid_argument("Node name cannot be empty");
-        }
-        if (port <= 0 || port > 65535) {
-            throw std::invalid_argument("UDP port must be between 1 and 65535");
-        }
-        
-        // Validate resize_ratio
-        if (resizeRatio <= 0.0f || resizeRatio > 1.0f) {
-            std::cerr << "[PipelineBuilder] Warning: resize_ratio out of range, using 1.0" << std::endl;
-            resizeRatio = 1.0f;
-        }
-        
-        std::cerr << "[PipelineBuilder] Creating UDP source node:" << std::endl;
-        std::cerr << "  Name: '" << nodeName << "'" << std::endl;
-        std::cerr << "  Channel index: " << channelIndex << std::endl;
-        std::cerr << "  Port: " << port << std::endl;
-        std::cerr << "  Resize ratio: " << resizeRatio << std::endl;
-        std::cerr << "  Skip interval: " << skipInterval << std::endl;
-        
-        auto node = std::make_shared<cvedix_nodes::cvedix_udp_src_node>(
-            nodeName,
-            channelIndex,
-            port,
-            resizeRatio,
-            gstDecoderName,
-            skipInterval
-        );
-        
-        std::cerr << "[PipelineBuilder] ✓ UDP source node created successfully" << std::endl;
-        return node;
-    } catch (const std::exception& e) {
-        std::cerr << "[PipelineBuilder] Exception in createUDPSourceNode: " << e.what() << std::endl;
-        throw;
+      }
     }
+
+    if (nodeName.empty()) {
+      throw std::invalid_argument("Node name cannot be empty");
+    }
+    if (port <= 0 || port > 65535) {
+      throw std::invalid_argument("UDP port must be between 1 and 65535");
+    }
+
+    // Validate resize_ratio
+    if (resizeRatio <= 0.0f || resizeRatio > 1.0f) {
+      std::cerr
+          << "[PipelineBuilder] Warning: resize_ratio out of range, using 1.0"
+          << std::endl;
+      resizeRatio = 1.0f;
+    }
+
+    std::cerr << "[PipelineBuilder] Creating UDP source node:" << std::endl;
+    std::cerr << "  Name: '" << nodeName << "'" << std::endl;
+    std::cerr << "  Channel index: " << channelIndex << std::endl;
+    std::cerr << "  Port: " << port << std::endl;
+    std::cerr << "  Resize ratio: " << resizeRatio << std::endl;
+    std::cerr << "  Skip interval: " << skipInterval << std::endl;
+
+    auto node = std::make_shared<cvedix_nodes::cvedix_udp_src_node>(
+        nodeName, channelIndex, port, resizeRatio, gstDecoderName,
+        skipInterval);
+
+    std::cerr << "[PipelineBuilder] ✓ UDP source node created successfully"
+              << std::endl;
+    return node;
+  } catch (const std::exception &e) {
+    std::cerr << "[PipelineBuilder] Exception in createUDPSourceNode: "
+              << e.what() << std::endl;
+    throw;
+  }
 }
 
 // ========== Helper Functions for Crossline MQTT Broker ==========
 #ifdef CVEDIX_WITH_MQTT
 namespace {
-    std::string get_current_timestamp() {
-        auto ms = std::chrono::duration_cast<std::chrono::milliseconds>(
-            std::chrono::system_clock::now().time_since_epoch()).count();
-        return std::to_string(ms);
-    }
-    
-    std::string get_current_date_iso() {
-        auto now = std::time(nullptr);
-        std::tm tm;
-        gmtime_r(&now, &tm);
-        char buf[32];
-        std::strftime(buf, sizeof(buf), "%Y-%m-%dT%H:%M:%SZ", &tm);
-        return std::string(buf);
-    }
-    
-    std::string get_current_date_system() {
-        auto now = std::time(nullptr);
-        std::tm tm;
-        localtime_r(&now, &tm);
-        char buf[64];
-        std::strftime(buf, sizeof(buf), "%a %b %d %H:%M:%S %Y", &tm);
-        return std::string(buf);
-    }
+std::string get_current_timestamp() {
+  auto ms = std::chrono::duration_cast<std::chrono::milliseconds>(
+                std::chrono::system_clock::now().time_since_epoch())
+                .count();
+  return std::to_string(ms);
 }
+
+std::string get_current_date_iso() {
+  auto now = std::time(nullptr);
+  std::tm tm;
+  gmtime_r(&now, &tm);
+  char buf[32];
+  std::strftime(buf, sizeof(buf), "%Y-%m-%dT%H:%M:%SZ", &tm);
+  return std::string(buf);
+}
+
+std::string get_current_date_system() {
+  auto now = std::time(nullptr);
+  std::tm tm;
+  localtime_r(&now, &tm);
+  char buf[64];
+  std::strftime(buf, sizeof(buf), "%a %b %d %H:%M:%S %Y", &tm);
+  return std::string(buf);
+}
+} // namespace
 
 // Event format structures for crossline MQTT
 namespace crossline_event_format {
-    struct normalized_bbox {
-        double x, y, width, height;
-        
-        template<typename Archive>
-        void serialize(Archive& archive) {
-            archive(cereal::make_nvp("x", x),
-                    cereal::make_nvp("y", y),
-                    cereal::make_nvp("width", width),
-                    cereal::make_nvp("height", height));
-        }
-    };
-    
-    struct track_info {
-        normalized_bbox bbox;
-        std::string class_label;
-        std::string external_id;
-        std::string id;
-        int last_seen;
-        int source_tracker_track_id;
-        
-        template<typename Archive>
-        void serialize(Archive& archive) {
-            archive(cereal::make_nvp("bbox", bbox),
-                    cereal::make_nvp("class_label", class_label),
-                    cereal::make_nvp("external_id", external_id),
-                    cereal::make_nvp("id", id),
-                    cereal::make_nvp("last_seen", last_seen),
-                    cereal::make_nvp("source_tracker_track_id", source_tracker_track_id));
-        }
-    };
-    
-    struct best_thumbnail {
-        double confidence;
-        std::string image;
-        std::string instance_id;
-        std::string label;
-        std::string system_date;
-        std::vector<track_info> tracks;
-        
-        template<typename Archive>
-        void serialize(Archive& archive) {
-            archive(cereal::make_nvp("confidence", confidence),
-                    cereal::make_nvp("image", image),
-                    cereal::make_nvp("instance_id", instance_id),
-                    cereal::make_nvp("label", label),
-                    cereal::make_nvp("system_date", system_date),
-                    cereal::make_nvp("tracks", tracks));
-        }
-    };
-    
-    struct event {
-        best_thumbnail best_thumbnail_obj;
-        std::string type;
-        std::string zone_id;
-        std::string zone_name;
-        
-        template<typename Archive>
-        void serialize(Archive& archive) {
-            archive(cereal::make_nvp("best_thumbnail", best_thumbnail_obj),
-                    cereal::make_nvp("type", type),
-                    cereal::make_nvp("zone_id", zone_id),
-                    cereal::make_nvp("zone_name", zone_name));
-        }
-    };
-    
-    struct event_message {
-        std::vector<event> events;
-        int frame_id;
-        double frame_time;
-        std::string system_date;
-        std::string system_timestamp;
-        
-        template<typename Archive>
-        void serialize(Archive& archive) {
-            archive(cereal::make_nvp("events", events),
-                    cereal::make_nvp("frame_id", frame_id),
-                    cereal::make_nvp("frame_time", frame_time),
-                    cereal::make_nvp("system_date", system_date),
-                    cereal::make_nvp("system_timestamp", system_timestamp));
-        }
-    };
-}
+struct normalized_bbox {
+  double x, y, width, height;
+
+  template <typename Archive> void serialize(Archive &archive) {
+    archive(cereal::make_nvp("x", x), cereal::make_nvp("y", y),
+            cereal::make_nvp("width", width),
+            cereal::make_nvp("height", height));
+  }
+};
+
+struct track_info {
+  normalized_bbox bbox;
+  std::string class_label;
+  std::string external_id;
+  std::string id;
+  int last_seen;
+  int source_tracker_track_id;
+
+  template <typename Archive> void serialize(Archive &archive) {
+    archive(
+        cereal::make_nvp("bbox", bbox),
+        cereal::make_nvp("class_label", class_label),
+        cereal::make_nvp("external_id", external_id),
+        cereal::make_nvp("id", id), cereal::make_nvp("last_seen", last_seen),
+        cereal::make_nvp("source_tracker_track_id", source_tracker_track_id));
+  }
+};
+
+struct best_thumbnail {
+  double confidence;
+  std::string image;
+  std::string instance_id;
+  std::string label;
+  std::string system_date;
+  std::vector<track_info> tracks;
+
+  template <typename Archive> void serialize(Archive &archive) {
+    archive(cereal::make_nvp("confidence", confidence),
+            cereal::make_nvp("image", image),
+            cereal::make_nvp("instance_id", instance_id),
+            cereal::make_nvp("label", label),
+            cereal::make_nvp("system_date", system_date),
+            cereal::make_nvp("tracks", tracks));
+  }
+};
+
+struct event {
+  best_thumbnail best_thumbnail_obj;
+  std::string type;
+  std::string zone_id;
+  std::string zone_name;
+
+  template <typename Archive> void serialize(Archive &archive) {
+    archive(cereal::make_nvp("best_thumbnail", best_thumbnail_obj),
+            cereal::make_nvp("type", type),
+            cereal::make_nvp("zone_id", zone_id),
+            cereal::make_nvp("zone_name", zone_name));
+  }
+};
+
+struct event_message {
+  std::vector<event> events;
+  int frame_id;
+  double frame_time;
+  std::string system_date;
+  std::string system_timestamp;
+
+  template <typename Archive> void serialize(Archive &archive) {
+    archive(cereal::make_nvp("events", events),
+            cereal::make_nvp("frame_id", frame_id),
+            cereal::make_nvp("frame_time", frame_time),
+            cereal::make_nvp("system_date", system_date),
+            cereal::make_nvp("system_timestamp", system_timestamp));
+  }
+};
+} // namespace crossline_event_format
 
 // Custom Broker Node for Crossline MQTT
-class cvedix_json_crossline_mqtt_broker_node : public cvedix_nodes::cvedix_json_enhanced_console_broker_node {
+class cvedix_json_crossline_mqtt_broker_node
+    : public cvedix_nodes::cvedix_json_enhanced_console_broker_node {
 private:
-    std::function<void(const std::string&)> mqtt_publisher_;
-    std::string instance_id_;
-    std::string zone_id_;
-    std::string zone_name_;
-    
-    virtual void format_msg(const std::shared_ptr<cvedix_objects::cvedix_frame_meta>& meta, std::string& msg) override {
-        try {
-            if (meta->ba_results.empty()) {
-                msg = "";
-                return;
+  std::function<void(const std::string &)> mqtt_publisher_;
+  std::string instance_id_;
+  std::string zone_id_;
+  std::string zone_name_;
+
+  virtual void
+  format_msg(const std::shared_ptr<cvedix_objects::cvedix_frame_meta> &meta,
+             std::string &msg) override {
+    try {
+      if (meta->ba_results.empty()) {
+        msg = "";
+        return;
+      }
+
+      crossline_event_format::event_message event_msg;
+      bool has_events = false;
+
+      double frame_width = static_cast<double>(meta->frame.cols);
+      double frame_height = static_cast<double>(meta->frame.rows);
+
+      for (const auto &ba_res : meta->ba_results) {
+        // Check if it's a crossline event
+        if (ba_res->type == cvedix_objects::cvedix_ba_type::CROSSLINE) {
+
+          // Iterate over all targets involved in this crossline event
+          for (int track_id : ba_res->involve_target_ids_in_frame) {
+            // Find the target object
+            std::shared_ptr<cvedix_objects::cvedix_frame_target> target =
+                nullptr;
+            for (const auto &t : meta->targets) {
+              if (t->track_id == track_id) {
+                target = t;
+                break;
+              }
             }
 
-            crossline_event_format::event_message event_msg;
-            bool has_events = false;
+            if (!target)
+              continue;
 
-            double frame_width = static_cast<double>(meta->frame.cols);
-            double frame_height = static_cast<double>(meta->frame.rows);
+            has_events = true;
+            crossline_event_format::event evt;
 
-            for (const auto& ba_res : meta->ba_results) {
-                // Check if it's a crossline event
-                if (ba_res->type == cvedix_objects::cvedix_ba_type::CROSSLINE) {
-                    
-                    // Iterate over all targets involved in this crossline event
-                    for (int track_id : ba_res->involve_target_ids_in_frame) {
-                        // Find the target object
-                        std::shared_ptr<cvedix_objects::cvedix_frame_target> target = nullptr;
-                        for (const auto& t : meta->targets) {
-                            if (t->track_id == track_id) {
-                                target = t;
-                                break;
-                            }
-                        }
+            // Crop image logic
+            std::string thumbnail_image = "";
+            try {
+              if (!meta->frame.empty()) {
+                const cv::Mat &original_frame = meta->frame;
 
-                        if (!target) continue;
-                        
-                        has_events = true;
-                        crossline_event_format::event evt;
-                        
-                        // Crop image logic
-                        std::string thumbnail_image = "";
-                        try {
-                            if (!meta->frame.empty()) {
-                                const cv::Mat& original_frame = meta->frame;
-                                
-                                const float expand_ratio = 0.35f;
-                                int center_x = target->x + target->width / 2;
-                                int center_y = target->y + target->height / 2;
-                                
-                                int expanded_width = static_cast<int>(target->width * (1.0f + expand_ratio));
-                                int expanded_height = static_cast<int>(target->height * (1.0f + expand_ratio));
-                                
-                                int x1 = std::max(0, center_x - expanded_width / 2);
-                                int y1 = std::max(0, center_y - expanded_height / 2);
-                                int x2 = std::min(original_frame.cols, x1 + expanded_width);
-                                int y2 = std::min(original_frame.rows, y1 + expanded_height);
-                                
-                                if (x2 > x1 && y2 > y1) {
-                                    cv::Rect roi(x1, y1, x2 - x1, y2 - y1);
-                                    cv::Mat cropped = original_frame(roi);
-                                    
-                                    if (!cropped.empty()) {
-                                        cv::Mat resized;
-                                        cv::resize(cropped, resized, cv::Size(150, 150), 0, 0, cv::INTER_LINEAR);
-                                        std::vector<uchar> buf;
-                                        cv::imencode(".jpg", resized, buf);
-                                        thumbnail_image = base64_encode(buf.data(), buf.size());
-                                    }
-                                }
-                            }
-                        } catch (...) {
-                            thumbnail_image = "";
-                        }
+                const float expand_ratio = 0.35f;
+                int center_x = target->x + target->width / 2;
+                int center_y = target->y + target->height / 2;
 
-                        // Track info
-                        crossline_event_format::track_info track;
-                        track.bbox.x = target->x / frame_width;
-                        track.bbox.y = target->y / frame_height;
-                        track.bbox.width = target->width / frame_width;
-                        track.bbox.height = target->height / frame_height;
-                        
-                        track.class_label = target->primary_label.empty() ? "Object" : target->primary_label;
-                        track.external_id = "crossline-event";
-                        track.id = "Tracker_" + std::to_string(target->track_id);
-                        track.last_seen = 0;
-                        track.source_tracker_track_id = target->track_id;
+                int expanded_width =
+                    static_cast<int>(target->width * (1.0f + expand_ratio));
+                int expanded_height =
+                    static_cast<int>(target->height * (1.0f + expand_ratio));
 
-                        evt.best_thumbnail_obj.confidence = target->primary_score;
-                        evt.best_thumbnail_obj.image = thumbnail_image;
-                        evt.best_thumbnail_obj.instance_id = instance_id_;
-                        evt.best_thumbnail_obj.label = ba_res->ba_label;
-                        evt.best_thumbnail_obj.system_date = get_current_date_iso();
-                        evt.best_thumbnail_obj.tracks.push_back(track);
+                int x1 = std::max(0, center_x - expanded_width / 2);
+                int y1 = std::max(0, center_y - expanded_height / 2);
+                int x2 = std::min(original_frame.cols, x1 + expanded_width);
+                int y2 = std::min(original_frame.rows, y1 + expanded_height);
 
-                        evt.type = "crossline";
-                        evt.zone_id = zone_id_;
-                        evt.zone_name = zone_name_;
+                if (x2 > x1 && y2 > y1) {
+                  cv::Rect roi(x1, y1, x2 - x1, y2 - y1);
+                  cv::Mat cropped = original_frame(roi);
 
-                        event_msg.events.push_back(evt);
-                    }
+                  if (!cropped.empty()) {
+                    cv::Mat resized;
+                    cv::resize(cropped, resized, cv::Size(150, 150), 0, 0,
+                               cv::INTER_LINEAR);
+                    std::vector<uchar> buf;
+                    cv::imencode(".jpg", resized, buf);
+                    thumbnail_image = base64_encode(buf.data(), buf.size());
+                  }
                 }
+              }
+            } catch (...) {
+              thumbnail_image = "";
             }
 
-            if (!has_events) {
-                msg = "";
-                return;
-            }
+            // Track info
+            crossline_event_format::track_info track;
+            track.bbox.x = target->x / frame_width;
+            track.bbox.y = target->y / frame_height;
+            track.bbox.width = target->width / frame_width;
+            track.bbox.height = target->height / frame_height;
 
-            event_msg.frame_id = meta->frame_index;
-            event_msg.frame_time = meta->frame_index * 1000.0 / (meta->fps > 0 ? meta->fps : 30.0);
-            event_msg.system_date = get_current_date_system();
-            event_msg.system_timestamp = get_current_timestamp();
+            track.class_label = target->primary_label.empty()
+                                    ? "Object"
+                                    : target->primary_label;
+            track.external_id = "crossline-event";
+            track.id = "Tracker_" + std::to_string(target->track_id);
+            track.last_seen = 0;
+            track.source_tracker_track_id = target->track_id;
 
-            std::stringstream msg_stream;
-            {
-                cereal::JSONOutputArchive json_archive(msg_stream);
-                std::vector<crossline_event_format::event_message> result_array;
-                result_array.push_back(event_msg);
-                json_archive(result_array);
-            }
-            
-            // Clean up JSON wrapper
-            std::string json_str = msg_stream.str();
-            size_t value0_pos = json_str.find("\"value0\"");
-            if (value0_pos != std::string::npos) {
-                size_t array_start = json_str.find('[', value0_pos);
-                if (array_start != std::string::npos) {
-                    size_t array_end = json_str.rfind(']');
-                    if (array_end != std::string::npos && array_end > array_start) {
-                        msg = json_str.substr(array_start, array_end - array_start + 1);
-                    } else {
-                        msg = json_str;
-                    }
-                } else {
-                    msg = json_str;
-                }
-            } else {
-                msg = json_str;
-            }
+            evt.best_thumbnail_obj.confidence = target->primary_score;
+            evt.best_thumbnail_obj.image = thumbnail_image;
+            evt.best_thumbnail_obj.instance_id = instance_id_;
+            evt.best_thumbnail_obj.label = ba_res->ba_label;
+            evt.best_thumbnail_obj.system_date = get_current_date_iso();
+            evt.best_thumbnail_obj.tracks.push_back(track);
 
-        } catch (...) {
-            msg = "";
+            evt.type = "crossline";
+            evt.zone_id = zone_id_;
+            evt.zone_name = zone_name_;
+
+            event_msg.events.push_back(evt);
+          }
         }
+      }
+
+      if (!has_events) {
+        msg = "";
+        return;
+      }
+
+      event_msg.frame_id = meta->frame_index;
+      event_msg.frame_time =
+          meta->frame_index * 1000.0 / (meta->fps > 0 ? meta->fps : 30.0);
+      event_msg.system_date = get_current_date_system();
+      event_msg.system_timestamp = get_current_timestamp();
+
+      std::stringstream msg_stream;
+      {
+        cereal::JSONOutputArchive json_archive(msg_stream);
+        std::vector<crossline_event_format::event_message> result_array;
+        result_array.push_back(event_msg);
+        json_archive(result_array);
+      }
+
+      // Clean up JSON wrapper
+      std::string json_str = msg_stream.str();
+      size_t value0_pos = json_str.find("\"value0\"");
+      if (value0_pos != std::string::npos) {
+        size_t array_start = json_str.find('[', value0_pos);
+        if (array_start != std::string::npos) {
+          size_t array_end = json_str.rfind(']');
+          if (array_end != std::string::npos && array_end > array_start) {
+            msg = json_str.substr(array_start, array_end - array_start + 1);
+          } else {
+            msg = json_str;
+          }
+        } else {
+          msg = json_str;
+        }
+      } else {
+        msg = json_str;
+      }
+
+    } catch (...) {
+      msg = "";
     }
+  }
 
-    virtual void broke_msg(const std::string& msg) override {
-        if (!mqtt_publisher_) {
-            std::cerr << "[MQTT] ⚠ broke_msg called but mqtt_publisher_ is null" << std::endl;
-            return;
-        }
-        if (msg.empty()) {
-            std::cerr << "[MQTT] ⚠ broke_msg called with empty message" << std::endl;
-            return;
-        }
-        try {
-            std::cerr << "[MQTT] [broke_msg] Calling mqtt_publisher_ with message length: " << msg.length() << std::endl;
-            mqtt_publisher_(msg);
-        } catch (const std::exception& e) {
-            std::cerr << "[MQTT] ⚠ Exception in mqtt_publisher_: " << e.what() << std::endl;
-        } catch (...) {
-            std::cerr << "[MQTT] ⚠ Unknown exception in mqtt_publisher_" << std::endl;
-        }
+  virtual void broke_msg(const std::string &msg) override {
+    if (!mqtt_publisher_) {
+      std::cerr << "[MQTT] ⚠ broke_msg called but mqtt_publisher_ is null"
+                << std::endl;
+      return;
     }
+    if (msg.empty()) {
+      std::cerr << "[MQTT] ⚠ broke_msg called with empty message" << std::endl;
+      return;
+    }
+    try {
+      std::cerr
+          << "[MQTT] [broke_msg] Calling mqtt_publisher_ with message length: "
+          << msg.length() << std::endl;
+      mqtt_publisher_(msg);
+    } catch (const std::exception &e) {
+      std::cerr << "[MQTT] ⚠ Exception in mqtt_publisher_: " << e.what()
+                << std::endl;
+    } catch (...) {
+      std::cerr << "[MQTT] ⚠ Unknown exception in mqtt_publisher_" << std::endl;
+    }
+  }
 
 public:
-    cvedix_json_crossline_mqtt_broker_node(
-        std::string node_name,
-        std::function<void(const std::string&)> mqtt_publisher,
-        std::string instance_id,
-        std::string zone_id,
-        std::string zone_name)
-        : cvedix_nodes::cvedix_json_enhanced_console_broker_node(
-            node_name, cvedix_nodes::cvedix_broke_for::NORMAL, 100, 500, false)
-        , mqtt_publisher_(mqtt_publisher)
-        , instance_id_(instance_id)
-        , zone_id_(zone_id)
-        , zone_name_(zone_name)
-    {
-    }
+  cvedix_json_crossline_mqtt_broker_node(
+      std::string node_name,
+      std::function<void(const std::string &)> mqtt_publisher,
+      std::string instance_id, std::string zone_id, std::string zone_name)
+      : cvedix_nodes::cvedix_json_enhanced_console_broker_node(
+            node_name, cvedix_nodes::cvedix_broke_for::NORMAL, 100, 500, false),
+        mqtt_publisher_(mqtt_publisher), instance_id_(instance_id),
+        zone_id_(zone_id), zone_name_(zone_name) {}
 };
 #endif
 
 // ========== Broker Nodes Implementation ==========
 
-std::shared_ptr<cvedix_nodes::cvedix_node> PipelineBuilder::createJSONConsoleBrokerNode(
-    const std::string& nodeName,
-    const std::map<std::string, std::string>& params,
-    const CreateInstanceRequest& req) {
-    
-    try {
-        // Parse broke_for enum
-        std::string brokeForStr = params.count("broke_for") ? params.at("broke_for") : "NORMAL";
-        cvedix_nodes::cvedix_broke_for brokeFor = cvedix_nodes::cvedix_broke_for::NORMAL;
-        
-        if (brokeForStr == "FACE") {
-            brokeFor = cvedix_nodes::cvedix_broke_for::FACE;
-        } else if (brokeForStr == "TEXT") {
-            brokeFor = cvedix_nodes::cvedix_broke_for::TEXT;
-        } else if (brokeForStr == "POSE") {
-            brokeFor = cvedix_nodes::cvedix_broke_for::POSE;
-        } else if (brokeForStr == "POSE") {
-            brokeFor = cvedix_nodes::cvedix_broke_for::POSE;
-        } else if (brokeForStr == "NORMAL") {
-            brokeFor = cvedix_nodes::cvedix_broke_for::NORMAL;
-        }
-        
-        int warnThreshold = params.count("broking_cache_warn_threshold") ? std::stoi(params.at("broking_cache_warn_threshold")) : 50;
-        int ignoreThreshold = params.count("broking_cache_ignore_threshold") ? std::stoi(params.at("broking_cache_ignore_threshold")) : 200;
-        
-        if (nodeName.empty()) {
-            throw std::invalid_argument("Node name cannot be empty");
-        }
-        
-        std::cerr << "[PipelineBuilder] Creating JSON console broker node:" << std::endl;
-        std::cerr << "  Name: '" << nodeName << "'" << std::endl;
-        std::cerr << "  Broke for: " << brokeForStr << std::endl;
-        
-        auto node = std::make_shared<cvedix_nodes::cvedix_json_console_broker_node>(
-            nodeName,
-            brokeFor,
-            warnThreshold,
-            ignoreThreshold
-        );
-        
-        std::cerr << "[PipelineBuilder] ✓ JSON console broker node created successfully" << std::endl;
-        return node;
-    } catch (const std::exception& e) {
-        std::cerr << "[PipelineBuilder] Exception in createJSONConsoleBrokerNode: " << e.what() << std::endl;
-        throw;
+std::shared_ptr<cvedix_nodes::cvedix_node>
+PipelineBuilder::createJSONConsoleBrokerNode(
+    const std::string &nodeName,
+    const std::map<std::string, std::string> &params,
+    const CreateInstanceRequest &req) {
+
+  try {
+    // Parse broke_for enum
+    std::string brokeForStr =
+        params.count("broke_for") ? params.at("broke_for") : "NORMAL";
+    cvedix_nodes::cvedix_broke_for brokeFor =
+        cvedix_nodes::cvedix_broke_for::NORMAL;
+
+    if (brokeForStr == "FACE") {
+      brokeFor = cvedix_nodes::cvedix_broke_for::FACE;
+    } else if (brokeForStr == "TEXT") {
+      brokeFor = cvedix_nodes::cvedix_broke_for::TEXT;
+    } else if (brokeForStr == "POSE") {
+      brokeFor = cvedix_nodes::cvedix_broke_for::POSE;
+    } else if (brokeForStr == "POSE") {
+      brokeFor = cvedix_nodes::cvedix_broke_for::POSE;
+    } else if (brokeForStr == "NORMAL") {
+      brokeFor = cvedix_nodes::cvedix_broke_for::NORMAL;
     }
+
+    int warnThreshold =
+        params.count("broking_cache_warn_threshold")
+            ? std::stoi(params.at("broking_cache_warn_threshold"))
+            : 50;
+    int ignoreThreshold =
+        params.count("broking_cache_ignore_threshold")
+            ? std::stoi(params.at("broking_cache_ignore_threshold"))
+            : 200;
+
+    if (nodeName.empty()) {
+      throw std::invalid_argument("Node name cannot be empty");
+    }
+
+    std::cerr << "[PipelineBuilder] Creating JSON console broker node:"
+              << std::endl;
+    std::cerr << "  Name: '" << nodeName << "'" << std::endl;
+    std::cerr << "  Broke for: " << brokeForStr << std::endl;
+
+    auto node = std::make_shared<cvedix_nodes::cvedix_json_console_broker_node>(
+        nodeName, brokeFor, warnThreshold, ignoreThreshold);
+
+    std::cerr
+        << "[PipelineBuilder] ✓ JSON console broker node created successfully"
+        << std::endl;
+    return node;
+  } catch (const std::exception &e) {
+    std::cerr << "[PipelineBuilder] Exception in createJSONConsoleBrokerNode: "
+              << e.what() << std::endl;
+    throw;
+  }
 }
 
-std::shared_ptr<cvedix_nodes::cvedix_node> PipelineBuilder::createJSONEnhancedConsoleBrokerNode(
-    const std::string& nodeName,
-    const std::map<std::string, std::string>& params,
-    const CreateInstanceRequest& req) {
-    
-    try {
-        std::string brokeForStr = params.count("broke_for") ? params.at("broke_for") : "NORMAL";
-        cvedix_nodes::cvedix_broke_for brokeFor = cvedix_nodes::cvedix_broke_for::NORMAL;
-        
-        if (brokeForStr == "FACE") {
-            brokeFor = cvedix_nodes::cvedix_broke_for::FACE;
-        } else if (brokeForStr == "TEXT") {
-            brokeFor = cvedix_nodes::cvedix_broke_for::TEXT;
-        } else if (brokeForStr == "POSE") {
-            brokeFor = cvedix_nodes::cvedix_broke_for::POSE;
-        }
-        
-        int warnThreshold = params.count("broking_cache_warn_threshold") ? std::stoi(params.at("broking_cache_warn_threshold")) : 50;
-        int ignoreThreshold = params.count("broking_cache_ignore_threshold") ? std::stoi(params.at("broking_cache_ignore_threshold")) : 200;
-        bool encodeFullFrame = params.count("encode_full_frame") ? (params.at("encode_full_frame") == "true" || params.at("encode_full_frame") == "1") : false;
-        
-        if (nodeName.empty()) {
-            throw std::invalid_argument("Node name cannot be empty");
-        }
-        
-        std::cerr << "[PipelineBuilder] Creating JSON enhanced console broker node:" << std::endl;
-        std::cerr << "  Name: '" << nodeName << "'" << std::endl;
-        std::cerr << "  Broke for: " << brokeForStr << std::endl;
-        std::cerr << "  Encode full frame: " << (encodeFullFrame ? "true" : "false") << std::endl;
-        
-        auto node = std::make_shared<cvedix_nodes::cvedix_json_enhanced_console_broker_node>(
-            nodeName,
-            brokeFor,
-            warnThreshold,
-            ignoreThreshold,
-            encodeFullFrame
-        );
-        
-        std::cerr << "[PipelineBuilder] ✓ JSON enhanced console broker node created successfully" << std::endl;
-        return node;
-    } catch (const std::exception& e) {
-        std::cerr << "[PipelineBuilder] Exception in createJSONEnhancedConsoleBrokerNode: " << e.what() << std::endl;
-        throw;
+std::shared_ptr<cvedix_nodes::cvedix_node>
+PipelineBuilder::createJSONEnhancedConsoleBrokerNode(
+    const std::string &nodeName,
+    const std::map<std::string, std::string> &params,
+    const CreateInstanceRequest &req) {
+
+  try {
+    std::string brokeForStr =
+        params.count("broke_for") ? params.at("broke_for") : "NORMAL";
+    cvedix_nodes::cvedix_broke_for brokeFor =
+        cvedix_nodes::cvedix_broke_for::NORMAL;
+
+    if (brokeForStr == "FACE") {
+      brokeFor = cvedix_nodes::cvedix_broke_for::FACE;
+    } else if (brokeForStr == "TEXT") {
+      brokeFor = cvedix_nodes::cvedix_broke_for::TEXT;
+    } else if (brokeForStr == "POSE") {
+      brokeFor = cvedix_nodes::cvedix_broke_for::POSE;
     }
+
+    int warnThreshold =
+        params.count("broking_cache_warn_threshold")
+            ? std::stoi(params.at("broking_cache_warn_threshold"))
+            : 50;
+    int ignoreThreshold =
+        params.count("broking_cache_ignore_threshold")
+            ? std::stoi(params.at("broking_cache_ignore_threshold"))
+            : 200;
+    bool encodeFullFrame = params.count("encode_full_frame")
+                               ? (params.at("encode_full_frame") == "true" ||
+                                  params.at("encode_full_frame") == "1")
+                               : false;
+
+    if (nodeName.empty()) {
+      throw std::invalid_argument("Node name cannot be empty");
+    }
+
+    std::cerr << "[PipelineBuilder] Creating JSON enhanced console broker node:"
+              << std::endl;
+    std::cerr << "  Name: '" << nodeName << "'" << std::endl;
+    std::cerr << "  Broke for: " << brokeForStr << std::endl;
+    std::cerr << "  Encode full frame: " << (encodeFullFrame ? "true" : "false")
+              << std::endl;
+
+    auto node = std::make_shared<
+        cvedix_nodes::cvedix_json_enhanced_console_broker_node>(
+        nodeName, brokeFor, warnThreshold, ignoreThreshold, encodeFullFrame);
+
+    std::cerr << "[PipelineBuilder] ✓ JSON enhanced console broker node "
+                 "created successfully"
+              << std::endl;
+    return node;
+  } catch (const std::exception &e) {
+    std::cerr << "[PipelineBuilder] Exception in "
+                 "createJSONEnhancedConsoleBrokerNode: "
+              << e.what() << std::endl;
+    throw;
+  }
 }
 
 #ifdef CVEDIX_WITH_KAFKA
-std::shared_ptr<cvedix_nodes::cvedix_node> PipelineBuilder::createJSONKafkaBrokerNode(
-    const std::string& nodeName,
-    const std::map<std::string, std::string>& params,
-    const CreateInstanceRequest& req) {
-    
-    try {
-        std::string kafkaServers = params.count("kafka_servers") ? params.at("kafka_servers") : "127.0.0.1:9092";
-        std::string topicName = params.count("topic_name") ? params.at("topic_name") : "videopipe_topic";
-        std::string brokeForStr = params.count("broke_for") ? params.at("broke_for") : "NORMAL";
-        cvedix_nodes::cvedix_broke_for brokeFor = cvedix_nodes::cvedix_broke_for::NORMAL;
-        
-        // Get from additionalParams if not in params
-        if (params.count("kafka_servers") == 0) {
-            auto it = req.additionalParams.find("KAFKA_SERVERS");
-            if (it != req.additionalParams.end() && !it->second.empty()) {
-                kafkaServers = it->second;
-            }
-        }
-        if (params.count("topic_name") == 0) {
-            auto it = req.additionalParams.find("KAFKA_TOPIC");
-            if (it != req.additionalParams.end() && !it->second.empty()) {
-                topicName = it->second;
-            }
-        }
-        
-        if (brokeForStr == "FACE") {
-            brokeFor = cvedix_nodes::cvedix_broke_for::FACE;
-        } else if (brokeForStr == "TEXT") {
-            brokeFor = cvedix_nodes::cvedix_broke_for::TEXT;
-        } else if (brokeForStr == "POSE") {
-            brokeFor = cvedix_nodes::cvedix_broke_for::POSE;
-        }
-        
-        int warnThreshold = params.count("broking_cache_warn_threshold") ? std::stoi(params.at("broking_cache_warn_threshold")) : 50;
-        int ignoreThreshold = params.count("broking_cache_ignore_threshold") ? std::stoi(params.at("broking_cache_ignore_threshold")) : 200;
-        
-        if (nodeName.empty()) {
-            throw std::invalid_argument("Node name cannot be empty");
-        }
-        
-        std::cerr << "[PipelineBuilder] Creating JSON Kafka broker node:" << std::endl;
-        std::cerr << "  Name: '" << nodeName << "'" << std::endl;
-        std::cerr << "  Kafka servers: '" << kafkaServers << "'" << std::endl;
-        std::cerr << "  Topic name: '" << topicName << "'" << std::endl;
-        std::cerr << "  Broke for: " << brokeForStr << std::endl;
-        
-        auto node = std::make_shared<cvedix_nodes::cvedix_json_kafka_broker_node>(
-            nodeName,
-            kafkaServers,
-            topicName,
-            brokeFor,
-            warnThreshold,
-            ignoreThreshold
-        );
-        
-        std::cerr << "[PipelineBuilder] ✓ JSON Kafka broker node created successfully" << std::endl;
-        return node;
-    } catch (const std::exception& e) {
-        std::cerr << "[PipelineBuilder] Exception in createJSONKafkaBrokerNode: " << e.what() << std::endl;
-        throw;
+std::shared_ptr<cvedix_nodes::cvedix_node>
+PipelineBuilder::createJSONKafkaBrokerNode(
+    const std::string &nodeName,
+    const std::map<std::string, std::string> &params,
+    const CreateInstanceRequest &req) {
+
+  try {
+    std::string kafkaServers = params.count("kafka_servers")
+                                   ? params.at("kafka_servers")
+                                   : "127.0.0.1:9092";
+    std::string topicName = params.count("topic_name") ? params.at("topic_name")
+                                                       : "videopipe_topic";
+    std::string brokeForStr =
+        params.count("broke_for") ? params.at("broke_for") : "NORMAL";
+    cvedix_nodes::cvedix_broke_for brokeFor =
+        cvedix_nodes::cvedix_broke_for::NORMAL;
+
+    // Get from additionalParams if not in params
+    if (params.count("kafka_servers") == 0) {
+      auto it = req.additionalParams.find("KAFKA_SERVERS");
+      if (it != req.additionalParams.end() && !it->second.empty()) {
+        kafkaServers = it->second;
+      }
     }
+    if (params.count("topic_name") == 0) {
+      auto it = req.additionalParams.find("KAFKA_TOPIC");
+      if (it != req.additionalParams.end() && !it->second.empty()) {
+        topicName = it->second;
+      }
+    }
+
+    if (brokeForStr == "FACE") {
+      brokeFor = cvedix_nodes::cvedix_broke_for::FACE;
+    } else if (brokeForStr == "TEXT") {
+      brokeFor = cvedix_nodes::cvedix_broke_for::TEXT;
+    } else if (brokeForStr == "POSE") {
+      brokeFor = cvedix_nodes::cvedix_broke_for::POSE;
+    }
+
+    int warnThreshold =
+        params.count("broking_cache_warn_threshold")
+            ? std::stoi(params.at("broking_cache_warn_threshold"))
+            : 50;
+    int ignoreThreshold =
+        params.count("broking_cache_ignore_threshold")
+            ? std::stoi(params.at("broking_cache_ignore_threshold"))
+            : 200;
+
+    if (nodeName.empty()) {
+      throw std::invalid_argument("Node name cannot be empty");
+    }
+
+    std::cerr << "[PipelineBuilder] Creating JSON Kafka broker node:"
+              << std::endl;
+    std::cerr << "  Name: '" << nodeName << "'" << std::endl;
+    std::cerr << "  Kafka servers: '" << kafkaServers << "'" << std::endl;
+    std::cerr << "  Topic name: '" << topicName << "'" << std::endl;
+    std::cerr << "  Broke for: " << brokeForStr << std::endl;
+
+    auto node = std::make_shared<cvedix_nodes::cvedix_json_kafka_broker_node>(
+        nodeName, kafkaServers, topicName, brokeFor, warnThreshold,
+        ignoreThreshold);
+
+    std::cerr
+        << "[PipelineBuilder] ✓ JSON Kafka broker node created successfully"
+        << std::endl;
+    return node;
+  } catch (const std::exception &e) {
+    std::cerr << "[PipelineBuilder] Exception in createJSONKafkaBrokerNode: "
+              << e.what() << std::endl;
+    throw;
+  }
 }
 #endif
 
 #ifdef CVEDIX_WITH_MQTT
-std::shared_ptr<cvedix_nodes::cvedix_node> PipelineBuilder::createJSONMQTTBrokerNode(
-    const std::string& nodeName,
-    const std::map<std::string, std::string>& params,
-    const CreateInstanceRequest& req) {
-    
-    try {
-        // Parse broke_for enum
-        std::string brokeForStr = params.count("broke_for") ? params.at("broke_for") : "NORMAL";
-        cvedix_nodes::cvedix_broke_for brokeFor = cvedix_nodes::cvedix_broke_for::NORMAL;
-        
-        if (brokeForStr == "FACE") {
-            brokeFor = cvedix_nodes::cvedix_broke_for::FACE;
-        } else if (brokeForStr == "TEXT") {
-            brokeFor = cvedix_nodes::cvedix_broke_for::TEXT;
-        } else if (brokeForStr == "POSE") {
-            brokeFor = cvedix_nodes::cvedix_broke_for::POSE;
-        } else if (brokeForStr == "NORMAL") {
-            brokeFor = cvedix_nodes::cvedix_broke_for::NORMAL;
-        }
-        
-        // Get MQTT configuration from additionalParams
-        std::string mqtt_broker = "localhost";
-        int mqtt_port = 1883;
-        std::string mqtt_topic = "events";
-        std::string mqtt_username = "";
-        std::string mqtt_password = "";
-        
-        auto brokerIt = req.additionalParams.find("MQTT_BROKER_URL");
-        if (brokerIt != req.additionalParams.end() && !brokerIt->second.empty()) {
-            mqtt_broker = brokerIt->second;
-        }
-        
-        auto portIt = req.additionalParams.find("MQTT_PORT");
-        if (portIt != req.additionalParams.end() && !portIt->second.empty()) {
-            try {
-                mqtt_port = std::stoi(portIt->second);
-            } catch (...) {
-                std::cerr << "[PipelineBuilder] Warning: Invalid MQTT_PORT, using default 1883" << std::endl;
-            }
-        }
-        
-        auto topicIt = req.additionalParams.find("MQTT_TOPIC");
-        if (topicIt != req.additionalParams.end() && !topicIt->second.empty()) {
-            mqtt_topic = topicIt->second;
-        }
-        
-        auto usernameIt = req.additionalParams.find("MQTT_USERNAME");
-        if (usernameIt != req.additionalParams.end()) {
-            mqtt_username = usernameIt->second;
-        }
-        
-        auto passwordIt = req.additionalParams.find("MQTT_PASSWORD");
-        if (passwordIt != req.additionalParams.end()) {
-            mqtt_password = passwordIt->second;
-        }
-        
-        // Get thresholds
-        int warnThreshold = params.count("broking_cache_warn_threshold") ? std::stoi(params.at("broking_cache_warn_threshold")) : 100;
-        int ignoreThreshold = params.count("broking_cache_ignore_threshold") ? std::stoi(params.at("broking_cache_ignore_threshold")) : 500;
-        // encode_full_frame parameter is not supported in this version
-        // bool encodeFullFrame = params.count("encode_full_frame") ? (params.at("encode_full_frame") == "true" || params.at("encode_full_frame") == "1") : false;
-        
-        if (nodeName.empty()) {
-            throw std::invalid_argument("Node name cannot be empty");
-        }
-        
-        std::cerr << "[PipelineBuilder] Creating JSON MQTT broker node:" << std::endl;
-        std::cerr << "  Name: '" << nodeName << "'" << std::endl;
-        std::cerr << "  Broker: " << mqtt_broker << ":" << mqtt_port << std::endl;
-        std::cerr << "  Topic: " << mqtt_topic << std::endl;
-        std::cerr << "  Broke for: " << brokeForStr << std::endl;
-        
-        // Create MQTT client using SDK (like in sample code)
-        std::cerr << "[PipelineBuilder] [MQTT] Initializing MQTT client for " << mqtt_broker << ":" << mqtt_port << std::endl;
-        
-        std::string client_id = "edge_ai_api_" + nodeName + "_" + std::to_string(std::time(nullptr));
-        auto mqtt_client = std::make_unique<cvedix_utils::cvedix_mqtt_client>(
-            mqtt_broker, mqtt_port, client_id, 60);
-        mqtt_client->set_auto_reconnect(true, 5000);
-        
-        std::cerr << "[PipelineBuilder] [MQTT] Connecting to " << mqtt_broker << ":" << mqtt_port << "..." << std::endl;
-        mqtt_client->connect(mqtt_username, mqtt_password);
-        
-        // Create MQTT publish function using SDK (like in sample code)
-        static std::mutex mqtt_publish_mutex;
-        auto mqtt_client_ptr = std::shared_ptr<cvedix_utils::cvedix_mqtt_client>(mqtt_client.release());
-        
-        auto mqtt_publish_func = [mqtt_client_ptr, mqtt_topic](const std::string& json_message) {
-            std::lock_guard<std::mutex> lock(mqtt_publish_mutex);
-            if (mqtt_client_ptr && mqtt_client_ptr->is_ready()) {
-                mqtt_client_ptr->publish(mqtt_topic, json_message, 1, false);
-            }
-        };
-        
-        // OLD CODE REMOVED - NonBlockingMQTTPublisher struct removed, using SDK directly
-        
-        // Create MQTT broker node
-        // Note: CVEDIX SDK only has cvedix_json_mqtt_broker_node (not enhanced version)
-        // encodeFullFrame is not supported in this version
-        std::cerr << "[PipelineBuilder] [MQTT] Creating broker node with callback function..." << std::endl;
-        std::cerr << "[PipelineBuilder] [MQTT] Broke for: " << brokeForStr << ", Warn threshold: " << warnThreshold 
-                 << ", Ignore threshold: " << ignoreThreshold << std::endl;
-        auto node = std::make_shared<cvedix_nodes::cvedix_json_mqtt_broker_node>(
-            nodeName,
-            brokeFor,
-            warnThreshold,
-            ignoreThreshold,
-            nullptr,  // json_transformer (nullptr = use original JSON)
-            mqtt_publish_func);
-        
-        std::cerr << "[PipelineBuilder] ✓ JSON MQTT broker node created successfully" << std::endl;
-        std::cerr << "[PipelineBuilder] [MQTT] Node will publish to topic: '" << mqtt_topic << "'" << std::endl;
-        std::cerr << "[PipelineBuilder] [MQTT] NOTE: Callback will be called when json_mqtt_broker_node receives data" << std::endl;
-        std::cerr << "[PipelineBuilder] [MQTT] NOTE: If no messages appear, check:" << std::endl;
-        std::cerr << "[PipelineBuilder] [MQTT]   1. Upstream node (ba_crossline) is outputting data" << std::endl;
-        std::cerr << "[PipelineBuilder] [MQTT]   2. broke_for parameter matches data type (NORMAL for detection/BA events)" << std::endl;
-        std::cerr << "[PipelineBuilder] [MQTT]   3. Pipeline is running and processing frames" << std::endl;
-        return node;
-    } catch (const std::exception& e) {
-        std::cerr << "[PipelineBuilder] Exception in createJSONMQTTBrokerNode: " << e.what() << std::endl;
-        throw;
+std::shared_ptr<cvedix_nodes::cvedix_node>
+PipelineBuilder::createJSONMQTTBrokerNode(
+    const std::string &nodeName,
+    const std::map<std::string, std::string> &params,
+    const CreateInstanceRequest &req) {
+
+  try {
+    // Parse broke_for enum
+    std::string brokeForStr =
+        params.count("broke_for") ? params.at("broke_for") : "NORMAL";
+    cvedix_nodes::cvedix_broke_for brokeFor =
+        cvedix_nodes::cvedix_broke_for::NORMAL;
+
+    if (brokeForStr == "FACE") {
+      brokeFor = cvedix_nodes::cvedix_broke_for::FACE;
+    } else if (brokeForStr == "TEXT") {
+      brokeFor = cvedix_nodes::cvedix_broke_for::TEXT;
+    } else if (brokeForStr == "POSE") {
+      brokeFor = cvedix_nodes::cvedix_broke_for::POSE;
+    } else if (brokeForStr == "NORMAL") {
+      brokeFor = cvedix_nodes::cvedix_broke_for::NORMAL;
     }
+
+    // Get MQTT configuration from additionalParams
+    std::string mqtt_broker = "localhost";
+    int mqtt_port = 1883;
+    std::string mqtt_topic = "events";
+    std::string mqtt_username = "";
+    std::string mqtt_password = "";
+
+    auto brokerIt = req.additionalParams.find("MQTT_BROKER_URL");
+    if (brokerIt != req.additionalParams.end() && !brokerIt->second.empty()) {
+      mqtt_broker = brokerIt->second;
+    }
+
+    auto portIt = req.additionalParams.find("MQTT_PORT");
+    if (portIt != req.additionalParams.end() && !portIt->second.empty()) {
+      try {
+        mqtt_port = std::stoi(portIt->second);
+      } catch (...) {
+        std::cerr << "[PipelineBuilder] Warning: Invalid MQTT_PORT, using "
+                     "default 1883"
+                  << std::endl;
+      }
+    }
+
+    auto topicIt = req.additionalParams.find("MQTT_TOPIC");
+    if (topicIt != req.additionalParams.end() && !topicIt->second.empty()) {
+      mqtt_topic = topicIt->second;
+    }
+
+    auto usernameIt = req.additionalParams.find("MQTT_USERNAME");
+    if (usernameIt != req.additionalParams.end()) {
+      mqtt_username = usernameIt->second;
+    }
+
+    auto passwordIt = req.additionalParams.find("MQTT_PASSWORD");
+    if (passwordIt != req.additionalParams.end()) {
+      mqtt_password = passwordIt->second;
+    }
+
+    // Get thresholds
+    int warnThreshold =
+        params.count("broking_cache_warn_threshold")
+            ? std::stoi(params.at("broking_cache_warn_threshold"))
+            : 100;
+    int ignoreThreshold =
+        params.count("broking_cache_ignore_threshold")
+            ? std::stoi(params.at("broking_cache_ignore_threshold"))
+            : 500;
+    // encode_full_frame parameter is not supported in this version
+    // bool encodeFullFrame = params.count("encode_full_frame") ?
+    // (params.at("encode_full_frame") == "true" ||
+    // params.at("encode_full_frame") == "1") : false;
+
+    if (nodeName.empty()) {
+      throw std::invalid_argument("Node name cannot be empty");
+    }
+
+    std::cerr << "[PipelineBuilder] Creating JSON MQTT broker node:"
+              << std::endl;
+    std::cerr << "  Name: '" << nodeName << "'" << std::endl;
+    std::cerr << "  Broker: " << mqtt_broker << ":" << mqtt_port << std::endl;
+    std::cerr << "  Topic: " << mqtt_topic << std::endl;
+    std::cerr << "  Broke for: " << brokeForStr << std::endl;
+
+    // Create MQTT client using SDK (like in sample code)
+    std::cerr << "[PipelineBuilder] [MQTT] Initializing MQTT client for "
+              << mqtt_broker << ":" << mqtt_port << std::endl;
+
+    std::string client_id =
+        "edge_ai_api_" + nodeName + "_" + std::to_string(std::time(nullptr));
+    auto mqtt_client = std::make_unique<cvedix_utils::cvedix_mqtt_client>(
+        mqtt_broker, mqtt_port, client_id, 60);
+    mqtt_client->set_auto_reconnect(true, 5000);
+
+    std::cerr << "[PipelineBuilder] [MQTT] Connecting to " << mqtt_broker << ":"
+              << mqtt_port << "..." << std::endl;
+    mqtt_client->connect(mqtt_username, mqtt_password);
+
+    // Create MQTT publish function using SDK (like in sample code)
+    static std::mutex mqtt_publish_mutex;
+    auto mqtt_client_ptr = std::shared_ptr<cvedix_utils::cvedix_mqtt_client>(
+        mqtt_client.release());
+
+    auto mqtt_publish_func = [mqtt_client_ptr,
+                              mqtt_topic](const std::string &json_message) {
+      std::lock_guard<std::mutex> lock(mqtt_publish_mutex);
+      if (mqtt_client_ptr && mqtt_client_ptr->is_ready()) {
+        mqtt_client_ptr->publish(mqtt_topic, json_message, 1, false);
+      }
+    };
+
+    // OLD CODE REMOVED - NonBlockingMQTTPublisher struct removed, using SDK
+    // directly
+
+    // Create MQTT broker node
+    // Note: CVEDIX SDK only has cvedix_json_mqtt_broker_node (not enhanced
+    // version) encodeFullFrame is not supported in this version
+    std::cerr << "[PipelineBuilder] [MQTT] Creating broker node with callback "
+                 "function..."
+              << std::endl;
+    std::cerr << "[PipelineBuilder] [MQTT] Broke for: " << brokeForStr
+              << ", Warn threshold: " << warnThreshold
+              << ", Ignore threshold: " << ignoreThreshold << std::endl;
+    auto node = std::make_shared<cvedix_nodes::cvedix_json_mqtt_broker_node>(
+        nodeName, brokeFor, warnThreshold, ignoreThreshold,
+        nullptr, // json_transformer (nullptr = use original JSON)
+        mqtt_publish_func);
+
+    std::cerr
+        << "[PipelineBuilder] ✓ JSON MQTT broker node created successfully"
+        << std::endl;
+    std::cerr << "[PipelineBuilder] [MQTT] Node will publish to topic: '"
+              << mqtt_topic << "'" << std::endl;
+    std::cerr << "[PipelineBuilder] [MQTT] NOTE: Callback will be called when "
+                 "json_mqtt_broker_node receives data"
+              << std::endl;
+    std::cerr << "[PipelineBuilder] [MQTT] NOTE: If no messages appear, check:"
+              << std::endl;
+    std::cerr << "[PipelineBuilder] [MQTT]   1. Upstream node (ba_crossline) "
+                 "is outputting data"
+              << std::endl;
+    std::cerr << "[PipelineBuilder] [MQTT]   2. broke_for parameter matches "
+                 "data type (NORMAL for detection/BA events)"
+              << std::endl;
+    std::cerr << "[PipelineBuilder] [MQTT]   3. Pipeline is running and "
+                 "processing frames"
+              << std::endl;
+    return node;
+  } catch (const std::exception &e) {
+    std::cerr << "[PipelineBuilder] Exception in createJSONMQTTBrokerNode: "
+              << e.what() << std::endl;
+    throw;
+  }
 }
 
-std::shared_ptr<cvedix_nodes::cvedix_node> PipelineBuilder::createJSONCrosslineMQTTBrokerNode(
-    const std::string& nodeName,
-    const std::map<std::string, std::string>& params,
-    const CreateInstanceRequest& req) {
-    (void)params; // Parameters may be used in future implementations
-    
-    try {
-        // Get instance ID from request
-        std::string instance_id = req.name;
-        
-        // Get zone configuration from additionalParams (with defaults)
-        std::string zone_id = "default_zone";
-        std::string zone_name = "CrosslineZone";
-        
-        auto zoneIdIt = req.additionalParams.find("ZONE_ID");
-        if (zoneIdIt != req.additionalParams.end() && !zoneIdIt->second.empty()) {
-            zone_id = zoneIdIt->second;
-        }
-        
-        auto zoneNameIt = req.additionalParams.find("ZONE_NAME");
-        if (zoneNameIt != req.additionalParams.end() && !zoneNameIt->second.empty()) {
-            zone_name = zoneNameIt->second;
-        }
-        
-        // Get MQTT configuration from additionalParams
-        std::string mqtt_broker = "";
-        int mqtt_port = 1883;
-        std::string mqtt_topic = "events";
-        std::string mqtt_username = "";
-        std::string mqtt_password = "";
-        
-        auto brokerIt = req.additionalParams.find("MQTT_BROKER_URL");
-        if (brokerIt != req.additionalParams.end() && !brokerIt->second.empty()) {
-            mqtt_broker = brokerIt->second;
-            // Trim whitespace
-            mqtt_broker.erase(0, mqtt_broker.find_first_not_of(" \t\n\r"));
-            mqtt_broker.erase(mqtt_broker.find_last_not_of(" \t\n\r") + 1);
-        }
-        
-        auto portIt = req.additionalParams.find("MQTT_PORT");
-        if (portIt != req.additionalParams.end() && !portIt->second.empty()) {
-            try {
-                mqtt_port = std::stoi(portIt->second);
-            } catch (...) {
-                std::cerr << "[PipelineBuilder] Warning: Invalid MQTT_PORT, using default 1883" << std::endl;
-            }
-        }
-        
-        auto topicIt = req.additionalParams.find("MQTT_TOPIC");
-        if (topicIt != req.additionalParams.end() && !topicIt->second.empty()) {
-            mqtt_topic = topicIt->second;
-        }
-        
-        auto usernameIt = req.additionalParams.find("MQTT_USERNAME");
-        if (usernameIt != req.additionalParams.end()) {
-            mqtt_username = usernameIt->second;
-        }
-        
-        auto passwordIt = req.additionalParams.find("MQTT_PASSWORD");
-        if (passwordIt != req.additionalParams.end()) {
-            mqtt_password = passwordIt->second;
-        }
-        
-        if (nodeName.empty()) {
-            throw std::invalid_argument("Node name cannot be empty");
-        }
-        
-        // If MQTT broker URL is empty, skip this node (optional MQTT output)
-        if (mqtt_broker.empty()) {
-            std::cerr << "[PipelineBuilder] MQTT broker URL is empty, skipping crossline MQTT broker node: " << nodeName << std::endl;
-            std::cerr << "[PipelineBuilder] NOTE: To enable MQTT output, provide 'MQTT_BROKER_URL' in request additionalParams" << std::endl;
-            return nullptr;
-        }
-        
-        std::cerr << "[PipelineBuilder] Creating JSON Crossline MQTT broker node:" << std::endl;
-        std::cerr << "  Name: '" << nodeName << "'" << std::endl;
-        std::cerr << "  Instance ID: '" << instance_id << "'" << std::endl;
-        std::cerr << "  Zone ID: '" << zone_id << "'" << std::endl;
-        std::cerr << "  Zone Name: '" << zone_name << "'" << std::endl;
-        std::cerr << "  Broker: " << mqtt_broker << ":" << mqtt_port << std::endl;
-        std::cerr << "  Topic: " << mqtt_topic << std::endl;
-        
-        // Create MQTT client using SDK (like in sample code)
-        std::string client_id = "edge_ai_api_crossline_" + nodeName + "_" + std::to_string(std::time(nullptr));
-        auto mqtt_client = std::make_unique<cvedix_utils::cvedix_mqtt_client>(
-            mqtt_broker, mqtt_port, client_id, 60);
-        mqtt_client->set_auto_reconnect(true, 5000);
-        
-        std::cerr << "[PipelineBuilder] [MQTT] Connecting to " << mqtt_broker << ":" << mqtt_port << "..." << std::endl;
-        bool connected = mqtt_client->connect(mqtt_username, mqtt_password);
-        if (connected) {
-            std::cerr << "[PipelineBuilder] [MQTT] ✓ Connected successfully" << std::endl;
-        } else {
-            std::cerr << "[PipelineBuilder] [MQTT] ⚠ Connection failed or pending (will retry with auto-reconnect)" << std::endl;
-            std::cerr << "[PipelineBuilder] [MQTT] NOTE: Auto-reconnect is enabled, connection will be retried automatically" << std::endl;
-        }
-        
-        // Create MQTT publish function using SDK (like in sample code)
-        static std::mutex mqtt_publish_mutex;
-        auto mqtt_client_ptr = std::shared_ptr<cvedix_utils::cvedix_mqtt_client>(mqtt_client.release());
-        
-        auto mqtt_publish_func = [mqtt_client_ptr, mqtt_topic](const std::string& json_message) {
-            std::lock_guard<std::mutex> lock(mqtt_publish_mutex);
-            if (!mqtt_client_ptr) {
-                std::cerr << "[MQTT] ⚠ Cannot publish: MQTT client is null" << std::endl;
-                return;
-            }
-            if (!mqtt_client_ptr->is_ready()) {
-                std::cerr << "[MQTT] ⚠ Cannot publish: MQTT client not ready (not connected yet)" << std::endl;
-                return;
-            }
-            mqtt_client_ptr->publish(mqtt_topic, json_message, 1, false);
-            std::cerr << "[MQTT] ✓ Published crossline event to topic: " << mqtt_topic << std::endl;
-        };
-        
-        // Create crossline MQTT broker node
-        auto node = std::make_shared<cvedix_json_crossline_mqtt_broker_node>(
-            nodeName, mqtt_publish_func, instance_id, zone_id, zone_name);
-        
-        std::cerr << "[PipelineBuilder] ✓ JSON Crossline MQTT broker node created successfully" << std::endl;
-        std::cerr << "[PipelineBuilder] [MQTT] Node will publish crossline events to topic: '" << mqtt_topic << "'" << std::endl;
-        return node;
-    } catch (const std::exception& e) {
-        std::cerr << "[PipelineBuilder] Exception in createJSONCrosslineMQTTBrokerNode: " << e.what() << std::endl;
-        throw;
+std::shared_ptr<cvedix_nodes::cvedix_node>
+PipelineBuilder::createJSONCrosslineMQTTBrokerNode(
+    const std::string &nodeName,
+    const std::map<std::string, std::string> &params,
+    const CreateInstanceRequest &req) {
+  (void)params; // Parameters may be used in future implementations
+
+  try {
+    // Get instance ID from request
+    std::string instance_id = req.name;
+
+    // Get zone configuration from additionalParams (with defaults)
+    std::string zone_id = "default_zone";
+    std::string zone_name = "CrosslineZone";
+
+    auto zoneIdIt = req.additionalParams.find("ZONE_ID");
+    if (zoneIdIt != req.additionalParams.end() && !zoneIdIt->second.empty()) {
+      zone_id = zoneIdIt->second;
     }
+
+    auto zoneNameIt = req.additionalParams.find("ZONE_NAME");
+    if (zoneNameIt != req.additionalParams.end() &&
+        !zoneNameIt->second.empty()) {
+      zone_name = zoneNameIt->second;
+    }
+
+    // Get MQTT configuration from additionalParams
+    std::string mqtt_broker = "";
+    int mqtt_port = 1883;
+    std::string mqtt_topic = "events";
+    std::string mqtt_username = "";
+    std::string mqtt_password = "";
+
+    auto brokerIt = req.additionalParams.find("MQTT_BROKER_URL");
+    if (brokerIt != req.additionalParams.end() && !brokerIt->second.empty()) {
+      mqtt_broker = brokerIt->second;
+      // Trim whitespace
+      mqtt_broker.erase(0, mqtt_broker.find_first_not_of(" \t\n\r"));
+      mqtt_broker.erase(mqtt_broker.find_last_not_of(" \t\n\r") + 1);
+    }
+
+    auto portIt = req.additionalParams.find("MQTT_PORT");
+    if (portIt != req.additionalParams.end() && !portIt->second.empty()) {
+      try {
+        mqtt_port = std::stoi(portIt->second);
+      } catch (...) {
+        std::cerr << "[PipelineBuilder] Warning: Invalid MQTT_PORT, using "
+                     "default 1883"
+                  << std::endl;
+      }
+    }
+
+    auto topicIt = req.additionalParams.find("MQTT_TOPIC");
+    if (topicIt != req.additionalParams.end() && !topicIt->second.empty()) {
+      mqtt_topic = topicIt->second;
+    }
+
+    auto usernameIt = req.additionalParams.find("MQTT_USERNAME");
+    if (usernameIt != req.additionalParams.end()) {
+      mqtt_username = usernameIt->second;
+    }
+
+    auto passwordIt = req.additionalParams.find("MQTT_PASSWORD");
+    if (passwordIt != req.additionalParams.end()) {
+      mqtt_password = passwordIt->second;
+    }
+
+    if (nodeName.empty()) {
+      throw std::invalid_argument("Node name cannot be empty");
+    }
+
+    // If MQTT broker URL is empty, skip this node (optional MQTT output)
+    if (mqtt_broker.empty()) {
+      std::cerr << "[PipelineBuilder] MQTT broker URL is empty, skipping "
+                   "crossline MQTT broker node: "
+                << nodeName << std::endl;
+      std::cerr << "[PipelineBuilder] NOTE: To enable MQTT output, provide "
+                   "'MQTT_BROKER_URL' in request additionalParams"
+                << std::endl;
+      return nullptr;
+    }
+
+    std::cerr << "[PipelineBuilder] Creating JSON Crossline MQTT broker node:"
+              << std::endl;
+    std::cerr << "  Name: '" << nodeName << "'" << std::endl;
+    std::cerr << "  Instance ID: '" << instance_id << "'" << std::endl;
+    std::cerr << "  Zone ID: '" << zone_id << "'" << std::endl;
+    std::cerr << "  Zone Name: '" << zone_name << "'" << std::endl;
+    std::cerr << "  Broker: " << mqtt_broker << ":" << mqtt_port << std::endl;
+    std::cerr << "  Topic: " << mqtt_topic << std::endl;
+
+    // Create MQTT client using SDK (like in sample code)
+    std::string client_id = "edge_ai_api_crossline_" + nodeName + "_" +
+                            std::to_string(std::time(nullptr));
+    auto mqtt_client = std::make_unique<cvedix_utils::cvedix_mqtt_client>(
+        mqtt_broker, mqtt_port, client_id, 60);
+    mqtt_client->set_auto_reconnect(true, 5000);
+
+    std::cerr << "[PipelineBuilder] [MQTT] Connecting to " << mqtt_broker << ":"
+              << mqtt_port << "..." << std::endl;
+    bool connected = mqtt_client->connect(mqtt_username, mqtt_password);
+    if (connected) {
+      std::cerr << "[PipelineBuilder] [MQTT] ✓ Connected successfully"
+                << std::endl;
+    } else {
+      std::cerr << "[PipelineBuilder] [MQTT] ⚠ Connection failed or pending "
+                   "(will retry with auto-reconnect)"
+                << std::endl;
+      std::cerr << "[PipelineBuilder] [MQTT] NOTE: Auto-reconnect is enabled, "
+                   "connection will be retried automatically"
+                << std::endl;
+    }
+
+    // Create MQTT publish function using SDK (like in sample code)
+    static std::mutex mqtt_publish_mutex;
+    auto mqtt_client_ptr = std::shared_ptr<cvedix_utils::cvedix_mqtt_client>(
+        mqtt_client.release());
+
+    auto mqtt_publish_func = [mqtt_client_ptr,
+                              mqtt_topic](const std::string &json_message) {
+      std::lock_guard<std::mutex> lock(mqtt_publish_mutex);
+      if (!mqtt_client_ptr) {
+        std::cerr << "[MQTT] ⚠ Cannot publish: MQTT client is null"
+                  << std::endl;
+        return;
+      }
+      if (!mqtt_client_ptr->is_ready()) {
+        std::cerr << "[MQTT] ⚠ Cannot publish: MQTT client not ready (not "
+                     "connected yet)"
+                  << std::endl;
+        return;
+      }
+      mqtt_client_ptr->publish(mqtt_topic, json_message, 1, false);
+      std::cerr << "[MQTT] ✓ Published crossline event to topic: " << mqtt_topic
+                << std::endl;
+    };
+
+    // Create crossline MQTT broker node
+    auto node = std::make_shared<cvedix_json_crossline_mqtt_broker_node>(
+        nodeName, mqtt_publish_func, instance_id, zone_id, zone_name);
+
+    std::cerr << "[PipelineBuilder] ✓ JSON Crossline MQTT broker node created "
+                 "successfully"
+              << std::endl;
+    std::cerr << "[PipelineBuilder] [MQTT] Node will publish crossline events "
+                 "to topic: '"
+              << mqtt_topic << "'" << std::endl;
+    return node;
+  } catch (const std::exception &e) {
+    std::cerr
+        << "[PipelineBuilder] Exception in createJSONCrosslineMQTTBrokerNode: "
+        << e.what() << std::endl;
+    throw;
+  }
 }
 #endif
 #ifdef CVEDIX_WITH_KAFKA
-std::shared_ptr<cvedix_nodes::cvedix_node> PipelineBuilder::createJSONKafkaBrokerNode(
-    const std::string&, const std::map<std::string, std::string>&, const CreateInstanceRequest&) {
-    return nullptr;
+std::shared_ptr<cvedix_nodes::cvedix_node>
+PipelineBuilder::createJSONKafkaBrokerNode(
+    const std::string &, const std::map<std::string, std::string> &,
+    const CreateInstanceRequest &) {
+  return nullptr;
 }
 #endif
 
-// Temporarily disabled all broker node implementations due to cereal dependency issue
+// Temporarily disabled all broker node implementations due to cereal dependency
+// issue
 /*
-std::shared_ptr<cvedix_nodes::cvedix_node> PipelineBuilder::createXMLFileBrokerNode(
-    const std::string& nodeName,
-    const std::map<std::string, std::string>& params,
-    const CreateInstanceRequest& req) {
-    
+std::shared_ptr<cvedix_nodes::cvedix_node>
+PipelineBuilder::createXMLFileBrokerNode( const std::string& nodeName, const
+std::map<std::string, std::string>& params, const CreateInstanceRequest& req) {
+
     try {
-        std::string brokeForStr = params.count("broke_for") ? params.at("broke_for") : "NORMAL";
-        cvedix_nodes::cvedix_broke_for brokeFor = cvedix_nodes::cvedix_broke_for::NORMAL;
-        
+        std::string brokeForStr = params.count("broke_for") ?
+params.at("broke_for") : "NORMAL"; cvedix_nodes::cvedix_broke_for brokeFor =
+cvedix_nodes::cvedix_broke_for::NORMAL;
+
         if (brokeForStr == "FACE") {
             brokeFor = cvedix_nodes::cvedix_broke_for::FACE;
         } else if (brokeForStr == "TEXT") {
@@ -5674,30 +6725,30 @@ std::shared_ptr<cvedix_nodes::cvedix_node> PipelineBuilder::createXMLFileBrokerN
         } else if (brokeForStr == "POSE") {
             brokeFor = cvedix_nodes::cvedix_broke_for::POSE;
         }
-        
-        std::string filePath = params.count("file_path") ? params.at("file_path") : "";
-        if (filePath.empty()) {
-            auto it = req.additionalParams.find("XML_FILE_PATH");
-            if (it != req.additionalParams.end() && !it->second.empty()) {
-                filePath = it->second;
-            } else {
+
+        std::string filePath = params.count("file_path") ?
+params.at("file_path") : ""; if (filePath.empty()) { auto it =
+req.additionalParams.find("XML_FILE_PATH"); if (it != req.additionalParams.end()
+&& !it->second.empty()) { filePath = it->second; } else {
                 // Default fake data
                 filePath = "./output/broker_output.xml";
             }
         }
-        
-        int warnThreshold = params.count("broking_cache_warn_threshold") ? std::stoi(params.at("broking_cache_warn_threshold")) : 50;
-        int ignoreThreshold = params.count("broking_cache_ignore_threshold") ? std::stoi(params.at("broking_cache_ignore_threshold")) : 200;
-        
+
+        int warnThreshold = params.count("broking_cache_warn_threshold") ?
+std::stoi(params.at("broking_cache_warn_threshold")) : 50; int ignoreThreshold =
+params.count("broking_cache_ignore_threshold") ?
+std::stoi(params.at("broking_cache_ignore_threshold")) : 200;
+
         if (nodeName.empty()) {
             throw std::invalid_argument("Node name cannot be empty");
         }
-        
-        std::cerr << "[PipelineBuilder] Creating XML file broker node:" << std::endl;
-        std::cerr << "  Name: '" << nodeName << "'" << std::endl;
-        std::cerr << "  File path: '" << filePath << "'" << std::endl;
-        std::cerr << "  Broke for: " << brokeForStr << std::endl;
-        
+
+        std::cerr << "[PipelineBuilder] Creating XML file broker node:" <<
+std::endl; std::cerr << "  Name: '" << nodeName << "'" << std::endl; std::cerr
+<< "  File path: '" << filePath << "'" << std::endl; std::cerr << "  Broke for:
+" << brokeForStr << std::endl;
+
         auto node = std::make_shared<cvedix_nodes::cvedix_xml_file_broker_node>(
             nodeName,
             brokeFor,
@@ -5705,26 +6756,26 @@ std::shared_ptr<cvedix_nodes::cvedix_node> PipelineBuilder::createXMLFileBrokerN
             warnThreshold,
             ignoreThreshold
         );
-        
-        std::cerr << "[PipelineBuilder] ✓ XML file broker node created successfully" << std::endl;
-        return node;
-    } catch (const std::exception& e) {
-        std::cerr << "[PipelineBuilder] Exception in createXMLFileBrokerNode: " << e.what() << std::endl;
-        throw;
+
+        std::cerr << "[PipelineBuilder] ✓ XML file broker node created
+successfully" << std::endl; return node; } catch (const std::exception& e) {
+        std::cerr << "[PipelineBuilder] Exception in createXMLFileBrokerNode: "
+<< e.what() << std::endl; throw;
     }
 }
 
-std::shared_ptr<cvedix_nodes::cvedix_node> PipelineBuilder::createXMLSocketBrokerNode(
-    const std::string& nodeName,
-    const std::map<std::string, std::string>& params,
-    const CreateInstanceRequest& req) {
-    
+std::shared_ptr<cvedix_nodes::cvedix_node>
+PipelineBuilder::createXMLSocketBrokerNode( const std::string& nodeName, const
+std::map<std::string, std::string>& params, const CreateInstanceRequest& req) {
+
     try {
         std::string desIp = params.count("des_ip") ? params.at("des_ip") : "";
-        int desPort = params.count("des_port") ? std::stoi(params.at("des_port")) : 0;
-        std::string brokeForStr = params.count("broke_for") ? params.at("broke_for") : "NORMAL";
-        cvedix_nodes::cvedix_broke_for brokeFor = cvedix_nodes::cvedix_broke_for::NORMAL;
-        
+        int desPort = params.count("des_port") ?
+std::stoi(params.at("des_port")) : 0; std::string brokeForStr =
+params.count("broke_for") ? params.at("broke_for") : "NORMAL";
+        cvedix_nodes::cvedix_broke_for brokeFor =
+cvedix_nodes::cvedix_broke_for::NORMAL;
+
         // Get from additionalParams if not in params
         if (desIp.empty()) {
             auto it = req.additionalParams.find("XML_SOCKET_IP");
@@ -5747,7 +6798,7 @@ std::shared_ptr<cvedix_nodes::cvedix_node> PipelineBuilder::createXMLSocketBroke
                 desPort = 8080; // Default fake data
             }
         }
-        
+
         if (brokeForStr == "FACE") {
             brokeFor = cvedix_nodes::cvedix_broke_for::FACE;
         } else if (brokeForStr == "TEXT") {
@@ -5755,46 +6806,46 @@ std::shared_ptr<cvedix_nodes::cvedix_node> PipelineBuilder::createXMLSocketBroke
         } else if (brokeForStr == "POSE") {
             brokeFor = cvedix_nodes::cvedix_broke_for::POSE;
         }
-        
-        int warnThreshold = params.count("broking_cache_warn_threshold") ? std::stoi(params.at("broking_cache_warn_threshold")) : 50;
-        int ignoreThreshold = params.count("broking_cache_ignore_threshold") ? std::stoi(params.at("broking_cache_ignore_threshold")) : 200;
-        
+
+        int warnThreshold = params.count("broking_cache_warn_threshold") ?
+std::stoi(params.at("broking_cache_warn_threshold")) : 50; int ignoreThreshold =
+params.count("broking_cache_ignore_threshold") ?
+std::stoi(params.at("broking_cache_ignore_threshold")) : 200;
+
         if (nodeName.empty()) {
             throw std::invalid_argument("Node name cannot be empty");
         }
-        
-        std::cerr << "[PipelineBuilder] Creating XML socket broker node:" << std::endl;
-        std::cerr << "  Name: '" << nodeName << "'" << std::endl;
-        std::cerr << "  Destination IP: '" << desIp << "'" << std::endl;
-        std::cerr << "  Destination port: " << desPort << std::endl;
-        std::cerr << "  Broke for: " << brokeForStr << std::endl;
-        
-        auto node = std::make_shared<cvedix_nodes::cvedix_xml_socket_broker_node>(
-            nodeName,
-            desIp,
+
+        std::cerr << "[PipelineBuilder] Creating XML socket broker node:" <<
+std::endl; std::cerr << "  Name: '" << nodeName << "'" << std::endl; std::cerr
+<< "  Destination IP: '" << desIp << "'" << std::endl; std::cerr << "
+Destination port: " << desPort << std::endl; std::cerr << "  Broke for: " <<
+brokeForStr << std::endl;
+
+        auto node =
+std::make_shared<cvedix_nodes::cvedix_xml_socket_broker_node>( nodeName, desIp,
             desPort,
             brokeFor,
             warnThreshold,
             ignoreThreshold
         );
-        
-        std::cerr << "[PipelineBuilder] ✓ XML socket broker node created successfully" << std::endl;
-        return node;
-    } catch (const std::exception& e) {
-        std::cerr << "[PipelineBuilder] Exception in createXMLSocketBrokerNode: " << e.what() << std::endl;
-        throw;
+
+        std::cerr << "[PipelineBuilder] ✓ XML socket broker node created
+successfully" << std::endl; return node; } catch (const std::exception& e) {
+        std::cerr << "[PipelineBuilder] Exception in createXMLSocketBrokerNode:
+" << e.what() << std::endl; throw;
     }
 }
 
-std::shared_ptr<cvedix_nodes::cvedix_node> PipelineBuilder::createMessageBrokerNode(
-    const std::string& nodeName,
-    const std::map<std::string, std::string>& params,
-    const CreateInstanceRequest& req) {
-    
+std::shared_ptr<cvedix_nodes::cvedix_node>
+PipelineBuilder::createMessageBrokerNode( const std::string& nodeName, const
+std::map<std::string, std::string>& params, const CreateInstanceRequest& req) {
+
     try {
-        std::string brokeForStr = params.count("broke_for") ? params.at("broke_for") : "NORMAL";
-        cvedix_nodes::cvedix_broke_for brokeFor = cvedix_nodes::cvedix_broke_for::NORMAL;
-        
+        std::string brokeForStr = params.count("broke_for") ?
+params.at("broke_for") : "NORMAL"; cvedix_nodes::cvedix_broke_for brokeFor =
+cvedix_nodes::cvedix_broke_for::NORMAL;
+
         if (brokeForStr == "FACE") {
             brokeFor = cvedix_nodes::cvedix_broke_for::FACE;
         } else if (brokeForStr == "TEXT") {
@@ -5802,44 +6853,46 @@ std::shared_ptr<cvedix_nodes::cvedix_node> PipelineBuilder::createMessageBrokerN
         } else if (brokeForStr == "POSE") {
             brokeFor = cvedix_nodes::cvedix_broke_for::POSE;
         }
-        
-        int warnThreshold = params.count("broking_cache_warn_threshold") ? std::stoi(params.at("broking_cache_warn_threshold")) : 50;
-        int ignoreThreshold = params.count("broking_cache_ignore_threshold") ? std::stoi(params.at("broking_cache_ignore_threshold")) : 200;
-        
+
+        int warnThreshold = params.count("broking_cache_warn_threshold") ?
+std::stoi(params.at("broking_cache_warn_threshold")) : 50; int ignoreThreshold =
+params.count("broking_cache_ignore_threshold") ?
+std::stoi(params.at("broking_cache_ignore_threshold")) : 200;
+
         if (nodeName.empty()) {
             throw std::invalid_argument("Node name cannot be empty");
         }
-        
-        std::cerr << "[PipelineBuilder] Creating message broker node:" << std::endl;
-        std::cerr << "  Name: '" << nodeName << "'" << std::endl;
-        std::cerr << "  Broke for: " << brokeForStr << std::endl;
-        
+
+        std::cerr << "[PipelineBuilder] Creating message broker node:" <<
+std::endl; std::cerr << "  Name: '" << nodeName << "'" << std::endl; std::cerr
+<< "  Broke for: " << brokeForStr << std::endl;
+
         auto node = std::make_shared<cvedix_nodes::cvedix_msg_broker_node>(
             nodeName,
             brokeFor,
             warnThreshold,
             ignoreThreshold
         );
-        
-        std::cerr << "[PipelineBuilder] ✓ Message broker node created successfully" << std::endl;
-        return node;
-    } catch (const std::exception& e) {
-        std::cerr << "[PipelineBuilder] Exception in createMessageBrokerNode: " << e.what() << std::endl;
-        throw;
+
+        std::cerr << "[PipelineBuilder] ✓ Message broker node created
+successfully" << std::endl; return node; } catch (const std::exception& e) {
+        std::cerr << "[PipelineBuilder] Exception in createMessageBrokerNode: "
+<< e.what() << std::endl; throw;
     }
 }
 
-std::shared_ptr<cvedix_nodes::cvedix_node> PipelineBuilder::createBASocketBrokerNode(
-    const std::string& nodeName,
-    const std::map<std::string, std::string>& params,
-    const CreateInstanceRequest& req) {
-    
+std::shared_ptr<cvedix_nodes::cvedix_node>
+PipelineBuilder::createBASocketBrokerNode( const std::string& nodeName, const
+std::map<std::string, std::string>& params, const CreateInstanceRequest& req) {
+
     try {
         std::string desIp = params.count("des_ip") ? params.at("des_ip") : "";
-        int desPort = params.count("des_port") ? std::stoi(params.at("des_port")) : 0;
-        std::string brokeForStr = params.count("broke_for") ? params.at("broke_for") : "NORMAL";
-        cvedix_nodes::cvedix_broke_for brokeFor = cvedix_nodes::cvedix_broke_for::NORMAL;
-        
+        int desPort = params.count("des_port") ?
+std::stoi(params.at("des_port")) : 0; std::string brokeForStr =
+params.count("broke_for") ? params.at("broke_for") : "NORMAL";
+        cvedix_nodes::cvedix_broke_for brokeFor =
+cvedix_nodes::cvedix_broke_for::NORMAL;
+
         // Get from additionalParams if not in params
         if (desIp.empty()) {
             auto it = req.additionalParams.find("BA_SOCKET_IP");
@@ -5861,7 +6914,7 @@ std::shared_ptr<cvedix_nodes::cvedix_node> PipelineBuilder::createBASocketBroker
                 desPort = 8080; // Default fake data
             }
         }
-        
+
         if (brokeForStr == "FACE") {
             brokeFor = cvedix_nodes::cvedix_broke_for::FACE;
         } else if (brokeForStr == "TEXT") {
@@ -5869,52 +6922,56 @@ std::shared_ptr<cvedix_nodes::cvedix_node> PipelineBuilder::createBASocketBroker
         } else if (brokeForStr == "POSE") {
             brokeFor = cvedix_nodes::cvedix_broke_for::POSE;
         }
-        
-        int warnThreshold = params.count("broking_cache_warn_threshold") ? std::stoi(params.at("broking_cache_warn_threshold")) : 50;
-        int ignoreThreshold = params.count("broking_cache_ignore_threshold") ? std::stoi(params.at("broking_cache_ignore_threshold")) : 200;
-        
+
+        int warnThreshold = params.count("broking_cache_warn_threshold") ?
+std::stoi(params.at("broking_cache_warn_threshold")) : 50; int ignoreThreshold =
+params.count("broking_cache_ignore_threshold") ?
+std::stoi(params.at("broking_cache_ignore_threshold")) : 200;
+
         if (nodeName.empty()) {
             throw std::invalid_argument("Node name cannot be empty");
         }
-        
-        std::cerr << "[PipelineBuilder] Creating BA socket broker node:" << std::endl;
-        std::cerr << "  Name: '" << nodeName << "'" << std::endl;
-        std::cerr << "  Destination IP: '" << desIp << "'" << std::endl;
-        std::cerr << "  Destination port: " << desPort << std::endl;
-        std::cerr << "  Broke for: " << brokeForStr << std::endl;
-        
-        auto node = std::make_shared<cvedix_nodes::cvedix_ba_socket_broker_node>(
-            nodeName,
-            desIp,
+
+        std::cerr << "[PipelineBuilder] Creating BA socket broker node:" <<
+std::endl; std::cerr << "  Name: '" << nodeName << "'" << std::endl; std::cerr
+<< "  Destination IP: '" << desIp << "'" << std::endl; std::cerr << "
+Destination port: " << desPort << std::endl; std::cerr << "  Broke for: " <<
+brokeForStr << std::endl;
+
+        auto node =
+std::make_shared<cvedix_nodes::cvedix_ba_socket_broker_node>( nodeName, desIp,
             desPort,
             brokeFor,
             warnThreshold,
             ignoreThreshold
         );
-        
-        std::cerr << "[PipelineBuilder] ✓ BA socket broker node created successfully" << std::endl;
-        return node;
-    } catch (const std::exception& e) {
-        std::cerr << "[PipelineBuilder] Exception in createBASocketBrokerNode: " << e.what() << std::endl;
-        throw;
+
+        std::cerr << "[PipelineBuilder] ✓ BA socket broker node created
+successfully" << std::endl; return node; } catch (const std::exception& e) {
+        std::cerr << "[PipelineBuilder] Exception in createBASocketBrokerNode: "
+<< e.what() << std::endl; throw;
     }
 }
 
-std::shared_ptr<cvedix_nodes::cvedix_node> PipelineBuilder::createEmbeddingsSocketBrokerNode(
-    const std::string& nodeName,
+std::shared_ptr<cvedix_nodes::cvedix_node>
+PipelineBuilder::createEmbeddingsSocketBrokerNode( const std::string& nodeName,
     const std::map<std::string, std::string>& params,
     const CreateInstanceRequest& req) {
-    
+
     try {
         std::string desIp = params.count("des_ip") ? params.at("des_ip") : "";
-        int desPort = params.count("des_port") ? std::stoi(params.at("des_port")) : 0;
-        std::string croppedDir = params.count("cropped_dir") ? params.at("cropped_dir") : "cropped_images";
-        int minCropWidth = params.count("min_crop_width") ? std::stoi(params.at("min_crop_width")) : 50;
-        int minCropHeight = params.count("min_crop_height") ? std::stoi(params.at("min_crop_height")) : 50;
-        std::string brokeForStr = params.count("broke_for") ? params.at("broke_for") : "NORMAL";
-        cvedix_nodes::cvedix_broke_for brokeFor = cvedix_nodes::cvedix_broke_for::NORMAL;
-        bool onlyForTracked = params.count("only_for_tracked") ? (params.at("only_for_tracked") == "true" || params.at("only_for_tracked") == "1") : false;
-        
+        int desPort = params.count("des_port") ?
+std::stoi(params.at("des_port")) : 0; std::string croppedDir =
+params.count("cropped_dir") ? params.at("cropped_dir") : "cropped_images"; int
+minCropWidth = params.count("min_crop_width") ?
+std::stoi(params.at("min_crop_width")) : 50; int minCropHeight =
+params.count("min_crop_height") ? std::stoi(params.at("min_crop_height")) : 50;
+        std::string brokeForStr = params.count("broke_for") ?
+params.at("broke_for") : "NORMAL"; cvedix_nodes::cvedix_broke_for brokeFor =
+cvedix_nodes::cvedix_broke_for::NORMAL; bool onlyForTracked =
+params.count("only_for_tracked") ? (params.at("only_for_tracked") == "true" ||
+params.at("only_for_tracked") == "1") : false;
+
         // Get from additionalParams if not in params
         if (desIp.empty()) {
             auto it = req.additionalParams.find("EMBEDDINGS_SOCKET_IP");
@@ -5936,7 +6993,7 @@ std::shared_ptr<cvedix_nodes::cvedix_node> PipelineBuilder::createEmbeddingsSock
                 desPort = 8080; // Default fake data
             }
         }
-        
+
         if (brokeForStr == "FACE") {
             brokeFor = cvedix_nodes::cvedix_broke_for::FACE;
         } else if (brokeForStr == "TEXT") {
@@ -5944,22 +7001,24 @@ std::shared_ptr<cvedix_nodes::cvedix_node> PipelineBuilder::createEmbeddingsSock
         } else if (brokeForStr == "POSE") {
             brokeFor = cvedix_nodes::cvedix_broke_for::POSE;
         }
-        
-        int warnThreshold = params.count("broking_cache_warn_threshold") ? std::stoi(params.at("broking_cache_warn_threshold")) : 50;
-        int ignoreThreshold = params.count("broking_cache_ignore_threshold") ? std::stoi(params.at("broking_cache_ignore_threshold")) : 200;
-        
+
+        int warnThreshold = params.count("broking_cache_warn_threshold") ?
+std::stoi(params.at("broking_cache_warn_threshold")) : 50; int ignoreThreshold =
+params.count("broking_cache_ignore_threshold") ?
+std::stoi(params.at("broking_cache_ignore_threshold")) : 200;
+
         if (nodeName.empty()) {
             throw std::invalid_argument("Node name cannot be empty");
         }
-        
-        std::cerr << "[PipelineBuilder] Creating embeddings socket broker node:" << std::endl;
-        std::cerr << "  Name: '" << nodeName << "'" << std::endl;
+
+        std::cerr << "[PipelineBuilder] Creating embeddings socket broker node:"
+<< std::endl; std::cerr << "  Name: '" << nodeName << "'" << std::endl;
         std::cerr << "  Destination IP: '" << desIp << "'" << std::endl;
         std::cerr << "  Destination port: " << desPort << std::endl;
         std::cerr << "  Cropped dir: '" << croppedDir << "'" << std::endl;
-        
-        auto node = std::make_shared<cvedix_nodes::cvedix_embeddings_socket_broker_node>(
-            nodeName,
+
+        auto node =
+std::make_shared<cvedix_nodes::cvedix_embeddings_socket_broker_node>( nodeName,
             desIp,
             desPort,
             croppedDir,
@@ -5970,52 +7029,52 @@ std::shared_ptr<cvedix_nodes::cvedix_node> PipelineBuilder::createEmbeddingsSock
             warnThreshold,
             ignoreThreshold
         );
-        
-        std::cerr << "[PipelineBuilder] ✓ Embeddings socket broker node created successfully" << std::endl;
-        return node;
-    } catch (const std::exception& e) {
-        std::cerr << "[PipelineBuilder] Exception in createEmbeddingsSocketBrokerNode: " << e.what() << std::endl;
-        throw;
+
+        std::cerr << "[PipelineBuilder] ✓ Embeddings socket broker node created
+successfully" << std::endl; return node; } catch (const std::exception& e) {
+        std::cerr << "[PipelineBuilder] Exception in
+createEmbeddingsSocketBrokerNode: " << e.what() << std::endl; throw;
     }
 }
 
-std::shared_ptr<cvedix_nodes::cvedix_node> PipelineBuilder::createEmbeddingsPropertiesSocketBrokerNode(
-    const std::string& nodeName,
-    const std::map<std::string, std::string>& params,
-    const CreateInstanceRequest& req) {
-    
+std::shared_ptr<cvedix_nodes::cvedix_node>
+PipelineBuilder::createEmbeddingsPropertiesSocketBrokerNode( const std::string&
+nodeName, const std::map<std::string, std::string>& params, const
+CreateInstanceRequest& req) {
+
     try {
         std::string desIp = params.count("des_ip") ? params.at("des_ip") : "";
-        int desPort = params.count("des_port") ? std::stoi(params.at("des_port")) : 0;
-        std::string croppedDir = params.count("cropped_dir") ? params.at("cropped_dir") : "cropped_images";
-        int minCropWidth = params.count("min_crop_width") ? std::stoi(params.at("min_crop_width")) : 50;
-        int minCropHeight = params.count("min_crop_height") ? std::stoi(params.at("min_crop_height")) : 50;
-        std::string brokeForStr = params.count("broke_for") ? params.at("broke_for") : "NORMAL";
-        cvedix_nodes::cvedix_broke_for brokeFor = cvedix_nodes::cvedix_broke_for::NORMAL;
-        bool onlyForTracked = params.count("only_for_tracked") ? (params.at("only_for_tracked") == "true" || params.at("only_for_tracked") == "1") : false;
-        
+        int desPort = params.count("des_port") ?
+std::stoi(params.at("des_port")) : 0; std::string croppedDir =
+params.count("cropped_dir") ? params.at("cropped_dir") : "cropped_images"; int
+minCropWidth = params.count("min_crop_width") ?
+std::stoi(params.at("min_crop_width")) : 50; int minCropHeight =
+params.count("min_crop_height") ? std::stoi(params.at("min_crop_height")) : 50;
+        std::string brokeForStr = params.count("broke_for") ?
+params.at("broke_for") : "NORMAL"; cvedix_nodes::cvedix_broke_for brokeFor =
+cvedix_nodes::cvedix_broke_for::NORMAL; bool onlyForTracked =
+params.count("only_for_tracked") ? (params.at("only_for_tracked") == "true" ||
+params.at("only_for_tracked") == "1") : false;
+
         // Get from additionalParams if not in params
         if (desIp.empty()) {
-            auto it = req.additionalParams.find("EMBEDDINGS_PROPERTIES_SOCKET_IP");
-            if (it != req.additionalParams.end() && !it->second.empty()) {
-                desIp = it->second;
-            } else {
-                desIp = "127.0.0.1"; // Default fake data
+            auto it =
+req.additionalParams.find("EMBEDDINGS_PROPERTIES_SOCKET_IP"); if (it !=
+req.additionalParams.end() && !it->second.empty()) { desIp = it->second; } else
+{ desIp = "127.0.0.1"; // Default fake data
             }
         }
         if (desPort == 0) {
-            auto it = req.additionalParams.find("EMBEDDINGS_PROPERTIES_SOCKET_PORT");
-            if (it != req.additionalParams.end() && !it->second.empty()) {
-                try {
-                    desPort = std::stoi(it->second);
-                } catch (...) {
-                    desPort = 8080; // Default fake data
+            auto it =
+req.additionalParams.find("EMBEDDINGS_PROPERTIES_SOCKET_PORT"); if (it !=
+req.additionalParams.end() && !it->second.empty()) { try { desPort =
+std::stoi(it->second); } catch (...) { desPort = 8080; // Default fake data
                 }
             } else {
                 desPort = 8080; // Default fake data
             }
         }
-        
+
         if (brokeForStr == "FACE") {
             brokeFor = cvedix_nodes::cvedix_broke_for::FACE;
         } else if (brokeForStr == "TEXT") {
@@ -6023,20 +7082,23 @@ std::shared_ptr<cvedix_nodes::cvedix_node> PipelineBuilder::createEmbeddingsProp
         } else if (brokeForStr == "POSE") {
             brokeFor = cvedix_nodes::cvedix_broke_for::POSE;
         }
-        
-        int warnThreshold = params.count("broking_cache_warn_threshold") ? std::stoi(params.at("broking_cache_warn_threshold")) : 50;
-        int ignoreThreshold = params.count("broking_cache_ignore_threshold") ? std::stoi(params.at("broking_cache_ignore_threshold")) : 200;
-        
+
+        int warnThreshold = params.count("broking_cache_warn_threshold") ?
+std::stoi(params.at("broking_cache_warn_threshold")) : 50; int ignoreThreshold =
+params.count("broking_cache_ignore_threshold") ?
+std::stoi(params.at("broking_cache_ignore_threshold")) : 200;
+
         if (nodeName.empty()) {
             throw std::invalid_argument("Node name cannot be empty");
         }
-        
-        std::cerr << "[PipelineBuilder] Creating embeddings properties socket broker node:" << std::endl;
-        std::cerr << "  Name: '" << nodeName << "'" << std::endl;
-        std::cerr << "  Destination IP: '" << desIp << "'" << std::endl;
+
+        std::cerr << "[PipelineBuilder] Creating embeddings properties socket
+broker node:" << std::endl; std::cerr << "  Name: '" << nodeName << "'" <<
+std::endl; std::cerr << "  Destination IP: '" << desIp << "'" << std::endl;
         std::cerr << "  Destination port: " << desPort << std::endl;
-        
-        auto node = std::make_shared<cvedix_nodes::cvedix_embeddings_properties_socket_broker_node>(
+
+        auto node =
+std::make_shared<cvedix_nodes::cvedix_embeddings_properties_socket_broker_node>(
             nodeName,
             desIp,
             desPort,
@@ -6048,30 +7110,32 @@ std::shared_ptr<cvedix_nodes::cvedix_node> PipelineBuilder::createEmbeddingsProp
             warnThreshold,
             ignoreThreshold
         );
-        
-        std::cerr << "[PipelineBuilder] ✓ Embeddings properties socket broker node created successfully" << std::endl;
-        return node;
-    } catch (const std::exception& e) {
-        std::cerr << "[PipelineBuilder] Exception in createEmbeddingsPropertiesSocketBrokerNode: " << e.what() << std::endl;
-        throw;
+
+        std::cerr << "[PipelineBuilder] ✓ Embeddings properties socket broker
+node created successfully" << std::endl; return node; } catch (const
+std::exception& e) { std::cerr << "[PipelineBuilder] Exception in
+createEmbeddingsPropertiesSocketBrokerNode: " << e.what() << std::endl; throw;
     }
 }
 
-std::shared_ptr<cvedix_nodes::cvedix_node> PipelineBuilder::createPlateSocketBrokerNode(
-    const std::string& nodeName,
-    const std::map<std::string, std::string>& params,
-    const CreateInstanceRequest& req) {
-    
+std::shared_ptr<cvedix_nodes::cvedix_node>
+PipelineBuilder::createPlateSocketBrokerNode( const std::string& nodeName, const
+std::map<std::string, std::string>& params, const CreateInstanceRequest& req) {
+
     try {
         std::string desIp = params.count("des_ip") ? params.at("des_ip") : "";
-        int desPort = params.count("des_port") ? std::stoi(params.at("des_port")) : 0;
-        std::string platesDir = params.count("plates_dir") ? params.at("plates_dir") : "plate_images";
-        int minCropWidth = params.count("min_crop_width") ? std::stoi(params.at("min_crop_width")) : 100;
-        int minCropHeight = params.count("min_crop_height") ? std::stoi(params.at("min_crop_height")) : 0;
-        std::string brokeForStr = params.count("broke_for") ? params.at("broke_for") : "NORMAL";
-        cvedix_nodes::cvedix_broke_for brokeFor = cvedix_nodes::cvedix_broke_for::NORMAL;
-        bool onlyForTracked = params.count("only_for_tracked") ? (params.at("only_for_tracked") == "true" || params.at("only_for_tracked") == "1") : true;
-        
+        int desPort = params.count("des_port") ?
+std::stoi(params.at("des_port")) : 0; std::string platesDir =
+params.count("plates_dir") ? params.at("plates_dir") : "plate_images"; int
+minCropWidth = params.count("min_crop_width") ?
+std::stoi(params.at("min_crop_width")) : 100; int minCropHeight =
+params.count("min_crop_height") ? std::stoi(params.at("min_crop_height")) : 0;
+        std::string brokeForStr = params.count("broke_for") ?
+params.at("broke_for") : "NORMAL"; cvedix_nodes::cvedix_broke_for brokeFor =
+cvedix_nodes::cvedix_broke_for::NORMAL; bool onlyForTracked =
+params.count("only_for_tracked") ? (params.at("only_for_tracked") == "true" ||
+params.at("only_for_tracked") == "1") : true;
+
         // Get from additionalParams if not in params
         if (desIp.empty()) {
             auto it = req.additionalParams.find("PLATE_SOCKET_IP");
@@ -6093,7 +7157,7 @@ std::shared_ptr<cvedix_nodes::cvedix_node> PipelineBuilder::createPlateSocketBro
                 desPort = 8080; // Default fake data
             }
         }
-        
+
         if (brokeForStr == "FACE") {
             brokeFor = cvedix_nodes::cvedix_broke_for::FACE;
         } else if (brokeForStr == "TEXT") {
@@ -6101,22 +7165,24 @@ std::shared_ptr<cvedix_nodes::cvedix_node> PipelineBuilder::createPlateSocketBro
         } else if (brokeForStr == "POSE") {
             brokeFor = cvedix_nodes::cvedix_broke_for::POSE;
         }
-        
-        int warnThreshold = params.count("broking_cache_warn_threshold") ? std::stoi(params.at("broking_cache_warn_threshold")) : 50;
-        int ignoreThreshold = params.count("broking_cache_ignore_threshold") ? std::stoi(params.at("broking_cache_ignore_threshold")) : 200;
-        
+
+        int warnThreshold = params.count("broking_cache_warn_threshold") ?
+std::stoi(params.at("broking_cache_warn_threshold")) : 50; int ignoreThreshold =
+params.count("broking_cache_ignore_threshold") ?
+std::stoi(params.at("broking_cache_ignore_threshold")) : 200;
+
         if (nodeName.empty()) {
             throw std::invalid_argument("Node name cannot be empty");
         }
-        
-        std::cerr << "[PipelineBuilder] Creating plate socket broker node:" << std::endl;
-        std::cerr << "  Name: '" << nodeName << "'" << std::endl;
-        std::cerr << "  Destination IP: '" << desIp << "'" << std::endl;
-        std::cerr << "  Destination port: " << desPort << std::endl;
-        std::cerr << "  Plates dir: '" << platesDir << "'" << std::endl;
-        
-        auto node = std::make_shared<cvedix_nodes::cvedix_plate_socket_broker_node>(
-            nodeName,
+
+        std::cerr << "[PipelineBuilder] Creating plate socket broker node:" <<
+std::endl; std::cerr << "  Name: '" << nodeName << "'" << std::endl; std::cerr
+<< "  Destination IP: '" << desIp << "'" << std::endl; std::cerr << "
+Destination port: " << desPort << std::endl; std::cerr << "  Plates dir: '" <<
+platesDir << "'" << std::endl;
+
+        auto node =
+std::make_shared<cvedix_nodes::cvedix_plate_socket_broker_node>( nodeName,
             desIp,
             desPort,
             platesDir,
@@ -6127,27 +7193,28 @@ std::shared_ptr<cvedix_nodes::cvedix_node> PipelineBuilder::createPlateSocketBro
             warnThreshold,
             ignoreThreshold
         );
-        
-        std::cerr << "[PipelineBuilder] ✓ Plate socket broker node created successfully" << std::endl;
-        return node;
-    } catch (const std::exception& e) {
-        std::cerr << "[PipelineBuilder] Exception in createPlateSocketBrokerNode: " << e.what() << std::endl;
-        throw;
+
+        std::cerr << "[PipelineBuilder] ✓ Plate socket broker node created
+successfully" << std::endl; return node; } catch (const std::exception& e) {
+        std::cerr << "[PipelineBuilder] Exception in
+createPlateSocketBrokerNode: " << e.what() << std::endl; throw;
     }
 }
 
-std::shared_ptr<cvedix_nodes::cvedix_node> PipelineBuilder::createExpressionSocketBrokerNode(
-    const std::string& nodeName,
+std::shared_ptr<cvedix_nodes::cvedix_node>
+PipelineBuilder::createExpressionSocketBrokerNode( const std::string& nodeName,
     const std::map<std::string, std::string>& params,
     const CreateInstanceRequest& req) {
-    
+
     try {
         std::string desIp = params.count("des_ip") ? params.at("des_ip") : "";
-        int desPort = params.count("des_port") ? std::stoi(params.at("des_port")) : 0;
-        std::string screenshotDir = params.count("screenshot_dir") ? params.at("screenshot_dir") : "screenshot_images";
-        std::string brokeForStr = params.count("broke_for") ? params.at("broke_for") : "TEXT";
-        cvedix_nodes::cvedix_broke_for brokeFor = cvedix_nodes::cvedix_broke_for::TEXT;
-        
+        int desPort = params.count("des_port") ?
+std::stoi(params.at("des_port")) : 0; std::string screenshotDir =
+params.count("screenshot_dir") ? params.at("screenshot_dir") :
+"screenshot_images"; std::string brokeForStr = params.count("broke_for") ?
+params.at("broke_for") : "TEXT"; cvedix_nodes::cvedix_broke_for brokeFor =
+cvedix_nodes::cvedix_broke_for::TEXT;
+
         // Get from additionalParams if not in params
         if (desIp.empty()) {
             auto it = req.additionalParams.find("EXPR_SOCKET_IP");
@@ -6169,7 +7236,7 @@ std::shared_ptr<cvedix_nodes::cvedix_node> PipelineBuilder::createExpressionSock
                 desPort = 8080; // Default fake data
             }
         }
-        
+
         if (brokeForStr == "FACE") {
             brokeFor = cvedix_nodes::cvedix_broke_for::FACE;
         } else if (brokeForStr == "TEXT") {
@@ -6181,70 +7248,84 @@ std::shared_ptr<cvedix_nodes::cvedix_node> PipelineBuilder::createExpressionSock
         } else if (brokeForStr == "NORMAL") {
             brokeFor = cvedix_nodes::cvedix_broke_for::NORMAL;
         }
-        
-        int warnThreshold = params.count("broking_cache_warn_threshold") ? std::stoi(params.at("broking_cache_warn_threshold")) : 50;
-        int ignoreThreshold = params.count("broking_cache_ignore_threshold") ? std::stoi(params.at("broking_cache_ignore_threshold")) : 200;
-        
+
+        int warnThreshold = params.count("broking_cache_warn_threshold") ?
+std::stoi(params.at("broking_cache_warn_threshold")) : 50; int ignoreThreshold =
+params.count("broking_cache_ignore_threshold") ?
+std::stoi(params.at("broking_cache_ignore_threshold")) : 200;
+
         if (nodeName.empty()) {
             throw std::invalid_argument("Node name cannot be empty");
         }
-        
-        std::cerr << "[PipelineBuilder] Creating expression socket broker node:" << std::endl;
-        std::cerr << "  Name: '" << nodeName << "'" << std::endl;
+
+        std::cerr << "[PipelineBuilder] Creating expression socket broker node:"
+<< std::endl; std::cerr << "  Name: '" << nodeName << "'" << std::endl;
         std::cerr << "  Destination IP: '" << desIp << "'" << std::endl;
         std::cerr << "  Destination port: " << desPort << std::endl;
         std::cerr << "  Screenshot dir: '" << screenshotDir << "'" << std::endl;
-        
-        auto node = std::make_shared<cvedix_nodes::cvedix_expr_socket_broker_node>(
-            nodeName,
-            desIp,
+
+        auto node =
+std::make_shared<cvedix_nodes::cvedix_expr_socket_broker_node>( nodeName, desIp,
             desPort,
             screenshotDir,
             brokeFor,
             warnThreshold,
             ignoreThreshold
         );
-        
-        std::cerr << "[PipelineBuilder] ✓ Expression socket broker node created successfully" << std::endl;
-        return node;
-    } catch (const std::exception& e) {
-        std::cerr << "[PipelineBuilder] Exception in createExpressionSocketBrokerNode: " << e.what() << std::endl;
-        throw;
+
+        std::cerr << "[PipelineBuilder] ✓ Expression socket broker node created
+successfully" << std::endl; return node; } catch (const std::exception& e) {
+        std::cerr << "[PipelineBuilder] Exception in
+createExpressionSocketBrokerNode: " << e.what() << std::endl; throw;
     }
 }
 */
 // Stub implementations for all broker nodes to avoid linker errors
-std::shared_ptr<cvedix_nodes::cvedix_node> PipelineBuilder::createXMLFileBrokerNode(
-    const std::string&, const std::map<std::string, std::string>&, const CreateInstanceRequest&) {
-    return nullptr;
+std::shared_ptr<cvedix_nodes::cvedix_node>
+PipelineBuilder::createXMLFileBrokerNode(
+    const std::string &, const std::map<std::string, std::string> &,
+    const CreateInstanceRequest &) {
+  return nullptr;
 }
-std::shared_ptr<cvedix_nodes::cvedix_node> PipelineBuilder::createXMLSocketBrokerNode(
-    const std::string&, const std::map<std::string, std::string>&, const CreateInstanceRequest&) {
-    return nullptr;
+std::shared_ptr<cvedix_nodes::cvedix_node>
+PipelineBuilder::createXMLSocketBrokerNode(
+    const std::string &, const std::map<std::string, std::string> &,
+    const CreateInstanceRequest &) {
+  return nullptr;
 }
-std::shared_ptr<cvedix_nodes::cvedix_node> PipelineBuilder::createMessageBrokerNode(
-    const std::string&, const std::map<std::string, std::string>&, const CreateInstanceRequest&) {
-    return nullptr;
+std::shared_ptr<cvedix_nodes::cvedix_node>
+PipelineBuilder::createMessageBrokerNode(
+    const std::string &, const std::map<std::string, std::string> &,
+    const CreateInstanceRequest &) {
+  return nullptr;
 }
-std::shared_ptr<cvedix_nodes::cvedix_node> PipelineBuilder::createBASocketBrokerNode(
-    const std::string&, const std::map<std::string, std::string>&, const CreateInstanceRequest&) {
-    return nullptr;
+std::shared_ptr<cvedix_nodes::cvedix_node>
+PipelineBuilder::createBASocketBrokerNode(
+    const std::string &, const std::map<std::string, std::string> &,
+    const CreateInstanceRequest &) {
+  return nullptr;
 }
-std::shared_ptr<cvedix_nodes::cvedix_node> PipelineBuilder::createEmbeddingsSocketBrokerNode(
-    const std::string&, const std::map<std::string, std::string>&, const CreateInstanceRequest&) {
-    return nullptr;
+std::shared_ptr<cvedix_nodes::cvedix_node>
+PipelineBuilder::createEmbeddingsSocketBrokerNode(
+    const std::string &, const std::map<std::string, std::string> &,
+    const CreateInstanceRequest &) {
+  return nullptr;
 }
-std::shared_ptr<cvedix_nodes::cvedix_node> PipelineBuilder::createEmbeddingsPropertiesSocketBrokerNode(
-    const std::string&, const std::map<std::string, std::string>&, const CreateInstanceRequest&) {
-    return nullptr;
+std::shared_ptr<cvedix_nodes::cvedix_node>
+PipelineBuilder::createEmbeddingsPropertiesSocketBrokerNode(
+    const std::string &, const std::map<std::string, std::string> &,
+    const CreateInstanceRequest &) {
+  return nullptr;
 }
-std::shared_ptr<cvedix_nodes::cvedix_node> PipelineBuilder::createPlateSocketBrokerNode(
-    const std::string&, const std::map<std::string, std::string>&, const CreateInstanceRequest&) {
-    return nullptr;
+std::shared_ptr<cvedix_nodes::cvedix_node>
+PipelineBuilder::createPlateSocketBrokerNode(
+    const std::string &, const std::map<std::string, std::string> &,
+    const CreateInstanceRequest &) {
+  return nullptr;
 }
-std::shared_ptr<cvedix_nodes::cvedix_node> PipelineBuilder::createExpressionSocketBrokerNode(
-    const std::string&, const std::map<std::string, std::string>&, const CreateInstanceRequest&) {
-    return nullptr;
+std::shared_ptr<cvedix_nodes::cvedix_node>
+PipelineBuilder::createExpressionSocketBrokerNode(
+    const std::string &, const std::map<std::string, std::string> &,
+    const CreateInstanceRequest &) {
+  return nullptr;
 }
-
-

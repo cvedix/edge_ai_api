@@ -21,23 +21,23 @@ The new Edge AI Workflow architecture is designed to accelerate AI application d
 
 # Hệ thống REST Instance
 
-Kho mã này mô tả cách phơi bày CVEDIX Edge AI SDK thông qua một control plane RESTful.  
+Kho mã này mô tả cách phơi bày CVEDIX Edge AI SDK thông qua một control plane RESTful.
 Mục tiêu là giúp backend dịch vụ hoặc người vận hành từ xa có thể cấu hình, khởi chạy và giám sát
 các instance thị giác máy tính thời gian thực trên thiết bị biên mà không cần truy cập trực tiếp.
 
 ## Tổng quan hệ thống
 
-1. **Client RESTful API Backend**  
+1. **Client RESTful API Backend**
    Backend sản phẩm hoặc cổng vận hành gửi các lệnh REST để điều khiển instance trên thiết bị biên.
-2. **RESTful API Backend (Edge node)**  
+2. **RESTful API Backend (Edge node)**
    Dịch vụ HTTP nhẹ chạy cùng SDK, chuyển đổi request thành hành động trên instance.
-3. **instance Manager**  
+3. **instance Manager**
    Quản lý vòng đời node, kiểm tra đồ thị kết nối và lưu trữ cấu hình instance.
-4. **Các khối AI Node**  
+4. **Các khối AI Node**
    Tập hợp node CVEDIX (nguồn, suy luận, tracker, phân tích hành vi, OSD...) xử lý luồng dữ liệu thời gian thực.
-5. **Data Broker**  
+5. **Data Broker**
    Trung chuyển metadata khung hình và sự kiện giữa các node, đồng thời công bố phân tích cho hệ thống thượng tầng.
-6. **Output Display Nodes**  
+6. **Output Display Nodes**
    Xuất ra màn hình cục bộ, đẩy RTMP/RTSP hoặc ghi file tùy nhu cầu triển khai.
 
 ### Chu trình vòng đời
@@ -350,4 +350,3 @@ Nếu gặp lỗi `cvedix_yolov11_detector_node.h: No such file or directory`, �
 - [CMake Fixes Applied](docs/CMAKE_FIXES_APPLIED.md) - Các lỗi CMake đã được fix
 - [CMake Issues Analysis](docs/CMAKE_ISSUES_ANALYSIS.md) - Phân tích chi tiết các vấn đề CMake
 - [Troubleshooting Guide](docs/TROUBLESHOOTING.md) - Hướng dẫn khắc phục sự cố
-

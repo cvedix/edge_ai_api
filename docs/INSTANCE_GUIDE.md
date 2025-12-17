@@ -38,7 +38,7 @@ Tài liệu này hướng dẫn cách tạo và cập nhật AI instances trong 
 ```
 Solution: "face_detection_pipeline"
   ├─ Instance 1: Camera 1 → Face Detection → MQTT Broker
-  ├─ Instance 2: Camera 2 → Face Detection → Kafka Broker  
+  ├─ Instance 2: Camera 2 → Face Detection → Kafka Broker
   └─ Instance 3: Video File → Face Detection → XML File
 ```
 
@@ -491,4 +491,3 @@ curl -X POST http://localhost:8080/v1/core/nodes/preconfigured \
 - [GETTING_STARTED.md](GETTING_STARTED.md) - Hướng dẫn khởi động server
 - [DEVELOPMENT_SETUP.md](DEVELOPMENT_SETUP.md) - Hướng dẫn setup môi trường
 - [Swagger UI](http://localhost:8080/swagger) - Interactive API documentation
-

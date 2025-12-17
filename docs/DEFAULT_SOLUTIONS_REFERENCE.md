@@ -9,7 +9,7 @@ Tài liệu này mô tả các **Default Solutions** được hardcode trong ứ
 Khi bạn **chạy project**, các **default solutions** sẽ **TỰ ĐỘNG có sẵn** ngay lập tức:
 
 1. ✅ `face_detection` - Face Detection với RTSP source
-2. ✅ `face_detection_file` - Face Detection với File source  
+2. ✅ `face_detection_file` - Face Detection với File source
 3. ✅ `object_detection` - Object Detection (YOLO)
 4. ✅ `face_detection_rtmp` - Face Detection với RTMP Streaming
 
@@ -243,7 +243,7 @@ curl -X POST http://localhost:8080/v1/core/instances \
 
 # Script sẽ hỏi:
 # - Solution ID
-# - Solution Name  
+# - Solution Name
 # - Solution Type
 # → Tạo template code sẵn để copy vào project
 ```
@@ -262,10 +262,10 @@ curl -X POST http://localhost:8080/v1/core/instances \
 ```cpp
 void SolutionRegistry::registerFaceDetectionSolution() {
     // ... existing code ...
-    
+
     // Thay đổi default
     config.defaults["detectionSensitivity"] = "0.8";  // Từ 0.7 → 0.8
-    
+
     registerSolution(config);
 }
 ```
@@ -335,11 +335,11 @@ File backup JSON chứa tất cả default solutions:
 
 Script để reset storage file về trạng thái mặc định:
 - **Location**: `scripts/restore_default_solutions.sh`
-- **Usage**: 
+- **Usage**:
   ```bash
   ./scripts/restore_default_solutions.sh
   ```
-- **Chức năng**: 
+- **Chức năng**:
   - Backup file `solutions.json` hiện tại
   - Reset file về trạng thái rỗng `{}`
   - Default solutions sẽ tự động load khi khởi động lại ứng dụng
@@ -373,10 +373,10 @@ Các default solutions được bảo vệ bởi nhiều lớp:
 
 ## 🎯 Tóm Tắt
 
-✅ **Default solutions tự động có sẵn khi chạy project**  
-✅ **Không cần cấu hình gì thêm**  
-✅ **Có thể thêm/cập nhật bằng cách sửa code**  
-✅ **Có script helper để tạo template nhanh**  
+✅ **Default solutions tự động có sẵn khi chạy project**
+✅ **Không cần cấu hình gì thêm**
+✅ **Có thể thêm/cập nhật bằng cách sửa code**
+✅ **Có script helper để tạo template nhanh**
 
 **Bắt đầu sử dụng ngay bây giờ!** 🚀
 

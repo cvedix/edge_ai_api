@@ -9,20 +9,20 @@ graph TB
     Client[Client Application] -->|HTTP Request| API[REST API Server<br/>Drogon Framework]
     API --> HealthHandler[Health Handler<br/>/v1/core/health]
     API --> VersionHandler[Version Handler<br/>/v1/core/version]
-    
+
     HealthHandler -->|JSON Response| Client
     VersionHandler -->|JSON Response| Client
-    
+
     subgraph "API Endpoints"
         HealthHandler
         VersionHandler
     end
-    
+
     subgraph "Server Components"
         API
         Config[Configuration<br/>Host/Port/Threads]
     end
-    
+
     Config --> API
 ```
 
@@ -33,7 +33,7 @@ sequenceDiagram
     participant Client
     participant Server as API Server
     participant Handler as Endpoint Handler
-    
+
     Client->>Server: GET /v1/core/health
     Server->>Handler: Route request
     Handler->>Handler: Process request
@@ -67,7 +67,7 @@ flowchart TD
     InitHealthMonitor --> ConfigDrogon[Cấu Hình Drogon Server<br/>Max body size, Log level,<br/>Thread pool, Listener]
     ConfigDrogon --> StartServer[Khởi Động HTTP Server<br/>Listen trên host:port]
     StartServer --> Running{Server Đang Chạy}
-    
+
     Running -->|Nhận HTTP Request| ReceiveRequest[HTTP Request Từ Client]
     ReceiveRequest --> ParseRequest[Parse HTTP Request<br/>Method, Path, Headers, Body]
     ParseRequest --> RouteRequest[Routing Request<br/>Drogon tìm handler phù hợp<br/>dựa trên path và method]
@@ -77,14 +77,14 @@ flowchart TD
     ExecuteHandler --> ProcessLogic[Xử Lý Logic<br/>Validate input,<br/>Xử lý dữ liệu,<br/>Tạo response]
     ProcessLogic --> BuildResponse[Tạo JSON Response<br/>Status code, Headers, Body]
     BuildResponse --> SendResponse[Gửi Response Về Client]
-    
+
     Running -->|Signal Shutdown| ShutdownSignal[Nhận Signal<br/>SIGINT/SIGTERM]
     ShutdownSignal --> StopHealthMonitor[Dừng Health Monitor]
     StopHealthMonitor --> StopWatchdog[Dừng Watchdog]
     StopWatchdog --> StopServer[Dừng HTTP Server]
     StopServer --> Cleanup[Cleanup Resources]
     Cleanup --> End([Kết Thúc])
-    
+
     InitWatchdog --> WatchdogLoop[Watchdog Loop<br/>Thread riêng]
     WatchdogLoop --> CheckHeartbeat[Kiểm Tra Heartbeat<br/>Mỗi 5 giây]
     CheckHeartbeat --> HeartbeatOK{Heartbeat OK?}
@@ -93,7 +93,7 @@ flowchart TD
     CheckTimeout -->|Có| TriggerRecovery[Kích Hoạt Recovery Action<br/>Log lỗi, xử lý recovery]
     CheckTimeout -->|Không| TriggerRecovery
     UpdateStats --> WatchdogLoop
-    
+
     InitHealthMonitor --> HealthMonitorLoop[Health Monitor Loop<br/>Thread riêng]
     HealthMonitorLoop --> CollectMetrics[Thu Thập Metrics<br/>CPU, Memory, Request count]
     CollectMetrics --> SendHeartbeat[Gửi Heartbeat<br/>Đến Watchdog]
@@ -118,7 +118,7 @@ flowchart TD
     GenerateResponse --> AddHeaders[Thêm Response Headers<br/>Content-Type, CORS, etc.]
     AddHeaders --> SendResponse[Gửi Response Về Client]
     SendResponse --> End([Kết Thúc])
-    
+
     Return400 --> End
     Return405 --> End
 ```
@@ -137,7 +137,7 @@ flowchart TD
     InitServices --> StartDrogon[Khởi Động Drogon Server<br/>Listen trên host:port]
     StartDrogon --> ServerReady[Server Sẵn Sàng<br/>Accepting Requests]
     ServerReady --> Running([Server Đang Chạy])
-    
+
     ExitError --> End([Kết Thúc])
     Running --> End
 ```
@@ -209,13 +209,13 @@ flowchart TD
 ```mermaid
 graph TB
     Client[Client] --> API[REST API Server]
-    
+
     API --> Health[/v1/core/health]
     API --> Version[/v1/core/version]
     API --> Instances[/v1/core/instances]
     API --> Solutions[/v1/core/solutions]
     API --> Logs[/v1/core/logs]
-    
+
     Instances --> Create[POST /instances]
     Instances --> List[GET /instances]
     Instances --> Get[GET /instances/:id]
@@ -223,7 +223,7 @@ graph TB
     Instances --> Delete[DELETE /instances/:id]
     Instances --> Start[POST /instances/:id/start]
     Instances --> Stop[POST /instances/:id/stop]
-    
+
     Solutions --> ListSolutions[GET /solutions]
     Solutions --> GetSolution[GET /solutions/:id]
     Solutions --> CreateSolution[POST /solutions]
@@ -237,13 +237,13 @@ graph TB
 flowchart LR
     Input[Input Source<br/>RTSP/File/RTMP] --> Pipeline[AI Pipeline<br/>Detector/Tracker/BA]
     Pipeline --> Output[Output<br/>Screen/RTMP/File/MQTT]
-    
+
     API[REST API] --> Manager[Instance Manager]
     Manager --> Pipeline
-    
+
     Pipeline --> Stats[Statistics]
     Stats --> API
-    
+
     Pipeline --> Events[Events]
     Events --> MQTT[MQTT Broker]
 ```
@@ -255,4 +255,3 @@ flowchart LR
 - [DEVELOPMENT_GUIDE.md](DEVELOPMENT_GUIDE.md) - Hướng dẫn phát triển chi tiết
 - [INSTANCE_GUIDE.md](INSTANCE_GUIDE.md) - Hướng dẫn sử dụng instances
 - [API_REFERENCE.md](API_REFERENCE.md) - Tài liệu tham khảo API đầy đủ
-

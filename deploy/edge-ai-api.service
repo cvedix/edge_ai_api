@@ -43,4 +43,3 @@ Environment="API_PORT=8080"
 
 [Install]
 WantedBy=multi-user.target
-

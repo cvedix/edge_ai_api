@@ -388,4 +388,3 @@ Bạn có thể test tất cả API endpoints trực tiếp từ Swagger UI:
 - [GETTING_STARTED.md](GETTING_STARTED.md) - Hướng dẫn khởi động server
 - [DEVELOPMENT_SETUP.md](DEVELOPMENT_SETUP.md) - Hướng dẫn setup môi trường
 - [OpenAPI Specification](../openapi.yaml) - Full API specification
-

@@ -356,7 +356,7 @@ Client Request
 - Stop → Start trong một lệnh
 - Hữu ích khi cần reload cấu hình
 
-**Batch Operations**: 
+**Batch Operations**:
 - `/v1/core/instances/batch/start` - Khởi động nhiều instances cùng lúc
 - `/v1/core/instances/batch/stop` - Dừng nhiều instances cùng lúc
 - `/v1/core/instances/batch/restart` - Khởi động lại nhiều instances
@@ -1060,16 +1060,14 @@ GET /v1/core/config?path=system/max_running_instances
 
 ### Điểm Mạnh
 
-✅ **Tính năng đầy đủ**: Hỗ trợ đầy đủ các loại nodes từ SDK  
-✅ **Dễ sử dụng**: RESTful API đơn giản, Swagger UI  
-✅ **Linh hoạt**: Pipeline có thể tùy chỉnh, parameterize  
-✅ **Scalable**: Hỗ trợ nhiều instances đồng thời  
-✅ **Production-ready**: Persistent storage, health monitoring, logging  
-✅ **Đa dạng AI models**: TensorRT, RKNN, OpenCV DNN  
-✅ **Đa dạng output**: MQTT, Kafka, Socket, File, RTMP  
+✅ **Tính năng đầy đủ**: Hỗ trợ đầy đủ các loại nodes từ SDK
+✅ **Dễ sử dụng**: RESTful API đơn giản, Swagger UI
+✅ **Linh hoạt**: Pipeline có thể tùy chỉnh, parameterize
+✅ **Scalable**: Hỗ trợ nhiều instances đồng thời
+✅ **Production-ready**: Persistent storage, health monitoring, logging
+✅ **Đa dạng AI models**: TensorRT, RKNN, OpenCV DNN
+✅ **Đa dạng output**: MQTT, Kafka, Socket, File, RTMP
 
 ---
 
 *Tài liệu này được tạo tự động dựa trên phân tích codebase và SDK documentation.*
-
-

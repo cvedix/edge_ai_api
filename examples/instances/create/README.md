@@ -26,4 +26,3 @@ curl -X POST http://localhost:8080/v1/core/instance \
 - Các file này sử dụng các solution đã được đăng ký sẵn trong hệ thống
 - Có thể sử dụng ngay mà không cần cấu hình thêm
 - Các đường dẫn model trong example files là ví dụ, cần cập nhật cho phù hợp với môi trường của bạn
-

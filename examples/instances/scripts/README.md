@@ -35,4 +35,3 @@ Thư mục này chứa các utility scripts để làm việc với API instance
 - Đảm bảo scripts có quyền thực thi: `chmod +x *.sh`
 - Các scripts yêu cầu `curl` và `jq` (nếu cần)
 - Cần cập nhật API endpoint trong scripts nếu không sử dụng localhost:8080
-

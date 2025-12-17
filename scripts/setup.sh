@@ -2,7 +2,7 @@
 # ============================================
 # Edge AI API - Development Setup Script
 # ============================================
-# 
+#
 # Script tổng hợp cho development setup:
 # 1. Install system dependencies
 # 2. Fix symlinks (CVEDIX SDK, Cereal, cpp-base64, OpenCV)
@@ -90,7 +90,7 @@ echo ""
 # ============================================
 if [ "$SKIP_DEPS" = false ] && [ "$BUILD_ONLY" = false ]; then
     echo -e "${BLUE}[1/3]${NC} Installing system dependencies..."
-    
+
     # Detect OS
     if [ -f /etc/os-release ]; then
         . /etc/os-release
@@ -98,9 +98,9 @@ if [ "$SKIP_DEPS" = false ] && [ "$BUILD_ONLY" = false ]; then
     else
         OS="ubuntu"
     fi
-    
+
     echo "Detected OS: $OS"
-    
+
     if [ "$OS" = "ubuntu" ] || [ "$OS" = "debian" ]; then
         sudo apt-get update
         sudo apt-get install -y \
@@ -139,7 +139,7 @@ fi
 # ============================================
 if [ "$SKIP_SYMLINKS" = false ] && [ "$BUILD_ONLY" = false ]; then
     echo -e "${BLUE}[2/3]${NC} Fixing symlinks..."
-    
+
     if [ "$EUID" -ne 0 ]; then
         echo -e "${YELLOW}⚠${NC}  Need sudo to fix symlinks. Skipping..."
     else
@@ -152,21 +152,21 @@ if [ "$SKIP_SYMLINKS" = false ] && [ "$BUILD_ONLY" = false ]; then
                 fi
             done
         fi
-        
+
         # Fix Cereal symlink
         if [ -d "$PROJECT_ROOT/build/_deps/cereal-src/include/cereal" ]; then
             mkdir -p /usr/include/cvedix/third_party
             ln -sf "$PROJECT_ROOT/build/_deps/cereal-src/include/cereal" \
                 "/usr/include/cvedix/third_party/cereal" 2>/dev/null || true
         fi
-        
+
         # Fix cpp-base64 symlink
         if [ -f "$PROJECT_ROOT/build/_deps/cpp-base64-src/base64.h" ]; then
             mkdir -p /usr/include/cvedix/third_party/cpp_base64
             ln -sf "$PROJECT_ROOT/build/_deps/cpp-base64-src/base64.h" \
                 "/usr/include/cvedix/third_party/cpp_base64/base64.h" 2>/dev/null || true
         fi
-        
+
         echo -e "${GREEN}✓${NC} Symlinks fixed"
     fi
     echo ""
@@ -178,23 +178,23 @@ fi
 if [ "$SKIP_BUILD" = false ]; then
     echo -e "${BLUE}[3/3]${NC} Building project..."
     cd "$PROJECT_ROOT"
-    
+
     if [ ! -d "build" ]; then
         mkdir -p build
     fi
-    
+
     cd build
-    
+
     if [ ! -f "CMakeCache.txt" ]; then
         echo "Running CMake..."
         cmake .. -DCMAKE_BUILD_TYPE=Release \
                  -DAUTO_DOWNLOAD_DEPENDENCIES=ON \
                  -DDROGON_USE_FETCHCONTENT=ON
     fi
-    
+
     echo "Building (using all CPU cores)..."
     make -j$(nproc)
-    
+
     cd ..
     echo -e "${GREEN}✓${NC} Build completed"
     echo ""
@@ -214,4 +214,3 @@ elif [ -f "build/edge_ai_api" ]; then
     echo "  ./build/edge_ai_api"
 fi
 echo ""
-

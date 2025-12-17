@@ -42,7 +42,7 @@ public:
     METHOD_LIST_BEGIN
         ADD_METHOD_TO(MyHandler::myMethod, "/v1/path/to/endpoint", Get);
     METHOD_LIST_END
-    
+
     void myMethod(const HttpRequestPtr &req,
                   std::function<void(const HttpResponsePtr &)> &&callback);
 };
@@ -66,7 +66,7 @@ using namespace drogon;
 
 /**
  * @brief My feature handler
- * 
+ *
  * Endpoints:
  * - GET /v1/my/feature - Get feature data
  * - POST /v1/my/feature - Create feature
@@ -111,7 +111,7 @@ void MyHandler::getFeature(const HttpRequestPtr &req,
     try {
         // 1. Parse request parameters
         auto id = req->getParameter("id");
-        
+
         // 2. Validate input
         if (id.empty()) {
             Json::Value errorResponse;
@@ -121,31 +121,31 @@ void MyHandler::getFeature(const HttpRequestPtr &req,
             callback(resp);
             return;
         }
-        
+
         // 3. Business logic
         Json::Value response;
         response["id"] = id;
         response["data"] = "feature data";
         response["timestamp"] = "2024-01-01T00:00:00.000Z";
-        
+
         // 4. Create response
         auto resp = HttpResponse::newHttpJsonResponse(response);
         resp->setStatusCode(k200OK);
-        
+
         // 5. Add CORS headers (nếu cần)
         resp->addHeader("Access-Control-Allow-Origin", "*");
         resp->addHeader("Access-Control-Allow-Methods", "GET, OPTIONS");
         resp->addHeader("Access-Control-Allow-Headers", "Content-Type");
-        
+
         // 6. Call callback
         callback(resp);
-        
+
     } catch (const std::exception& e) {
         // Error handling
         Json::Value errorResponse;
         errorResponse["error"] = "Internal server error";
         errorResponse["message"] = e.what();
-        
+
         auto resp = HttpResponse::newHttpJsonResponse(errorResponse);
         resp->setStatusCode(k500InternalServerError);
         callback(resp);
@@ -166,7 +166,7 @@ void MyHandler::createFeature(const HttpRequestPtr &req,
             callback(resp);
             return;
         }
-        
+
         // 2. Validate required fields
         if (!json->isMember("name") || (*json)["name"].asString().empty()) {
             Json::Value errorResponse;
@@ -176,26 +176,26 @@ void MyHandler::createFeature(const HttpRequestPtr &req,
             callback(resp);
             return;
         }
-        
+
         // 3. Business logic
         std::string name = (*json)["name"].asString();
-        
+
         // 4. Build response
         Json::Value response;
         response["id"] = "generated-id";
         response["name"] = name;
         response["created_at"] = "2024-01-01T00:00:00.000Z";
-        
+
         auto resp = HttpResponse::newHttpJsonResponse(response);
         resp->setStatusCode(k201Created);
-        
+
         callback(resp);
-        
+
     } catch (const std::exception& e) {
         Json::Value errorResponse;
         errorResponse["error"] = "Internal server error";
         errorResponse["message"] = e.what();
-        
+
         auto resp = HttpResponse::newHttpJsonResponse(errorResponse);
         resp->setStatusCode(k500InternalServerError);
         callback(resp);
@@ -276,25 +276,25 @@ protected:
 TEST_F(MyHandlerTest, GetFeatureReturnsValidJson) {
     bool callbackCalled = false;
     HttpResponsePtr response;
-    
+
     auto req = HttpRequest::newHttpRequest();
     req->setPath("/v1/my/feature");
     req->setMethod(Get);
     req->setParameter("id", "123");
-    
+
     handler_->getFeature(req, [&](const HttpResponsePtr &resp) {
         callbackCalled = true;
         response = resp;
     });
-    
+
     // Wait for async callback
     std::this_thread::sleep_for(std::chrono::milliseconds(100));
-    
+
     ASSERT_TRUE(callbackCalled);
     ASSERT_NE(response, nullptr);
     EXPECT_EQ(response->statusCode(), k200OK);
     EXPECT_EQ(response->contentType(), CT_APPLICATION_JSON);
-    
+
     // Parse and validate JSON
     auto json = response->getJsonObject();
     ASSERT_NE(json, nullptr);
@@ -307,22 +307,22 @@ TEST_F(MyHandlerTest, GetFeatureReturnsValidJson) {
 TEST_F(MyHandlerTest, GetFeatureMissingParameter) {
     bool callbackCalled = false;
     HttpResponsePtr response;
-    
+
     auto req = HttpRequest::newHttpRequest();
     req->setPath("/v1/my/feature");
     req->setMethod(Get);
     // Không set parameter "id"
-    
+
     handler_->getFeature(req, [&](const HttpResponsePtr &resp) {
         callbackCalled = true;
         response = resp;
     });
-    
+
     std::this_thread::sleep_for(std::chrono::milliseconds(100));
-    
+
     ASSERT_TRUE(callbackCalled);
     EXPECT_EQ(response->statusCode(), k400BadRequest);
-    
+
     auto json = response->getJsonObject();
     ASSERT_NE(json, nullptr);
     EXPECT_TRUE(json->isMember("error"));
@@ -332,26 +332,26 @@ TEST_F(MyHandlerTest, GetFeatureMissingParameter) {
 TEST_F(MyHandlerTest, CreateFeatureSuccess) {
     bool callbackCalled = false;
     HttpResponsePtr response;
-    
+
     auto req = HttpRequest::newHttpRequest();
     req->setPath("/v1/my/feature");
     req->setMethod(Post);
-    
+
     // Set JSON body
     Json::Value body;
     body["name"] = "Test Feature";
     req->setBody(body.toStyledString());
-    
+
     handler_->createFeature(req, [&](const HttpResponsePtr &resp) {
         callbackCalled = true;
         response = resp;
     });
-    
+
     std::this_thread::sleep_for(std::chrono::milliseconds(100));
-    
+
     ASSERT_TRUE(callbackCalled);
     EXPECT_EQ(response->statusCode(), k201Created);
-    
+
     auto json = response->getJsonObject();
     ASSERT_NE(json, nullptr);
     EXPECT_TRUE(json->isMember("id"));
@@ -363,19 +363,19 @@ TEST_F(MyHandlerTest, CreateFeatureSuccess) {
 TEST_F(MyHandlerTest, CreateFeatureInvalidJson) {
     bool callbackCalled = false;
     HttpResponsePtr response;
-    
+
     auto req = HttpRequest::newHttpRequest();
     req->setPath("/v1/my/feature");
     req->setMethod(Post);
     req->setBody("invalid json");
-    
+
     handler_->createFeature(req, [&](const HttpResponsePtr &resp) {
         callbackCalled = true;
         response = resp;
     });
-    
+
     std::this_thread::sleep_for(std::chrono::milliseconds(100));
-    
+
     ASSERT_TRUE(callbackCalled);
     EXPECT_EQ(response->statusCode(), k400BadRequest);
 }
@@ -454,7 +454,7 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
-    
+
     post:
       summary: Create new feature
       description: Creates a new feature
@@ -496,7 +496,7 @@ components:
       required:
         - id
         - data
-    
+
     CreateFeatureRequest:
       type: object
       properties:
@@ -504,7 +504,7 @@ components:
           type: string
       required:
         - name
-    
+
     ErrorResponse:
       type: object
       properties:
@@ -534,7 +534,7 @@ try {
     Json::Value errorResponse;
     errorResponse["error"] = "Internal server error";
     errorResponse["message"] = e.what();
-    
+
     auto resp = HttpResponse::newHttpJsonResponse(errorResponse);
     resp->setStatusCode(k500InternalServerError);
     callback(resp);
@@ -701,4 +701,3 @@ Xem các test files:
 - Kiểm tra `openapi.yaml` syntax đúng
 - Restart server sau khi sửa `openapi.yaml`
 - Kiểm tra endpoint path trong `openapi.yaml` khớp với code
-

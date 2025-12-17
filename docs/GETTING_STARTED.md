@@ -598,4 +598,3 @@ Có thể tùy chỉnh trong `src/main.cpp`:
 - [Hướng Dẫn Phát Triển](DEVELOPMENT_GUIDE.md)
 - [Architecture](ARCHITECTURE.md)
 - [OpenAPI Specification](../openapi.yaml)
-

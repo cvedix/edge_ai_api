@@ -430,4 +430,3 @@ Xem các file example trong thư mục `examples/instances/infer_nodes/`:
 - `example_ba_socket_broker.json`
 - `example_embeddings_socket_broker.json`
 - `example_plate_socket_broker.json`
-

@@ -89,4 +89,3 @@ curl -X PUT http://localhost:8080/v1/core/instance/{instanceId} \
 - [API Documentation](../docs/INSTANCE_GUIDE.md)
 - [Node Integration Plan](../develop_doc/NODE_INTEGRATION_PLAN.md)
 - [Solution Registry](../src/solutions/solution_registry.cpp)
-
