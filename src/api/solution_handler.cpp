@@ -1134,6 +1134,96 @@ void SolutionHandler::getSolutionParameters(
         response["standardFields"] = standardFields;
         response["requiredStandardFields"] = requiredFields;
         
+        // Add flexible input/output parameters info
+        // These are auto-detected by pipeline builder and can be added to any instance
+        Json::Value flexibleIO(Json::objectValue);
+        
+        // Input options
+        Json::Value inputOptions(Json::objectValue);
+        inputOptions["description"] = "Choose ONE input source. Pipeline builder auto-detects input type.";
+        Json::Value inputParams(Json::objectValue);
+        
+        inputParams["FILE_PATH"] = Json::Value(Json::objectValue);
+        inputParams["FILE_PATH"]["type"] = "string";
+        inputParams["FILE_PATH"]["description"] = "Local video file path or URL (rtsp://, rtmp://, http://)";
+        inputParams["FILE_PATH"]["example"] = "./cvedix_data/test_video/example.mp4";
+        
+        inputParams["RTSP_SRC_URL"] = Json::Value(Json::objectValue);
+        inputParams["RTSP_SRC_URL"]["type"] = "string";
+        inputParams["RTSP_SRC_URL"]["description"] = "RTSP stream URL (overrides FILE_PATH)";
+        inputParams["RTSP_SRC_URL"]["example"] = "rtsp://camera-ip:8554/stream";
+        
+        inputParams["RTMP_SRC_URL"] = Json::Value(Json::objectValue);
+        inputParams["RTMP_SRC_URL"]["type"] = "string";
+        inputParams["RTMP_SRC_URL"]["description"] = "RTMP input stream URL";
+        inputParams["RTMP_SRC_URL"]["example"] = "rtmp://input-server:1935/live/input";
+        
+        inputParams["HLS_URL"] = Json::Value(Json::objectValue);
+        inputParams["HLS_URL"]["type"] = "string";
+        inputParams["HLS_URL"]["description"] = "HLS stream URL (.m3u8)";
+        inputParams["HLS_URL"]["example"] = "http://example.com/stream.m3u8";
+        
+        inputOptions["parameters"] = inputParams;
+        flexibleIO["input"] = inputOptions;
+        
+        // Output options (can combine multiple)
+        Json::Value outputOptions(Json::objectValue);
+        outputOptions["description"] = "Add any combination of outputs. Pipeline builder auto-adds nodes.";
+        Json::Value outputParams(Json::objectValue);
+        
+        // MQTT
+        outputParams["MQTT_BROKER_URL"] = Json::Value(Json::objectValue);
+        outputParams["MQTT_BROKER_URL"]["type"] = "string";
+        outputParams["MQTT_BROKER_URL"]["description"] = "MQTT broker address (enables MQTT output)";
+        outputParams["MQTT_BROKER_URL"]["example"] = "localhost";
+        
+        outputParams["MQTT_PORT"] = Json::Value(Json::objectValue);
+        outputParams["MQTT_PORT"]["type"] = "string";
+        outputParams["MQTT_PORT"]["description"] = "MQTT broker port";
+        outputParams["MQTT_PORT"]["default"] = "1883";
+        
+        outputParams["MQTT_TOPIC"] = Json::Value(Json::objectValue);
+        outputParams["MQTT_TOPIC"]["type"] = "string";
+        outputParams["MQTT_TOPIC"]["description"] = "MQTT topic for events";
+        outputParams["MQTT_TOPIC"]["default"] = "events";
+        
+        // RTMP output
+        outputParams["RTMP_URL"] = Json::Value(Json::objectValue);
+        outputParams["RTMP_URL"]["type"] = "string";
+        outputParams["RTMP_URL"]["description"] = "RTMP destination URL (enables RTMP streaming output)";
+        outputParams["RTMP_URL"]["example"] = "rtmp://server:1935/live/stream";
+        
+        // Screen display
+        outputParams["ENABLE_SCREEN_DES"] = Json::Value(Json::objectValue);
+        outputParams["ENABLE_SCREEN_DES"]["type"] = "string";
+        outputParams["ENABLE_SCREEN_DES"]["description"] = "Enable screen display (true/false)";
+        outputParams["ENABLE_SCREEN_DES"]["default"] = "false";
+        
+        // Recording
+        outputParams["RECORD_PATH"] = Json::Value(Json::objectValue);
+        outputParams["RECORD_PATH"]["type"] = "string";
+        outputParams["RECORD_PATH"]["description"] = "Path for video recording output";
+        outputParams["RECORD_PATH"]["example"] = "./output/recordings";
+        
+        outputOptions["parameters"] = outputParams;
+        flexibleIO["output"] = outputOptions;
+        
+        // Zone info for BA solutions
+        Json::Value zoneParams(Json::objectValue);
+        zoneParams["ZONE_ID"] = Json::Value(Json::objectValue);
+        zoneParams["ZONE_ID"]["type"] = "string";
+        zoneParams["ZONE_ID"]["description"] = "Zone identifier for BA events";
+        zoneParams["ZONE_ID"]["default"] = "zone_1";
+        
+        zoneParams["ZONE_NAME"] = Json::Value(Json::objectValue);
+        zoneParams["ZONE_NAME"]["type"] = "string";
+        zoneParams["ZONE_NAME"]["description"] = "Zone display name for BA events";
+        zoneParams["ZONE_NAME"]["default"] = "Default Zone";
+        
+        flexibleIO["zoneInfo"] = zoneParams;
+        
+        response["flexibleInputOutput"] = flexibleIO;
+        
         auto end_time = std::chrono::steady_clock::now();
         auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(end_time - start_time);
         
@@ -1322,13 +1412,62 @@ void SolutionHandler::getSolutionInstanceBody(
             std::string upperParam = param;
             std::transform(upperParam.begin(), upperParam.end(), upperParam.begin(), ::toupper);
             
-            // URL parameters
+            // Flexible Input parameters (auto-detected by pipeline builder)
+            if (upperParam == "RTSP_SRC_URL") {
+                return "rtsp://camera-ip:8554/stream";
+            } else if (upperParam == "RTMP_SRC_URL") {
+                return "rtmp://input-server:1935/live/input";
+            } else if (upperParam == "HLS_URL") {
+                return "http://example.com/stream.m3u8";
+            } else if (upperParam == "HTTP_URL") {
+                return "http://example.com/video.mp4";
+            }
+            
+            // URL parameters (legacy)
             if (upperParam.find("RTSP_URL") != std::string::npos || upperParam == "RTSP_URL") {
                 return "rtsp://example.com/stream";
             } else if (upperParam.find("RTMP_URL") != std::string::npos || upperParam == "RTMP_URL") {
                 return "rtmp://example.com/live/stream";
             } else if (upperParam.find("URL") != std::string::npos) {
                 return "http://example.com";
+            }
+            
+            // Flexible Output - MQTT parameters
+            if (upperParam == "MQTT_BROKER_URL") {
+                return "localhost";
+            } else if (upperParam == "MQTT_PORT") {
+                return "1883";
+            } else if (upperParam == "MQTT_TOPIC") {
+                return "events";
+            } else if (upperParam == "MQTT_USERNAME") {
+                return "";
+            } else if (upperParam == "MQTT_PASSWORD") {
+                return "";
+            }
+            
+            // Flexible Output - RTMP destination
+            if (upperParam == "RTMP_URL") {
+                return "rtmp://server:1935/live/stream";
+            }
+            
+            // Flexible Output - Screen display
+            if (upperParam == "ENABLE_SCREEN_DES") {
+                return "false";
+            }
+            
+            // Crossline specific parameters
+            if (upperParam == "ZONE_ID") {
+                return "zone_1";
+            } else if (upperParam == "ZONE_NAME") {
+                return "Default Zone";
+            } else if (upperParam.find("CROSSLINE_START_X") != std::string::npos) {
+                return "0";
+            } else if (upperParam.find("CROSSLINE_START_Y") != std::string::npos) {
+                return "250";
+            } else if (upperParam.find("CROSSLINE_END_X") != std::string::npos) {
+                return "700";
+            } else if (upperParam.find("CROSSLINE_END_Y") != std::string::npos) {
+                return "220";
             }
             
             // Model and file paths
@@ -1396,8 +1535,19 @@ void SolutionHandler::getSolutionInstanceBody(
             "solution", "SOLUTION"
         };
         
-        // Build additionalParams with example values
+        // Define output-related parameters
+        std::set<std::string> outputParams = {
+            "MQTT_BROKER_URL", "MQTT_PORT", "MQTT_TOPIC", "MQTT_USERNAME", "MQTT_PASSWORD",
+            "RTMP_URL", "RTMP_DES_URL",
+            "ENABLE_SCREEN_DES",
+            "RECORD_PATH"
+        };
+        
+        // Build additionalParams with input/output structure
         Json::Value additionalParams(Json::objectValue);
+        Json::Value inputParams(Json::objectValue);
+        Json::Value outputParamsObj(Json::objectValue);
+        
         for (const auto& param : allParams) {
             // Skip standard fields that are already at root level
             std::string upperParam = param;
@@ -1407,7 +1557,8 @@ void SolutionHandler::getSolutionInstanceBody(
                 continue;  // Skip this parameter
             }
             
-            // Check if has default value
+            // Determine example value
+            std::string exampleValue;
             auto defIt = paramDefaults.find(param);
             if (defIt != paramDefaults.end()) {
                 std::string defaultValue = defIt->second;
@@ -1416,16 +1567,46 @@ void SolutionHandler::getSolutionInstanceBody(
                 std::sregex_iterator end;
                 if (iter == end) {
                     // Literal default value - use it
-                    additionalParams[param] = defaultValue;
+                    exampleValue = defaultValue;
                 } else {
                     // Default contains variables, use generated example value
-                    additionalParams[param] = generateExampleValue(param);
+                    exampleValue = generateExampleValue(param);
                 }
             } else {
                 // No default, use generated example value based on parameter name
-                additionalParams[param] = generateExampleValue(param);
+                exampleValue = generateExampleValue(param);
+            }
+            
+            // Put in output or input based on parameter type
+            if (outputParams.find(upperParam) != outputParams.end()) {
+                outputParamsObj[param] = exampleValue;
+            } else {
+                inputParams[param] = exampleValue;
             }
         }
+        
+        // Add default output parameters if not already present
+        if (!outputParamsObj.isMember("ENABLE_SCREEN_DES")) {
+            outputParamsObj["ENABLE_SCREEN_DES"] = "false";
+        }
+        if (!outputParamsObj.isMember("MQTT_BROKER_URL")) {
+            outputParamsObj["MQTT_BROKER_URL"] = "";
+        }
+        if (!outputParamsObj.isMember("MQTT_PORT")) {
+            outputParamsObj["MQTT_PORT"] = "1883";
+        }
+        if (!outputParamsObj.isMember("MQTT_TOPIC")) {
+            outputParamsObj["MQTT_TOPIC"] = "events";
+        }
+        if (!outputParamsObj.isMember("MQTT_USERNAME")) {
+            outputParamsObj["MQTT_USERNAME"] = "";
+        }
+        if (!outputParamsObj.isMember("MQTT_PASSWORD")) {
+            outputParamsObj["MQTT_PASSWORD"] = "";
+        }
+        
+        additionalParams["input"] = inputParams;
+        additionalParams["output"] = outputParamsObj;
         
         body["additionalParams"] = additionalParams;
         
