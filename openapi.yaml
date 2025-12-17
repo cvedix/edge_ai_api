@@ -1218,15 +1218,6 @@ paths:
               required:
                 - file
               properties:
-                file:
-                  type: string
-                  format: binary
-                  description: Image file as base64-encoded data or binary data
-      responses:
-        '200':
-          description: Face recognition results
-
-              properties:
                 files:
                   type: array
                   items:
@@ -1250,36 +1241,6 @@ paths:
               schema:
                 type: object
                 properties:
-                  result:
-                    type: array
-                    items:
-                      $ref: '#/components/schemas/FaceRecognitionResult'
-              example:
-                result:
-                  - box:
-                      probability: 1.0
-                      x_max: 1420
-                      y_max: 1368
-                      x_min: 548
-                      y_min: 295
-                    landmarks:
-                      - [814, 713]
-                      - [1104, 829]
-                      - [832, 937]
-                      - [704, 1030]
-                      - [1017, 1133]
-                    subjects:
-                      - similarity: 0.97858
-                        subject: "subject1"
-                    execution_time:
-                      age: 28.0
-                      gender: 26.0
-                      detector: 117.0
-                      calculator: 45.0
-                      mask: 36.0
-        '400':
-          description: Invalid request (missing file, invalid image format, etc.)
-
                   success:
                     type: boolean
                   message:
@@ -1302,20 +1263,14 @@ paths:
                           type: integer
                         url:
                           type: string
-                  warnings:
-                    type: array
-                    items:
-                      type: string
-                    description: Warnings for files that failed to upload
         '400':
-          description: Invalid request
+          description: Invalid request (missing file, invalid format, etc.)
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
         '401':
           description: Unauthorized (missing or invalid API key)
-
         '409':
           description: File already exists
           content:
@@ -1329,11 +1284,6 @@ paths:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
     options:
-      summary: CORS preflight for face recognition
-      operationId: recognizeFacesOptions
-      tags:
-        - Recognition
-
       summary: CORS preflight for font upload
       operationId: uploadFontOptions
       tags:
@@ -1571,16 +1521,6 @@ paths:
       responses:
         '200':
           description: Face subject registered successfully
-
-                - newName
-              properties:
-                newName:
-                  type: string
-                  description: New name for the font file (must have valid font file extension)
-                  example: "my_font_v2.ttf"
-      responses:
-        '200':
-          description: Font file renamed successfully
           content:
             application/json:
               schema:
@@ -1603,29 +1543,14 @@ paths:
                 subject: "subject1"
         '400':
           description: Invalid request (missing subject, invalid image format, etc.)
-
-                properties:
-                  success:
-                    type: boolean
-                  message:
-                    type: string
-                  oldName:
-                    type: string
-                  newName:
-                    type: string
-                  path:
-                    type: string
-        '400':
-          description: Invalid request
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
         '401':
           description: Unauthorized (missing or invalid API key)
-
         '404':
-          description: Font file not found
+          description: Subject not found
           content:
             application/json:
               schema:
