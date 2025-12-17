@@ -7,6 +7,7 @@
 #include <memory>
 #include <plog/Appenders/ConsoleAppender.h>
 #include <plog/Formatters/TxtFormatter.h>
+#include <plog/Init.h>
 #include <plog/Log.h>
 #include <string>
 
@@ -63,9 +64,9 @@ inline void init(const std::string &log_dir = "",
   // Initialize PLOG with console appender
   plog::Logger<0> *logger = nullptr;
   if (enable_console) {
-    logger = &plog::init(log_level, &consoleAppender);
+    logger = &plog::init<0>(log_level, &consoleAppender);
   } else {
-    logger = &plog::init(log_level);
+    logger = &plog::init<0>(log_level);
   }
 
   // Add appenders based on logging flags

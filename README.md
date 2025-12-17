@@ -1,352 +1,209 @@
-# EDGE AI Workflow
+# Edge AI API
 
-The new Edge AI Workflow architecture is designed to accelerate AI application development for edge platforms and accelerator cards, focusing on simplicity, efficiency, and integration via APIs. This modern workflow divides the process into practical stages, making it easy for developers to get started and deploy robust AI solutions with minimal friction.
+REST API server cho CVEDIX Edge AI SDK, cho phép điều khiển và giám sát các AI processing instances trên thiết bị biên.
 
 ![Edge AI Workflow](docs/image.png)
 
-# AI System (Updating)
-| Vendor | Device |  SOC | Edge AI Workflow | Model Conversion & Optimization | Deploy Application |
-| -------- | -------- | -------- | ---- | ---- | ---- |
-| Qualcomm | DK2721  | QCS6490 | [How-To](ai_system/qualcomm/dk2721/README.md) | [Convert & Optimize](ai_system/qualcomm/dk2721/object_detection_demo-using-qc_snpe.md#Open_AI_Model) | [App Guide](ai_system/qualcomm/dk2721/object_detection_demo-using-qc_snpe.md#Application) |
-| Intel | R360    | Core Ultra | [How-To](ai_system/intel/r360/README.md)  | [Convert & Optimize](ai_system/intel/r360/object_detection_demo-using-intel_openvino.md#Covert_Optimize) |[App Guide](ai_system/intel/r360/object_detection_demo-using-intel_openvino.md#Deploy) |
-| NVIDIA | 030     | Jetson AGX Orin | [How-To](ai_system/jetson/030/README.md)  | [Convert & Optimize](ai_system/jetson/030/object_detection_demo-using-ds7.0.md#convert-ai-model) |[App Guide](ai_system/jetson/030/object_detection_demo-using-ds7.0.md#application) |
-| NVIDIA | R7300   | Jetson Orin Nano   | [How-To](ai_system/jetson/r7300/README.md)  | [Convert & Optimize](ai_system/jetson/r7300/object_detection_demo-using-ds7.1.md#convert-ai-model) | [App Guide](ai_system/jetson/r7300/object_detection_demo-using-ds7.1.md#application) |
-| AMD | 2210   | Ryzen 8000 Series | [How-To](ai_system/amd/2210/README.md)  | [Convert & Optimize](ai_system/amd/2210/object_detection_demo-using-amd_ryzenaisdk.md#download-ai-files) | [App Guide](ai_system/amd/2210/object_detection_demo-using-amd_ryzenaisdk.md#application) |
-
-# AI Accelerator (Updating)
-| Vendor | Model |  SOC | AI Workflow | Model Conversion & Optimization | Deploy Application |
-| -------- | -------- | -------- | ---- | ---- | ---- |
-| Hailo | 1200 <br/> EAI-3300   | Hailo-8 | [How-To](ai_accelerator/hailo/1200_3300/README.md) | [Convert & Optimize](ai_accelerator/hailo/1200_3300/object_detection_demo-using-hailo.md#Model) | [App Guide](ai_accelerator/hailo/1200_3300/object_detection_demo-using-hailo.md#App) |
-| Rockchip | OPI5-Plus  | RK3588 | [How-To](ai_system/rockchip/opi5-plus/README.md) | [Convert & Optimize](ai_system/rockchip/opi5-plus/object_detection_demo-using-rknpu.md#convert-ai-model) | [App Guide](ai_system/rockchip/opi5-plus/object_detection_demo-using-rknpu.md#application) |
-
-# Hệ thống REST Instance
-
-Kho mã này mô tả cách phơi bày CVEDIX Edge AI SDK thông qua một control plane RESTful.
-Mục tiêu là giúp backend dịch vụ hoặc người vận hành từ xa có thể cấu hình, khởi chạy và giám sát
-các instance thị giác máy tính thời gian thực trên thiết bị biên mà không cần truy cập trực tiếp.
-
-## Tổng quan hệ thống
-
-1. **Client RESTful API Backend**
-   Backend sản phẩm hoặc cổng vận hành gửi các lệnh REST để điều khiển instance trên thiết bị biên.
-2. **RESTful API Backend (Edge node)**
-   Dịch vụ HTTP nhẹ chạy cùng SDK, chuyển đổi request thành hành động trên instance.
-3. **instance Manager**
-   Quản lý vòng đời node, kiểm tra đồ thị kết nối và lưu trữ cấu hình instance.
-4. **Các khối AI Node**
-   Tập hợp node CVEDIX (nguồn, suy luận, tracker, phân tích hành vi, OSD...) xử lý luồng dữ liệu thời gian thực.
-5. **Data Broker**
-   Trung chuyển metadata khung hình và sự kiện giữa các node, đồng thời công bố phân tích cho hệ thống thượng tầng.
-6. **Output Display Nodes**
-   Xuất ra màn hình cục bộ, đẩy RTMP/RTSP hoặc ghi file tùy nhu cầu triển khai.
-
-### Chu trình vòng đời
-
-1. **Create**: API kiểm tra schema, lưu đồ thị và cấp ID.
-2. **Start**: instance Manager khởi tạo node qua Edge AI SDK và kết nối phụ thuộc.
-3. **Monitor**: Data Broker phát số liệu (kèm luồng WebSocket nếu bật).
-4. **Stop**: instance Manager tháo node, xả buffer và lưu bộ đếm.
-
-## Lưu ý triển khai
-
-- Đóng gói REST API và SDK trong container hoặc dịch vụ systemd.
-- Sử dụng lưu trữ bền vững cho cấu hình instance và mô hình AI (`/opt/cvedix_data`).
-- Giám sát mức sử dụng CPU/GPU, lập kế hoạch tài nguyên cho từng node (source/infer/tracker/BA).
-- Bảo vệ REST API bằng mTLS hoặc token, đồng thời ghi log mọi thay đổi instance.
-
-## Lộ trình phát triển
-
-- Bổ sung RBAC đa tenant để kiểm soát truy cập theo instance.
-- Hiện thực luồng sự kiện WebSocket cho cảnh báo thời gian thực.
-- Hỗ trợ thay nóng mô hình và chỉnh ROI tức thời.
-- Tích hợp cơ sở dữ liệu chuỗi thời gian (InfluxDB, Prometheus) cho phân tích dài hạn.
-
----
-
-Để xem chi tiết giao diện các node của CVEDIX SDK, tham khảo tài liệu của nhà cung cấp hoặc các
-header dưới `/usr/include/cvedix`. Bạn có thể mở rộng ví dụ này với đồ thị node riêng, dashboard,
-hoặc script tự động triển khai.
-
----
-
 ## 🚀 Quick Start
-
-> **Lưu ý:** Đây là hướng dẫn nhanh. Để biết chi tiết, xem:
-> - [docs/DEVELOPMENT_SETUP.md](docs/DEVELOPMENT_SETUP.md) - Hướng dẫn setup và build chi tiết
-> - [docs/GETTING_STARTED.md](docs/GETTING_STARTED.md) - Hướng dẫn sử dụng chi tiết
-
-### Build nhanh (2 cách)
-
-#### Cách 1: Sử dụng setup.sh (Khuyến Nghị - Tự Động Tất Cả)
-
-```bash
-# Development setup (tự động cài dependencies, build, và chạy server)
-./setup.sh
-
-# Production setup (cần sudo)
-sudo ./setup.sh --production
-```
-
-Script này sẽ tự động làm tất cả: cài dependencies, build project, và khởi động server.
-
-**Xem chi tiết:** [docs/DEVELOPMENT_SETUP.md](docs/DEVELOPMENT_SETUP.md)
-
-#### Cách 2: Build thủ công (3 bước)
-
-**Bước 1: Cài đặt dependencies**
-
-```bash
-# Chạy script tự động (khuyến nghị)
-./scripts/install_dependencies.sh
-
-# Hoặc cài thủ công
-sudo apt-get update
-sudo apt-get install -y build-essential cmake git libssl-dev zlib1g-dev libjsoncpp-dev uuid-dev pkg-config
-```
-
-**Bước 2: Build project**
-
-```bash
-mkdir build && cd build
-cmake ..
-make -j$(nproc)
-```
-
-**Bước 3: Chạy server**
-
-**Cách 1: Sử dụng file .env (Khuyến nghị)**
-
-```bash
-# Từ thư mục project root (không phải build/)
-cd ..
-cp .env.example .env
-# Chỉnh sửa .env nếu cần (ví dụ: API_PORT=8082)
-./scripts/load_env.sh
-```
-
-**Cách 2: Chạy trực tiếp với default**
-
-```bash
-cd build
-./bin/edge_ai_api
-```
-
-Server sẽ chạy trên `http://0.0.0.0:8080` (mặc định) hoặc port đã cấu hình trong `.env`
-
-### ✅ Test
-
-```bash
-# Health check
-curl http://localhost:8080/v1/core/health
-
-# Version
-curl http://localhost:8080/v1/core/version
-```
-
-### ⚠️ Lỗi thường gặp
-
-**"Could NOT find Jsoncpp"**
-
-```bash
-sudo apt-get install libjsoncpp-dev
-cd build
-rm -rf CMakeCache.txt CMakeFiles
-cmake ..
-make -j$(nproc)
-```
-
-**"Could not find OpenSSL"**
-
-```bash
-sudo apt-get install libssl-dev
-```
-
-**Build Drogon lâu**
-
-Lần đầu build sẽ mất ~5-10 phút để download và build Drogon. Các lần sau sẽ nhanh hơn nhiều.
-
-### 📝 Notes
-
-- Drogon sẽ tự động được download và build (không cần cài thủ công)
-- Cần có kết nối internet lần đầu tiên
-- CMake 3.14+ được yêu cầu
-
----
-
-## 🚀 Triển Khai Lên Thiết Bị Thật (Production)
 
 ### Setup Tự Động (Khuyến Nghị)
 
-Để setup project từ đầu đến cuối, sử dụng script `setup.sh`:
-
 ```bash
-# Development setup (không cần sudo)
+# Development
 ./setup.sh
 
-# Production setup (cần sudo)
+# Production
 sudo ./setup.sh --production
 ```
 
-Script này sẽ tự động:
-- ✅ Kiểm tra prerequisites và cài đặt dependencies
-- ✅ Build project với CMake
-- ✅ Tạo user và thư mục cần thiết (production mode)
-- ✅ Cài đặt executable vào hệ thống (production mode)
-- ✅ Cài đặt systemd service (production mode)
-- ✅ Kích hoạt tự động chạy khi khởi động (production mode)
-- ✅ Khởi động service ngay lập tức (production mode)
-
-**Xem chi tiết:** [docs/DEVELOPMENT_SETUP.md](docs/DEVELOPMENT_SETUP.md) - Hướng dẫn setup đầy đủ
-
-### Tự Động Chạy Khi Khởi Động Thiết Bị (Cách Cũ)
-
-Nếu muốn sử dụng script triển khai cũ:
+### Build Thủ Công
 
 ```bash
-cd /home/ubuntu/project/edge_ai_api
-sudo ./deploy/build.sh
+# 1. Cài dependencies
+./scripts/install_dependencies.sh
+
+# 2. Build
+mkdir build && cd build
+cmake ..
+make -j$(nproc)
+
+# 3. Chạy server
+./bin/edge_ai_api
 ```
 
-### Kiểm Tra Service
+### Test
 
 ```bash
-# Xem trạng thái
-sudo systemctl status edge-ai-api
+curl http://localhost:8080/v1/core/health
+curl http://localhost:8080/v1/core/version
+```
 
-# Xem log
+---
+
+## 🌐 Khởi Động Server
+
+### Với File .env (Khuyến nghị)
+
+```bash
+cp .env.example .env
+nano .env  # Chỉnh sửa nếu cần
+./scripts/load_env.sh
+```
+
+### Với Logging
+
+```bash
+./build/bin/edge_ai_api --log-api --log-instance --log-sdk-output
+```
+
+### Environment Variables
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `API_HOST` | 0.0.0.0 | Server host |
+| `API_PORT` | 8080 | Server port |
+| `THREAD_NUM` | 0 (auto) | Worker threads |
+| `LOG_LEVEL` | INFO | Log level |
+
+Xem đầy đủ: [docs/ENVIRONMENT_VARIABLES.md](docs/ENVIRONMENT_VARIABLES.md)
+
+---
+
+## 📡 API Endpoints
+
+### Core APIs
+
+```bash
+curl http://localhost:8080/v1/core/health      # Health check
+curl http://localhost:8080/v1/core/version     # Version info
+curl http://localhost:8080/v1/core/watchdog    # Watchdog status
+curl http://localhost:8080/v1/core/endpoints   # List endpoints
+```
+
+### Instance APIs
+
+```bash
+# Create instance
+curl -X POST http://localhost:8080/v1/core/instance \
+  -H "Content-Type: application/json" \
+  -d '{"name": "camera_1", "solution": "face_detection", "autoStart": true}'
+
+# List instances
+curl http://localhost:8080/v1/core/instances
+
+# Start/Stop
+curl -X POST http://localhost:8080/v1/core/instances/{id}/start
+curl -X POST http://localhost:8080/v1/core/instances/{id}/stop
+```
+
+### Swagger UI
+
+- **Swagger UI**: http://localhost:8080/swagger
+- **OpenAPI Spec**: http://localhost:8080/openapi.yaml
+
+Xem đầy đủ: [docs/API.md](docs/API.md)
+
+---
+
+## 🏗️ Kiến Trúc
+
+```
+[Client] → [REST API Server] → [Instance Manager] → [CVEDIX SDK]
+                                      ↓
+                              [Data Broker] → [Output]
+```
+
+**Thành phần:**
+- **REST API Server**: Drogon Framework HTTP server
+- **Instance Manager**: Quản lý vòng đời instances
+- **CVEDIX SDK**: 43+ processing nodes (source, inference, tracker, broker, destination)
+- **Data Broker**: Message routing và output publishing
+
+---
+
+## 📊 Logging & Monitoring
+
+```bash
+# Development - full logging
+./build/bin/edge_ai_api --log-api --log-instance --log-sdk-output
+
+# Production - minimal logging
+./build/bin/edge_ai_api --log-api
+```
+
+**Logs API:**
+```bash
+curl http://localhost:8080/v1/core/logs
+curl "http://localhost:8080/v1/core/logs/api?level=ERROR&tail=100"
+```
+
+---
+
+## 🚀 Production Deployment
+
+```bash
+# Setup với systemd service
+sudo ./setup.sh --production
+
+# Kiểm tra service
+sudo systemctl status edge-ai-api
 sudo journalctl -u edge-ai-api -f
 
-# Test API
-curl http://localhost:8080/v1/core/health
-```
-
-### Quản Lý Service
-
-```bash
-# Khởi động lại
+# Quản lý
 sudo systemctl restart edge-ai-api
-
-# Dừng
 sudo systemctl stop edge-ai-api
-
-# Bắt đầu
-sudo systemctl start edge-ai-api
-
-# Tắt tự động chạy khi khởi động
-sudo systemctl disable edge-ai-api
-
-# Bật tự động chạy khi khởi động
-sudo systemctl enable edge-ai-api
 ```
 
-### Cấu Hình
+---
 
-Tạo file `.env` tại `/opt/edge_ai_api/config/.env` để cấu hình:
+## ⚠️ Troubleshooting
+
+### Lỗi "Could NOT find Jsoncpp"
 
 ```bash
-sudo nano /opt/edge_ai_api/config/.env
+sudo apt-get install libjsoncpp-dev
 ```
 
-Ví dụ:
-```bash
-API_HOST=0.0.0.0
-API_PORT=8080
-LOG_LEVEL=INFO
-```
+### Lỗi CVEDIX SDK symlinks
 
-Sau đó restart service:
-```bash
-sudo systemctl restart edge-ai-api
-```
-
-📚 **Xem chi tiết:** [deploy/README.md](deploy/README.md) - Hướng dẫn triển khai đầy đủ
-
-## 📊 Logging và Monitoring
-
-Edge AI API Server cung cấp các tính năng logging chi tiết để debug và monitor hệ thống:
-
-- **API Logging** (`--log-api`): Log tất cả API requests/responses với response time
-- **Instance Execution Logging** (`--log-instance`): Log instance lifecycle (start/stop/status)
-- **SDK Output Logging** (`--log-sdk-output`): Log output từ SDK khi instance xử lý
-
-**Ví dụ sử dụng:**
-```bash
-# Development với đầy đủ logging
-./build/edge_ai_api --log-api --log-instance --log-sdk-output
-
-# Production - chỉ log API và instance execution
-./build/edge_ai_api --log-api --log-instance
-```
-
-📚 **Xem chi tiết:** [docs/LOGGING.md](docs/LOGGING.md) - Tài liệu đầy đủ về logging
-
-## 📖 Swagger UI
-
-Server cung cấp Swagger UI để test và explore API:
-
-- **Swagger UI**: `http://localhost:8080/swagger`
-- **API v1 Swagger**: `http://localhost:8080/v1/swagger`
-- **OpenAPI Spec**: `http://localhost:8080/openapi.yaml`
-
-**Tính năng:**
-- Tự động cập nhật server URL từ biến môi trường
-- Test API trực tiếp từ browser
-- Xem tất cả endpoints và schemas
-- Export OpenAPI specification
-
-📚 **Xem chi tiết:** [docs/GETTING_STARTED.md](docs/GETTING_STARTED.md) - Hướng dẫn sử dụng Swagger UI
-
-## 🔧 Troubleshooting
-
-### Lỗi CMake khi Build
-
-Nếu gặp lỗi CMake liên quan đến CVEDIX SDK libraries (ví dụ: `libtinyexpr.so` hoặc `libcvedix_instance_sdk.so` không tìm thấy), đây thường là do SDK được cài ở `/opt/cvedix` thay vì `/usr`.
-
-**Giải pháp nhanh:**
-
-Chạy script tự động fix tất cả symlinks (khuyến nghị):
 ```bash
 sudo ./scripts/fix_all_symlinks.sh
 ```
 
-Hoặc fix riêng từng phần nếu cần:
-```bash
-sudo ./scripts/fix_cvedix_symlinks.sh  # Fix libraries only
-sudo ./scripts/fix_cereal_symlink.sh   # Fix cereal only
-sudo ./scripts/fix_cpp_base64_symlink.sh  # Fix base64 only
-```
+### Build Drogon lâu
 
-Hoặc fix thủ công:
-```bash
-sudo ln -sf /opt/cvedix/lib/libtinyexpr.so /usr/lib/libtinyexpr.so
-sudo ln -sf /opt/cvedix/lib/libcvedix_instance_sdk.so /usr/lib/libcvedix_instance_sdk.so
-```
+Lần đầu build mất ~5-10 phút để download Drogon. Các lần sau nhanh hơn.
 
-**Xem chi tiết:** [CMAKE_FIXES_APPLIED.md](docs/CMAKE_FIXES_APPLIED.md) hoặc [CMAKE_ISSUES_ANALYSIS.md](docs/CMAKE_ISSUES_ANALYSIS.md)
-
-### Lỗi Compilation: cvedix_yolov11_detector_node.h
-
-Nếu gặp lỗi `cvedix_yolov11_detector_node.h: No such file or directory`, đây đã được fix trong code. Node type `yolov11_detector` không khả dụng trong SDK. Sử dụng `rknn_yolov11_detector` (với RKNN) hoặc `yolo_detector` thay thế.
-
-**Xem chi tiết:** [CMAKE_FIXES_APPLIED.md](docs/CMAKE_FIXES_APPLIED.md) hoặc [CMAKE_ISSUES_ANALYSIS.md](docs/CMAKE_ISSUES_ANALYSIS.md)
+---
 
 ## 📚 Tài Liệu
 
-### Hướng Dẫn Cơ Bản
-- [Getting Started](docs/GETTING_STARTED.md) - Hướng dẫn khởi động và sử dụng
-- [Development Setup](docs/DEVELOPMENT_SETUP.md) - Setup môi trường phát triển
-- [Environment Variables](docs/ENVIRONMENT_VARIABLES.md) - Cấu hình biến môi trường
+| File | Nội dung |
+|------|----------|
+| [docs/API.md](docs/API.md) | Full API reference |
+| [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md) | Development guide & Pre-commit |
+| [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) | System architecture |
+| [docs/ENVIRONMENT_VARIABLES.md](docs/ENVIRONMENT_VARIABLES.md) | Env vars |
+| [docs/LOGGING.md](docs/LOGGING.md) | Logging guide |
+| [docs/DEFAULT_SOLUTIONS_REFERENCE.md](docs/DEFAULT_SOLUTIONS_REFERENCE.md) | Default solutions |
+| [deploy/README.md](deploy/README.md) | Deployment guide |
 
-### Hướng Dẫn Nâng Cao
-- [Development Setup](docs/DEVELOPMENT_SETUP.md) - Setup môi trường và tạo thư mục tự động với fallback
-- [Instance Guide](docs/INSTANCE_GUIDE.md) - Tạo và cập nhật instances
-- [API Reference](docs/API_REFERENCE.md) - Tài liệu tham khảo API đầy đủ
-- [Logging Guide](docs/LOGGING.md) - Hướng dẫn logging
+---
 
-### Deployment
-- [Deploy README](deploy/README.md) - Hướng dẫn triển khai production
+## 🔧 AI System Support
 
-### Troubleshooting
-- [CMake Fixes Applied](docs/CMAKE_FIXES_APPLIED.md) - Các lỗi CMake đã được fix
-- [CMake Issues Analysis](docs/CMAKE_ISSUES_ANALYSIS.md) - Phân tích chi tiết các vấn đề CMake
-- [Troubleshooting Guide](docs/TROUBLESHOOTING.md) - Hướng dẫn khắc phục sự cố
+| Vendor | Device | SOC |
+|--------|--------|-----|
+| Qualcomm | DK2721 | QCS6490 |
+| Intel | R360 | Core Ultra |
+| NVIDIA | 030 | Jetson AGX Orin |
+| NVIDIA | R7300 | Jetson Orin Nano |
+| AMD | 2210 | Ryzen 8000 |
+| Hailo | 1200/3300 | Hailo-8 |
+| Rockchip | OPI5-Plus | RK3588 |
+
+---
+
+## 📝 License
+
+Proprietary - CVEDIX

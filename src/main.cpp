@@ -36,11 +36,15 @@
 #include "utils/gstreamer_checker.h"
 #include "videos/video_upload_handler.h"
 #include <algorithm>
+#include <arpa/inet.h>
 #include <atomic>
 #include <chrono>
 #include <csetjmp>
 #include <csignal>
 #include <cstdlib>
+#include <netinet/in.h>
+#include <sys/socket.h>
+#include <unistd.h>
 #include <cvedix/nodes/src/cvedix_file_src_node.h>
 #include <cvedix/nodes/src/cvedix_rtsp_src_node.h>
 #include <cvedix/utils/analysis_board/cvedix_analysis_board.h>
@@ -3315,17 +3319,62 @@ int main(int argc, char *argv[]) {
     // Note: Drogon handles keep-alive automatically, but we can configure it
     // addListener with HTTP only (useSSL=false explicitly - no SSL certificates
     // needed)
-    try {
-      if (enable_reuse_port) {
-        // Reuse port for better load distribution
-        // Parameters: host, port, useSSL=false, certFile, keyFile
-        app.addListener(host, port, false, "", ""); // false = disable SSL
+    // Try to find available port before starting Drogon
+    // Drogon's addListener doesn't throw - it fails at run() time
+    // So we check port availability manually first
+    auto isPortAvailable = [](const std::string &host, int port) -> bool {
+      int sock = socket(AF_INET, SOCK_STREAM, 0);
+      if (sock < 0)
+        return false;
+
+      // Allow reuse
+      int opt = 1;
+      setsockopt(sock, SOL_SOCKET, SO_REUSEADDR, &opt, sizeof(opt));
+
+      struct sockaddr_in addr;
+      memset(&addr, 0, sizeof(addr));
+      addr.sin_family = AF_INET;
+      addr.sin_port = htons(port);
+
+      if (host == "0.0.0.0" || host.empty()) {
+        addr.sin_addr.s_addr = INADDR_ANY;
       } else {
-        app.addListener(host, port, false, "", ""); // false = disable SSL
+        inet_pton(AF_INET, host.c_str(), &addr.sin_addr);
       }
-    } catch (const std::exception &e) {
-      PLOG_ERROR << "[Error] Failed to add listener: " << e.what();
-      throw;
+
+      int result = bind(sock, (struct sockaddr *)&addr, sizeof(addr));
+      close(sock);
+      return result == 0;
+    };
+
+    int max_port_retries = 10;
+    int original_port = port;
+
+    for (int retry = 0; retry < max_port_retries; ++retry) {
+      if (isPortAvailable(host, port)) {
+        if (retry > 0) {
+          PLOG_WARNING << "[Server] Original port " << original_port
+                       << " was in use, using port " << port << " instead";
+        }
+        break;
+      }
+      PLOG_WARNING << "[Server] Port " << port << " is in use, trying port "
+                   << (port + 1);
+      ++port;
+
+      if (retry == max_port_retries - 1) {
+        PLOG_ERROR << "[Error] Could not find available port after "
+                   << max_port_retries << " retries (tried ports "
+                   << original_port << "-" << port << ")";
+        throw std::runtime_error("No available port found");
+      }
+    }
+
+    // Now add listener with the available port
+    if (enable_reuse_port) {
+      app.addListener(host, port, false, "", "");
+    } else {
+      app.addListener(host, port, false, "", "");
     }
 
     PLOG_INFO << "[Server] Starting HTTP server on " << host << ":" << port;
