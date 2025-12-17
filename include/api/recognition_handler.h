@@ -44,6 +44,8 @@ public:
         ADD_METHOD_TO(RecognitionHandler::handleOptionsDeleteFaces, "/v1/recognition/faces/delete", Options);
         ADD_METHOD_TO(RecognitionHandler::handleOptionsDeleteAll, "/v1/recognition/faces/all", Options);
         ADD_METHOD_TO(RecognitionHandler::handleOptionsSubjects, "/v1/recognition/subjects/{subject}", Options);
+        ADD_METHOD_TO(RecognitionHandler::searchAppearanceSubject, "/v1/recognition/search", Post);
+        ADD_METHOD_TO(RecognitionHandler::handleOptionsSearch, "/v1/recognition/search", Options);
     METHOD_LIST_END
     
     /**
@@ -124,6 +126,20 @@ public:
      */
     void handleOptionsDeleteAll(const HttpRequestPtr &req,
                                std::function<void(const HttpResponsePtr &)> &&callback);
+    
+    /**
+     * @brief Handle POST /v1/recognition/search
+     * Search for similar faces in database given an input face image
+     * Returns list of matches sorted by similarity (highest first) above threshold
+     */
+    void searchAppearanceSubject(const HttpRequestPtr &req,
+                                std::function<void(const HttpResponsePtr &)> &&callback);
+    
+    /**
+     * @brief Handle OPTIONS request for CORS preflight (search endpoint)
+     */
+    void handleOptionsSearch(const HttpRequestPtr &req,
+                            std::function<void(const HttpResponsePtr &)> &&callback);
 
 private:
     /**
@@ -287,6 +303,8 @@ private:
     static std::unordered_map<std::string, std::vector<std::string>> face_subjects_storage_;
     // Static storage for image ID mapping: image_id -> subject_name
     static std::unordered_map<std::string, std::string> image_id_to_subject_;
+    // Static storage for face images: subject_name -> base64 encoded face image
+    static std::unordered_map<std::string, std::string> face_images_storage_;
     static std::mutex storage_mutex_;
 };
 

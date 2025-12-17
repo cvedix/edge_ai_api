@@ -21,6 +21,7 @@
 // Static storage members
 std::unordered_map<std::string, std::vector<std::string>> RecognitionHandler::face_subjects_storage_;
 std::unordered_map<std::string, std::string> RecognitionHandler::image_id_to_subject_;
+std::unordered_map<std::string, std::string> RecognitionHandler::face_images_storage_;
 std::mutex RecognitionHandler::storage_mutex_;
 
 HttpResponsePtr RecognitionHandler::createErrorResponse(int statusCode, const std::string& error, const std::string& message) const {
@@ -1905,11 +1906,13 @@ bool RecognitionHandler::registerSubject(const std::string& subjectName,
             return false;
         }
         
-        // Store image_id -> subject_name mapping
+        // Store image_id -> subject_name mapping and face image
         {
             std::lock_guard<std::mutex> lock(storage_mutex_);
             image_id_to_subject_[imageId] = subjectName;
             face_subjects_storage_[subjectName].push_back(imageId);
+            // Store face image as base64
+            face_images_storage_[subjectName] = encodeBase64(imageData);
         }
         
         return true;
@@ -2031,6 +2034,9 @@ void RecognitionHandler::handleOptionsFaces(const HttpRequestPtr &req,
 
 Json::Value RecognitionHandler::getFaceSubjects(int page, int size, const std::string& subjectFilter) const {
     Json::Value result;
+    
+    // Ensure database is loaded before accessing storage
+    get_database();
     
     // Collect all image_id -> subject mappings
     std::vector<std::pair<std::string, std::string>> all_faces; // (image_id, subject)
@@ -2955,5 +2961,222 @@ void RecognitionHandler::handleOptionsDeleteAll(const HttpRequestPtr &req,
     resp->addHeader("Access-Control-Allow-Headers", "Content-Type, x-api-key");
     resp->addHeader("Access-Control-Max-Age", "3600");
     callback(resp);
+}
+
+void RecognitionHandler::handleOptionsSearch(const HttpRequestPtr &req,
+                                             std::function<void(const HttpResponsePtr &)> &&callback) {
+    auto resp = HttpResponse::newHttpResponse();
+    resp->setStatusCode(k200OK);
+    resp->addHeader("Access-Control-Allow-Origin", "*");
+    resp->addHeader("Access-Control-Allow-Methods", "POST, OPTIONS");
+    resp->addHeader("Access-Control-Allow-Headers", "Content-Type, x-api-key");
+    resp->addHeader("Access-Control-Max-Age", "3600");
+    callback(resp);
+}
+
+void RecognitionHandler::searchAppearanceSubject(const HttpRequestPtr &req,
+                                                 std::function<void(const HttpResponsePtr &)> &&callback) {
+    auto start_time = std::chrono::steady_clock::now();
+    
+    if (isApiLoggingEnabled()) {
+        PLOG_INFO << "[API] POST /v1/recognition/search - Search appearance subject";
+        PLOG_DEBUG << "[API] Request from: " << req->getPeerAddr().toIpPort();
+    }
+    
+    try {
+        // Parse query parameters
+        std::string thresholdStr = req->getParameter("threshold");
+        double threshold = 0.5; // Default threshold
+        if (!thresholdStr.empty()) {
+            try {
+                threshold = std::stod(thresholdStr);
+                if (threshold < 0.0 || threshold > 1.0) {
+                    threshold = 0.5;
+                }
+            } catch (...) {
+                threshold = 0.5;
+            }
+        }
+        
+        std::string limitStr = req->getParameter("limit");
+        int limit = 0; // 0 = no limit
+        if (!limitStr.empty()) {
+            try {
+                limit = std::stoi(limitStr);
+                if (limit < 0) limit = 0;
+            } catch (...) {
+                limit = 0;
+            }
+        }
+        
+        std::string detProbThresholdStr = req->getParameter("det_prob_threshold");
+        double detProbThreshold = 0.5;
+        if (!detProbThresholdStr.empty()) {
+            try {
+                detProbThreshold = std::stod(detProbThresholdStr);
+            } catch (...) {
+                detProbThreshold = 0.5;
+            }
+        }
+        
+        if (isApiLoggingEnabled()) {
+            PLOG_DEBUG << "[API] Search parameters - threshold: " << threshold 
+                      << ", limit: " << limit
+                      << ", det_prob_threshold: " << detProbThreshold;
+        }
+        
+        // Extract image from request
+        std::vector<unsigned char> imageData;
+        std::string imageError;
+        if (!extractImageFromRequest(req, imageData, imageError)) {
+            if (isApiLoggingEnabled()) {
+                PLOG_WARNING << "[API] POST /v1/recognition/search - " << imageError;
+            }
+            callback(createErrorResponse(400, "Invalid request", imageError));
+            return;
+        }
+        
+        // Get database and extract embedding from input image
+        FaceDatabase& db = get_database();
+        
+        // Decode image
+        cv::Mat image = cv::imdecode(imageData, cv::IMREAD_COLOR);
+        if (image.empty()) {
+            callback(createErrorResponse(400, "Invalid request", "Failed to decode image"));
+            return;
+        }
+        
+        // Detect faces using YuNet
+        std::string detector_path = db.get_detector_model_path();
+        if (detector_path.empty()) {
+            callback(createErrorResponse(500, "Internal server error", "Face detector model not found"));
+            return;
+        }
+        
+        cv::Ptr<cv::FaceDetectorYN> detector = cv::FaceDetectorYN::create(
+            detector_path, "", cv::Size(image.cols, image.rows), 
+            static_cast<float>(detProbThreshold), 0.3f, 5000
+        );
+        
+        cv::Mat faces;
+        detector->detect(image, faces);
+        
+        if (faces.rows == 0) {
+            Json::Value response;
+            response["result"] = Json::arrayValue;
+            response["message"] = "No faces detected in the input image";
+            
+            auto resp = HttpResponse::newHttpJsonResponse(response);
+            resp->setStatusCode(k200OK);
+            resp->addHeader("Access-Control-Allow-Origin", "*");
+            resp->addHeader("Access-Control-Allow-Methods", "POST, OPTIONS");
+            resp->addHeader("Access-Control-Allow-Headers", "Content-Type, x-api-key");
+            callback(resp);
+            return;
+        }
+        
+        // Get aligned face and extract embedding
+        cv::Mat aligned_face = align_face_using_landmarks(image, faces, 0);
+        std::string onnx_path = db.get_onnx_model_path();
+        if (onnx_path.empty()) {
+            callback(createErrorResponse(500, "Internal server error", "Recognition model not found"));
+            return;
+        }
+        
+        std::vector<float> input_embedding = extract_embedding_from_image(aligned_face, onnx_path);
+        if (input_embedding.empty()) {
+            callback(createErrorResponse(500, "Internal server error", "Failed to extract face embedding"));
+            return;
+        }
+        
+        // Compare with all faces in database
+        const auto& database = db.get_database();
+        std::vector<std::tuple<std::string, std::string, double, std::string>> matches; // image_id, subject_name, similarity, face_image_base64
+        
+        for (const auto& [subject_name, embedding] : database) {
+            float similarity = cosine_similarity(input_embedding, embedding);
+            
+            if (similarity >= threshold) {
+                // Get image_id and face_image for this subject
+                std::string imageId;
+                std::string faceImageBase64;
+                {
+                    std::lock_guard<std::mutex> lock(storage_mutex_);
+                    auto it = face_subjects_storage_.find(subject_name);
+                    if (it != face_subjects_storage_.end() && !it->second.empty()) {
+                        imageId = it->second[0]; // Get first image_id
+                    }
+                    auto imgIt = face_images_storage_.find(subject_name);
+                    if (imgIt != face_images_storage_.end()) {
+                        faceImageBase64 = imgIt->second;
+                    }
+                }
+                
+                if (imageId.empty()) {
+                    imageId = generateImageIdForSubject(subject_name);
+                }
+                
+                matches.push_back({imageId, subject_name, static_cast<double>(similarity), faceImageBase64});
+            }
+        }
+        
+        // Sort by similarity (highest first)
+        std::sort(matches.begin(), matches.end(), 
+            [](const auto& a, const auto& b) {
+                return std::get<2>(a) > std::get<2>(b);
+            });
+        
+        // Apply limit if specified
+        if (limit > 0 && matches.size() > static_cast<size_t>(limit)) {
+            matches.resize(limit);
+        }
+        
+        // Build response
+        Json::Value results(Json::arrayValue);
+        for (const auto& [image_id, subject_name, similarity, face_image] : matches) {
+            Json::Value match;
+            match["image_id"] = image_id;
+            match["subject"] = subject_name;
+            match["similarity"] = similarity;
+            match["face_image"] = face_image;
+            results.append(match);
+        }
+        
+        Json::Value response;
+        response["result"] = results;
+        response["faces_found"] = static_cast<int>(matches.size());
+        response["threshold"] = threshold;
+        
+        auto resp = HttpResponse::newHttpJsonResponse(response);
+        resp->setStatusCode(k200OK);
+        resp->addHeader("Access-Control-Allow-Origin", "*");
+        resp->addHeader("Access-Control-Allow-Methods", "POST, OPTIONS");
+        resp->addHeader("Access-Control-Allow-Headers", "Content-Type, x-api-key");
+        
+        auto end_time = std::chrono::steady_clock::now();
+        auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(end_time - start_time);
+        
+        if (isApiLoggingEnabled()) {
+            PLOG_INFO << "[API] POST /v1/recognition/search - Success: Found " 
+                      << matches.size() << " matching face(s) - " << duration.count() << "ms";
+        }
+        
+        callback(resp);
+        
+    } catch (const std::exception& e) {
+        auto end_time = std::chrono::steady_clock::now();
+        auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(end_time - start_time);
+        if (isApiLoggingEnabled()) {
+            PLOG_ERROR << "[API] POST /v1/recognition/search - Exception: " << e.what() << " - " << duration.count() << "ms";
+        }
+        callback(createErrorResponse(500, "Internal server error", e.what()));
+    } catch (...) {
+        auto end_time = std::chrono::steady_clock::now();
+        auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(end_time - start_time);
+        if (isApiLoggingEnabled()) {
+            PLOG_ERROR << "[API] POST /v1/recognition/search - Unknown exception - " << duration.count() << "ms";
+        }
+        callback(createErrorResponse(500, "Internal server error", "Unknown error occurred"));
+    }
 }
 
