@@ -4051,6 +4051,210 @@ paths:
         '200':
           description: CORS preflight response
 
+  /v1/core/instance/{instanceId}/lines:
+    get:
+      summary: Get all crossing lines
+      description: |
+        Returns all crossing lines configured for a ba_crossline instance.
+        Lines are used for counting objects crossing a defined line in the video stream.
+      operationId: getAllLines
+      tags:
+        - Lines
+      parameters:
+        - name: instanceId
+          in: path
+          required: true
+          schema:
+            type: string
+          description: The unique identifier of the instance
+          example: "a5204fc9-9a59-f80f-fb9f-bf3b42214943"
+      responses:
+        '200':
+          description: List of crossing lines
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LinesResponse'
+        '404':
+          description: Instance not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+    post:
+      summary: Create a new crossing line
+      description: |
+        Creates a new crossing line for a ba_crossline instance.
+        The line will be drawn on the video stream and used for counting objects.
+        
+        **Real-time Update:** The line is immediately applied to the running video stream without requiring instance restart.
+      operationId: createLine
+      tags:
+        - Lines
+      parameters:
+        - name: instanceId
+          in: path
+          required: true
+          schema:
+            type: string
+          description: The unique identifier of the instance
+          example: "a5204fc9-9a59-f80f-fb9f-bf3b42214943"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateLineRequest'
+            examples:
+              simpleLine:
+                summary: Simple two-point line
+                value:
+                  name: "Counting Line 1"
+                  coordinates:
+                    - x: 100.0
+                      y: 300.0
+                    - x: 600.0
+                      y: 300.0
+                  direction: "Both"
+                  classes: ["Person", "Vehicle"]
+                  color: [255, 0, 0, 255]
+      responses:
+        '201':
+          description: Line created successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CrossingLine'
+        '400':
+          description: Bad request (invalid coordinates or parameters)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: Instance not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+    delete:
+      summary: Delete all crossing lines
+      description: |
+        Deletes all crossing lines for a ba_crossline instance.
+        
+        **Real-time Update:** Lines are immediately removed from the running video stream without requiring instance restart.
+      operationId: deleteAllLines
+      tags:
+        - Lines
+      parameters:
+        - name: instanceId
+          in: path
+          required: true
+          schema:
+            type: string
+          description: The unique identifier of the instance
+          example: "a5204fc9-9a59-f80f-fb9f-bf3b42214943"
+      responses:
+        '200':
+          description: All lines deleted successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                    example: "All lines deleted successfully"
+        '404':
+          description: Instance not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+    options:
+      summary: CORS preflight for lines endpoints
+      operationId: linesOptions
+      tags:
+        - Lines
+      responses:
+        '200':
+          description: CORS preflight response
+
+  /v1/core/instance/{instanceId}/lines/{lineId}:
+    delete:
+      summary: Delete a specific crossing line
+      description: |
+        Deletes a specific crossing line by ID.
+        
+        **Real-time Update:** The line is immediately removed from the running video stream without requiring instance restart.
+      operationId: deleteLine
+      tags:
+        - Lines
+      parameters:
+        - name: instanceId
+          in: path
+          required: true
+          schema:
+            type: string
+          description: The unique identifier of the instance
+          example: "a5204fc9-9a59-f80f-fb9f-bf3b42214943"
+        - name: lineId
+          in: path
+          required: true
+          schema:
+            type: string
+          description: The unique identifier of the line to delete
+          example: "b1234567-89ab-cdef-0123-456789abcdef"
+      responses:
+        '200':
+          description: Line deleted successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                    example: "Line deleted successfully"
+        '404':
+          description: Instance or line not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+    options:
+      summary: CORS preflight for line endpoints
+      operationId: lineOptions
+      tags:
+        - Lines
+      responses:
+        '200':
+          description: CORS preflight response
+
   /v1/core/solutions:
     get:
       summary: List all solutions
@@ -6683,6 +6887,128 @@ components:
             channel: "0"
             resize_ratio: "0.5"
 
+    Coordinate:
+      type: object
+      required:
+        - x
+        - y
+      properties:
+        x:
+          type: number
+          format: double
+          description: The x coordinate
+          example: 100.0
+        y:
+          type: number
+          format: double
+          description: The y coordinate
+          example: 300.0
+
+    CrossingLine:
+      type: object
+      required:
+        - id
+        - coordinates
+      properties:
+        id:
+          type: string
+          description: Unique identifier of the line
+          example: "b1234567-89ab-cdef-0123-456789abcdef"
+        name:
+          type: string
+          description: Human-readable name for the line
+          example: "Counting Line 1"
+        coordinates:
+          type: array
+          description: List of coordinate objects defining the line (minimum 2 points)
+          items:
+            $ref: '#/components/schemas/Coordinate'
+          minItems: 2
+          example:
+            - x: 100.0
+              y: 300.0
+            - x: 600.0
+              y: 300.0
+        direction:
+          type: string
+          description: Direction for counting (Up, Down, or Both)
+          enum: ["Up", "Down", "Both"]
+          default: "Both"
+          example: "Both"
+        classes:
+          type: array
+          description: Object classes to count
+          items:
+            type: string
+            enum: ["Person", "Animal", "Vehicle", "Face", "Unknown"]
+          example: ["Person", "Vehicle"]
+        color:
+          type: array
+          description: Line color in RGBA format
+          items:
+            type: integer
+            minimum: 0
+            maximum: 255
+          minItems: 4
+          maxItems: 4
+          example: [255, 0, 0, 255]
+
+    CreateLineRequest:
+      type: object
+      required:
+        - coordinates
+      properties:
+        name:
+          type: string
+          description: Human-readable name for the line
+          example: "Counting Line 1"
+        coordinates:
+          type: array
+          description: List of coordinate objects defining the line (minimum 2 points)
+          items:
+            $ref: '#/components/schemas/Coordinate'
+          minItems: 2
+          example:
+            - x: 100.0
+              y: 300.0
+            - x: 600.0
+              y: 300.0
+        direction:
+          type: string
+          description: Direction for counting (Up, Down, or Both)
+          enum: ["Up", "Down", "Both"]
+          default: "Both"
+          example: "Both"
+        classes:
+          type: array
+          description: Object classes to count
+          items:
+            type: string
+            enum: ["Person", "Animal", "Vehicle", "Face", "Unknown"]
+          example: ["Person", "Vehicle"]
+        color:
+          type: array
+          description: Line color in RGBA format (default is red)
+          items:
+            type: integer
+            minimum: 0
+            maximum: 255
+          minItems: 4
+          maxItems: 4
+          default: [255, 0, 0, 255]
+          example: [255, 0, 0, 255]
+
+    LinesResponse:
+      type: object
+      required:
+        - crossingLines
+      properties:
+        crossingLines:
+          type: array
+          description: List of crossing lines
+          items:
+            $ref: '#/components/schemas/CrossingLine'
+
     TemplateResponse:
       type: object
       required:
@@ -6801,6 +7127,8 @@ tags:
     description: System configuration management endpoints (get, create, update, delete)
   - name: Instances
     description: AI instance management endpoints (create, list, start, stop, delete)
+  - name: Lines
+    description: Crossing lines management for ba_crossline instances (create, list, delete). Lines are drawn on video stream for object counting.
   - name: Solutions
     description: Solution configuration management endpoints (create, list, update, delete)
   - name: Groups
