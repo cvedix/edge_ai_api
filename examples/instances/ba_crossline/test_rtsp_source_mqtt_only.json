@@ -1,0 +1,34 @@
+{
+  "name": "ba_crossline_rtsp_mqtt_test",
+  "group": "test",
+  "solution": "ba_crossline_with_mqtt",
+  "persistent": false,
+  "autoStart": false,
+  "detectionSensitivity": "Medium",
+  "additionalParams": {
+    "input": {
+      "RTSP_SRC_URL": "rtsp://localhost:8554/mystream",
+      "WEIGHTS_PATH": "/home/cvedix/project/edge_ai_api/cvedix_data/models/det_cls/yolov3-tiny-2022-0721_best.weights",
+      "CONFIG_PATH": "/home/cvedix/project/edge_ai_api/cvedix_data/models/det_cls/yolov3-tiny-2022-0721.cfg",
+      "LABELS_PATH": "/home/cvedix/project/edge_ai_api/cvedix_data/models/det_cls/yolov3_tiny_5classes.txt",
+      "CROSSLINE_START_X": "0",
+      "CROSSLINE_START_Y": "250",
+      "CROSSLINE_END_X": "700",
+      "CROSSLINE_END_Y": "220",
+      "RESIZE_RATIO": "1.0",
+      "GST_DECODER_NAME": "avdec_h264",
+      "SKIP_INTERVAL": "0",
+      "CODEC_TYPE": "h264"
+    },
+    "output": {
+      "ENABLE_SCREEN_DES": "true",
+      "BROKE_FOR": "NORMAL",
+      "MQTT_BROKER_URL": "localhost",
+      "MQTT_PORT": "1883",
+      "MQTT_TOPIC": "ba_crossline/events",
+      "MQTT_USERNAME": "",
+      "MQTT_PASSWORD": "",
+      "MQTT_RATE_LIMIT_MS": "2000"
+    }
+  }
+}

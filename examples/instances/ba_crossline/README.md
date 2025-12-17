@@ -1,0 +1,204 @@
+# Behavior Analysis Crossline Instance - Hướng Dẫn Test
+
+## 📋 Tổng Quan
+
+Instance này thực hiện phân tích hành vi đếm phương tiện/phương tiện đi qua đường line (crossline) sử dụng YOLO detector và SORT tracker.
+
+## 🎯 Tính Năng
+
+- ✅ Phát hiện phương tiện với YOLO detector
+- ✅ Tracking phương tiện với SORT tracker
+- ✅ Đếm phương tiện đi qua đường line (crossline)
+- ✅ RTMP streaming output (tùy chọn)
+- ✅ MQTT event publishing khi có phương tiện đi qua line
+- ✅ Screen display với OSD hiển thị số lượng đếm được
+
+## 📁 Cấu Trúc Files
+
+```
+ba_crossline/
+├── README.md                              # File này
+├── test_file_source_mqtt.json              # Test với file source + MQTT
+├── test_rtsp_source_rtmp_mqtt.json         # Test với RTSP source + RTMP + MQTT
+├── test_rtsp_source_mqtt_only.json         # Test với RTSP source + MQTT only
+├── test_rtsp_source_rtmp_only.json         # Test với RTSP source + RTMP only
+├── test_rtmp_output_only.json              # Test với RTMP output only
+└── report_body_example.json                # Ví dụ report body từ MQTT
+```
+
+## 🔧 Solution Config
+
+### Solution ID: `ba_crossline_with_mqtt`
+
+**Pipeline:**
+```
+File/RTSP Source → YOLO Detector → SORT Tracker → BA Crossline → MQTT Broker → OSD → [Screen | RTMP]
+```
+
+**Tham số quan trọng:**
+- `CROSSLINE_START_X`, `CROSSLINE_START_Y`: Điểm bắt đầu của line
+- `CROSSLINE_END_X`, `CROSSLINE_END_Y`: Điểm kết thúc của line
+- `WEIGHTS_PATH`, `CONFIG_PATH`, `LABELS_PATH`: YOLO model paths
+- `MQTT_BROKER_URL`, `MQTT_PORT`, `MQTT_TOPIC`: MQTT configuration
+- `RTMP_URL`: RTMP streaming URL (nếu có)
+
+## 📝 Manual Testing Guide
+
+### 1. Test với File Source + MQTT
+
+**Bước 1:** Tạo instance
+```bash
+curl -X POST http://localhost:8080/v1/core/instance \
+  -H "Content-Type: application/json" \
+  -d @ba_crossline/test_file_source_mqtt.json
+```
+
+**Bước 2:** Kiểm tra status
+```bash
+curl http://localhost:8080/v1/core/instance/{instanceId}
+```
+
+**Bước 3:** Start instance
+```bash
+curl -X POST http://localhost:8080/v1/core/instance/{instanceId}/start
+```
+
+**Bước 4:** Subscribe MQTT để nhận events
+```bash
+mosquitto_sub -h localhost -t ba_crossline/events -v
+```
+
+**Bước 5:** Kiểm tra statistics
+```bash
+curl http://localhost:8080/v1/core/instance/{instanceId}/statistics
+```
+
+### 2. Test với RTSP Source + RTMP + MQTT
+
+**Yêu cầu:**
+- RTSP camera/stream
+- RTMP server
+- MQTT broker
+
+**Các bước:**
+```bash
+# Tạo instance
+curl -X POST http://localhost:8080/v1/core/instance \
+  -H "Content-Type: application/json" \
+  -d @ba_crossline/test_rtsp_source_rtmp_mqtt.json
+
+# Kiểm tra RTMP stream
+ffplay rtmp://your-server:1935/live/stream_key
+
+# Subscribe MQTT
+mosquitto_sub -h localhost -t ba_crossline/events -v
+```
+
+### 3. Cấu Hình Crossline
+
+**Quan trọng:** Cần cấu hình đúng tọa độ line trong frame.
+
+**Cách xác định tọa độ:**
+1. Chạy instance với screen display
+2. Xem frame và xác định điểm bắt đầu và kết thúc của line
+3. Cập nhật `CROSSLINE_START_X`, `CROSSLINE_START_Y`, `CROSSLINE_END_X`, `CROSSLINE_END_Y`
+
+**Ví dụ:**
+- Frame size: 1280x720
+- Line từ (0, 250) đến (700, 220)
+- Set: `CROSSLINE_START_X=0`, `CROSSLINE_START_Y=250`, `CROSSLINE_END_X=700`, `CROSSLINE_END_Y=220`
+
+## 📊 Kiểm Tra Kết Quả
+
+### 1. Kiểm Tra Screen Display
+
+- Mở cửa sổ hiển thị video
+- Kiểm tra line được vẽ trên frame
+- Kiểm tra số lượng đếm được hiển thị trên OSD
+- Kiểm tra bounding boxes quanh phương tiện
+
+### 2. Kiểm Tra MQTT Events
+
+**Event structure:**
+- Xem `report_body_example.json` để biết cấu trúc chi tiết
+
+**Event types:**
+- `crossline_enter`: Khi phương tiện đi qua line (từ một phía)
+- `crossline_exit`: Khi phương tiện đi qua line (từ phía kia)
+
+**Expected event fields:**
+- `type`: "crossline_enter" hoặc "crossline_exit"
+- `label`: Mô tả event (ví dụ: "Vehicle crossed line")
+- `extra.track_id`: ID của track
+- `extra.class`: Loại phương tiện (car, truck, motorcycle, etc.)
+- `extra.current_entries`: Số lượng đếm được hiện tại
+
+### 3. Kiểm Tra Statistics
+
+```bash
+curl http://localhost:8080/v1/core/instance/{instanceId}/statistics
+```
+
+**Expected output:**
+```json
+{
+  "frames_processed": 5000,
+  "source_framerate": 30.0,
+  "current_framerate": 28.5,
+  "latency": 150.0,
+  "resolution": "1280x720"
+}
+```
+
+## 🔍 Troubleshooting
+
+### Lỗi: Model không tìm thấy
+```bash
+# Kiểm tra YOLO model files
+ls -la /path/to/models/det_cls/yolov3-tiny-2022-0721_best.weights
+ls -la /path/to/models/det_cls/yolov3-tiny-2022-0721.cfg
+ls -la /path/to/models/det_cls/yolov3_tiny_5classes.txt
+```
+
+### Lỗi: Crossline không hoạt động đúng
+
+**Nguyên nhân có thể:**
+1. Tọa độ line không đúng với frame size
+2. Line không nằm trong vùng có phương tiện đi qua
+3. Tracker không hoạt động tốt
+
+**Giải pháp:**
+1. Kiểm tra lại tọa độ line
+2. Điều chỉnh line để nằm trong vùng có phương tiện
+3. Kiểm tra tracker parameters (nếu có)
+
+### Lỗi: Đếm không chính xác
+
+**Nguyên nhân:**
+- Line quá gần hoặc quá xa camera
+- Phương tiện đi quá nhanh
+- Tracker mất track
+
+**Giải pháp:**
+- Điều chỉnh vị trí line
+- Tăng frame rate nếu có thể
+- Điều chỉnh tracker parameters
+
+### Lỗi: MQTT events không được gửi
+
+```bash
+# Kiểm tra MQTT broker
+sudo systemctl status mosquitto
+
+# Test connection
+mosquitto_sub -h localhost -t ba_crossline/events -v
+
+# Kiểm tra MQTT configuration trong JSON
+```
+
+## 📚 Tài Liệu Tham Khảo
+
+- Sample code: `sample/ba_crossline_sample.cpp`
+- Sample code: `sample/rtsp_ba_crossline_sample.cpp`
+- Testing guide: `sample/README.md` (section: ba_crossline_sample)
+

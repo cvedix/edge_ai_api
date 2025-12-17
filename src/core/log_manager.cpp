@@ -328,7 +328,6 @@ void LogManager::deleteOldFiles(const std::string& dir_path, int days_old) {
         return;
     }
     
-    auto now = std::chrono::system_clock::now();
     int deleted_count = 0;
     uint64_t freed_bytes = 0;
     

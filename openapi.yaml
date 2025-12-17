@@ -1201,6 +1201,14 @@ paths:
             type: boolean
             default: true
           description: Whether to detect faces (true) or only recognize existing faces (false)
+
+  /v1/core/fonts/upload:
+    post:
+      summary: Upload a font file
+      description: Uploads a font file (TTF, OTF, WOFF, WOFF2, etc.) to the server. The file will be saved in the fonts directory.
+      operationId: uploadFont
+      tags:
+        - Fonts
       requestBody:
         required: true
         content:
@@ -1217,6 +1225,26 @@ paths:
       responses:
         '200':
           description: Face recognition results
+
+              properties:
+                files:
+                  type: array
+                  items:
+                    type: string
+                    format: binary
+                  description: Font file(s) to upload. Select multiple files to upload at once (.ttf, .otf, .woff, .woff2, .eot, .ttc)
+                file:
+                  type: string
+                  format: binary
+                  description: Single font file to upload (alternative to files array)
+          application/octet-stream:
+            schema:
+              type: string
+              format: binary
+              description: Font file as binary data
+      responses:
+        '201':
+          description: Font file(s) uploaded successfully
           content:
             application/json:
               schema:
@@ -1251,12 +1279,45 @@ paths:
                       mask: 36.0
         '400':
           description: Invalid request (missing file, invalid image format, etc.)
+
+                  success:
+                    type: boolean
+                  message:
+                    type: string
+                  count:
+                    type: integer
+                    description: Number of files uploaded successfully
+                  files:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        filename:
+                          type: string
+                        originalFilename:
+                          type: string
+                        path:
+                          type: string
+                        size:
+                          type: integer
+                        url:
+                          type: string
+                  warnings:
+                    type: array
+                    items:
+                      type: string
+                    description: Warnings for files that failed to upload
+        '400':
+          description: Invalid request
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
         '401':
           description: Unauthorized (missing or invalid API key)
+
+        '409':
+          description: File already exists
           content:
             application/json:
               schema:
@@ -1272,6 +1333,11 @@ paths:
       operationId: recognizeFacesOptions
       tags:
         - Recognition
+
+      summary: CORS preflight for font upload
+      operationId: uploadFontOptions
+      tags:
+        - Fonts
       responses:
         '200':
           description: CORS preflight response
@@ -1317,6 +1383,17 @@ paths:
       responses:
         '200':
           description: List of face subjects retrieved successfully
+
+  /v1/core/fonts/list:
+    get:
+      summary: List uploaded font files
+      description: Returns a list of all font files that have been uploaded to the server.
+      operationId: listFonts
+      tags:
+        - Fonts
+      responses:
+        '200':
+          description: List of font files
           content:
             application/json:
               schema:
@@ -1378,6 +1455,27 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
+
+                properties:
+                  success:
+                    type: boolean
+                  fonts:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        filename:
+                          type: string
+                        path:
+                          type: string
+                        size:
+                          type: integer
+                        modified:
+                          type: string
+                  count:
+                    type: integer
+                  directory:
+                    type: string
         '500':
           description: Server error
           content:
@@ -1439,6 +1537,25 @@ paths:
                   type: string
                   format: binary
                   description: "Image file to upload. Supported formats: JPEG, JPG, PNG, BMP, GIF, ICO, TIFF, WebP. Max size: 5MB"
+
+
+  /v1/core/fonts/{fontName}:
+    put:
+      summary: Rename a font file
+      description: Renames a font file on the server.
+      operationId: renameFont
+      tags:
+        - Fonts
+      parameters:
+        - name: fontName
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Current name of the font file to rename
+      requestBody:
+        required: true
+        content:
           application/json:
             schema:
               type: object
@@ -1454,6 +1571,16 @@ paths:
       responses:
         '200':
           description: Face subject registered successfully
+
+                - newName
+              properties:
+                newName:
+                  type: string
+                  description: New name for the font file (must have valid font file extension)
+                  example: "my_font_v2.ttf"
+      responses:
+        '200':
+          description: Font file renamed successfully
           content:
             application/json:
               schema:
@@ -1476,12 +1603,35 @@ paths:
                 subject: "subject1"
         '400':
           description: Invalid request (missing subject, invalid image format, etc.)
+
+                properties:
+                  success:
+                    type: boolean
+                  message:
+                    type: string
+                  oldName:
+                    type: string
+                  newName:
+                    type: string
+                  path:
+                    type: string
+        '400':
+          description: Invalid request
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
         '401':
           description: Unauthorized (missing or invalid API key)
+
+        '404':
+          description: Font file not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '409':
+          description: New name already exists
           content:
             application/json:
               schema:
@@ -1500,6 +1650,52 @@ paths:
       responses:
         '200':
           description: CORS preflight response
+
+    delete:
+      summary: Delete a font file
+      description: Deletes a font file from the server.
+      operationId: deleteFont
+      tags:
+        - Fonts
+      parameters:
+        - name: fontName
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Name of the font file to delete
+      responses:
+        '200':
+          description: Font file deleted successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  message:
+                    type: string
+                  filename:
+                    type: string
+        '400':
+          description: Invalid request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: Font file not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
 
   /v1/core/instance/status/summary:
     get:
@@ -3447,7 +3643,7 @@ paths:
                 summary: Enable remote RTMP stream
                 value:
                   enabled: true
-                  uri: "rtmp://anhoidong.datacenter.cvedix.com:1935/live/stream"
+                  uri: "rtmp://localhost:1935/live/stream"
               disableStream:
                 summary: Disable stream/record output
                 value:
@@ -3767,6 +3963,73 @@ paths:
                     type: string
                     description: Solution type
                     example: "face_detection"
+                  pipeline:
+                    type: array
+                    description: Pipeline nodes with detailed parameter information
+                    items:
+                      type: object
+                      properties:
+                        nodeType:
+                          type: string
+                          description: Node type identifier
+                          example: "rtsp_src"
+                        nodeName:
+                          type: string
+                          description: Node name template
+                          example: "source_{instanceId}"
+                        displayName:
+                          type: string
+                          description: Node display name
+                          example: "RTSP Source"
+                        description:
+                          type: string
+                          description: Node description
+                          example: "Receive video stream from RTSP URL"
+                        category:
+                          type: string
+                          description: Node category
+                          enum: ["source", "detector", "processor", "destination", "broker"]
+                          example: "source"
+                        requiredParameters:
+                          type: array
+                          description: Required parameters for this node type
+                          items:
+                            type: string
+                          example: ["rtsp_url"]
+                        optionalParameters:
+                          type: array
+                          description: Optional parameters for this node type
+                          items:
+                            type: string
+                          example: ["channel", "resize_ratio"]
+                        defaultParameters:
+                          type: object
+                          description: Default parameter values
+                          additionalProperties:
+                            type: string
+                          example:
+                            channel: "0"
+                            resize_ratio: "1.0"
+                        parameters:
+                          type: object
+                          description: Current parameter values in solution
+                          additionalProperties:
+                            type: string
+                          example:
+                            rtsp_url: "${RTSP_URL}"
+                    example:
+                      - nodeType: "rtsp_src"
+                        nodeName: "source_{instanceId}"
+                        displayName: "RTSP Source"
+                        description: "Receive video stream from RTSP URL"
+                        category: "source"
+                        requiredParameters: ["rtsp_url"]
+                        optionalParameters: ["channel", "resize_ratio"]
+                        defaultParameters:
+                          channel: "0"
+                          resize_ratio: "1.0"
+                        parameters:
+                          rtsp_url: "${RTSP_URL}"
                   additionalParams:
                     type: object
                     description: Solution-specific parameters extracted from pipeline nodes
@@ -3789,6 +4052,12 @@ paths:
                         description:
                           type: string
                           description: Parameter description
+                        usedInNodes:
+                          type: array
+                          description: List of node types that use this parameter
+                          items:
+                            type: string
+                          example: ["rtsp_src", "rtmp_src"]
                     example:
                       RTSP_URL:
                         name: "RTSP_URL"
@@ -3866,12 +4135,45 @@ paths:
                 solutionId: "face_detection"
                 solutionName: "Face Detection"
                 solutionType: "face_detection"
+                pipeline:
+                  - nodeType: "rtsp_src"
+                    nodeName: "source_{instanceId}"
+                    displayName: "RTSP Source"
+                    description: "Receive video stream from RTSP URL"
+                    category: "source"
+                    requiredParameters: ["rtsp_url"]
+                    optionalParameters: ["channel", "resize_ratio"]
+                    defaultParameters:
+                      channel: "0"
+                      resize_ratio: "1.0"
+                    parameters:
+                      rtsp_url: "${RTSP_URL}"
+                  - nodeType: "yunet_face_detector"
+                    nodeName: "detector_{instanceId}"
+                    displayName: "YuNet Face Detector"
+                    description: "Detect faces using YuNet model"
+                    category: "detector"
+                    requiredParameters: ["model_path"]
+                    optionalParameters: ["score_threshold", "nms_threshold", "top_k"]
+                    defaultParameters:
+                      score_threshold: "0.7"
+                      nms_threshold: "0.5"
+                      top_k: "50"
+                    parameters:
+                      model_path: "${MODEL_PATH}"
                 additionalParams:
                   RTSP_URL:
                     name: "RTSP_URL"
                     type: "string"
                     required: true
-                    description: "URL for rtsp_src node"
+                    description: "Required parameter for rtsp_src (rtsp_url)"
+                    usedInNodes: ["rtsp_src"]
+                  MODEL_PATH:
+                    name: "MODEL_PATH"
+                    type: "string"
+                    required: true
+                    description: "Required parameter for yunet_face_detector (model_path)"
+                    usedInNodes: ["yunet_face_detector"]
                 requiredAdditionalParams:
                   - "RTSP_URL"
                 standardFields:
@@ -3912,6 +4214,154 @@ paths:
     options:
       summary: CORS preflight for solution parameters
       operationId: getSolutionParametersOptions
+      tags:
+        - Solutions
+      responses:
+        '200':
+          description: CORS preflight response
+
+  /v1/core/solutions/{solutionId}/instance-body:
+    get:
+      summary: Get example instance creation body
+      description: |
+        Returns an example request body for creating an instance with this solution.
+        This includes:
+        - **Standard Fields**: Common instance creation fields with default values
+        - **Additional Parameters**: Solution-specific parameters with example values based on parameter names
+        
+        Users can copy this body, modify the values, and use it to create an instance via POST /v1/core/instance.
+      operationId: getSolutionInstanceBody
+      tags:
+        - Solutions
+      parameters:
+        - name: solutionId
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Solution ID
+      responses:
+        '200':
+          description: Example instance creation body
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  solutionId:
+                    type: string
+                    description: Solution ID
+                    example: "face_detection"
+                  solutionName:
+                    type: string
+                    description: Solution display name
+                    example: "Face Detection"
+                  description:
+                    type: string
+                    description: Description of the response
+                    example: "Example request body for creating an instance with this solution"
+                  requestBody:
+                    type: object
+                    description: Example request body for creating an instance
+                    properties:
+                      name:
+                        type: string
+                        description: Instance name
+                        example: "example_instance"
+                      group:
+                        type: string
+                        description: Group name
+                        example: "default"
+                      solution:
+                        type: string
+                        description: Solution ID
+                        example: "face_detection"
+                      persistent:
+                        type: boolean
+                        description: Save instance to JSON file
+                        example: false
+                      autoStart:
+                        type: boolean
+                        description: Automatically start instance when created
+                        example: false
+                      frameRateLimit:
+                        type: integer
+                        description: Frame rate limit (FPS)
+                        example: 0
+                      detectionSensitivity:
+                        type: string
+                        enum: ["Low", "Medium", "High", "Normal", "Slow"]
+                        description: Detection sensitivity level
+                        example: "Low"
+                      detectorMode:
+                        type: string
+                        enum: ["SmartDetection", "FullRegionInference", "MosaicInference"]
+                        description: Detector mode
+                        example: "SmartDetection"
+                      metadataMode:
+                        type: boolean
+                        description: Enable metadata mode
+                        example: false
+                      statisticsMode:
+                        type: boolean
+                        description: Enable statistics mode
+                        example: false
+                      diagnosticsMode:
+                        type: boolean
+                        description: Enable diagnostics mode
+                        example: false
+                      debugMode:
+                        type: boolean
+                        description: Enable debug mode
+                        example: false
+                      additionalParams:
+                        type: object
+                        description: Solution-specific parameters with example values
+                        additionalProperties:
+                          type: string
+                        example:
+                          RTSP_URL: "rtsp://example.com/stream"
+                          MODEL_PATH: "./models/example.model"
+                  note:
+                    type: string
+                    description: Note for users
+                    example: "Replace example values with actual values before creating instance"
+              example:
+                solutionId: "face_detection"
+                solutionName: "Face Detection"
+                description: "Example request body for creating an instance with this solution"
+                requestBody:
+                  name: "example_instance"
+                  group: "default"
+                  solution: "face_detection"
+                  persistent: false
+                  autoStart: false
+                  frameRateLimit: 0
+                  detectionSensitivity: "Low"
+                  detectorMode: "SmartDetection"
+                  metadataMode: false
+                  statisticsMode: false
+                  diagnosticsMode: false
+                  debugMode: false
+                  additionalParams:
+                    RTSP_URL: "rtsp://example.com/stream"
+                    MODEL_PATH: "./models/face/yunet.onnx"
+                note: "Replace example values with actual values before creating instance"
+        '404':
+          description: Solution not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+    options:
+      summary: CORS preflight for solution instance body
+      operationId: getSolutionInstanceBodyOptions
       tags:
         - Solutions
       responses:
@@ -5779,7 +6229,7 @@ components:
           additionalProperties:
             type: string
           example:
-            rtsp_url: "rtsp://192.168.1.100:8554/stream1"
+            rtsp_url: "rtsp://localhost:8554/stream1"
             channel: "0"
             resize_ratio: "1.0"
         createdAt:
@@ -5841,7 +6291,7 @@ components:
           additionalProperties:
             type: string
           example:
-            rtsp_url: "rtsp://192.168.1.100:8554/stream1"
+            rtsp_url: "rtsp://localhost:8554/stream1"
             channel: "0"
             resize_ratio: "1.0"
 
@@ -5856,7 +6306,7 @@ components:
           additionalProperties:
             type: string
           example:
-            rtsp_url: "rtsp://192.168.1.200:8554/stream2"
+            rtsp_url: "rtsp://localhost:8554/stream2"
             channel: "0"
             resize_ratio: "0.5"
 
@@ -6090,6 +6540,10 @@ tags:
     description: Group management endpoints for organizing instances (create, list, update, delete)
   - name: Models
     description: Model file management endpoints
+  - name: Video
+    description: Video file management endpoints
+  - name: Fonts
+    description: Font file management endpoints
   - name: Node
     description: Node pool management endpoints for pre-configured nodes and templates (create, list, update, delete, templates, stats)
   - name: Recognition

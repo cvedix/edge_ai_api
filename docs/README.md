@@ -18,13 +18,17 @@ Tài liệu hướng dẫn đầy đủ cho Edge AI API project.
    - Testing APIs
    - Monitoring và logs
 
-3. **[CREATE_INSTANCE_GUIDE.md](CREATE_INSTANCE_GUIDE.md)** - Hướng dẫn chi tiết tạo instance
-   - 16 cases cụ thể với examples đầy đủ
+3. **[INSTANCE_GUIDE.md](INSTANCE_GUIDE.md)** - Hướng dẫn tạo và cập nhật instance
+   - Tổng quan về pipeline và instance
+   - Tạo instance với các loại nodes khác nhau
+   - Cập nhật instance (camelCase và PascalCase)
    - Inference nodes (Detector): TensorRT, RKNN, YOLO, etc.
    - Source nodes (Input): RTSP, File, App, Image, RTMP, UDP
    - Broker nodes (Output): MQTT, Kafka, Socket, Console, XML
-   - Pipeline hoàn chỉnh
-   - Kiểm tra và testing
+   - Flexible Input Source Adaptation (auto-detect input type)
+   - Stream/Record Output API
+   - Node Pool Manager
+   - Ví dụ pipeline hoàn chỉnh
    - Troubleshooting
 
 4. **[DEVELOPMENT_GUIDE.md](DEVELOPMENT_GUIDE.md)** - Hướng dẫn phát triển
@@ -37,27 +41,26 @@ Tài liệu hướng dẫn đầy đủ cho Edge AI API project.
 
 ### 📖 Tài Liệu Kỹ Thuật
 
-5. **[architecture.md](architecture.md)** - Kiến trúc hệ thống
+5. **[ARCHITECTURE.md](ARCHITECTURE.md)** - Architecture & Flow Diagrams
    - System architecture
    - Request flow
    - Component structure
-   - API endpoints diagram
-
-6. **[FLOW_DIAGRAM.md](FLOW_DIAGRAM.md)** - Flow Diagram Tổng Quan
    - Flow tổng quan hệ thống
    - Flow xử lý request chi tiết
    - Flow khởi động server
    - Background services flow
+   - API endpoints diagram
    - Mô tả các component
 
-7. **[HARDWARE_INFO_API.md](HARDWARE_INFO_API.md)** - Hardware Information API
-   - Hướng dẫn sử dụng API lấy thông tin phần cứng
-   - Endpoints: `/v1/core/system/info` và `/v1/core/system/status`
-   - Ví dụ sử dụng với curl, Python, JavaScript
-   - Troubleshooting và best practices
-   - Chi tiết các thông số có thể lấy được
+6. **[API_REFERENCE.md](API_REFERENCE.md)** - Tài Liệu Tham Khảo API (Hợp Nhất)
+   - **Frame API**: Lấy khung hình cuối cùng từ instance
+   - **Statistics API**: Lấy thống kê thời gian thực
+   - **Logs API**: Truy cập và quản lý logs
+   - **Hardware Info API**: Thông tin phần cứng và trạng thái hệ thống
+   - **Config API**: Quản lý cấu hình hệ thống
+   - Tất cả endpoints, ví dụ sử dụng, troubleshooting
 
-8. **[LOGGING.md](LOGGING.md)** - Logging Documentation
+7. **[LOGGING.md](LOGGING.md)** - Logging Documentation
     - Hướng dẫn sử dụng các tính năng logging
     - API logging (`--log-api`)
     - Instance execution logging (`--log-instance`)
@@ -65,84 +68,21 @@ Tài liệu hướng dẫn đầy đủ cho Edge AI API project.
     - Cấu hình và best practices
     - Troubleshooting logging issues
 
-9. **[CONFIG_API_GUIDE.md](CONFIG_API_GUIDE.md)** - Hướng dẫn Config API
-    - Tất cả các endpoint Config API
-    - Cấu trúc config.json chi tiết
-    - Cách config ảnh hưởng đến instance
-    - Ví dụ sử dụng và best practices
-    - Xử lý lỗi
+### 🔧 Configuration & Troubleshooting
 
-10. **[LOGS_API.md](LOGS_API.md)** - Logs API Documentation
-    - Hướng dẫn sử dụng Logs API endpoints
-    - List log files theo category
-    - Get logs với filtering (level, time range, tail)
-    - Ví dụ sử dụng với curl
-    - Use cases và best practices
-
-11. **[STATISTICS_API.md](STATISTICS_API.md)** - Statistics API Documentation
-    - Hướng dẫn sử dụng Statistics API endpoint
-    - Lấy thống kê thời gian thực của instance
-    - Endpoint: `/v1/core/instance/{instanceId}/statistics`
-    - Ví dụ sử dụng với curl, Python, JavaScript
-    - Use cases: monitoring, alerting, dashboard
-    - Troubleshooting và best practices
-
-12. **[FRAME_API.md](FRAME_API.md)** - Frame API Documentation
-    - Hướng dẫn sử dụng Frame API endpoint
-    - Lấy khung hình cuối cùng từ instance đang chạy
-    - Endpoint: `/v1/core/instances/{instanceId}/frame`
-    - Frame được encode thành JPEG base64 format
-    - Yêu cầu pipeline có app_des_node
-    - Ví dụ sử dụng với curl, Python, JavaScript, HTML
-    - Use cases: live preview, thumbnail generation, monitoring
-    - Troubleshooting và best practices
-
-### 🔧 Troubleshooting & Guides
-
-13. **[QUEUE_MONITORING.md](QUEUE_MONITORING.md)** - Queue Monitoring và Auto-Clear
-    - QueueMonitor class
-    - Queue monitoring thread
-    - Cơ chế phát hiện queue issues
-    - Auto-restart instance
-    - Configuration và tuning
-
-14. **[MQTT_GUIDE.md](MQTT_GUIDE.md)** - MQTT Implementation Guide
-    - Non-blocking MQTT publisher
-    - Background thread implementation
-    - MQTT debug guide
-    - CVEDIX JSON MQTT Broker Node API
-    - Troubleshooting
-
-15. **[ENVIRONMENT_VARIABLES.md](ENVIRONMENT_VARIABLES.md)** - Environment Variables Documentation
+8. **[ENVIRONMENT_VARIABLES.md](ENVIRONMENT_VARIABLES.md)** - Environment Variables Documentation
     - Danh sách đầy đủ các biến môi trường
     - Cách sử dụng .env file
     - Cấu hình server, logging, storage
     - Performance tuning
 
-16. **[DIRECTORY_CREATION_GUIDE.md](DIRECTORY_CREATION_GUIDE.md)** - Directory Creation Guide
-    - Hướng dẫn tạo thư mục tự động với fallback
-    - Cấu trúc thư mục production
-    - Xử lý quyền truy cập
+9. **[DEFAULT_SOLUTIONS_REFERENCE.md](DEFAULT_SOLUTIONS_REFERENCE.md)** - Default Solutions Reference
+   - Danh sách các default solutions có sẵn
+   - Chi tiết pipeline và parameters
+   - Cách thêm/cập nhật default solutions
+   - Quick start guide
 
-### ⚡ Performance Optimization
 
-17. **[OPTIMIZATION_README.md](OPTIMIZATION_README.md)** - Performance Optimization Overview
-    - Tổng quan về các optimizations đã thực hiện
-    - Kết quả cải thiện performance
-    - Links đến các tài liệu chi tiết
-
-18. **[OPTIMIZATION_COMPLETE_REPORT.md](OPTIMIZATION_COMPLETE_REPORT.md)** - Báo Cáo Tổng Hợp Optimization
-    - Tổng hợp tất cả 3 phases optimization
-    - Kết quả chi tiết và metrics
-    - Code changes và impact
-
-### 🛠️ Development Tools & Analysis
-
-19. **[SCRIPTS_ANALYSIS.md](SCRIPTS_ANALYSIS.md)** - Phân tích và tối ưu Scripts
-    - Phân tích tất cả scripts trong project
-    - Đề xuất scripts nào cần giữ lại
-    - Hướng dẫn sử dụng setup.sh và fix_all_symlinks.sh
-    - Cấu trúc scripts đề xuất
 
 ## 🎯 Quick Start
 
@@ -176,7 +116,6 @@ Tài liệu hướng dẫn đầy đủ cho Edge AI API project.
 ## 🔗 Liên Kết Nhanh
 
 - [Project README](../README.md)
-- [Quick Start Guide](../QUICK_START.md)
 - [OpenAPI Specification](../openapi.yaml)
 - [Tests README](../tests/README.md)
 

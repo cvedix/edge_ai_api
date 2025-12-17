@@ -1,0 +1,131 @@
+#!/usr/bin/make -f
+# -*- makefile -*-
+
+# Uncomment this to turn on verbose mode.
+#export DH_VERBOSE=1
+
+# Build configuration
+CMAKE_BUILD_TYPE ?= Release
+CMAKE_FLAGS = -DCMAKE_BUILD_TYPE=$(CMAKE_BUILD_TYPE) \
+              -DCMAKE_INSTALL_PREFIX=/usr \
+              -DAUTO_DOWNLOAD_DEPENDENCIES=ON \
+              -DDROGON_USE_FETCHCONTENT=ON
+
+# Package configuration
+PACKAGE_NAME = edge-ai-api
+INSTALL_DIR = /opt/edge_ai_api
+BIN_DIR = /usr/local/bin
+LIB_DIR = /opt/edge_ai_api/lib
+SERVICE_USER = edgeai
+SERVICE_GROUP = edgeai
+
+%:
+	dh $@
+
+override_dh_auto_configure:
+	# Create build directory
+	mkdir -p $(CURDIR)/build
+	cd $(CURDIR)/build && cmake .. $(CMAKE_FLAGS)
+
+override_dh_auto_build:
+	# Build project
+	cd $(CURDIR)/build && make -j$$(nproc)
+
+override_dh_auto_install:
+	# Install executable - check multiple possible locations
+	install -d $(CURDIR)/debian/$(PACKAGE_NAME)$(BIN_DIR)
+	@if [ -f $(CURDIR)/build/bin/edge_ai_api ]; then \
+		echo "Installing executable from build/bin/edge_ai_api"; \
+		install -m 755 $(CURDIR)/build/bin/edge_ai_api $(CURDIR)/debian/$(PACKAGE_NAME)$(BIN_DIR)/edge_ai_api; \
+	elif [ -f $(CURDIR)/build/edge_ai_api ]; then \
+		echo "Installing executable from build/edge_ai_api"; \
+		install -m 755 $(CURDIR)/build/edge_ai_api $(CURDIR)/debian/$(PACKAGE_NAME)$(BIN_DIR)/edge_ai_api; \
+	else \
+		echo "Error: Executable not found in build directory"; \
+		echo "Checked: $(CURDIR)/build/bin/edge_ai_api"; \
+		echo "Checked: $(CURDIR)/build/edge_ai_api"; \
+		ls -la $(CURDIR)/build/bin/ 2>/dev/null || echo "build/bin does not exist"; \
+		ls -la $(CURDIR)/build/edge_ai_api 2>/dev/null || echo "build/edge_ai_api does not exist"; \
+		exit 1; \
+	fi
+	
+	# Install bundled libraries - bundle directly from executable
+	# Ensure lib directory exists
+	install -d $(CURDIR)/debian/$(PACKAGE_NAME)$(LIB_DIR)
+	# Find executable and bundle libraries
+	@EXEC_PATH=""; \
+	if [ -f $(CURDIR)/build/bin/edge_ai_api ]; then \
+		EXEC_PATH="$(CURDIR)/build/bin/edge_ai_api"; \
+	elif [ -f $(CURDIR)/build/edge_ai_api ]; then \
+		EXEC_PATH="$(CURDIR)/build/edge_ai_api"; \
+	fi; \
+	if [ -n "$$EXEC_PATH" ] && [ -f "$$EXEC_PATH" ]; then \
+		LIB_TEMP_DIR=$(CURDIR)/debian/$(PACKAGE_NAME)$(LIB_DIR); \
+		$(CURDIR)/debian/bundle_libs.sh "$$EXEC_PATH" "$$LIB_TEMP_DIR" || true; \
+	fi; \
+	# Also try to copy from pre-bundled location if exists (from build_deb.sh, before dh clean)
+	if [ -d $(CURDIR)/debian/edge-ai-api/opt/edge_ai_api/lib ] && [ "$$(ls -A $(CURDIR)/debian/edge-ai-api/opt/edge_ai_api/lib 2>/dev/null)" ]; then \
+		echo "Copying pre-bundled libraries..."; \
+		cp -r $(CURDIR)/debian/edge-ai-api/opt/edge_ai_api/lib/* $(CURDIR)/debian/$(PACKAGE_NAME)$(LIB_DIR)/ 2>/dev/null || true; \
+	fi
+	
+	# Update RPATH in executable to use bundled libraries
+	# RPATH: /opt/edge_ai_api/lib (relative to executable at /usr/local/bin)
+	if command -v patchelf >/dev/null 2>&1; then \
+		patchelf --set-rpath "/opt/edge_ai_api/lib" $(CURDIR)/debian/$(PACKAGE_NAME)$(BIN_DIR)/edge_ai_api 2>/dev/null || true; \
+	fi
+	
+	# Install systemd service
+	install -d $(CURDIR)/debian/$(PACKAGE_NAME)/etc/systemd/system
+	install -m 644 $(CURDIR)/deploy/edge-ai-api.service $(CURDIR)/debian/$(PACKAGE_NAME)/etc/systemd/system/edge-ai-api.service
+	
+	# Install config files
+	install -d $(CURDIR)/debian/$(PACKAGE_NAME)$(INSTALL_DIR)/config
+	install -m 644 $(CURDIR)/config.json $(CURDIR)/debian/$(PACKAGE_NAME)$(INSTALL_DIR)/config/config.json
+	
+	# Create directory structure from directories.conf
+	# Read directories.conf directly (Makefile uses /bin/sh, not bash)
+	@DIRS_CONF=$(CURDIR)/deploy/directories.conf; \
+	if [ -f $$DIRS_CONF ]; then \
+		echo "Reading directories from $$DIRS_CONF"; \
+		DIR_LIST=$$(grep -E '^\s*\["' $$DIRS_CONF | sed 's/.*\["\([^"]*\)"\].*/\1/' | tr '\n' ' '); \
+		for dir in $$DIR_LIST; do \
+			install -d $(CURDIR)/debian/$(PACKAGE_NAME)$(INSTALL_DIR)/$$dir; \
+		done; \
+	else \
+		echo "Warning: directories.conf not found, using fallback"; \
+		install -d $(CURDIR)/debian/$(PACKAGE_NAME)$(INSTALL_DIR)/instances; \
+		install -d $(CURDIR)/debian/$(PACKAGE_NAME)$(INSTALL_DIR)/solutions; \
+		install -d $(CURDIR)/debian/$(PACKAGE_NAME)$(INSTALL_DIR)/groups; \
+		install -d $(CURDIR)/debian/$(PACKAGE_NAME)$(INSTALL_DIR)/models; \
+		install -d $(CURDIR)/debian/$(PACKAGE_NAME)$(INSTALL_DIR)/logs; \
+		install -d $(CURDIR)/debian/$(PACKAGE_NAME)$(INSTALL_DIR)/data; \
+		install -d $(CURDIR)/debian/$(PACKAGE_NAME)$(INSTALL_DIR)/config; \
+		install -d $(CURDIR)/debian/$(PACKAGE_NAME)$(INSTALL_DIR)/uploads; \
+		install -d $(CURDIR)/debian/$(PACKAGE_NAME)$(INSTALL_DIR)/lib; \
+		install -d $(CURDIR)/debian/$(PACKAGE_NAME)$(INSTALL_DIR)/nodes; \
+		install -d $(CURDIR)/debian/$(PACKAGE_NAME)$(INSTALL_DIR)/videos; \
+		install -d $(CURDIR)/debian/$(PACKAGE_NAME)$(INSTALL_DIR)/fonts; \
+	fi
+	
+	# Install README
+	install -d $(CURDIR)/debian/$(PACKAGE_NAME)$(INSTALL_DIR)
+	install -m 644 $(CURDIR)/README.md $(CURDIR)/debian/$(PACKAGE_NAME)$(INSTALL_DIR)/README.md
+	
+	# Install OpenAPI specification file
+	install -m 644 $(CURDIR)/openapi.yaml $(CURDIR)/debian/$(PACKAGE_NAME)$(INSTALL_DIR)/openapi.yaml
+
+override_dh_shlibdeps:
+	# Skip automatic shlibdeps - we bundle libraries ourselves
+	:
+
+override_dh_usrlocal:
+	# Skip dh_usrlocal - we handle /usr/local/bin installation ourselves
+	:
+
+override_dh_strip:
+	# Strip binaries (without creating separate debug package)
+	dh_strip
+
+.PHONY: override_dh_auto_configure override_dh_auto_build override_dh_auto_install override_dh_shlibdeps override_dh_usrlocal override_dh_strip
+

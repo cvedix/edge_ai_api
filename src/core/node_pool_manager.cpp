@@ -223,6 +223,19 @@ void NodePoolManager::initializeDefaultTemplates() {
     faceOSD.isPreConfigured = true;  // No parameters needed
     templates_[faceOSD.templateId] = faceOSD;
     
+    // OSD v3 (for masks and labels)
+    NodeTemplate osdV3;
+    osdV3.templateId = "osd_v3_template";
+    osdV3.nodeType = "osd_v3";
+    osdV3.displayName = "OSD v3";
+    osdV3.description = "Overlay masks and labels (for Mask R-CNN, segmentation, etc.)";
+    osdV3.category = "processor";
+    osdV3.defaultParameters["font_path"] = "";
+    osdV3.requiredParameters = {};
+    osdV3.optionalParameters = {"font_path"};
+    osdV3.isPreConfigured = true;
+    templates_[osdV3.templateId] = osdV3;
+    
     // BA Crossline
     NodeTemplate baCrossline;
     baCrossline.templateId = "ba_crossline_template";
@@ -748,6 +761,12 @@ std::string NodePoolManager::generateNodeId() const {
     return ss.str();
 }
 
+std::string NodePoolManager::generateDefaultNodeId(const std::string& nodeType) const {
+    std::stringstream ss;
+    ss << "node_" << nodeType << "_default";
+    return ss.str();
+}
+
 bool NodePoolManager::hasDefaultNodes(SolutionRegistry& solutionRegistry) const {
     std::shared_lock<std::shared_timed_mutex> lock(mutex_);
     
@@ -832,7 +851,7 @@ size_t NodePoolManager::createDefaultNodesFromTemplates() {
         
         // Create pre-configured node
         PreConfiguredNode node;
-        node.nodeId = generateNodeId();
+        node.nodeId = generateDefaultNodeId(nodeTemplate.nodeType);
         node.templateId = templateId;
         node.parameters = nodeParams;
         node.inUse = false;
@@ -954,7 +973,7 @@ size_t NodePoolManager::createNodesFromDefaultSolutions(SolutionRegistry& soluti
             
             // Create pre-configured node
             PreConfiguredNode node;
-            node.nodeId = generateNodeId();
+            node.nodeId = generateDefaultNodeId(nodeType);
             node.templateId = templateId;
             node.parameters = nodeParams;
             node.inUse = false;
@@ -971,6 +990,141 @@ size_t NodePoolManager::createNodesFromDefaultSolutions(SolutionRegistry& soluti
     }
     
     std::cerr << "[NodePoolManager] Created " << nodesCreated << " pre-configured nodes from default solutions" << std::endl;
+    return nodesCreated;
+}
+
+size_t NodePoolManager::createNodesFromSolution(const SolutionConfig& solutionConfig) {
+    std::unique_lock<std::shared_timed_mutex> lock(mutex_);
+    
+    // Map to track node types we've already created nodes for
+    std::set<std::string> createdNodeTypes;
+    
+    // Check existing nodes to see what types we already have
+    for (const auto& [nodeId, node] : preConfiguredNodes_) {
+        auto templateIt = templates_.find(node.templateId);
+        if (templateIt != templates_.end()) {
+            createdNodeTypes.insert(templateIt->second.nodeType);
+        }
+    }
+    
+    // Map nodeType to templateId
+    std::map<std::string, std::string> nodeTypeToTemplateId;
+    for (const auto& [templateId, template_] : templates_) {
+        nodeTypeToTemplateId[template_.nodeType] = templateId;
+    }
+    
+    size_t nodesCreated = 0;
+    
+    // Extract unique node types from this solution's pipeline
+    for (const auto& nodeConfig : solutionConfig.pipeline) {
+        const std::string& nodeType = nodeConfig.nodeType;
+        
+        // Skip if we've already created a node for this type
+        if (createdNodeTypes.find(nodeType) != createdNodeTypes.end()) {
+            continue;
+        }
+        
+        // Find template for this node type
+        auto templateIt = nodeTypeToTemplateId.find(nodeType);
+        if (templateIt == nodeTypeToTemplateId.end()) {
+            std::cerr << "[NodePoolManager] Warning: No template found for node type: " << nodeType 
+                      << " in solution: " << solutionConfig.solutionId << std::endl;
+            continue;
+        }
+        
+        const std::string& templateId = templateIt->second;
+        auto templateIt2 = templates_.find(templateId);
+        if (templateIt2 == templates_.end()) {
+            std::cerr << "[NodePoolManager] Warning: Template not found: " << templateId << std::endl;
+            continue;
+        }
+        
+        const auto& nodeTemplate = templateIt2->second;
+        
+        // Check if we can create a node (skip if required parameters have placeholders)
+        bool canCreate = true;
+        std::map<std::string, std::string> nodeParams;
+        
+        // Use parameters from solution config, but replace placeholders with defaults
+        for (const auto& [key, value] : nodeConfig.parameters) {
+            // Skip placeholders like ${RTSP_URL}, ${MODEL_PATH}, etc.
+            if (value.size() > 2 && value[0] == '$' && value[1] == '{') {
+                // This is a placeholder, use default from template if available
+                if (nodeTemplate.defaultParameters.find(key) != nodeTemplate.defaultParameters.end()) {
+                    nodeParams[key] = nodeTemplate.defaultParameters.at(key);
+                } else {
+                    // Required parameter has placeholder and no default - skip this node
+                    canCreate = false;
+                    break;
+                }
+            } else {
+                nodeParams[key] = value;
+            }
+        }
+        
+        // Add default parameters from template
+        for (const auto& [key, value] : nodeTemplate.defaultParameters) {
+            if (nodeParams.find(key) == nodeParams.end()) {
+                nodeParams[key] = value;
+            }
+        }
+        
+        // Check required parameters
+        for (const auto& required : nodeTemplate.requiredParameters) {
+            if (nodeParams.find(required) == nodeParams.end()) {
+                // Missing required parameter - skip this node
+                canCreate = false;
+                break;
+            }
+        }
+        
+        if (!canCreate) {
+            std::cerr << "[NodePoolManager] Skipping node type " << nodeType 
+                      << " in solution " << solutionConfig.solutionId
+                      << " - missing required parameters or placeholders" << std::endl;
+            continue;
+        }
+        
+        // Create pre-configured node
+        PreConfiguredNode node;
+        // Use default node ID only if this is a default solution
+        // User-created solutions should create regular nodes (not default nodes)
+        if (solutionConfig.isDefault) {
+            node.nodeId = generateDefaultNodeId(nodeType);
+        } else {
+            // For custom solutions, create regular node ID (user-created node)
+            node.nodeId = generateNodeId();
+        }
+        node.templateId = templateId;
+        node.parameters = nodeParams;
+        node.inUse = false;
+        node.createdAt = std::chrono::steady_clock::now();
+        node.node = nullptr; // Will be created when needed
+        
+        preConfiguredNodes_[node.nodeId] = node;
+        createdNodeTypes.insert(nodeType);
+        nodesCreated++;
+        
+        if (solutionConfig.isDefault) {
+            std::cerr << "[NodePoolManager] Created default node from solution: " << node.nodeId 
+                      << " (type: " << nodeType << ", template: " << templateId 
+                      << ", solution: " << solutionConfig.solutionId << ")" << std::endl;
+        } else {
+            std::cerr << "[NodePoolManager] Created node from custom solution: " << node.nodeId 
+                      << " (type: " << nodeType << ", template: " << templateId 
+                      << ", solution: " << solutionConfig.solutionId << ")" << std::endl;
+        }
+    }
+    
+    if (nodesCreated > 0) {
+        if (solutionConfig.isDefault) {
+            std::cerr << "[NodePoolManager] Created " << nodesCreated << " default nodes from solution: " 
+                      << solutionConfig.solutionId << std::endl;
+        } else {
+            std::cerr << "[NodePoolManager] Created " << nodesCreated << " nodes from custom solution: " 
+                      << solutionConfig.solutionId << std::endl;
+        }
+    }
     return nodesCreated;
 }
 

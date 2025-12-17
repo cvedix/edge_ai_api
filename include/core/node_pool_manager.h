@@ -177,6 +177,15 @@ public:
     size_t createNodesFromDefaultSolutions(SolutionRegistry& solutionRegistry);
     
     /**
+     * @brief Create pre-configured nodes from a specific solution
+     * Extracts unique node types from the solution and creates default nodes
+     * Only creates nodes for types that don't already exist
+     * @param solutionConfig Solution configuration
+     * @return Number of nodes created
+     */
+    size_t createNodesFromSolution(const SolutionConfig& solutionConfig);
+    
+    /**
      * @brief Load pre-configured nodes from storage and merge with existing nodes
      * @param nodeStorage Reference to node storage
      * @return Number of nodes loaded and added
@@ -212,5 +221,12 @@ private:
      * @brief Generate unique node ID
      */
     std::string generateNodeId() const;
+    
+    /**
+     * @brief Generate node ID for default/preconfigured nodes based on nodeType
+     * @param nodeType The node type (e.g., "broker", "file_des", "app_src")
+     * @return Node ID in format: node_<nodeType>_default
+     */
+    std::string generateDefaultNodeId(const std::string& nodeType) const;
 };
 

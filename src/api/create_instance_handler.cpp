@@ -111,15 +111,51 @@ void CreateInstanceHandler::createInstance(
         }
         
         // Create instance
-        std::string instanceId = instance_registry_->createInstance(createReq);
+        std::string instanceId;
+        try {
+            instanceId = instance_registry_->createInstance(createReq);
+        } catch (const std::invalid_argument& e) {
+            auto end_time = std::chrono::steady_clock::now();
+            auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(end_time - start_time);
+            if (isApiLoggingEnabled()) {
+                PLOG_ERROR << "[API] POST /v1/core/instance - Invalid argument: " << e.what() << " - " << duration.count() << "ms";
+            }
+            callback(createErrorResponse(400, "Invalid request", e.what()));
+            return;
+        } catch (const std::runtime_error& e) {
+            auto end_time = std::chrono::steady_clock::now();
+            auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(end_time - start_time);
+            if (isApiLoggingEnabled()) {
+                PLOG_ERROR << "[API] POST /v1/core/instance - Runtime error: " << e.what() << " - " << duration.count() << "ms";
+            }
+            callback(createErrorResponse(500, "Failed to create instance", e.what()));
+            return;
+        } catch (const std::exception& e) {
+            auto end_time = std::chrono::steady_clock::now();
+            auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(end_time - start_time);
+            if (isApiLoggingEnabled()) {
+                PLOG_ERROR << "[API] POST /v1/core/instance - Exception: " << e.what() << " - " << duration.count() << "ms";
+            }
+            callback(createErrorResponse(500, "Failed to create instance", std::string("Error: ") + e.what()));
+            return;
+        } catch (...) {
+            auto end_time = std::chrono::steady_clock::now();
+            auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(end_time - start_time);
+            if (isApiLoggingEnabled()) {
+                PLOG_ERROR << "[API] POST /v1/core/instance - Unknown error - " << duration.count() << "ms";
+            }
+            callback(createErrorResponse(500, "Failed to create instance", "Unknown error occurred while creating instance"));
+            return;
+        }
+        
         auto end_time = std::chrono::steady_clock::now();
         auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(end_time - start_time);
         
         if (instanceId.empty()) {
             if (isApiLoggingEnabled()) {
-                PLOG_ERROR << "[API] POST /v1/core/instance - Failed to create instance - " << duration.count() << "ms";
+                PLOG_ERROR << "[API] POST /v1/core/instance - Failed to create instance (empty ID) - " << duration.count() << "ms";
             }
-            callback(createErrorResponse(500, "Failed to create instance", "Could not create instance. Check solution ID and parameters."));
+            callback(createErrorResponse(500, "Failed to create instance", "Instance creation returned empty ID. This should not happen."));
             return;
         }
         
@@ -313,15 +349,44 @@ bool CreateInstanceHandler::parseRequest(
         return str.substr(first, (last - first + 1));
     };
     
+    // Parse additionalParams - support both new structure (input/output) and old structure (flat)
     if (json.isMember("additionalParams") && json["additionalParams"].isObject()) {
-        for (const auto& key : json["additionalParams"].getMemberNames()) {
-            if (json["additionalParams"][key].isString()) {
-                std::string value = json["additionalParams"][key].asString();
-                // Trim RTMP URLs to prevent GStreamer pipeline errors
-                if (key == "RTMP_URL" || key == "RTMP_DES_URL") {
-                    value = trim(value);
+        // Check if using new structure (input/output)
+        if (json["additionalParams"].isMember("input") && json["additionalParams"]["input"].isObject()) {
+            // New structure: parse input section
+            for (const auto& key : json["additionalParams"]["input"].getMemberNames()) {
+                if (json["additionalParams"]["input"][key].isString()) {
+                    std::string value = json["additionalParams"]["input"][key].asString();
+                    req.additionalParams[key] = value;
                 }
-                req.additionalParams[key] = value;
+            }
+        }
+        
+        if (json["additionalParams"].isMember("output") && json["additionalParams"]["output"].isObject()) {
+            // New structure: parse output section
+            for (const auto& key : json["additionalParams"]["output"].getMemberNames()) {
+                if (json["additionalParams"]["output"][key].isString()) {
+                    std::string value = json["additionalParams"]["output"][key].asString();
+                    // Trim RTMP URLs to prevent GStreamer pipeline errors
+                    if (key == "RTMP_URL" || key == "RTMP_DES_URL") {
+                        value = trim(value);
+                    }
+                    req.additionalParams[key] = value;
+                }
+            }
+        }
+        
+        // Backward compatibility: if no input/output sections, parse as flat structure
+        if (!json["additionalParams"].isMember("input") && !json["additionalParams"].isMember("output")) {
+            for (const auto& key : json["additionalParams"].getMemberNames()) {
+                if (json["additionalParams"][key].isString()) {
+                    std::string value = json["additionalParams"][key].asString();
+                    // Trim RTMP URLs to prevent GStreamer pipeline errors
+                    if (key == "RTMP_URL" || key == "RTMP_DES_URL") {
+                        value = trim(value);
+                    }
+                    req.additionalParams[key] = value;
+                }
             }
         }
     }

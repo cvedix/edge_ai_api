@@ -1,0 +1,30 @@
+{
+  "name": "ba_crossline_in_rtsp_out_mqtt_only",
+  "group": "demo",
+  "solution": "ba_crossline_with_mqtt",
+  "autoStart": false,
+  "additionalParams": {
+    "input": {
+      "RTSP_SRC_URL": "rtsp://localhost:8554/mystream",
+      "WEIGHTS_PATH": "/home/cvedix/project/edge_ai_api/cvedix_data/models/det_cls/yolov3-tiny-2022-0721_best.weights",
+      "CONFIG_PATH": "/home/cvedix/project/edge_ai_api/cvedix_data/models/det_cls/yolov3-tiny-2022-0721.cfg",
+      "LABELS_PATH": "/home/cvedix/project/edge_ai_api/cvedix_data/models/det_cls/yolov3_tiny_5classes.txt",
+      "RESIZE_RATIO": "0.05",
+      "RTSP_TRANSPORT": "tcp",
+      "GST_DECODER_NAME": "avdec_h264",
+      "SKIP_INTERVAL": "9",
+      "CODEC_TYPE": "h264"
+    },
+    "output": {
+      "ENABLE_SCREEN_DES": "false",
+      "BROKE_FOR": "NORMAL",
+      "MQTT_BROKER_URL": "mqtt.goads.com.vn",
+      "MQTT_PORT": "1883",
+      "MQTT_TOPIC": "ba_crossline/events",
+      "MQTT_USERNAME": "",
+      "MQTT_PASSWORD": "",
+      "MQTT_RATE_LIMIT_MS": "2000",
+      "PROCESSING_DELAY_MS": "0"
+    }
+  }
+}

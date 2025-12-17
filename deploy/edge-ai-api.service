@@ -1,6 +1,6 @@
 [Unit]
 Description=Edge AI API Server
-Documentation=https://github.com/your-org/edge_ai_api
+Documentation=https://github.com/cvedix/edge_ai_api
 After=network.target
 
 [Service]
