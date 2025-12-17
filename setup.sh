@@ -2,7 +2,7 @@
 # ============================================
 # Edge AI API - Complete Setup Script
 # ============================================
-# 
+#
 # Script này tự động setup và start server từ đầu đến cuối:
 # 1. Kiểm tra prerequisites
 # 2. Cài đặt system dependencies
@@ -155,8 +155,8 @@ if command -v cmake &> /dev/null; then
     CMAKE_VERSION=$(cmake --version | head -n1 | cut -d' ' -f3)
     CMAKE_MAJOR=$(echo $CMAKE_VERSION | cut -d'.' -f1)
     CMAKE_MINOR=$(echo $CMAKE_VERSION | cut -d'.' -f2)
-    
-    if [ "$CMAKE_MAJOR" -lt 3 ] || ([ "$CMAKE_MAJOR" -eq 3 ] && [ "$CMAKE_MINOR" -lt 14 ]); then
+
+    if [ "$CMAKE_MAJOR" -lt 3 ] || { [ "$CMAKE_MAJOR" -eq 3 ] && [ "$CMAKE_MINOR" -lt 14 ]; }; then
         echo -e "${YELLOW}⚠${NC}  CMake version $CMAKE_VERSION is too old (need 3.14+)"
         if [ "$SKIP_DEPS" = false ]; then
             echo "  Will try to install newer version"
@@ -176,22 +176,22 @@ echo ""
 # ============================================
 if [ "$SKIP_DEPS" = false ]; then
     echo -e "${BLUE}[2/5]${NC} Cài đặt system dependencies..."
-    
+
     if [ "$OS" = "ubuntu" ] || [ "$OS" = "debian" ]; then
         echo "Installing dependencies for Ubuntu/Debian..."
-        
+
         # Update package list (continue even if some repos fail)
         set +e
         apt-get update > /dev/null 2>&1
         UPDATE_EXIT_CODE=$?
         set -e
-        
+
         if [ $UPDATE_EXIT_CODE -eq 0 ]; then
             echo -e "${GREEN}✓${NC} Package lists updated"
         else
             echo -e "${YELLOW}⚠${NC}  Some repositories had errors (continuing anyway)"
         fi
-        
+
         # Install dependencies
         set +e
         apt-get install -y \
@@ -206,17 +206,17 @@ if [ "$SKIP_DEPS" = false ]; then
             > /dev/null 2>&1
         INSTALL_EXIT_CODE=$?
         set -e
-        
+
         if [ $INSTALL_EXIT_CODE -eq 0 ]; then
             echo -e "${GREEN}✓${NC} Dependencies installed successfully"
         else
             echo -e "${YELLOW}⚠${NC}  Some packages failed to install"
             echo "  This might be OK if packages are already installed"
         fi
-        
+
     elif [ "$OS" = "centos" ] || [ "$OS" = "rhel" ] || [ "$OS" = "fedora" ]; then
         echo "Installing dependencies for CentOS/RHEL/Fedora..."
-        
+
         if command -v dnf &> /dev/null; then
             dnf install -y \
                 gcc-c++ \
@@ -240,7 +240,7 @@ if [ "$SKIP_DEPS" = false ]; then
                 pkgconfig \
                 > /dev/null 2>&1
         fi
-        
+
         echo -e "${GREEN}✓${NC} Dependencies installed successfully"
     else
         echo -e "${YELLOW}⚠${NC}  Unknown OS. Please install dependencies manually"
@@ -257,21 +257,21 @@ fi
 if [ "$SKIP_BUILD" = false ]; then
     echo -e "${BLUE}[3/5]${NC} Build project..."
     cd "$PROJECT_ROOT" || exit 1
-    
+
     # Check if CMakeLists.txt exists
     if [ ! -f "CMakeLists.txt" ]; then
         echo -e "${RED}Error: Không tìm thấy CMakeLists.txt trong $PROJECT_ROOT${NC}"
         exit 1
     fi
-    
+
     # Create build directory if not exists
     if [ ! -d "build" ]; then
         echo "Tạo thư mục build..."
         mkdir -p build
     fi
-    
+
     cd build
-    
+
     # Configure with CMake
     if [ ! -f "CMakeCache.txt" ]; then
         echo "Chạy CMake configuration..."
@@ -282,7 +282,7 @@ if [ "$SKIP_BUILD" = false ]; then
     else
         echo "CMake đã được cấu hình, chỉ build..."
     fi
-    
+
     # Build project
     echo "Build project (sử dụng tất cả CPU cores)..."
     CPU_CORES=$(nproc)
@@ -291,7 +291,7 @@ if [ "$SKIP_BUILD" = false ]; then
         echo -e "${RED}Error: Build failed${NC}"
         exit 1
     fi
-    
+
     cd ..
     echo -e "${GREEN}✓${NC} Build hoàn tất!"
     echo ""
@@ -305,7 +305,7 @@ fi
 # ============================================
 if [ "$NO_SERVICE" = false ] && [ "$PRODUCTION_MODE" = true ]; then
     echo -e "${BLUE}[4/5]${NC} Setup systemd service..."
-    
+
     # Check if deploy/build.sh exists (use it for production setup)
     if [ -f "$PROJECT_ROOT/deploy/build.sh" ]; then
         echo "Sử dụng deploy/build.sh để setup production..."
@@ -334,21 +334,21 @@ fi
 if [ "$START_SERVER" = true ]; then
     echo -e "${BLUE}[5/5]${NC} Khởi động server..."
     cd "$PROJECT_ROOT" || exit 1
-    
+
     # Find executable
     EXECUTABLE=""
     EXECUTABLE_PATHS=(
         "$PROJECT_ROOT/build/bin/edge_ai_api"
         "$PROJECT_ROOT/build/edge_ai_api"
     )
-    
+
     for path in "${EXECUTABLE_PATHS[@]}"; do
         if [ -f "$path" ] && [ -x "$path" ]; then
             EXECUTABLE="$path"
             break
         fi
     done
-    
+
     if [ -z "$EXECUTABLE" ]; then
         echo -e "${RED}Error: Không tìm thấy executable${NC}"
         echo "Đã kiểm tra các vị trí sau:"
@@ -359,7 +359,7 @@ if [ "$START_SERVER" = true ]; then
         echo "Vui lòng build project trước hoặc bỏ --skip-build"
         exit 1
     fi
-    
+
     # Check if service is running (production mode)
     if [ "$PRODUCTION_MODE" = true ] && [ "$NO_SERVICE" = false ]; then
         if systemctl is-active --quiet "${SERVICE_NAME}.service" 2>/dev/null; then
@@ -367,7 +367,7 @@ if [ "$START_SERVER" = true ]; then
             echo ""
             echo "Kiểm tra trạng thái:"
             systemctl status "${SERVICE_NAME}.service" --no-pager -l | head -n 10
-            
+
             # Try to get API endpoint info
             echo ""
             echo "Kiểm tra API endpoint..."
@@ -389,7 +389,7 @@ if [ "$START_SERVER" = true ]; then
         # Development mode - run directly
         echo "Executable: $EXECUTABLE"
         echo ""
-        
+
         # Check for .env file
         if [ -f "$PROJECT_ROOT/.env" ]; then
             echo "Tìm thấy file .env, sử dụng script load_env.sh..."
@@ -450,4 +450,3 @@ echo "  docs/DEVELOPMENT_SETUP.md  - Hướng dẫn setup môi trường phát t
 echo "  docs/GETTING_STARTED.md    - Hướng dẫn khởi động và sử dụng"
 echo "  deploy/README.md           - Hướng dẫn triển khai production"
 echo ""
-

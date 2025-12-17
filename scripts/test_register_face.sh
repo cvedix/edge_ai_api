@@ -2,7 +2,7 @@
 # ============================================
 # Test Script: Register Face Subject với File Upload
 # ============================================
-# 
+#
 # Script này test API POST register face subject với file upload trực tiếp
 # Hỗ trợ các định dạng: jpeg, jpg, ico, png, bmp, gif, tif, tiff, webp
 #
@@ -131,7 +131,7 @@ echo ""
 # Check if successful
 if [ "$HTTP_STATUS" = "200" ]; then
     echo -e "${GREEN}✓ Success! Face subject đã được đăng ký${NC}"
-    
+
     # Extract image_id if available
     if command -v python3 &> /dev/null; then
         IMAGE_ID=$(echo "$BODY" | python3 -c "import sys, json; data=json.load(sys.stdin); print(data.get('image_id', ''))" 2>/dev/null)
@@ -139,7 +139,7 @@ if [ "$HTTP_STATUS" = "200" ]; then
             echo "Image ID: $IMAGE_ID"
         fi
     fi
-    
+
     echo ""
     echo -e "${BLUE}Kiểm tra database:${NC}"
     echo "curl -s \"$API_URL/v1/recognition/faces?page=0&size=10\" | python3 -m json.tool"
@@ -148,4 +148,3 @@ else
     echo -e "${RED}✗ Failed! HTTP Status: $HTTP_STATUS${NC}"
     exit 1
 fi
-

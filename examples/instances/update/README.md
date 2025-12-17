@@ -23,4 +23,3 @@ curl -X PUT http://localhost:8080/v1/core/instance/{instanceId} \
 - Cần thay thế `{instanceId}` bằng instance ID thực tế
 - Chỉ các fields được cung cấp trong request sẽ được cập nhật
 - Các fields khác sẽ giữ nguyên giá trị hiện tại
-

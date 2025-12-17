@@ -18,4 +18,3 @@ if systemctl is-enabled --quiet "${SERVICE_NAME}.service" 2>/dev/null; then
 fi
 
 exit 0
-

@@ -62,14 +62,14 @@ PREV_FILE_COUNT=0
 while true; do
     # Get instance info
     INSTANCE_INFO=$(curl -s "${API_BASE}/instances/${INSTANCE_ID}" 2>/dev/null)
-    
+
     if [ $? -ne 0 ] || [ -z "$INSTANCE_INFO" ]; then
         clear_line
         echo -e "${RED}✗${NC} Không thể kết nối đến API"
         sleep $INTERVAL
         continue
     fi
-    
+
     ERROR_MSG=$(echo "$INSTANCE_INFO" | jq -r '.error // empty' 2>/dev/null)
     if [ -n "$ERROR_MSG" ]; then
         clear_line
@@ -77,37 +77,37 @@ while true; do
         sleep $INTERVAL
         continue
     fi
-    
+
     # Extract values
     RUNNING=$(echo "$INSTANCE_INFO" | jq -r '.running' 2>/dev/null)
     FPS=$(echo "$INSTANCE_INFO" | jq -r '.fps' 2>/dev/null)
     DISPLAY_NAME=$(echo "$INSTANCE_INFO" | jq -r '.displayName' 2>/dev/null)
-    
+
     # Check output files
     OUTPUT_DIR="./output/${INSTANCE_ID}"
     BUILD_OUTPUT_DIR="./build/output/${INSTANCE_ID}"
     FILE_COUNT=0
-    
+
     if [ -d "$OUTPUT_DIR" ]; then
         FILE_COUNT=$(find "$OUTPUT_DIR" -type f 2>/dev/null | wc -l)
     elif [ -d "$BUILD_OUTPUT_DIR" ]; then
         FILE_COUNT=$(find "$BUILD_OUTPUT_DIR" -type f 2>/dev/null | wc -l)
     fi
-    
+
     # Build status line
     TIMESTAMP=$(date '+%H:%M:%S')
     STATUS_LINE="[$TIMESTAMP] "
-    
+
     if [ "$RUNNING" = "true" ]; then
         STATUS_LINE+="${GREEN}RUNNING${NC} | "
     else
         STATUS_LINE+="${RED}STOPPED${NC} | "
     fi
-    
+
     STATUS_LINE+="FPS: "
     if (( $(echo "$FPS > 0" | bc -l 2>/dev/null) )); then
         STATUS_LINE+="${GREEN}${FPS}${NC} | "
-        
+
         # Check if FPS increased
         if (( $(echo "$FPS > $PREV_FPS" | bc -l 2>/dev/null) )); then
             STATUS_LINE+="${GREEN}↑${NC} "
@@ -119,23 +119,22 @@ while true; do
     else
         STATUS_LINE+="${RED}0.0${NC} | "
     fi
-    
+
     STATUS_LINE+="Files: ${FILE_COUNT}"
-    
+
     if [ $FILE_COUNT -gt $PREV_FILE_COUNT ]; then
         STATUS_LINE+=" ${GREEN}(+$((FILE_COUNT - PREV_FILE_COUNT)))${NC}"
     fi
-    
+
     STATUS_LINE+=" | Name: $DISPLAY_NAME"
-    
+
     # Print status
     clear_line
     echo -ne "$STATUS_LINE"
-    
+
     # Update previous values
     PREV_FPS=$FPS
     PREV_FILE_COUNT=$FILE_COUNT
-    
+
     sleep $INTERVAL
 done
-

@@ -119,4 +119,3 @@ Xem: `sample/simple_rtmp_mqtt_sample.cpp`
 - RTMP setup: `sample/SELECTED_SAMPLES_RTMP_MQTT.md`
 - MQTT transformer: `sample/README_MQTT_JSON_TRANSFORMER.md`
 - Sample code: `sample/simple_rtmp_mqtt_sample.cpp`
-

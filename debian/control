@@ -44,4 +44,3 @@ Description: Edge AI API Server - RESTful API for CVEDIX Edge AI SDK
   - Swagger UI for API exploration
   - Systemd service integration
   - Comprehensive logging and monitoring
-

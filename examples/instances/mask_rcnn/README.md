@@ -219,4 +219,3 @@ ls -la /path/to/models/coco_80classes.txt
 - Sample code: `sample/mask_rcnn_sample.cpp`
 - Testing guide: `sample/MASKRCNN_TESTING_GUIDE.md`
 - TensorFlow Model Zoo: https://github.com/tensorflow/models/blob/master/research/object_detection/g3doc/tf2_detection_zoo.md
-

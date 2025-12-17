@@ -1,240 +1,241 @@
 #include "api/swagger_handler.h"
 #include "core/env_config.h"
-#include <drogon/HttpResponse.h>
-#include <fstream>
-#include <sstream>
-#include <filesystem>
-#include <vector>
-#include <stdexcept>
-#include <regex>
 #include <algorithm>
 #include <cctype>
 #include <cstdlib>
+#include <drogon/HttpResponse.h>
+#include <filesystem>
+#include <fstream>
+#include <regex>
+#include <sstream>
+#include <stdexcept>
+#include <vector>
 
 // Static cache members
-std::unordered_map<std::string, SwaggerHandler::CacheEntry> SwaggerHandler::cache_;
+std::unordered_map<std::string, SwaggerHandler::CacheEntry>
+    SwaggerHandler::cache_;
 std::mutex SwaggerHandler::cache_mutex_;
 const std::chrono::seconds SwaggerHandler::cache_ttl_(300); // 5 minutes cache
 
-void SwaggerHandler::getSwaggerUI(const HttpRequestPtr &req,
-                                  std::function<void(const HttpResponsePtr &)> &&callback)
-{
-    try {
-        std::string path = req->path();
-        std::string version = extractVersionFromPath(path);
-        
-        // Validate version format if provided
-        if (!version.empty() && !validateVersionFormat(version)) {
-            auto resp = HttpResponse::newHttpResponse();
-            resp->setStatusCode(k400BadRequest);
-            resp->setBody("Invalid API version format");
-            callback(resp);
-            return;
-        }
-        
-        // Build absolute URL for OpenAPI spec based on request
-        std::string host = req->getHeader("Host");
-        if (host.empty()) {
-            host = "localhost:8080";
-        }
-        std::string scheme = req->getHeader("X-Forwarded-Proto");
-        if (scheme.empty()) {
-            // Check if request is secure
-            scheme = req->isOnSecureConnection() ? "https" : "http";
-        }
-        
-        std::string baseUrl = scheme + "://" + host;
-        std::string html = generateSwaggerUIHTML(version, baseUrl);
-        
-        auto resp = HttpResponse::newHttpResponse();
-        resp->setStatusCode(k200OK);
-        resp->setContentTypeCode(CT_TEXT_HTML);
-        resp->setBody(html);
-        
-        // Add CORS headers
-        resp->addHeader("Access-Control-Allow-Origin", "*");
-        resp->addHeader("Access-Control-Allow-Methods", "GET, OPTIONS");
-        resp->addHeader("Access-Control-Allow-Headers", "Content-Type");
-        
-        callback(resp);
-    } catch (const std::exception& e) {
-        auto resp = HttpResponse::newHttpResponse();
-        resp->setStatusCode(k500InternalServerError);
-        resp->setBody("Internal server error");
-        // Add CORS headers
-        resp->addHeader("Access-Control-Allow-Origin", "*");
-        resp->addHeader("Access-Control-Allow-Methods", "GET, OPTIONS");
-        resp->addHeader("Access-Control-Allow-Headers", "Content-Type");
-        callback(resp);
-    } catch (...) {
-        auto resp = HttpResponse::newHttpResponse();
-        resp->setStatusCode(k500InternalServerError);
-        resp->setBody("Internal server error");
-        // Add CORS headers
-        resp->addHeader("Access-Control-Allow-Origin", "*");
-        resp->addHeader("Access-Control-Allow-Methods", "GET, OPTIONS");
-        resp->addHeader("Access-Control-Allow-Headers", "Content-Type");
-        callback(resp);
+void SwaggerHandler::getSwaggerUI(
+    const HttpRequestPtr &req,
+    std::function<void(const HttpResponsePtr &)> &&callback) {
+  try {
+    std::string path = req->path();
+    std::string version = extractVersionFromPath(path);
+
+    // Validate version format if provided
+    if (!version.empty() && !validateVersionFormat(version)) {
+      auto resp = HttpResponse::newHttpResponse();
+      resp->setStatusCode(k400BadRequest);
+      resp->setBody("Invalid API version format");
+      callback(resp);
+      return;
     }
+
+    // Build absolute URL for OpenAPI spec based on request
+    std::string host = req->getHeader("Host");
+    if (host.empty()) {
+      host = "localhost:8080";
+    }
+    std::string scheme = req->getHeader("X-Forwarded-Proto");
+    if (scheme.empty()) {
+      // Check if request is secure
+      scheme = req->isOnSecureConnection() ? "https" : "http";
+    }
+
+    std::string baseUrl = scheme + "://" + host;
+    std::string html = generateSwaggerUIHTML(version, baseUrl);
+
+    auto resp = HttpResponse::newHttpResponse();
+    resp->setStatusCode(k200OK);
+    resp->setContentTypeCode(CT_TEXT_HTML);
+    resp->setBody(html);
+
+    // Add CORS headers
+    resp->addHeader("Access-Control-Allow-Origin", "*");
+    resp->addHeader("Access-Control-Allow-Methods", "GET, OPTIONS");
+    resp->addHeader("Access-Control-Allow-Headers", "Content-Type");
+
+    callback(resp);
+  } catch (const std::exception &e) {
+    auto resp = HttpResponse::newHttpResponse();
+    resp->setStatusCode(k500InternalServerError);
+    resp->setBody("Internal server error");
+    // Add CORS headers
+    resp->addHeader("Access-Control-Allow-Origin", "*");
+    resp->addHeader("Access-Control-Allow-Methods", "GET, OPTIONS");
+    resp->addHeader("Access-Control-Allow-Headers", "Content-Type");
+    callback(resp);
+  } catch (...) {
+    auto resp = HttpResponse::newHttpResponse();
+    resp->setStatusCode(k500InternalServerError);
+    resp->setBody("Internal server error");
+    // Add CORS headers
+    resp->addHeader("Access-Control-Allow-Origin", "*");
+    resp->addHeader("Access-Control-Allow-Methods", "GET, OPTIONS");
+    resp->addHeader("Access-Control-Allow-Headers", "Content-Type");
+    callback(resp);
+  }
 }
 
-void SwaggerHandler::getOpenAPISpec(const HttpRequestPtr &req,
-                                    std::function<void(const HttpResponsePtr &)> &&callback)
-{
-    try {
-        std::string path = req->path();
-        std::string version = extractVersionFromPath(path);
-        
-        // Validate version format if provided
-        if (!version.empty() && !validateVersionFormat(version)) {
-            auto resp = HttpResponse::newHttpResponse();
-            resp->setStatusCode(k400BadRequest);
-            resp->setBody("Invalid API version format");
-            // Add CORS headers
-            resp->addHeader("Access-Control-Allow-Origin", "*");
-            resp->addHeader("Access-Control-Allow-Methods", "GET, OPTIONS");
-            resp->addHeader("Access-Control-Allow-Headers", "Content-Type");
-            callback(resp);
-            return;
-        }
-        
-        // Get host from request for browser-accessible URL
-        std::string requestHost = req->getHeader("Host");
-        if (requestHost.empty()) {
-            requestHost = "localhost:8080";
-        }
-        
-        std::string yaml = readOpenAPIFile(version, requestHost);
-        
-        auto resp = HttpResponse::newHttpResponse();
-        resp->setStatusCode(k200OK);
-        resp->setContentTypeCode(CT_TEXT_PLAIN);
-        resp->addHeader("Content-Type", "text/yaml; charset=utf-8");
-        resp->setBody(yaml);
-        
-        // Add CORS headers (restrictive for production)
-        resp->addHeader("Access-Control-Allow-Origin", "*");
-        resp->addHeader("Access-Control-Allow-Methods", "GET, OPTIONS");
-        resp->addHeader("Access-Control-Allow-Headers", "Content-Type");
-        
-        callback(resp);
-    } catch (const std::exception& e) {
-        auto resp = HttpResponse::newHttpResponse();
-        resp->setStatusCode(k500InternalServerError);
-        resp->setBody("Internal server error");
-        // Add CORS headers
-        resp->addHeader("Access-Control-Allow-Origin", "*");
-        resp->addHeader("Access-Control-Allow-Methods", "GET, OPTIONS");
-        resp->addHeader("Access-Control-Allow-Headers", "Content-Type");
-        callback(resp);
-    } catch (...) {
-        auto resp = HttpResponse::newHttpResponse();
-        resp->setStatusCode(k500InternalServerError);
-        resp->setBody("Internal server error");
-        // Add CORS headers
-        resp->addHeader("Access-Control-Allow-Origin", "*");
-        resp->addHeader("Access-Control-Allow-Methods", "GET, OPTIONS");
-        resp->addHeader("Access-Control-Allow-Headers", "Content-Type");
-        callback(resp);
+void SwaggerHandler::getOpenAPISpec(
+    const HttpRequestPtr &req,
+    std::function<void(const HttpResponsePtr &)> &&callback) {
+  try {
+    std::string path = req->path();
+    std::string version = extractVersionFromPath(path);
+
+    // Validate version format if provided
+    if (!version.empty() && !validateVersionFormat(version)) {
+      auto resp = HttpResponse::newHttpResponse();
+      resp->setStatusCode(k400BadRequest);
+      resp->setBody("Invalid API version format");
+      // Add CORS headers
+      resp->addHeader("Access-Control-Allow-Origin", "*");
+      resp->addHeader("Access-Control-Allow-Methods", "GET, OPTIONS");
+      resp->addHeader("Access-Control-Allow-Headers", "Content-Type");
+      callback(resp);
+      return;
     }
+
+    // Get host from request for browser-accessible URL
+    std::string requestHost = req->getHeader("Host");
+    if (requestHost.empty()) {
+      requestHost = "localhost:8080";
+    }
+
+    std::string yaml = readOpenAPIFile(version, requestHost);
+
+    auto resp = HttpResponse::newHttpResponse();
+    resp->setStatusCode(k200OK);
+    resp->setContentTypeCode(CT_TEXT_PLAIN);
+    resp->addHeader("Content-Type", "text/yaml; charset=utf-8");
+    resp->setBody(yaml);
+
+    // Add CORS headers (restrictive for production)
+    resp->addHeader("Access-Control-Allow-Origin", "*");
+    resp->addHeader("Access-Control-Allow-Methods", "GET, OPTIONS");
+    resp->addHeader("Access-Control-Allow-Headers", "Content-Type");
+
+    callback(resp);
+  } catch (const std::exception &e) {
+    auto resp = HttpResponse::newHttpResponse();
+    resp->setStatusCode(k500InternalServerError);
+    resp->setBody("Internal server error");
+    // Add CORS headers
+    resp->addHeader("Access-Control-Allow-Origin", "*");
+    resp->addHeader("Access-Control-Allow-Methods", "GET, OPTIONS");
+    resp->addHeader("Access-Control-Allow-Headers", "Content-Type");
+    callback(resp);
+  } catch (...) {
+    auto resp = HttpResponse::newHttpResponse();
+    resp->setStatusCode(k500InternalServerError);
+    resp->setBody("Internal server error");
+    // Add CORS headers
+    resp->addHeader("Access-Control-Allow-Origin", "*");
+    resp->addHeader("Access-Control-Allow-Methods", "GET, OPTIONS");
+    resp->addHeader("Access-Control-Allow-Headers", "Content-Type");
+    callback(resp);
+  }
 }
 
-std::string SwaggerHandler::extractVersionFromPath(const std::string& path) const
-{
-    // Match patterns like /v1/swagger, /v2/openapi.yaml, etc.
-    // Only match v followed by digits (v1, v2, v10, etc.)
-    std::regex versionPattern(R"(/(v\d+)/)");
-    std::smatch match;
-    
-    if (std::regex_search(path, match, versionPattern)) {
-        std::string version = match[1].str();
-        // Additional validation: ensure it's exactly "v" + digits
-        if (validateVersionFormat(version)) {
-            return version;
-        }
+std::string
+SwaggerHandler::extractVersionFromPath(const std::string &path) const {
+  // Match patterns like /v1/swagger, /v2/openapi.yaml, etc.
+  // Only match v followed by digits (v1, v2, v10, etc.)
+  std::regex versionPattern(R"(/(v\d+)/)");
+  std::smatch match;
+
+  if (std::regex_search(path, match, versionPattern)) {
+    std::string version = match[1].str();
+    // Additional validation: ensure it's exactly "v" + digits
+    if (validateVersionFormat(version)) {
+      return version;
     }
-    
-    return ""; // No version found, return all versions
+  }
+
+  return ""; // No version found, return all versions
 }
 
-bool SwaggerHandler::validateVersionFormat(const std::string& version) const
-{
-    // Version must start with 'v' followed by one or more digits
-    // Examples: v1, v2, v10, v99 (but not v, v0, v-1, v1.0, etc.)
-    if (version.empty() || version.length() < 2) {
-        return false;
+bool SwaggerHandler::validateVersionFormat(const std::string &version) const {
+  // Version must start with 'v' followed by one or more digits
+  // Examples: v1, v2, v10, v99 (but not v, v0, v-1, v1.0, etc.)
+  if (version.empty() || version.length() < 2) {
+    return false;
+  }
+
+  if (version[0] != 'v') {
+    return false;
+  }
+
+  // Check that all remaining characters are digits
+  for (size_t i = 1; i < version.length(); ++i) {
+    if (!std::isdigit(static_cast<unsigned char>(version[i]))) {
+      return false;
     }
-    
-    if (version[0] != 'v') {
-        return false;
-    }
-    
-    // Check that all remaining characters are digits
-    for (size_t i = 1; i < version.length(); ++i) {
-        if (!std::isdigit(static_cast<unsigned char>(version[i]))) {
-            return false;
-        }
-    }
-    
-    // Ensure at least one digit after 'v'
-    return version.length() > 1;
+  }
+
+  // Ensure at least one digit after 'v'
+  return version.length() > 1;
 }
 
-std::string SwaggerHandler::sanitizePath(const std::string& path) const
-{
-    // Prevent path traversal attacks
-    // Only allow simple filenames without directory traversal
-    if (path.empty()) {
-        return "";
+std::string SwaggerHandler::sanitizePath(const std::string &path) const {
+  // Prevent path traversal attacks
+  // Only allow simple filenames without directory traversal
+  if (path.empty()) {
+    return "";
+  }
+
+  // Check for path traversal patterns
+  if (path.find("..") != std::string::npos ||
+      path.find("/") != std::string::npos ||
+      path.find("\\") != std::string::npos) {
+    return "";
+  }
+
+  // Only allow alphanumeric, dash, underscore, dot
+  for (char c : path) {
+    if (!std::isalnum(static_cast<unsigned char>(c)) && c != '-' && c != '_' &&
+        c != '.') {
+      return "";
     }
-    
-    // Check for path traversal patterns
-    if (path.find("..") != std::string::npos ||
-        path.find("/") != std::string::npos ||
-        path.find("\\") != std::string::npos) {
-        return "";
-    }
-    
-    // Only allow alphanumeric, dash, underscore, dot
-    for (char c : path) {
-        if (!std::isalnum(static_cast<unsigned char>(c)) && 
-            c != '-' && c != '_' && c != '.') {
-            return "";
-        }
-    }
-    
-    return path;
+  }
+
+  return path;
 }
 
-std::string SwaggerHandler::generateSwaggerUIHTML(const std::string& version, const std::string& baseUrl) const
-{
-    // Determine the OpenAPI spec URL based on version
-    std::string specUrl = "/openapi.yaml";
-    std::string title = "Edge AI API - Swagger UI";
-    
-    if (!version.empty()) {
-        specUrl = "/" + version + "/openapi.yaml";
-        title = "Edge AI API " + version + " - Swagger UI";
+std::string
+SwaggerHandler::generateSwaggerUIHTML(const std::string &version,
+                                      const std::string &baseUrl) const {
+  // Determine the OpenAPI spec URL based on version
+  std::string specUrl = "/openapi.yaml";
+  std::string title = "Edge AI API - Swagger UI";
+
+  if (!version.empty()) {
+    specUrl = "/" + version + "/openapi.yaml";
+    title = "Edge AI API " + version + " - Swagger UI";
+  }
+
+  // Use absolute URL if baseUrl is provided, otherwise use relative URL
+  std::string fullSpecUrl = specUrl;
+  if (!baseUrl.empty()) {
+    // Remove trailing slash from baseUrl if present
+    std::string cleanBaseUrl = baseUrl;
+    if (cleanBaseUrl.back() == '/') {
+      cleanBaseUrl.pop_back();
     }
-    
-    // Use absolute URL if baseUrl is provided, otherwise use relative URL
-    std::string fullSpecUrl = specUrl;
-    if (!baseUrl.empty()) {
-        // Remove trailing slash from baseUrl if present
-        std::string cleanBaseUrl = baseUrl;
-        if (cleanBaseUrl.back() == '/') {
-            cleanBaseUrl.pop_back();
-        }
-        fullSpecUrl = cleanBaseUrl + specUrl;
-    }
-    
-    // Swagger UI HTML with embedded CDN and fallback mechanism
-    std::string html = R"(<!DOCTYPE html>
+    fullSpecUrl = cleanBaseUrl + specUrl;
+  }
+
+  // Swagger UI HTML with embedded CDN and fallback mechanism
+  std::string html = R"(<!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>)" + title + R"(</title>
+    <title>)" + title +
+                     R"(</title>
     <style>
         html {
             box-sizing: border-box;
@@ -327,7 +328,8 @@ std::string SwaggerHandler::generateSwaggerUIHTML(const std::string& version, co
 
                 try {
                     const ui = SwaggerUIBundle({
-                        url: ')" + fullSpecUrl + R"(',
+                        url: ')" +
+                     fullSpecUrl + R"(',
                         dom_id: '#swagger-ui',
                         deepLinking: true,
                         presets: [
@@ -377,325 +379,339 @@ std::string SwaggerHandler::generateSwaggerUIHTML(const std::string& version, co
     <div id="swagger-ui"></div>
 </body>
 </html>)";
-    
-    return html;
+
+  return html;
 }
 
-std::string SwaggerHandler::readOpenAPIFile(const std::string& version, const std::string& requestHost) const
-{
-    // Check cache first
-    std::string cacheKey = version.empty() ? "all" : version;
-    
-    {
-        std::lock_guard<std::mutex> lock(cache_mutex_);
-        auto it = cache_.find(cacheKey);
-        if (it != cache_.end()) {
-            auto now = std::chrono::steady_clock::now();
-            auto elapsed = std::chrono::duration_cast<std::chrono::seconds>(
-                now - it->second.timestamp);
-            
-            // Check if cache is still valid (not expired)
-            if (elapsed < it->second.ttl) {
-                // Check if file has been modified since cache was created
-                try {
-                    if (!it->second.filePath.empty() && std::filesystem::exists(it->second.filePath)) {
-                        auto currentModTime = std::filesystem::last_write_time(it->second.filePath);
-                        if (currentModTime <= it->second.fileModTime) {
-                            // File hasn't changed, return cached content
-                            return it->second.content;
-                        }
-                        // File has changed, invalidate cache
-                    }
-                } catch (...) {
-                    // If we can't check file time, use cache anyway (fallback)
-                    return it->second.content;
-                }
-            }
-            // Cache expired or file changed, remove it
-            cache_.erase(it);
-        }
-    }
-    
-    // Cache miss or expired, read from file
-    // Priority: 1) Current working directory (service install dir), 2) Environment variable, 3) Search up from current dir
-    std::vector<std::filesystem::path> possiblePaths;
-    
-    // 1. Check current working directory first (for service installations)
-    try {
-        std::filesystem::path currentDir = std::filesystem::current_path();
-        std::filesystem::path testPath = currentDir / "openapi.yaml";
-        if (std::filesystem::exists(testPath) && std::filesystem::is_regular_file(testPath)) {
-            possiblePaths.push_back(testPath);
-        }
-    } catch (...) {
-        // Ignore errors
-    }
-    
-    // 2. Check environment variable for installation directory
-    const char* installDir = std::getenv("EDGE_AI_API_INSTALL_DIR");
-    if (installDir && installDir[0] != '\0') {
+std::string
+SwaggerHandler::readOpenAPIFile(const std::string &version,
+                                const std::string &requestHost) const {
+  // Check cache first
+  std::string cacheKey = version.empty() ? "all" : version;
+
+  {
+    std::lock_guard<std::mutex> lock(cache_mutex_);
+    auto it = cache_.find(cacheKey);
+    if (it != cache_.end()) {
+      auto now = std::chrono::steady_clock::now();
+      auto elapsed = std::chrono::duration_cast<std::chrono::seconds>(
+          now - it->second.timestamp);
+
+      // Check if cache is still valid (not expired)
+      if (elapsed < it->second.ttl) {
+        // Check if file has been modified since cache was created
         try {
-            std::filesystem::path installPath(installDir);
-            std::filesystem::path testPath = installPath / "openapi.yaml";
-            if (std::filesystem::exists(testPath) && std::filesystem::is_regular_file(testPath)) {
-                possiblePaths.push_back(testPath);
+          if (!it->second.filePath.empty() &&
+              std::filesystem::exists(it->second.filePath)) {
+            auto currentModTime =
+                std::filesystem::last_write_time(it->second.filePath);
+            if (currentModTime <= it->second.fileModTime) {
+              // File hasn't changed, return cached content
+              return it->second.content;
             }
+            // File has changed, invalidate cache
+          }
         } catch (...) {
-            // Ignore errors
+          // If we can't check file time, use cache anyway (fallback)
+          return it->second.content;
         }
+      }
+      // Cache expired or file changed, remove it
+      cache_.erase(it);
     }
-    
-    // 3. Search up from current directory (for development)
-    std::filesystem::path basePath;
+  }
+
+  // Cache miss or expired, read from file
+  // Priority: 1) Current working directory (service install dir), 2)
+  // Environment variable, 3) Search up from current dir
+  std::vector<std::filesystem::path> possiblePaths;
+
+  // 1. Check current working directory first (for service installations)
+  try {
+    std::filesystem::path currentDir = std::filesystem::current_path();
+    std::filesystem::path testPath = currentDir / "openapi.yaml";
+    if (std::filesystem::exists(testPath) &&
+        std::filesystem::is_regular_file(testPath)) {
+      possiblePaths.push_back(testPath);
+    }
+  } catch (...) {
+    // Ignore errors
+  }
+
+  // 2. Check environment variable for installation directory
+  const char *installDir = std::getenv("EDGE_AI_API_INSTALL_DIR");
+  if (installDir && installDir[0] != '\0') {
     try {
-        basePath = std::filesystem::canonical(std::filesystem::current_path());
+      std::filesystem::path installPath(installDir);
+      std::filesystem::path testPath = installPath / "openapi.yaml";
+      if (std::filesystem::exists(testPath) &&
+          std::filesystem::is_regular_file(testPath)) {
+        possiblePaths.push_back(testPath);
+      }
     } catch (...) {
-        basePath = std::filesystem::current_path();
+      // Ignore errors
     }
-    
-    std::filesystem::path current = basePath;
-    for (int i = 0; i < 4; ++i) {
-        std::filesystem::path testPath = current / "openapi.yaml";
-        if (std::filesystem::exists(testPath)) {
-            // Verify it's a regular file and not a symlink to prevent attacks
-            if (std::filesystem::is_regular_file(testPath)) {
-                // Avoid duplicates
-                bool alreadyAdded = false;
-                for (const auto& existing : possiblePaths) {
-                    try {
-                        if (std::filesystem::equivalent(testPath, existing)) {
-                            alreadyAdded = true;
-                            break;
-                        }
-                    } catch (...) {
-                        // If equivalent fails, compare as strings
-                        if (testPath == existing) {
-                            alreadyAdded = true;
-                            break;
-                        }
-                    }
-                }
-                if (!alreadyAdded) {
-                    possiblePaths.push_back(testPath);
-                }
-            }
-        }
-        
-        if (current.has_parent_path() && current != current.parent_path()) {
-            current = current.parent_path();
-        } else {
-            break;
-        }
-    }
-    
-    // Try to read from found paths
-    std::string yamlContent;
-    std::filesystem::path actualFilePath;
-    std::filesystem::file_time_type fileModTime;
-    
-    for (const auto& path : possiblePaths) {
-        try {
-            // Use canonical path to ensure no symlink attacks
-            std::filesystem::path canonicalPath = std::filesystem::canonical(path);
-            
-            std::ifstream file(canonicalPath);
-            if (file.is_open() && file.good()) {
-                std::stringstream buffer;
-                buffer << file.rdbuf();
-                file.close();
-                yamlContent = buffer.str();
-                if (!yamlContent.empty()) {
-                    actualFilePath = canonicalPath;
-                    fileModTime = std::filesystem::last_write_time(canonicalPath);
-                    break;
-                }
-            }
-        } catch (...) {
-            // Skip this path if there's an error
-            continue;
-        }
-    }
-    
-    if (yamlContent.empty()) {
-        throw std::runtime_error("OpenAPI specification file not found");
-    }
-    
-    // Update server URLs from environment variables
-    // Use requestHost if provided (for browser-accessible URL), otherwise use env vars
-    std::string updatedContent = updateOpenAPIServerURLs(yamlContent, requestHost);
-    
-    // If version is specified, filter the content
-    std::string finalContent = updatedContent;
-    if (!version.empty()) {
-        finalContent = filterOpenAPIByVersion(updatedContent, version);
-    }
-    
-    // Update cache with file path and modification time
-    {
-        std::lock_guard<std::mutex> lock(cache_mutex_);
-        CacheEntry entry;
-        entry.content = finalContent;
-        entry.timestamp = std::chrono::steady_clock::now();
-        entry.ttl = cache_ttl_;
-        entry.filePath = actualFilePath;
-        entry.fileModTime = fileModTime;
-        cache_[cacheKey] = entry;
-    }
-    
-    return finalContent;
-}
+  }
 
-std::string SwaggerHandler::filterOpenAPIByVersion(const std::string& yamlContent, const std::string& version) const
-{
-    std::stringstream result;
-    std::istringstream input(yamlContent);
-    std::string line;
-    bool inPaths = false;
-    bool skipPath = false;
-    std::string currentPath = "";
-    
-    // Version prefix to match (e.g., "/v1/")
-    std::string versionPrefix = "/" + version + "/";
-    
-    while (std::getline(input, line)) {
-        // Check if we're entering the paths section
-        if (line.find("paths:") != std::string::npos) {
-            inPaths = true;
-            result << line << "\n";
-            continue;
-        }
-        
-        if (!inPaths) {
-            // Before paths section, just copy everything
-            result << line << "\n";
-            continue;
-        }
-        
-        // Calculate indentation level (count leading spaces)
-        size_t indent = 0;
-        while (indent < line.length() && line[indent] == ' ') {
-            indent++;
-        }
-        
-        // Check if this is a path definition (starts with / at indent level 2)
-        if (indent == 2 && line.find("  /") == 0) {
-            // This is a new path definition
-            size_t colonPos = line.find(':');
-            if (colonPos != std::string::npos) {
-                currentPath = line.substr(2, colonPos - 2); // Extract path without leading spaces
-                
-                // Check if this path belongs to the requested version
-                skipPath = (currentPath.find(versionPrefix) != 0);
-                
-                if (!skipPath) {
-                    result << line << "\n";
-                }
-            } else {
-                if (!skipPath) {
-                    result << line << "\n";
-                }
-            }
-        } else if (skipPath) {
-            // Skip lines that are part of a path we don't want
-            // Only include if we hit a new path at indent level 2 or less
-            if (indent <= 2 && line.find("  /") == 0) {
-                // This is a new path, reset skipPath and process it
-                size_t colonPos = line.find(':');
-                if (colonPos != std::string::npos) {
-                    currentPath = line.substr(2, colonPos - 2);
-                    skipPath = (currentPath.find(versionPrefix) != 0);
-                    if (!skipPath) {
-                        result << line << "\n";
-                    }
-                }
-            }
-            // Otherwise skip this line
-        } else {
-            // Include this line (it's part of a path we want)
-            result << line << "\n";
-        }
-    }
-    
-    return result.str();
-}
+  // 3. Search up from current directory (for development)
+  std::filesystem::path basePath;
+  try {
+    basePath = std::filesystem::canonical(std::filesystem::current_path());
+  } catch (...) {
+    basePath = std::filesystem::current_path();
+  }
 
-std::string SwaggerHandler::updateOpenAPIServerURLs(const std::string& yamlContent, const std::string& requestHost) const
-{
-    std::string serverUrl;
-    
-    // If requestHost is provided, use it (browser-accessible URL)
-    if (!requestHost.empty()) {
-        // Extract host and port from requestHost (format: "host:port" or "host")
-        std::string host = requestHost;
-        std::string portStr = "";
-        
-        size_t colonPos = requestHost.find(':');
-        if (colonPos != std::string::npos) {
-            host = requestHost.substr(0, colonPos);
-            portStr = requestHost.substr(colonPos + 1);
+  std::filesystem::path current = basePath;
+  for (int i = 0; i < 4; ++i) {
+    std::filesystem::path testPath = current / "openapi.yaml";
+    if (std::filesystem::exists(testPath)) {
+      // Verify it's a regular file and not a symlink to prevent attacks
+      if (std::filesystem::is_regular_file(testPath)) {
+        // Avoid duplicates
+        bool alreadyAdded = false;
+        for (const auto &existing : possiblePaths) {
+          try {
+            if (std::filesystem::equivalent(testPath, existing)) {
+              alreadyAdded = true;
+              break;
+            }
+          } catch (...) {
+            // If equivalent fails, compare as strings
+            if (testPath == existing) {
+              alreadyAdded = true;
+              break;
+            }
+          }
         }
-        
-        // Determine scheme (http or https)
-        std::string scheme = "http";
-        const char* https_env = std::getenv("API_HTTPS");
-        if (https_env && (std::string(https_env) == "1" || std::string(https_env) == "true")) {
-            scheme = "https";
+        if (!alreadyAdded) {
+          possiblePaths.push_back(testPath);
         }
-        
-        // Build server URL from request host
-        serverUrl = scheme + "://" + host;
-        if (!portStr.empty()) {
-            serverUrl += ":" + portStr;
-        }
+      }
+    }
+
+    if (current.has_parent_path() && current != current.parent_path()) {
+      current = current.parent_path();
     } else {
-        // Fallback to environment variables
-        std::string host = EnvConfig::getString("API_HOST", "0.0.0.0");
-        uint16_t port = static_cast<uint16_t>(EnvConfig::getInt("API_PORT", 8080, 1, 65535));
-        
-        // If host is 0.0.0.0, use localhost for browser compatibility
-        if (host == "0.0.0.0") {
-            host = "localhost";
-        }
-        
-        // Determine scheme (http or https)
-        std::string scheme = "http";
-        const char* https_env = std::getenv("API_HTTPS");
-        if (https_env && (std::string(https_env) == "1" || std::string(https_env) == "true")) {
-            scheme = "https";
-        }
-        
-        // Build server URL
-        serverUrl = scheme + "://" + host;
-        if ((scheme == "http" && port != 80) || (scheme == "https" && port != 443)) {
-            serverUrl += ":" + std::to_string(port);
-        }
+      break;
     }
-    
-    // Replace server URLs in OpenAPI spec
-    // Pattern: url: http://localhost:8080 or url: http://0.0.0.0:8080
-    std::string result = yamlContent;
-    
-    // Replace all server URL patterns
-    // Match: "  - url: http://..." or "  url: http://..."
-    std::regex urlPattern(R"((\s+-\s+url:\s+)(https?://[^\s]+))");
-    result = std::regex_replace(result, urlPattern, "$1" + serverUrl);
-    
-    // Also handle case without dash (single server)
-    std::regex urlPattern2(R"((\s+url:\s+)(https?://[^\s]+))");
-    result = std::regex_replace(result, urlPattern2, "$1" + serverUrl);
-    
-    return result;
+  }
+
+  // Try to read from found paths
+  std::string yamlContent;
+  std::filesystem::path actualFilePath;
+  std::filesystem::file_time_type fileModTime;
+
+  for (const auto &path : possiblePaths) {
+    try {
+      // Use canonical path to ensure no symlink attacks
+      std::filesystem::path canonicalPath = std::filesystem::canonical(path);
+
+      std::ifstream file(canonicalPath);
+      if (file.is_open() && file.good()) {
+        std::stringstream buffer;
+        buffer << file.rdbuf();
+        file.close();
+        yamlContent = buffer.str();
+        if (!yamlContent.empty()) {
+          actualFilePath = canonicalPath;
+          fileModTime = std::filesystem::last_write_time(canonicalPath);
+          break;
+        }
+      }
+    } catch (...) {
+      // Skip this path if there's an error
+      continue;
+    }
+  }
+
+  if (yamlContent.empty()) {
+    throw std::runtime_error("OpenAPI specification file not found");
+  }
+
+  // Update server URLs from environment variables
+  // Use requestHost if provided (for browser-accessible URL), otherwise use env
+  // vars
+  std::string updatedContent =
+      updateOpenAPIServerURLs(yamlContent, requestHost);
+
+  // If version is specified, filter the content
+  std::string finalContent = updatedContent;
+  if (!version.empty()) {
+    finalContent = filterOpenAPIByVersion(updatedContent, version);
+  }
+
+  // Update cache with file path and modification time
+  {
+    std::lock_guard<std::mutex> lock(cache_mutex_);
+    CacheEntry entry;
+    entry.content = finalContent;
+    entry.timestamp = std::chrono::steady_clock::now();
+    entry.ttl = cache_ttl_;
+    entry.filePath = actualFilePath;
+    entry.fileModTime = fileModTime;
+    cache_[cacheKey] = entry;
+  }
+
+  return finalContent;
 }
 
-void SwaggerHandler::handleOptions(const HttpRequestPtr &req,
-                                   std::function<void(const HttpResponsePtr &)> &&callback)
-{
-    auto resp = HttpResponse::newHttpResponse();
-    resp->setStatusCode(k200OK);
-    resp->addHeader("Access-Control-Allow-Origin", "*");
-    resp->addHeader("Access-Control-Allow-Methods", "GET, OPTIONS");
-    resp->addHeader("Access-Control-Allow-Headers", "Content-Type");
-    resp->addHeader("Access-Control-Max-Age", "3600");
-    callback(resp);
+std::string
+SwaggerHandler::filterOpenAPIByVersion(const std::string &yamlContent,
+                                       const std::string &version) const {
+  std::stringstream result;
+  std::istringstream input(yamlContent);
+  std::string line;
+  bool inPaths = false;
+  bool skipPath = false;
+  std::string currentPath = "";
+
+  // Version prefix to match (e.g., "/v1/")
+  std::string versionPrefix = "/" + version + "/";
+
+  while (std::getline(input, line)) {
+    // Check if we're entering the paths section
+    if (line.find("paths:") != std::string::npos) {
+      inPaths = true;
+      result << line << "\n";
+      continue;
+    }
+
+    if (!inPaths) {
+      // Before paths section, just copy everything
+      result << line << "\n";
+      continue;
+    }
+
+    // Calculate indentation level (count leading spaces)
+    size_t indent = 0;
+    while (indent < line.length() && line[indent] == ' ') {
+      indent++;
+    }
+
+    // Check if this is a path definition (starts with / at indent level 2)
+    if (indent == 2 && line.find("  /") == 0) {
+      // This is a new path definition
+      size_t colonPos = line.find(':');
+      if (colonPos != std::string::npos) {
+        currentPath =
+            line.substr(2, colonPos - 2); // Extract path without leading spaces
+
+        // Check if this path belongs to the requested version
+        skipPath = (currentPath.find(versionPrefix) != 0);
+
+        if (!skipPath) {
+          result << line << "\n";
+        }
+      } else {
+        if (!skipPath) {
+          result << line << "\n";
+        }
+      }
+    } else if (skipPath) {
+      // Skip lines that are part of a path we don't want
+      // Only include if we hit a new path at indent level 2 or less
+      if (indent <= 2 && line.find("  /") == 0) {
+        // This is a new path, reset skipPath and process it
+        size_t colonPos = line.find(':');
+        if (colonPos != std::string::npos) {
+          currentPath = line.substr(2, colonPos - 2);
+          skipPath = (currentPath.find(versionPrefix) != 0);
+          if (!skipPath) {
+            result << line << "\n";
+          }
+        }
+      }
+      // Otherwise skip this line
+    } else {
+      // Include this line (it's part of a path we want)
+      result << line << "\n";
+    }
+  }
+
+  return result.str();
 }
 
+std::string
+SwaggerHandler::updateOpenAPIServerURLs(const std::string &yamlContent,
+                                        const std::string &requestHost) const {
+  std::string serverUrl;
+
+  // If requestHost is provided, use it (browser-accessible URL)
+  if (!requestHost.empty()) {
+    // Extract host and port from requestHost (format: "host:port" or "host")
+    std::string host = requestHost;
+    std::string portStr = "";
+
+    size_t colonPos = requestHost.find(':');
+    if (colonPos != std::string::npos) {
+      host = requestHost.substr(0, colonPos);
+      portStr = requestHost.substr(colonPos + 1);
+    }
+
+    // Determine scheme (http or https)
+    std::string scheme = "http";
+    const char *https_env = std::getenv("API_HTTPS");
+    if (https_env &&
+        (std::string(https_env) == "1" || std::string(https_env) == "true")) {
+      scheme = "https";
+    }
+
+    // Build server URL from request host
+    serverUrl = scheme + "://" + host;
+    if (!portStr.empty()) {
+      serverUrl += ":" + portStr;
+    }
+  } else {
+    // Fallback to environment variables
+    std::string host = EnvConfig::getString("API_HOST", "0.0.0.0");
+    uint16_t port =
+        static_cast<uint16_t>(EnvConfig::getInt("API_PORT", 8080, 1, 65535));
+
+    // If host is 0.0.0.0, use localhost for browser compatibility
+    if (host == "0.0.0.0") {
+      host = "localhost";
+    }
+
+    // Determine scheme (http or https)
+    std::string scheme = "http";
+    const char *https_env = std::getenv("API_HTTPS");
+    if (https_env &&
+        (std::string(https_env) == "1" || std::string(https_env) == "true")) {
+      scheme = "https";
+    }
+
+    // Build server URL
+    serverUrl = scheme + "://" + host;
+    if ((scheme == "http" && port != 80) ||
+        (scheme == "https" && port != 443)) {
+      serverUrl += ":" + std::to_string(port);
+    }
+  }
+
+  // Replace server URLs in OpenAPI spec
+  // Pattern: url: http://localhost:8080 or url: http://0.0.0.0:8080
+  std::string result = yamlContent;
+
+  // Replace all server URL patterns
+  // Match: "  - url: http://..." or "  url: http://..."
+  std::regex urlPattern(R"((\s+-\s+url:\s+)(https?://[^\s]+))");
+  result = std::regex_replace(result, urlPattern, "$1" + serverUrl);
+
+  // Also handle case without dash (single server)
+  std::regex urlPattern2(R"((\s+url:\s+)(https?://[^\s]+))");
+  result = std::regex_replace(result, urlPattern2, "$1" + serverUrl);
+
+  return result;
+}
+
+void SwaggerHandler::handleOptions(
+    const HttpRequestPtr &req,
+    std::function<void(const HttpResponsePtr &)> &&callback) {
+  auto resp = HttpResponse::newHttpResponse();
+  resp->setStatusCode(k200OK);
+  resp->addHeader("Access-Control-Allow-Origin", "*");
+  resp->addHeader("Access-Control-Allow-Methods", "GET, OPTIONS");
+  resp->addHeader("Access-Control-Allow-Headers", "Content-Type");
+  resp->addHeader("Access-Control-Max-Age", "3600");
+  callback(resp);
+}

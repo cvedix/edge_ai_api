@@ -95,12 +95,12 @@ Sau khi cài đặt:
 
 ## ✨ Tính Năng
 
-✅ **Bundled Libraries**: Tất cả shared libraries được bundle vào package  
-✅ **RPATH Configuration**: Executable tự động tìm libraries trong package  
-✅ **Systemd Integration**: Tự động tạo và enable systemd service  
-✅ **User Management**: Tự động tạo user `edgeai`  
-✅ **Directory Structure**: Tự động tạo cấu trúc thư mục cần thiết  
-✅ **ldconfig**: Tự động cấu hình ldconfig để tìm libraries  
+✅ **Bundled Libraries**: Tất cả shared libraries được bundle vào package
+✅ **RPATH Configuration**: Executable tự động tìm libraries trong package
+✅ **Systemd Integration**: Tự động tạo và enable systemd service
+✅ **User Management**: Tự động tạo user `edgeai`
+✅ **Directory Structure**: Tự động tạo cấu trúc thư mục cần thiết
+✅ **ldconfig**: Tự động cấu hình ldconfig để tìm libraries
 
 ## 📝 Tóm Tắt
 

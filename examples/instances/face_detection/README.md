@@ -208,4 +208,3 @@ mosquitto_sub -h localhost -t test -v
 - Sample code: `sample/1-1-1_sample.cpp`
 - Sample code: `sample/simple_rtmp_mqtt_sample.cpp`
 - Testing guide: `sample/YUNET_TESTING_GUIDE.md`
-

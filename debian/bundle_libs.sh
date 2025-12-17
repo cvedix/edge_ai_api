@@ -38,13 +38,13 @@ fi
 ldd "$EXEC_PATH" 2>/dev/null | grep -v "not found" | awk '{print $3}' | grep -v "^$" | sort -u | while read lib; do
     if [ -f "$lib" ]; then
         libname=$(basename "$lib")
-        
+
         # Skip system libraries
         case "$libname" in
             libc.so*|libm.so*|libpthread.so*|libdl.so*|libgcc_s.so*|libstdc++.so*|ld-linux*)
                 continue
                 ;;
-            libopencv*.so*|libgst*.so*|libgstrtspserver*.so*)
+            libopencv*.so*|libgstrtspserver*.so*|libgst*.so*)
                 # Skip OpenCV and GStreamer - user must install via package dependencies
                 continue
                 ;;

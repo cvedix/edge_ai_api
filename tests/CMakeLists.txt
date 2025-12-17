@@ -151,7 +151,7 @@ endforeach()
 if(TARGET cvedix::cvedix_instance_sdk)
     target_link_libraries(edge_ai_api_tests PRIVATE cvedix::cvedix_instance_sdk)
     message(STATUS "✓ CVEDIX SDK linked to tests")
-    
+
     # Handle OpenCV CUDA libraries - filter them out if not available
     get_target_property(CVEDIX_LINK_LIBS cvedix::cvedix_instance_sdk INTERFACE_LINK_LIBRARIES)
     if(CVEDIX_LINK_LIBS)
@@ -164,7 +164,7 @@ if(TARGET cvedix::cvedix_instance_sdk)
                     break()
                 endif()
             endforeach()
-            
+
             if(IS_CUDA_LIB)
                 if(OPENCV_CUDA_AVAILABLE)
                     list(APPEND FILTERED_LIBS "${LIB}")
@@ -173,7 +173,7 @@ if(TARGET cvedix::cvedix_instance_sdk)
                 list(APPEND FILTERED_LIBS "${LIB}")
             endif()
         endforeach()
-        
+
         if(NOT "${CVEDIX_LINK_LIBS}" STREQUAL "${FILTERED_LIBS}")
             set_target_properties(cvedix::cvedix_instance_sdk PROPERTIES
                 INTERFACE_LINK_LIBRARIES "${FILTERED_LIBS}"
@@ -185,15 +185,15 @@ if(TARGET cvedix::cvedix_instance_sdk)
             endif()
         endif()
     endif()
-    
+
     # Use linker flags based on CUDA availability
     if(CMAKE_CXX_COMPILER_ID STREQUAL "GNU" OR CMAKE_CXX_COMPILER_ID MATCHES "Clang")
         if(OPENCV_CUDA_AVAILABLE)
-            target_link_options(edge_ai_api_tests PRIVATE 
+            target_link_options(edge_ai_api_tests PRIVATE
                 -Wl,--as-needed
             )
         else()
-            target_link_options(edge_ai_api_tests PRIVATE 
+            target_link_options(edge_ai_api_tests PRIVATE
                 -Wl,--as-needed
                 -Wl,--allow-shlib-undefined
             )
@@ -212,7 +212,7 @@ if(CVEDIX_WITH_MQTT)
             /usr/local/lib
             /opt/cvedix/lib
     )
-    
+
     if(MOSQUITTO_LIBRARY)
         target_link_libraries(edge_ai_api_tests PRIVATE ${MOSQUITTO_LIBRARY})
         message(STATUS "✓ Linked mosquitto library to tests: ${MOSQUITTO_LIBRARY}")
@@ -242,7 +242,7 @@ if(OpenCV_FOUND)
             opencv_highgui
             opencv_dnn
         )
-        
+
         # Conditionally add CUDA libraries if available
         if(OPENCV_CUDA_AVAILABLE)
             foreach(CUDA_LIB_NAME ${CUDA_LIB_NAMES})
@@ -254,12 +254,12 @@ if(OpenCV_FOUND)
         else()
             message(STATUS "✓ Linking OpenCV without CUDA support for tests")
         endif()
-        
+
         target_link_libraries(edge_ai_api_tests PRIVATE ${OPENCV_BASE_LIBS})
     else()
         # Fallback to pkg-config libraries
         set(OPENCV_LIBS ${OpenCV_LIBRARIES})
-        
+
         # Filter CUDA libraries based on availability
         if(NOT OPENCV_CUDA_AVAILABLE)
             list(FILTER OPENCV_LIBS EXCLUDE REGEX "opencv_cuda")
@@ -267,7 +267,7 @@ if(OpenCV_FOUND)
         else()
             message(STATUS "✓ Using OpenCV libraries from pkg-config for tests (with CUDA)")
         endif()
-        
+
         target_link_libraries(edge_ai_api_tests PRIVATE ${OPENCV_LIBS})
     endif()
     message(STATUS "✓ OpenCV linked to tests")
@@ -350,4 +350,3 @@ endif()
 # Enable testing
 enable_testing()
 add_test(NAME edge_ai_api_tests COMMAND edge_ai_api_tests)
-

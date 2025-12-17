@@ -4,7 +4,7 @@
 
 Dự án Edge AI API sử dụng biến môi trường để cấu hình server và các thành phần. C++ sử dụng `std::getenv()` để đọc biến môi trường từ hệ thống.
 
-> **📖 Xem thêm:** 
+> **📖 Xem thêm:**
 > - [Unified Configuration Approach](CONFIG_UNIFIED_APPROACH.md) - **Cách tiếp cận thống nhất** giữa config.json và env vars
 > - [Development Setup](DEVELOPMENT_SETUP.md) - Hướng dẫn chi tiết về cách xử lý tạo thư mục tự động với fallback
 
@@ -205,4 +205,3 @@ Có thể thêm một thư viện C++ nhẹ để parse `.env` file tự động
 - Hoặc tự implement một parser đơn giản
 
 Hiện tại, cách tiếp cận hiện tại (export + std::getenv) là đủ cho hầu hết use cases.
-

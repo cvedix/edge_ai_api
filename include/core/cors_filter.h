@@ -6,16 +6,14 @@
 
 /**
  * @brief CORS Filter
- * 
- * Handles CORS preflight (OPTIONS) requests and adds CORS headers to all responses
+ *
+ * Handles CORS preflight (OPTIONS) requests and adds CORS headers to all
+ * responses
  */
-class CorsFilter : public drogon::HttpFilter<CorsFilter, false>
-{
+class CorsFilter : public drogon::HttpFilter<CorsFilter, false> {
 public:
-    CorsFilter() {}
+  CorsFilter() {}
 
-    void doFilter(const drogon::HttpRequestPtr& req,
-                  drogon::FilterCallback&& fcb,
-                  drogon::FilterChainCallback&& fccb) override;
+  void doFilter(const drogon::HttpRequestPtr &req, drogon::FilterCallback &&fcb,
+                drogon::FilterChainCallback &&fccb) override;
 };
-

@@ -2,7 +2,7 @@
 # ============================================
 # Edge AI API - Utility Scripts
 # ============================================
-# 
+#
 # Gộp các utility scripts:
 # - run_tests.sh
 # - generate_default_solution_template.sh
@@ -37,12 +37,12 @@ case "$COMMAND" in
     test)
         BUILD_DIR="${2:-build}"
         TEST_EXEC="${BUILD_DIR}/bin/edge_ai_api_tests"
-        
+
         echo "========================================"
         echo "Running Edge AI API Unit Tests"
         echo "========================================"
         echo ""
-        
+
         if [ ! -f "${TEST_EXEC}" ]; then
             echo -e "${RED}Error: Test executable not found at ${TEST_EXEC}${NC}"
             echo "Please build tests first:"
@@ -51,11 +51,11 @@ case "$COMMAND" in
             echo "  make -j\$(nproc)"
             exit 1
         fi
-        
+
         echo "Running tests..."
         "${TEST_EXEC}"
         EXIT_CODE=$?
-        
+
         if [ $EXIT_CODE -eq 0 ]; then
             echo -e "${GREEN}✓ All tests PASSED!${NC}"
         else
@@ -63,23 +63,23 @@ case "$COMMAND" in
         fi
         exit $EXIT_CODE
         ;;
-    
+
     generate-solution)
         echo -e "${BLUE}Generate Default Solution Template${NC}"
         echo ""
-        
+
         read -p "Solution ID (e.g., face_detection_webcam): " SOLUTION_ID
         read -p "Solution Name (e.g., Face Detection with Webcam): " SOLUTION_NAME
         read -p "Solution Type (e.g., face_detection): " SOLUTION_TYPE
-        
+
         if [ -z "$SOLUTION_ID" ] || [ -z "$SOLUTION_NAME" ] || [ -z "$SOLUTION_TYPE" ]; then
             echo -e "${RED}All fields are required${NC}"
             exit 1
         fi
-        
+
         FUNCTION_NAME=$(echo "$SOLUTION_ID" | sed 's/_\([a-z]\)/\U\1/g' | sed 's/^\([a-z]\)/\U\1/')
         FUNCTION_NAME="register${FUNCTION_NAME}Solution"
-        
+
         echo ""
         echo -e "${GREEN}Template code:${NC}"
         echo "void SolutionRegistry::${FUNCTION_NAME}() {"
@@ -91,14 +91,14 @@ case "$COMMAND" in
         echo "    registerSolution(config);"
         echo "}"
         ;;
-    
+
     restore-solutions)
         echo -e "${BLUE}Restore Default Solutions${NC}"
         echo ""
         echo "This would restore default solutions from backup"
         echo "Feature not yet implemented"
         ;;
-    
+
     help|--help|-h)
         echo "Usage: $0 <command> [options]"
         echo ""
@@ -113,11 +113,10 @@ case "$COMMAND" in
         echo "  $0 test build"
         echo "  $0 generate-solution"
         ;;
-    
+
     *)
         echo -e "${RED}Unknown command: $COMMAND${NC}"
         echo "Run '$0 help' for usage"
         exit 1
         ;;
 esac
-

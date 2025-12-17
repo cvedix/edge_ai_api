@@ -216,4 +216,3 @@ Package version được định nghĩa trong:
 - `CMakeLists.txt` - Project version
 
 Để thay đổi version, chỉnh sửa `debian/changelog` và chạy lại build script.
-
