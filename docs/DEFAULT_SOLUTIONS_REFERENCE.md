@@ -1,10 +1,92 @@
 # Default Solutions Reference
 
-## Tổng quan
+## 📋 Tổng Quan
 
 Tài liệu này mô tả các **Default Solutions** được hardcode trong ứng dụng. Các solutions này được tự động load khi khởi động và **KHÔNG THỂ** bị thay đổi, xóa hoặc ghi đè bởi người dùng.
 
-## Danh sách Default Solutions
+## ✅ Xác nhận: Default Solutions Tự động Có sẵn
+
+Khi bạn **chạy project**, các **default solutions** sẽ **TỰ ĐỘNG có sẵn** ngay lập tức:
+
+1. ✅ `face_detection` - Face Detection với RTSP source
+2. ✅ `face_detection_file` - Face Detection với File source  
+3. ✅ `object_detection` - Object Detection (YOLO)
+4. ✅ `face_detection_rtmp` - Face Detection với RTMP Streaming
+
+**Không cần cấu hình gì thêm** - chỉ cần chạy project và sử dụng!
+
+---
+
+## 🚀 Quick Start
+
+### 1. Khởi động project
+
+```bash
+cd build
+./edge_ai_api
+```
+
+### 2. Kiểm tra solutions có sẵn
+
+```bash
+# List tất cả solutions (sẽ thấy default solutions)
+curl http://localhost:8080/v1/core/solutions | jq
+```
+
+Kết quả sẽ có:
+```json
+{
+  "solutions": [
+    {
+      "solutionId": "face_detection",
+      "solutionName": "Face Detection",
+      "isDefault": true,
+      ...
+    },
+    {
+      "solutionId": "face_detection_file",
+      "solutionName": "Face Detection with File Source",
+      "isDefault": true,
+      ...
+    },
+    {
+      "solutionId": "object_detection",
+      "solutionName": "Object Detection (YOLO)",
+      "isDefault": true,
+      ...
+    },
+    {
+      "solutionId": "face_detection_rtmp",
+      "solutionName": "Face Detection with RTMP Streaming",
+      "isDefault": true,
+      ...
+    }
+  ],
+  "total": 4,
+  "default": 4,
+  "custom": 0
+}
+```
+
+### 3. Sử dụng default solution
+
+```bash
+# Tạo instance với default solution
+curl -X POST http://localhost:8080/v1/core/instances \
+  -H "Content-Type: application/json" \
+  -d '{
+    "name": "my_instance",
+    "solution": "face_detection",
+    "additionalParams": {
+      "RTSP_SRC_URL": "rtsp://localhost/stream",
+      "MODEL_PATH": "/path/to/yunet.onnx"
+    }
+  }'
+```
+
+---
+
+## 📚 Chi Tiết Các Default Solutions
 
 ### 1. `face_detection`
 
@@ -12,7 +94,7 @@ Tài liệu này mô tả các **Default Solutions** được hardcode trong ứ
 
 **Pipeline**:
 - **RTSP Source** (`rtsp_src_{instanceId}`)
-  - `rtsp_url`: `${RTSP_URL}`
+  - `rtsp_url`: `${RTSP_SRC_URL}`
   - `channel`: `0`
   - `resize_ratio`: `1.0`
 - **YuNet Face Detector** (`face_detector_{instanceId}`)
@@ -29,6 +111,10 @@ Tài liệu này mô tả các **Default Solutions** được hardcode trong ứ
 - `detectorMode`: `SmartDetection`
 - `detectionSensitivity`: `0.7`
 - `sensorModality`: `RGB`
+
+**Required Parameters**:
+- `RTSP_SRC_URL`: RTSP stream URL
+- `MODEL_PATH`: Đường dẫn đến YuNet model file (.onnx)
 
 ---
 
@@ -56,6 +142,10 @@ Tài liệu này mô tả các **Default Solutions** được hardcode trong ứ
 - `detectionSensitivity`: `0.7`
 - `sensorModality`: `RGB`
 
+**Required Parameters**:
+- `FILE_PATH`: Đường dẫn đến video file
+- `MODEL_PATH`: Đường dẫn đến YuNet model file (.onnx)
+
 ---
 
 ### 3. `object_detection`
@@ -64,11 +154,11 @@ Tài liệu này mô tả các **Default Solutions** được hardcode trong ứ
 
 **Pipeline**:
 - **RTSP Source** (`rtsp_src_{instanceId}`)
-  - `rtsp_url`: `${RTSP_URL}`
+  - `rtsp_url`: `${RTSP_SRC_URL}`
   - `channel`: `0`
   - `resize_ratio`: `1.0`
 - **YOLO Detector** (`yolo_detector_{instanceId}`) - **CHƯA IMPLEMENT**
-  - `weights_path`: `${MODEL_PATH}`
+  - `weights_path`: `${WEIGHTS_PATH}`
   - `config_path`: `${CONFIG_PATH}`
   - `labels_path`: `${LABELS_PATH}`
   - **Lưu ý**: Node này đang bị comment trong code. Để sử dụng cần:
@@ -84,6 +174,12 @@ Tài liệu này mô tả các **Default Solutions** được hardcode trong ứ
 - `detectorMode`: `SmartDetection`
 - `detectionSensitivity`: `0.7`
 - `sensorModality`: `RGB`
+
+**Required Parameters**:
+- `RTSP_SRC_URL`: RTSP stream URL
+- `WEIGHTS_PATH`: Đường dẫn đến YOLO weights file (.weights)
+- `CONFIG_PATH`: Đường dẫn đến YOLO config file (.cfg)
+- `LABELS_PATH`: Đường dẫn đến labels file (.txt)
 
 ---
 
@@ -116,9 +212,15 @@ Tài liệu này mô tả các **Default Solutions** được hardcode trong ứ
 - `detectionSensitivity`: `Low`
 - `sensorModality`: `RGB`
 
+**Required Parameters**:
+- `FILE_PATH`: Đường dẫn đến video file
+- `MODEL_PATH`: Đường dẫn đến YuNet model file (.onnx)
+- `SFACE_MODEL_PATH`: Đường dẫn đến SFace model file (.onnx)
+- `RTMP_URL`: RTMP streaming URL
+
 ---
 
-## Tóm tắt
+## 📊 Tóm Tắt
 
 | Solution ID | Solution Name | Type | Source | Detector | Destination |
 |-------------|---------------|------|--------|-----------|-------------|
@@ -129,7 +231,65 @@ Tài liệu này mô tả các **Default Solutions** được hardcode trong ứ
 
 *YOLO detector chưa được implement
 
-## Vị trí trong Code
+---
+
+## 🔧 Thêm/Cập nhật Default Solutions
+
+### Cách 1: Sử dụng Script Helper (Khuyến nghị)
+
+```bash
+# Generate template code tự động
+./scripts/generate_default_solution_template.sh
+
+# Script sẽ hỏi:
+# - Solution ID
+# - Solution Name  
+# - Solution Type
+# → Tạo template code sẵn để copy vào project
+```
+
+### Cách 2: Làm thủ công
+
+**Tóm tắt nhanh:**
+1. Tạo hàm `register[Name]Solution()` trong `src/solutions/solution_registry.cpp`
+2. Khai báo hàm trong `include/solutions/solution_registry.h`
+3. Gọi hàm trong `initializeDefaultSolutions()`
+4. Set `config.isDefault = true`
+5. Rebuild project
+
+**Ví dụ**: Cập nhật `detectionSensitivity` mặc định của `face_detection`:
+
+```cpp
+void SolutionRegistry::registerFaceDetectionSolution() {
+    // ... existing code ...
+    
+    // Thay đổi default
+    config.defaults["detectionSensitivity"] = "0.8";  // Từ 0.7 → 0.8
+    
+    registerSolution(config);
+}
+```
+
+Sau đó rebuild:
+```bash
+cd build && make
+```
+
+### 📋 Checklist Khi Thêm/Cập nhật
+
+- [ ] Tạo hàm register mới (hoặc sửa hàm cũ)
+- [ ] Khai báo trong header file
+- [ ] Gọi hàm trong `initializeDefaultSolutions()`
+- [ ] Set `config.isDefault = true`
+- [ ] Đảm bảo `solutionId` unique
+- [ ] Rebuild project
+- [ ] Test solution bằng cách tạo instance
+- [ ] Cập nhật `docs/default_solutions_backup.json` (nếu cần)
+- [ ] Cập nhật tài liệu
+
+---
+
+## 📍 Vị Trí Trong Code
 
 Các default solutions được định nghĩa trong:
 - **File**: `src/solutions/solution_registry.cpp`
@@ -140,7 +300,29 @@ Các default solutions được định nghĩa trong:
   - `registerFaceDetectionRTMPSolution()` - line 238
 - **Initialization**: `initializeDefaultSolutions()` - line 93
 
-## Backup và Restore
+### Kiểm tra trong code:
+
+```bash
+# Xem các hàm register
+grep "register.*Solution()" src/solutions/solution_registry.cpp
+
+# Xem initialization
+grep -A 5 "initializeDefaultSolutions" src/main.cpp
+```
+
+### Kiểm tra khi chạy:
+
+```bash
+# List solutions
+curl http://localhost:8080/v1/core/solutions | jq '.solutions[] | select(.isDefault == true)'
+
+# Get chi tiết từng solution
+curl http://localhost:8080/v1/core/solutions/face_detection | jq
+```
+
+---
+
+## 💾 Backup và Restore
 
 ### File Backup
 
@@ -162,7 +344,9 @@ Script để reset storage file về trạng thái mặc định:
   - Reset file về trạng thái rỗng `{}`
   - Default solutions sẽ tự động load khi khởi động lại ứng dụng
 
-## Bảo mật
+---
+
+## 🔒 Bảo Mật
 
 Các default solutions được bảo vệ bởi nhiều lớp:
 - ✅ Không thể tạo/update/delete qua API
@@ -172,51 +356,34 @@ Các default solutions được bảo vệ bởi nhiều lớp:
 
 **Lưu ý bảo mật:** Default solutions được load từ code khi khởi động, không thể bị thay đổi từ bên ngoài.
 
-## Tự động Load Khi Khởi động
+---
 
-**4 default solutions này sẽ TỰ ĐỘNG có sẵn khi bạn chạy project**, không cần cấu hình thêm.
+## ⚠️ Lưu ý Quan Trọng
 
-Khi ứng dụng khởi động:
-1. Hàm `initializeDefaultSolutions()` được gọi trong `main.cpp` (line 952)
-2. Tất cả 4 default solutions được register vào registry
-3. Solutions có sẵn ngay lập tức để sử dụng
+1. **Default solutions tự động load**: Không cần cấu hình, tự động có sẵn khi chạy project
+2. **Không lưu vào storage**: Default solutions không được lưu vào `solutions.json`
+3. **Không thể xóa qua API**: Default solutions được bảo vệ, chỉ có thể sửa trong code
+4. **Phải rebuild**: Sau khi sửa code, phải rebuild để thay đổi có hiệu lực
+5. **isDefault = true**: Luôn nhớ set flag này cho default solutions
+6. **Default solutions không thể thay đổi**: Nếu cần customize, hãy tạo custom solution mới với ID khác
+7. **Storage file**: File `solutions.json` chỉ chứa custom solutions, không chứa default solutions
+8. **Restore**: Nếu muốn reset về trạng thái mặc định, chỉ cần xóa tất cả custom solutions trong storage file
 
-**Không cần làm gì thêm** - chỉ cần chạy project và 4 solutions này sẽ có sẵn!
+---
 
-## Thêm/Cập nhật Default Solutions
+## 🎯 Tóm Tắt
 
-Khi cần thêm hoặc cập nhật default solutions:
+✅ **Default solutions tự động có sẵn khi chạy project**  
+✅ **Không cần cấu hình gì thêm**  
+✅ **Có thể thêm/cập nhật bằng cách sửa code**  
+✅ **Có script helper để tạo template nhanh**  
 
-Tóm tắt nhanh:
-1. Sửa code trong `src/solutions/solution_registry.cpp`
-2. Thêm hàm `register[Name]Solution()` mới
-3. Gọi hàm trong `initializeDefaultSolutions()`
-4. Rebuild project
+**Bắt đầu sử dụng ngay bây giờ!** 🚀
 
-## Sử dụng
+---
 
-Default solutions luôn có sẵn và có thể được sử dụng ngay:
+## 📚 Tài Liệu Liên Quan
 
-```bash
-# List tất cả solutions (bao gồm default)
-curl http://localhost:8080/v1/core/solutions
-
-# Get chi tiết default solution
-curl http://localhost:8080/v1/core/solutions/face_detection
-
-# Tạo instance với default solution
-curl -X POST http://localhost:8080/v1/core/instances \
-  -H "Content-Type: application/json" \
-  -d '{
-    "instanceId": "my_instance",
-    "solutionId": "face_detection",
-    ...
-  }'
-```
-
-## Lưu ý
-
-1. **Default solutions không thể thay đổi**: Nếu cần customize, hãy tạo custom solution mới với ID khác
-2. **Storage file**: File `solutions.json` chỉ chứa custom solutions, không chứa default solutions
-3. **Restore**: Nếu muốn reset về trạng thái mặc định, chỉ cần xóa tất cả custom solutions trong storage file
-
+- **[INSTANCE_GUIDE.md](./INSTANCE_GUIDE.md)** - Hướng dẫn sử dụng instances
+- **[DEVELOPMENT_GUIDE.md](./DEVELOPMENT_GUIDE.md)** - Hướng dẫn phát triển và thêm features mới
+- **[examples/instances/README.md](../examples/instances/README.md)** - Examples và test files cho instances

@@ -103,6 +103,22 @@ private:
     );
     
     /**
+     * @brief Create FFmpeg source node (for HLS, HTTP streams, etc.)
+     */
+    std::shared_ptr<cvedix_nodes::cvedix_node> createFFmpegSourceNode(
+        const std::string& nodeName,
+        const std::map<std::string, std::string>& params,
+        const CreateInstanceRequest& req
+    );
+    
+    /**
+     * @brief Detect input type from URI/path
+     * @param uri URI or file path
+     * @return Input type: "rtsp", "rtmp", "hls", "http", "file"
+     */
+    std::string detectInputType(const std::string& uri) const;
+    
+    /**
      * @brief Create face detector node (YuNet)
      */
     std::shared_ptr<cvedix_nodes::cvedix_node> createFaceDetectorNode(
@@ -135,6 +151,15 @@ private:
     std::shared_ptr<cvedix_nodes::cvedix_node> createFaceOSDNode(
         const std::string& nodeName,
         const std::map<std::string, std::string>& params
+    );
+    
+    /**
+     * @brief Create OSD v3 node (for masks and labels)
+     */
+    std::shared_ptr<cvedix_nodes::cvedix_node> createOSDv3Node(
+        const std::string& nodeName,
+        const std::map<std::string, std::string>& params,
+        const CreateInstanceRequest& req
     );
     
     /**
@@ -214,6 +239,15 @@ private:
      * @brief Create JSON MQTT broker node
      */
     std::shared_ptr<cvedix_nodes::cvedix_node> createJSONMQTTBrokerNode(
+        const std::string& nodeName,
+        const std::map<std::string, std::string>& params,
+        const CreateInstanceRequest& req
+    );
+    
+    /**
+     * @brief Create JSON Crossline MQTT broker node (custom formatting for ba_crossline)
+     */
+    std::shared_ptr<cvedix_nodes::cvedix_node> createJSONCrosslineMQTTBrokerNode(
         const std::string& nodeName,
         const std::map<std::string, std::string>& params,
         const CreateInstanceRequest& req

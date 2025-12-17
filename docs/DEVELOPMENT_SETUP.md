@@ -731,9 +731,138 @@ curl http://localhost:8080/v1/core/health
 sudo systemctl status edge-ai-api
 ```
 
+## 📁 Tạo Thư Mục Tự Động với Fallback
+
+Hệ thống hỗ trợ tự động tạo thư mục với cơ chế fallback 3 tầng để đảm bảo ứng dụng luôn chạy được, dù không có quyền tạo thư mục production.
+
+### Chiến Lược 3 Tầng
+
+1. **Tầng 1: Thử tạo thư mục production** (`/opt/edge_ai_api/instances`)
+   - Nếu thành công → dùng thư mục này
+   - Nếu không có quyền → chuyển sang tầng 2
+
+2. **Tầng 2: Fallback sang user directory** (`~/.local/share/edge_ai_api/instances`)
+   - Tuân thủ XDG Base Directory Specification
+   - Không cần quyền root
+   - Tự động tạo được
+
+3. **Tầng 3: Fallback cuối cùng** (`./instances`)
+   - Current working directory
+   - Luôn có quyền ghi
+   - Đảm bảo hệ thống luôn chạy được
+
+### Cấu Hình Quyền Thư Mục
+
+**Quyền Chuẩn (755) - Khuyến nghị cho Production:**
+```bash
+sudo mkdir -p /opt/edge_ai_api
+sudo chown edgeai:edgeai /opt/edge_ai_api
+sudo chmod 755 /opt/edge_ai_api
+```
+
+**Quyền Đầy Đủ (777) - Chỉ cho Development:**
+```bash
+sudo mkdir -p /opt/edge_ai_api
+sudo chown edgeai:edgeai /opt/edge_ai_api
+sudo chmod 777 /opt/edge_ai_api
+```
+
+### Environment Variables
+
+Có thể override thư mục bằng environment variables:
+- `INSTANCES_DIR`: Thư mục lưu instances
+- `LOG_DIR`: Thư mục lưu logs
+- `DATA_DIR`: Thư mục lưu data
+- `EXTERNAL_DATA_DIR`: Thư mục dữ liệu ngoài (mặc định: `/mnt/sb1/data`)
+
+**Ví dụ:**
+```bash
+export INSTANCES_DIR=/custom/path/instances
+export EXTERNAL_DATA_DIR=/mnt/other/data
+./build/bin/edge_ai_api
+```
+
+### Troubleshooting
+
+**Vấn đề: "Permission denied"**
+```bash
+# Tạo parent directory với quyền phù hợp
+sudo mkdir -p /opt/edge_ai_api
+sudo chown $USER:$USER /opt/edge_ai_api
+sudo chmod 755 /opt/edge_ai_api
+```
+
+**Vấn đề: "Fallback không hoạt động"**
+```bash
+# Set HOME nếu chưa có
+export HOME=/home/username
+
+# Hoặc dùng environment variable
+export INSTANCES_DIR=/path/to/custom/directory
+```
+
+Xem chi tiết đầy đủ về directory creation strategy trong code comments tại `include/core/env_config.h`.
+
+## 🛠️ Scripts và Utilities
+
+### Scripts Chính
+
+**Entry Point:**
+- `setup.sh` - Setup tự động từ đầu đến cuối (khuyến nghị)
+  - Development: `./setup.sh`
+  - Production: `sudo ./setup.sh --production`
+
+**Helper Scripts:**
+- `scripts/load_env.sh` - Load environment variables từ .env file
+- `scripts/fix_all_symlinks.sh` - Fix tất cả symlinks (khuyến nghị khi gặp lỗi CMake)
+- `scripts/install_dependencies.sh` - Cài dependencies độc lập
+- `scripts/run_tests.sh` - Chạy tests
+
+**Production Scripts:**
+- `deploy/build.sh` - Production deployment script
+- `deploy/install_directories.sh` - Tạo thư mục production
+- `deploy/set_full_permissions.sh` - Set quyền 777 (development)
+
+**Utility Scripts:**
+- `scripts/generate_default_solution_template.sh` - Tạo template solution mới
+- `scripts/restore_default_solutions.sh` - Restore default solutions
+- `scripts/record_output_helper.sh` - Helper cho record output (check, debug, restart)
+- `scripts/rtsp_helper.sh` - Helper cho RTSP (check, debug, diagnose, test)
+
+### Sử Dụng Scripts
+
+**Fix Symlinks (Khi gặp lỗi CMake):**
+```bash
+# Khuyến nghị: Fix tất cả symlinks
+sudo ./scripts/fix_all_symlinks.sh
+
+# Hoặc fix riêng từng phần nếu cần
+sudo ./scripts/fix_cvedix_symlinks.sh
+sudo ./scripts/fix_cereal_symlink.sh
+sudo ./scripts/fix_cpp_base64_symlink.sh
+```
+
+**Record Output Helper:**
+```bash
+./scripts/record_output_helper.sh <instanceId> check
+./scripts/record_output_helper.sh <instanceId> debug
+./scripts/record_output_helper.sh <instanceId> restart
+```
+
+**RTSP Helper:**
+```bash
+./scripts/rtsp_helper.sh <instanceId> <rtsp_url> check
+./scripts/rtsp_helper.sh <instanceId> <rtsp_url> debug
+./scripts/rtsp_helper.sh <instanceId> <rtsp_url> diagnose
+./scripts/rtsp_helper.sh <instanceId> <rtsp_url> test
+```
+
+Xem chi tiết về tất cả scripts trong `scripts/README.md`.
+
 ## 📚 Tài Liệu Liên Quan
 
 - [Hướng Dẫn Khởi Động và Sử Dụng](GETTING_STARTED.md)
 - [Hướng Dẫn Phát Triển](DEVELOPMENT_GUIDE.md)
-- [Architecture](architecture.md)
+- [Architecture](ARCHITECTURE.md)
+- [Environment Variables](ENVIRONMENT_VARIABLES.md)
 

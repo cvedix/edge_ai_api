@@ -6,10 +6,11 @@
   "autoStart": true,
   "detectionSensitivity": "Low",
   "additionalParams": {
-    "FILE_PATH": "./cvedix_data/test_video/low_quality.mp4",
-    "BG_RESTORATION_MODEL": "./cvedix_data/models/restoration/RealESRGAN_x4plus.onnx",
-    "FACE_RESTORATION_MODEL": "./cvedix_data/models/restoration/GFPGANv1.4.onnx",
-    "RESTORATION_TO_OSD": "true"
+    "input": {
+      "FILE_PATH": "./cvedix_data/test_video/low_quality.mp4",
+      "BG_RESTORATION_MODEL": "./cvedix_data/models/restoration/RealESRGAN_x4plus.onnx",
+      "FACE_RESTORATION_MODEL": "./cvedix_data/models/restoration/GFPGANv1.4.onnx",
+      "RESTORATION_TO_OSD": "true"
+    }
   }
 }
-

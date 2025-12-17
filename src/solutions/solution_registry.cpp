@@ -1,4 +1,5 @@
 #include "solutions/solution_registry.h"
+#include "core/env_config.h"
 #include <algorithm>
 #include <iostream>
 
@@ -103,6 +104,8 @@ void SolutionRegistry::initializeDefaultSolutions() {
     registerFaceSwapSolution();
     registerInsightFaceRecognitionSolution();
     registerMLLMAnalysisSolution();
+    registerMaskRCNNDetectionSolution();  // Add MaskRCNN detection solution
+    registerMaskRCNNRTMPSolution();  // Add MaskRCNN with RTMP streaming
     
 #ifdef CVEDIX_WITH_RKNN
     registerRKNNYOLOv11DetectionSolution();
@@ -120,14 +123,16 @@ void SolutionRegistry::registerFaceDetectionSolution() {
     config.solutionType = "face_detection";
     config.isDefault = true;
     
-    // RTSP Source Node
-    SolutionConfig::NodeConfig rtspSrc;
-    rtspSrc.nodeType = "rtsp_src";
-    rtspSrc.nodeName = "rtsp_src_{instanceId}";
-    rtspSrc.parameters["rtsp_url"] = "${RTSP_URL}";
-    rtspSrc.parameters["channel"] = "0";
-    rtspSrc.parameters["resize_ratio"] = "1.0";  // Use resize_ratio instead of fps (must be > 0 and <= 1.0)
-    config.pipeline.push_back(rtspSrc);
+    // File Source Node (supports flexible input: file, RTSP, RTMP, HLS via auto-detection)
+    SolutionConfig::NodeConfig fileSrc;
+    fileSrc.nodeType = "file_src";
+    fileSrc.nodeName = "file_src_{instanceId}";
+    // Support both FILE_PATH and RTSP_URL for backward compatibility
+    // Pipeline builder will auto-detect input type from FILE_PATH or RTSP_SRC_URL
+    fileSrc.parameters["file_path"] = "${FILE_PATH}";  // Can be file path or RTSP/RTMP URL
+    fileSrc.parameters["channel"] = "0";
+    fileSrc.parameters["resize_ratio"] = "1.0";  // Use resize_ratio instead of fps (must be > 0 and <= 1.0)
+    config.pipeline.push_back(fileSrc);
     
     // YuNet Face Detector Node
     SolutionConfig::NodeConfig faceDetector;
@@ -210,14 +215,16 @@ void SolutionRegistry::registerObjectDetectionSolution() {
     config.solutionType = "object_detection";
     config.isDefault = true;
     
-    // RTSP Source Node
-    SolutionConfig::NodeConfig rtspSrc;
-    rtspSrc.nodeType = "rtsp_src";
-    rtspSrc.nodeName = "rtsp_src_{instanceId}";
-    rtspSrc.parameters["rtsp_url"] = "${RTSP_URL}";
-    rtspSrc.parameters["channel"] = "0";
-    rtspSrc.parameters["resize_ratio"] = "1.0";
-    config.pipeline.push_back(rtspSrc);
+    // File Source Node (supports flexible input: file, RTSP, RTMP, HLS via auto-detection)
+    SolutionConfig::NodeConfig fileSrc;
+    fileSrc.nodeType = "file_src";
+    fileSrc.nodeName = "file_src_{instanceId}";
+    // Support both FILE_PATH and RTSP_URL for backward compatibility
+    // Pipeline builder will auto-detect input type from FILE_PATH or RTSP_SRC_URL
+    fileSrc.parameters["file_path"] = "${FILE_PATH}";  // Can be file path or RTSP/RTMP URL
+    fileSrc.parameters["channel"] = "0";
+    fileSrc.parameters["resize_ratio"] = "1.0";
+    config.pipeline.push_back(fileSrc);
     
     // YOLO Detector Node (commented out - need to implement createYOLODetectorNode)
     // To use YOLO, you need to:
@@ -401,14 +408,16 @@ void SolutionRegistry::registerYOLOv11DetectionSolution() {
     config.solutionType = "object_detection";
     config.isDefault = true;
     
-    // RTSP Source Node
-    SolutionConfig::NodeConfig rtspSrc;
-    rtspSrc.nodeType = "rtsp_src";
-    rtspSrc.nodeName = "source_{instanceId}";
-    rtspSrc.parameters["rtsp_url"] = "${RTSP_URL}";
-    rtspSrc.parameters["channel"] = "0";
-    rtspSrc.parameters["resize_ratio"] = "1.0";
-    config.pipeline.push_back(rtspSrc);
+    // File Source Node (supports flexible input: file, RTSP, RTMP, HLS via auto-detection)
+    SolutionConfig::NodeConfig fileSrc;
+    fileSrc.nodeType = "file_src";
+    fileSrc.nodeName = "file_src_{instanceId}";
+    // Support both FILE_PATH and RTSP_URL for backward compatibility
+    // Pipeline builder will auto-detect input type from FILE_PATH or RTSP_SRC_URL
+    fileSrc.parameters["file_path"] = "${FILE_PATH}";  // Can be file path or RTSP/RTMP URL
+    fileSrc.parameters["channel"] = "0";
+    fileSrc.parameters["resize_ratio"] = "1.0";
+    config.pipeline.push_back(fileSrc);
     
     // YOLOv11 Detector Node
     SolutionConfig::NodeConfig yolov11Detector;
@@ -444,14 +453,16 @@ void SolutionRegistry::registerFaceSwapSolution() {
     config.solutionType = "face_processing";
     config.isDefault = true;
     
-    // RTSP Source Node
-    SolutionConfig::NodeConfig rtspSrc;
-    rtspSrc.nodeType = "rtsp_src";
-    rtspSrc.nodeName = "source_{instanceId}";
-    rtspSrc.parameters["rtsp_url"] = "${RTSP_URL}";
-    rtspSrc.parameters["channel"] = "0";
-    rtspSrc.parameters["resize_ratio"] = "1.0";
-    config.pipeline.push_back(rtspSrc);
+    // File Source Node (supports flexible input: file, RTSP, RTMP, HLS via auto-detection)
+    SolutionConfig::NodeConfig fileSrc;
+    fileSrc.nodeType = "file_src";
+    fileSrc.nodeName = "file_src_{instanceId}";
+    // Support both FILE_PATH and RTSP_URL for backward compatibility
+    // Pipeline builder will auto-detect input type from FILE_PATH or RTSP_SRC_URL
+    fileSrc.parameters["file_path"] = "${FILE_PATH}";  // Can be file path or RTSP/RTMP URL
+    fileSrc.parameters["channel"] = "0";
+    fileSrc.parameters["resize_ratio"] = "1.0";
+    config.pipeline.push_back(fileSrc);
     
     // YuNet Face Detector Node (for face detection in face swap)
     SolutionConfig::NodeConfig faceDetector;
@@ -509,14 +520,16 @@ void SolutionRegistry::registerInsightFaceRecognitionSolution() {
     config.solutionType = "face_recognition";
     config.isDefault = true;
     
-    // RTSP Source Node
-    SolutionConfig::NodeConfig rtspSrc;
-    rtspSrc.nodeType = "rtsp_src";
-    rtspSrc.nodeName = "source_{instanceId}";
-    rtspSrc.parameters["rtsp_url"] = "${RTSP_URL}";
-    rtspSrc.parameters["channel"] = "0";
-    rtspSrc.parameters["resize_ratio"] = "1.0";
-    config.pipeline.push_back(rtspSrc);
+    // File Source Node (supports flexible input: file, RTSP, RTMP, HLS via auto-detection)
+    SolutionConfig::NodeConfig fileSrc;
+    fileSrc.nodeType = "file_src";
+    fileSrc.nodeName = "file_src_{instanceId}";
+    // Support both FILE_PATH and RTSP_URL for backward compatibility
+    // Pipeline builder will auto-detect input type from FILE_PATH or RTSP_SRC_URL
+    fileSrc.parameters["file_path"] = "${FILE_PATH}";  // Can be file path or RTSP/RTMP URL
+    fileSrc.parameters["channel"] = "0";
+    fileSrc.parameters["resize_ratio"] = "1.0";
+    config.pipeline.push_back(fileSrc);
     
     // YuNet Face Detector Node
     SolutionConfig::NodeConfig faceDetector;
@@ -563,14 +576,16 @@ void SolutionRegistry::registerMLLMAnalysisSolution() {
     config.solutionType = "multimodal_analysis";
     config.isDefault = true;
     
-    // RTSP Source Node
-    SolutionConfig::NodeConfig rtspSrc;
-    rtspSrc.nodeType = "rtsp_src";
-    rtspSrc.nodeName = "source_{instanceId}";
-    rtspSrc.parameters["rtsp_url"] = "${RTSP_URL}";
-    rtspSrc.parameters["channel"] = "0";
-    rtspSrc.parameters["resize_ratio"] = "1.0";
-    config.pipeline.push_back(rtspSrc);
+    // File Source Node (supports flexible input: file, RTSP, RTMP, HLS via auto-detection)
+    SolutionConfig::NodeConfig fileSrc;
+    fileSrc.nodeType = "file_src";
+    fileSrc.nodeName = "file_src_{instanceId}";
+    // Support both FILE_PATH and RTSP_URL for backward compatibility
+    // Pipeline builder will auto-detect input type from FILE_PATH or RTSP_SRC_URL
+    fileSrc.parameters["file_path"] = "${FILE_PATH}";  // Can be file path or RTSP/RTMP URL
+    fileSrc.parameters["channel"] = "0";
+    fileSrc.parameters["resize_ratio"] = "1.0";
+    config.pipeline.push_back(fileSrc);
     
     // MLLM Analyser Node
     SolutionConfig::NodeConfig mllmAnalyser;
@@ -611,14 +626,16 @@ void SolutionRegistry::registerRKNNYOLOv11DetectionSolution() {
     config.solutionType = "object_detection";
     config.isDefault = true;
     
-    // RTSP Source Node
-    SolutionConfig::NodeConfig rtspSrc;
-    rtspSrc.nodeType = "rtsp_src";
-    rtspSrc.nodeName = "source_{instanceId}";
-    rtspSrc.parameters["rtsp_url"] = "${RTSP_URL}";
-    rtspSrc.parameters["channel"] = "0";
-    rtspSrc.parameters["resize_ratio"] = "1.0";
-    config.pipeline.push_back(rtspSrc);
+    // File Source Node (supports flexible input: file, RTSP, RTMP, HLS via auto-detection)
+    SolutionConfig::NodeConfig fileSrc;
+    fileSrc.nodeType = "file_src";
+    fileSrc.nodeName = "file_src_{instanceId}";
+    // Support both FILE_PATH and RTSP_URL for backward compatibility
+    // Pipeline builder will auto-detect input type from FILE_PATH or RTSP_SRC_URL
+    fileSrc.parameters["file_path"] = "${FILE_PATH}";  // Can be file path or RTSP/RTMP URL
+    fileSrc.parameters["channel"] = "0";
+    fileSrc.parameters["resize_ratio"] = "1.0";
+    config.pipeline.push_back(fileSrc);
     
     // RKNN YOLOv11 Detector Node
     SolutionConfig::NodeConfig rknnYolov11Detector;
@@ -661,14 +678,16 @@ void SolutionRegistry::registerTRTInsightFaceRecognitionSolution() {
     config.solutionType = "face_recognition";
     config.isDefault = true;
     
-    // RTSP Source Node
-    SolutionConfig::NodeConfig rtspSrc;
-    rtspSrc.nodeType = "rtsp_src";
-    rtspSrc.nodeName = "source_{instanceId}";
-    rtspSrc.parameters["rtsp_url"] = "${RTSP_URL}";
-    rtspSrc.parameters["channel"] = "0";
-    rtspSrc.parameters["resize_ratio"] = "1.0";
-    config.pipeline.push_back(rtspSrc);
+    // File Source Node (supports flexible input: file, RTSP, RTMP, HLS via auto-detection)
+    SolutionConfig::NodeConfig fileSrc;
+    fileSrc.nodeType = "file_src";
+    fileSrc.nodeName = "file_src_{instanceId}";
+    // Support both FILE_PATH and RTSP_URL for backward compatibility
+    // Pipeline builder will auto-detect input type from FILE_PATH or RTSP_SRC_URL
+    fileSrc.parameters["file_path"] = "${FILE_PATH}";  // Can be file path or RTSP/RTMP URL
+    fileSrc.parameters["channel"] = "0";
+    fileSrc.parameters["resize_ratio"] = "1.0";
+    config.pipeline.push_back(fileSrc);
     
     // YuNet Face Detector Node
     SolutionConfig::NodeConfig faceDetector;
@@ -708,3 +727,132 @@ void SolutionRegistry::registerTRTInsightFaceRecognitionSolution() {
     registerSolution(config);
 }
 #endif // CVEDIX_WITH_TRT
+
+void SolutionRegistry::registerMaskRCNNDetectionSolution() {
+    SolutionConfig config;
+    config.solutionId = "mask_rcnn_detection";
+    config.solutionName = "MaskRCNN Detection";
+    config.solutionType = "segmentation";
+    config.isDefault = true;
+    
+    // File Source Node
+    SolutionConfig::NodeConfig fileSrc;
+    fileSrc.nodeType = "file_src";
+    fileSrc.nodeName = "file_src_{instanceId}";
+    fileSrc.parameters["file_path"] = "${FILE_PATH}";
+    fileSrc.parameters["channel"] = "0";
+    fileSrc.parameters["resize_ratio"] = "${RESIZE_RATIO}";
+    config.pipeline.push_back(fileSrc);
+    
+    // MaskRCNN Detector Node
+    SolutionConfig::NodeConfig maskRCNN;
+    maskRCNN.nodeType = "mask_rcnn_detector";
+    maskRCNN.nodeName = "mask_rcnn_detector_{instanceId}";
+    maskRCNN.parameters["model_path"] = "${MODEL_PATH}";
+    maskRCNN.parameters["model_config_path"] = "${MODEL_CONFIG_PATH}";
+    maskRCNN.parameters["labels_path"] = "${LABELS_PATH}";
+    maskRCNN.parameters["input_width"] = "${INPUT_WIDTH}";
+    maskRCNN.parameters["input_height"] = "${INPUT_HEIGHT}";
+    maskRCNN.parameters["score_threshold"] = "${SCORE_THRESHOLD}";
+    config.pipeline.push_back(maskRCNN);
+    
+    // OSD v3 Node (for displaying masks and labels)
+    SolutionConfig::NodeConfig osd;
+    osd.nodeType = "osd_v3";
+    osd.nodeName = "osd_v3_{instanceId}";
+    // Use default font from environment variable if available, otherwise use relative path
+    // Pipeline builder will resolve this using resolveDefaultFontPath() if empty
+    std::string defaultFont = EnvConfig::resolveDefaultFontPath();
+    if (!defaultFont.empty()) {
+        osd.parameters["font_path"] = defaultFont;
+    } else {
+        // Fallback to relative path (will be resolved by pipeline builder)
+        osd.parameters["font_path"] = "./cvedix_data/font/NotoSansCJKsc-Medium.otf";
+    }
+    config.pipeline.push_back(osd);
+    
+    // File Destination Node
+    SolutionConfig::NodeConfig fileDes;
+    fileDes.nodeType = "file_des";
+    fileDes.nodeName = "file_des_{instanceId}";
+    fileDes.parameters["save_dir"] = "./output/{instanceId}";
+    fileDes.parameters["name_prefix"] = "mask_rcnn_detection";
+    fileDes.parameters["osd"] = "true";
+    config.pipeline.push_back(fileDes);
+    
+    // Default configurations
+    config.defaults["detectorMode"] = "SmartDetection";
+    config.defaults["detectionSensitivity"] = "Medium";
+    config.defaults["sensorModality"] = "RGB";
+    config.defaults["RESIZE_RATIO"] = "1.0";
+    config.defaults["INPUT_WIDTH"] = "416";
+    config.defaults["INPUT_HEIGHT"] = "416";
+    config.defaults["SCORE_THRESHOLD"] = "0.5";
+    
+    registerSolution(config);
+}
+
+void SolutionRegistry::registerMaskRCNNRTMPSolution() {
+    SolutionConfig config;
+    config.solutionId = "mask_rcnn_rtmp";
+    config.solutionName = "MaskRCNN Detection with RTMP Streaming";
+    config.solutionType = "segmentation";
+    config.isDefault = true;
+    
+    // File Source Node
+    SolutionConfig::NodeConfig fileSrc;
+    fileSrc.nodeType = "file_src";
+    fileSrc.nodeName = "file_src_{instanceId}";
+    fileSrc.parameters["file_path"] = "${FILE_PATH}";
+    fileSrc.parameters["channel"] = "0";
+    // IMPORTANT: Use resize_ratio = 1.0 (no resize) if video already has fixed resolution
+    // This prevents double-resizing which can cause shape mismatch errors
+    fileSrc.parameters["resize_ratio"] = "${RESIZE_RATIO}";
+    config.pipeline.push_back(fileSrc);
+    
+    // MaskRCNN Detector Node
+    SolutionConfig::NodeConfig maskRCNN;
+    maskRCNN.nodeType = "mask_rcnn_detector";
+    maskRCNN.nodeName = "mask_rcnn_detector_{instanceId}";
+    maskRCNN.parameters["model_path"] = "${MODEL_PATH}";
+    maskRCNN.parameters["model_config_path"] = "${MODEL_CONFIG_PATH}";
+    maskRCNN.parameters["labels_path"] = "${LABELS_PATH}";
+    maskRCNN.parameters["input_width"] = "${INPUT_WIDTH}";
+    maskRCNN.parameters["input_height"] = "${INPUT_HEIGHT}";
+    maskRCNN.parameters["score_threshold"] = "${SCORE_THRESHOLD}";
+    config.pipeline.push_back(maskRCNN);
+    
+    // OSD v3 Node (for displaying masks and labels)
+    SolutionConfig::NodeConfig osd;
+    osd.nodeType = "osd_v3";
+    osd.nodeName = "osd_v3_{instanceId}";
+    // Use default font from environment variable if available, otherwise use relative path
+    // Pipeline builder will resolve this using resolveDefaultFontPath() if empty
+    std::string defaultFont = EnvConfig::resolveDefaultFontPath();
+    if (!defaultFont.empty()) {
+        osd.parameters["font_path"] = defaultFont;
+    } else {
+        // Fallback to relative path (will be resolved by pipeline builder)
+        osd.parameters["font_path"] = "./cvedix_data/font/NotoSansCJKsc-Medium.otf";
+    }
+    config.pipeline.push_back(osd);
+    
+    // RTMP Destination Node
+    SolutionConfig::NodeConfig rtmpDes;
+    rtmpDes.nodeType = "rtmp_des";
+    rtmpDes.nodeName = "rtmp_des_{instanceId}";
+    rtmpDes.parameters["rtmp_url"] = "${RTMP_URL}";  // Support RTMP_URL (backward compatibility)
+    rtmpDes.parameters["channel"] = "0";
+    config.pipeline.push_back(rtmpDes);
+    
+    // Default configurations
+    config.defaults["detectorMode"] = "SmartDetection";
+    config.defaults["detectionSensitivity"] = "Medium";
+    config.defaults["sensorModality"] = "RGB";
+    config.defaults["RESIZE_RATIO"] = "1.0";
+    config.defaults["INPUT_WIDTH"] = "416";
+    config.defaults["INPUT_HEIGHT"] = "416";
+    config.defaults["SCORE_THRESHOLD"] = "0.5";
+    
+    registerSolution(config);
+}

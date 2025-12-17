@@ -4,11 +4,15 @@
 #include "models/solution_config.h"
 #include "core/logging_flags.h"
 #include "core/logger.h"
+#include "core/node_template_registry.h"
+#include "core/node_pool_manager.h"
 #include <drogon/HttpResponse.h>
 #include <regex>
 #include <chrono>
 #include <set>
 #include <map>
+#include <algorithm>
+#include <cctype>
 
 SolutionRegistry* SolutionHandler::solution_registry_ = nullptr;
 SolutionStorage* SolutionHandler::solution_storage_ = nullptr;
@@ -449,8 +453,46 @@ void SolutionHandler::createSolution(
             return;
         }
         
+        // Validate node types in solution - ensure all node types are supported
+        auto& nodePool = NodePoolManager::getInstance();
+        auto allTemplates = nodePool.getAllTemplates();
+        std::set<std::string> supportedNodeTypes;
+        for (const auto& template_ : allTemplates) {
+            supportedNodeTypes.insert(template_.nodeType);
+        }
+        
+        std::vector<std::string> unsupportedNodeTypes;
+        for (const auto& nodeConfig : config.pipeline) {
+            if (supportedNodeTypes.find(nodeConfig.nodeType) == supportedNodeTypes.end()) {
+                unsupportedNodeTypes.push_back(nodeConfig.nodeType);
+            }
+        }
+        
+        if (!unsupportedNodeTypes.empty()) {
+            std::string errorMsg = "Solution contains unsupported node types: ";
+            for (size_t i = 0; i < unsupportedNodeTypes.size(); ++i) {
+                errorMsg += unsupportedNodeTypes[i];
+                if (i < unsupportedNodeTypes.size() - 1) {
+                    errorMsg += ", ";
+                }
+            }
+            if (isApiLoggingEnabled()) {
+                PLOG_WARNING << "[API] POST /v1/core/solutions - Error: " << errorMsg;
+            }
+            callback(createErrorResponse(400, "Invalid request", errorMsg));
+            return;
+        }
+        
         // Register solution
         solution_registry_->registerSolution(config);
+        
+        // Create nodes for node types in this custom solution (if they don't exist)
+        // Note: These are user-created nodes, not default nodes
+        size_t nodesCreated = nodePool.createNodesFromSolution(config);
+        if (nodesCreated > 0) {
+            std::cerr << "[SolutionHandler] Created " << nodesCreated 
+                      << " nodes for custom solution: " << config.solutionId << std::endl;
+        }
         
         // Save to storage
         std::cerr << "[SolutionHandler] Attempting to save solution to storage: " << config.solutionId << std::endl;
@@ -580,6 +622,36 @@ void SolutionHandler::updateSolution(
         // Ensure isDefault is false for custom solutions
         config.isDefault = false;
         
+        // Validate node types in solution - ensure all node types are supported
+        auto& nodePool = NodePoolManager::getInstance();
+        auto allTemplates = nodePool.getAllTemplates();
+        std::set<std::string> supportedNodeTypes;
+        for (const auto& template_ : allTemplates) {
+            supportedNodeTypes.insert(template_.nodeType);
+        }
+        
+        std::vector<std::string> unsupportedNodeTypes;
+        for (const auto& nodeConfig : config.pipeline) {
+            if (supportedNodeTypes.find(nodeConfig.nodeType) == supportedNodeTypes.end()) {
+                unsupportedNodeTypes.push_back(nodeConfig.nodeType);
+            }
+        }
+        
+        if (!unsupportedNodeTypes.empty()) {
+            std::string errorMsg = "Solution contains unsupported node types: ";
+            for (size_t i = 0; i < unsupportedNodeTypes.size(); ++i) {
+                errorMsg += unsupportedNodeTypes[i];
+                if (i < unsupportedNodeTypes.size() - 1) {
+                    errorMsg += ", ";
+                }
+            }
+            if (isApiLoggingEnabled()) {
+                PLOG_WARNING << "[API] PUT /v1/core/solutions/" << solutionId << " - Error: " << errorMsg;
+            }
+            callback(createErrorResponse(400, "Invalid request", errorMsg));
+            return;
+        }
+        
         // Update solution
         if (!solution_registry_->updateSolution(config)) {
             if (isApiLoggingEnabled()) {
@@ -587,6 +659,14 @@ void SolutionHandler::updateSolution(
             }
             callback(createErrorResponse(500, "Internal server error", "Failed to update solution"));
             return;
+        }
+        
+        // Create nodes for node types in this custom solution (if they don't exist)
+        // Note: These are user-created nodes, not default nodes
+        size_t nodesCreated = nodePool.createNodesFromSolution(config);
+        if (nodesCreated > 0) {
+            std::cerr << "[SolutionHandler] Created " << nodesCreated 
+                      << " nodes for custom solution: " << config.solutionId << std::endl;
         }
         
         // Save to storage
@@ -769,16 +849,65 @@ void SolutionHandler::getSolutionParameters(
         response["solutionName"] = config.solutionName;
         response["solutionType"] = config.solutionType;
         
+        // Get node templates for detailed parameter information
+        auto& nodePool = NodePoolManager::getInstance();
+        auto allTemplates = nodePool.getAllTemplates();
+        std::map<std::string, NodePoolManager::NodeTemplate> templatesByType;
+        for (const auto& template_ : allTemplates) {
+            templatesByType[template_.nodeType] = template_;
+        }
+        
         // Extract variables from pipeline nodes and defaults
         std::set<std::string> allParams;  // All parameters found
         std::set<std::string> requiredParams;  // Parameters that are required
         std::map<std::string, std::string> paramDefaults;
         std::map<std::string, std::string> paramDescriptions;
+        std::map<std::string, std::string> paramTypes;  // Parameter types
+        std::map<std::string, std::vector<std::string>> paramUsedInNodes;  // Which nodes use this param
         
         // Extract from pipeline node parameters
         std::regex varPattern("\\$\\{([A-Za-z0-9_]+)\\}");
+        Json::Value pipelineNodes(Json::arrayValue);
+        
         for (const auto& node : config.pipeline) {
+            Json::Value nodeInfo(Json::objectValue);
+            nodeInfo["nodeType"] = node.nodeType;
+            nodeInfo["nodeName"] = node.nodeName;
+            
+            // Get template info for this node type
+            auto templateIt = templatesByType.find(node.nodeType);
+            if (templateIt != templatesByType.end()) {
+                const auto& nodeTemplate = templateIt->second;
+                nodeInfo["displayName"] = nodeTemplate.displayName;
+                nodeInfo["description"] = nodeTemplate.description;
+                nodeInfo["category"] = nodeTemplate.category;
+                
+                // Add required and optional parameters from template
+                Json::Value requiredParamsArray(Json::arrayValue);
+                for (const auto& param : nodeTemplate.requiredParameters) {
+                    requiredParamsArray.append(param);
+                }
+                nodeInfo["requiredParameters"] = requiredParamsArray;
+                
+                Json::Value optionalParamsArray(Json::arrayValue);
+                for (const auto& param : nodeTemplate.optionalParameters) {
+                    optionalParamsArray.append(param);
+                }
+                nodeInfo["optionalParameters"] = optionalParamsArray;
+                
+                // Add default parameters
+                Json::Value defaultParams(Json::objectValue);
+                for (const auto& [key, value] : nodeTemplate.defaultParameters) {
+                    defaultParams[key] = value;
+                }
+                nodeInfo["defaultParameters"] = defaultParams;
+            }
+            
+            // Extract variables from node parameters
+            Json::Value nodeParams(Json::objectValue);
             for (const auto& param : node.parameters) {
+                nodeParams[param.first] = param.second;
+                
                 std::string value = param.second;
                 std::sregex_iterator iter(value.begin(), value.end(), varPattern);
                 std::sregex_iterator end;
@@ -789,10 +918,24 @@ void SolutionHandler::getSolutionParameters(
                     // Initially mark as required (will be overridden if has default)
                     requiredParams.insert(varName);
                     
-                    // Try to infer description from parameter name
+                    // Track which nodes use this parameter
+                    paramUsedInNodes[varName].push_back(node.nodeType);
+                    
+                    // Try to infer description from parameter name and node template
                     if (paramDescriptions.find(varName) == paramDescriptions.end()) {
                         std::string desc = "Parameter for " + node.nodeType + " node";
-                        if (param.first == "url" || varName.find("URL") != std::string::npos) {
+                        if (templateIt != templatesByType.end()) {
+                            const auto& nodeTemplate = templateIt->second;
+                            // Check if this parameter is in required/optional list
+                            bool isRequired = std::find(nodeTemplate.requiredParameters.begin(), 
+                                                       nodeTemplate.requiredParameters.end(), 
+                                                       param.first) != nodeTemplate.requiredParameters.end();
+                            if (isRequired) {
+                                desc = "Required parameter for " + node.nodeType + " (" + param.first + ")";
+                            } else {
+                                desc = "Optional parameter for " + node.nodeType + " (" + param.first + ")";
+                            }
+                        } else if (param.first == "url" || varName.find("URL") != std::string::npos) {
                             desc = "URL for " + node.nodeType;
                         } else if (varName.find("MODEL") != std::string::npos || varName.find("PATH") != std::string::npos) {
                             desc = "File path for " + node.nodeType;
@@ -801,7 +944,11 @@ void SolutionHandler::getSolutionParameters(
                     }
                 }
             }
+            nodeInfo["parameters"] = nodeParams;
+            pipelineNodes.append(nodeInfo);
         }
+        
+        response["pipeline"] = pipelineNodes;
         
         // Extract from defaults
         // If a parameter has a default value (literal, not containing variables), it's optional
@@ -876,6 +1023,16 @@ void SolutionHandler::getSolutionParameters(
                 } else {
                     paramInfo["description"] = "Solution parameter";
                 }
+            }
+            
+            // Add information about which nodes use this parameter
+            auto nodesIt = paramUsedInNodes.find(param);
+            if (nodesIt != paramUsedInNodes.end()) {
+                Json::Value usedInNodes(Json::arrayValue);
+                for (const auto& nodeType : nodesIt->second) {
+                    usedInNodes.append(nodeType);
+                }
+                paramInfo["usedInNodes"] = usedInNodes;
             }
             
             additionalParams[param] = paramInfo;
@@ -999,6 +1156,302 @@ void SolutionHandler::getSolutionParameters(
         auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(end_time - start_time);
         if (isApiLoggingEnabled()) {
             PLOG_ERROR << "[API] GET /v1/core/solutions/" << solutionId << "/parameters - Unknown exception - " << duration.count() << "ms";
+        }
+        std::cerr << "[SolutionHandler] Unknown exception" << std::endl;
+        callback(createErrorResponse(500, "Internal server error", "Unknown error occurred"));
+    }
+}
+
+void SolutionHandler::getSolutionInstanceBody(
+    const HttpRequestPtr &req,
+    std::function<void(const HttpResponsePtr &)> &&callback) {
+    
+    auto start_time = std::chrono::steady_clock::now();
+    
+    std::string solutionId = extractSolutionId(req);
+    
+    if (isApiLoggingEnabled()) {
+        PLOG_INFO << "[API] GET /v1/core/solutions/" << solutionId << "/instance-body - Get instance body";
+    }
+    
+    try {
+        if (!solution_registry_) {
+            if (isApiLoggingEnabled()) {
+                PLOG_ERROR << "[API] GET /v1/core/solutions/" << solutionId << "/instance-body - Error: Solution registry not initialized";
+            }
+            callback(createErrorResponse(500, "Internal server error", "Solution registry not initialized"));
+            return;
+        }
+        
+        if (solutionId.empty()) {
+            if (isApiLoggingEnabled()) {
+                PLOG_WARNING << "[API] GET /v1/core/solutions/{id}/instance-body - Error: Solution ID is empty";
+            }
+            callback(createErrorResponse(400, "Invalid request", "Solution ID is required"));
+            return;
+        }
+        
+        auto optConfig = solution_registry_->getSolution(solutionId);
+        if (!optConfig.has_value()) {
+            auto end_time = std::chrono::steady_clock::now();
+            auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(end_time - start_time);
+            if (isApiLoggingEnabled()) {
+                PLOG_WARNING << "[API] GET /v1/core/solutions/" << solutionId << "/instance-body - Not found - " << duration.count() << "ms";
+            }
+            callback(createErrorResponse(404, "Not found", "Solution not found: " + solutionId));
+            return;
+        }
+        
+        const SolutionConfig& config = optConfig.value();
+        
+        // Build example request body
+        Json::Value body(Json::objectValue);
+        
+        // Standard fields
+        body["name"] = "example_instance";
+        body["group"] = "default";
+        body["solution"] = solutionId;
+        body["persistent"] = false;
+        body["autoStart"] = false;
+        body["frameRateLimit"] = 0;
+        body["detectionSensitivity"] = "Low";
+        body["detectorMode"] = "SmartDetection";
+        body["metadataMode"] = false;
+        body["statisticsMode"] = false;
+        body["diagnosticsMode"] = false;
+        body["debugMode"] = false;
+        
+        // Get node templates for additional parameter information
+        auto& nodePool = NodePoolManager::getInstance();
+        auto allTemplates = nodePool.getAllTemplates();
+        std::map<std::string, NodePoolManager::NodeTemplate> templatesByType;
+        for (const auto& template_ : allTemplates) {
+            templatesByType[template_.nodeType] = template_;
+        }
+        
+        // Extract variables from pipeline and defaults
+        std::set<std::string> allParams;
+        std::map<std::string, std::string> paramDefaults;
+        std::regex varPattern("\\$\\{([A-Za-z0-9_]+)\\}");
+        
+        // Extract from pipeline nodes
+        for (const auto& node : config.pipeline) {
+            // Extract variables from node parameters
+            for (const auto& param : node.parameters) {
+                std::string value = param.second;
+                std::sregex_iterator iter(value.begin(), value.end(), varPattern);
+                std::sregex_iterator end;
+                for (; iter != end; ++iter) {
+                    std::string varName = (*iter)[1].str();
+                    allParams.insert(varName);
+                }
+            }
+            
+            // Extract variables from nodeName template (e.g., {instanceId})
+            std::string nodeName = node.nodeName;
+            std::regex instanceIdPattern("\\{([A-Za-z0-9_]+)\\}");
+            std::sregex_iterator iter(nodeName.begin(), nodeName.end(), instanceIdPattern);
+            std::sregex_iterator end;
+            for (; iter != end; ++iter) {
+                std::string varName = (*iter)[1].str();
+                // Note: {instanceId} is handled automatically, but we track it for completeness
+                if (varName != "instanceId") {
+                    // Convert {VAR} to ${VAR} format for consistency
+                    allParams.insert(varName);
+                }
+            }
+            
+            // Add required parameters from node template if not already in pipeline parameters
+            auto templateIt = templatesByType.find(node.nodeType);
+            if (templateIt != templatesByType.end()) {
+                const auto& nodeTemplate = templateIt->second;
+                
+                // Check required parameters from template
+                for (const auto& requiredParam : nodeTemplate.requiredParameters) {
+                    // Check if this required parameter is used in node.parameters
+                    bool foundInParams = false;
+                    for (const auto& param : node.parameters) {
+                        if (param.first == requiredParam) {
+                            foundInParams = true;
+                            // Check if value contains variable placeholder
+                            std::string value = param.second;
+                            std::sregex_iterator iter(value.begin(), value.end(), varPattern);
+                            std::sregex_iterator end;
+                            if (iter != end) {
+                                // Value contains variable, extract it
+                                for (; iter != end; ++iter) {
+                                    std::string varName = (*iter)[1].str();
+                                    allParams.insert(varName);
+                                }
+                            }
+                            break;
+                        }
+                    }
+                    
+                    // If required parameter not found in node.parameters, 
+                    // check if it should be provided via additionalParams
+                    if (!foundInParams) {
+                        // Convert parameter name to uppercase with underscores (common pattern)
+                        std::string upperParam = requiredParam;
+                        std::transform(upperParam.begin(), upperParam.end(), upperParam.begin(), ::toupper);
+                        std::replace(upperParam.begin(), upperParam.end(), '-', '_');
+                        allParams.insert(upperParam);
+                    }
+                }
+            }
+        }
+        
+        // Extract from defaults
+        for (const auto& def : config.defaults) {
+            std::string paramName = def.first;
+            std::string defaultValue = def.second;
+            allParams.insert(paramName);
+            paramDefaults[paramName] = defaultValue;
+            
+            // Also extract variables from default values
+            std::sregex_iterator iter(defaultValue.begin(), defaultValue.end(), varPattern);
+            std::sregex_iterator end;
+            for (; iter != end; ++iter) {
+                std::string varName = (*iter)[1].str();
+                allParams.insert(varName);
+            }
+        }
+        
+        // Helper function to generate example value based on parameter name
+        auto generateExampleValue = [](const std::string& param) -> std::string {
+            std::string upperParam = param;
+            std::transform(upperParam.begin(), upperParam.end(), upperParam.begin(), ::toupper);
+            
+            // URL parameters
+            if (upperParam.find("RTSP_URL") != std::string::npos || upperParam == "RTSP_URL") {
+                return "rtsp://example.com/stream";
+            } else if (upperParam.find("RTMP_URL") != std::string::npos || upperParam == "RTMP_URL") {
+                return "rtmp://example.com/live/stream";
+            } else if (upperParam.find("URL") != std::string::npos) {
+                return "http://example.com";
+            }
+            
+            // Model and file paths
+            if (upperParam.find("MODEL_PATH") != std::string::npos || upperParam == "MODEL_PATH") {
+                return "./cvedix_data/models/example.model";
+            } else if (upperParam.find("MODEL_CONFIG_PATH") != std::string::npos || upperParam == "MODEL_CONFIG_PATH") {
+                return "./cvedix_data/models/example.config";
+            } else if (upperParam.find("WEIGHTS_PATH") != std::string::npos || upperParam == "WEIGHTS_PATH") {
+                return "./cvedix_data/models/example.weights";
+            } else if (upperParam.find("CONFIG_PATH") != std::string::npos || upperParam == "CONFIG_PATH") {
+                return "./cvedix_data/models/example.cfg";
+            } else if (upperParam.find("LABELS_PATH") != std::string::npos || upperParam == "LABELS_PATH") {
+                return "./cvedix_data/models/example.labels";
+            } else if (upperParam.find("FILE_PATH") != std::string::npos || upperParam == "FILE_PATH") {
+                return "./cvedix_data/test_video/example.mp4";
+            } else if (upperParam.find("PATH") != std::string::npos || upperParam.find("MODEL") != std::string::npos) {
+                return "./cvedix_data/models/example.model";
+            }
+            
+            // Directory parameters
+            if (upperParam.find("DIR") != std::string::npos || upperParam.find("OUTPUT") != std::string::npos) {
+                return "./output";
+            }
+            
+            // Numeric parameters
+            if (upperParam.find("WIDTH") != std::string::npos) {
+                return "416";
+            } else if (upperParam.find("HEIGHT") != std::string::npos) {
+                return "416";
+            } else if (upperParam.find("THRESHOLD") != std::string::npos || upperParam.find("SCORE") != std::string::npos) {
+                return "0.5";
+            } else if (upperParam.find("RATIO") != std::string::npos) {
+                return "1.0";
+            } else if (upperParam.find("CHANNEL") != std::string::npos) {
+                return "0";
+            }
+            
+            // Boolean-like parameters
+            if (upperParam.find("ENABLE") != std::string::npos) {
+                return "true";
+            } else if (upperParam.find("DISABLE") != std::string::npos) {
+                return "false";
+            }
+            
+            // Default
+            return "example_value";
+        };
+        
+        // List of standard fields that should NOT be in additionalParams
+        // These are already handled at root level
+        std::set<std::string> standardFields = {
+            "detectionSensitivity", "DETECTION_SENSITIVITY",
+            "detectorMode", "DETECTOR_MODE",
+            "sensorModality", "SENSOR_MODALITY",
+            "movementSensitivity", "MOVEMENT_SENSITIVITY",
+            "frameRateLimit", "FRAME_RATE_LIMIT",
+            "metadataMode", "METADATA_MODE",
+            "statisticsMode", "STATISTICS_MODE",
+            "diagnosticsMode", "DIAGNOSTICS_MODE",
+            "debugMode", "DEBUG_MODE",
+            "autoStart", "AUTO_START",
+            "persistent", "PERSISTENT",
+            "name", "NAME",
+            "group", "GROUP",
+            "solution", "SOLUTION"
+        };
+        
+        // Build additionalParams with example values
+        Json::Value additionalParams(Json::objectValue);
+        for (const auto& param : allParams) {
+            // Skip standard fields that are already at root level
+            std::string upperParam = param;
+            std::transform(upperParam.begin(), upperParam.end(), upperParam.begin(), ::toupper);
+            if (standardFields.find(param) != standardFields.end() || 
+                standardFields.find(upperParam) != standardFields.end()) {
+                continue;  // Skip this parameter
+            }
+            
+            // Check if has default value
+            auto defIt = paramDefaults.find(param);
+            if (defIt != paramDefaults.end()) {
+                std::string defaultValue = defIt->second;
+                // Check if default contains variables
+                std::sregex_iterator iter(defaultValue.begin(), defaultValue.end(), varPattern);
+                std::sregex_iterator end;
+                if (iter == end) {
+                    // Literal default value - use it
+                    additionalParams[param] = defaultValue;
+                } else {
+                    // Default contains variables, use generated example value
+                    additionalParams[param] = generateExampleValue(param);
+                }
+            } else {
+                // No default, use generated example value based on parameter name
+                additionalParams[param] = generateExampleValue(param);
+            }
+        }
+        
+        body["additionalParams"] = additionalParams;
+        
+        // Return body directly (no wrapper) - can be used directly to create instance
+        auto end_time = std::chrono::steady_clock::now();
+        auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(end_time - start_time);
+        
+        if (isApiLoggingEnabled()) {
+            PLOG_INFO << "[API] GET /v1/core/solutions/" << solutionId << "/instance-body - Success - " << duration.count() << "ms";
+        }
+        
+        callback(createSuccessResponse(body));
+        
+    } catch (const std::exception& e) {
+        auto end_time = std::chrono::steady_clock::now();
+        auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(end_time - start_time);
+        if (isApiLoggingEnabled()) {
+            PLOG_ERROR << "[API] GET /v1/core/solutions/" << solutionId << "/instance-body - Exception: " << e.what() << " - " << duration.count() << "ms";
+        }
+        std::cerr << "[SolutionHandler] Exception: " << e.what() << std::endl;
+        callback(createErrorResponse(500, "Internal server error", e.what()));
+    } catch (...) {
+        auto end_time = std::chrono::steady_clock::now();
+        auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(end_time - start_time);
+        if (isApiLoggingEnabled()) {
+            PLOG_ERROR << "[API] GET /v1/core/solutions/" << solutionId << "/instance-body - Unknown exception - " << duration.count() << "ms";
         }
         std::cerr << "[SolutionHandler] Unknown exception" << std::endl;
         callback(createErrorResponse(500, "Internal server error", "Unknown error occurred"));

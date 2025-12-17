@@ -4,9 +4,10 @@
   "solution": "test_wrong_order_solution",
   "autoStart": false,
   "additionalParams": {
-    "RTSP_URL": "rtsp://localhost:8554/stream",
-    "MODEL_PATH": "/opt/cvedix/models/face/yunet.onnx",
-    "SAVE_DIR": "/tmp/output"
+    "input": {
+      "RTSP_URL": "rtsp://localhost:8554/stream",
+      "MODEL_PATH": "/opt/cvedix/models/face/yunet.onnx",
+      "SAVE_DIR": "/tmp/output"
+    }
   }
 }
-

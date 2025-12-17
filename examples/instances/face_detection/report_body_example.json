@@ -1,0 +1,58 @@
+{
+  "events": [
+    {
+      "id": "550e8400-e29b-41d4-a716-446655440000",
+      "instance_id": "face_detection_mqtt_test",
+      "frame_id": 1234,
+      "frame_time": 41.23,
+      "type": "face_detected",
+      "label": "Face detected",
+      "date": "Mon Jan 15 14:30:25 2025",
+      "system_date": "2025-01-15T07:30:25Z",
+      "system_timestamp": "1736940625000",
+      "best_thumbnail": {
+        "confidence": 0.95,
+        "image": "base64_encoded_image_string",
+        "position": {
+          "x": 0.25,
+          "y": 0.30,
+          "width": 0.15,
+          "height": 0.20
+        },
+        "timestamp": 41.23
+      },
+      "extra": {
+        "bbox": {
+          "x": 0.25,
+          "y": 0.30,
+          "width": 0.15,
+          "height": 0.20
+        },
+        "class": "Face",
+        "track_id": "FaceTracker_1234",
+        "confidence": 0.95,
+        "landmarks": [
+          {"x": 0.28, "y": 0.35},
+          {"x": 0.32, "y": 0.35},
+          {"x": 0.30, "y": 0.38},
+          {"x": 0.27, "y": 0.42},
+          {"x": 0.33, "y": 0.42}
+        ]
+      },
+      "image": "base64_encoded_full_frame_string",
+      "tracks": [
+        {
+          "track_id": "FaceTracker_1234",
+          "bbox": {"x": 0.25, "y": 0.30, "width": 0.15, "height": 0.20},
+          "confidence": 0.95,
+          "class": "Face"
+        }
+      ]
+    }
+  ],
+  "frame_id": 1234,
+  "frame_time": 41.23,
+  "system_date": "Mon Jan 15 14:30:25 2025",
+  "system_timestamp": "1736940625000"
+}
+
