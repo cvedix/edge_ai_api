@@ -81,7 +81,6 @@
 
 // Broker Nodes
 #ifdef CVEDIX_WITH_MQTT
-#include <atomic>
 #include <chrono>
 #include <ctime>
 #include <cvedix/nodes/broker/cereal_archive/cvedix_objects_cereal_archive.h>

@@ -9,10 +9,15 @@
 #include "api/system_info_handler.h"
 #endif
 #include "api/config_handler.h"
+#include "api/endpoints_handler.h"
 #include "api/group_handler.h"
+#include "api/log_handler.h"
 #include "api/node_handler.h"
 #include "api/recognition_handler.h"
 #include "api/solution_handler.h"
+#ifdef ENABLE_METRICS_HANDLER
+#include "api/metrics_handler.h"
+#endif
 #include "config/system_config.h"
 #include "core/categorized_logger.h"
 #include "core/cors_filter.h"
@@ -1811,8 +1816,13 @@ int main(int argc, char *argv[]) {
     static VersionHandler versionHandler;
     static WatchdogHandler watchdogHandler;
     static SwaggerHandler swaggerHandler;
+    static EndpointsHandler endpointsHandler;
+    static LogHandler logHandler;
 #ifdef ENABLE_SYSTEM_INFO_HANDLER
     static SystemInfoHandler systemInfoHandler;
+#endif
+#ifdef ENABLE_METRICS_HANDLER
+    static MetricsHandler metricsHandler;
 #endif
 
     // Initialize instance management components
@@ -2292,7 +2302,9 @@ int main(int argc, char *argv[]) {
     GroupHandler::setGroupStorage(&groupStorage);
     GroupHandler::setInstanceManager(instanceManager.get());
 
-    // Create handler instances to register endpoints
+    // CRITICAL: Create handler instances AFTER dependencies are set
+    // This ensures handlers are ready when Drogon registers routes
+    // Handlers created here depend on dependencies set above
     static CreateInstanceHandler createInstanceHandler;
     static InstanceHandler instanceHandler;
     static SolutionHandler solutionHandler;

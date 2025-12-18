@@ -8,7 +8,6 @@
 #include <atomic>
 #include <chrono>
 #include <condition_variable>
-#include <cstring>
 #include <cstring> // For strerror
 #include <cvedix/cvedix_version.h>
 #include <cvedix/nodes/broker/cvedix_json_console_broker_node.h>

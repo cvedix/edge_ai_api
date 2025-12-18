@@ -97,15 +97,16 @@ override_dh_auto_install:
 		install -d $(CURDIR)/debian/$(PACKAGE_NAME)$(INSTALL_DIR)/instances; \
 		install -d $(CURDIR)/debian/$(PACKAGE_NAME)$(INSTALL_DIR)/solutions; \
 		install -d $(CURDIR)/debian/$(PACKAGE_NAME)$(INSTALL_DIR)/groups; \
+		install -d $(CURDIR)/debian/$(PACKAGE_NAME)$(INSTALL_DIR)/nodes; \
 		install -d $(CURDIR)/debian/$(PACKAGE_NAME)$(INSTALL_DIR)/models; \
+		install -d $(CURDIR)/debian/$(PACKAGE_NAME)$(INSTALL_DIR)/videos; \
+		install -d $(CURDIR)/debian/$(PACKAGE_NAME)$(INSTALL_DIR)/fonts; \
 		install -d $(CURDIR)/debian/$(PACKAGE_NAME)$(INSTALL_DIR)/logs; \
 		install -d $(CURDIR)/debian/$(PACKAGE_NAME)$(INSTALL_DIR)/data; \
 		install -d $(CURDIR)/debian/$(PACKAGE_NAME)$(INSTALL_DIR)/config; \
 		install -d $(CURDIR)/debian/$(PACKAGE_NAME)$(INSTALL_DIR)/uploads; \
 		install -d $(CURDIR)/debian/$(PACKAGE_NAME)$(INSTALL_DIR)/lib; \
-		install -d $(CURDIR)/debian/$(PACKAGE_NAME)$(INSTALL_DIR)/nodes; \
-		install -d $(CURDIR)/debian/$(PACKAGE_NAME)$(INSTALL_DIR)/videos; \
-		install -d $(CURDIR)/debian/$(PACKAGE_NAME)$(INSTALL_DIR)/fonts; \
+		install -d $(CURDIR)/debian/$(PACKAGE_NAME)$(INSTALL_DIR)/run; \
 	fi
 
 	# Install README

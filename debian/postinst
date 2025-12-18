@@ -83,16 +83,21 @@ elif [ -f "$PROJECT_ROOT/deploy/create_directories.sh" ]; then
     create_app_directories "$INSTALL_DIR" "$PROJECT_ROOT"
 else
     # Fallback: create directories manually if helper not found
+    # NOTE: This list must match directories.conf
     echo "Warning: create_directories.sh not found, using fallback"
     mkdir -p "$INSTALL_DIR"/instances
     mkdir -p "$INSTALL_DIR"/solutions
     mkdir -p "$INSTALL_DIR"/groups
+    mkdir -p "$INSTALL_DIR"/nodes
     mkdir -p "$INSTALL_DIR"/models
+    mkdir -p "$INSTALL_DIR"/videos
+    mkdir -p "$INSTALL_DIR"/fonts
     mkdir -p "$INSTALL_DIR"/logs
     mkdir -p "$INSTALL_DIR"/data
     mkdir -p "$INSTALL_DIR"/config
     mkdir -p "$INSTALL_DIR"/uploads
     mkdir -p "$INSTALL_DIR"/lib
+    mkdir -p "$INSTALL_DIR"/run
 fi
 
 # Set up directory permissions
@@ -111,11 +116,12 @@ if [ -f "$PROJECT_ROOT/deploy/directories.conf" ]; then
         fi
     done
 else
-    # Fallback permissions
+    # Fallback permissions (must match directories.conf)
     chmod 750 "$INSTALL_DIR"/instances "$INSTALL_DIR"/solutions "$INSTALL_DIR"/groups \
-              "$INSTALL_DIR"/models "$INSTALL_DIR"/logs "$INSTALL_DIR"/data \
+              "$INSTALL_DIR"/nodes "$INSTALL_DIR"/models "$INSTALL_DIR"/videos \
+              "$INSTALL_DIR"/fonts "$INSTALL_DIR"/logs "$INSTALL_DIR"/data \
               "$INSTALL_DIR"/config 2>/dev/null || true
-    chmod 755 "$INSTALL_DIR"/uploads "$INSTALL_DIR"/lib 2>/dev/null || true
+    chmod 755 "$INSTALL_DIR"/uploads "$INSTALL_DIR"/lib "$INSTALL_DIR"/run 2>/dev/null || true
 fi
 
 # Create external data directory (/mnt/sb1/data) if it doesn't exist
