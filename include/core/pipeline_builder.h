@@ -186,7 +186,8 @@ private:
    */
   std::shared_ptr<cvedix_nodes::cvedix_node>
   createBACrosslineNode(const std::string &nodeName,
-                        const std::map<std::string, std::string> &params);
+                        const std::map<std::string, std::string> &params,
+                        const CreateInstanceRequest &req);
 
   /**
    * @brief Create BA crossline OSD node

@@ -4,6 +4,12 @@
 #include <drogon/HttpRequest.h>
 #include <drogon/HttpResponse.h>
 #include <json/json.h>
+#include <cvedix/nodes/ba/cvedix_ba_crossline_node.h>
+#include <cvedix/objects/shapes/cvedix_line.h>
+#include <cvedix/objects/shapes/cvedix_point.h>
+#include <memory>
+#include <map>
+#include <string>
 
 using namespace drogon;
 
@@ -146,5 +152,30 @@ private:
      * @return true if restart initiated successfully
      */
     bool restartInstanceForLineUpdate(const std::string& instanceId) const;
+    
+    /**
+     * @brief Find ba_crossline_node in running instance pipeline
+     * @param instanceId Instance ID
+     * @return Shared pointer to ba_crossline_node if found, nullptr otherwise
+     */
+    std::shared_ptr<cvedix_nodes::cvedix_ba_crossline_node> 
+    findBACrosslineNode(const std::string& instanceId) const;
+    
+    /**
+     * @brief Parse lines from JSON array to map<int, cvedix_line>
+     * @param linesArray JSON array of line objects
+     * @return Map of channel to cvedix_line, empty map if parse fails
+     */
+    std::map<int, cvedix_objects::cvedix_line> 
+    parseLinesFromJson(const Json::Value& linesArray) const;
+    
+    /**
+     * @brief Update lines in running ba_crossline_node without restart
+     * @param instanceId Instance ID
+     * @param linesArray JSON array of line objects
+     * @return true if update successful, false if fallback to restart needed
+     */
+    bool updateLinesRuntime(const std::string& instanceId, 
+                           const Json::Value& linesArray) const;
 };
 

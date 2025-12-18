@@ -26,6 +26,7 @@
 #include <cvedix/objects/shapes/cvedix_size.h>
 #include <cvedix/utils/cvedix_utils.h>
 #include <opencv2/core.hpp> // For cv::Exception
+#include <json/reader.h>
 
 // TensorRT Inference Nodes
 #ifdef CVEDIX_WITH_TRT
@@ -1781,7 +1782,7 @@ PipelineBuilder::createNode(const SolutionConfig::NodeConfig &nodeConfig,
     }
     // Behavior Analysis nodes
     else if (nodeConfig.nodeType == "ba_crossline") {
-      return createBACrosslineNode(nodeName, params);
+      return createBACrosslineNode(nodeName, params, req);
     }
     // OSD nodes
     else if (nodeConfig.nodeType == "face_osd_v2") {
@@ -3562,41 +3563,124 @@ std::shared_ptr<cvedix_nodes::cvedix_node> PipelineBuilder::createSORTTrackNode(
 std::shared_ptr<cvedix_nodes::cvedix_node>
 PipelineBuilder::createBACrosslineNode(
     const std::string &nodeName,
-    const std::map<std::string, std::string> &params) {
+    const std::map<std::string, std::string> &params,
+    const CreateInstanceRequest &req) {
 
   try {
     if (nodeName.empty()) {
       throw std::invalid_argument("Node name cannot be empty");
     }
 
-    // Parse lines from parameters
-    // Expected format: "channel:start_x,start_y:end_x,end_y" or JSON-like
-    // format For simplicity, we'll support a format like: "0:0,250:700,220" Or
-    // use separate parameters: line_channel, line_start_x, line_start_y,
-    // line_end_x, line_end_y
     std::map<int, cvedix_objects::cvedix_line> lines;
+    bool linesParsed = false;
 
-    // Check if we have line parameters
-    if (params.count("line_channel") && params.count("line_start_x") &&
-        params.count("line_start_y") && params.count("line_end_x") &&
-        params.count("line_end_y")) {
-      int channel = std::stoi(params.at("line_channel"));
-      int start_x = std::stoi(params.at("line_start_x"));
-      int start_y = std::stoi(params.at("line_start_y"));
-      int end_x = std::stoi(params.at("line_end_x"));
-      int end_y = std::stoi(params.at("line_end_y"));
+    // Priority 1: Check CrossingLines from API (stored in additionalParams)
+    auto crossingLinesIt = req.additionalParams.find("CrossingLines");
+    if (crossingLinesIt != req.additionalParams.end() &&
+        !crossingLinesIt->second.empty()) {
+      try {
+        // Parse JSON string to JSON array
+        Json::Reader reader;
+        Json::Value parsedLines;
+        if (reader.parse(crossingLinesIt->second, parsedLines) &&
+            parsedLines.isArray()) {
+          // Iterate through lines array
+          for (Json::ArrayIndex i = 0; i < parsedLines.size(); ++i) {
+            const Json::Value &lineObj = parsedLines[i];
+            
+            // Check if line has coordinates
+            if (!lineObj.isMember("coordinates") ||
+                !lineObj["coordinates"].isArray()) {
+              std::cerr << "[PipelineBuilder] WARNING: Line at index " << i
+                        << " missing or invalid 'coordinates' field, skipping"
+                        << std::endl;
+              continue;
+            }
 
-      cvedix_objects::cvedix_point start(start_x, start_y);
-      cvedix_objects::cvedix_point end(end_x, end_y);
-      lines[channel] = cvedix_objects::cvedix_line(start, end);
-    } else {
-      // Default line for channel 0 (from sample)
-      cvedix_objects::cvedix_point start(0, 250);
-      cvedix_objects::cvedix_point end(700, 220);
-      lines[0] = cvedix_objects::cvedix_line(start, end);
-      std::cerr << "[PipelineBuilder] Using default line configuration "
-                   "(channel 0: (0,250) -> (700,220))"
-                << std::endl;
+            const Json::Value &coordinates = lineObj["coordinates"];
+            if (coordinates.size() < 2) {
+              std::cerr << "[PipelineBuilder] WARNING: Line at index " << i
+                        << " has less than 2 coordinates, skipping" << std::endl;
+              continue;
+            }
+
+            // Get first and last coordinates
+            const Json::Value &startCoord = coordinates[0];
+            const Json::Value &endCoord = coordinates[coordinates.size() - 1];
+
+            if (!startCoord.isMember("x") || !startCoord.isMember("y") ||
+                !endCoord.isMember("x") || !endCoord.isMember("y")) {
+              std::cerr << "[PipelineBuilder] WARNING: Line at index " << i
+                        << " has invalid coordinate format, skipping" << std::endl;
+              continue;
+            }
+
+            if (!startCoord["x"].isNumeric() || !startCoord["y"].isNumeric() ||
+                !endCoord["x"].isNumeric() || !endCoord["y"].isNumeric()) {
+              std::cerr << "[PipelineBuilder] WARNING: Line at index " << i
+                        << " has non-numeric coordinates, skipping" << std::endl;
+              continue;
+            }
+
+            // Convert to cvedix_line
+            int start_x = startCoord["x"].asInt();
+            int start_y = startCoord["y"].asInt();
+            int end_x = endCoord["x"].asInt();
+            int end_y = endCoord["y"].asInt();
+
+            cvedix_objects::cvedix_point start(start_x, start_y);
+            cvedix_objects::cvedix_point end(end_x, end_y);
+            
+            // Use array index as channel (0, 1, 2, ...)
+            int channel = static_cast<int>(i);
+            lines[channel] = cvedix_objects::cvedix_line(start, end);
+            linesParsed = true;
+          }
+
+          if (linesParsed) {
+            std::cerr << "[PipelineBuilder] ✓ Parsed " << lines.size()
+                      << " line(s) from CrossingLines API" << std::endl;
+          }
+        } else {
+          std::cerr << "[PipelineBuilder] WARNING: Failed to parse CrossingLines "
+                       "JSON or not an array, falling back to solution config"
+                    << std::endl;
+        }
+      } catch (const std::exception &e) {
+        std::cerr << "[PipelineBuilder] WARNING: Exception parsing CrossingLines "
+                     "JSON: "
+                  << e.what() << ", falling back to solution config" << std::endl;
+      }
+    }
+
+    // Priority 2: Fallback to solution config parameters if no lines from API
+    if (!linesParsed) {
+      // Check if we have line parameters from solution config
+      if (params.count("line_channel") && params.count("line_start_x") &&
+          params.count("line_start_y") && params.count("line_end_x") &&
+          params.count("line_end_y")) {
+        int channel = std::stoi(params.at("line_channel"));
+        int start_x = std::stoi(params.at("line_start_x"));
+        int start_y = std::stoi(params.at("line_start_y"));
+        int end_x = std::stoi(params.at("line_end_x"));
+        int end_y = std::stoi(params.at("line_end_y"));
+
+        cvedix_objects::cvedix_point start(start_x, start_y);
+        cvedix_objects::cvedix_point end(end_x, end_y);
+        lines[channel] = cvedix_objects::cvedix_line(start, end);
+        std::cerr << "[PipelineBuilder] Using line configuration from solution "
+                     "config (channel "
+                  << channel << ": (" << start_x << "," << start_y << ") -> ("
+                  << end_x << "," << end_y << "))" << std::endl;
+      } else {
+        // Priority 3: Default line for channel 0 (from sample)
+        cvedix_objects::cvedix_point start(0, 250);
+        cvedix_objects::cvedix_point end(700, 220);
+        lines[0] = cvedix_objects::cvedix_line(start, end);
+        std::cerr << "[PipelineBuilder] Using default line configuration "
+                     "(channel 0: (0,250) -> (700,220))"
+                  << std::endl;
+      }
     }
 
     std::cerr << "[PipelineBuilder] Creating BA crossline node:" << std::endl;

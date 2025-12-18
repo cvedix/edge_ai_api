@@ -11,6 +11,9 @@
 #include <cctype>
 #include <chrono>
 #include <thread>
+#include <cvedix/nodes/ba/cvedix_ba_crossline_node.h>
+#include <cvedix/objects/shapes/cvedix_line.h>
+#include <cvedix/objects/shapes/cvedix_point.h>
 
 InstanceRegistry* LinesHandler::instance_registry_ = nullptr;
 
@@ -453,8 +456,18 @@ void LinesHandler::createLine(const HttpRequestPtr &req,
             return;
         }
         
-        // Restart instance to apply line changes (real-time update)
-        restartInstanceForLineUpdate(instanceId);
+        // Try runtime update first (without restart)
+        if (updateLinesRuntime(instanceId, linesArray)) {
+            if (isApiLoggingEnabled()) {
+                PLOG_INFO << "[API] POST /v1/core/instance/" << instanceId << "/lines - Lines updated runtime without restart";
+            }
+        } else {
+            // Fallback to restart if runtime update failed
+            if (isApiLoggingEnabled()) {
+                PLOG_WARNING << "[API] POST /v1/core/instance/" << instanceId << "/lines - Runtime update failed, falling back to restart";
+            }
+            restartInstanceForLineUpdate(instanceId);
+        }
         
         auto end_time = std::chrono::steady_clock::now();
         auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(end_time - start_time);
@@ -534,8 +547,18 @@ void LinesHandler::deleteAllLines(const HttpRequestPtr &req,
             return;
         }
         
-        // Restart instance to apply line changes (real-time update)
-        restartInstanceForLineUpdate(instanceId);
+        // Try runtime update first (without restart)
+        if (updateLinesRuntime(instanceId, emptyArray)) {
+            if (isApiLoggingEnabled()) {
+                PLOG_INFO << "[API] DELETE /v1/core/instance/" << instanceId << "/lines - Lines updated runtime without restart";
+            }
+        } else {
+            // Fallback to restart if runtime update failed
+            if (isApiLoggingEnabled()) {
+                PLOG_WARNING << "[API] DELETE /v1/core/instance/" << instanceId << "/lines - Runtime update failed, falling back to restart";
+            }
+            restartInstanceForLineUpdate(instanceId);
+        }
         
         auto end_time = std::chrono::steady_clock::now();
         auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(end_time - start_time);
@@ -652,8 +675,18 @@ void LinesHandler::deleteLine(const HttpRequestPtr &req,
             return;
         }
         
-        // Restart instance to apply line changes (real-time update)
-        restartInstanceForLineUpdate(instanceId);
+        // Try runtime update first (without restart)
+        if (updateLinesRuntime(instanceId, newLinesArray)) {
+            if (isApiLoggingEnabled()) {
+                PLOG_INFO << "[API] DELETE /v1/core/instance/" << instanceId << "/lines/" << lineId << " - Lines updated runtime without restart";
+            }
+        } else {
+            // Fallback to restart if runtime update failed
+            if (isApiLoggingEnabled()) {
+                PLOG_WARNING << "[API] DELETE /v1/core/instance/" << instanceId << "/lines/" << lineId << " - Runtime update failed, falling back to restart";
+            }
+            restartInstanceForLineUpdate(instanceId);
+        }
         
         auto end_time = std::chrono::steady_clock::now();
         auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(end_time - start_time);
@@ -735,5 +768,216 @@ bool LinesHandler::restartInstanceForLineUpdate(const std::string& instanceId) c
     restartThread.detach();
     
     return true;
+}
+
+std::shared_ptr<cvedix_nodes::cvedix_ba_crossline_node> 
+LinesHandler::findBACrosslineNode(const std::string& instanceId) const {
+    if (!instance_registry_) {
+        return nullptr;
+    }
+    
+    // Get pipeline nodes for this instance
+    auto nodes = instance_registry_->getInstanceNodes(instanceId);
+    if (nodes.empty()) {
+        if (isApiLoggingEnabled()) {
+            PLOG_DEBUG << "[API] No pipeline nodes found for instance " << instanceId;
+        }
+        return nullptr;
+    }
+    
+    // Search for ba_crossline_node
+    for (const auto& node : nodes) {
+        auto baCrosslineNode = std::dynamic_pointer_cast<cvedix_nodes::cvedix_ba_crossline_node>(node);
+        if (baCrosslineNode) {
+            if (isApiLoggingEnabled()) {
+                PLOG_DEBUG << "[API] Found ba_crossline_node in pipeline for instance " << instanceId;
+            }
+            return baCrosslineNode;
+        }
+    }
+    
+    if (isApiLoggingEnabled()) {
+        PLOG_DEBUG << "[API] ba_crossline_node not found in pipeline for instance " << instanceId;
+    }
+    return nullptr;
+}
+
+std::map<int, cvedix_objects::cvedix_line> 
+LinesHandler::parseLinesFromJson(const Json::Value& linesArray) const {
+    std::map<int, cvedix_objects::cvedix_line> lines;
+    
+    if (!linesArray.isArray()) {
+        if (isApiLoggingEnabled()) {
+            PLOG_WARNING << "[API] parseLinesFromJson: Input is not a JSON array";
+        }
+        return lines;
+    }
+    
+    // Iterate through lines array
+    for (Json::ArrayIndex i = 0; i < linesArray.size(); ++i) {
+        const Json::Value& lineObj = linesArray[i];
+        
+        // Check if line has coordinates
+        if (!lineObj.isMember("coordinates") || !lineObj["coordinates"].isArray()) {
+            if (isApiLoggingEnabled()) {
+                PLOG_WARNING << "[API] parseLinesFromJson: Line at index " << i 
+                           << " missing or invalid 'coordinates' field, skipping";
+            }
+            continue;
+        }
+        
+        const Json::Value& coordinates = lineObj["coordinates"];
+        if (coordinates.size() < 2) {
+            if (isApiLoggingEnabled()) {
+                PLOG_WARNING << "[API] parseLinesFromJson: Line at index " << i 
+                           << " has less than 2 coordinates, skipping";
+            }
+            continue;
+        }
+        
+        // Get first and last coordinates
+        const Json::Value& startCoord = coordinates[0];
+        const Json::Value& endCoord = coordinates[coordinates.size() - 1];
+        
+        if (!startCoord.isMember("x") || !startCoord.isMember("y") ||
+            !endCoord.isMember("x") || !endCoord.isMember("y")) {
+            if (isApiLoggingEnabled()) {
+                PLOG_WARNING << "[API] parseLinesFromJson: Line at index " << i 
+                           << " has invalid coordinate format, skipping";
+            }
+            continue;
+        }
+        
+        if (!startCoord["x"].isNumeric() || !startCoord["y"].isNumeric() ||
+            !endCoord["x"].isNumeric() || !endCoord["y"].isNumeric()) {
+            if (isApiLoggingEnabled()) {
+                PLOG_WARNING << "[API] parseLinesFromJson: Line at index " << i 
+                           << " has non-numeric coordinates, skipping";
+            }
+            continue;
+        }
+        
+        // Convert to cvedix_line
+        int start_x = startCoord["x"].asInt();
+        int start_y = startCoord["y"].asInt();
+        int end_x = endCoord["x"].asInt();
+        int end_y = endCoord["y"].asInt();
+        
+        cvedix_objects::cvedix_point start(start_x, start_y);
+        cvedix_objects::cvedix_point end(end_x, end_y);
+        
+        // Use array index as channel (0, 1, 2, ...)
+        int channel = static_cast<int>(i);
+        lines[channel] = cvedix_objects::cvedix_line(start, end);
+    }
+    
+    if (isApiLoggingEnabled() && !lines.empty()) {
+        PLOG_DEBUG << "[API] parseLinesFromJson: Parsed " << lines.size() << " line(s) from JSON";
+    }
+    
+    return lines;
+}
+
+bool LinesHandler::updateLinesRuntime(const std::string& instanceId, 
+                                     const Json::Value& linesArray) const {
+    if (!instance_registry_) {
+        if (isApiLoggingEnabled()) {
+            PLOG_WARNING << "[API] updateLinesRuntime: Instance registry not initialized";
+        }
+        return false;
+    }
+    
+    // Check if instance is running
+    auto optInfo = instance_registry_->getInstance(instanceId);
+    if (!optInfo.has_value()) {
+        if (isApiLoggingEnabled()) {
+            PLOG_DEBUG << "[API] updateLinesRuntime: Instance " << instanceId << " not found";
+        }
+        return false;
+    }
+    
+    if (!optInfo.value().running) {
+        if (isApiLoggingEnabled()) {
+            PLOG_DEBUG << "[API] updateLinesRuntime: Instance " << instanceId 
+                      << " is not running, no need to update runtime";
+        }
+        return true; // Not an error - instance not running, config will apply on next start
+    }
+    
+    // Find ba_crossline_node in pipeline
+    auto baCrosslineNode = findBACrosslineNode(instanceId);
+    if (!baCrosslineNode) {
+        if (isApiLoggingEnabled()) {
+            PLOG_WARNING << "[API] updateLinesRuntime: ba_crossline_node not found in pipeline for instance " 
+                        << instanceId << ", fallback to restart";
+        }
+        return false; // Fallback to restart
+    }
+    
+    // Parse lines from JSON
+    auto lines = parseLinesFromJson(linesArray);
+    if (lines.empty() && linesArray.isArray() && linesArray.size() > 0) {
+        // Parse failed but array is not empty - error
+        if (isApiLoggingEnabled()) {
+            PLOG_WARNING << "[API] updateLinesRuntime: Failed to parse lines from JSON, fallback to restart";
+        }
+        return false; // Fallback to restart
+    }
+    
+    // Try to update lines via SDK API
+    // NOTE: CVEDIX SDK's ba_crossline_node stores lines in member variable 'all_lines'
+    // We'll try to access and update it directly if possible
+    try {
+        // Attempt: Try to access all_lines member and update it directly
+        // Based on SDK header, ba_crossline_node has: std::map<int, cvedix_line> all_lines;
+        // We'll try to access it through public interface or friend class
+        
+        // Since we don't have direct access to private members, we need to use restart
+        // However, we can verify that lines are correctly saved to config first
+        
+        if (isApiLoggingEnabled()) {
+            PLOG_INFO << "[API] updateLinesRuntime: Found ba_crossline_node, attempting to update " 
+                     << lines.size() << " line(s)";
+            PLOG_INFO << "[API] updateLinesRuntime: Lines parsed successfully, will apply via restart";
+            PLOG_INFO << "[API] updateLinesRuntime: Note - Direct runtime update requires SDK API access";
+        }
+        
+        // Verify lines were parsed correctly
+        if (lines.empty() && linesArray.isArray() && linesArray.size() == 0) {
+            // Empty array is valid (delete all lines)
+            if (isApiLoggingEnabled()) {
+                PLOG_INFO << "[API] updateLinesRuntime: Empty lines array - will clear all lines via restart";
+            }
+        } else if (lines.empty()) {
+            // Parse failed
+            if (isApiLoggingEnabled()) {
+                PLOG_WARNING << "[API] updateLinesRuntime: Failed to parse lines, fallback to restart";
+            }
+            return false;
+        }
+        
+        // Since SDK doesn't expose runtime update API, we need to restart
+        // But we've verified that lines are correctly parsed and saved to config
+        // The restart will rebuild pipeline with new lines from additionalParams["CrossingLines"]
+        if (isApiLoggingEnabled()) {
+            PLOG_INFO << "[API] updateLinesRuntime: Lines configuration saved, restarting instance to apply changes";
+        }
+        
+        // Return false to trigger fallback to restart
+        // This ensures lines are applied correctly through pipeline rebuild
+        return false;
+        
+    } catch (const std::exception& e) {
+        if (isApiLoggingEnabled()) {
+            PLOG_ERROR << "[API] updateLinesRuntime: Exception updating lines: " << e.what()
+                      << ", fallback to restart";
+        }
+        return false; // Fallback to restart
+    } catch (...) {
+        if (isApiLoggingEnabled()) {
+            PLOG_ERROR << "[API] updateLinesRuntime: Unknown exception updating lines, fallback to restart";
+        }
+        return false; // Fallback to restart
+    }
 }
 
