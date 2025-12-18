@@ -286,6 +286,52 @@ if ! command -v dh &>/dev/null && ! dpkg -l | grep -q "^ii.*debhelper"; then
     MISSING_DEPS+=(debhelper)
 fi
 
+# Check for fakeroot
+if ! command -v fakeroot &>/dev/null; then
+    MISSING_DEPS+=(fakeroot)
+fi
+
+# Check build dependencies from debian/control if it exists
+if [ -f "debian/control" ]; then
+    # Extract Build-Depends (may span multiple lines)
+    # Get all lines from Build-Depends: to the next field
+    BUILD_DEPS_TEXT=$(awk '/^Build-Depends:/ {flag=1; sub(/^Build-Depends: */, ""); print; next} flag && /^[A-Z]/ {flag=0} flag {print}' debian/control | tr '\n' ' ')
+
+    # Parse: remove version constraints, handle alternatives (|), split by comma
+    # Remove version constraints like (>= 13), (>= 3.14)
+    # Handle alternatives - take first option before |
+    # Split by comma and clean up
+    while IFS=',' read -ra DEPS; do
+        for dep_raw in "${DEPS[@]}"; do
+            # Remove version constraints
+            dep=$(echo "$dep_raw" | sed 's/([^)]*)//g' | sed 's/|.*$//' | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
+
+            # Skip empty entries
+            [ -z "$dep" ] && continue
+
+            # Check if it's a command (can be checked with command -v)
+            if command -v "$dep" &>/dev/null; then
+                continue
+            fi
+
+            # Check if it's an installed package (check exact package name)
+            if ! dpkg-query -W -f='${Status}' "$dep" 2>/dev/null | grep -q "install ok installed"; then
+                # Only add if not already in MISSING_DEPS
+                found=false
+                for existing_dep in "${MISSING_DEPS[@]}"; do
+                    if [ "$existing_dep" = "$dep" ]; then
+                        found=true
+                        break
+                    fi
+                done
+                if [ "$found" = false ]; then
+                    MISSING_DEPS+=($dep)
+                fi
+            fi
+        done
+    done <<< "$BUILD_DEPS_TEXT"
+fi
+
 if [ ${#MISSING_DEPS[@]} -gt 0 ]; then
     echo -e "${RED}Error: Missing dependencies: ${MISSING_DEPS[*]}${NC}"
     echo ""
