@@ -417,10 +417,30 @@ PipelineBuilder::buildPipeline(const SolutionConfig &solution,
                              nodeConfig.nodeType == "rtmp_des" ||
                              nodeConfig.nodeType == "screen_des");
 
+          // Special handling for ba_crossline_osd node: attach to ba_crossline node
+          // This is critical - OSD node must attach to ba_crossline node to get lines
+          std::shared_ptr<cvedix_nodes::cvedix_node> attachTarget = nullptr;
+          if (nodeConfig.nodeType == "ba_crossline_osd") {
+            // Find ba_crossline node to attach to
+            for (int i = static_cast<int>(nodes.size()) - 1; i >= 0; --i) {
+              if (nodeTypes[i] == "ba_crossline") {
+                attachTarget = nodes[i];
+                std::cerr << "[PipelineBuilder] Attaching ba_crossline_osd node to ba_crossline node "
+                             "(required to get lines for drawing)"
+                          << std::endl;
+                break;
+              }
+            }
+            if (!attachTarget) {
+              std::cerr << "[PipelineBuilder] ⚠ WARNING: ba_crossline_osd node created but ba_crossline node not found! "
+                           "OSD will attach to previous node but may not receive lines."
+                        << std::endl;
+            }
+          }
+
           // For RTMP nodes: if pipeline has OSD node, attach to OSD node (to
           // get frames with overlay)
-          std::shared_ptr<cvedix_nodes::cvedix_node> attachTarget = nullptr;
-          if (nodeConfig.nodeType == "rtmp_des" && hasOSDNode) {
+          if (!attachTarget && nodeConfig.nodeType == "rtmp_des" && hasOSDNode) {
             // Find OSD node
             for (int i = static_cast<int>(nodes.size()) - 1; i >= 0; --i) {
               auto checkNode = nodes[i];
@@ -816,32 +836,16 @@ PipelineBuilder::buildPipeline(const SolutionConfig &solution,
                            "ba_crossline)"
                         << std::endl;
 
-              // Reconnect OSD node to MQTT broker (if OSD exists and comes
-              // after ba_crossline) This matches the sample:
-              // osd->attach_to({mqtt_broker_node}) Pipeline should be:
-              // ba_crossline -> mqtt_broker -> osd
-              for (size_t i = 0; i < nodes.size() - 1;
-                   ++i) { // Exclude the MQTT node we just added
-                if (nodeTypes[i] == "ba_crossline_osd") {
-                  // Reconnect OSD to MQTT broker
-                  try {
-                    nodes[i]->attach_to({mqttNode});
-                    std::cerr
-                        << "[PipelineBuilder] ✓ Reconnected ba_crossline_osd "
-                           "to json_crossline_mqtt_broker"
+              // IMPORTANT: OSD node should attach to ba_crossline node, NOT MQTT broker
+              // This is critical - OSD node needs lines from ba_crossline node to draw
+              // From SDK sample: osd->attach_to({ba_crossline})
+              // Pipeline should be: ba_crossline -> mqtt_broker (parallel) and ba_crossline -> osd
+              // OSD node will get lines from ba_crossline node via pipeline metadata
+              // MQTT broker runs in parallel and doesn't need OSD connection
+              // So we DON'T reconnect OSD to MQTT broker - OSD stays attached to ba_crossline
+              std::cerr << "[PipelineBuilder] NOTE: ba_crossline_osd node should remain attached to ba_crossline node "
+                           "to receive lines for drawing. MQTT broker runs in parallel."
                         << std::endl;
-                  } catch (const std::exception &e) {
-                    std::cerr << "[PipelineBuilder] ⚠ Warning: Could not "
-                                 "reconnect OSD to MQTT broker: "
-                              << e.what() << std::endl;
-                    std::cerr
-                        << "[PipelineBuilder] ⚠ OSD may already be connected "
-                           "correctly or SDK handles parallel connections"
-                        << std::endl;
-                  }
-                  break;
-                }
-              }
             } else {
               std::cerr << "[PipelineBuilder] ⚠ Failed to find ba_crossline "
                            "node to attach MQTT broker"
@@ -3693,6 +3697,10 @@ PipelineBuilder::createBACrosslineNode(
 
     std::cerr << "[PipelineBuilder] ✓ BA crossline node created successfully"
               << std::endl;
+    std::cerr << "[PipelineBuilder]   Lines will be passed to OSD node via pipeline metadata"
+              << std::endl;
+    std::cerr << "[PipelineBuilder]   OSD node will draw these lines on video frames"
+              << std::endl;
     return node;
   } catch (const std::exception &e) {
     std::cerr << "[PipelineBuilder] Exception in createBACrosslineNode: "
@@ -3861,6 +3869,8 @@ PipelineBuilder::createBACrosslineOSDNode(
     std::cerr << "[PipelineBuilder] Creating BA crossline OSD node:"
               << std::endl;
     std::cerr << "  Name: '" << nodeName << "'" << std::endl;
+    std::cerr << "  Note: OSD node will automatically get lines from ba_crossline_node via pipeline metadata"
+              << std::endl;
 
     auto node =
         std::make_shared<cvedix_nodes::cvedix_ba_crossline_osd_node>(nodeName);
@@ -3868,6 +3878,8 @@ PipelineBuilder::createBACrosslineOSDNode(
     std::cerr
         << "[PipelineBuilder] ✓ BA crossline OSD node created successfully"
         << std::endl;
+    std::cerr << "[PipelineBuilder]   OSD node will draw lines on video frames from ba_crossline_node"
+              << std::endl;
     return node;
   } catch (const std::exception &e) {
     std::cerr << "[PipelineBuilder] Exception in createBACrosslineOSDNode: "

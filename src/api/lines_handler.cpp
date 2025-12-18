@@ -744,25 +744,52 @@ bool LinesHandler::restartInstanceForLineUpdate(const std::string& instanceId) c
     std::thread restartThread([this, instanceId]() {
         try {
             if (isApiLoggingEnabled()) {
+                PLOG_INFO << "[API] ========================================";
                 PLOG_INFO << "[API] Restarting instance " << instanceId << " to apply line changes";
+                PLOG_INFO << "[API] This will rebuild pipeline with new lines from additionalParams[\"CrossingLines\"]";
+                PLOG_INFO << "[API] ========================================";
             }
             
-            // Stop instance
+            // Stop instance (this will stop the pipeline)
+            if (isApiLoggingEnabled()) {
+                PLOG_INFO << "[API] Step 1/3: Stopping instance " << instanceId;
+            }
             instance_registry_->stopInstance(instanceId);
             
-            // Wait for cleanup
+            // Wait for cleanup to ensure pipeline is fully stopped
+            if (isApiLoggingEnabled()) {
+                PLOG_INFO << "[API] Step 2/3: Waiting for pipeline cleanup (500ms)";
+            }
             std::this_thread::sleep_for(std::chrono::milliseconds(500));
             
-            // Start instance again
-            instance_registry_->startInstance(instanceId, true);
-            
+            // Start instance again (this will rebuild pipeline with new lines)
+            // startInstance() calls rebuildPipelineFromInstanceInfo() which rebuilds pipeline
+            // with lines from additionalParams["CrossingLines"]
             if (isApiLoggingEnabled()) {
-                PLOG_INFO << "[API] Instance " << instanceId << " restarted successfully for line update";
+                PLOG_INFO << "[API] Step 3/3: Starting instance " << instanceId << " (will rebuild pipeline with new lines)";
+            }
+            bool startSuccess = instance_registry_->startInstance(instanceId, true);
+            
+            if (startSuccess) {
+                if (isApiLoggingEnabled()) {
+                    PLOG_INFO << "[API] ========================================";
+                    PLOG_INFO << "[API] ✓ Instance " << instanceId << " restarted successfully for line update";
+                    PLOG_INFO << "[API] Pipeline rebuilt with new lines - lines should now be visible on stream";
+                    PLOG_INFO << "[API] ========================================";
+                }
+            } else {
+                if (isApiLoggingEnabled()) {
+                    PLOG_ERROR << "[API] ✗ Failed to start instance " << instanceId << " after restart";
+                }
             }
         } catch (const std::exception& e) {
-            PLOG_ERROR << "[API] Failed to restart instance " << instanceId << " for line update: " << e.what();
+            if (isApiLoggingEnabled()) {
+                PLOG_ERROR << "[API] ✗ Exception restarting instance " << instanceId << " for line update: " << e.what();
+            }
         } catch (...) {
-            PLOG_ERROR << "[API] Unknown error restarting instance " << instanceId << " for line update";
+            if (isApiLoggingEnabled()) {
+                PLOG_ERROR << "[API] ✗ Unknown error restarting instance " << instanceId << " for line update";
+            }
         }
     });
     restartThread.detach();
