@@ -1,5 +1,4 @@
 #include "instances/queue_monitor.h"
-#include "instances/instance_registry.h"
 #include <algorithm>
 #include <chrono>
 #include <fstream>
