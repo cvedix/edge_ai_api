@@ -68,7 +68,17 @@ echo "Creating required directories..."
 # Load directory creation helper
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
-if [ -f "$PROJECT_ROOT/deploy/create_directories.sh" ]; then
+if [ -f "$PROJECT_ROOT/scripts/create_directories.sh" ]; then
+    echo "Creating application directories..."
+    "$PROJECT_ROOT/scripts/create_directories.sh" "$INSTALL_DIR" --full-permissions || {
+        echo "Warning: Failed to create directories with full permissions, trying without..."
+        "$PROJECT_ROOT/scripts/create_directories.sh" "$INSTALL_DIR" || {
+            echo "Error: Failed to create directories" >&2
+            exit 1
+        }
+    }
+elif [ -f "$PROJECT_ROOT/deploy/create_directories.sh" ]; then
+    # Fallback to old location for backward compatibility
     source "$PROJECT_ROOT/deploy/create_directories.sh"
     create_app_directories "$INSTALL_DIR" "$PROJECT_ROOT"
 else

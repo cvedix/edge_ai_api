@@ -14,8 +14,9 @@ Thư mục chứa các script và file cấu hình cho production deployment.
   - Cài đặt systemd service
   - Usage: `sudo ./deploy/deploy.sh [options]`
 
-- **`create_directories.sh`** - Helper script tạo thư mục từ `directories.conf`
-  - Được dùng bởi `deploy.sh`, `debian/rules`, `debian/postinst`
+- **`../scripts/create_directories.sh`** - Script tạo thư mục từ `directories.conf`
+  - Được dùng bởi `deploy.sh`, `debian/postinst`
+  - Usage: `./scripts/create_directories.sh [INSTALL_DIR] [--full-permissions]`
 
 ### Configuration Files
 
@@ -95,16 +96,30 @@ declare -A APP_DIRECTORIES=(
 - `750` = Restricted (chỉ user/group có quyền truy cập)
 - `755` = Public read (mọi người có thể đọc, chỉ user/group có thể ghi)
 
-### Helper Script `create_directories.sh`
+### Script `scripts/create_directories.sh`
 
-Cung cấp 2 functions:
+Standalone script để tạo thư mục từ `directories.conf`:
 
-1. **`create_app_directories INSTALL_DIR [PROJECT_ROOT]`**
-   - Tạo tất cả thư mục từ `directories.conf`
-   - Áp dụng permissions tương ứng
+**Usage:**
+```bash
+./scripts/create_directories.sh [INSTALL_DIR] [--full-permissions]
+```
 
-2. **`get_directory_list [PROJECT_ROOT]`**
-   - Trả về danh sách tên thư mục (dùng cho Makefile)
+**Options:**
+- `INSTALL_DIR` - Thư mục cài đặt (default: `/opt/edge_ai_api`)
+- `--full-permissions` - Set quyền 755 cho tất cả thư mục (thay vì permissions trong config)
+
+**Examples:**
+```bash
+# Tạo thư mục với permissions từ config
+./scripts/create_directories.sh
+
+# Tạo thư mục tại custom location
+./scripts/create_directories.sh /opt/edge_ai_api
+
+# Tạo thư mục với full permissions (755)
+./scripts/create_directories.sh /opt/edge_ai_api --full-permissions
+```
 
 ### Cách sử dụng
 
@@ -115,21 +130,10 @@ Cung cấp 2 functions:
    ```bash
    ["new_directory"]="750"
    ```
-3. Tất cả script sẽ tự động sử dụng thư mục mới!
-
-#### Sử dụng trong script mới
-
-```bash
-#!/bin/bash
-source deploy/create_directories.sh
-create_app_directories "/opt/edge_ai_api" "$(pwd)"
-```
-
-#### Sử dụng trong Makefile
-
-```makefile
-DIRS := $(shell bash -c 'source deploy/create_directories.sh; get_directory_list')
-```
+3. Chạy script để tạo thư mục mới:
+   ```bash
+   ./scripts/create_directories.sh
+   ```
 
 ### Lợi ích
 
@@ -152,8 +156,9 @@ mkdir -p "$INSTALL_DIR"/solutions
 
 **Sau:**
 ```bash
-source deploy/create_directories.sh
-create_app_directories "$INSTALL_DIR" "$PROJECT_ROOT"
+./scripts/create_directories.sh "$INSTALL_DIR"
+# hoặc với full permissions
+./scripts/create_directories.sh "$INSTALL_DIR" --full-permissions
 ```
 
 ### Troubleshooting
