@@ -6,14 +6,24 @@ REST API server cho CVEDIX Edge AI SDK, cho phép điều khiển và giám sát
 
 ## 🚀 Quick Start
 
-### Setup Tự Động (Khuyến Nghị)
+### Development Setup
 
 ```bash
-# Development
-./setup.sh
+# Full setup (dependencies + build)
+./scripts/dev_setup.sh
 
-# Production
-sudo ./setup.sh --production
+# Chạy server
+./scripts/load_env.sh
+```
+
+### Production Setup
+
+```bash
+# Full deployment (cần sudo)
+sudo ./scripts/prod_setup.sh
+
+# Hoặc sử dụng deploy script trực tiếp
+sudo ./deploy/deploy.sh
 ```
 
 ### Build Thủ Công
@@ -45,8 +55,11 @@ curl http://localhost:8080/v1/core/version
 ### Với File .env (Khuyến nghị)
 
 ```bash
+# Tạo .env từ template
 cp .env.example .env
 nano .env  # Chỉnh sửa nếu cần
+
+# Load và chạy server
 ./scripts/load_env.sh
 ```
 
@@ -143,7 +156,10 @@ curl "http://localhost:8080/v1/core/logs/api?level=ERROR&tail=100"
 
 ```bash
 # Setup với systemd service
-sudo ./setup.sh --production
+sudo ./scripts/prod_setup.sh
+
+# Hoặc sử dụng deploy script
+sudo ./deploy/deploy.sh
 
 # Kiểm tra service
 sudo systemctl status edge-ai-api
@@ -153,6 +169,8 @@ sudo journalctl -u edge-ai-api -f
 sudo systemctl restart edge-ai-api
 sudo systemctl stop edge-ai-api
 ```
+
+Xem chi tiết: [deploy/README.md](deploy/README.md)
 
 ---
 
@@ -167,7 +185,8 @@ sudo apt-get install libjsoncpp-dev
 ### Lỗi CVEDIX SDK symlinks
 
 ```bash
-sudo ./scripts/fix_all_symlinks.sh
+# Chạy lại dev setup để fix symlinks
+./scripts/dev_setup.sh --skip-deps --skip-build
 ```
 
 ### Build Drogon lâu
@@ -183,10 +202,12 @@ Lần đầu build mất ~5-10 phút để download Drogon. Các lần sau nhanh
 | [docs/API.md](docs/API.md) | Full API reference |
 | [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md) | Development guide & Pre-commit |
 | [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) | System architecture |
+| [docs/SCRIPTS.md](docs/SCRIPTS.md) | Scripts documentation (dev, prod, build) |
 | [docs/ENVIRONMENT_VARIABLES.md](docs/ENVIRONMENT_VARIABLES.md) | Env vars |
 | [docs/LOGGING.md](docs/LOGGING.md) | Logging guide |
 | [docs/DEFAULT_SOLUTIONS_REFERENCE.md](docs/DEFAULT_SOLUTIONS_REFERENCE.md) | Default solutions |
-| [deploy/README.md](deploy/README.md) | Deployment guide |
+| [deploy/README.md](deploy/README.md) | Production deployment guide |
+| [packaging/docs/BUILD_DEB.md](packaging/docs/BUILD_DEB.md) | Build Debian package guide |
 
 ---
 

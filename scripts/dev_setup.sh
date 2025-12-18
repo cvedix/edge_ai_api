@@ -6,17 +6,19 @@
 # Script tổng hợp cho development setup:
 # 1. Install system dependencies
 # 2. Fix symlinks (CVEDIX SDK, Cereal, cpp-base64, OpenCV)
-# 3. Load environment variables
-# 4. Build project (optional)
+# 3. Build project (optional)
+# 4. Setup face database (optional, requires sudo)
 #
 # Usage:
-#   ./scripts/setup.sh [options]
+#   ./scripts/dev_setup.sh [options]
 #
 # Options:
+#   --all, --full-setup  Setup everything including face database (requires sudo) - mặc định
 #   --skip-deps      Skip installing dependencies
 #   --skip-symlinks  Skip fixing symlinks
 #   --skip-build     Skip building project
 #   --build-only     Only build, skip other steps
+#   --setup-face-db  Setup face database permissions (requires sudo)
 #   --help, -h       Show help
 #
 # ============================================
@@ -39,6 +41,12 @@ SKIP_DEPS=false
 SKIP_SYMLINKS=false
 SKIP_BUILD=false
 BUILD_ONLY=false
+# Mặc định: setup face database nếu có quyền root
+SETUP_FACE_DB=false
+if [ "$EUID" -eq 0 ]; then
+    SETUP_FACE_DB=true
+fi
+FULL_SETUP=false
 
 # Parse arguments
 while [[ $# -gt 0 ]]; do
@@ -61,6 +69,15 @@ while [[ $# -gt 0 ]]; do
             SKIP_SYMLINKS=true
             shift
             ;;
+        --setup-face-db)
+            SETUP_FACE_DB=true
+            shift
+            ;;
+        --all|--full-setup)
+            FULL_SETUP=true
+            SETUP_FACE_DB=true
+            shift
+            ;;
         --help|-h)
             echo "Usage: $0 [OPTIONS]"
             echo ""
@@ -69,6 +86,8 @@ while [[ $# -gt 0 ]]; do
             echo "  --skip-symlinks  Skip fixing symlinks"
             echo "  --skip-build     Skip building project"
             echo "  --build-only     Only build, skip other steps"
+            echo "  --setup-face-db  Setup face database permissions (requires sudo)"
+            echo "  --all, --full-setup  Setup everything including face database (requires sudo)"
             echo "  --help, -h       Show this help"
             exit 0
             ;;
@@ -84,6 +103,15 @@ echo "=========================================="
 echo "Edge AI API - Development Setup"
 echo "=========================================="
 echo ""
+
+# Show setup mode
+if [ "$FULL_SETUP" = true ]; then
+    echo -e "${BLUE}Full setup mode: Setup everything including face database${NC}"
+    echo ""
+elif [ "$SETUP_FACE_DB" = true ] && [ "$EUID" -eq 0 ]; then
+    echo -e "${BLUE}Auto-setup mode: Setup everything (face database enabled - running as root)${NC}"
+    echo ""
+fi
 
 # ============================================
 # Step 1: Install Dependencies
@@ -197,6 +225,26 @@ if [ "$SKIP_BUILD" = false ]; then
 
     cd ..
     echo -e "${GREEN}✓${NC} Build completed"
+    echo ""
+fi
+
+# ============================================
+# Step 4: Setup Face Database (Optional)
+# ============================================
+if [ "$SETUP_FACE_DB" = true ]; then
+    echo -e "${BLUE}[4/4]${NC} Setup face database permissions..."
+    
+    if [ "$EUID" -ne 0 ]; then
+        echo -e "${YELLOW}⚠${NC}  Cần quyền root để setup face database. Bỏ qua."
+        echo "  Chạy thủ công: sudo ./scripts/utils.sh setup-face-db"
+    else
+        if [ -f "$PROJECT_ROOT/scripts/utils.sh" ]; then
+            "$PROJECT_ROOT/scripts/utils.sh" setup-face-db --standard-permissions
+            echo -e "${GREEN}✓${NC} Face database setup hoàn tất!"
+        else
+            echo -e "${YELLOW}⚠${NC}  utils.sh không tồn tại. Bỏ qua setup face database."
+        fi
+    fi
     echo ""
 fi
 

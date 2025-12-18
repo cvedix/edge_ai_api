@@ -25,11 +25,16 @@ git clone https://github.com/cvedix/edge_ai_api.git
 cd edge_ai_api
 
 # Development setup
-./setup.sh
+./scripts/dev_setup.sh
+
+# Chạy server
+./scripts/load_env.sh
 
 # Production setup
-sudo ./setup.sh --production
+sudo ./scripts/prod_setup.sh
 ```
+
+Xem chi tiết: [docs/SCRIPTS.md](SCRIPTS.md)
 
 ### Yêu Cầu Hệ Thống
 

@@ -30,8 +30,23 @@ Thư mục chứa các script và file cấu hình cho production deployment.
 
 ### Production Deployment
 
+Có 2 cách để deploy production:
+
+**Cách 1: Sử dụng script trong scripts/ (khuyến nghị)**
 ```bash
-# Full deployment (recommended)
+# Full deployment
+sudo ./scripts/prod_setup.sh
+
+# Skip dependencies (if already installed)
+sudo ./scripts/prod_setup.sh --skip-deps
+
+# Skip build (use existing build)
+sudo ./scripts/prod_setup.sh --skip-build
+```
+
+**Cách 2: Sử dụng deploy script trực tiếp**
+```bash
+# Full deployment
 sudo ./deploy/deploy.sh
 
 # Skip dependencies (if already installed)
@@ -43,6 +58,8 @@ sudo ./deploy/deploy.sh --skip-build
 # Full permissions (777) - development only
 sudo ./deploy/deploy.sh --full-permissions
 ```
+
+> **Lưu ý:** `scripts/prod_setup.sh` là symlink đến `deploy/deploy.sh`, cả hai đều giống nhau.
 
 ## Deploy Options
 

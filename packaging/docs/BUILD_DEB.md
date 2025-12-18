@@ -1,13 +1,44 @@
-# Hướng Dẫn Build File .deb Package
+# Hướng Dẫn Build và Cài Đặt Debian Package
 
-File này hướng dẫn cách build file `.deb` tự chứa tất cả dependencies để người dùng chỉ cần tải và cài đặt.
+File này hướng dẫn cách build file `.deb` tự chứa tất cả dependencies và cách cài đặt.
+
+## 📦 Packaging Directory
+
+Thư mục `packaging/` chứa các scripts và tài liệu liên quan đến việc build Debian package (.deb).
+
+**Cấu trúc:**
+```
+packaging/
+├── scripts/           # Build scripts
+│   └── build_deb.sh   # Script chính để build .deb package
+└── docs/              # Tài liệu hướng dẫn
+    └── BUILD_DEB.md   # File này
+```
 
 ## 🚀 Quick Start - Chỉ Cần Một Lệnh!
 
-```bash
-# Build file .deb (tất cả trong một lần chạy)
-./packaging/scripts/build_deb.sh
+Có 3 cách để build:
 
+**Option 1: Dùng Wrapper (Khuyến Nghị)**
+```bash
+# Từ project root
+./build_deb.sh
+```
+
+**Option 2: Dùng Đường Dẫn Đầy Đủ**
+```bash
+# Từ project root
+./packaging/scripts/build_deb.sh
+```
+
+**Option 3: Từ Thư Mục Packaging**
+```bash
+cd packaging/scripts
+./build_deb.sh
+```
+
+**Sau khi build:**
+```bash
 # File sẽ được tạo: edge-ai-api-2025.0.1.3-Beta-amd64.deb
 
 # Cài đặt
@@ -122,4 +153,59 @@ Tất cả trong một lần chạy!
 
 ## 🐛 Troubleshooting
 
-Xem chi tiết trong [debian/README.md](../debian/README.md)
+### Lỗi: "dpkg-buildpackage: command not found"
+
+```bash
+sudo apt-get install -y dpkg-dev debhelper
+```
+
+### Lỗi: "Could not find required libraries"
+
+Đảm bảo CVEDIX SDK đã được cài đặt tại `/opt/cvedix/lib` hoặc libraries đã được bundle vào package.
+
+### Lỗi: "Service failed to start"
+
+Kiểm tra log:
+```bash
+sudo journalctl -u edge-ai-api -n 50
+```
+
+Kiểm tra permissions:
+```bash
+sudo chown -R edgeai:edgeai /opt/edge_ai_api
+```
+
+### Libraries không được tìm thấy
+
+Kiểm tra ldconfig:
+```bash
+sudo ldconfig -v | grep edge-ai-api
+```
+
+Nếu không có, chạy lại:
+```bash
+sudo ldconfig
+```
+
+## 📝 Lưu Ý
+
+1. **Bundled Libraries**: Package bundle tất cả shared libraries cần thiết vào `/opt/edge_ai_api/lib`. Điều này đảm bảo ứng dụng hoạt động ngay cả khi hệ thống thiếu một số dependencies.
+
+2. **RPATH**: Executable được cấu hình với RPATH để tìm libraries trong `/opt/edge_ai_api/lib` trước khi tìm trong system paths.
+
+3. **CVEDIX SDK**: Nếu CVEDIX SDK được cài đặt tại `/opt/cvedix/lib`, các libraries sẽ được tự động bundle vào package.
+
+4. **System Dependencies**: Một số system dependencies vẫn cần được cài đặt (như libssl3, libc6, etc.) nhưng chúng thường đã có sẵn trên hệ thống Debian/Ubuntu.
+
+5. **File .deb được tạo sẽ nằm ở project root**
+
+6. **Thư mục `debian/` phải ở project root** (theo convention của Debian)
+
+7. **Không cần sudo để build** - chỉ cần sudo khi cài đặt package
+
+## 🔗 Liên Quan
+
+- `debian/` - Debian package source files (phải ở root)
+- `deploy/` - Production deployment scripts
+- `scripts/` - Development scripts
+- `docs/` - General documentation
