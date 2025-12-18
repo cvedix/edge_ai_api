@@ -111,20 +111,26 @@ curl -X POST http://localhost:8080/v1/core/instance \
 ### 4. Start Instance
 
 ```bash
-curl -X POST http://localhost:8080/v1/core/instance/{instanceId}/start
+curl -X POST http://localhost:8080/v1/core/instances/{instanceId}/start
 ```
 
 ### 5. Kiểm Tra Kết Quả
 
 ```bash
 # Kiểm tra status
-curl http://localhost:8080/v1/core/instance/{instanceId}
+curl http://localhost:8080/v1/core/instances/{instanceId}
 
 # Kiểm tra statistics
 curl http://localhost:8080/v1/core/instance/{instanceId}/statistics
 
 # Subscribe MQTT (nếu có)
 mosquitto_sub -h localhost -t events -v
+```
+
+### 6. Stop Instance
+
+```bash
+curl -X POST http://localhost:8080/v1/core/instances/{instanceId}/stop
 ```
 
 ## 🔧 Common Parameters
