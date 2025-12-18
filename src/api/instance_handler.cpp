@@ -104,17 +104,16 @@ void InstanceHandler::getStatusSummary(
     std::vector<InstanceInfo> allInstances;
     try {
       auto future =
-          std::async(std::launch::async,
-                     [this]() -> std::vector<InstanceInfo> {
-                       try {
-                         if (instance_manager_) {
-                           return instance_manager_->getAllInstances();
-                         }
-                         return {};
-                       } catch (...) {
-                         return {};
-                       }
-                     });
+          std::async(std::launch::async, [this]() -> std::vector<InstanceInfo> {
+            try {
+              if (instance_manager_) {
+                return instance_manager_->getAllInstances();
+              }
+              return {};
+            } catch (...) {
+              return {};
+            }
+          });
 
       // Wait with timeout (2 seconds) to prevent hanging
       auto status = future.wait_for(std::chrono::seconds(2));
@@ -242,9 +241,8 @@ void InstanceHandler::listInstances(
     // held Reduced timeout from 2s to 500ms to fail fast when registry is busy
     std::vector<InstanceInfo> allInstances;
     try {
-      auto future = std::async(
-          std::launch::async,
-          [this]() -> std::vector<InstanceInfo> {
+      auto future =
+          std::async(std::launch::async, [this]() -> std::vector<InstanceInfo> {
             try {
               if (instance_manager_) {
                 return instance_manager_->getAllInstances();
@@ -788,7 +786,7 @@ void InstanceHandler::restartInstance(
 
         // Now start the instance (skip auto-stop since we already stopped it)
         instance_manager_->startInstance(instanceId,
-                                          true); // true = skipAutoStop
+                                         true); // true = skipAutoStop
       } catch (const std::exception &e) {
         std::cerr << "[InstanceHandler] Exception restarting instance "
                   << instanceId << ": " << e.what() << std::endl;
@@ -955,7 +953,7 @@ void InstanceHandler::updateInstance(
     if (updateReq.inputPixelLimit >= 0) {
       updateJson["inputPixelLimit"] = updateReq.inputPixelLimit;
     }
-    for (const auto& [key, value] : updateReq.additionalParams) {
+    for (const auto &[key, value] : updateReq.additionalParams) {
       updateJson["additionalParams"][key] = value;
     }
 
@@ -1088,17 +1086,16 @@ void InstanceHandler::deleteAllInstances(
     std::vector<InstanceInfo> allInstances;
     try {
       auto future =
-          std::async(std::launch::async,
-                     [this]() -> std::vector<InstanceInfo> {
-                       try {
-                         if (instance_manager_) {
-                           return instance_manager_->getAllInstances();
-                         }
-                         return {};
-                       } catch (...) {
-                         return {};
-                       }
-                     });
+          std::async(std::launch::async, [this]() -> std::vector<InstanceInfo> {
+            try {
+              if (instance_manager_) {
+                return instance_manager_->getAllInstances();
+              }
+              return {};
+            } catch (...) {
+              return {};
+            }
+          });
 
       // Wait with timeout (2.5 seconds)
       auto status = future.wait_for(std::chrono::milliseconds(2500));
@@ -2254,7 +2251,7 @@ void InstanceHandler::configureStreamOutput(
       // This will merge streamConfig with existing config and update
       // AdditionalParams
       if (instance_manager_->updateInstanceFromConfig(instanceId,
-                                                       streamConfig)) {
+                                                      streamConfig)) {
         auto end_time = std::chrono::steady_clock::now();
         auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(
             end_time - start_time);
@@ -2298,7 +2295,7 @@ void InstanceHandler::configureStreamOutput(
           ""; // Empty string to clear
 
       if (instance_manager_->updateInstanceFromConfig(instanceId,
-                                                       streamConfig)) {
+                                                      streamConfig)) {
         auto end_time = std::chrono::steady_clock::now();
         auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(
             end_time - start_time);
@@ -3776,7 +3773,7 @@ void InstanceHandler::setConfig(
     // Update instance using updateInstanceFromConfig
     // This will merge partialConfig with existing config
     if (instance_manager_->updateInstanceFromConfig(instanceId,
-                                                     partialConfig)) {
+                                                    partialConfig)) {
       auto end_time = std::chrono::steady_clock::now();
       auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(
           end_time - start_time);

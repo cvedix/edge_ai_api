@@ -288,8 +288,8 @@ private:
   /**
    * @brief Parse JSON request body to UpdateInstanceRequest
    */
-  bool parseUpdateRequest(const Json::Value &json,
-                          UpdateInstanceRequest &req, std::string &error);
+  bool parseUpdateRequest(const Json::Value &json, UpdateInstanceRequest &req,
+                          std::string &error);
 
   /**
    * @brief Convert InstanceInfo to JSON

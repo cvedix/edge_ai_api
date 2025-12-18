@@ -281,4 +281,3 @@ sudo dpkg -i edge-ai-api-*.deb
 - [packaging/docs/BUILD_DEB.md](../packaging/docs/BUILD_DEB.md) - Build package guide
 - [docs/DEVELOPMENT.md](DEVELOPMENT.md) - Development guide
 - [README.md](../README.md) - Project overview
-

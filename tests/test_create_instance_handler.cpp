@@ -1,8 +1,8 @@
 #include "api/create_instance_handler.h"
 #include "core/pipeline_builder.h"
+#include "instances/inprocess_instance_manager.h"
 #include "instances/instance_registry.h"
 #include "instances/instance_storage.h"
-#include "instances/inprocess_instance_manager.h"
 #include "solutions/solution_registry.h"
 #include <chrono>
 #include <drogon/HttpRequest.h>
@@ -37,7 +37,8 @@ protected:
         *solution_registry_, *pipeline_builder_, *instance_storage_);
 
     // Create InProcessInstanceManager wrapper
-    instance_manager_ = std::make_unique<InProcessInstanceManager>(*instance_registry_);
+    instance_manager_ =
+        std::make_unique<InProcessInstanceManager>(*instance_registry_);
 
     // Register with handler
     CreateInstanceHandler::setInstanceManager(instance_manager_.get());
