@@ -106,10 +106,10 @@ case "$COMMAND" in
         SERVICE_GROUP="edgeai"
         INSTALL_DIR="/opt/edge_ai_api"
         DB_FILENAME="face_database.txt"
-        
+
         # Permission mode: "standard" (644) or "full" (666)
         PERMISSION_MODE="standard"
-        
+
         # Parse options
         shift
         while [[ $# -gt 0 ]]; do
@@ -129,19 +129,19 @@ case "$COMMAND" in
                     ;;
             esac
         done
-        
+
         # Check if running as root
         if [ "$EUID" -ne 0 ]; then
             echo -e "${RED}Error: Command này cần chạy với quyền root (sudo)${NC}"
             echo "Usage: sudo $0 setup-face-db"
             exit 1
         fi
-        
+
         echo -e "${BLUE}===========================================${NC}"
         echo -e "${BLUE}Edge AI API - Setup Face Database${NC}"
         echo -e "${BLUE}===========================================${NC}"
         echo ""
-        
+
         # Check if user exists
         if ! id "$SERVICE_USER" &>/dev/null; then
             echo -e "${YELLOW}Warning: User $SERVICE_USER chưa tồn tại${NC}"
@@ -153,7 +153,7 @@ case "$COMMAND" in
                 exit 1
             fi
         fi
-        
+
         # Ensure group exists
         if ! getent group "$SERVICE_GROUP" > /dev/null 2>&1; then
             if groupadd -r "$SERVICE_GROUP" 2>/dev/null; then
@@ -161,15 +161,15 @@ case "$COMMAND" in
             fi
             usermod -a -G "$SERVICE_GROUP" "$SERVICE_USER" 2>/dev/null || true
         fi
-        
+
         # Function to setup database file
         setup_database_file() {
             local db_path="$1"
             local description="$2"
-            
+
             echo -e "${BLUE}Setting up: $description${NC}"
             echo "  Path: $db_path"
-            
+
             # Create parent directory if needed
             local parent_dir=$(dirname "$db_path")
             if [ ! -d "$parent_dir" ]; then
@@ -178,7 +178,7 @@ case "$COMMAND" in
             else
                 echo -e "  ${GREEN}✓${NC} Thư mục đã tồn tại: $parent_dir"
             fi
-            
+
             # Create database file if it doesn't exist
             if [ ! -f "$db_path" ]; then
                 touch "$db_path"
@@ -186,12 +186,12 @@ case "$COMMAND" in
             else
                 echo -e "  ${GREEN}✓${NC} File đã tồn tại: $db_path"
             fi
-            
+
             # Set ownership
             chown "$SERVICE_USER:$SERVICE_GROUP" "$db_path"
             chown -R "$SERVICE_USER:$SERVICE_GROUP" "$parent_dir"
             echo -e "  ${GREEN}✓${NC} Đã set ownership: $SERVICE_USER:$SERVICE_GROUP"
-            
+
             # Set permissions
             if [ "$PERMISSION_MODE" = "full" ]; then
                 chmod 666 "$db_path"
@@ -202,7 +202,7 @@ case "$COMMAND" in
                 chmod 755 "$parent_dir"
                 echo -e "  ${GREEN}✓${NC} Đã cấp quyền STANDARD (644) cho file"
             fi
-            
+
             # Verify write permission
             if [ -w "$db_path" ]; then
                 echo -e "  ${GREEN}✓${NC} Xác nhận: Có quyền ghi vào file"
@@ -210,18 +210,18 @@ case "$COMMAND" in
                 echo -e "  ${RED}✗${NC} Lỗi: Không có quyền ghi vào file"
                 return 1
             fi
-            
+
             echo ""
             return 0
         }
-        
+
         # Setup database files at all possible locations
         echo -e "${BLUE}Tạo và cấp quyền cho face_database.txt...${NC}"
         echo ""
-        
+
         # 1. Production path
         setup_database_file "$INSTALL_DIR/data/$DB_FILENAME" "Production path"
-        
+
         # 2. User directory (if HOME is set)
         if [ -n "$HOME" ] && [ "$HOME" != "" ]; then
             USER_DB_PATH="$HOME/.local/share/edge_ai_api/$DB_FILENAME"
@@ -230,13 +230,13 @@ case "$COMMAND" in
             echo -e "${YELLOW}⚠${NC} HOME không được set, bỏ qua user directory"
             echo ""
         fi
-        
+
         # 3. Current directory (if running from project root)
         CURRENT_DB_PATH="$PROJECT_ROOT/$DB_FILENAME"
         if [ -d "$PROJECT_ROOT" ]; then
             setup_database_file "$CURRENT_DB_PATH" "Current directory (project root)"
         fi
-        
+
         # Summary
         echo -e "${GREEN}===========================================${NC}"
         echo -e "${GREEN}✓ Hoàn tất!${NC}"
@@ -268,7 +268,7 @@ case "$COMMAND" in
         echo "  - Priority: FACE_DATABASE_PATH env var > Production > User > Current"
         echo "  - Để set custom path: export FACE_DATABASE_PATH=/custom/path/face_database.txt"
         ;;
-    
+
     help|--help|-h)
         echo "Usage: $0 <command> [options]"
         echo ""

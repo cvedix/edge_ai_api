@@ -136,12 +136,12 @@ FAILED_COUNT=0
 for dir_name in "${!APP_DIRECTORIES[@]}"; do
     dir_path="$INSTALL_DIR/$dir_name"
     dir_perms="${APP_DIRECTORIES[$dir_name]}"
-    
+
     # Override permissions if --full-permissions flag is set
     if [ "$FULL_PERMISSIONS" = true ]; then
         dir_perms="755"
     fi
-    
+
     # Create directory
     if [ -d "$dir_path" ]; then
         echo "✓ Directory already exists: $dir_path"
@@ -156,7 +156,7 @@ for dir_name in "${!APP_DIRECTORIES[@]}"; do
             continue
         fi
     fi
-    
+
     # Set permissions
     if [ -n "$dir_perms" ] && [ "$dir_perms" != "0" ]; then
         if chmod "$dir_perms" "$dir_path" 2>/dev/null; then
@@ -185,4 +185,3 @@ fi
 echo
 echo "✓ All directories created successfully!"
 exit 0
-

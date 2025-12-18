@@ -2,14 +2,14 @@
 
 #include "worker/ipc_protocol.h"
 #include "worker/unix_socket.h"
+#include <atomic>
+#include <chrono>
+#include <functional>
 #include <json/json.h>
 #include <memory>
-#include <string>
-#include <atomic>
-#include <functional>
-#include <chrono>
-#include <opencv2/core.hpp>
 #include <mutex>
+#include <opencv2/core.hpp>
+#include <string>
 
 // Forward declarations for CVEDIX types
 namespace cvedix_nodes {
@@ -27,7 +27,7 @@ namespace worker {
 
 /**
  * @brief Worker Handler - handles IPC commands in worker process
- * 
+ *
  * This class runs inside the worker subprocess and:
  * - Manages a single AI instance pipeline
  * - Handles commands from supervisor via Unix socket
@@ -35,154 +35,153 @@ namespace worker {
  */
 class WorkerHandler {
 public:
-    /**
-     * @brief Constructor
-     * @param instance_id Instance ID this worker manages
-     * @param socket_path Unix socket path for IPC
-     * @param config Initial configuration JSON
-     */
-    WorkerHandler(const std::string& instance_id,
-                  const std::string& socket_path,
-                  const Json::Value& config);
-    
-    ~WorkerHandler();
-    
-    // Non-copyable
-    WorkerHandler(const WorkerHandler&) = delete;
-    WorkerHandler& operator=(const WorkerHandler&) = delete;
-    
-    /**
-     * @brief Run the worker (blocking)
-     * Starts the IPC server and processes commands until shutdown
-     * @return Exit code (0 = success)
-     */
-    int run();
-    
-    /**
-     * @brief Request shutdown
-     */
-    void requestShutdown();
-    
-    /**
-     * @brief Check if shutdown was requested
-     */
-    bool isShutdownRequested() const { return shutdown_requested_.load(); }
+  /**
+   * @brief Constructor
+   * @param instance_id Instance ID this worker manages
+   * @param socket_path Unix socket path for IPC
+   * @param config Initial configuration JSON
+   */
+  WorkerHandler(const std::string &instance_id, const std::string &socket_path,
+                const Json::Value &config);
+
+  ~WorkerHandler();
+
+  // Non-copyable
+  WorkerHandler(const WorkerHandler &) = delete;
+  WorkerHandler &operator=(const WorkerHandler &) = delete;
+
+  /**
+   * @brief Run the worker (blocking)
+   * Starts the IPC server and processes commands until shutdown
+   * @return Exit code (0 = success)
+   */
+  int run();
+
+  /**
+   * @brief Request shutdown
+   */
+  void requestShutdown();
+
+  /**
+   * @brief Check if shutdown was requested
+   */
+  bool isShutdownRequested() const { return shutdown_requested_.load(); }
 
 private:
-    std::string instance_id_;
-    std::string socket_path_;
-    Json::Value config_;
-    
-    std::unique_ptr<UnixSocketServer> server_;
-    std::atomic<bool> shutdown_requested_{false};
-    
-    // Dependencies (initialized in worker process)
-    std::unique_ptr<PipelineBuilder> pipeline_builder_;
-    
-    // Pipeline state
-    std::vector<std::shared_ptr<cvedix_nodes::cvedix_node>> pipeline_nodes_;
-    bool pipeline_running_ = false;
-    std::string current_state_ = "stopped";
-    std::string last_error_;
-    
-    // Statistics
-    std::atomic<uint64_t> frames_processed_{0};
-    std::atomic<uint64_t> dropped_frames_{0};
-    std::chrono::steady_clock::time_point start_time_;
-    std::chrono::steady_clock::time_point last_fps_update_;
-    std::atomic<double> current_fps_{0.0};
-    std::atomic<size_t> queue_size_{0};
-    std::string resolution_;
-    std::string source_resolution_;
-    
-    // Frame cache
-    mutable std::mutex frame_mutex_;
-    cv::Mat last_frame_;
-    bool has_frame_ = false;
-    
-    /**
-     * @brief Initialize dependencies (solution registry, pipeline builder)
-     */
-    bool initializeDependencies();
-    
-    /**
-     * @brief Handle incoming IPC message
-     * @param msg Incoming message
-     * @return Response message
-     */
-    IPCMessage handleMessage(const IPCMessage& msg);
-    
-    // Command handlers
-    IPCMessage handlePing(const IPCMessage& msg);
-    IPCMessage handleShutdown(const IPCMessage& msg);
-    IPCMessage handleCreateInstance(const IPCMessage& msg);
-    IPCMessage handleDeleteInstance(const IPCMessage& msg);
-    IPCMessage handleStartInstance(const IPCMessage& msg);
-    IPCMessage handleStopInstance(const IPCMessage& msg);
-    IPCMessage handleUpdateInstance(const IPCMessage& msg);
-    IPCMessage handleGetStatus(const IPCMessage& msg);
-    IPCMessage handleGetStatistics(const IPCMessage& msg);
-    IPCMessage handleGetLastFrame(const IPCMessage& msg);
-    
-    /**
-     * @brief Build pipeline from config
-     * @return true if successful
-     */
-    bool buildPipeline();
-    
-    /**
-     * @brief Start the pipeline
-     * @return true if successful
-     */
-    bool startPipeline();
-    
-    /**
-     * @brief Stop the pipeline
-     */
-    void stopPipeline();
-    
-    /**
-     * @brief Cleanup pipeline resources
-     */
-    void cleanupPipeline();
-    
-    /**
-     * @brief Send WORKER_READY message to supervisor
-     */
-    void sendReadySignal();
-    
-    /**
-     * @brief Parse CreateInstanceRequest from JSON config
-     */
-    CreateInstanceRequest parseCreateRequest(const Json::Value& config) const;
-    
-    /**
-     * @brief Setup frame capture hook for statistics
-     */
-    void setupFrameCaptureHook();
-    
-    /**
-     * @brief Update frame cache
-     */
-    void updateFrameCache(const cv::Mat& frame);
-    
-    /**
-     * @brief Encode frame to base64 JPEG
-     */
-    std::string encodeFrameToBase64(const cv::Mat& frame, int quality = 85) const;
+  std::string instance_id_;
+  std::string socket_path_;
+  Json::Value config_;
+
+  std::unique_ptr<UnixSocketServer> server_;
+  std::atomic<bool> shutdown_requested_{false};
+
+  // Dependencies (initialized in worker process)
+  std::unique_ptr<PipelineBuilder> pipeline_builder_;
+
+  // Pipeline state
+  std::vector<std::shared_ptr<cvedix_nodes::cvedix_node>> pipeline_nodes_;
+  bool pipeline_running_ = false;
+  std::string current_state_ = "stopped";
+  std::string last_error_;
+
+  // Statistics
+  std::atomic<uint64_t> frames_processed_{0};
+  std::atomic<uint64_t> dropped_frames_{0};
+  std::chrono::steady_clock::time_point start_time_;
+  std::chrono::steady_clock::time_point last_fps_update_;
+  std::atomic<double> current_fps_{0.0};
+  std::atomic<size_t> queue_size_{0};
+  std::string resolution_;
+  std::string source_resolution_;
+
+  // Frame cache
+  mutable std::mutex frame_mutex_;
+  cv::Mat last_frame_;
+  bool has_frame_ = false;
+
+  /**
+   * @brief Initialize dependencies (solution registry, pipeline builder)
+   */
+  bool initializeDependencies();
+
+  /**
+   * @brief Handle incoming IPC message
+   * @param msg Incoming message
+   * @return Response message
+   */
+  IPCMessage handleMessage(const IPCMessage &msg);
+
+  // Command handlers
+  IPCMessage handlePing(const IPCMessage &msg);
+  IPCMessage handleShutdown(const IPCMessage &msg);
+  IPCMessage handleCreateInstance(const IPCMessage &msg);
+  IPCMessage handleDeleteInstance(const IPCMessage &msg);
+  IPCMessage handleStartInstance(const IPCMessage &msg);
+  IPCMessage handleStopInstance(const IPCMessage &msg);
+  IPCMessage handleUpdateInstance(const IPCMessage &msg);
+  IPCMessage handleGetStatus(const IPCMessage &msg);
+  IPCMessage handleGetStatistics(const IPCMessage &msg);
+  IPCMessage handleGetLastFrame(const IPCMessage &msg);
+
+  /**
+   * @brief Build pipeline from config
+   * @return true if successful
+   */
+  bool buildPipeline();
+
+  /**
+   * @brief Start the pipeline
+   * @return true if successful
+   */
+  bool startPipeline();
+
+  /**
+   * @brief Stop the pipeline
+   */
+  void stopPipeline();
+
+  /**
+   * @brief Cleanup pipeline resources
+   */
+  void cleanupPipeline();
+
+  /**
+   * @brief Send WORKER_READY message to supervisor
+   */
+  void sendReadySignal();
+
+  /**
+   * @brief Parse CreateInstanceRequest from JSON config
+   */
+  CreateInstanceRequest parseCreateRequest(const Json::Value &config) const;
+
+  /**
+   * @brief Setup frame capture hook for statistics
+   */
+  void setupFrameCaptureHook();
+
+  /**
+   * @brief Update frame cache
+   */
+  void updateFrameCache(const cv::Mat &frame);
+
+  /**
+   * @brief Encode frame to base64 JPEG
+   */
+  std::string encodeFrameToBase64(const cv::Mat &frame, int quality = 85) const;
 };
 
 /**
  * @brief Parse command line arguments for worker process
  */
 struct WorkerArgs {
-    std::string instance_id;
-    std::string socket_path;
-    Json::Value config;
-    bool valid = false;
-    std::string error;
-    
-    static WorkerArgs parse(int argc, char* argv[]);
+  std::string instance_id;
+  std::string socket_path;
+  Json::Value config;
+  bool valid = false;
+  std::string error;
+
+  static WorkerArgs parse(int argc, char *argv[]);
 };
 
 } // namespace worker

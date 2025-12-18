@@ -27,10 +27,10 @@
 #include "fonts/font_upload_handler.h"
 #include "groups/group_registry.h"
 #include "groups/group_storage.h"
+#include "instances/inprocess_instance_manager.h"
+#include "instances/instance_manager_factory.h"
 #include "instances/instance_registry.h"
 #include "instances/instance_storage.h"
-#include "instances/instance_manager_factory.h"
-#include "instances/inprocess_instance_manager.h"
 #include "instances/queue_monitor.h"
 #include "models/model_upload_handler.h"
 #include "solutions/solution_registry.h"
@@ -1954,43 +1954,51 @@ int main(int argc, char *argv[]) {
 
     PLOG_INFO << "[Main] Instances directory: " << instancesDir;
     static InstanceStorage instanceStorage(instancesDir);
-    
+
     // ============================================
     // EXECUTION MODE SELECTION
     // ============================================
     // Check environment variable for execution mode:
-    // - EDGE_AI_EXECUTION_MODE=subprocess : Run pipelines in isolated subprocesses
-    // - EDGE_AI_EXECUTION_MODE=inprocess (default) : Run pipelines in main process
+    // - EDGE_AI_EXECUTION_MODE=subprocess : Run pipelines in isolated
+    // subprocesses
+    // - EDGE_AI_EXECUTION_MODE=inprocess (default) : Run pipelines in main
+    // process
     auto executionMode = InstanceManagerFactory::getExecutionModeFromEnv();
-    std::cerr << "[Main] Execution mode: " 
-              << InstanceManagerFactory::getModeName(executionMode) << std::endl;
-    PLOG_INFO << "[Main] Execution mode: " 
+    std::cerr << "[Main] Execution mode: "
+              << InstanceManagerFactory::getModeName(executionMode)
+              << std::endl;
+    PLOG_INFO << "[Main] Execution mode: "
               << InstanceManagerFactory::getModeName(executionMode);
-    
+
     // Create instance registry (always needed for legacy compatibility)
     static InstanceRegistry instanceRegistry(solutionRegistry, pipelineBuilder,
                                              instanceStorage);
 
     // Store instance registry pointer for error recovery
     g_instance_registry = &instanceRegistry;
-    
+
     // Create instance manager based on execution mode
     // Note: For subprocess mode, we still use instanceRegistry for API handlers
     // but the actual pipeline execution happens in worker processes
     static std::unique_ptr<IInstanceManager> instanceManager;
     if (executionMode == InstanceExecutionMode::SUBPROCESS) {
-        // Subprocess mode: Create SubprocessInstanceManager
-        // Workers will be spawned for each instance
-        instanceManager = InstanceManagerFactory::createSubprocess(
-            solutionRegistry, instanceStorage, "edge_ai_worker");
-        std::cerr << "[Main] ✓ Subprocess instance manager initialized" << std::endl;
-        PLOG_INFO << "[Main] Subprocess instance manager initialized";
-        PLOG_INFO << "[Main] Each instance will run in isolated worker process";
+      // Subprocess mode: Create SubprocessInstanceManager
+      // Workers will be spawned for each instance
+      instanceManager = InstanceManagerFactory::createSubprocess(
+          solutionRegistry, instanceStorage, "edge_ai_worker");
+      std::cerr << "[Main] ✓ Subprocess instance manager initialized"
+                << std::endl;
+      PLOG_INFO << "[Main] Subprocess instance manager initialized";
+      PLOG_INFO << "[Main] Each instance will run in isolated worker process";
     } else {
-        // In-process mode: Use existing InstanceRegistry directly
-        instanceManager = std::make_unique<InProcessInstanceManager>(instanceRegistry);
-        std::cerr << "[Main] ✓ In-process instance manager initialized (legacy mode)" << std::endl;
-        PLOG_INFO << "[Main] In-process instance manager initialized (legacy mode)";
+      // In-process mode: Use existing InstanceRegistry directly
+      instanceManager =
+          std::make_unique<InProcessInstanceManager>(instanceRegistry);
+      std::cerr
+          << "[Main] ✓ In-process instance manager initialized (legacy mode)"
+          << std::endl;
+      PLOG_INFO
+          << "[Main] In-process instance manager initialized (legacy mode)";
     }
 
     // Initialize default solutions (face_detection, etc.)
@@ -3426,8 +3434,9 @@ int main(int argc, char *argv[]) {
         // Start auto-start in a separate thread to avoid blocking the event
         // loop Even if instances fail, hang, or crash, the main program
         // continues running
-        std::thread autoStartThread(
-            [&instanceManager]() { autoStartInstances(instanceManager.get()); });
+        std::thread autoStartThread([&instanceManager]() {
+          autoStartInstances(instanceManager.get());
+        });
         autoStartThread.detach(); // Detach so it runs independently
       });
     } else {

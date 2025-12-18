@@ -233,7 +233,7 @@ fi
 # ============================================
 if [ "$SETUP_FACE_DB" = true ]; then
     echo -e "${BLUE}[4/4]${NC} Setup face database permissions..."
-    
+
     if [ "$EUID" -ne 0 ]; then
         echo -e "${YELLOW}⚠${NC}  Cần quyền root để setup face database. Bỏ qua."
         echo "  Chạy thủ công: sudo ./scripts/utils.sh setup-face-db"
