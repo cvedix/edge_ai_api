@@ -127,8 +127,56 @@ if [ -d "/opt/cvedix/lib" ]; then
     cp -L /opt/cvedix/lib/libtinyexpr.so* "$LIB_TEMP_DIR/" 2>/dev/null || true
 fi
 
-# Copy other required libraries from ldd output (excluding OpenCV and GStreamer)
-# OpenCV and GStreamer should be installed by user via package dependencies
+# Copy CUDA libraries if available (for GPU acceleration support)
+# Detect CUDA installation from common paths
+CUDA_LIB_PATHS=(
+    "/usr/local/cuda/lib64"
+    "/usr/local/cuda/lib"
+    "/usr/lib/x86_64-linux-gnu"
+    "/opt/cuda/lib64"
+    "/opt/cuda/lib"
+)
+
+CUDA_LIBS=(
+    "libcublas.so*"
+    "libcublasLt.so*"
+    "libcurand.so*"
+    "libcusolver.so*"
+    "libcufft.so*"
+    "libcusparse.so*"
+    "libcudart.so*"
+    "libnvrtc.so*"
+    "libnvjitlink.so*"
+)
+
+CUDA_FOUND=false
+for cuda_path in "\${CUDA_LIB_PATHS[@]}"; do
+    if [ -d "\$cuda_path" ]; then
+        for cuda_lib_pattern in "\${CUDA_LIBS[@]}"; do
+            # Find and copy CUDA libraries
+            find "\$cuda_path" -maxdepth 1 -name "\$cuda_lib_pattern" -type f 2>/dev/null | while read cuda_lib; do
+                if [ -f "\$cuda_lib" ]; then
+                    libname=\$(basename "\$cuda_lib")
+                    if [ ! -f "\$LIB_TEMP_DIR/\$libname" ]; then
+                        echo "  Copying CUDA library \$libname from \$cuda_path..."
+                        cp -L "\$cuda_lib" "\$LIB_TEMP_DIR/" 2>/dev/null || true
+                    fi
+                fi
+            done
+        done
+        # Check if any CUDA libraries were found in this path
+        if find "\$cuda_path" -maxdepth 1 -name "libcublas*.so*" -type f 2>/dev/null | grep -q .; then
+            CUDA_FOUND=true
+        fi
+    fi
+done
+
+if [ "\$CUDA_FOUND" = true ]; then
+    echo "  CUDA libraries bundled successfully"
+fi
+
+# Copy other required libraries from ldd output (including OpenCV and GStreamer for full package)
+# Bundle all required libraries for a self-contained package
 ldd "$EXEC_PATH" 2>/dev/null | grep -v "not found" | awk '{print $3}' | grep -v "^$" | sort -u | while read lib; do
     if [ -f "$lib" ]; then
         libname=$(basename "$lib")
@@ -138,25 +186,11 @@ ldd "$EXEC_PATH" 2>/dev/null | grep -v "not found" | awk '{print $3}' | grep -v 
             libc.so*|libm.so*|libpthread.so*|libdl.so*|libgcc_s.so*|libstdc++.so*|ld-linux*)
                 continue
                 ;;
-            libopencv*.so*|libgst*.so*|libgstrtspserver*.so*)
-                # Skip OpenCV and GStreamer - user must install via package dependencies
-                continue
-                ;;
             *)
                 if [ ! -f "$LIB_TEMP_DIR/$libname" ]; then
-                    # Copy custom libraries (not in standard system paths, or from /opt)
-                    case "$lib" in
-                        /lib/*|/usr/lib/*|/usr/local/lib/*)
-                            case "$lib" in
-                                /opt/*)
-                                    cp -L "$lib" "$LIB_TEMP_DIR/" 2>/dev/null || true
-                                    ;;
-                            esac
-                            ;;
-                        *)
-                            cp -L "$lib" "$LIB_TEMP_DIR/" 2>/dev/null || true
-                            ;;
-                    esac
+                    # Copy all required libraries including OpenCV and GStreamer
+                    # Bundle from all paths (including /usr/lib, /lib/x86_64-linux-gnu, etc.)
+                    cp -L "$lib" "$LIB_TEMP_DIR/" 2>/dev/null || true
                 fi
                 ;;
         esac
@@ -215,7 +249,54 @@ bundle_libraries() {
         cp -L /opt/cvedix/lib/libtinyexpr.so* "$LIB_DIR/" 2>/dev/null || true
     fi
 
-    # Find and copy required libraries (excluding OpenCV and GStreamer)
+    # Copy CUDA libraries if available (for GPU acceleration support)
+    CUDA_LIB_PATHS=(
+        "/usr/local/cuda/lib64"
+        "/usr/local/cuda/lib"
+        "/usr/lib/x86_64-linux-gnu"
+        "/opt/cuda/lib64"
+        "/opt/cuda/lib"
+    )
+
+    CUDA_LIBS=(
+        "libcublas.so*"
+        "libcublasLt.so*"
+        "libcurand.so*"
+        "libcusolver.so*"
+        "libcufft.so*"
+        "libcusparse.so*"
+        "libcudart.so*"
+        "libnvrtc.so*"
+        "libnvjitlink.so*"
+    )
+
+    CUDA_FOUND=false
+    for cuda_path in "${CUDA_LIB_PATHS[@]}"; do
+        if [ -d "$cuda_path" ]; then
+            # Check if any CUDA libraries exist in this path
+            for cuda_lib_pattern in "${CUDA_LIBS[@]}"; do
+                if find "$cuda_path" -maxdepth 1 -name "$cuda_lib_pattern" -type f 2>/dev/null | grep -q .; then
+                    CUDA_FOUND=true
+                    # Find and copy CUDA libraries
+                    find "$cuda_path" -maxdepth 1 -name "$cuda_lib_pattern" -type f 2>/dev/null | while read cuda_lib; do
+                        if [ -f "$cuda_lib" ]; then
+                            libname=$(basename "$cuda_lib")
+                            if [ ! -f "$LIB_DIR/$libname" ]; then
+                                echo "  Copying CUDA library $libname from $cuda_path..."
+                                cp -L "$cuda_lib" "$LIB_DIR/" 2>/dev/null || true
+                            fi
+                        fi
+                    done
+                fi
+            done
+        fi
+    done
+
+    if [ "$CUDA_FOUND" = true ]; then
+        echo "  CUDA libraries bundled successfully"
+    fi
+
+    # Find and copy required libraries (including OpenCV and GStreamer for full package)
     REQUIRED_LIBS=$(ldd "$EXECUTABLE" 2>/dev/null | grep -v "not found" | awk '{print $3}' | grep -v "^$" | sort -u)
 
     for lib in $REQUIRED_LIBS; do
@@ -227,18 +308,11 @@ bundle_libraries() {
                 continue
             fi
 
-            # Skip OpenCV and GStreamer - user must install via package dependencies
-            if [[ "$libname" =~ ^(libopencv|libgst|libgstrtspserver) ]]; then
-                continue
-            fi
-
-            # Copy if not already copied
+            # Copy all required libraries including OpenCV and GStreamer
             if [ ! -f "$LIB_DIR/$libname" ]; then
-                # Copy custom libraries (not in standard system paths)
-                if [[ ! "$lib" =~ ^/(lib|usr/lib|usr/local/lib) ]] || [[ "$lib" =~ ^/opt/ ]]; then
-                    echo "  Copying $libname..."
-                    cp -L "$lib" "$LIB_DIR/" 2>/dev/null || true
-                fi
+                # Bundle from all paths (including /usr/lib, /lib/x86_64-linux-gnu, etc.)
+                echo "  Copying $libname..."
+                cp -L "$lib" "$LIB_DIR/" 2>/dev/null || true
             fi
         fi
     done
