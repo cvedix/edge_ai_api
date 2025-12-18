@@ -4,6 +4,7 @@
 #include "groups/group_storage.h"
 #include "instances/instance_registry.h"
 #include "instances/instance_storage.h"
+#include "instances/inprocess_instance_manager.h"
 #include "solutions/solution_registry.h"
 #include <chrono>
 #include <drogon/HttpRequest.h>
@@ -39,15 +40,19 @@ protected:
     instance_registry_ = std::make_unique<InstanceRegistry>(
         *solution_registry_, *pipeline_builder_, *instance_storage_);
 
+    // Create InProcessInstanceManager wrapper
+    instance_manager_ = std::make_unique<InProcessInstanceManager>(*instance_registry_);
+
     // Register with handler
     GroupHandler::setGroupRegistry(registry_);
     GroupHandler::setGroupStorage(storage_.get());
-    GroupHandler::setInstanceRegistry(instance_registry_.get());
+    GroupHandler::setInstanceManager(instance_manager_.get());
   }
 
   void TearDown() override {
     handler_.reset();
     storage_.reset();
+    instance_manager_.reset();
     instance_registry_.reset();
     instance_storage_.reset();
     pipeline_builder_.reset();
@@ -60,13 +65,14 @@ protected:
     // Clear handler dependencies
     GroupHandler::setGroupRegistry(nullptr);
     GroupHandler::setGroupStorage(nullptr);
-    GroupHandler::setInstanceRegistry(nullptr);
+    GroupHandler::setInstanceManager(nullptr);
   }
 
   std::unique_ptr<GroupHandler> handler_;
   GroupRegistry *registry_; // Singleton, don't own
   std::unique_ptr<GroupStorage> storage_;
   std::unique_ptr<InstanceRegistry> instance_registry_;
+  std::unique_ptr<InProcessInstanceManager> instance_manager_;
   SolutionRegistry *solution_registry_; // Singleton, don't own
   std::unique_ptr<PipelineBuilder> pipeline_builder_;
   std::unique_ptr<InstanceStorage> instance_storage_;

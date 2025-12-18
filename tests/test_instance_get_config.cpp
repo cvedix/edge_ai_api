@@ -3,6 +3,7 @@
 #include "instances/instance_info.h"
 #include "instances/instance_registry.h"
 #include "instances/instance_storage.h"
+#include "instances/inprocess_instance_manager.h"
 #include "models/create_instance_request.h"
 #include "solutions/solution_registry.h"
 #include <chrono>
@@ -37,12 +38,16 @@ protected:
     instance_registry_ = std::make_unique<InstanceRegistry>(
         *solution_registry_, *pipeline_builder_, *instance_storage_);
 
+    // Create InProcessInstanceManager wrapper
+    instance_manager_ = std::make_unique<InProcessInstanceManager>(*instance_registry_);
+
     // Register with handler
-    InstanceHandler::setInstanceRegistry(instance_registry_.get());
+    InstanceHandler::setInstanceManager(instance_manager_.get());
   }
 
   void TearDown() override {
     handler_.reset();
+    instance_manager_.reset();
     instance_registry_.reset();
     instance_storage_.reset();
     pipeline_builder_.reset();
@@ -52,8 +57,8 @@ protected:
       std::filesystem::remove_all(test_storage_dir_);
     }
 
-    // Clear registry for next test
-    InstanceHandler::setInstanceRegistry(nullptr);
+    // Clear manager for next test
+    InstanceHandler::setInstanceManager(nullptr);
   }
 
   std::unique_ptr<InstanceHandler> handler_;
@@ -61,6 +66,7 @@ protected:
   std::unique_ptr<PipelineBuilder> pipeline_builder_;
   std::unique_ptr<InstanceStorage> instance_storage_;
   std::unique_ptr<InstanceRegistry> instance_registry_;
+  std::unique_ptr<InProcessInstanceManager> instance_manager_;
   std::filesystem::path test_storage_dir_;
 
   // Helper to create a test instance
@@ -70,7 +76,7 @@ protected:
     req.autoStart = false;
     req.autoRestart = false;
 
-    return instance_registry_->createInstance(req);
+    return instance_manager_->createInstance(req);
   }
 };
 
@@ -182,9 +188,9 @@ TEST_F(InstanceGetConfigTest, GetConfigEmptyInstanceId) {
   EXPECT_TRUE(json->isMember("error"));
 }
 
-// Test getConfig when registry not initialized
+// Test getConfig when manager not initialized
 TEST_F(InstanceGetConfigTest, GetConfigRegistryNotInitialized) {
-  InstanceHandler::setInstanceRegistry(nullptr);
+  InstanceHandler::setInstanceManager(nullptr);
 
   auto req = HttpRequest::newHttpRequest();
   req->setPath("/v1/core/instance/test-id/config");
