@@ -3,7 +3,7 @@
 #include "core/logger.h"
 #include "core/logging_flags.h"
 #include "instances/instance_info.h"
-#include "instances/instance_registry.h"
+#include "instances/instance_manager.h"
 #include "models/update_instance_request.h"
 #include <algorithm>
 #include <atomic>
@@ -23,10 +23,10 @@
 #include <vector>
 namespace fs = std::filesystem;
 
-InstanceRegistry *InstanceHandler::instance_registry_ = nullptr;
+IInstanceManager *InstanceHandler::instance_manager_ = nullptr;
 
-void InstanceHandler::setInstanceRegistry(InstanceRegistry *registry) {
-  instance_registry_ = registry;
+void InstanceHandler::setInstanceManager(IInstanceManager *manager) {
+  instance_manager_ = manager;
 }
 
 std::string
@@ -89,7 +89,7 @@ void InstanceHandler::getStatusSummary(
 
   try {
     // Check if registry is set
-    if (!instance_registry_) {
+    if (!instance_manager_) {
       if (isApiLoggingEnabled()) {
         PLOG_ERROR << "[API] GET /v1/core/instance/status/summary - Error: "
                       "Instance registry not initialized";
@@ -101,14 +101,14 @@ void InstanceHandler::getStatusSummary(
 
     // Get all instances in one lock acquisition (optimized)
     // CRITICAL: Use async with timeout to prevent blocking if mutex is held
-    std::unordered_map<std::string, InstanceInfo> allInstances;
+    std::vector<InstanceInfo> allInstances;
     try {
       auto future =
           std::async(std::launch::async,
-                     [this]() -> std::unordered_map<std::string, InstanceInfo> {
+                     [this]() -> std::vector<InstanceInfo> {
                        try {
-                         if (instance_registry_) {
-                           return instance_registry_->getAllInstances();
+                         if (instance_manager_) {
+                           return instance_manager_->getAllInstances();
                          }
                          return {};
                        } catch (...) {
@@ -147,7 +147,7 @@ void InstanceHandler::getStatusSummary(
     int runningCount = 0;
     int stoppedCount = 0;
 
-    for (const auto &[instanceId, info] : allInstances) {
+    for (const auto &info : allInstances) {
       totalCount++;
       if (info.running) {
         runningCount++;
@@ -227,7 +227,7 @@ void InstanceHandler::listInstances(
 
   try {
     // Check if registry is set
-    if (!instance_registry_) {
+    if (!instance_manager_) {
       if (isApiLoggingEnabled()) {
         PLOG_ERROR << "[API] GET /v1/core/instances - Error: Instance registry "
                       "not initialized";
@@ -240,18 +240,18 @@ void InstanceHandler::listInstances(
     // Get all instances in one lock acquisition (optimized)
     // CRITICAL: Use async with shorter timeout to prevent blocking if mutex is
     // held Reduced timeout from 2s to 500ms to fail fast when registry is busy
-    std::unordered_map<std::string, InstanceInfo> allInstances;
+    std::vector<InstanceInfo> allInstances;
     try {
       auto future = std::async(
           std::launch::async,
-          [this]() -> std::unordered_map<std::string, InstanceInfo> {
+          [this]() -> std::vector<InstanceInfo> {
             try {
-              if (instance_registry_) {
-                return instance_registry_->getAllInstances();
+              if (instance_manager_) {
+                return instance_manager_->getAllInstances();
               }
               return {};
             } catch (const std::exception &e) {
-              // Log error but return empty map
+              // Log error but return empty vector
               std::cerr << "[InstanceHandler] Error in getAllInstances: "
                         << e.what() << std::endl;
               return {};
@@ -350,7 +350,7 @@ void InstanceHandler::listInstances(
     int stoppedCount = 0;
 
     // Process all instances without additional lock acquisitions
-    for (const auto &[instanceId, info] : allInstances) {
+    for (const auto &info : allInstances) {
       Json::Value instance;
       instance["instanceId"] = info.instanceId;
       instance["displayName"] = info.displayName;
@@ -431,7 +431,7 @@ void InstanceHandler::getInstance(
 
   try {
     // Check if registry is set
-    if (!instance_registry_) {
+    if (!instance_manager_) {
       if (isApiLoggingEnabled()) {
         PLOG_ERROR << "[API] GET /v1/core/instances/" << instanceId
                    << " - Error: Instance registry not initialized";
@@ -458,8 +458,8 @@ void InstanceHandler::getInstance(
           std::async(std::launch::async,
                      [this, instanceId]() -> std::optional<InstanceInfo> {
                        try {
-                         if (instance_registry_) {
-                           return instance_registry_->getInstance(instanceId);
+                         if (instance_manager_) {
+                           return instance_manager_->getInstance(instanceId);
                          }
                          return std::nullopt;
                        } catch (...) {
@@ -562,7 +562,7 @@ void InstanceHandler::startInstance(
 
   try {
     // Check if registry is set
-    if (!instance_registry_) {
+    if (!instance_manager_) {
       if (isApiLoggingEnabled()) {
         PLOG_ERROR << "[API] POST /v1/core/instances/" << instanceId
                    << "/start - Error: Instance registry not initialized";
@@ -589,7 +589,7 @@ void InstanceHandler::startInstance(
     // background, and status can be checked via GET /v1/core/instances/{id}
     std::thread startThread([this, instanceId]() {
       try {
-        instance_registry_->startInstance(instanceId);
+        instance_manager_->startInstance(instanceId);
       } catch (const std::exception &e) {
         std::cerr << "[InstanceHandler] Exception starting instance "
                   << instanceId << ": " << e.what() << std::endl;
@@ -602,7 +602,7 @@ void InstanceHandler::startInstance(
 
     // Return immediately - instance is starting in background
     // Client can check status using GET /v1/core/instances/{id}
-    auto optInfo = instance_registry_->getInstance(instanceId);
+    auto optInfo = instance_manager_->getInstance(instanceId);
     if (optInfo.has_value()) {
       auto end_time = std::chrono::steady_clock::now();
       auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(
@@ -665,7 +665,7 @@ void InstanceHandler::stopInstance(
 
   try {
     // Check if registry is set
-    if (!instance_registry_) {
+    if (!instance_manager_) {
       if (isApiLoggingEnabled()) {
         PLOG_ERROR << "[API] POST /v1/core/instances/" << instanceId
                    << "/stop - Error: Instance registry not initialized";
@@ -691,7 +691,7 @@ void InstanceHandler::stopInstance(
     // background, and status can be checked via GET /v1/core/instances/{id}
     std::thread stopThread([this, instanceId]() {
       try {
-        instance_registry_->stopInstance(instanceId);
+        instance_manager_->stopInstance(instanceId);
       } catch (const std::exception &e) {
         std::cerr << "[InstanceHandler] Exception stopping instance "
                   << instanceId << ": " << e.what() << std::endl;
@@ -704,7 +704,7 @@ void InstanceHandler::stopInstance(
 
     // Return immediately - instance is stopping in background
     // Client can check status using GET /v1/core/instances/{id}
-    auto optInfo = instance_registry_->getInstance(instanceId);
+    auto optInfo = instance_manager_->getInstance(instanceId);
     if (optInfo.has_value()) {
       auto end_time = std::chrono::steady_clock::now();
       auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(
@@ -757,7 +757,7 @@ void InstanceHandler::restartInstance(
 
   try {
     // Check if registry is set
-    if (!instance_registry_) {
+    if (!instance_manager_) {
       callback(createErrorResponse(500, "Internal server error",
                                    "Instance registry not initialized"));
       return;
@@ -779,15 +779,15 @@ void InstanceHandler::restartInstance(
     std::thread restartThread([this, instanceId]() {
       try {
         // First, stop the instance if it's running
-        auto optInfo = instance_registry_->getInstance(instanceId);
+        auto optInfo = instance_manager_->getInstance(instanceId);
         if (optInfo.has_value() && optInfo.value().running) {
-          instance_registry_->stopInstance(instanceId);
+          instance_manager_->stopInstance(instanceId);
           // Give it a moment to fully stop and cleanup
           std::this_thread::sleep_for(std::chrono::milliseconds(500));
         }
 
         // Now start the instance (skip auto-stop since we already stopped it)
-        instance_registry_->startInstance(instanceId,
+        instance_manager_->startInstance(instanceId,
                                           true); // true = skipAutoStop
       } catch (const std::exception &e) {
         std::cerr << "[InstanceHandler] Exception restarting instance "
@@ -801,7 +801,7 @@ void InstanceHandler::restartInstance(
 
     // Return immediately - instance is restarting in background
     // Client can check status using GET /v1/core/instances/{id}
-    auto optInfo = instance_registry_->getInstance(instanceId);
+    auto optInfo = instance_manager_->getInstance(instanceId);
     if (optInfo.has_value()) {
       Json::Value response = instanceInfoToJson(optInfo.value());
       response["message"] = "Instance restart request accepted. Instance is "
@@ -832,7 +832,7 @@ void InstanceHandler::updateInstance(
 
   try {
     // Check if registry is set
-    if (!instance_registry_) {
+    if (!instance_manager_) {
       callback(createErrorResponse(500, "Internal server error",
                                    "Instance registry not initialized"));
       return;
@@ -865,9 +865,9 @@ void InstanceHandler::updateInstance(
 
     if (isDirectConfigUpdate) {
       // Direct config update - merge JSON directly into storage
-      if (instance_registry_->updateInstanceFromConfig(instanceId, *json)) {
+      if (instance_manager_->updateInstanceFromConfig(instanceId, *json)) {
         // Get updated instance info
-        auto optInfo = instance_registry_->getInstance(instanceId);
+        auto optInfo = instance_manager_->getInstance(instanceId);
         if (optInfo.has_value()) {
           Json::Value response = instanceInfoToJson(optInfo.value());
           response["message"] = "Instance updated successfully";
@@ -905,10 +905,64 @@ void InstanceHandler::updateInstance(
       return;
     }
 
+    // Convert UpdateInstanceRequest to JSON for IInstanceManager interface
+    Json::Value updateJson;
+    if (!updateReq.name.empty()) {
+      updateJson["name"] = updateReq.name;
+    }
+    if (!updateReq.group.empty()) {
+      updateJson["group"] = updateReq.group;
+    }
+    if (updateReq.persistent.has_value()) {
+      updateJson["persistent"] = updateReq.persistent.value();
+    }
+    if (updateReq.frameRateLimit >= 0) {
+      updateJson["frameRateLimit"] = updateReq.frameRateLimit;
+    }
+    if (updateReq.metadataMode.has_value()) {
+      updateJson["metadataMode"] = updateReq.metadataMode.value();
+    }
+    if (updateReq.statisticsMode.has_value()) {
+      updateJson["statisticsMode"] = updateReq.statisticsMode.value();
+    }
+    if (updateReq.diagnosticsMode.has_value()) {
+      updateJson["diagnosticsMode"] = updateReq.diagnosticsMode.value();
+    }
+    if (updateReq.debugMode.has_value()) {
+      updateJson["debugMode"] = updateReq.debugMode.value();
+    }
+    if (!updateReq.detectorMode.empty()) {
+      updateJson["detectorMode"] = updateReq.detectorMode;
+    }
+    if (!updateReq.detectionSensitivity.empty()) {
+      updateJson["detectionSensitivity"] = updateReq.detectionSensitivity;
+    }
+    if (!updateReq.movementSensitivity.empty()) {
+      updateJson["movementSensitivity"] = updateReq.movementSensitivity;
+    }
+    if (!updateReq.sensorModality.empty()) {
+      updateJson["sensorModality"] = updateReq.sensorModality;
+    }
+    if (updateReq.autoStart.has_value()) {
+      updateJson["autoStart"] = updateReq.autoStart.value();
+    }
+    if (updateReq.autoRestart.has_value()) {
+      updateJson["autoRestart"] = updateReq.autoRestart.value();
+    }
+    if (updateReq.inputOrientation >= 0) {
+      updateJson["inputOrientation"] = updateReq.inputOrientation;
+    }
+    if (updateReq.inputPixelLimit >= 0) {
+      updateJson["inputPixelLimit"] = updateReq.inputPixelLimit;
+    }
+    for (const auto& [key, value] : updateReq.additionalParams) {
+      updateJson["additionalParams"][key] = value;
+    }
+
     // Update instance
-    if (instance_registry_->updateInstance(instanceId, updateReq)) {
+    if (instance_manager_->updateInstance(instanceId, updateJson)) {
       // Get updated instance info
-      auto optInfo = instance_registry_->getInstance(instanceId);
+      auto optInfo = instance_manager_->getInstance(instanceId);
       if (optInfo.has_value()) {
         Json::Value response = instanceInfoToJson(optInfo.value());
         response["message"] = "Instance updated successfully";
@@ -940,7 +994,7 @@ void InstanceHandler::deleteInstance(
 
   try {
     // Check if registry is set
-    if (!instance_registry_) {
+    if (!instance_manager_) {
       callback(createErrorResponse(500, "Internal server error",
                                    "Instance registry not initialized"));
       return;
@@ -963,7 +1017,7 @@ void InstanceHandler::deleteInstance(
     // /v1/core/instances/{id}
 
     // Check if instance exists first (before async deletion)
-    auto optInfo = instance_registry_->getInstance(instanceId);
+    auto optInfo = instance_manager_->getInstance(instanceId);
     if (!optInfo.has_value()) {
       callback(createErrorResponse(404, "Not found",
                                    "Instance not found: " + instanceId));
@@ -972,7 +1026,7 @@ void InstanceHandler::deleteInstance(
 
     std::thread deleteThread([this, instanceId]() {
       try {
-        instance_registry_->deleteInstance(instanceId);
+        instance_manager_->deleteInstance(instanceId);
       } catch (const std::exception &e) {
         std::cerr << "[InstanceHandler] Exception deleting instance "
                   << instanceId << ": " << e.what() << std::endl;
@@ -1020,7 +1074,7 @@ void InstanceHandler::deleteAllInstances(
 
   try {
     // Check if registry is set
-    if (!instance_registry_) {
+    if (!instance_manager_) {
       if (isApiLoggingEnabled()) {
         PLOG_ERROR << "[API] DELETE /v1/core/instances - Error: Instance "
                       "registry not initialized";
@@ -1031,14 +1085,14 @@ void InstanceHandler::deleteAllInstances(
     }
 
     // Get all instances
-    std::unordered_map<std::string, InstanceInfo> allInstances;
+    std::vector<InstanceInfo> allInstances;
     try {
       auto future =
           std::async(std::launch::async,
-                     [this]() -> std::unordered_map<std::string, InstanceInfo> {
+                     [this]() -> std::vector<InstanceInfo> {
                        try {
-                         if (instance_registry_) {
-                           return instance_registry_->getAllInstances();
+                         if (instance_manager_) {
+                           return instance_manager_->getAllInstances();
                          }
                          return {};
                        } catch (...) {
@@ -1126,8 +1180,8 @@ void InstanceHandler::deleteAllInstances(
 
     // Extract instance IDs
     std::vector<std::string> instanceIds;
-    for (const auto &[instanceId, info] : allInstances) {
-      instanceIds.push_back(instanceId);
+    for (const auto &info : allInstances) {
+      instanceIds.push_back(info.instanceId);
     }
 
     // Execute delete operations concurrently using async
@@ -1137,7 +1191,7 @@ void InstanceHandler::deleteAllInstances(
           std::launch::async,
           [this, instanceId]() -> std::pair<std::string, bool> {
             try {
-              bool success = instance_registry_->deleteInstance(instanceId);
+              bool success = instance_manager_->deleteInstance(instanceId);
               return {instanceId, success};
             } catch (...) {
               return {instanceId, false};
@@ -1233,7 +1287,7 @@ void InstanceHandler::getConfig(
 
   try {
     // Check if registry is set
-    if (!instance_registry_) {
+    if (!instance_manager_) {
       if (isApiLoggingEnabled()) {
         PLOG_ERROR << "[API] GET /v1/core/instance/" << instanceId
                    << "/config - Error: Instance registry not initialized";
@@ -1254,7 +1308,7 @@ void InstanceHandler::getConfig(
     }
 
     // Get instance config
-    Json::Value config = instance_registry_->getInstanceConfig(instanceId);
+    Json::Value config = instance_manager_->getInstanceConfig(instanceId);
 
     // Check if config is empty (instance not found)
     if (config.empty() || !config.isMember("InstanceId")) {
@@ -1322,7 +1376,7 @@ void InstanceHandler::getStatistics(
 
   try {
     // Check if registry is set
-    if (!instance_registry_) {
+    if (!instance_manager_) {
       if (isApiLoggingEnabled()) {
         PLOG_ERROR << "[API] GET /v1/core/instance/" << instanceId
                    << "/statistics - Error: Instance registry not initialized";
@@ -1343,7 +1397,7 @@ void InstanceHandler::getStatistics(
     }
 
     // Get statistics
-    auto optStats = instance_registry_->getInstanceStatistics(instanceId);
+    auto optStats = instance_manager_->getInstanceStatistics(instanceId);
     if (!optStats.has_value()) {
       auto end_time = std::chrono::steady_clock::now();
       auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(
@@ -1418,7 +1472,7 @@ void InstanceHandler::getLastFrame(
 
   try {
     // Check if registry is set
-    if (!instance_registry_) {
+    if (!instance_manager_) {
       if (isApiLoggingEnabled()) {
         PLOG_ERROR << "[API] GET /v1/core/instances/" << instanceId
                    << "/frame - Error: Instance registry not initialized";
@@ -1439,7 +1493,7 @@ void InstanceHandler::getLastFrame(
     }
 
     // Check if instance exists
-    auto optInfo = instance_registry_->getInstance(instanceId);
+    auto optInfo = instance_manager_->getInstance(instanceId);
     if (!optInfo.has_value()) {
       auto end_time = std::chrono::steady_clock::now();
       auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(
@@ -1457,7 +1511,7 @@ void InstanceHandler::getLastFrame(
     const InstanceInfo &info = optInfo.value();
 
     // Get last frame (empty string if no frame cached)
-    std::string frameBase64 = instance_registry_->getLastFrame(instanceId);
+    std::string frameBase64 = instance_manager_->getLastFrame(instanceId);
 
     // Build JSON response
     Json::Value response;
@@ -1514,7 +1568,7 @@ void InstanceHandler::setInstanceInput(
 
   try {
     // Check if registry is set
-    if (!instance_registry_) {
+    if (!instance_manager_) {
       if (isApiLoggingEnabled()) {
         PLOG_ERROR << "[API] POST /v1/core/instance/{instanceId}/input - "
                       "Error: Instance registry not initialized";
@@ -1597,7 +1651,7 @@ void InstanceHandler::setInstanceInput(
     }
 
     // Check if instance exists
-    auto optInfo = instance_registry_->getInstance(instanceId);
+    auto optInfo = instance_manager_->getInstance(instanceId);
     if (!optInfo.has_value()) {
       auto end_time = std::chrono::steady_clock::now();
       auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(
@@ -1748,7 +1802,7 @@ void InstanceHandler::setInstanceInput(
     inputConfig["Input"] = input;
 
     // Update instance using updateInstanceFromConfig
-    if (instance_registry_->updateInstanceFromConfig(instanceId, inputConfig)) {
+    if (instance_manager_->updateInstanceFromConfig(instanceId, inputConfig)) {
       auto end_time = std::chrono::steady_clock::now();
       auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(
           end_time - start_time);
@@ -1820,7 +1874,7 @@ void InstanceHandler::getStreamOutput(
 
   try {
     // Check if registry is set
-    if (!instance_registry_) {
+    if (!instance_manager_) {
       if (isApiLoggingEnabled()) {
         PLOG_ERROR
             << "[API] GET /v1/core/instance/" << instanceId
@@ -1843,7 +1897,7 @@ void InstanceHandler::getStreamOutput(
     }
 
     // Check if instance exists
-    auto optInfo = instance_registry_->getInstance(instanceId);
+    auto optInfo = instance_manager_->getInstance(instanceId);
     if (!optInfo.has_value()) {
       auto end_time = std::chrono::steady_clock::now();
       auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(
@@ -1952,7 +2006,7 @@ void InstanceHandler::configureStreamOutput(
 
   try {
     // Check if registry is set
-    if (!instance_registry_) {
+    if (!instance_manager_) {
       if (isApiLoggingEnabled()) {
         PLOG_ERROR
             << "[API] POST /v1/core/instance/" << instanceId
@@ -2002,7 +2056,7 @@ void InstanceHandler::configureStreamOutput(
     bool enabled = (*json)["enabled"].asBool();
 
     // Check if instance exists
-    auto optInfo = instance_registry_->getInstance(instanceId);
+    auto optInfo = instance_manager_->getInstance(instanceId);
     if (!optInfo.has_value()) {
       auto end_time = std::chrono::steady_clock::now();
       auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(
@@ -2199,7 +2253,7 @@ void InstanceHandler::configureStreamOutput(
       // Update instance using updateInstanceFromConfig
       // This will merge streamConfig with existing config and update
       // AdditionalParams
-      if (instance_registry_->updateInstanceFromConfig(instanceId,
+      if (instance_manager_->updateInstanceFromConfig(instanceId,
                                                        streamConfig)) {
         auto end_time = std::chrono::steady_clock::now();
         auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(
@@ -2243,7 +2297,7 @@ void InstanceHandler::configureStreamOutput(
       streamConfig["AdditionalParams"]["RECORD_PATH"] =
           ""; // Empty string to clear
 
-      if (instance_registry_->updateInstanceFromConfig(instanceId,
+      if (instance_manager_->updateInstanceFromConfig(instanceId,
                                                        streamConfig)) {
         auto end_time = std::chrono::steady_clock::now();
         auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(
@@ -2928,7 +2982,7 @@ void InstanceHandler::batchStartInstances(
 
   try {
     // Check if registry is set
-    if (!instance_registry_) {
+    if (!instance_manager_) {
       callback(createErrorResponse(500, "Internal server error",
                                    "Instance registry not initialized"));
       return;
@@ -2971,7 +3025,7 @@ void InstanceHandler::batchStartInstances(
           std::launch::async,
           [this, instanceId]() -> std::pair<std::string, bool> {
             try {
-              bool success = instance_registry_->startInstance(instanceId);
+              bool success = instance_manager_->startInstance(instanceId);
               return {instanceId, success};
             } catch (...) {
               return {instanceId, false};
@@ -2993,7 +3047,7 @@ void InstanceHandler::batchStartInstances(
       result["success"] = success;
 
       if (success) {
-        auto optInfo = instance_registry_->getInstance(instanceId);
+        auto optInfo = instance_manager_->getInstance(instanceId);
         if (optInfo.has_value()) {
           result["status"] = "started";
           result["running"] = optInfo.value().running;
@@ -3035,7 +3089,7 @@ void InstanceHandler::batchStopInstances(
 
   try {
     // Check if registry is set
-    if (!instance_registry_) {
+    if (!instance_manager_) {
       callback(createErrorResponse(500, "Internal server error",
                                    "Instance registry not initialized"));
       return;
@@ -3078,7 +3132,7 @@ void InstanceHandler::batchStopInstances(
           std::launch::async,
           [this, instanceId]() -> std::pair<std::string, bool> {
             try {
-              bool success = instance_registry_->stopInstance(instanceId);
+              bool success = instance_manager_->stopInstance(instanceId);
               return {instanceId, success};
             } catch (...) {
               return {instanceId, false};
@@ -3100,7 +3154,7 @@ void InstanceHandler::batchStopInstances(
       result["success"] = success;
 
       if (success) {
-        auto optInfo = instance_registry_->getInstance(instanceId);
+        auto optInfo = instance_manager_->getInstance(instanceId);
         if (optInfo.has_value()) {
           result["status"] = "stopped";
           result["running"] = optInfo.value().running;
@@ -3141,7 +3195,7 @@ void InstanceHandler::batchRestartInstances(
 
   try {
     // Check if registry is set
-    if (!instance_registry_) {
+    if (!instance_manager_) {
       callback(createErrorResponse(500, "Internal server error",
                                    "Instance registry not initialized"));
       return;
@@ -3186,7 +3240,7 @@ void InstanceHandler::batchRestartInstances(
           [this, instanceId]() -> std::pair<std::string, bool> {
             try {
               // First stop the instance
-              bool stopSuccess = instance_registry_->stopInstance(instanceId);
+              bool stopSuccess = instance_manager_->stopInstance(instanceId);
               if (!stopSuccess) {
                 return {instanceId, false};
               }
@@ -3195,7 +3249,7 @@ void InstanceHandler::batchRestartInstances(
               std::this_thread::sleep_for(std::chrono::milliseconds(500));
 
               // Then start the instance
-              bool startSuccess = instance_registry_->startInstance(
+              bool startSuccess = instance_manager_->startInstance(
                   instanceId, true); // skipAutoStop=true
               return {instanceId, startSuccess};
             } catch (...) {
@@ -3218,7 +3272,7 @@ void InstanceHandler::batchRestartInstances(
       result["success"] = success;
 
       if (success) {
-        auto optInfo = instance_registry_->getInstance(instanceId);
+        auto optInfo = instance_manager_->getInstance(instanceId);
         if (optInfo.has_value()) {
           result["status"] = "restarted";
           result["running"] = optInfo.value().running;
@@ -3262,7 +3316,7 @@ void InstanceHandler::getInstanceOutput(
     std::cerr << "[InstanceHandler] getInstanceOutput called" << std::endl;
 
     // Check if registry is set
-    if (!instance_registry_) {
+    if (!instance_manager_) {
       std::cerr << "[InstanceHandler] Error: Instance registry not initialized"
                 << std::endl;
       callback(createErrorResponse(500, "Internal server error",
@@ -3285,7 +3339,7 @@ void InstanceHandler::getInstanceOutput(
     // Get instance info
     std::cerr << "[InstanceHandler] Getting instance info for: " << instanceId
               << std::endl;
-    auto optInfo = instance_registry_->getInstance(instanceId);
+    auto optInfo = instance_manager_->getInstance(instanceId);
     if (!optInfo.has_value()) {
       std::cerr << "[InstanceHandler] Error: Instance not found: " << instanceId
                 << std::endl;
@@ -3347,7 +3401,7 @@ void InstanceHandler::getInstanceOutput(
 
     // Output information
     Json::Value output;
-    bool hasRTMP = instance_registry_->hasRTMPOutput(instanceId);
+    bool hasRTMP = instance_manager_->hasRTMPOutput(instanceId);
 
     if (hasRTMP) {
       output["type"] = "RTMP_STREAM";
@@ -3588,7 +3642,7 @@ void InstanceHandler::setConfig(
 
   try {
     // Check if registry is set
-    if (!instance_registry_) {
+    if (!instance_manager_) {
       if (isApiLoggingEnabled()) {
         PLOG_ERROR << "[API] POST /v1/core/instance/{instanceId}/config - "
                       "Error: Instance registry not initialized";
@@ -3690,7 +3744,7 @@ void InstanceHandler::setConfig(
     }
 
     // Check if instance exists
-    auto optInfo = instance_registry_->getInstance(instanceId);
+    auto optInfo = instance_manager_->getInstance(instanceId);
     if (!optInfo.has_value()) {
       auto end_time = std::chrono::steady_clock::now();
       auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(
@@ -3721,7 +3775,7 @@ void InstanceHandler::setConfig(
 
     // Update instance using updateInstanceFromConfig
     // This will merge partialConfig with existing config
-    if (instance_registry_->updateInstanceFromConfig(instanceId,
+    if (instance_manager_->updateInstanceFromConfig(instanceId,
                                                      partialConfig)) {
       auto end_time = std::chrono::steady_clock::now();
       auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(

@@ -7,6 +7,12 @@
 
 using namespace drogon;
 
+// Forward declarations
+class IInstanceManager;
+class GroupRegistry;
+class GroupStorage;
+class GroupInfo;
+
 /**
  * @brief Group Management Handler
  *
@@ -87,17 +93,17 @@ public:
                      std::function<void(const HttpResponsePtr &)> &&callback);
 
   /**
-   * @brief Set group registry, storage, and instance registry (dependency
+   * @brief Set group registry, storage, and instance manager (dependency
    * injection)
    */
-  static void setGroupRegistry(class GroupRegistry *registry);
-  static void setGroupStorage(class GroupStorage *storage);
-  static void setInstanceRegistry(class InstanceRegistry *registry);
+  static void setGroupRegistry(GroupRegistry *registry);
+  static void setGroupStorage(GroupStorage *storage);
+  static void setInstanceManager(IInstanceManager *manager);
 
 private:
-  static class GroupRegistry *group_registry_;
-  static class GroupStorage *group_storage_;
-  static class InstanceRegistry *instance_registry_;
+  static GroupRegistry *group_registry_;
+  static GroupStorage *group_storage_;
+  static IInstanceManager *instance_manager_;
 
   /**
    * @brief Extract group ID from request path
@@ -107,7 +113,7 @@ private:
   /**
    * @brief Convert GroupInfo to JSON
    */
-  Json::Value groupInfoToJson(const class GroupInfo &group) const;
+  Json::Value groupInfoToJson(const GroupInfo &group) const;
 
   /**
    * @brief Create error response

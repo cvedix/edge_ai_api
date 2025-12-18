@@ -7,6 +7,11 @@
 
 using namespace drogon;
 
+// Forward declarations
+class IInstanceManager;
+class InstanceInfo;
+class UpdateInstanceRequest;
+
 /**
  * @brief Instance Management Handler
  *
@@ -272,23 +277,24 @@ public:
                      std::function<void(const HttpResponsePtr &)> &&callback);
 
   /**
-   * @brief Set instance registry (dependency injection)
+   * @brief Set instance manager (dependency injection)
+   * @param manager Pointer to IInstanceManager implementation
    */
-  static void setInstanceRegistry(class InstanceRegistry *registry);
+  static void setInstanceManager(IInstanceManager *manager);
 
 private:
-  static class InstanceRegistry *instance_registry_;
+  static IInstanceManager *instance_manager_;
 
   /**
    * @brief Parse JSON request body to UpdateInstanceRequest
    */
   bool parseUpdateRequest(const Json::Value &json,
-                          class UpdateInstanceRequest &req, std::string &error);
+                          UpdateInstanceRequest &req, std::string &error);
 
   /**
    * @brief Convert InstanceInfo to JSON
    */
-  Json::Value instanceInfoToJson(const class InstanceInfo &info) const;
+  Json::Value instanceInfoToJson(const InstanceInfo &info) const;
 
   /**
    * @brief Create error response

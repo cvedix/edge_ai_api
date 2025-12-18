@@ -3,7 +3,7 @@
 #include "core/logger.h"
 #include "core/logging_flags.h"
 #include "instances/instance_info.h"
-#include "instances/instance_registry.h"
+#include "instances/instance_manager.h"
 #include "models/create_instance_request.h"
 #include "solutions/solution_registry.h"
 #include <chrono>
@@ -11,11 +11,11 @@
 #include <json/json.h>
 #include <sstream>
 
-InstanceRegistry *CreateInstanceHandler::instance_registry_ = nullptr;
+IInstanceManager *CreateInstanceHandler::instance_manager_ = nullptr;
 SolutionRegistry *CreateInstanceHandler::solution_registry_ = nullptr;
 
-void CreateInstanceHandler::setInstanceRegistry(InstanceRegistry *registry) {
-  instance_registry_ = registry;
+void CreateInstanceHandler::setInstanceManager(IInstanceManager *manager) {
+  instance_manager_ = manager;
 }
 
 void CreateInstanceHandler::setSolutionRegistry(SolutionRegistry *registry) {
@@ -34,14 +34,14 @@ void CreateInstanceHandler::createInstance(
   }
 
   try {
-    // Check if registry is set
-    if (!instance_registry_) {
+    // Check if manager is set
+    if (!instance_manager_) {
       if (isApiLoggingEnabled()) {
-        PLOG_ERROR << "[API] POST /v1/core/instance - Error: Instance registry "
+        PLOG_ERROR << "[API] POST /v1/core/instance - Error: Instance manager "
                       "not initialized";
       }
       callback(createErrorResponse(500, "Internal server error",
-                                   "Instance registry not initialized"));
+                                   "Instance manager not initialized"));
       return;
     }
 
@@ -110,7 +110,7 @@ void CreateInstanceHandler::createInstance(
     auto &systemConfig = SystemConfig::getInstance();
     int maxInstances = systemConfig.getMaxRunningInstances();
     if (maxInstances > 0) {
-      int currentCount = instance_registry_->getInstanceCount();
+      int currentCount = instance_manager_->getInstanceCount();
       if (currentCount >= maxInstances) {
         if (isApiLoggingEnabled()) {
           PLOG_WARNING
@@ -128,7 +128,7 @@ void CreateInstanceHandler::createInstance(
     // Create instance
     std::string instanceId;
     try {
-      instanceId = instance_registry_->createInstance(createReq);
+      instanceId = instance_manager_->createInstance(createReq);
     } catch (const std::invalid_argument &e) {
       auto end_time = std::chrono::steady_clock::now();
       auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(
@@ -191,7 +191,7 @@ void CreateInstanceHandler::createInstance(
     }
 
     // Get instance info
-    auto optInfo = instance_registry_->getInstance(instanceId);
+    auto optInfo = instance_manager_->getInstance(instanceId);
     if (!optInfo.has_value()) {
       if (isApiLoggingEnabled()) {
         PLOG_WARNING << "[API] POST /v1/core/instance - Created but could not "

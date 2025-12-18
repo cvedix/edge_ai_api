@@ -3,7 +3,7 @@
 #include "core/logging_flags.h"
 #include "groups/group_registry.h"
 #include "groups/group_storage.h"
-#include "instances/instance_registry.h"
+#include "instances/instance_manager.h"
 #include "models/group_info.h"
 #include <chrono>
 #include <drogon/HttpResponse.h>
@@ -11,7 +11,7 @@
 
 GroupRegistry *GroupHandler::group_registry_ = nullptr;
 GroupStorage *GroupHandler::group_storage_ = nullptr;
-InstanceRegistry *GroupHandler::instance_registry_ = nullptr;
+IInstanceManager *GroupHandler::instance_manager_ = nullptr;
 
 void GroupHandler::setGroupRegistry(GroupRegistry *registry) {
   group_registry_ = registry;
@@ -21,8 +21,8 @@ void GroupHandler::setGroupStorage(GroupStorage *storage) {
   group_storage_ = storage;
 }
 
-void GroupHandler::setInstanceRegistry(InstanceRegistry *registry) {
-  instance_registry_ = registry;
+void GroupHandler::setInstanceManager(IInstanceManager *manager) {
+  instance_manager_ = manager;
 }
 
 std::string GroupHandler::extractGroupId(const HttpRequestPtr &req) const {
@@ -636,7 +636,7 @@ void GroupHandler::getGroupInstances(
   }
 
   try {
-    if (!group_registry_ || !instance_registry_) {
+    if (!group_registry_ || !instance_manager_) {
       if (isApiLoggingEnabled()) {
         PLOG_ERROR << "[API] GET /v1/core/groups/" << groupId
                    << "/instances - Error: Registry not initialized";
@@ -679,7 +679,7 @@ void GroupHandler::getGroupInstances(
     Json::Value instances(Json::arrayValue);
 
     for (const auto &instanceId : instanceIds) {
-      auto optInfo = instance_registry_->getInstance(instanceId);
+      auto optInfo = instance_manager_->getInstance(instanceId);
       if (optInfo.has_value()) {
         Json::Value instance;
         instance["instanceId"] = optInfo.value().instanceId;
