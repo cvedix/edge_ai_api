@@ -542,7 +542,82 @@ InstanceRegistry::getInstance(const std::string &instanceId) const {
       mutex_); // Exclusive lock for write operations
   auto it = instances_.find(instanceId);
   if (it != instances_.end()) {
-    return it->second;
+    InstanceInfo info = it->second;
+
+    // If instance is running, calculate FPS dynamically from statistics tracker
+    if (info.running) {
+      auto trackerIt = statistics_trackers_.find(instanceId);
+      if (trackerIt != statistics_trackers_.end()) {
+        const InstanceStatsTracker &tracker = trackerIt->second;
+
+        // Get pipeline to access source node
+        auto pipelineIt = pipelines_.find(instanceId);
+        if (pipelineIt != pipelines_.end() && !pipelineIt->second.empty()) {
+          auto sourceNode = pipelineIt->second[0];
+          if (sourceNode) {
+            double sourceFps = 0.0;
+
+            // Try to get source FPS from RTSP or file node
+            try {
+              auto rtspNode =
+                  std::dynamic_pointer_cast<cvedix_nodes::cvedix_rtsp_src_node>(
+                      sourceNode);
+              auto fileNode =
+                  std::dynamic_pointer_cast<cvedix_nodes::cvedix_file_src_node>(
+                      sourceNode);
+
+              if (rtspNode) {
+                int fps_int = rtspNode->get_original_fps();
+                if (fps_int > 0) {
+                  sourceFps = static_cast<double>(fps_int);
+                }
+              } else if (fileNode) {
+                int fps_int = fileNode->get_original_fps();
+                if (fps_int > 0) {
+                  sourceFps = static_cast<double>(fps_int);
+                }
+              }
+            } catch (...) {
+              // If APIs are not available, use defaults
+            }
+
+            // Calculate elapsed time
+            auto now = std::chrono::steady_clock::now();
+            auto elapsed_seconds_double =
+                std::chrono::duration<double>(now - tracker.start_time).count();
+
+            // Calculate actual processing FPS based on frames actually
+            // processed
+            uint64_t frames_processed_value =
+                tracker.frames_processed.load(std::memory_order_relaxed);
+            double actualProcessingFps = 0.0;
+            if (elapsed_seconds_double > 0.0 && frames_processed_value > 0) {
+              actualProcessingFps =
+                  static_cast<double>(frames_processed_value) /
+                  elapsed_seconds_double;
+            }
+
+            // Calculate current FPS: prefer actual processing FPS, then source
+            // FPS, then info.fps, then tracker.last_fps
+            double currentFps = 0.0;
+            if (actualProcessingFps > 0.0) {
+              currentFps = actualProcessingFps;
+            } else if (sourceFps > 0.0) {
+              currentFps = sourceFps;
+            } else if (info.fps > 0.0) {
+              currentFps = info.fps;
+            } else {
+              currentFps = tracker.last_fps;
+            }
+
+            // Update fps in the returned info
+            info.fps = currentFps;
+          }
+        }
+      }
+    }
+
+    return info;
   }
   return std::nullopt;
 }

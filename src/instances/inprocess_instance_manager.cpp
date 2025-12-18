@@ -39,8 +39,12 @@ std::vector<InstanceInfo> InProcessInstanceManager::getAllInstances() const {
   auto map = registry_.getAllInstances();
   std::vector<InstanceInfo> result;
   result.reserve(map.size());
-  for (const auto &[_, info] : map) {
-    result.push_back(info);
+  // Use getInstance() for each instance to get FPS calculated dynamically
+  for (const auto &[instanceId, _] : map) {
+    auto optInfo = registry_.getInstance(instanceId);
+    if (optInfo.has_value()) {
+      result.push_back(optInfo.value());
+    }
   }
   return result;
 }

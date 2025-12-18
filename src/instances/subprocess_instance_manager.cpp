@@ -213,10 +213,34 @@ bool SubprocessInstanceManager::updateInstance(const std::string &instanceId,
 
 std::optional<InstanceInfo>
 SubprocessInstanceManager::getInstance(const std::string &instanceId) const {
-  std::lock_guard<std::mutex> lock(instances_mutex_);
+  std::unique_lock<std::mutex> lock(instances_mutex_);
   auto it = instances_.find(instanceId);
   if (it != instances_.end()) {
-    return it->second;
+    InstanceInfo info = it->second;
+    bool isRunning = info.running;
+
+    // If instance is running, try to get FPS from statistics
+    if (isRunning) {
+      // Release lock before calling getInstanceStatistics to avoid deadlock
+      lock.unlock();
+      // Note: getInstanceStatistics is not const, so we use const_cast
+      // This is safe because we're only reading statistics, not modifying
+      // instance
+      auto optStats =
+          const_cast<SubprocessInstanceManager *>(this)->getInstanceStatistics(
+              instanceId);
+      lock.lock();
+
+      // Re-check instance still exists and is still running after lock
+      it = instances_.find(instanceId);
+      if (it != instances_.end() && it->second.running &&
+          optStats.has_value()) {
+        // Update fps from statistics
+        info.fps = optStats.value().current_framerate;
+      }
+    }
+
+    return info;
   }
   return std::nullopt;
 }
@@ -232,11 +256,23 @@ std::vector<std::string> SubprocessInstanceManager::listInstances() const {
 }
 
 std::vector<InstanceInfo> SubprocessInstanceManager::getAllInstances() const {
-  std::lock_guard<std::mutex> lock(instances_mutex_);
   std::vector<InstanceInfo> result;
-  result.reserve(instances_.size());
-  for (const auto &[_, info] : instances_) {
-    result.push_back(info);
+  // Use getInstance() for each instance to get FPS calculated dynamically
+  std::vector<std::string> instanceIds;
+  {
+    std::lock_guard<std::mutex> lock(instances_mutex_);
+    instanceIds.reserve(instances_.size());
+    for (const auto &[instanceId, _] : instances_) {
+      instanceIds.push_back(instanceId);
+    }
+  }
+
+  result.reserve(instanceIds.size());
+  for (const auto &instanceId : instanceIds) {
+    auto optInfo = getInstance(instanceId);
+    if (optInfo.has_value()) {
+      result.push_back(optInfo.value());
+    }
   }
   return result;
 }
