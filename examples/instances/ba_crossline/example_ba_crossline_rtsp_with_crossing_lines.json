@@ -19,6 +19,6 @@
       "RTMP_DES_URL": "rtmp://localhost:1935/live/camera_demo_1",
       "ENABLE_SCREEN_DES": "false"
     },
-    "CrossingLines": "[{\"id\":\"line1\",\"name\":\"Main Road Line\",\"coordinates\":[{\"x\":0,\"y\":250},{\"x\":700,\"y\":220}],\"direction\":\"Both\",\"classes\":[\"Vehicle\"],\"color\":[255,0,0,255]}]"
+    "CrossingLines": "[{\"id\":\"line1\",\"name\":\"Main Road Line\",\"coordinates\":[{\"x\":0,\"y\":250},{\"x\":700,\"y\":220}],\"direction\":\"Both\",\"classes\":[\"Vehicle\"],\"color\":[255,0,0,255]},{\"id\":\"line2\",\"name\":\"Secondary Road Line\",\"coordinates\":[{\"x\":100,\"y\":400},{\"x\":800,\"y\":380}],\"direction\":\"Both\",\"classes\":[\"Vehicle\"],\"color\":[0,255,0,255]}]"
   }
 }

@@ -122,6 +122,26 @@ LinesHandler::loadLinesFromConfig(const std::string &instanceId) const {
     Json::Reader reader;
     Json::Value parsedLines;
     if (reader.parse(it->second, parsedLines) && parsedLines.isArray()) {
+      // Ensure all lines have an id - generate UUID if missing
+      for (Json::ArrayIndex i = 0; i < parsedLines.size(); ++i) {
+        Json::Value &line = parsedLines[i];
+        if (!line.isObject()) {
+          continue;
+        }
+
+        // Check if id is missing or empty
+        if (!line.isMember("id") || !line["id"].isString() ||
+            line["id"].asString().empty()) {
+          // Generate UUID for line without id
+          line["id"] = UUIDGenerator::generateUUID();
+          if (isApiLoggingEnabled()) {
+            PLOG_DEBUG
+                << "[API] loadLinesFromConfig: Generated UUID for line at "
+                   "index "
+                << i;
+          }
+        }
+      }
       return parsedLines;
     }
   }
@@ -135,10 +155,33 @@ bool LinesHandler::saveLinesToConfig(const std::string &instanceId,
     return false;
   }
 
+  // Ensure all lines have an id - generate UUID if missing
+  Json::Value normalizedLines = lines;
+  if (normalizedLines.isArray()) {
+    for (Json::ArrayIndex i = 0; i < normalizedLines.size(); ++i) {
+      Json::Value &line = normalizedLines[i];
+      if (!line.isObject()) {
+        continue;
+      }
+
+      // Check if id is missing or empty
+      if (!line.isMember("id") || !line["id"].isString() ||
+          line["id"].asString().empty()) {
+        // Generate UUID for line without id
+        line["id"] = UUIDGenerator::generateUUID();
+        if (isApiLoggingEnabled()) {
+          PLOG_DEBUG << "[API] saveLinesToConfig: Generated UUID for line at "
+                        "index "
+                     << i << " before saving";
+        }
+      }
+    }
+  }
+
   // Convert lines array to JSON string
   Json::StreamWriterBuilder builder;
   builder["indentation"] = ""; // Compact format
-  std::string linesJsonStr = Json::writeString(builder, lines);
+  std::string linesJsonStr = Json::writeString(builder, normalizedLines);
 
   // Create config update JSON
   Json::Value configUpdate(Json::objectValue);
