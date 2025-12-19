@@ -7,23 +7,56 @@ Tài liệu này mô tả kiến trúc hệ thống và các flow diagram của 
 ```mermaid
 graph TB
     Client[Client Application] -->|HTTP Request| API[REST API Server<br/>Drogon Framework]
+
     API --> HealthHandler[Health Handler<br/>/v1/core/health]
     API --> VersionHandler[Version Handler<br/>/v1/core/version]
+    API --> InstanceHandler[Instance Handler<br/>/v1/core/instances/*]
+    API --> CreateInstanceHandler[Create Instance Handler<br/>/v1/core/instance]
+    API --> SolutionHandler[Solution Handler<br/>/v1/core/solutions/*]
+    API --> GroupHandler[Group Handler<br/>/v1/core/groups/*]
+    API --> LinesHandler[Lines Handler<br/>/v1/core/instances/*/lines/*]
+    API --> NodeHandler[Node Handler<br/>/v1/core/nodes/*]
+    API --> RecognitionHandler[Recognition Handler<br/>/v1/recognition/*]
+    API --> MetricsHandler[Metrics Handler<br/>/v1/core/metrics]
+    API --> SystemInfoHandler[System Info Handler<br/>/v1/core/system/*]
+    API --> ConfigHandler[Config Handler<br/>/v1/core/config/*]
+    API --> LogHandler[Log Handler<br/>/v1/core/logs/*]
+    API --> SwaggerHandler[Swagger Handler<br/>/swagger, /openapi.yaml]
+
+    subgraph "Instance Management"
+        InstanceHandler --> IInstanceManager[IInstanceManager Interface]
+        CreateInstanceHandler --> IInstanceManager
+        GroupHandler --> IInstanceManager
+        LinesHandler --> IInstanceManager
+    end
+
+    subgraph "Execution Modes"
+        IInstanceManager --> InProcessManager[InProcessInstanceManager<br/>Legacy Mode]
+        IInstanceManager --> SubprocessManager[SubprocessInstanceManager<br/>Production Default]
+        SubprocessManager --> WorkerSupervisor[Worker Supervisor]
+        WorkerSupervisor --> Worker1[Worker Process 1]
+        WorkerSupervisor --> Worker2[Worker Process 2]
+        WorkerSupervisor --> WorkerN[Worker Process N]
+    end
 
     HealthHandler -->|JSON Response| Client
     VersionHandler -->|JSON Response| Client
-
-    subgraph "API Endpoints"
-        HealthHandler
-        VersionHandler
-    end
+    InstanceHandler -->|JSON Response| Client
+    CreateInstanceHandler -->|JSON Response| Client
+    SolutionHandler -->|JSON Response| Client
+    GroupHandler -->|JSON Response| Client
+    LinesHandler -->|JSON Response| Client
 
     subgraph "Server Components"
         API
         Config[Configuration<br/>Host/Port/Threads]
+        Watchdog[Watchdog Service]
+        HealthMonitor[Health Monitor]
     end
 
     Config --> API
+    Watchdog --> API
+    HealthMonitor --> Watchdog
 ```
 
 ## Request Flow
@@ -45,11 +78,38 @@ sequenceDiagram
 ## Component Structure
 
 ```mermaid
-graph LR
-    A[main.cpp] --> B[HealthHandler]
-    A --> C[VersionHandler]
-    B --> D[Health Logic]
-    C --> E[Version Logic]
+graph TB
+    A[main.cpp] --> B[Initialize Services]
+    B --> C[SolutionRegistry]
+    B --> D[InstanceStorage]
+    B --> E[PipelineBuilder]
+
+    B --> F[Select Execution Mode]
+    F -->|EDGE_AI_EXECUTION_MODE| G{Mode?}
+    G -->|subprocess| H[SubprocessInstanceManager]
+    G -->|in-process| I[InProcessInstanceManager]
+
+    H --> J[WorkerSupervisor]
+    I --> K[InstanceRegistry]
+
+    B --> L[Register API Handlers]
+    L --> M[InstanceHandler]
+    L --> N[CreateInstanceHandler]
+    L --> O[GroupHandler]
+    L --> P[LinesHandler]
+    L --> Q[SolutionHandler]
+    L --> R[Other Handlers]
+
+    M --> H
+    M --> I
+    N --> H
+    N --> I
+    O --> H
+    O --> I
+    P --> H
+    P --> I
+
+    B --> S[Start Drogon Server]
 ```
 
 ---
@@ -132,9 +192,19 @@ flowchart TD
     ValidateConfig --> ConfigInvalid{Config<br/>Hợp Lệ?}
     ConfigInvalid -->|Không| ExitError[Exit với Error Code]
     ConfigInvalid -->|Có| InitLogging[Khởi Tạo Logging System<br/>File, Console, Levels]
-    InitLogging --> RegisterHandlers[Đăng Ký API Handlers<br/>Health, Version, Instance, etc.]
+    InitLogging --> InitCoreServices[Khởi Tạo Core Services<br/>SolutionRegistry, InstanceStorage,<br/>PipelineBuilder]
+    InitCoreServices --> CheckExecutionMode[Kiểm Tra EDGE_AI_EXECUTION_MODE<br/>Environment Variable]
+    CheckExecutionMode --> ModeDecision{Execution Mode?}
+    ModeDecision -->|subprocess| CreateSubprocessManager[Tạo SubprocessInstanceManager<br/>+ WorkerSupervisor]
+    ModeDecision -->|in-process| CreateInProcessManager[Tạo InProcessInstanceManager<br/>+ InstanceRegistry]
+    ModeDecision -->|not set| DefaultInProcess[Default: In-Process Mode<br/>Backward Compatibility]
+    DefaultInProcess --> CreateInProcessManager
+    CreateSubprocessManager --> SetInstanceManager[Set IInstanceManager<br/>cho các Handlers]
+    CreateInProcessManager --> SetInstanceManager
+    SetInstanceManager --> RegisterHandlers[Đăng Ký API Handlers<br/>InstanceHandler, CreateInstanceHandler,<br/>GroupHandler, LinesHandler, etc.]
     RegisterHandlers --> InitServices[Khởi Tạo Services<br/>Watchdog, Health Monitor]
-    InitServices --> StartDrogon[Khởi Động Drogon Server<br/>Listen trên host:port]
+    InitServices --> LoadPersistentInstances[Load Persistent Instances<br/>từ InstanceStorage]
+    LoadPersistentInstances --> StartDrogon[Khởi Động Drogon Server<br/>Listen trên host:port]
     StartDrogon --> ServerReady[Server Sẵn Sàng<br/>Accepting Requests]
     ServerReady --> Running([Server Đang Chạy])
 
@@ -185,11 +255,22 @@ flowchart TD
 
 ### API Handlers
 
+Tất cả API handlers sử dụng **IInstanceManager interface**, cho phép hoạt động với cả In-Process và Subprocess mode:
+
 - **HealthHandler**: Health check endpoint (`/v1/core/health`)
 - **VersionHandler**: Version information endpoint (`/v1/core/version`)
 - **InstanceHandler**: Instance management endpoints (`/v1/core/instances/*`)
+- **CreateInstanceHandler**: Create instance endpoint (`/v1/core/instance`)
 - **SolutionHandler**: Solution management endpoints (`/v1/core/solutions/*`)
-- **LogsHandler**: Logs access endpoints (`/v1/core/logs/*`)
+- **GroupHandler**: Group management endpoints (`/v1/core/groups/*`)
+- **LinesHandler**: Crossing lines management endpoints (`/v1/core/instances/{id}/lines/*`)
+- **NodeHandler**: Node management endpoints (`/v1/core/nodes/*`)
+- **RecognitionHandler**: Face recognition endpoints (`/v1/recognition/*`)
+- **MetricsHandler**: Metrics endpoint (`/v1/core/metrics`)
+- **SystemInfoHandler**: System information endpoints (`/v1/core/system/*`)
+- **ConfigHandler**: Configuration endpoints (`/v1/core/config/*`)
+- **LogHandler**: Logs access endpoints (`/v1/core/logs/*`)
+- **SwaggerHandler**: API documentation endpoints (`/swagger`, `/openapi.yaml`)
 
 ### Watchdog Service
 
@@ -213,39 +294,108 @@ graph TB
     API --> Health[/v1/core/health]
     API --> Version[/v1/core/version]
     API --> Instances[/v1/core/instances]
+    API --> CreateInstance[POST /v1/core/instance]
     API --> Solutions[/v1/core/solutions]
+    API --> Groups[/v1/core/groups]
+    API --> Lines[/v1/core/instances/:id/lines]
+    API --> Nodes[/v1/core/nodes]
+    API --> Recognition[/v1/recognition]
+    API --> Metrics[/v1/core/metrics]
+    API --> SystemInfo[/v1/core/system]
+    API --> Config[/v1/core/config]
     API --> Logs[/v1/core/logs]
+    API --> Swagger[/swagger, /openapi.yaml]
 
-    Instances --> Create[POST /instances]
     Instances --> List[GET /instances]
     Instances --> Get[GET /instances/:id]
     Instances --> Update[PUT /instances/:id]
     Instances --> Delete[DELETE /instances/:id]
     Instances --> Start[POST /instances/:id/start]
     Instances --> Stop[POST /instances/:id/stop]
+    Instances --> Restart[POST /instances/:id/restart]
+    Instances --> BatchOps[POST /instances/batch/*]
+    Instances --> ConfigOps[GET/POST /instances/:id/config]
+    Instances --> Stats[GET /instances/:id/statistics]
+
+    Lines --> ListLines[GET /instances/:id/lines]
+    Lines --> GetLine[GET /instances/:id/lines/:lineId]
+    Lines --> CreateLine[POST /instances/:id/lines]
+    Lines --> UpdateLine[PUT /instances/:id/lines/:lineId]
+    Lines --> DeleteLine[DELETE /instances/:id/lines/:lineId]
+    Lines --> DeleteAllLines[DELETE /instances/:id/lines]
 
     Solutions --> ListSolutions[GET /solutions]
     Solutions --> GetSolution[GET /solutions/:id]
     Solutions --> CreateSolution[POST /solutions]
     Solutions --> UpdateSolution[PUT /solutions/:id]
     Solutions --> DeleteSolution[DELETE /solutions/:id]
+
+    Groups --> ListGroups[GET /groups]
+    Groups --> GetGroup[GET /groups/:id]
+    Groups --> CreateGroup[POST /groups]
+    Groups --> UpdateGroup[PUT /groups/:id]
+    Groups --> DeleteGroup[DELETE /groups/:id]
+    Groups --> GetGroupInstances[GET /groups/:id/instances]
 ```
 
 ## Data Flow
 
 ```mermaid
-flowchart LR
-    Input[Input Source<br/>RTSP/File/RTMP] --> Pipeline[AI Pipeline<br/>Detector/Tracker/BA]
-    Pipeline --> Output[Output<br/>Screen/RTMP/File/MQTT]
+flowchart TB
+    Client[Client Application] -->|HTTP Request| API[REST API Server]
 
-    API[REST API] --> Manager[Instance Manager]
-    Manager --> Pipeline
+    API --> InstanceHandler[Instance Handler]
+    InstanceHandler --> IInstanceManager[IInstanceManager Interface]
 
-    Pipeline --> Stats[Statistics]
-    Stats --> API
+    IInstanceManager -->|Subprocess Mode| SubprocessManager[SubprocessInstanceManager]
+    IInstanceManager -->|In-Process Mode| InProcessManager[InProcessInstanceManager]
 
-    Pipeline --> Events[Events]
-    Events --> MQTT[MQTT Broker]
+    SubprocessManager --> WorkerSupervisor[Worker Supervisor]
+    WorkerSupervisor -->|Unix Socket IPC| Worker1[Worker Process 1]
+    WorkerSupervisor -->|Unix Socket IPC| Worker2[Worker Process 2]
+    WorkerSupervisor -->|Unix Socket IPC| WorkerN[Worker Process N]
+
+    InProcessManager --> InstanceRegistry[Instance Registry]
+    InstanceRegistry --> Pipeline1[Pipeline 1]
+    InstanceRegistry --> Pipeline2[Pipeline 2]
+
+    Worker1 --> Pipeline1[AI Pipeline<br/>Detector/Tracker/BA]
+    Worker2 --> Pipeline2[AI Pipeline<br/>Detector/Tracker/BA]
+    WorkerN --> PipelineN[AI Pipeline<br/>Detector/Tracker/BA]
+
+    Pipeline1 --> Input1[Input Source<br/>RTSP/File/RTMP]
+    Pipeline2 --> Input2[Input Source<br/>RTSP/File/RTMP]
+    PipelineN --> InputN[Input Source<br/>RTSP/File/RTMP]
+
+    Pipeline1 --> Output1[Output<br/>Screen/RTMP/File/MQTT]
+    Pipeline2 --> Output2[Output<br/>Screen/RTMP/File/MQTT]
+    PipelineN --> OutputN[Output<br/>Screen/RTMP/File/MQTT]
+
+    Pipeline1 --> Stats1[Statistics]
+    Pipeline2 --> Stats2[Statistics]
+    PipelineN --> StatsN[Statistics]
+
+    Stats1 --> Worker1
+    Stats2 --> Worker2
+    StatsN --> WorkerN
+
+    Worker1 -->|IPC Response| WorkerSupervisor
+    Worker2 -->|IPC Response| WorkerSupervisor
+    WorkerN -->|IPC Response| WorkerSupervisor
+
+    WorkerSupervisor --> SubprocessManager
+    SubprocessManager --> IInstanceManager
+    IInstanceManager --> InstanceHandler
+    InstanceHandler -->|JSON Response| API
+    API -->|HTTP Response| Client
+
+    Pipeline1 --> Events1[Events]
+    Pipeline2 --> Events2[Events]
+    PipelineN --> EventsN[Events]
+
+    Events1 --> MQTT[MQTT Broker]
+    Events2 --> MQTT
+    EventsN --> MQTT
 ```
 
 ---
@@ -257,7 +407,9 @@ flowchart LR
 Edge AI API hỗ trợ 2 chế độ thực thi (execution mode):
 
 1. **In-Process Mode** (Legacy): Pipeline AI chạy trong cùng process với API server
-2. **Subprocess Mode** (Mới): Mỗi instance AI chạy trong worker process riêng biệt
+2. **Subprocess Mode** (Production Default): Mỗi instance AI chạy trong worker process riêng biệt
+
+**Lưu ý**: Khi build và cài đặt từ .deb package, production mặc định sử dụng **Subprocess Mode** để đảm bảo high availability, crash isolation, và hot reload capability.
 
 ### So sánh kiến trúc
 
@@ -401,13 +553,22 @@ cgset -r memory.limit_in_bytes=2G edge_ai_worker_1
 #### Chọn Execution Mode
 
 ```bash
-# In-Process mode (default)
+# In-Process mode (legacy, for development)
 export EDGE_AI_EXECUTION_MODE=in-process
 ./edge_ai_api
 
-# Subprocess mode
+# Subprocess mode (production default)
 export EDGE_AI_EXECUTION_MODE=subprocess
 ./edge_ai_api
+```
+
+**Production Configuration**: Khi cài đặt từ .deb package, file `/opt/edge_ai_api/config/.env` được tạo tự động với `EDGE_AI_EXECUTION_MODE=subprocess`. Systemd service sẽ load file này, đảm bảo production chạy Subprocess mode mặc định.
+
+Để chuyển về In-Process mode trong production, sửa file `/opt/edge_ai_api/config/.env`:
+```bash
+sudo nano /opt/edge_ai_api/config/.env
+# Thay đổi: EDGE_AI_EXECUTION_MODE=in-process
+sudo systemctl restart edge-ai-api
 ```
 
 #### Cấu hình Worker
@@ -470,7 +631,39 @@ Subprocess Architecture phù hợp cho production environment với yêu cầu:
 - **Scalability**: Resource isolation, true parallelism
 - **Reliability**: Memory leak handling, health monitoring
 
-Trade-off là complexity và overhead nhỏ, nhưng lợi ích về stability và maintainability vượt trội trong môi trường production.
+Trade-off là complexity và overhead nhỏ (~10ms per API call, ~50MB RAM per worker), nhưng lợi ích về stability và maintainability vượt trội trong môi trường production.
+
+### Instance Manager Interface
+
+Tất cả API handlers sử dụng `IInstanceManager` interface, cho phép abstraction layer giữa handlers và execution backend:
+
+```mermaid
+graph TB
+    APIHandlers[API Handlers<br/>InstanceHandler, CreateInstanceHandler,<br/>GroupHandler, LinesHandler] --> IInstanceManager[IInstanceManager Interface]
+
+    IInstanceManager -->|Polymorphism| InProcessImpl[InProcessInstanceManager<br/>Wraps InstanceRegistry]
+    IInstanceManager -->|Polymorphism| SubprocessImpl[SubprocessInstanceManager<br/>Uses WorkerSupervisor]
+
+    InProcessImpl --> InstanceRegistry[InstanceRegistry<br/>Direct Pipeline Management]
+    SubprocessImpl --> WorkerSupervisor[WorkerSupervisor<br/>Process Management]
+
+    InstanceRegistry --> Pipeline1[Pipeline 1<br/>In Main Process]
+    InstanceRegistry --> Pipeline2[Pipeline 2<br/>In Main Process]
+
+    WorkerSupervisor --> Worker1[Worker Process 1<br/>Isolated Pipeline]
+    WorkerSupervisor --> Worker2[Worker Process 2<br/>Isolated Pipeline]
+```
+
+**Lợi ích của Interface Pattern**:
+- Handlers không cần biết execution mode
+- Dễ dàng switch giữa modes
+- Code reuse và maintainability
+- Test dễ dàng với mock implementations
+
+**Production Setup**: Khi cài đặt từ .deb package:
+- `edge_ai_worker` executable được install vào `/usr/local/bin`
+- File `/opt/edge_ai_api/config/.env` được tạo với `EDGE_AI_EXECUTION_MODE=subprocess`
+- Systemd service load `.env` file → production chạy Subprocess mode mặc định
 
 ---
 
