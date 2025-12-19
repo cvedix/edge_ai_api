@@ -2303,8 +2303,9 @@ int main(int argc, char *argv[]) {
     GroupHandler::setGroupStorage(&groupStorage);
     GroupHandler::setInstanceManager(instanceManager.get());
 
-    // Register instance registry with lines handler
-    LinesHandler::setInstanceRegistry(&instanceRegistry);
+    // Register instance manager with lines handler (supports both InProcess and
+    // Subprocess modes)
+    LinesHandler::setInstanceManager(instanceManager.get());
 
     // CRITICAL: Create handler instances AFTER dependencies are set
     // This ensures handlers are ready when Drogon registers routes

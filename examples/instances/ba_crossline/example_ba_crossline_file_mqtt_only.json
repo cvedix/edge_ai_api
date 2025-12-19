@@ -19,6 +19,7 @@
       "MQTT_TOPIC": "ba_crossline/events",
       "MQTT_USERNAME": "",
       "MQTT_PASSWORD": ""
-    }
+    },
+    "CrossingLines": "[{\"id\":\"line1\",\"name\":\"Main Road\",\"coordinates\":[{\"x\":0,\"y\":250},{\"x\":700,\"y\":220}],\"direction\":\"Both\",\"classes\":[\"Vehicle\"],\"color\":[255,0,0,255]},{\"id\":\"line2\",\"name\":\"Secondary Road\",\"coordinates\":[{\"x\":100,\"y\":400},{\"x\":800,\"y\":380}],\"direction\":\"Both\",\"classes\":[\"Vehicle\"],\"color\":[0,255,0,255]}]"
   }
 }

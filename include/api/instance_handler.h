@@ -34,15 +34,16 @@ class UpdateInstanceRequest;
  * concurrently
  * - GET /v1/core/instances/{instanceId}/output - Get instance output/processing
  * results
- * - POST /v1/core/instance/{instanceId}/input - Set input source for an
+ * - POST /v1/core/instances/{instanceId}/input - Set input source for an
  * instance
- * - GET /v1/core/instance/{instanceId}/config - Get instance configuration
- * - POST /v1/core/instance/{instanceId}/config - Set config value at a specific
- * path
- * - GET /v1/core/instance/{instanceId}/output/stream - Get stream output
+ * - GET /v1/core/instances/{instanceId}/config - Get instance configuration
+ * - POST /v1/core/instances/{instanceId}/config - Set config value at a
+ * specific path
+ * - GET /v1/core/instances/{instanceId}/statistics - Get instance statistics
+ * - GET /v1/core/instances/{instanceId}/output/stream - Get stream output
  * configuration
- * - POST /v1/core/instance/{instanceId}/output/stream - Configure stream output
- * (RTMP/RTSP/HLS)
+ * - POST /v1/core/instances/{instanceId}/output/stream - Configure stream
+ * output (RTMP/RTSP/HLS)
  */
 class InstanceHandler : public drogon::HttpController<InstanceHandler> {
 public:
@@ -76,19 +77,19 @@ public:
   ADD_METHOD_TO(InstanceHandler::batchRestartInstances,
                 "/v1/core/instances/batch/restart", Post);
   ADD_METHOD_TO(InstanceHandler::setInstanceInput,
-                "/v1/core/instance/{instanceId}/input", Post);
+                "/v1/core/instances/{instanceId}/input", Post);
   ADD_METHOD_TO(InstanceHandler::getConfig,
-                "/v1/core/instance/{instanceId}/config", Get);
+                "/v1/core/instances/{instanceId}/config", Get);
   ADD_METHOD_TO(InstanceHandler::setConfig,
-                "/v1/core/instance/{instanceId}/config", Post);
+                "/v1/core/instances/{instanceId}/config", Post);
   ADD_METHOD_TO(InstanceHandler::getStatistics,
-                "/v1/core/instance/{instanceId}/statistics", Get);
+                "/v1/core/instances/{instanceId}/statistics", Get);
   ADD_METHOD_TO(InstanceHandler::getLastFrame,
                 "/v1/core/instances/{instanceId}/frame", Get);
   ADD_METHOD_TO(InstanceHandler::getStreamOutput,
-                "/v1/core/instance/{instanceId}/output/stream", Get);
+                "/v1/core/instances/{instanceId}/output/stream", Get);
   ADD_METHOD_TO(InstanceHandler::configureStreamOutput,
-                "/v1/core/instance/{instanceId}/output/stream", Post);
+                "/v1/core/instances/{instanceId}/output/stream", Post);
   ADD_METHOD_TO(InstanceHandler::handleOptions, "/v1/core/instances", Options);
   ADD_METHOD_TO(InstanceHandler::handleOptions,
                 "/v1/core/instances/{instanceId}", Options);
@@ -101,15 +102,15 @@ public:
   ADD_METHOD_TO(InstanceHandler::handleOptions,
                 "/v1/core/instances/{instanceId}/output", Options);
   ADD_METHOD_TO(InstanceHandler::handleOptions,
-                "/v1/core/instance/{instanceId}/input", Options);
+                "/v1/core/instances/{instanceId}/input", Options);
   ADD_METHOD_TO(InstanceHandler::handleOptions,
-                "/v1/core/instance/{instanceId}/config", Options);
+                "/v1/core/instances/{instanceId}/config", Options);
   ADD_METHOD_TO(InstanceHandler::handleOptions,
-                "/v1/core/instance/{instanceId}/statistics", Options);
+                "/v1/core/instances/{instanceId}/statistics", Options);
   ADD_METHOD_TO(InstanceHandler::handleOptions,
                 "/v1/core/instances/{instanceId}/frame", Options);
   ADD_METHOD_TO(InstanceHandler::handleOptions,
-                "/v1/core/instance/{instanceId}/output/stream", Options);
+                "/v1/core/instances/{instanceId}/output/stream", Options);
   ADD_METHOD_TO(InstanceHandler::handleOptions,
                 "/v1/core/instances/batch/start", Options);
   ADD_METHOD_TO(InstanceHandler::handleOptions, "/v1/core/instances/batch/stop",
@@ -219,7 +220,7 @@ public:
       std::function<void(const HttpResponsePtr &)> &&callback);
 
   /**
-   * @brief Handle POST /v1/core/instance/{instanceId}/input
+   * @brief Handle POST /v1/core/instances/{instanceId}/input
    * Sets input source for an instance
    */
   void
@@ -227,14 +228,14 @@ public:
                    std::function<void(const HttpResponsePtr &)> &&callback);
 
   /**
-   * @brief Handle GET /v1/core/instance/{instanceId}/config
+   * @brief Handle GET /v1/core/instances/{instanceId}/config
    * Gets instance configuration (config format, not runtime state)
    */
   void getConfig(const HttpRequestPtr &req,
                  std::function<void(const HttpResponsePtr &)> &&callback);
 
   /**
-   * @brief Handle POST /v1/core/instance/{instanceId}/config
+   * @brief Handle POST /v1/core/instances/{instanceId}/config
    * Sets config value at a specific path (nested path supported with "/"
    * separator)
    */
@@ -242,7 +243,7 @@ public:
                  std::function<void(const HttpResponsePtr &)> &&callback);
 
   /**
-   * @brief Handle GET /v1/core/instance/{instanceId}/statistics
+   * @brief Handle GET /v1/core/instances/{instanceId}/statistics
    * Gets real-time statistics for a specific instance
    */
   void getStatistics(const HttpRequestPtr &req,
@@ -256,14 +257,14 @@ public:
                     std::function<void(const HttpResponsePtr &)> &&callback);
 
   /**
-   * @brief Handle GET /v1/core/instance/{instanceId}/output/stream
+   * @brief Handle GET /v1/core/instances/{instanceId}/output/stream
    * Gets stream output configuration for an instance
    */
   void getStreamOutput(const HttpRequestPtr &req,
                        std::function<void(const HttpResponsePtr &)> &&callback);
 
   /**
-   * @brief Handle POST /v1/core/instance/{instanceId}/output/stream
+   * @brief Handle POST /v1/core/instances/{instanceId}/output/stream
    * Configures stream output for an instance (RTMP/RTSP/HLS)
    */
   void configureStreamOutput(
