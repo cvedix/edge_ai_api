@@ -30,6 +30,7 @@ protected:
 
     // Create dependencies for InstanceRegistry
     solution_registry_ = &SolutionRegistry::getInstance();
+    solution_registry_->initializeDefaultSolutions();
     pipeline_builder_ = std::make_unique<PipelineBuilder>();
     instance_storage_ =
         std::make_unique<InstanceStorage>(test_storage_dir_.string());
@@ -182,6 +183,7 @@ TEST_F(LinesHandlerTest, CreateLine) {
   body["color"] = color;
 
   req->setBody(body.toStyledString());
+  req->addHeader("Content-Type", "application/json");
 
   HttpResponsePtr response;
   bool callbackCalled = false;
@@ -195,6 +197,14 @@ TEST_F(LinesHandlerTest, CreateLine) {
 
   ASSERT_TRUE(callbackCalled);
   ASSERT_NE(response, nullptr);
+  if (response->statusCode() != k201Created) {
+    std::cerr << "[TEST] CreateLine failed: Expected status 201, got "
+              << response->statusCode() << std::endl;
+    if (response->getJsonObject()) {
+      std::cerr << "[TEST] Response body: "
+                << response->getJsonObject()->toStyledString() << std::endl;
+    }
+  }
   EXPECT_EQ(response->statusCode(), k201Created);
 
   auto json = response->getJsonObject();
@@ -478,6 +488,7 @@ TEST_F(LinesHandlerTest, UpdateLineNotFound) {
   body["coordinates"] = coordinates;
 
   req->setBody(body.toStyledString());
+  req->addHeader("Content-Type", "application/json");
 
   HttpResponsePtr response;
   bool callbackCalled = false;
@@ -491,6 +502,14 @@ TEST_F(LinesHandlerTest, UpdateLineNotFound) {
 
   ASSERT_TRUE(callbackCalled);
   ASSERT_NE(response, nullptr);
+  if (response->statusCode() != k404NotFound) {
+    std::cerr << "[TEST] UpdateLineNotFound failed: Expected status 404, got "
+              << response->statusCode() << std::endl;
+    if (response->getJsonObject()) {
+      std::cerr << "[TEST] Response body: "
+                << response->getJsonObject()->toStyledString() << std::endl;
+    }
+  }
   EXPECT_EQ(response->statusCode(), k404NotFound);
 }
 
