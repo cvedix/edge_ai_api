@@ -67,8 +67,9 @@ protected:
   std::string createTestInstance() {
     CreateInstanceRequest req;
     req.name = "Test Instance";
-    // Use ba_crossline solution instead of face_detection to avoid permission issues
-    // with model files. ba_crossline doesn't require model file access for basic instance creation.
+    // Use ba_crossline solution instead of face_detection to avoid permission
+    // issues with model files. ba_crossline doesn't require model file access
+    // for basic instance creation.
     req.solution = "ba_crossline";
     req.persistent = false;
     req.autoStart = false; // Don't auto-start to avoid pipeline building issues
@@ -81,8 +82,8 @@ protected:
       auto instanceId = instance_manager_->createInstance(req);
       return instanceId;
     } catch (const std::exception &e) {
-      // If instance creation fails (e.g., permission denied), throw to fail test
-      // This allows tests to properly handle the failure case
+      // If instance creation fails (e.g., permission denied), throw to fail
+      // test This allows tests to properly handle the failure case
       throw;
     }
   }
