@@ -1,5 +1,6 @@
 #include "api/instance_handler.h"
 #include "core/pipeline_builder.h"
+#include "instances/inprocess_instance_manager.h"
 #include "instances/instance_registry.h"
 #include "instances/instance_storage.h"
 #include "solutions/solution_registry.h"
@@ -31,14 +32,19 @@ protected:
     instance_registry_ = std::make_unique<InstanceRegistry>(
         *solution_registry_, *pipeline_builder_, *instance_storage_);
 
-    // Set instance registry in handler
-    InstanceHandler::setInstanceRegistry(instance_registry_.get());
+    // Create InProcessInstanceManager wrapper
+    instance_manager_ =
+        std::make_unique<InProcessInstanceManager>(*instance_registry_);
+
+    // Set instance manager in handler
+    InstanceHandler::setInstanceManager(instance_manager_.get());
 
     handler_ = std::make_unique<InstanceHandler>();
   }
 
   void TearDown() override {
     handler_.reset();
+    instance_manager_.reset();
     instance_registry_.reset();
     instance_storage_.reset();
     pipeline_builder_.reset();
@@ -54,6 +60,7 @@ protected:
   std::unique_ptr<PipelineBuilder> pipeline_builder_;
   std::unique_ptr<InstanceStorage> instance_storage_;
   std::unique_ptr<InstanceRegistry> instance_registry_;
+  std::unique_ptr<InProcessInstanceManager> instance_manager_;
   std::unique_ptr<InstanceHandler> handler_;
 
   // Helper to create a test instance
@@ -64,7 +71,7 @@ protected:
     req.persistent = false;
     req.additionalParams["RTSP_URL"] = "rtsp://localhost:8554/stream";
 
-    auto instanceId = instance_registry_->createInstance(req);
+    auto instanceId = instance_manager_->createInstance(req);
     return instanceId;
   }
 };
@@ -101,7 +108,7 @@ TEST_F(InstanceConfigureStreamTest, DISABLED_ConfigureStreamOutput_ValidRTMP) {
   EXPECT_EQ(response->statusCode(), k204NoContent);
 
   // Verify RTMP URL was set in instance
-  auto optInfo = instance_registry_->getInstance(instanceId);
+  auto optInfo = instance_manager_->getInstance(instanceId);
   ASSERT_TRUE(optInfo.has_value());
   // Note: RTMP URL might be in additionalParams or rtmpUrl field
   EXPECT_TRUE(!optInfo.value().rtmpUrl.empty() ||

@@ -34,7 +34,7 @@ repos:
     hooks:
       - id: run-tests
         name: Run C++ tests
-        entry: bash -c 'mkdir -p build && cd build && cmake .. && make -j$(nproc) && ctest --output-on-failure'
+        entry: bash -c 'export LD_LIBRARY_PATH=$PWD/build/lib:$LD_LIBRARY_PATH && mkdir -p build && cd build && cmake .. && make -j$(nproc) && ctest --output-on-failure'
         language: system
         pass_filenames: false
         always_run: true

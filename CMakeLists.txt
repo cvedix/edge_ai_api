@@ -279,6 +279,9 @@ set(SOURCES
     src/core/backpressure_controller.cpp
     src/instances/instance_registry.cpp
     src/instances/queue_monitor.cpp
+    src/instances/inprocess_instance_manager.cpp
+    src/instances/subprocess_instance_manager.cpp
+    src/instances/instance_manager_factory.cpp
     src/solutions/solution_registry.cpp
     src/groups/group_registry.cpp
     src/core/pipeline_builder.cpp
@@ -1053,9 +1056,127 @@ target_compile_definitions(edge_ai_api PRIVATE
 )
 
 # ============================================
+# Worker IPC sources (shared between main and worker)
+# ============================================
+set(WORKER_IPC_SOURCES
+    src/worker/ipc_protocol.cpp
+    src/worker/unix_socket.cpp
+    src/worker/worker_supervisor.cpp
+)
+
+# Add worker sources to main executable
+target_sources(edge_ai_api PRIVATE ${WORKER_IPC_SOURCES})
+
+# ============================================
+# Edge AI Core Library (shared between main and worker)
+# ============================================
+# Create a shared library with core components needed by both
+# the main server and worker processes
+set(CORE_LIB_SOURCES
+    src/core/pipeline_builder.cpp
+    src/solutions/solution_registry.cpp
+    src/solutions/solution_storage.cpp
+    src/models/solution_config.cpp
+    src/models/create_instance_request.cpp
+    src/core/uuid_generator.cpp
+    src/core/platform_detector.cpp
+    src/utils/gstreamer_checker.cpp
+    src/utils/cvedix_mqtt_client_impl.cpp
+    src/config/system_config.cpp
+)
+
+add_library(edge_ai_core SHARED ${CORE_LIB_SOURCES})
+
+target_include_directories(edge_ai_core PUBLIC ${CMAKE_SOURCE_DIR}/include)
+
+# Link dependencies to core library
+if(TARGET jsoncpp_lib)
+    target_link_libraries(edge_ai_core PUBLIC jsoncpp_lib)
+elseif(JSONCPP_LIBRARIES)
+    target_link_libraries(edge_ai_core PUBLIC ${JSONCPP_LIBRARIES})
+    target_include_directories(edge_ai_core PUBLIC ${JSONCPP_INCLUDE_DIRS})
+endif()
+
+target_link_libraries(edge_ai_core PUBLIC cvedix::cvedix_instance_sdk)
+
+if(OpenCV_FOUND)
+    if(TARGET opencv_core)
+        target_link_libraries(edge_ai_core PUBLIC ${OPENCV_BASE_LIBS})
+    else()
+        target_link_libraries(edge_ai_core PUBLIC ${OPENCV_LIBS})
+    endif()
+    if(OpenCV_INCLUDE_DIRS)
+        target_include_directories(edge_ai_core PUBLIC ${OpenCV_INCLUDE_DIRS})
+    endif()
+endif()
+
+if(EXISTS "/opt/cvedix/include")
+    target_include_directories(edge_ai_core PUBLIC "/opt/cvedix/include")
+endif()
+
+if(PLOG_INCLUDE_DIR)
+    target_include_directories(edge_ai_core PUBLIC ${PLOG_INCLUDE_DIR})
+endif()
+
+if(CEREAL_INCLUDE_DIR)
+    target_include_directories(edge_ai_core PUBLIC "${CMAKE_BINARY_DIR}")
+    target_include_directories(edge_ai_core PUBLIC "${CEREAL_INCLUDE_DIR}")
+endif()
+
+if(CPP_BASE64_INCLUDE_DIR)
+    target_include_directories(edge_ai_core PUBLIC "${CPP_BASE64_INCLUDE_DIR}")
+endif()
+
+if(GSTREAMER_FOUND OR GSTREAMER_LIBRARY)
+    target_compile_definitions(edge_ai_core PUBLIC CVEDIX_WITH_GSTREAMER)
+endif()
+
+if(CVEDIX_WITH_MQTT)
+    target_compile_definitions(edge_ai_core PUBLIC CVEDIX_WITH_MQTT)
+    if(MOSQUITTO_LIBRARY)
+        target_link_libraries(edge_ai_core PUBLIC ${MOSQUITTO_LIBRARY})
+    elseif(MOSQUITTO_FOUND)
+        target_link_libraries(edge_ai_core PUBLIC ${MOSQUITTO_LIBRARIES})
+    endif()
+endif()
+
+message(STATUS "✓ Edge AI Core library configured")
+
+# ============================================
+# Edge AI Worker executable (subprocess)
+# ============================================
+set(WORKER_SOURCES
+    src/worker/edge_ai_worker.cpp
+    src/worker/worker_handler.cpp
+    src/worker/ipc_protocol.cpp
+    src/worker/unix_socket.cpp
+)
+
+add_executable(edge_ai_worker ${WORKER_SOURCES})
+
+target_compile_options(edge_ai_worker PRIVATE -Wall -Wextra)
+
+# Link core library (includes all dependencies)
+target_link_libraries(edge_ai_worker PRIVATE edge_ai_core)
+
+# Link pthread for threading
+target_link_libraries(edge_ai_worker PRIVATE pthread)
+
+# Set RPATH for worker
+set_target_properties(edge_ai_worker PROPERTIES
+    BUILD_WITH_INSTALL_RPATH FALSE
+    BUILD_RPATH_USE_ORIGIN TRUE
+    BUILD_RPATH "${CMAKE_BINARY_DIR}/lib;${CMAKE_BINARY_DIR};/usr/local/lib;/opt/cvedix/lib"
+    INSTALL_RPATH "${CMAKE_INSTALL_PREFIX}/lib;/usr/local/lib;/opt/cvedix/lib"
+    INSTALL_RPATH_USE_LINK_PATH TRUE
+)
+
+message(STATUS "✓ Edge AI Worker executable configured")
+
+# ============================================
 # Install target (optional)
 # ============================================
-install(TARGETS edge_ai_api
+install(TARGETS edge_ai_api edge_ai_worker
     RUNTIME DESTINATION bin
 )
 

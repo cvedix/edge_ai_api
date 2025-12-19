@@ -17,6 +17,7 @@
 #   sudo ./deploy.sh [options]
 #
 # Options:
+#   --all, --full-setup  Setup everything (deps, build, fixes, service, face database) - mặc định
 #   --skip-deps      Skip cài đặt dependencies
 #   --skip-build     Skip build (dùng build có sẵn)
 #   --skip-fixes     Skip các bước fix (libraries, uploads, watchdog)
@@ -73,6 +74,7 @@ SKIP_BUILD=false
 SKIP_FIXES=false
 NO_START=false
 PERMISSION_MODE="standard"  # "standard" (755) or "full" (777)
+FULL_SETUP=false
 
 # Parse arguments
 while [[ $# -gt 0 ]]; do
@@ -101,9 +103,18 @@ while [[ $# -gt 0 ]]; do
             PERMISSION_MODE="standard"
             shift
             ;;
+        --all|--full-setup)
+            FULL_SETUP=true
+            # Full setup means: do everything, don't skip anything
+            SKIP_DEPS=false
+            SKIP_BUILD=false
+            SKIP_FIXES=false
+            NO_START=false
+            shift
+            ;;
         *)
             echo -e "${RED}Unknown option: $1${NC}"
-            echo "Usage: sudo ./deploy.sh [--skip-deps] [--skip-build] [--skip-fixes] [--no-start] [--full-permissions|--standard-permissions]"
+            echo "Usage: sudo ./deploy.sh [--all|--full-setup] [--skip-deps] [--skip-build] [--skip-fixes] [--no-start] [--full-permissions|--standard-permissions]"
             exit 1
             ;;
     esac
@@ -113,11 +124,21 @@ echo "=========================================="
 echo "Edge AI API - Complete Build & Deploy"
 echo "=========================================="
 echo ""
+
+# If --all flag is set, show message
+if [ "$FULL_SETUP" = true ]; then
+    echo -e "${BLUE}Full setup mode: Setup everything (deps, build, fixes, service, face database)${NC}"
+    echo ""
+fi
+
 echo "Options:"
 echo "  Skip dependencies: $SKIP_DEPS"
 echo "  Skip build:        $SKIP_BUILD"
 echo "  Skip fixes:        $SKIP_FIXES"
 echo "  No auto-start:     $NO_START"
+if [ "$FULL_SETUP" = true ]; then
+    echo "  Full setup:        ✅ Enabled"
+fi
 echo ""
 
 # Check if running as root
@@ -344,6 +365,18 @@ fi
 
 echo -e "${GREEN}✓${NC} Đã tạo tất cả thư mục trong: $INSTALL_DIR"
 echo ""
+
+# Setup face database permissions
+if [ -f "$PROJECT_ROOT/scripts/utils.sh" ]; then
+    echo "Setup face database permissions..."
+    if [ "$PERMISSION_MODE" = "full" ]; then
+        "$PROJECT_ROOT/scripts/utils.sh" setup-face-db --full-permissions
+    else
+        "$PROJECT_ROOT/scripts/utils.sh" setup-face-db --standard-permissions
+    fi
+    echo -e "${GREEN}✓${NC} Face database setup hoàn tất!"
+    echo ""
+fi
 
 # ============================================
 # Step 4: Install Executable and Libraries

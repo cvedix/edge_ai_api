@@ -150,6 +150,20 @@ Environment="CONFIG_FILE=/opt/edge_ai_api/config/config.json"
 | `GST_RTSP_PROTOCOLS` | GStreamer RTSP transport protocol (`tcp` hoặc `udp`) | `tcp` | `src/core/pipeline_builder.cpp` |
 | `RTSP_TRANSPORT` | Alternative name cho `GST_RTSP_PROTOCOLS` (`tcp` hoặc `udp`) | (auto-set to `tcp`) | `src/core/pipeline_builder.cpp` |
 
+#### Subprocess Worker Configuration
+| Biến | Mô tả | Mặc định | File sử dụng |
+|------|-------|----------|--------------|
+| `EDGE_AI_EXECUTION_MODE` | Execution mode: `in-process` hoặc `subprocess` | `in-process` | `src/main.cpp` |
+| `EDGE_AI_WORKER_PATH` | Đường dẫn đến worker executable | `edge_ai_worker` | `src/worker/worker_supervisor.cpp` |
+| `EDGE_AI_SOCKET_DIR` | Thư mục chứa Unix socket files cho IPC | `/opt/edge_ai_api/run` | `src/worker/unix_socket.cpp` |
+
+**Lưu ý về Socket Directory:**
+- **Default**: `/opt/edge_ai_api/run` (tự động tạo nếu chưa tồn tại)
+- **Fallback**: Nếu không thể tạo `/opt/edge_ai_api/run` (permission denied), sẽ tự động fallback về `/tmp`
+- **Production**: Khuyến nghị sử dụng `/opt/edge_ai_api/run` hoặc `/var/run/edge_ai` (nếu có quyền)
+- **Development**: Có thể override bằng `EDGE_AI_SOCKET_DIR=/tmp` để test
+- Socket files sẽ có format: `{EDGE_AI_SOCKET_DIR}/edge_ai_worker_{instance_id}.sock`
+
 **Lưu ý về RTSP Transport:**
 - **Mặc định sử dụng TCP**: Để tránh vấn đề firewall chặn UDP, hệ thống mặc định sử dụng TCP
 - **UDP nhanh hơn nhưng dễ bị firewall block**: Chỉ dùng UDP khi trong cùng network và firewall cho phép

@@ -7,6 +7,12 @@
 
 using namespace drogon;
 
+// Forward declarations
+class IInstanceManager;
+class SolutionRegistry;
+class CreateInstanceRequest;
+class InstanceInfo;
+
 /**
  * @brief Create Instance Handler
  *
@@ -39,29 +45,30 @@ public:
                      std::function<void(const HttpResponsePtr &)> &&callback);
 
   /**
-   * @brief Set instance registry (dependency injection)
+   * @brief Set instance manager (dependency injection)
+   * @param manager Pointer to IInstanceManager implementation
    */
-  static void setInstanceRegistry(class InstanceRegistry *registry);
+  static void setInstanceManager(IInstanceManager *manager);
 
   /**
    * @brief Set solution registry (dependency injection)
    */
-  static void setSolutionRegistry(class SolutionRegistry *registry);
+  static void setSolutionRegistry(SolutionRegistry *registry);
 
 private:
-  static class InstanceRegistry *instance_registry_;
-  static class SolutionRegistry *solution_registry_;
+  static IInstanceManager *instance_manager_;
+  static SolutionRegistry *solution_registry_;
 
   /**
    * @brief Parse JSON request body to CreateInstanceRequest
    */
-  bool parseRequest(const Json::Value &json, class CreateInstanceRequest &req,
+  bool parseRequest(const Json::Value &json, CreateInstanceRequest &req,
                     std::string &error);
 
   /**
    * @brief Convert InstanceInfo to JSON response
    */
-  Json::Value instanceInfoToJson(const class InstanceInfo &info) const;
+  Json::Value instanceInfoToJson(const InstanceInfo &info) const;
 
   /**
    * @brief Create error response

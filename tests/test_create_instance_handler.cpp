@@ -1,5 +1,6 @@
 #include "api/create_instance_handler.h"
 #include "core/pipeline_builder.h"
+#include "instances/inprocess_instance_manager.h"
 #include "instances/instance_registry.h"
 #include "instances/instance_storage.h"
 #include "solutions/solution_registry.h"
@@ -35,13 +36,18 @@ protected:
     instance_registry_ = std::make_unique<InstanceRegistry>(
         *solution_registry_, *pipeline_builder_, *instance_storage_);
 
+    // Create InProcessInstanceManager wrapper
+    instance_manager_ =
+        std::make_unique<InProcessInstanceManager>(*instance_registry_);
+
     // Register with handler
-    CreateInstanceHandler::setInstanceRegistry(instance_registry_.get());
+    CreateInstanceHandler::setInstanceManager(instance_manager_.get());
     CreateInstanceHandler::setSolutionRegistry(solution_registry_);
   }
 
   void TearDown() override {
     handler_.reset();
+    instance_manager_.reset();
     instance_registry_.reset();
     instance_storage_.reset();
     pipeline_builder_.reset();
@@ -52,12 +58,13 @@ protected:
     }
 
     // Clear handler dependencies
-    CreateInstanceHandler::setInstanceRegistry(nullptr);
+    CreateInstanceHandler::setInstanceManager(nullptr);
     CreateInstanceHandler::setSolutionRegistry(nullptr);
   }
 
   std::unique_ptr<CreateInstanceHandler> handler_;
   std::unique_ptr<InstanceRegistry> instance_registry_;
+  std::unique_ptr<InProcessInstanceManager> instance_manager_;
   SolutionRegistry *solution_registry_; // Singleton, don't own
   std::unique_ptr<PipelineBuilder> pipeline_builder_;
   std::unique_ptr<InstanceStorage> instance_storage_;

@@ -9,11 +9,16 @@
 #include "api/system_info_handler.h"
 #endif
 #include "api/config_handler.h"
+#include "api/endpoints_handler.h"
 #include "api/group_handler.h"
 #include "api/lines_handler.h"
+#include "api/log_handler.h"
 #include "api/node_handler.h"
 #include "api/recognition_handler.h"
 #include "api/solution_handler.h"
+#ifdef ENABLE_METRICS_HANDLER
+#include "api/metrics_handler.h"
+#endif
 #include "config/system_config.h"
 #include "core/categorized_logger.h"
 #include "core/cors_filter.h"
@@ -28,6 +33,8 @@
 #include "fonts/font_upload_handler.h"
 #include "groups/group_registry.h"
 #include "groups/group_storage.h"
+#include "instances/inprocess_instance_manager.h"
+#include "instances/instance_manager_factory.h"
 #include "instances/instance_registry.h"
 #include "instances/instance_storage.h"
 #include "instances/queue_monitor.h"
@@ -1530,7 +1537,7 @@ void debugAnalysisBoardThread() {
  * This function runs in a separate thread to avoid blocking the main program
  * if instances fail to start, hang, or crash.
  */
-void autoStartInstances(InstanceRegistry *instanceRegistry) {
+void autoStartInstances(IInstanceManager *instanceManager) {
 // Set thread name for debugging
 #ifdef __GLIBC__
   pthread_setname_np(pthread_self(), "auto-start");
@@ -1541,9 +1548,9 @@ void autoStartInstances(InstanceRegistry *instanceRegistry) {
                  "autoStart flag...";
 
     // Get all instances (with error handling)
-    std::unordered_map<std::string, InstanceInfo> instancesToCheck;
+    std::vector<InstanceInfo> instancesToCheck;
     try {
-      instancesToCheck = instanceRegistry->getAllInstances();
+      instancesToCheck = instanceManager->getAllInstances();
     } catch (const std::exception &e) {
       PLOG_ERROR << "[AutoStart] Failed to get instances list: " << e.what();
       return;
@@ -1554,9 +1561,9 @@ void autoStartInstances(InstanceRegistry *instanceRegistry) {
 
     // Filter instances with autoStart flag
     std::vector<std::pair<std::string, InstanceInfo>> instancesToStart;
-    for (const auto &[instanceId, info] : instancesToCheck) {
+    for (const auto &info : instancesToCheck) {
       if (info.autoStart) {
-        instancesToStart.push_back({instanceId, info});
+        instancesToStart.push_back({info.instanceId, info});
       }
     }
 
@@ -1586,9 +1593,9 @@ void autoStartInstances(InstanceRegistry *instanceRegistry) {
       // Start instance with timeout protection using async
       try {
         auto future = std::async(
-            std::launch::async, [instanceRegistry, instanceId]() -> bool {
+            std::launch::async, [instanceManager, instanceId]() -> bool {
               try {
-                return instanceRegistry->startInstance(instanceId);
+                return instanceManager->startInstance(instanceId);
               } catch (const std::exception &e) {
                 PLOG_ERROR << "[AutoStart] Exception starting instance "
                            << instanceId << ": " << e.what();
@@ -1810,8 +1817,13 @@ int main(int argc, char *argv[]) {
     static VersionHandler versionHandler;
     static WatchdogHandler watchdogHandler;
     static SwaggerHandler swaggerHandler;
+    static EndpointsHandler endpointsHandler;
+    static LogHandler logHandler;
 #ifdef ENABLE_SYSTEM_INFO_HANDLER
     static SystemInfoHandler systemInfoHandler;
+#endif
+#ifdef ENABLE_METRICS_HANDLER
+    static MetricsHandler metricsHandler;
 #endif
 
     // Initialize instance management components
@@ -1953,11 +1965,52 @@ int main(int argc, char *argv[]) {
 
     PLOG_INFO << "[Main] Instances directory: " << instancesDir;
     static InstanceStorage instanceStorage(instancesDir);
+
+    // ============================================
+    // EXECUTION MODE SELECTION
+    // ============================================
+    // Check environment variable for execution mode:
+    // - EDGE_AI_EXECUTION_MODE=subprocess : Run pipelines in isolated
+    // subprocesses
+    // - EDGE_AI_EXECUTION_MODE=inprocess (default) : Run pipelines in main
+    // process
+    auto executionMode = InstanceManagerFactory::getExecutionModeFromEnv();
+    std::cerr << "[Main] Execution mode: "
+              << InstanceManagerFactory::getModeName(executionMode)
+              << std::endl;
+    PLOG_INFO << "[Main] Execution mode: "
+              << InstanceManagerFactory::getModeName(executionMode);
+
+    // Create instance registry (always needed for legacy compatibility)
     static InstanceRegistry instanceRegistry(solutionRegistry, pipelineBuilder,
                                              instanceStorage);
 
     // Store instance registry pointer for error recovery
     g_instance_registry = &instanceRegistry;
+
+    // Create instance manager based on execution mode
+    // Note: For subprocess mode, we still use instanceRegistry for API handlers
+    // but the actual pipeline execution happens in worker processes
+    static std::unique_ptr<IInstanceManager> instanceManager;
+    if (executionMode == InstanceExecutionMode::SUBPROCESS) {
+      // Subprocess mode: Create SubprocessInstanceManager
+      // Workers will be spawned for each instance
+      instanceManager = InstanceManagerFactory::createSubprocess(
+          solutionRegistry, instanceStorage, "edge_ai_worker");
+      std::cerr << "[Main] ✓ Subprocess instance manager initialized"
+                << std::endl;
+      PLOG_INFO << "[Main] Subprocess instance manager initialized";
+      PLOG_INFO << "[Main] Each instance will run in isolated worker process";
+    } else {
+      // In-process mode: Use existing InstanceRegistry directly
+      instanceManager =
+          std::make_unique<InProcessInstanceManager>(instanceRegistry);
+      std::cerr
+          << "[Main] ✓ In-process instance manager initialized (legacy mode)"
+          << std::endl;
+      PLOG_INFO
+          << "[Main] In-process instance manager initialized (legacy mode)";
+    }
 
     // Initialize default solutions (face_detection, etc.)
     solutionRegistry.initializeDefaultSolutions();
@@ -2183,7 +2236,7 @@ int main(int argc, char *argv[]) {
     }
 
     // Load persistent instances
-    instanceRegistry.loadPersistentInstances();
+    instanceManager->loadPersistentInstances();
 
     // ============================================
     // AUTO-START FUNCTIONALITY
@@ -2194,10 +2247,10 @@ int main(int argc, char *argv[]) {
     // program if instances fail to start, hang, or crash
     PLOG_INFO << "[Main] Auto-start will run after server is ready";
 
-    // Register instance registry and solution registry with handlers
-    CreateInstanceHandler::setInstanceRegistry(&instanceRegistry);
+    // Register instance manager and solution registry with handlers
+    CreateInstanceHandler::setInstanceManager(instanceManager.get());
     CreateInstanceHandler::setSolutionRegistry(&solutionRegistry);
-    InstanceHandler::setInstanceRegistry(&instanceRegistry);
+    InstanceHandler::setInstanceManager(instanceManager.get());
 
     // Register solution registry and storage with solution handler
     SolutionHandler::setSolutionRegistry(&solutionRegistry);
@@ -2226,9 +2279,9 @@ int main(int argc, char *argv[]) {
 
     // Sync groups with instances after loading
     // This ensures groups have correct instance counts and instance IDs
-    auto allInstances = instanceRegistry.getAllInstances();
+    auto allInstances = instanceManager->getAllInstances();
     std::map<std::string, std::vector<std::string>> groupInstancesMap;
-    for (const auto &[instanceId, info] : allInstances) {
+    for (const auto &info : allInstances) {
       if (!info.group.empty()) {
         // Auto-create group if it doesn't exist
         if (!groupRegistry.groupExists(info.group)) {
@@ -2236,7 +2289,7 @@ int main(int argc, char *argv[]) {
           PLOG_INFO << "[Main] Auto-created group from instance: "
                     << info.group;
         }
-        groupInstancesMap[info.group].push_back(instanceId);
+        groupInstancesMap[info.group].push_back(info.instanceId);
       }
     }
     // Update group registry with instance IDs
@@ -2244,16 +2297,18 @@ int main(int argc, char *argv[]) {
       groupRegistry.setInstanceIds(groupId, instanceIds);
     }
 
-    // Register group registry, storage, and instance registry with group
+    // Register group registry, storage, and instance manager with group
     // handler
     GroupHandler::setGroupRegistry(&groupRegistry);
     GroupHandler::setGroupStorage(&groupStorage);
-    GroupHandler::setInstanceRegistry(&instanceRegistry);
+    GroupHandler::setInstanceManager(instanceManager.get());
 
     // Register instance registry with lines handler
     LinesHandler::setInstanceRegistry(&instanceRegistry);
 
-    // Create handler instances to register endpoints
+    // CRITICAL: Create handler instances AFTER dependencies are set
+    // This ensures handlers are ready when Drogon registers routes
+    // Handlers created here depend on dependencies set above
     static CreateInstanceHandler createInstanceHandler;
     static InstanceHandler instanceHandler;
     static SolutionHandler solutionHandler;
@@ -2879,7 +2934,7 @@ int main(int argc, char *argv[]) {
           }
 
           // Check and handle retry limits
-          int stoppedCount = instanceRegistry.checkAndHandleRetryLimits();
+          int stoppedCount = instanceManager->checkAndHandleRetryLimits();
           if (stoppedCount > 0) {
             PLOG_INFO << "[RetryMonitor] Stopped " << stoppedCount
                       << " instance(s) due to retry limit";
@@ -2933,9 +2988,9 @@ int main(int argc, char *argv[]) {
                 }
 
                 // Get all running instances
-                auto instances = instanceRegistry.listInstances();
+                auto instances = instanceManager->listInstances();
                 for (const auto& instanceId : instances) {
-                    auto optInfo = instanceRegistry.getInstance(instanceId);
+                    auto optInfo = instanceManager->getInstance(instanceId);
                     if (!optInfo.has_value() || !optInfo.value().running) {
                         continue;
                     }
@@ -3077,7 +3132,7 @@ int main(int argc, char *argv[]) {
 
                             // Stop instance with timeout protection
                             try {
-                                instanceRegistry.stopInstance(instanceId);
+                                instanceManager->stopInstance(instanceId);
                             } catch (const std::exception& e) {
                                 PLOG_ERROR << "[QueueMonitor] Error stopping
     instance "
@@ -3094,7 +3149,7 @@ int main(int argc, char *argv[]) {
 
                             // Start instance with timeout protection
                             try {
-                                instanceRegistry.startInstance(instanceId);
+                                instanceManager->startInstance(instanceId);
 
                                 // Record restart time to prevent restart loops
                                 last_restart_time[instanceId] =
@@ -3390,14 +3445,15 @@ int main(int argc, char *argv[]) {
     // thread to avoid blocking if instances fail to start, hang, or crash
     auto *loop = app.getLoop();
     if (loop) {
-      loop->runAfter(2.0, [&instanceRegistry]() {
+      loop->runAfter(2.0, [&instanceManager]() {
         PLOG_INFO << "[Main] Server is ready - starting auto-start process in "
                      "separate thread";
         // Start auto-start in a separate thread to avoid blocking the event
         // loop Even if instances fail, hang, or crash, the main program
         // continues running
-        std::thread autoStartThread(
-            [&instanceRegistry]() { autoStartInstances(&instanceRegistry); });
+        std::thread autoStartThread([&instanceManager]() {
+          autoStartInstances(instanceManager.get());
+        });
         autoStartThread.detach(); // Detach so it runs independently
       });
     } else {
