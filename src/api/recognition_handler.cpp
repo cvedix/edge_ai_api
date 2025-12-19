@@ -1996,13 +1996,12 @@ bool RecognitionHandler::extractImageFromJson(
   return true;
 }
 
-bool RecognitionHandler::registerSubject(const std::string &subjectName,
-                                         const std::vector<unsigned char> &imageData,
-                                         double detProbThreshold,
-                                         std::string &imageId,
-                                         std::string &error) const {
+bool RecognitionHandler::registerSubject(
+    const std::string &subjectName, const std::vector<unsigned char> &imageData,
+    double detProbThreshold, std::string &imageId, std::string &error) const {
   try {
-    // Validate image format and size (already validated in extractImageFromRequest, but double-check here)
+    // Validate image format and size (already validated in
+    // extractImageFromRequest, but double-check here)
     if (!validateImageFormatAndSize(imageData, error)) {
       return false;
     }
@@ -2010,7 +2009,8 @@ bool RecognitionHandler::registerSubject(const std::string &subjectName,
     // Validate image can be decoded
     cv::Mat image = cv::imdecode(imageData, cv::IMREAD_COLOR);
     if (image.empty()) {
-      error = "Invalid image format or corrupted image data. Please ensure the image is a valid JPEG, PNG, BMP, GIF, ICO, TIFF, or WebP file";
+      error = "Invalid image format or corrupted image data. Please ensure the "
+              "image is a valid JPEG, PNG, BMP, GIF, ICO, TIFF, or WebP file";
       return false;
     }
 
@@ -2019,7 +2019,8 @@ bool RecognitionHandler::registerSubject(const std::string &subjectName,
     // Register face using FaceDatabase
     FaceDatabase &db = get_database();
     std::string dbError;
-    if (!db.register_face_from_image(imageData, subjectName, detProbThreshold, dbError)) {
+    if (!db.register_face_from_image(imageData, subjectName, detProbThreshold,
+                                     dbError)) {
       error = "Failed to register face: " + dbError;
       return false;
     }
@@ -2359,15 +2360,17 @@ void RecognitionHandler::listFaceSubjects(
   }
 }
 
-Json::Value RecognitionHandler::getFaceSubjects(int page, int size,
-                                                const std::string &subjectFilter) const {
+Json::Value
+RecognitionHandler::getFaceSubjects(int page, int size,
+                                    const std::string &subjectFilter) const {
   Json::Value result;
 
   // Ensure database is loaded before accessing storage
   get_database();
 
   // Collect all image_id -> subject mappings
-  std::vector<std::pair<std::string, std::string>> all_faces; // (image_id, subject)
+  std::vector<std::pair<std::string, std::string>>
+      all_faces; // (image_id, subject)
 
   {
     std::lock_guard<std::mutex> lock(storage_mutex_);
@@ -2665,9 +2668,10 @@ void RecognitionHandler::renameSubject(
                         "Missing subject in path";
       }
       auto errorResp = createErrorResponse(400, "Invalid request",
-                                          "Missing subject in URL path");
+                                           "Missing subject in URL path");
       errorResp->addHeader("Access-Control-Allow-Methods", "PUT, OPTIONS");
-      errorResp->addHeader("Access-Control-Allow-Headers", "Content-Type, x-api-key");
+      errorResp->addHeader("Access-Control-Allow-Headers",
+                           "Content-Type, x-api-key");
       callback(errorResp);
       return;
     }
@@ -2680,9 +2684,10 @@ void RecognitionHandler::renameSubject(
                         "Invalid JSON body";
       }
       auto errorResp = createErrorResponse(400, "Invalid request",
-                                          "Request body must be valid JSON");
+                                           "Request body must be valid JSON");
       errorResp->addHeader("Access-Control-Allow-Methods", "PUT, OPTIONS");
-      errorResp->addHeader("Access-Control-Allow-Headers", "Content-Type, x-api-key");
+      errorResp->addHeader("Access-Control-Allow-Headers",
+                           "Content-Type, x-api-key");
       callback(errorResp);
       return;
     }
@@ -2694,9 +2699,10 @@ void RecognitionHandler::renameSubject(
                         "Missing required field: subject";
       }
       auto errorResp = createErrorResponse(400, "Invalid request",
-                                          "Missing required field: subject");
+                                           "Missing required field: subject");
       errorResp->addHeader("Access-Control-Allow-Methods", "PUT, OPTIONS");
-      errorResp->addHeader("Access-Control-Allow-Headers", "Content-Type, x-api-key");
+      errorResp->addHeader("Access-Control-Allow-Headers",
+                           "Content-Type, x-api-key");
       callback(errorResp);
       return;
     }
@@ -2708,9 +2714,10 @@ void RecognitionHandler::renameSubject(
                         "Subject field is empty";
       }
       auto errorResp = createErrorResponse(400, "Invalid request",
-                                          "Subject field cannot be empty");
+                                           "Subject field cannot be empty");
       errorResp->addHeader("Access-Control-Allow-Methods", "PUT, OPTIONS");
-      errorResp->addHeader("Access-Control-Allow-Headers", "Content-Type, x-api-key");
+      errorResp->addHeader("Access-Control-Allow-Headers",
+                           "Content-Type, x-api-key");
       callback(errorResp);
       return;
     }
@@ -2773,9 +2780,11 @@ void RecognitionHandler::renameSubject(
       PLOG_ERROR << "[API] PUT /v1/recognition/subjects/{subject} - Exception: "
                  << e.what() << " - " << duration.count() << "ms";
     }
-    auto errorResp = createErrorResponse(500, "Internal server error", e.what());
+    auto errorResp =
+        createErrorResponse(500, "Internal server error", e.what());
     errorResp->addHeader("Access-Control-Allow-Methods", "PUT, OPTIONS");
-    errorResp->addHeader("Access-Control-Allow-Headers", "Content-Type, x-api-key");
+    errorResp->addHeader("Access-Control-Allow-Headers",
+                         "Content-Type, x-api-key");
     callback(errorResp);
   } catch (...) {
     auto end_time = std::chrono::steady_clock::now();
@@ -2787,9 +2796,10 @@ void RecognitionHandler::renameSubject(
                  << duration.count() << "ms";
     }
     auto errorResp = createErrorResponse(500, "Internal server error",
-                                        "Unknown error occurred");
+                                         "Unknown error occurred");
     errorResp->addHeader("Access-Control-Allow-Methods", "PUT, OPTIONS");
-    errorResp->addHeader("Access-Control-Allow-Headers", "Content-Type, x-api-key");
+    errorResp->addHeader("Access-Control-Allow-Headers",
+                         "Content-Type, x-api-key");
     callback(errorResp);
   }
 }
@@ -3130,7 +3140,8 @@ void RecognitionHandler::searchAppearanceSubject(
   auto start_time = std::chrono::steady_clock::now();
 
   if (isApiLoggingEnabled()) {
-    PLOG_INFO << "[API] POST /v1/recognition/search - Search appearance subject";
+    PLOG_INFO
+        << "[API] POST /v1/recognition/search - Search appearance subject";
     PLOG_DEBUG << "[API] Request from: " << req->getPeerAddr().toIpPort();
   }
 
@@ -3194,8 +3205,8 @@ void RecognitionHandler::searchAppearanceSubject(
     // Decode image
     cv::Mat image = cv::imdecode(imageData, cv::IMREAD_COLOR);
     if (image.empty()) {
-      callback(
-          createErrorResponse(400, "Invalid request", "Failed to decode image"));
+      callback(createErrorResponse(400, "Invalid request",
+                                   "Failed to decode image"));
       return;
     }
 
@@ -3223,7 +3234,8 @@ void RecognitionHandler::searchAppearanceSubject(
       resp->setStatusCode(k200OK);
       resp->addHeader("Access-Control-Allow-Origin", "*");
       resp->addHeader("Access-Control-Allow-Methods", "POST, OPTIONS");
-      resp->addHeader("Access-Control-Allow-Headers", "Content-Type, x-api-key");
+      resp->addHeader("Access-Control-Allow-Headers",
+                      "Content-Type, x-api-key");
       callback(resp);
       return;
     }
@@ -3273,16 +3285,15 @@ void RecognitionHandler::searchAppearanceSubject(
           imageId = generateImageIdForSubject(subject_name);
         }
 
-        matches.push_back(
-            {imageId, subject_name, static_cast<double>(similarity), faceImageBase64});
+        matches.push_back({imageId, subject_name,
+                           static_cast<double>(similarity), faceImageBase64});
       }
     }
 
     // Sort by similarity (highest first)
-    std::sort(matches.begin(), matches.end(),
-              [](const auto &a, const auto &b) {
-                return std::get<2>(a) > std::get<2>(b);
-              });
+    std::sort(matches.begin(), matches.end(), [](const auto &a, const auto &b) {
+      return std::get<2>(a) > std::get<2>(b);
+    });
 
     // Apply limit if specified
     if (limit > 0 && matches.size() > static_cast<size_t>(limit)) {
@@ -3291,7 +3302,8 @@ void RecognitionHandler::searchAppearanceSubject(
 
     // Build response
     Json::Value results(Json::arrayValue);
-    for (const auto &[image_id, subject_name, similarity, face_image] : matches) {
+    for (const auto &[image_id, subject_name, similarity, face_image] :
+         matches) {
       Json::Value match;
       match["image_id"] = image_id;
       match["subject"] = subject_name;
@@ -3328,8 +3340,8 @@ void RecognitionHandler::searchAppearanceSubject(
     auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(
         end_time - start_time);
     if (isApiLoggingEnabled()) {
-      PLOG_ERROR << "[API] POST /v1/recognition/search - Exception: " << e.what()
-                 << " - " << duration.count() << "ms";
+      PLOG_ERROR << "[API] POST /v1/recognition/search - Exception: "
+                 << e.what() << " - " << duration.count() << "ms";
     }
     callback(createErrorResponse(500, "Internal server error", e.what()));
   } catch (...) {
