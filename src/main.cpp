@@ -10,6 +10,7 @@
 #endif
 #include "api/config_handler.h"
 #include "api/group_handler.h"
+#include "api/lines_handler.h"
 #include "api/node_handler.h"
 #include "api/recognition_handler.h"
 #include "api/solution_handler.h"
@@ -2249,12 +2250,16 @@ int main(int argc, char *argv[]) {
     GroupHandler::setGroupStorage(&groupStorage);
     GroupHandler::setInstanceRegistry(&instanceRegistry);
 
+    // Register instance registry with lines handler
+    LinesHandler::setInstanceRegistry(&instanceRegistry);
+
     // Create handler instances to register endpoints
     static CreateInstanceHandler createInstanceHandler;
     static InstanceHandler instanceHandler;
     static SolutionHandler solutionHandler;
     static GroupHandler groupHandler;
     static NodeHandler nodeHandler;
+    static LinesHandler linesHandler;
 
     // Initialize model upload handler with configurable directory
     // Priority: 1. MODELS_DIR env var, 2. /opt/edge_ai_api/models (with

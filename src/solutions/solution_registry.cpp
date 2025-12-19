@@ -377,11 +377,10 @@ void SolutionRegistry::registerBACrosslineSolution() {
   SolutionConfig::NodeConfig baCrossline;
   baCrossline.nodeType = "ba_crossline";
   baCrossline.nodeName = "ba_crossline_{instanceId}";
-  baCrossline.parameters["line_channel"] = "0";
-  baCrossline.parameters["line_start_x"] = "0";
-  baCrossline.parameters["line_start_y"] = "250";
-  baCrossline.parameters["line_end_x"] = "700";
-  baCrossline.parameters["line_end_y"] = "220";
+  baCrossline.parameters["line_start_x"] = "1500";
+  baCrossline.parameters["line_start_y"] = "1500";
+  baCrossline.parameters["line_end_x"] = "1000";
+  baCrossline.parameters["line_end_y"] = "1000";
   config.pipeline.push_back(baCrossline);
 
   // BA Crossline OSD Node

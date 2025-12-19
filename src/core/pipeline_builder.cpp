@@ -26,6 +26,7 @@
 #include <cvedix/objects/shapes/cvedix_size.h>
 #include <cvedix/utils/cvedix_utils.h>
 #include <opencv2/core.hpp> // For cv::Exception
+#include <json/reader.h>
 
 // TensorRT Inference Nodes
 #ifdef CVEDIX_WITH_TRT
@@ -416,10 +417,30 @@ PipelineBuilder::buildPipeline(const SolutionConfig &solution,
                              nodeConfig.nodeType == "rtmp_des" ||
                              nodeConfig.nodeType == "screen_des");
 
+          // Special handling for ba_crossline_osd node: attach to ba_crossline node
+          // This is critical - OSD node must attach to ba_crossline node to get lines
+          std::shared_ptr<cvedix_nodes::cvedix_node> attachTarget = nullptr;
+          if (nodeConfig.nodeType == "ba_crossline_osd") {
+            // Find ba_crossline node to attach to
+            for (int i = static_cast<int>(nodes.size()) - 1; i >= 0; --i) {
+              if (nodeTypes[i] == "ba_crossline") {
+                attachTarget = nodes[i];
+                std::cerr << "[PipelineBuilder] Attaching ba_crossline_osd node to ba_crossline node "
+                             "(required to get lines for drawing)"
+                          << std::endl;
+                break;
+              }
+            }
+            if (!attachTarget) {
+              std::cerr << "[PipelineBuilder] ⚠ WARNING: ba_crossline_osd node created but ba_crossline node not found! "
+                           "OSD will attach to previous node but may not receive lines."
+                        << std::endl;
+            }
+          }
+
           // For RTMP nodes: if pipeline has OSD node, attach to OSD node (to
           // get frames with overlay)
-          std::shared_ptr<cvedix_nodes::cvedix_node> attachTarget = nullptr;
-          if (nodeConfig.nodeType == "rtmp_des" && hasOSDNode) {
+          if (!attachTarget && nodeConfig.nodeType == "rtmp_des" && hasOSDNode) {
             // Find OSD node
             for (int i = static_cast<int>(nodes.size()) - 1; i >= 0; --i) {
               auto checkNode = nodes[i];
@@ -815,32 +836,16 @@ PipelineBuilder::buildPipeline(const SolutionConfig &solution,
                            "ba_crossline)"
                         << std::endl;
 
-              // Reconnect OSD node to MQTT broker (if OSD exists and comes
-              // after ba_crossline) This matches the sample:
-              // osd->attach_to({mqtt_broker_node}) Pipeline should be:
-              // ba_crossline -> mqtt_broker -> osd
-              for (size_t i = 0; i < nodes.size() - 1;
-                   ++i) { // Exclude the MQTT node we just added
-                if (nodeTypes[i] == "ba_crossline_osd") {
-                  // Reconnect OSD to MQTT broker
-                  try {
-                    nodes[i]->attach_to({mqttNode});
-                    std::cerr
-                        << "[PipelineBuilder] ✓ Reconnected ba_crossline_osd "
-                           "to json_crossline_mqtt_broker"
+              // IMPORTANT: OSD node should attach to ba_crossline node, NOT MQTT broker
+              // This is critical - OSD node needs lines from ba_crossline node to draw
+              // From SDK sample: osd->attach_to({ba_crossline})
+              // Pipeline should be: ba_crossline -> mqtt_broker (parallel) and ba_crossline -> osd
+              // OSD node will get lines from ba_crossline node via pipeline metadata
+              // MQTT broker runs in parallel and doesn't need OSD connection
+              // So we DON'T reconnect OSD to MQTT broker - OSD stays attached to ba_crossline
+              std::cerr << "[PipelineBuilder] NOTE: ba_crossline_osd node should remain attached to ba_crossline node "
+                           "to receive lines for drawing. MQTT broker runs in parallel."
                         << std::endl;
-                  } catch (const std::exception &e) {
-                    std::cerr << "[PipelineBuilder] ⚠ Warning: Could not "
-                                 "reconnect OSD to MQTT broker: "
-                              << e.what() << std::endl;
-                    std::cerr
-                        << "[PipelineBuilder] ⚠ OSD may already be connected "
-                           "correctly or SDK handles parallel connections"
-                        << std::endl;
-                  }
-                  break;
-                }
-              }
             } else {
               std::cerr << "[PipelineBuilder] ⚠ Failed to find ba_crossline "
                            "node to attach MQTT broker"
@@ -1781,7 +1786,7 @@ PipelineBuilder::createNode(const SolutionConfig::NodeConfig &nodeConfig,
     }
     // Behavior Analysis nodes
     else if (nodeConfig.nodeType == "ba_crossline") {
-      return createBACrosslineNode(nodeName, params);
+      return createBACrosslineNode(nodeName, params, req);
     }
     // OSD nodes
     else if (nodeConfig.nodeType == "face_osd_v2") {
@@ -3562,41 +3567,124 @@ std::shared_ptr<cvedix_nodes::cvedix_node> PipelineBuilder::createSORTTrackNode(
 std::shared_ptr<cvedix_nodes::cvedix_node>
 PipelineBuilder::createBACrosslineNode(
     const std::string &nodeName,
-    const std::map<std::string, std::string> &params) {
+    const std::map<std::string, std::string> &params,
+    const CreateInstanceRequest &req) {
 
   try {
     if (nodeName.empty()) {
       throw std::invalid_argument("Node name cannot be empty");
     }
 
-    // Parse lines from parameters
-    // Expected format: "channel:start_x,start_y:end_x,end_y" or JSON-like
-    // format For simplicity, we'll support a format like: "0:0,250:700,220" Or
-    // use separate parameters: line_channel, line_start_x, line_start_y,
-    // line_end_x, line_end_y
     std::map<int, cvedix_objects::cvedix_line> lines;
+    bool linesParsed = false;
 
-    // Check if we have line parameters
-    if (params.count("line_channel") && params.count("line_start_x") &&
-        params.count("line_start_y") && params.count("line_end_x") &&
-        params.count("line_end_y")) {
-      int channel = std::stoi(params.at("line_channel"));
-      int start_x = std::stoi(params.at("line_start_x"));
-      int start_y = std::stoi(params.at("line_start_y"));
-      int end_x = std::stoi(params.at("line_end_x"));
-      int end_y = std::stoi(params.at("line_end_y"));
+    // Priority 1: Check CrossingLines from API (stored in additionalParams)
+    auto crossingLinesIt = req.additionalParams.find("CrossingLines");
+    if (crossingLinesIt != req.additionalParams.end() &&
+        !crossingLinesIt->second.empty()) {
+      try {
+        // Parse JSON string to JSON array
+        Json::Reader reader;
+        Json::Value parsedLines;
+        if (reader.parse(crossingLinesIt->second, parsedLines) &&
+            parsedLines.isArray()) {
+          // Iterate through lines array
+          for (Json::ArrayIndex i = 0; i < parsedLines.size(); ++i) {
+            const Json::Value &lineObj = parsedLines[i];
+            
+            // Check if line has coordinates
+            if (!lineObj.isMember("coordinates") ||
+                !lineObj["coordinates"].isArray()) {
+              std::cerr << "[PipelineBuilder] WARNING: Line at index " << i
+                        << " missing or invalid 'coordinates' field, skipping"
+                        << std::endl;
+              continue;
+            }
 
-      cvedix_objects::cvedix_point start(start_x, start_y);
-      cvedix_objects::cvedix_point end(end_x, end_y);
-      lines[channel] = cvedix_objects::cvedix_line(start, end);
-    } else {
-      // Default line for channel 0 (from sample)
-      cvedix_objects::cvedix_point start(0, 250);
-      cvedix_objects::cvedix_point end(700, 220);
-      lines[0] = cvedix_objects::cvedix_line(start, end);
-      std::cerr << "[PipelineBuilder] Using default line configuration "
-                   "(channel 0: (0,250) -> (700,220))"
-                << std::endl;
+            const Json::Value &coordinates = lineObj["coordinates"];
+            if (coordinates.size() < 2) {
+              std::cerr << "[PipelineBuilder] WARNING: Line at index " << i
+                        << " has less than 2 coordinates, skipping" << std::endl;
+              continue;
+            }
+
+            // Get first and last coordinates
+            const Json::Value &startCoord = coordinates[0];
+            const Json::Value &endCoord = coordinates[coordinates.size() - 1];
+
+            if (!startCoord.isMember("x") || !startCoord.isMember("y") ||
+                !endCoord.isMember("x") || !endCoord.isMember("y")) {
+              std::cerr << "[PipelineBuilder] WARNING: Line at index " << i
+                        << " has invalid coordinate format, skipping" << std::endl;
+              continue;
+            }
+
+            if (!startCoord["x"].isNumeric() || !startCoord["y"].isNumeric() ||
+                !endCoord["x"].isNumeric() || !endCoord["y"].isNumeric()) {
+              std::cerr << "[PipelineBuilder] WARNING: Line at index " << i
+                        << " has non-numeric coordinates, skipping" << std::endl;
+              continue;
+            }
+
+            // Convert to cvedix_line
+            int start_x = startCoord["x"].asInt();
+            int start_y = startCoord["y"].asInt();
+            int end_x = endCoord["x"].asInt();
+            int end_y = endCoord["y"].asInt();
+
+            cvedix_objects::cvedix_point start(start_x, start_y);
+            cvedix_objects::cvedix_point end(end_x, end_y);
+            
+            // Use array index as channel (0, 1, 2, ...)
+            int channel = static_cast<int>(i);
+            lines[channel] = cvedix_objects::cvedix_line(start, end);
+            linesParsed = true;
+          }
+
+          if (linesParsed) {
+            std::cerr << "[PipelineBuilder] ✓ Parsed " << lines.size()
+                      << " line(s) from CrossingLines API" << std::endl;
+          }
+        } else {
+          std::cerr << "[PipelineBuilder] WARNING: Failed to parse CrossingLines "
+                       "JSON or not an array, falling back to solution config"
+                    << std::endl;
+        }
+      } catch (const std::exception &e) {
+        std::cerr << "[PipelineBuilder] WARNING: Exception parsing CrossingLines "
+                     "JSON: "
+                  << e.what() << ", falling back to solution config" << std::endl;
+      }
+    }
+
+    // Priority 2: Fallback to solution config parameters if no lines from API
+    if (!linesParsed) {
+      // Check if we have line parameters from solution config
+      if (params.count("line_channel") && params.count("line_start_x") &&
+          params.count("line_start_y") && params.count("line_end_x") &&
+          params.count("line_end_y")) {
+        int channel = std::stoi(params.at("line_channel"));
+        int start_x = std::stoi(params.at("line_start_x"));
+        int start_y = std::stoi(params.at("line_start_y"));
+        int end_x = std::stoi(params.at("line_end_x"));
+        int end_y = std::stoi(params.at("line_end_y"));
+
+        cvedix_objects::cvedix_point start(start_x, start_y);
+        cvedix_objects::cvedix_point end(end_x, end_y);
+        lines[channel] = cvedix_objects::cvedix_line(start, end);
+        std::cerr << "[PipelineBuilder] Using line configuration from solution "
+                     "config (channel "
+                  << channel << ": (" << start_x << "," << start_y << ") -> ("
+                  << end_x << "," << end_y << "))" << std::endl;
+      } else {
+        // Priority 3: Default line for channel 0 (from sample)
+        cvedix_objects::cvedix_point start(0, 250);
+        cvedix_objects::cvedix_point end(700, 220);
+        lines[0] = cvedix_objects::cvedix_line(start, end);
+        std::cerr << "[PipelineBuilder] Using default line configuration "
+                     "(channel 0: (0,250) -> (700,220))"
+                  << std::endl;
+      }
     }
 
     std::cerr << "[PipelineBuilder] Creating BA crossline node:" << std::endl;
@@ -3608,6 +3696,10 @@ PipelineBuilder::createBACrosslineNode(
         nodeName, lines);
 
     std::cerr << "[PipelineBuilder] ✓ BA crossline node created successfully"
+              << std::endl;
+    std::cerr << "[PipelineBuilder]   Lines will be passed to OSD node via pipeline metadata"
+              << std::endl;
+    std::cerr << "[PipelineBuilder]   OSD node will draw these lines on video frames"
               << std::endl;
     return node;
   } catch (const std::exception &e) {
@@ -3777,6 +3869,8 @@ PipelineBuilder::createBACrosslineOSDNode(
     std::cerr << "[PipelineBuilder] Creating BA crossline OSD node:"
               << std::endl;
     std::cerr << "  Name: '" << nodeName << "'" << std::endl;
+    std::cerr << "  Note: OSD node will automatically get lines from ba_crossline_node via pipeline metadata"
+              << std::endl;
 
     auto node =
         std::make_shared<cvedix_nodes::cvedix_ba_crossline_osd_node>(nodeName);
@@ -3784,6 +3878,8 @@ PipelineBuilder::createBACrosslineOSDNode(
     std::cerr
         << "[PipelineBuilder] ✓ BA crossline OSD node created successfully"
         << std::endl;
+    std::cerr << "[PipelineBuilder]   OSD node will draw lines on video frames from ba_crossline_node"
+              << std::endl;
     return node;
   } catch (const std::exception &e) {
     std::cerr << "[PipelineBuilder] Exception in createBACrosslineOSDNode: "

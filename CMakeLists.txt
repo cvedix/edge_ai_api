@@ -260,6 +260,7 @@ set(SOURCES
     src/api/solution_handler.cpp
     src/api/group_handler.cpp
     src/api/config_handler.cpp
+    src/api/lines_handler.cpp
     src/api/node_handler.cpp
     src/api/recognition_handler.cpp
     src/api/system_info_handler.cpp
