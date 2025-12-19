@@ -22,6 +22,7 @@ edge_ai_api
 # IDE files
 .vscode/
 .idea/
+.cursor/
 *.swp
 *.swo
 *~
