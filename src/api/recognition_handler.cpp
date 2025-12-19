@@ -2477,26 +2477,41 @@ bool RecognitionHandler::renameSubjectName(const std::string &oldSubjectName,
   }
 
   // Check if old subject exists in FaceDatabase
-  FaceDatabase &db = get_database();
-  const auto &db_map = db.get_database();
-  auto db_old_it = db_map.find(oldSubjectName);
+  // Wrap in try-catch to handle database initialization errors gracefully
+  const std::map<std::string, std::vector<float>> *db_map = nullptr;
+  FaceDatabase *db = nullptr;
+  std::map<std::string, std::vector<float>>::const_iterator db_old_it;
+  try {
+    db = &get_database();
+    db_map = &db->get_database();
+    db_old_it = db_map->find(oldSubjectName);
+  } catch (const std::exception &e) {
+    // If database initialization fails, we can still check memory storage
+    // This allows the rename to work even if database file is inaccessible
+    db_map = nullptr;
+    db = nullptr;
+    // Create an invalid iterator to indicate database is not available
+    static const std::map<std::string, std::vector<float>> empty_map;
+    db_old_it = empty_map.end();
+  }
 
   // Check if old subject exists in storage
   std::lock_guard<std::mutex> lock(storage_mutex_);
   auto oldIt = face_subjects_storage_.find(oldSubjectName);
 
   // Subject must exist in at least one place
-  if (db_old_it == db_map.end() &&
+  bool db_has_old = (db_map != nullptr && db_old_it != db_map->end());
+  if (!db_has_old &&
       (oldIt == face_subjects_storage_.end() || oldIt->second.empty())) {
     error = "Subject '" + oldSubjectName + "' not found in face database";
     return false;
   }
 
   // Update FaceDatabase: rename subject in database file
-  if (db_old_it != db_map.end()) {
+  if (db_has_old && db != nullptr && db_map != nullptr) {
     // Check if new subject already exists in database
-    auto db_new_it = db_map.find(newSubjectName);
-    bool need_merge = (db_new_it != db_map.end());
+    auto db_new_it = db_map->find(newSubjectName);
+    bool need_merge = (db_new_it != db_map->end());
     std::vector<float> old_embedding = db_old_it->second;
     std::vector<float> new_embedding;
     if (need_merge) {
@@ -2504,7 +2519,7 @@ bool RecognitionHandler::renameSubjectName(const std::string &oldSubjectName,
     }
 
     // Reload database file to modify it
-    std::string db_path = db.get_database_path();
+    std::string db_path = db->get_database_path();
     std::ifstream in_file(db_path);
     std::map<std::string, std::vector<float>> updated_faces;
 
@@ -2620,7 +2635,7 @@ bool RecognitionHandler::renameSubjectName(const std::string &oldSubjectName,
 
     // Remove old subject
     face_subjects_storage_.erase(oldIt);
-  } else if (db_old_it != db_map.end()) {
+  } else if (db_has_old) {
     // Subject exists in database but not in storage - create entry in storage
     // This can happen if subject was registered before storage tracking was
     // added
@@ -2649,8 +2664,11 @@ void RecognitionHandler::renameSubject(
         PLOG_WARNING << "[API] PUT /v1/recognition/subjects/{subject} - "
                         "Missing subject in path";
       }
-      callback(createErrorResponse(400, "Invalid request",
-                                   "Missing subject in URL path"));
+      auto errorResp = createErrorResponse(400, "Invalid request",
+                                          "Missing subject in URL path");
+      errorResp->addHeader("Access-Control-Allow-Methods", "PUT, OPTIONS");
+      errorResp->addHeader("Access-Control-Allow-Headers", "Content-Type, x-api-key");
+      callback(errorResp);
       return;
     }
 
@@ -2661,8 +2679,11 @@ void RecognitionHandler::renameSubject(
         PLOG_WARNING << "[API] PUT /v1/recognition/subjects/{subject} - "
                         "Invalid JSON body";
       }
-      callback(createErrorResponse(400, "Invalid request",
-                                   "Request body must be valid JSON"));
+      auto errorResp = createErrorResponse(400, "Invalid request",
+                                          "Request body must be valid JSON");
+      errorResp->addHeader("Access-Control-Allow-Methods", "PUT, OPTIONS");
+      errorResp->addHeader("Access-Control-Allow-Headers", "Content-Type, x-api-key");
+      callback(errorResp);
       return;
     }
 
@@ -2672,8 +2693,11 @@ void RecognitionHandler::renameSubject(
         PLOG_WARNING << "[API] PUT /v1/recognition/subjects/{subject} - "
                         "Missing required field: subject";
       }
-      callback(createErrorResponse(400, "Invalid request",
-                                   "Missing required field: subject"));
+      auto errorResp = createErrorResponse(400, "Invalid request",
+                                          "Missing required field: subject");
+      errorResp->addHeader("Access-Control-Allow-Methods", "PUT, OPTIONS");
+      errorResp->addHeader("Access-Control-Allow-Headers", "Content-Type, x-api-key");
+      callback(errorResp);
       return;
     }
 
@@ -2683,8 +2707,11 @@ void RecognitionHandler::renameSubject(
         PLOG_WARNING << "[API] PUT /v1/recognition/subjects/{subject} - "
                         "Subject field is empty";
       }
-      callback(createErrorResponse(400, "Invalid request",
-                                   "Subject field cannot be empty"));
+      auto errorResp = createErrorResponse(400, "Invalid request",
+                                          "Subject field cannot be empty");
+      errorResp->addHeader("Access-Control-Allow-Methods", "PUT, OPTIONS");
+      errorResp->addHeader("Access-Control-Allow-Headers", "Content-Type, x-api-key");
+      callback(errorResp);
       return;
     }
 
@@ -2746,7 +2773,10 @@ void RecognitionHandler::renameSubject(
       PLOG_ERROR << "[API] PUT /v1/recognition/subjects/{subject} - Exception: "
                  << e.what() << " - " << duration.count() << "ms";
     }
-    callback(createErrorResponse(500, "Internal server error", e.what()));
+    auto errorResp = createErrorResponse(500, "Internal server error", e.what());
+    errorResp->addHeader("Access-Control-Allow-Methods", "PUT, OPTIONS");
+    errorResp->addHeader("Access-Control-Allow-Headers", "Content-Type, x-api-key");
+    callback(errorResp);
   } catch (...) {
     auto end_time = std::chrono::steady_clock::now();
     auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(
@@ -2756,8 +2786,11 @@ void RecognitionHandler::renameSubject(
                     "exception - "
                  << duration.count() << "ms";
     }
-    callback(createErrorResponse(500, "Internal server error",
-                                 "Unknown error occurred"));
+    auto errorResp = createErrorResponse(500, "Internal server error",
+                                        "Unknown error occurred");
+    errorResp->addHeader("Access-Control-Allow-Methods", "PUT, OPTIONS");
+    errorResp->addHeader("Access-Control-Allow-Headers", "Content-Type, x-api-key");
+    callback(errorResp);
   }
 }
 
@@ -3382,9 +3415,20 @@ void RecognitionHandler::deleteMultipleFaceSubjects(
     }
 
     // Remove subjects from face database file
-    FaceDatabase &db = get_database();
-    for (const auto &subject : subjectsToDelete) {
-      db.remove_subject(subject);
+    // Wrap in try-catch to handle database initialization errors gracefully
+    try {
+      FaceDatabase &db = get_database();
+      for (const auto &subject : subjectsToDelete) {
+        db.remove_subject(subject);
+      }
+    } catch (const std::exception &e) {
+      // If database access fails, log but continue - we still return success
+      // with the deleted faces we managed to remove from memory storage
+      if (isApiLoggingEnabled()) {
+        PLOG_WARNING << "[API] POST /v1/recognition/faces/delete - Warning: "
+                        "Failed to update database file: "
+                     << e.what();
+      }
     }
 
     // Build response
