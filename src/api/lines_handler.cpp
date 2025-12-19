@@ -147,7 +147,18 @@ bool LinesHandler::saveLinesToConfig(const std::string &instanceId,
   configUpdate["AdditionalParams"] = additionalParams;
 
   // Update instance config
-  return instance_manager_->updateInstanceFromConfig(instanceId, configUpdate);
+  // Note: updateInstanceFromConfig will merge AdditionalParams correctly,
+  // preserving existing keys like "input" and adding/updating "CrossingLines"
+  bool result =
+      instance_manager_->updateInstanceFromConfig(instanceId, configUpdate);
+
+  if (!result && isApiLoggingEnabled()) {
+    PLOG_WARNING << "[API] saveLinesToConfig: updateInstanceFromConfig failed "
+                    "for instance "
+                 << instanceId;
+  }
+
+  return result;
 }
 
 bool LinesHandler::validateCoordinates(const Json::Value &coordinates,
