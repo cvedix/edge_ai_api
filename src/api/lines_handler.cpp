@@ -26,14 +26,26 @@ std::string LinesHandler::extractInstanceId(const HttpRequestPtr &req) const {
 
   if (instanceId.empty()) {
     std::string path = req->getPath();
-    size_t instancePos = path.find("/instance/");
-    if (instancePos != std::string::npos) {
-      size_t start = instancePos + 10; // length of "/instance/"
+    // Try /instances/ pattern first (plural, standard)
+    size_t instancesPos = path.find("/instances/");
+    if (instancesPos != std::string::npos) {
+      size_t start = instancesPos + 11; // length of "/instances/"
       size_t end = path.find("/", start);
       if (end == std::string::npos) {
         end = path.length();
       }
       instanceId = path.substr(start, end - start);
+    } else {
+      // Try /instance/ pattern (singular, backward compatibility)
+      size_t instancePos = path.find("/instance/");
+      if (instancePos != std::string::npos) {
+        size_t start = instancePos + 10; // length of "/instance/"
+        size_t end = path.find("/", start);
+        if (end == std::string::npos) {
+          end = path.length();
+        }
+        instanceId = path.substr(start, end - start);
+      }
     }
   }
 
