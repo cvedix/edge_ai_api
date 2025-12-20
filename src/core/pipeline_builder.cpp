@@ -3917,10 +3917,14 @@ PipelineBuilder::getFilePath(const CreateInstanceRequest &req) const {
 
   // Default fallback: Try production path first, then development path
   std::string productionPath = "/opt/edge_ai_api/videos/face.mp4";
-  if (fs::exists(productionPath)) {
-    std::cerr << "[PipelineBuilder] Using default production file path: "
-              << productionPath << std::endl;
-    return productionPath;
+  try {
+    if (fs::exists(productionPath)) {
+      std::cerr << "[PipelineBuilder] Using default production file path: "
+                << productionPath << std::endl;
+      return productionPath;
+    }
+  } catch (const std::filesystem::filesystem_error &) {
+    // Permission denied or other filesystem error - skip production path
   }
 
   // Development fallback (will not exist in production)

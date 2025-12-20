@@ -79,9 +79,12 @@ protected:
     req.group = "test";
     req.autoStart = false;
 
+    // Set FILE_PATH directly in additionalParams to avoid permission errors
+    req.additionalParams["FILE_PATH"] = "/tmp/test_video.mp4";
+
     // Add input parameters
     Json::Value input;
-    input["FILE_PATH"] = "/test/path/video.mp4";
+    input["FILE_PATH"] = "/tmp/test_video.mp4";
     input["WEIGHTS_PATH"] = "/test/path/weights.weights";
     input["CONFIG_PATH"] = "/test/path/config.cfg";
     input["LABELS_PATH"] = "/test/path/labels.txt";
