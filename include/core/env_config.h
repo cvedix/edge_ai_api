@@ -497,14 +497,18 @@ inline std::string resolveDefaultFontPath() {
   const char *osdFontPath = std::getenv("OSD_DEFAULT_FONT_PATH");
   if (osdFontPath && strlen(osdFontPath) > 0) {
     std::string path = std::string(osdFontPath);
-    if (std::filesystem::exists(path)) {
-      std::cerr << "[EnvConfig] ✓ Using font from OSD_DEFAULT_FONT_PATH: "
-                << path << std::endl;
-      return path;
-    } else {
-      std::cerr
-          << "[EnvConfig] ⚠ OSD_DEFAULT_FONT_PATH points to non-existent file: "
-          << path << std::endl;
+    try {
+      if (std::filesystem::exists(path)) {
+        std::cerr << "[EnvConfig] ✓ Using font from OSD_DEFAULT_FONT_PATH: "
+                  << path << std::endl;
+        return path;
+      } else {
+        std::cerr << "[EnvConfig] ⚠ OSD_DEFAULT_FONT_PATH points to "
+                     "non-existent file: "
+                  << path << std::endl;
+      }
+    } catch (const std::filesystem::filesystem_error &) {
+      // Permission denied or other filesystem error - skip this path
     }
   }
 
@@ -512,14 +516,18 @@ inline std::string resolveDefaultFontPath() {
   const char *defaultFontPath = std::getenv("DEFAULT_FONT_PATH");
   if (defaultFontPath && strlen(defaultFontPath) > 0) {
     std::string path = std::string(defaultFontPath);
-    if (std::filesystem::exists(path)) {
-      std::cerr << "[EnvConfig] ✓ Using font from DEFAULT_FONT_PATH: " << path
-                << std::endl;
-      return path;
-    } else {
-      std::cerr
-          << "[EnvConfig] ⚠ DEFAULT_FONT_PATH points to non-existent file: "
-          << path << std::endl;
+    try {
+      if (std::filesystem::exists(path)) {
+        std::cerr << "[EnvConfig] ✓ Using font from DEFAULT_FONT_PATH: " << path
+                  << std::endl;
+        return path;
+      } else {
+        std::cerr
+            << "[EnvConfig] ⚠ DEFAULT_FONT_PATH points to non-existent file: "
+            << path << std::endl;
+      }
+    } catch (const std::filesystem::filesystem_error &) {
+      // Permission denied or other filesystem error - skip this path
     }
   }
 
@@ -530,10 +538,14 @@ inline std::string resolveDefaultFontPath() {
     if (path.back() != '/')
       path += '/';
     path += "font/NotoSansCJKsc-Medium.otf";
-    if (std::filesystem::exists(path)) {
-      std::cerr << "[EnvConfig] ✓ Using font from CVEDIX_DATA_ROOT: " << path
-                << std::endl;
-      return path;
+    try {
+      if (std::filesystem::exists(path)) {
+        std::cerr << "[EnvConfig] ✓ Using font from CVEDIX_DATA_ROOT: " << path
+                  << std::endl;
+        return path;
+      }
+    } catch (const std::filesystem::filesystem_error &) {
+      // Permission denied or other filesystem error - skip this path
     }
   }
 
@@ -544,10 +556,14 @@ inline std::string resolveDefaultFontPath() {
     if (path.back() != '/')
       path += '/';
     path += "cvedix_data/font/NotoSansCJKsc-Medium.otf";
-    if (std::filesystem::exists(path)) {
-      std::cerr << "[EnvConfig] ✓ Using font from CVEDIX_SDK_ROOT: " << path
-                << std::endl;
-      return path;
+    try {
+      if (std::filesystem::exists(path)) {
+        std::cerr << "[EnvConfig] ✓ Using font from CVEDIX_SDK_ROOT: " << path
+                  << std::endl;
+        return path;
+      }
+    } catch (const std::filesystem::filesystem_error &) {
+      // Permission denied or other filesystem error - skip this path
     }
   }
 
@@ -555,20 +571,28 @@ inline std::string resolveDefaultFontPath() {
   // fonts directory)
   std::string productionFontPath =
       "/opt/edge_ai_api/fonts/NotoSansCJKsc-Medium.otf";
-  if (std::filesystem::exists(productionFontPath)) {
-    std::cerr << "[EnvConfig] ✓ Using font from production fonts directory: "
-              << productionFontPath << std::endl;
-    return productionFontPath;
+  try {
+    if (std::filesystem::exists(productionFontPath)) {
+      std::cerr << "[EnvConfig] ✓ Using font from production fonts directory: "
+                << productionFontPath << std::endl;
+      return productionFontPath;
+    }
+  } catch (const std::filesystem::filesystem_error &) {
+    // Permission denied or other filesystem error - skip this path
   }
 
   // Priority 6: Development fallback:
   // ./cvedix_data/font/NotoSansCJKsc-Medium.otf NOTE: This path will NOT exist
   // in production - all fonts should be in /opt/edge_ai_api/fonts
   std::string relativePath = "./cvedix_data/font/NotoSansCJKsc-Medium.otf";
-  if (std::filesystem::exists(relativePath)) {
-    std::cerr << "[EnvConfig] ✓ Using font from development directory: "
-              << relativePath << std::endl;
-    return std::filesystem::absolute(relativePath).string();
+  try {
+    if (std::filesystem::exists(relativePath)) {
+      std::cerr << "[EnvConfig] ✓ Using font from development directory: "
+                << relativePath << std::endl;
+      return std::filesystem::absolute(relativePath).string();
+    }
+  } catch (const std::filesystem::filesystem_error &) {
+    // Permission denied or other filesystem error - skip this path
   }
 
   // Priority 7: Empty string (use default font)
