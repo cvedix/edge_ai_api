@@ -1,7 +1,7 @@
 {
   "name": "face_detection_rtmp_stream",
   "group": "streaming",
-  "solution": "face_detection_rtmp",
+  "solution": "ba_crossline",
   "persistent": true,
   "autoStart": true,
   "autoRestart": true,

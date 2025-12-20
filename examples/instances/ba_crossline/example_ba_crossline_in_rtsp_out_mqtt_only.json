@@ -1,7 +1,7 @@
 {
   "name": "ba_crossline_in_rtsp_out_mqtt_only",
   "group": "demo",
-  "solution": "ba_crossline_with_mqtt",
+  "solution": "ba_crossline",
   "autoStart": false,
   "additionalParams": {
     "input": {

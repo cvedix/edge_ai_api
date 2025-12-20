@@ -1,7 +1,7 @@
 {
   "name": "ba_crossline_rtmp_only_test",
   "group": "test",
-  "solution": "ba_crossline_with_mqtt",
+  "solution": "ba_crossline",
   "persistent": false,
   "autoStart": false,
   "detectionSensitivity": "Medium",

@@ -1,7 +1,7 @@
 {
   "name": "ba_crossline_mqtt_with_lines_demo",
   "group": "demo",
-  "solution": "ba_crossline_with_mqtt",
+  "solution": "ba_crossline",
   "autoStart": false,
   "additionalParams": {
     "input": {

@@ -1,7 +1,7 @@
 {
   "name": "face_detection_file_source",
   "group": "file_processing",
-  "solution": "face_detection_file",
+  "solution": "ba_crossline",
   "persistent": false,
   "autoStart": true,
   "frameRateLimit": 10,

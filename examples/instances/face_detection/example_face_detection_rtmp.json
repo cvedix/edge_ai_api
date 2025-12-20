@@ -1,7 +1,7 @@
 {
   "name": "face_detection_demo_1",
   "group": "demo",
-  "solution": "face_detection_rtmp",
+  "solution": "face_detection",
   "persistent": true,
   "autoStart": false,
   "detectionSensitivity": "Low",
