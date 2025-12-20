@@ -362,6 +362,7 @@ void WorkerSupervisor::monitorLoop() {
 
 void WorkerSupervisor::checkWorkerHealth(WorkerInfo &worker) {
   // Already implemented in monitorLoop
+  (void)worker; // Suppress unused parameter warning
 }
 
 void WorkerSupervisor::handleWorkerCrash(const std::string &instance_id) {
@@ -403,6 +404,7 @@ void WorkerSupervisor::handleWorkerCrash(const std::string &instance_id) {
 bool WorkerSupervisor::restartWorker(const std::string &instance_id) {
   // This would need access to the original config
   // Implementation depends on how config is stored
+  (void)instance_id; // Suppress unused parameter warning
   return false;
 }
 

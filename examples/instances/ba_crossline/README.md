@@ -17,13 +17,16 @@ Instance này thực hiện phân tích hành vi đếm phương tiện/phương
 
 ```
 ba_crossline/
-├── README.md                              # File này
-├── test_file_source_mqtt.json              # Test với file source + MQTT
-├── test_rtsp_source_rtmp_mqtt.json         # Test với RTSP source + RTMP + MQTT
-├── test_rtsp_source_mqtt_only.json         # Test với RTSP source + MQTT only
-├── test_rtsp_source_rtmp_only.json         # Test với RTSP source + RTMP only
-├── test_rtmp_output_only.json              # Test với RTMP output only
-└── report_body_example.json                # Ví dụ report body từ MQTT
+├── README.md                                      # File này
+├── example_ba_crossline_with_crossing_lines.json  # Example với CrossingLines format (RTMP)
+├── example_ba_crossline_mqtt_with_crossing_lines.json  # Example với CrossingLines format (MQTT, 2 lines)
+├── example_ba_crossline_rtsp_with_crossing_lines.json  # Example với CrossingLines format (RTSP)
+├── test_file_source_mqtt.json                      # Test với file source + MQTT (legacy format)
+├── test_rtsp_source_rtmp_mqtt.json                 # Test với RTSP source + RTMP + MQTT
+├── test_rtsp_source_mqtt_only.json                 # Test với RTSP source + MQTT only
+├── test_rtsp_source_rtmp_only.json                 # Test với RTSP source + RTMP only
+├── test_rtmp_output_only.json                      # Test với RTMP output only
+└── report_body_example.json                        # Ví dụ report body từ MQTT
 ```
 
 ## 🔧 Solution Config
@@ -36,11 +39,70 @@ File/RTSP Source → YOLO Detector → SORT Tracker → BA Crossline → MQTT Br
 ```
 
 **Tham số quan trọng:**
-- `CROSSLINE_START_X`, `CROSSLINE_START_Y`: Điểm bắt đầu của line
-- `CROSSLINE_END_X`, `CROSSLINE_END_Y`: Điểm kết thúc của line
 - `WEIGHTS_PATH`, `CONFIG_PATH`, `LABELS_PATH`: YOLO model paths
 - `MQTT_BROKER_URL`, `MQTT_PORT`, `MQTT_TOPIC`: MQTT configuration
 - `RTMP_URL`: RTMP streaming URL (nếu có)
+
+### 📐 Cấu Hình Crossing Lines
+
+Có **2 cách** để cấu hình crossing lines:
+
+#### Cách 1: Sử dụng `CrossingLines` (Format Mới - Khuyến Nghị) ✅
+
+Sử dụng `CrossingLines` trong `additionalParams` để định nghĩa nhiều lines với đầy đủ thông tin:
+
+```json
+{
+  "additionalParams": {
+    "CrossingLines": "[{\"id\":\"line1\",\"name\":\"Main Line\",\"coordinates\":[{\"x\":0,\"y\":250},{\"x\":700,\"y\":220}],\"direction\":\"Both\",\"classes\":[\"Vehicle\"],\"color\":[255,0,0,255]}]"
+  }
+}
+```
+
+**Ưu điểm:**
+- ✅ Hỗ trợ nhiều lines (multiple lines)
+- ✅ Có thể quản lý qua API (`/v1/core/instance/{instanceId}/lines`)
+- ✅ Hỗ trợ đầy đủ: name, direction, classes, color
+- ✅ Real-time update không cần restart
+
+**Format chi tiết:**
+- `id`: UUID của line (tự động generate khi tạo qua API)
+- `name`: Tên mô tả line (optional)
+- `coordinates`: Array các điểm `[{"x": 0, "y": 250}, {"x": 700, "y": 220}]` (tối thiểu 2 điểm)
+- `direction`: `"Up"`, `"Down"`, hoặc `"Both"` (mặc định: `"Both"`)
+- `classes`: Array các class cần đếm: `["Person", "Vehicle", "Animal", "Face", "Unknown"]`
+- `color`: RGBA array `[R, G, B, A]` (mặc định: `[255, 0, 0, 255]` - đỏ)
+
+**Ví dụ với nhiều lines:**
+```json
+{
+  "CrossingLines": "[{\"id\":\"line1\",\"name\":\"Entry\",\"coordinates\":[{\"x\":0,\"y\":250},{\"x\":700,\"y\":220}],\"direction\":\"Up\",\"classes\":[\"Vehicle\"]},{\"id\":\"line2\",\"name\":\"Exit\",\"coordinates\":[{\"x\":100,\"y\":400},{\"x\":800,\"y\":380}],\"direction\":\"Down\",\"classes\":[\"Vehicle\"]}]"
+}
+```
+
+**Example files:**
+- `example_ba_crossline_with_crossing_lines.json` - Basic với 1 line
+- `example_ba_crossline_mqtt_with_crossing_lines.json` - MQTT với 2 lines
+- `example_ba_crossline_rtsp_with_crossing_lines.json` - RTSP với 1 line
+
+#### Cách 2: Sử dụng `CROSSLINE_START_X/Y` và `CROSSLINE_END_X/Y` (Format Cũ - Legacy)
+
+Sử dụng các tham số trong `input` section (chỉ hỗ trợ 1 line):
+
+```json
+{
+  "additionalParams": {
+    "input": {
+      "CROSSLINE_START_X": "0",
+      "CROSSLINE_START_Y": "250",
+      "CROSSLINE_END_X": "700",
+      "CROSSLINE_END_Y": "220"
+    }
+  }
+}
+```
+
+**Lưu ý:** Format này chỉ hỗ trợ 1 line và không thể quản lý qua API.
 
 ## 📝 Manual Testing Guide
 
@@ -99,14 +161,55 @@ mosquitto_sub -h localhost -t ba_crossline/events -v
 **Quan trọng:** Cần cấu hình đúng tọa độ line trong frame.
 
 **Cách xác định tọa độ:**
-1. Chạy instance với screen display
+1. Chạy instance với screen display (`ENABLE_SCREEN_DES: "true"`)
 2. Xem frame và xác định điểm bắt đầu và kết thúc của line
-3. Cập nhật `CROSSLINE_START_X`, `CROSSLINE_START_Y`, `CROSSLINE_END_X`, `CROSSLINE_END_Y`
+3. Cập nhật `CrossingLines` trong `additionalParams` hoặc sử dụng API
 
-**Ví dụ:**
+**Ví dụ với CrossingLines format:**
 - Frame size: 1280x720
 - Line từ (0, 250) đến (700, 220)
-- Set: `CROSSLINE_START_X=0`, `CROSSLINE_START_Y=250`, `CROSSLINE_END_X=700`, `CROSSLINE_END_Y=220`
+- Direction: Both (đếm cả 2 chiều)
+- Classes: Vehicle
+
+```json
+{
+  "CrossingLines": "[{\"id\":\"line1\",\"coordinates\":[{\"x\":0,\"y\":250},{\"x\":700,\"y\":220}],\"direction\":\"Both\",\"classes\":[\"Vehicle\"]}]"
+}
+```
+
+**Quản lý Lines qua API:**
+
+Sau khi tạo instance, bạn có thể quản lý lines qua API:
+
+```bash
+# Lấy tất cả lines
+curl http://localhost:8080/v1/core/instance/{instanceId}/lines
+
+# Lấy một line cụ thể
+curl http://localhost:8080/v1/core/instance/{instanceId}/lines/{lineId}
+
+# Tạo line mới
+curl -X POST http://localhost:8080/v1/core/instance/{instanceId}/lines \
+  -H "Content-Type: application/json" \
+  -d '{
+    "name": "New Line",
+    "coordinates": [{"x": 100, "y": 300}, {"x": 800, "y": 280}],
+    "direction": "Up",
+    "classes": ["Vehicle", "Person"],
+    "color": [0, 255, 0, 255]
+  }'
+
+# Cập nhật line
+curl -X PUT http://localhost:8080/v1/core/instance/{instanceId}/lines/{lineId} \
+  -H "Content-Type: application/json" \
+  -d '{
+    "coordinates": [{"x": 200, "y": 350}, {"x": 900, "y": 330}],
+    "direction": "Both"
+  }'
+
+# Xóa line
+curl -X DELETE http://localhost:8080/v1/core/instance/{instanceId}/lines/{lineId}
+```
 
 ## 📊 Kiểm Tra Kết Quả
 

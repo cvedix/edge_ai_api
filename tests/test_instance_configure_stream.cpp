@@ -67,12 +67,25 @@ protected:
   std::string createTestInstance() {
     CreateInstanceRequest req;
     req.name = "Test Instance";
-    req.solution = "face_detection";
+    // Use ba_crossline solution instead of face_detection to avoid permission
+    // issues with model files. ba_crossline doesn't require model file access
+    // for basic instance creation.
+    req.solution = "ba_crossline";
     req.persistent = false;
-    req.additionalParams["RTSP_URL"] = "rtsp://localhost:8554/stream";
+    req.autoStart = false; // Don't auto-start to avoid pipeline building issues
+    req.additionalParams["FILE_PATH"] = "/test/path/video.mp4";
+    req.additionalParams["WEIGHTS_PATH"] = "/test/path/weights.weights";
+    req.additionalParams["CONFIG_PATH"] = "/test/path/config.cfg";
+    req.additionalParams["LABELS_PATH"] = "/test/path/labels.txt";
 
-    auto instanceId = instance_manager_->createInstance(req);
-    return instanceId;
+    try {
+      auto instanceId = instance_manager_->createInstance(req);
+      return instanceId;
+    } catch (const std::exception &e) {
+      // If instance creation fails (e.g., permission denied), throw to fail
+      // test This allows tests to properly handle the failure case
+      throw;
+    }
   }
 };
 

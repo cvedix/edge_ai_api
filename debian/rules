@@ -49,6 +49,19 @@ override_dh_auto_install:
 		exit 1; \
 	fi
 
+	# Install edge_ai_worker executable (required for subprocess mode)
+	@if [ -f $(CURDIR)/build/bin/edge_ai_worker ]; then \
+		echo "Installing worker executable from build/bin/edge_ai_worker"; \
+		install -m 755 $(CURDIR)/build/bin/edge_ai_worker $(CURDIR)/debian/$(PACKAGE_NAME)$(BIN_DIR)/edge_ai_worker; \
+	elif [ -f $(CURDIR)/build/edge_ai_worker ]; then \
+		echo "Installing worker executable from build/edge_ai_worker"; \
+		install -m 755 $(CURDIR)/build/edge_ai_worker $(CURDIR)/debian/$(PACKAGE_NAME)$(BIN_DIR)/edge_ai_worker; \
+	else \
+		echo "Warning: edge_ai_worker executable not found - subprocess mode will not work"; \
+		echo "Checked: $(CURDIR)/build/bin/edge_ai_worker"; \
+		echo "Checked: $(CURDIR)/build/edge_ai_worker"; \
+	fi
+
 	# Install bundled libraries - bundle directly from executable
 	# Ensure lib directory exists
 	install -d $(CURDIR)/debian/$(PACKAGE_NAME)$(LIB_DIR)

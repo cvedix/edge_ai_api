@@ -1750,13 +1750,13 @@ paths:
       description: |
         Search for similar faces in the database given an input face image.
         Returns a list of matching faces sorted by similarity (highest first) above the specified threshold.
-        
+
         **How it works:**
         1. Detects faces in the uploaded image
         2. Extracts face embeddings from the first detected face
         3. Compares with all faces in the database
         4. Returns matches with similarity >= threshold, sorted from highest to lowest
-        
+
         **Response fields:**
         - `image_id`: Unique identifier of the matched face
         - `subject`: Name of the matched subject
@@ -3769,7 +3769,7 @@ paths:
         '200':
           description: CORS preflight response
 
-  /v1/core/instance/{instanceId}/input:
+  /v1/core/instances/{instanceId}/input:
     post:
       summary: Set input source for an instance
       description: |
@@ -3830,7 +3830,7 @@ paths:
         '200':
           description: CORS preflight response
 
-  /v1/core/instance/{instanceId}/config:
+  /v1/core/instances/{instanceId}/config:
     get:
       summary: Get instance configuration
       description: |
@@ -3962,7 +3962,7 @@ paths:
         '200':
           description: CORS preflight response
 
-  /v1/core/instance/{instanceId}/statistics:
+  /v1/core/instances/{instanceId}/statistics:
     get:
       summary: Get instance statistics
       description: |
@@ -4042,7 +4042,7 @@ paths:
         '200':
           description: CORS preflight response
 
-  /v1/core/instance/{instanceId}/output/stream:
+  /v1/core/instances/{instanceId}/output/stream:
     get:
       summary: Get stream output configuration
       description: |
@@ -4191,7 +4191,7 @@ paths:
         '200':
           description: CORS preflight response
 
-  /v1/core/instance/{instanceId}/lines:
+  /v1/core/instances/{instanceId}/lines:
     get:
       summary: Get all crossing lines
       description: |
@@ -4232,7 +4232,7 @@ paths:
       description: |
         Creates a new crossing line for a ba_crossline instance.
         The line will be drawn on the video stream and used for counting objects.
-        
+
         **Real-time Update:** The line is immediately applied to the running video stream without requiring instance restart.
       operationId: createLine
       tags:
@@ -4293,7 +4293,7 @@ paths:
       summary: Delete all crossing lines
       description: |
         Deletes all crossing lines for a ba_crossline instance.
-        
+
         **Real-time Update:** Lines are immediately removed from the running video stream without requiring instance restart.
       operationId: deleteAllLines
       tags:
@@ -4338,12 +4338,122 @@ paths:
         '200':
           description: CORS preflight response
 
-  /v1/core/instance/{instanceId}/lines/{lineId}:
+  /v1/core/instances/{instanceId}/lines/{lineId}:
+    get:
+      summary: Get a specific crossing line
+      description: |
+        Returns a specific crossing line by ID for a ba_crossline instance.
+      operationId: getLine
+      tags:
+        - Lines
+      parameters:
+        - name: instanceId
+          in: path
+          required: true
+          schema:
+            type: string
+          description: The unique identifier of the instance
+          example: "a5204fc9-9a59-f80f-fb9f-bf3b42214943"
+        - name: lineId
+          in: path
+          required: true
+          schema:
+            type: string
+          description: The unique identifier of the line to retrieve
+          example: "b1234567-89ab-cdef-0123-456789abcdef"
+      responses:
+        '200':
+          description: Line retrieved successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CrossingLine'
+        '404':
+          description: Instance or line not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+    put:
+      summary: Update a specific crossing line
+      description: |
+        Updates a specific crossing line by ID for a ba_crossline instance.
+        The line will be updated on the video stream and used for counting objects.
+
+        **Real-time Update:** The line is immediately applied to the running video stream without requiring instance restart.
+      operationId: updateLine
+      tags:
+        - Lines
+      parameters:
+        - name: instanceId
+          in: path
+          required: true
+          schema:
+            type: string
+          description: The unique identifier of the instance
+          example: "a5204fc9-9a59-f80f-fb9f-bf3b42214943"
+        - name: lineId
+          in: path
+          required: true
+          schema:
+            type: string
+          description: The unique identifier of the line to update
+          example: "b1234567-89ab-cdef-0123-456789abcdef"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateLineRequest'
+            examples:
+              updateLine:
+                summary: Update line coordinates and direction
+                value:
+                  name: "Updated Counting Line"
+                  coordinates:
+                    - x: 200.0
+                      y: 400.0
+                    - x: 700.0
+                      y: 400.0
+                  direction: "Up"
+                  classes: ["Person", "Vehicle"]
+                  color: [0, 255, 0, 255]
+      responses:
+        '200':
+          description: Line updated successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CrossingLine'
+        '400':
+          description: Bad request (invalid coordinates or parameters)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: Instance or line not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
     delete:
       summary: Delete a specific crossing line
       description: |
         Deletes a specific crossing line by ID.
-        
+
         **Real-time Update:** The line is immediately removed from the running video stream without requiring instance restart.
       operationId: deleteLine
       tags:
@@ -6122,6 +6232,9 @@ components:
             - RTSP_URL: RTSP stream URL
             - MODEL_NAME: Model name (e.g., "yunet_2023mar", "face:yunet_2023mar")
             - MODEL_PATH: Direct path to model file
+            - CrossingLines: (ba_crossline only) JSON string array of crossing lines configuration.
+              Format: `[{"id":"uuid","name":"Line Name","coordinates":[{"x":0,"y":250},{"x":700,"y":220}],"direction":"Both","classes":["Vehicle"],"color":[255,0,0,255]}]`
+              Supports multiple lines. Can be managed via `/v1/core/instances/{instanceId}/lines` API endpoints.
           additionalProperties:
             type: string
 
