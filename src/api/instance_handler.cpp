@@ -2181,6 +2181,11 @@ void InstanceHandler::configureStreamOutput(
           PLOG_INFO << "[API] POST /v1/core/instance/" << instanceId
                     << "/output/stream - Configuring record output to path: "
                     << path;
+          PLOG_WARNING
+              << "[API] NOTE: Recorded MP4 files may use H.264 High profile "
+                 "with yuv444p pixel format, which may not be compatible with "
+                 "all video players. Use ./scripts/convert_mp4_compatible.sh "
+                 "to convert files for maximum compatibility.";
         }
 
       } else if (hasUri) {

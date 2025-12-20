@@ -98,6 +98,7 @@ else
     mkdir -p "$INSTALL_DIR"/uploads
     mkdir -p "$INSTALL_DIR"/lib
     mkdir -p "$INSTALL_DIR"/run
+    mkdir -p "$INSTALL_DIR"/record
 fi
 
 # Set up directory permissions
@@ -120,24 +121,12 @@ else
     chmod 750 "$INSTALL_DIR"/instances "$INSTALL_DIR"/solutions "$INSTALL_DIR"/groups \
               "$INSTALL_DIR"/nodes "$INSTALL_DIR"/models "$INSTALL_DIR"/videos \
               "$INSTALL_DIR"/fonts "$INSTALL_DIR"/logs "$INSTALL_DIR"/data \
-              "$INSTALL_DIR"/config 2>/dev/null || true
+              "$INSTALL_DIR"/config "$INSTALL_DIR"/record 2>/dev/null || true
     chmod 755 "$INSTALL_DIR"/uploads "$INSTALL_DIR"/lib "$INSTALL_DIR"/run 2>/dev/null || true
 fi
 
-# Create external data directory (/mnt/sb1/data) if it doesn't exist
-EXTERNAL_DATA_DIR="/mnt/sb1/data"
-if [ ! -d "$EXTERNAL_DATA_DIR" ]; then
-    echo "Creating external data directory: $EXTERNAL_DATA_DIR..."
-    mkdir -p "$EXTERNAL_DATA_DIR"
-    chown "$SERVICE_USER:$SERVICE_GROUP" "$EXTERNAL_DATA_DIR"
-    chmod 755 "$EXTERNAL_DATA_DIR"
-    echo "External data directory created successfully."
-else
-    echo "External data directory already exists: $EXTERNAL_DATA_DIR"
-    # Ensure correct ownership and permissions
-    chown "$SERVICE_USER:$SERVICE_GROUP" "$EXTERNAL_DATA_DIR" 2>/dev/null || true
-    chmod 755 "$EXTERNAL_DATA_DIR" 2>/dev/null || true
-fi
+# Note: Record directory (/opt/edge_ai_api/record) is now created automatically
+# by create_directories.sh script from directories.conf configuration
 
 # Bundle libraries
 bundle_libraries
