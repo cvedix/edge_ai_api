@@ -655,6 +655,525 @@ paths:
         '200':
           description: CORS preflight response
 
+  /v1/core/logs:
+    get:
+      summary: List all log files by category
+      description: |
+        Returns a list of all log files organized by category (api, instance, sdk_output, general).
+        Each category contains an array of log files with their date, size, and path.
+      operationId: listLogFiles
+      tags:
+        - Logs
+      responses:
+        '200':
+          description: List of log files by category
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LogFilesResponse'
+              example:
+                categories:
+                  api:
+                    - date: "2024-01-01"
+                      size: 1024
+                      path: "/var/log/edge_ai_api/api_2024-01-01.log"
+                  instance:
+                    - date: "2024-01-01"
+                      size: 2048
+                      path: "/var/log/edge_ai_api/instance_2024-01-01.log"
+                  sdk_output:
+                    - date: "2024-01-01"
+                      size: 512
+                      path: "/var/log/edge_ai_api/sdk_output_2024-01-01.log"
+                  general:
+                    - date: "2024-01-01"
+                      size: 4096
+                      path: "/var/log/edge_ai_api/general_2024-01-01.log"
+        '500':
+          description: Server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+    options:
+      summary: CORS preflight for list logs
+      operationId: listLogFilesOptions
+      tags:
+        - Logs
+      responses:
+        '200':
+          description: CORS preflight response
+
+  /v1/core/logs/{category}:
+    get:
+      summary: Get logs by category
+      description: |
+        Returns logs from a specific category with optional filtering.
+
+        **Categories:** api, instance, sdk_output, general
+
+        **Query Parameters:**
+        - `level`: Filter by log level (case-insensitive, e.g., INFO, ERROR, WARNING)
+        - `from`: Filter logs from timestamp (ISO 8601 format, e.g., 2024-01-01T00:00:00.000Z)
+        - `to`: Filter logs to timestamp (ISO 8601 format, e.g., 2024-01-01T23:59:59.999Z)
+        - `tail`: Get only the last N lines from the latest log file (integer)
+      operationId: getLogsByCategory
+      tags:
+        - Logs
+      parameters:
+        - name: category
+          in: path
+          required: true
+          schema:
+            type: string
+            enum: [api, instance, sdk_output, general]
+          description: Log category
+          example: "api"
+        - name: level
+          in: query
+          required: false
+          schema:
+            type: string
+          description: Filter by log level (case-insensitive)
+          example: "INFO"
+        - name: from
+          in: query
+          required: false
+          schema:
+            type: string
+            format: date-time
+          description: Filter logs from timestamp (ISO 8601)
+          example: "2024-01-01T00:00:00.000Z"
+        - name: to
+          in: query
+          required: false
+          schema:
+            type: string
+            format: date-time
+          description: Filter logs to timestamp (ISO 8601)
+          example: "2024-01-01T23:59:59.999Z"
+        - name: tail
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 0
+          description: Get only the last N lines from the latest log file
+          example: 100
+      responses:
+        '200':
+          description: Logs from the specified category
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LogsResponse'
+              example:
+                category: "api"
+                category_dir: "/var/log/edge_ai_api/api"
+                files_count: 1
+                total_lines: 1000
+                filtered_lines: 500
+                logs:
+                  - timestamp: "2024-01-01T12:00:00.000Z"
+                    level: "INFO"
+                    message: "API request received"
+                  - timestamp: "2024-01-01T12:00:01.000Z"
+                    level: "ERROR"
+                    message: "Failed to process request"
+        '400':
+          description: Bad request (invalid category or parameters)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+    options:
+      summary: CORS preflight for get logs by category
+      operationId: getLogsByCategoryOptions
+      tags:
+        - Logs
+      responses:
+        '200':
+          description: CORS preflight response
+
+  /v1/core/logs/{category}/{date}:
+    get:
+      summary: Get logs by category and date
+      description: |
+        Returns logs from a specific category and date with optional filtering.
+
+        **Categories:** api, instance, sdk_output, general
+        **Date Format:** YYYY-MM-DD (e.g., 2024-01-01)
+
+        **Query Parameters:**
+        - `level`: Filter by log level (case-insensitive, e.g., INFO, ERROR, WARNING)
+        - `from`: Filter logs from timestamp (ISO 8601 format, e.g., 2024-01-01T00:00:00.000Z)
+        - `to`: Filter logs to timestamp (ISO 8601 format, e.g., 2024-01-01T23:59:59.999Z)
+        - `tail`: Get only the last N lines from the log file (integer)
+      operationId: getLogsByCategoryAndDate
+      tags:
+        - Logs
+      parameters:
+        - name: category
+          in: path
+          required: true
+          schema:
+            type: string
+            enum: [api, instance, sdk_output, general]
+          description: Log category
+          example: "api"
+        - name: date
+          in: path
+          required: true
+          schema:
+            type: string
+            pattern: '^\d{4}-\d{2}-\d{2}$'
+          description: Date in YYYY-MM-DD format
+          example: "2024-01-01"
+        - name: level
+          in: query
+          required: false
+          schema:
+            type: string
+          description: Filter by log level (case-insensitive)
+          example: "INFO"
+        - name: from
+          in: query
+          required: false
+          schema:
+            type: string
+            format: date-time
+          description: Filter logs from timestamp (ISO 8601)
+          example: "2024-01-01T00:00:00.000Z"
+        - name: to
+          in: query
+          required: false
+          schema:
+            type: string
+            format: date-time
+          description: Filter logs to timestamp (ISO 8601)
+          example: "2024-01-01T23:59:59.999Z"
+        - name: tail
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 0
+          description: Get only the last N lines from the log file
+          example: 100
+      responses:
+        '200':
+          description: Logs from the specified category and date
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LogsByDateResponse'
+              example:
+                category: "api"
+                date: "2024-01-01"
+                total_lines: 1000
+                filtered_lines: 500
+                logs:
+                  - timestamp: "2024-01-01T12:00:00.000Z"
+                    level: "INFO"
+                    message: "API request received"
+                  - timestamp: "2024-01-01T12:00:01.000Z"
+                    level: "ERROR"
+                    message: "Failed to process request"
+        '400':
+          description: Bad request (invalid category, date format, or parameters)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: Log file not found for the specified date
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+    options:
+      summary: CORS preflight for get logs by category and date
+      operationId: getLogsByCategoryAndDateOptions
+      tags:
+        - Logs
+      responses:
+        '200':
+          description: CORS preflight response
+
+  /v1/core/ai/process:
+    post:
+      summary: Process single image/frame
+      description: |
+        Processes a single image/frame through the AI processing pipeline.
+        Supports priority-based queuing and rate limiting.
+      operationId: processImage
+      tags:
+        - AI
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - image
+              properties:
+                image:
+                  type: string
+                  description: Base64-encoded image data
+                  example: "/9j/4AAQSkZJRg..."
+                config:
+                  type: string
+                  description: Processing configuration (JSON string)
+                  example: '{"model": "yolo", "threshold": 0.5}'
+                priority:
+                  type: string
+                  enum: [low, medium, high]
+                  default: medium
+                  description: Request priority
+      responses:
+        '200':
+          description: Processing job submitted successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  job_id:
+                    type: string
+                    description: Unique job identifier
+                    example: "job_1234567890"
+                  status:
+                    type: string
+                    example: "queued"
+        '400':
+          description: Bad request (invalid JSON or missing required fields)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '429':
+          description: Rate limit exceeded
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '501':
+          description: Not implemented
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /v1/core/ai/batch:
+    post:
+      summary: Process batch of images/frames
+      description: |
+        Processes multiple images/frames in a batch through the AI processing pipeline.
+        Currently returns 501 Not Implemented.
+      operationId: processBatch
+      tags:
+        - AI
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                images:
+                  type: array
+                  description: Array of base64-encoded images
+                  items:
+                    type: string
+                config:
+                  type: string
+                  description: Processing configuration (JSON string)
+      responses:
+        '200':
+          description: Batch processing job submitted successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  job_ids:
+                    type: array
+                    items:
+                      type: string
+        '400':
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '501':
+          description: Not implemented
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /v1/core/ai/status:
+    get:
+      summary: Get AI processing status
+      description: |
+        Returns the current status of the AI processing system including queue size,
+        queue max capacity, GPU availability, and other resource information.
+      operationId: getAIStatus
+      tags:
+        - AI
+      responses:
+        '200':
+          description: AI processing status
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  queue_size:
+                    type: integer
+                    format: int64
+                    description: Current number of items in processing queue
+                    example: 5
+                  queue_max:
+                    type: integer
+                    format: int64
+                    description: Maximum queue capacity
+                    example: 100
+                  gpu_total:
+                    type: integer
+                    format: int64
+                    description: Total number of GPUs available
+                    example: 2
+                  gpu_available:
+                    type: integer
+                    format: int64
+                    description: Number of available GPUs
+                    example: 1
+
+  /v1/core/ai/metrics:
+    get:
+      summary: Get AI processing metrics
+      description: |
+        Returns detailed metrics about AI processing including performance statistics,
+        cache statistics, and rate limiter information.
+      operationId: getAIMetrics
+      tags:
+        - AI
+      responses:
+        '200':
+          description: AI processing metrics
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  cache:
+                    type: object
+                    properties:
+                      size:
+                        type: integer
+                        format: int64
+                        description: Current cache size
+                      max_size:
+                        type: integer
+                        format: int64
+                        description: Maximum cache capacity
+                      hit_rate:
+                        type: number
+                        format: float
+                        description: Cache hit rate (0.0 to 1.0)
+                  rate_limiter:
+                    type: object
+                    properties:
+                      total_keys:
+                        type: integer
+                        format: int64
+                        description: Total number of rate limit keys
+                      active_keys:
+                        type: integer
+                        format: int64
+                        description: Number of active rate limit keys
+
+  /v1/core/watchdog:
+    get:
+      summary: Get watchdog status
+      description: |
+        Returns watchdog and health monitor statistics including instance health checks,
+        restart counts, and monitoring information.
+      operationId: getWatchdogStatus
+      tags:
+        - Core
+      responses:
+        '200':
+          description: Watchdog status information
+          content:
+            application/json:
+              schema:
+                type: object
+                description: Watchdog and health monitor statistics
+                additionalProperties: true
+
+  /v1/core/endpoints:
+    get:
+      summary: Get endpoint statistics
+      description: |
+        Returns statistics for each API endpoint including request counts, response times,
+        error rates, and other performance metrics.
+      operationId: getEndpointsStats
+      tags:
+        - Core
+      responses:
+        '200':
+          description: Endpoint statistics
+          content:
+            application/json:
+              schema:
+                type: object
+                description: Statistics for each endpoint
+                additionalProperties: true
+
+  /v1/core/metrics:
+    get:
+      summary: Get Prometheus format metrics
+      description: |
+        Returns system metrics in Prometheus format for monitoring and alerting.
+        This endpoint is typically used by Prometheus scrapers.
+      operationId: getMetrics
+      tags:
+        - Core
+      responses:
+        '200':
+          description: Prometheus format metrics
+          content:
+            text/plain:
+              schema:
+                type: string
+                description: Metrics in Prometheus text format
+                example: |
+                  # HELP http_requests_total Total number of HTTP requests
+                  # TYPE http_requests_total counter
+                  http_requests_total{method="GET",path="/v1/core/health"} 100
+
   /v1/core/models/upload:
     post:
       summary: Upload a model file
@@ -4105,9 +4624,8 @@ paths:
         **Record Output Mode (using `path` parameter):**
         - When `enabled` is `true` and `path` is provided, video will be saved as MP4 files to the specified local directory
         - The path must exist and have write permissions (will be created if it doesn't exist)
-        - Uses `file_des_node` to save video directly to MP4 files
-        - Files are saved in MP4 format (H.264) to the specified path
-        - **Note**: Recorded files may use H.264 High profile with yuv444p pixel format, which may not be compatible with all video players (e.g., Windows Media Player, VSCode). To ensure maximum compatibility, convert files using `./scripts/convert_mp4_compatible.sh <file>` after recording stops.
+        - Uses `rtmp_des_node` to push data to local stream
+        - Files are saved in MP4 format to the specified path
 
         **Stream Output Mode (using `uri` parameter):**
         - **RTMP**: `rtmp://host:port/path/stream_key` - For RTMP streaming (e.g., to MediaMTX, YouTube Live, etc.)
@@ -4146,7 +4664,7 @@ paths:
                 summary: Enable record output to local path
                 value:
                   enabled: true
-                  path: "/opt/edge_ai_api/record"
+                  path: "/mnt/sb1/data"
               enableLocalRTMP:
                 summary: Enable local RTMP stream
                 value:
@@ -5691,6 +6209,139 @@ components:
           type: string
           description: Detailed error message
 
+    LogFileInfo:
+      type: object
+      required:
+        - date
+        - size
+        - path
+      properties:
+        date:
+          type: string
+          format: date
+          description: Date of the log file (YYYY-MM-DD)
+          example: "2024-01-01"
+        size:
+          type: integer
+          format: int64
+          description: Size of the log file in bytes
+          example: 1024
+        path:
+          type: string
+          description: Full path to the log file
+          example: "/var/log/edge_ai_api/api_2024-01-01.log"
+
+    LogFilesResponse:
+      type: object
+      required:
+        - categories
+      properties:
+        categories:
+          type: object
+          description: Log files organized by category
+          additionalProperties:
+            type: array
+            items:
+              $ref: '#/components/schemas/LogFileInfo'
+          example:
+            api:
+              - date: "2024-01-01"
+                size: 1024
+                path: "/var/log/edge_ai_api/api_2024-01-01.log"
+            instance:
+              - date: "2024-01-01"
+                size: 2048
+                path: "/var/log/edge_ai_api/instance_2024-01-01.log"
+
+    LogEntry:
+      type: object
+      required:
+        - timestamp
+        - level
+        - message
+      properties:
+        timestamp:
+          type: string
+          format: date-time
+          description: Log timestamp in ISO 8601 format
+          example: "2024-01-01T12:00:00.000Z"
+        level:
+          type: string
+          description: Log level (INFO, ERROR, WARNING, DEBUG, etc.)
+          example: "INFO"
+        message:
+          type: string
+          description: Log message
+          example: "API request received"
+
+    LogsResponse:
+      type: object
+      required:
+        - category
+        - category_dir
+        - files_count
+        - total_lines
+        - filtered_lines
+        - logs
+      properties:
+        category:
+          type: string
+          description: Log category
+          example: "api"
+        category_dir:
+          type: string
+          description: Directory path for this category
+          example: "/var/log/edge_ai_api/api"
+        files_count:
+          type: integer
+          description: Number of log files in this category
+          example: 1
+        total_lines:
+          type: integer
+          description: Total number of log lines before filtering
+          example: 1000
+        filtered_lines:
+          type: integer
+          description: Number of log lines after filtering
+          example: 500
+        logs:
+          type: array
+          description: Array of log entries
+          items:
+            $ref: '#/components/schemas/LogEntry'
+
+    LogsByDateResponse:
+      type: object
+      required:
+        - category
+        - date
+        - total_lines
+        - filtered_lines
+        - logs
+      properties:
+        category:
+          type: string
+          description: Log category
+          example: "api"
+        date:
+          type: string
+          format: date
+          description: Date of the log file (YYYY-MM-DD)
+          example: "2024-01-01"
+        total_lines:
+          type: integer
+          description: Total number of log lines before filtering
+          example: 1000
+        filtered_lines:
+          type: integer
+          description: Number of log lines after filtering
+          example: 500
+        logs:
+          type: array
+          description: Array of log entries
+          items:
+            $ref: '#/components/schemas/LogEntry'
+
     SetInputRequest:
       type: object
       required:
@@ -5823,9 +6474,7 @@ components:
             The requested path to save output video MP4 files. Required when enabled is true and using record output mode.
             The path must be a directory that exists or can be created, and must have write permissions.
             Directory will be created automatically if it doesn't exist.
-            
-            **Note**: Recorded MP4 files may use H.264 High profile with yuv444p pixel format, which may not be compatible with all video players (e.g., Windows Media Player, VSCode). To ensure maximum compatibility, convert files using `./scripts/convert_mp4_compatible.sh <file>` after recording stops.
-          example: "/opt/edge_ai_api/record"
+          example: "/mnt/sb1/data"
         uri:
           type: string
           format: uri
@@ -7378,6 +8027,10 @@ components:
 tags:
   - name: Core
     description: Core API endpoints for health and version information
+  - name: Logs
+    description: Log management endpoints for viewing and filtering application logs by category and date
+  - name: AI
+    description: AI processing endpoints for image/frame processing, batch operations, status, and metrics
   - name: Config
     description: System configuration management endpoints (get, create, update, delete)
   - name: Instances
