@@ -39,6 +39,8 @@ std::map<std::string, PluginInfo> checkRequiredPlugins() {
                          true, false};
 
   // Common plugins
+  plugins["filesrc"] = {"filesrc", "File source (for reading video files)",
+                        "gstreamer1.0-plugins-base", true, false};
   plugins["videoconvert"] = {"videoconvert", "Video format converter",
                              "gstreamer1.0-plugins-base", true, false};
   plugins["appsink"] = {"appsink", "Application sink",
@@ -64,6 +66,7 @@ getInstallationCommand(const std::vector<std::string> &missingPlugins) {
       {"h264parse", "gstreamer1.0-plugins-good"},
       {"flvmux", "gstreamer1.0-plugins-good"},
       {"rtmpsink", "gstreamer1.0-plugins-bad"},
+      {"filesrc", "gstreamer1.0-plugins-base"},
       {"videoconvert", "gstreamer1.0-plugins-base"},
       {"appsink", "gstreamer1.0-plugins-base"},
       {"appsrc", "gstreamer1.0-plugins-base"}};
