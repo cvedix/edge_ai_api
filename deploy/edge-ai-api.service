@@ -40,6 +40,11 @@ ReadWritePaths=/opt/edge_ai_api/logs /opt/edge_ai_api/data /opt/edge_ai_api/uplo
 EnvironmentFile=-/opt/edge_ai_api/config/.env
 Environment="API_HOST=0.0.0.0"
 Environment="API_PORT=8080"
+# GStreamer plugin path (required for filesrc and other plugins)
+# Default: Debian/Ubuntu x86_64 path
+# Override: Set GST_PLUGIN_PATH in /opt/edge_ai_api/config/.env
+# To auto-detect: Run scripts/setup_gst_plugin_path.sh
+Environment="GST_PLUGIN_PATH=/usr/lib/x86_64-linux-gnu/gstreamer-1.0"
 
 [Install]
 WantedBy=multi-user.target

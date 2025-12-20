@@ -474,22 +474,31 @@ fi
 
 cd "$PROJECT_ROOT"
 
-# Copy configuration files
-# Create .env from .env.example if .env doesn't exist
-if [ ! -f "$PROJECT_ROOT/.env" ] && [ -f "$PROJECT_ROOT/.env.example" ]; then
-    echo "Tạo .env từ .env.example..."
-    cp "$PROJECT_ROOT/.env.example" "$PROJECT_ROOT/.env"
-    echo -e "${GREEN}✓${NC} Đã tạo .env từ .env.example"
-fi
+    # Copy configuration files
+    # Create .env from .env.example if .env doesn't exist
+    if [ ! -f "$PROJECT_ROOT/.env" ] && [ -f "$PROJECT_ROOT/.env.example" ]; then
+        echo "Tạo .env từ .env.example..."
+        cp "$PROJECT_ROOT/.env.example" "$PROJECT_ROOT/.env"
+        echo -e "${GREEN}✓${NC} Đã tạo .env từ .env.example"
+    fi
 
-if [ -f "$PROJECT_ROOT/.env" ]; then
-    cp "$PROJECT_ROOT/.env" "$INSTALL_DIR/config/.env"
-    chown "$SERVICE_USER:$SERVICE_GROUP" "$INSTALL_DIR/config/.env"
-    chmod 640 "$INSTALL_DIR/config/.env"
-    echo -e "${GREEN}✓${NC} Đã copy .env"
-else
-    echo -e "${YELLOW}⚠${NC}  File .env không tồn tại. Bạn có thể tạo sau tại $INSTALL_DIR/config/.env"
-fi
+    if [ -f "$PROJECT_ROOT/.env" ]; then
+        cp "$PROJECT_ROOT/.env" "$INSTALL_DIR/config/.env"
+        chown "$SERVICE_USER:$SERVICE_GROUP" "$INSTALL_DIR/config/.env"
+        chmod 640 "$INSTALL_DIR/config/.env"
+        echo -e "${GREEN}✓${NC} Đã copy .env"
+    else
+        echo -e "${YELLOW}⚠${NC}  File .env không tồn tại. Bạn có thể tạo sau tại $INSTALL_DIR/config/.env"
+    fi
+
+    # Setup GStreamer plugin path automatically
+    echo "Setup GStreamer plugin path..."
+    if [ -f "$PROJECT_ROOT/scripts/utils.sh" ]; then
+        "$PROJECT_ROOT/scripts/utils.sh" setup-gst-path "$INSTALL_DIR/config/.env" 2>/dev/null || {
+            echo -e "${YELLOW}⚠${NC}  Could not auto-detect GStreamer plugin path"
+            echo "  You can set it manually: sudo $PROJECT_ROOT/scripts/utils.sh setup-gst-path"
+        }
+    fi
 
 # Copy openapi.yaml file (required for Swagger UI)
 if [ -f "$PROJECT_ROOT/openapi.yaml" ]; then

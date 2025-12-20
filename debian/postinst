@@ -204,6 +204,75 @@ EOF
     chmod 640 "$INSTALL_DIR/config/.env"
 fi
 
+# Setup GStreamer plugin path (auto-detect)
+echo "Setting up GStreamer plugin path..."
+setup_gst_plugin_path() {
+    local env_file="$INSTALL_DIR/config/.env"
+    local plugin_path=""
+    
+    # Method 1: Use pkg-config (most reliable)
+    if command -v pkg-config >/dev/null 2>&1; then
+        plugin_path=$(pkg-config --variable=pluginsdir gstreamer-1.0 2>/dev/null || echo "")
+        if [ -n "$plugin_path" ] && [ -d "$plugin_path" ]; then
+            echo "  ✓ Detected via pkg-config: $plugin_path"
+        else
+            plugin_path=""
+        fi
+    fi
+    
+    # Method 2: Common paths for different architectures
+    if [ -z "$plugin_path" ]; then
+        local common_paths=(
+            "/usr/lib/x86_64-linux-gnu/gstreamer-1.0"
+            "/usr/lib/aarch64-linux-gnu/gstreamer-1.0"
+            "/usr/lib/arm-linux-gnueabihf/gstreamer-1.0"
+            "/usr/lib64/gstreamer-1.0"
+            "/usr/lib/gstreamer-1.0"
+            "/usr/local/lib/gstreamer-1.0"
+        )
+        
+        for path in "${common_paths[@]}"; do
+            if [ -d "$path" ] && [ -f "$path/libgstcoreelements.so" ]; then
+                plugin_path="$path"
+                echo "  ✓ Detected via common path: $plugin_path"
+                break
+            fi
+        done
+    fi
+    
+    # Method 3: Find by searching for libgstcoreelements.so
+    if [ -z "$plugin_path" ]; then
+        plugin_path=$(find /usr -name "libgstcoreelements.so" 2>/dev/null | head -1 | xargs dirname 2>/dev/null || echo "")
+        if [ -n "$plugin_path" ] && [ -d "$plugin_path" ]; then
+            echo "  ✓ Detected via find: $plugin_path"
+        else
+            plugin_path=""
+        fi
+    fi
+    
+    # Update .env file if plugin path was found
+    if [ -n "$plugin_path" ]; then
+        if grep -q "^GST_PLUGIN_PATH=" "$env_file" 2>/dev/null; then
+            # Update existing
+            sed -i "s|^GST_PLUGIN_PATH=.*|GST_PLUGIN_PATH=$plugin_path|" "$env_file"
+            echo "  ✓ Updated GST_PLUGIN_PATH=$plugin_path"
+        else
+            # Add new
+            echo "" >> "$env_file"
+            echo "# GStreamer plugin path (auto-detected during installation)" >> "$env_file"
+            echo "GST_PLUGIN_PATH=$plugin_path" >> "$env_file"
+            echo "  ✓ Added GST_PLUGIN_PATH=$plugin_path"
+        fi
+        chown "$SERVICE_USER:$SERVICE_GROUP" "$env_file"
+        chmod 640 "$env_file"
+    else
+        echo "  ⚠ Could not detect GStreamer plugin path"
+        echo "  You can set it manually: sudo $INSTALL_DIR/scripts/utils.sh setup-gst-path"
+    fi
+}
+
+setup_gst_plugin_path
+
 # Verify executable and libraries
 if [ -f "$BIN_DIR/edge_ai_api" ]; then
     echo "Verifying executable..."

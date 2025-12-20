@@ -81,7 +81,7 @@ void BackpressureController::recordFrameProcessed(
 
   if (elapsed >= 1000) { // Update FPS every second
     double fps = (frame_count * 1000.0) / elapsed;
-    stats.current_fps.store(fps, std::memory_order_relaxed);
+    stats.current_fps.store(std::round(fps), std::memory_order_relaxed);
     frame_count = 0;
     last_update = now;
   }

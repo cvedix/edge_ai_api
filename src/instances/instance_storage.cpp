@@ -1181,20 +1181,90 @@ std::vector<std::string> InstanceStorage::loadAllInstances() {
 
 bool InstanceStorage::deleteInstance(const std::string &instanceId) {
   try {
-    // Load instances file
+    bool success = true;
+    
+    // Delete from primary storage directory first
     Json::Value instances = loadInstancesFile();
-
-    // Check if instance exists
-    if (!instances.isMember(instanceId)) {
-      return true; // Already deleted
+    if (instances.isMember(instanceId)) {
+      instances.removeMember(instanceId);
+      if (!saveInstancesFile(instances)) {
+        success = false;
+      }
     }
 
-    // Remove instance
-    instances.removeMember(instanceId);
+    // Also delete from all fallback tiers to prevent instances from reappearing
+    // on server restart. This ensures complete deletion across all storage locations.
+    std::filesystem::path path(storage_dir_);
+    std::string subdir = path.filename().string();
+    if (subdir.empty()) {
+      subdir = "instances";
+    }
 
-    // Save updated instances file
-    return saveInstancesFile(instances);
+    std::vector<std::string> allDirs =
+        EnvConfig::getAllPossibleDirectories(subdir);
+
+    for (const auto &dir : allDirs) {
+      // Skip primary storage directory (already handled above)
+      if (dir == storage_dir_) {
+        continue;
+      }
+
+      std::string filepath = dir + "/instances.json";
+      if (!std::filesystem::exists(filepath)) {
+        continue; // Skip if file doesn't exist
+      }
+
+      try {
+        // Load instances from this tier
+        std::ifstream file(filepath);
+        if (!file.is_open()) {
+          continue;
+        }
+
+        Json::CharReaderBuilder builder;
+        std::string errors;
+        Json::Value tierInstances(Json::objectValue);
+        if (!Json::parseFromStream(builder, file, &tierInstances, &errors)) {
+          continue; // Skip if parsing failed
+        }
+        file.close();
+
+        // Check if instance exists in this tier
+        if (!tierInstances.isMember(instanceId)) {
+          continue; // Instance not in this tier, skip
+        }
+
+        // Remove instance from this tier
+        tierInstances.removeMember(instanceId);
+
+        // Save updated file
+        std::ofstream outFile(filepath);
+        if (outFile.is_open()) {
+          Json::StreamWriterBuilder writerBuilder;
+          writerBuilder["indentation"] = "    ";
+          std::unique_ptr<Json::StreamWriter> writer(
+              writerBuilder.newStreamWriter());
+          writer->write(tierInstances, &outFile);
+          outFile.close();
+          std::cerr << "[InstanceStorage] Deleted instance " << instanceId
+                    << " from tier: " << dir << std::endl;
+        } else {
+          std::cerr << "[InstanceStorage] Warning: Could not open file for "
+                       "writing in tier: "
+                    << dir << std::endl;
+          success = false;
+        }
+      } catch (const std::exception &e) {
+        std::cerr << "[InstanceStorage] Exception deleting from tier " << dir
+                  << ": " << e.what() << std::endl;
+        // Continue with other tiers
+      }
+    }
+
+    return success;
   } catch (const std::exception &e) {
+    std::cerr << "[InstanceStorage] Exception in deleteInstance: " << e.what()
+              << std::endl;
     return false;
   }
 }
