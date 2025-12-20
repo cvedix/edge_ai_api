@@ -21,7 +21,7 @@ Khi kiểm tra, phát hiện:
 
 Có cảnh báo:
 ```
-GStreamer-WARNING: External plugin loader failed. 
+GStreamer-WARNING: External plugin loader failed.
 This most likely means that the plugin loader helper binary was not found or could not be run.
 ```
 
@@ -90,7 +90,7 @@ sudo apt-get install --reinstall gstreamer1.0-plugins-base gstreamer1.0-tools
 **Tại sao phải sửa GST_PLUGIN_PATH?**
 
 1. **GStreamer registry bị lỗi** - không tự động scan được plugins
-2. **Plugin scanner không hoạt động** - không thể build registry đúng cách  
+2. **Plugin scanner không hoạt động** - không thể build registry đúng cách
 3. **Set GST_PLUGIN_PATH là workaround** - buộc GStreamer scan thư mục đó, bypass registry
 
 **Giải pháp hiện tại (set trong service file) là đủ** vì:
@@ -191,4 +191,3 @@ sudo journalctl -u edge-ai-api -f | grep -i filesrc
 ```
 
 Lỗi "no element filesrc" sẽ biến mất.
-

@@ -120,7 +120,8 @@ void AIProcessor::processingLoop() {
                            .count();
 
         if (elapsed >= 1) {
-          double fps = static_cast<double>(frame_count_since_last_calc_) / elapsed;
+          double fps =
+              static_cast<double>(frame_count_since_last_calc_) / elapsed;
           metrics_.fps = std::round(fps);
           frame_count_since_last_calc_ = 0;
           last_fps_calc_time_ = now;

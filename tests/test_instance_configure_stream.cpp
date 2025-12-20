@@ -5,6 +5,7 @@
 #include "instances/instance_storage.h"
 #include "solutions/solution_registry.h"
 #include <chrono>
+#include <cstdlib>
 #include <drogon/HttpRequest.h>
 #include <drogon/HttpResponse.h>
 #include <filesystem>
@@ -21,6 +22,10 @@ protected:
     // Create temporary directory for tests
     test_dir_ = "/tmp/edge_ai_api_test_instances_" + std::to_string(getpid());
     std::filesystem::create_directories(test_dir_);
+
+    // Set font path environment variable to avoid permission errors
+    // Use empty string to skip font requirement in tests
+    setenv("OSD_DEFAULT_FONT_PATH", "", 1);
 
     // Setup solution registry and pipeline builder
     solution_registry_ = &SolutionRegistry::getInstance();

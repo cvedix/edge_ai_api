@@ -209,7 +209,7 @@ echo "Setting up GStreamer plugin path..."
 setup_gst_plugin_path() {
     local env_file="$INSTALL_DIR/config/.env"
     local plugin_path=""
-    
+
     # Method 1: Use pkg-config (most reliable)
     if command -v pkg-config >/dev/null 2>&1; then
         plugin_path=$(pkg-config --variable=pluginsdir gstreamer-1.0 2>/dev/null || echo "")
@@ -219,7 +219,7 @@ setup_gst_plugin_path() {
             plugin_path=""
         fi
     fi
-    
+
     # Method 2: Common paths for different architectures
     if [ -z "$plugin_path" ]; then
         local common_paths=(
@@ -230,7 +230,7 @@ setup_gst_plugin_path() {
             "/usr/lib/gstreamer-1.0"
             "/usr/local/lib/gstreamer-1.0"
         )
-        
+
         for path in "${common_paths[@]}"; do
             if [ -d "$path" ] && [ -f "$path/libgstcoreelements.so" ]; then
                 plugin_path="$path"
@@ -239,7 +239,7 @@ setup_gst_plugin_path() {
             fi
         done
     fi
-    
+
     # Method 3: Find by searching for libgstcoreelements.so
     if [ -z "$plugin_path" ]; then
         plugin_path=$(find /usr -name "libgstcoreelements.so" 2>/dev/null | head -1 | xargs dirname 2>/dev/null || echo "")
@@ -249,7 +249,7 @@ setup_gst_plugin_path() {
             plugin_path=""
         fi
     fi
-    
+
     # Update .env file if plugin path was found
     if [ -n "$plugin_path" ]; then
         if grep -q "^GST_PLUGIN_PATH=" "$env_file" 2>/dev/null; then
@@ -258,9 +258,11 @@ setup_gst_plugin_path() {
             echo "  ✓ Updated GST_PLUGIN_PATH=$plugin_path"
         else
             # Add new
-            echo "" >> "$env_file"
-            echo "# GStreamer plugin path (auto-detected during installation)" >> "$env_file"
-            echo "GST_PLUGIN_PATH=$plugin_path" >> "$env_file"
+            {
+                echo ""
+                echo "# GStreamer plugin path (auto-detected during installation)"
+                echo "GST_PLUGIN_PATH=$plugin_path"
+            } >> "$env_file"
             echo "  ✓ Added GST_PLUGIN_PATH=$plugin_path"
         fi
         chown "$SERVICE_USER:$SERVICE_GROUP" "$env_file"

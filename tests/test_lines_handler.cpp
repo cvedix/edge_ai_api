@@ -6,6 +6,7 @@
 #include "models/create_instance_request.h"
 #include "solutions/solution_registry.h"
 #include <chrono>
+#include <cstdlib>
 #include <drogon/HttpRequest.h>
 #include <drogon/HttpResponse.h>
 #include <filesystem>
@@ -27,6 +28,10 @@ protected:
     test_storage_dir_ = std::filesystem::temp_directory_path() /
                         ("test_instances_" + std::to_string(getpid()));
     std::filesystem::create_directories(test_storage_dir_);
+
+    // Set font path environment variable to avoid permission errors
+    // Use empty string to skip font requirement in tests
+    setenv("OSD_DEFAULT_FONT_PATH", "", 1);
 
     // Create dependencies for InstanceRegistry
     solution_registry_ = &SolutionRegistry::getInstance();

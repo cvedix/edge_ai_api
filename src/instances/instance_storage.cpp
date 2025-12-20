@@ -1182,7 +1182,7 @@ std::vector<std::string> InstanceStorage::loadAllInstances() {
 bool InstanceStorage::deleteInstance(const std::string &instanceId) {
   try {
     bool success = true;
-    
+
     // Delete from primary storage directory first
     Json::Value instances = loadInstancesFile();
     if (instances.isMember(instanceId)) {
@@ -1193,7 +1193,8 @@ bool InstanceStorage::deleteInstance(const std::string &instanceId) {
     }
 
     // Also delete from all fallback tiers to prevent instances from reappearing
-    // on server restart. This ensures complete deletion across all storage locations.
+    // on server restart. This ensures complete deletion across all storage
+    // locations.
     std::filesystem::path path(storage_dir_);
     std::string subdir = path.filename().string();
     if (subdir.empty()) {

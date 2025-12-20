@@ -273,16 +273,16 @@ case "$COMMAND" in
     setup-gst-path)
         # Configuration
         ENV_FILE="${2:-/opt/edge_ai_api/config/.env}"
-        
+
         echo -e "${BLUE}===========================================${NC}"
         echo -e "${BLUE}GStreamer Plugin Path Setup${NC}"
         echo -e "${BLUE}===========================================${NC}"
         echo ""
-        
+
         # Function to detect GStreamer plugin path
         detect_gst_plugin_path() {
             local plugin_path=""
-            
+
             # Method 1: Use pkg-config (most reliable)
             if command -v pkg-config &> /dev/null; then
                 plugin_path=$(pkg-config --variable=pluginsdir gstreamer-1.0 2>/dev/null)
@@ -291,7 +291,7 @@ case "$COMMAND" in
                     return 0
                 fi
             fi
-            
+
             # Method 2: Common paths for different architectures
             local common_paths=(
                 "/usr/lib/x86_64-linux-gnu/gstreamer-1.0"
@@ -301,28 +301,28 @@ case "$COMMAND" in
                 "/usr/lib/gstreamer-1.0"
                 "/usr/local/lib/gstreamer-1.0"
             )
-            
+
             for path in "${common_paths[@]}"; do
                 if [ -d "$path" ] && [ -f "$path/libgstcoreelements.so" ]; then
                     echo "$path"
                     return 0
                 fi
             done
-            
+
             # Method 3: Find by searching for libgstcoreelements.so
             plugin_path=$(find /usr -name "libgstcoreelements.so" 2>/dev/null | head -1 | xargs dirname)
             if [ -n "$plugin_path" ] && [ -d "$plugin_path" ]; then
                 echo "$plugin_path"
                 return 0
             fi
-            
+
             return 1
         }
-        
+
         # Detect plugin path
         echo "Step 1: Detecting GStreamer plugin path..."
         PLUGIN_PATH=$(detect_gst_plugin_path)
-        
+
         if [ $? -ne 0 ] || [ -z "$PLUGIN_PATH" ]; then
             echo -e "${RED}✗ Error: Could not detect GStreamer plugin path${NC}"
             echo ""
@@ -332,10 +332,10 @@ case "$COMMAND" in
             echo "  Arch Linux:    sudo pacman -S gstreamer"
             exit 1
         fi
-        
+
         echo -e "  ${GREEN}✓${NC} Detected: $PLUGIN_PATH"
         echo ""
-        
+
         # Create .env file directory if needed
         ENV_DIR=$(dirname "$ENV_FILE")
         if [ ! -d "$ENV_DIR" ]; then
@@ -350,7 +350,7 @@ case "$COMMAND" in
             fi
             echo ""
         fi
-        
+
         # Check if .env file exists
         if [ ! -f "$ENV_FILE" ]; then
             echo "Step 3: Creating .env file..."
@@ -362,7 +362,7 @@ case "$COMMAND" in
             echo -e "  ${GREEN}✓${NC} Created: $ENV_FILE"
             echo ""
         fi
-        
+
         # Check if GST_PLUGIN_PATH already exists
         if grep -q "^GST_PLUGIN_PATH=" "$ENV_FILE" 2>/dev/null; then
             echo "Step 4: Updating existing GST_PLUGIN_PATH..."
@@ -375,9 +375,11 @@ case "$COMMAND" in
         else
             echo "Step 4: Adding GST_PLUGIN_PATH to .env file..."
             if [ "$EUID" -eq 0 ]; then
-                echo "" >> "$ENV_FILE"
-                echo "# GStreamer plugin path (auto-detected)" >> "$ENV_FILE"
-                echo "GST_PLUGIN_PATH=$PLUGIN_PATH" >> "$ENV_FILE"
+                {
+                    echo ""
+                    echo "# GStreamer plugin path (auto-detected)"
+                    echo "GST_PLUGIN_PATH=$PLUGIN_PATH"
+                } >> "$ENV_FILE"
             else
                 echo "" | sudo tee -a "$ENV_FILE" > /dev/null
                 echo "# GStreamer plugin path (auto-detected)" | sudo tee -a "$ENV_FILE" > /dev/null
@@ -385,7 +387,7 @@ case "$COMMAND" in
             fi
             echo -e "  ${GREEN}✓${NC} Added GST_PLUGIN_PATH=$PLUGIN_PATH"
         fi
-        
+
         echo ""
         echo -e "${GREEN}===========================================${NC}"
         echo -e "${GREEN}✓ Setup completed!${NC}"
@@ -400,7 +402,7 @@ case "$COMMAND" in
         echo "To verify, check the service environment:"
         echo "  sudo systemctl show edge-ai-api | grep GST_PLUGIN_PATH"
         ;;
-        
+
     help|--help|-h)
         echo "Usage: $0 <command> [options]"
         echo ""
