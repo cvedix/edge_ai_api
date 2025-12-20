@@ -287,6 +287,8 @@ set(SOURCES
     src/core/pipeline_builder.cpp
     src/utils/cvedix_mqtt_client_impl.cpp
     src/utils/gstreamer_checker.cpp
+    src/utils/mp4_finalizer.cpp
+    src/utils/mp4_directory_watcher.cpp
     src/instances/instance_storage.cpp
     src/solutions/solution_storage.cpp
     src/groups/group_storage.cpp
@@ -662,7 +664,7 @@ find_package(cvedix REQUIRED)
 
 # Add all include directories for edge_ai_api target (modern CMake way)
 # Base project include directory
-target_include_directories(edge_ai_api PRIVATE ${CMAKE_SOURCE_DIR}/include)
+target_include_directories(edge_ai_api PRIVATE ${CMAKE_SOURCE_DIR}/include ${CMAKE_SOURCE_DIR}/src)
 
 # OpenCV include directories
 if(OpenCV_FOUND)
@@ -1082,12 +1084,14 @@ set(CORE_LIB_SOURCES
     src/core/platform_detector.cpp
     src/utils/gstreamer_checker.cpp
     src/utils/cvedix_mqtt_client_impl.cpp
+    src/utils/mp4_finalizer.cpp
+    src/utils/mp4_directory_watcher.cpp
     src/config/system_config.cpp
 )
 
 add_library(edge_ai_core SHARED ${CORE_LIB_SOURCES})
 
-target_include_directories(edge_ai_core PUBLIC ${CMAKE_SOURCE_DIR}/include)
+target_include_directories(edge_ai_core PUBLIC ${CMAKE_SOURCE_DIR}/include ${CMAKE_SOURCE_DIR}/src)
 
 # Link dependencies to core library
 if(TARGET jsoncpp_lib)

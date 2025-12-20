@@ -4,6 +4,8 @@
 #include "core/logging_flags.h"
 #include "core/uuid_generator.h"
 #include "models/update_instance_request.h"
+#include "utils/mp4_finalizer.h"
+#include "utils/mp4_directory_watcher.h"
 #include <algorithm>
 #include <atomic>
 #include <chrono>
@@ -42,6 +44,9 @@
 #include <typeinfo>
 #include <unistd.h>
 #include <vector> // For dynamic buffer
+#include <filesystem>
+
+namespace fs = std::filesystem;
 
 InstanceRegistry::InstanceRegistry(SolutionRegistry &solutionRegistry,
                                    PipelineBuilder &pipelineBuilder,
@@ -384,6 +389,39 @@ std::string InstanceRegistry::createInstance(const CreateInstanceRequest &req) {
                 instanceIt->second.hasReceivedData = false;
               }
             } // Release lock
+            
+            // Start MP4 directory watcher if RECORD_PATH is set
+            {
+              std::unique_lock<std::shared_timed_mutex> lock(mutex_);
+              auto instanceIt = instances_.find(instanceId);
+              if (instanceIt != instances_.end()) {
+                auto recordPathIt = instanceIt->second.additionalParams.find("RECORD_PATH");
+                if (recordPathIt != instanceIt->second.additionalParams.end() &&
+                    !recordPathIt->second.empty()) {
+                  std::string recordPath = recordPathIt->second;
+                  lock.unlock(); // Release main lock before acquiring watcher lock
+                  
+                  std::lock_guard<std::mutex> watcherLock(mp4_watcher_mutex_);
+                  
+                  // Stop existing watcher if any
+                  if (mp4_watchers_.find(instanceId) != mp4_watchers_.end()) {
+                    mp4_watchers_[instanceId]->stop();
+                    mp4_watchers_.erase(instanceId);
+                  }
+                  
+                  // Create and start new watcher
+                  auto watcher = std::make_unique<MP4Finalizer::MP4DirectoryWatcher>(recordPath);
+                  watcher->start();
+                  mp4_watchers_[instanceId] = std::move(watcher);
+                  std::cerr << "[InstanceRegistry] ✓ Started MP4 directory watcher for: "
+                            << recordPath << std::endl;
+                  std::cerr << "[InstanceRegistry] Files will be automatically converted "
+                               "to compatible format during recording"
+                            << std::endl;
+                }
+              }
+            }
+            
             std::cerr
                 << "[InstanceRegistry] ========================================"
                 << std::endl;
@@ -520,6 +558,18 @@ bool InstanceRegistry::deleteInstance(const std::string &instanceId) {
 
   // Stop video loop monitoring thread if exists
   stopVideoLoopThread(instanceId);
+
+  // Stop MP4 directory watcher if exists
+  {
+    std::lock_guard<std::mutex> watcherLock(mp4_watcher_mutex_);
+    auto watcherIt = mp4_watchers_.find(instanceId);
+    if (watcherIt != mp4_watchers_.end()) {
+      watcherIt->second->stop();
+      mp4_watchers_.erase(watcherIt);
+      std::cerr << "[InstanceRegistry] Stopped MP4 directory watcher for instance "
+                << instanceId << std::endl;
+    }
+  }
 
   // Delete from storage (doesn't need lock)
   // Always delete from storage since all instances are saved to storage for
@@ -1253,6 +1303,31 @@ bool InstanceRegistry::startInstance(const std::string &instanceId,
         instanceIt->second.hasReceivedData = false;
         std::cerr << "[InstanceRegistry] ✓ Instance " << instanceId
                   << " started successfully" << std::endl;
+        
+        // Start MP4 directory watcher if RECORD_PATH is set
+        auto recordPathIt = instanceIt->second.additionalParams.find("RECORD_PATH");
+        if (recordPathIt != instanceIt->second.additionalParams.end() &&
+            !recordPathIt->second.empty()) {
+          std::string recordPath = recordPathIt->second;
+          std::lock_guard<std::mutex> watcherLock(mp4_watcher_mutex_);
+          
+          // Stop existing watcher if any
+          if (mp4_watchers_.find(instanceId) != mp4_watchers_.end()) {
+            mp4_watchers_[instanceId]->stop();
+            mp4_watchers_.erase(instanceId);
+          }
+          
+          // Create and start new watcher
+          auto watcher = std::make_unique<MP4Finalizer::MP4DirectoryWatcher>(recordPath);
+          watcher->start();
+          mp4_watchers_[instanceId] = std::move(watcher);
+          std::cerr << "[InstanceRegistry] ✓ Started MP4 directory watcher for: "
+                    << recordPath << std::endl;
+          std::cerr << "[InstanceRegistry] Files will be automatically converted "
+                       "to compatible format during recording"
+                    << std::endl;
+        }
+        
         if (isInstanceLoggingEnabled()) {
           const auto &info = instanceIt->second;
           PLOG_INFO << "[Instance] Instance started successfully: "
@@ -1321,6 +1396,7 @@ bool InstanceRegistry::stopInstance(const std::string &instanceId) {
   bool wasRunning = false;
   std::string displayName;
   std::string solutionId;
+  std::string recordPath; // Declare outside block for use after stopPipeline
 
   {
     std::unique_lock<std::shared_timed_mutex> lock(
@@ -1339,6 +1415,12 @@ bool InstanceRegistry::stopInstance(const std::string &instanceId) {
     wasRunning = instanceIt->second.running;
     displayName = instanceIt->second.displayName;
     solutionId = instanceIt->second.solutionId;
+
+    // Get RECORD_PATH if exists (for auto-finalizing MP4 files after stop)
+    auto recordPathIt = instanceIt->second.additionalParams.find("RECORD_PATH");
+    if (recordPathIt != instanceIt->second.additionalParams.end()) {
+      recordPath = recordPathIt->second;
+    }
 
     // Copy pipeline before releasing lock
     pipelineCopy = pipelineIt->second;
@@ -1500,6 +1582,71 @@ bool InstanceRegistry::stopInstance(const std::string &instanceId) {
             << std::endl;
   std::cerr << "[InstanceRegistry] ========================================"
             << std::endl;
+
+  // Stop MP4 directory watcher if exists
+  {
+    std::lock_guard<std::mutex> watcherLock(mp4_watcher_mutex_);
+    auto watcherIt = mp4_watchers_.find(instanceId);
+    if (watcherIt != mp4_watchers_.end()) {
+      watcherIt->second->stop();
+      mp4_watchers_.erase(watcherIt);
+      std::cerr << "[InstanceRegistry] Stopped MP4 directory watcher for instance "
+                << instanceId << std::endl;
+    }
+  }
+
+  // Finalize and convert any remaining MP4 files if RECORD_PATH was set
+  // This ensures the last file segment is converted even if it hasn't reached
+  // max_duration (10 minutes) yet. The file_des_node will close the current file
+  // when pipeline stops, and we convert it here.
+  if (!recordPath.empty() && fs::exists(recordPath) && fs::is_directory(recordPath)) {
+    std::cerr << "[InstanceRegistry] Finalizing and converting MP4 files in: "
+              << recordPath << std::endl;
+    std::cerr << "[InstanceRegistry] This includes the last file segment that "
+                 "was being recorded"
+              << std::endl;
+    std::cerr << "[InstanceRegistry] Running in background thread to not block "
+                 "instance stop"
+              << std::endl;
+
+    // Run finalization in background thread
+    std::thread finalizeThread([recordPath, instanceId]() {
+      // Wait for file_des_node to fully close the current file
+      // file_des_node closes file when pipeline stops, but it may take a moment
+      // Increase wait time to ensure file is fully closed
+      std::cerr << "[InstanceRegistry] [MP4Finalizer] Waiting for file_des_node to close files..."
+                << std::endl;
+      std::this_thread::sleep_for(std::chrono::milliseconds(5000));
+
+      std::cerr << "[InstanceRegistry] [MP4Finalizer] Starting finalization for "
+                   "instance "
+                << instanceId << std::endl;
+      std::cerr << "[InstanceRegistry] [MP4Finalizer] Converting all MP4 files "
+                   "in: "
+                << recordPath << std::endl;
+
+      // Finalize all MP4 files in the record directory
+      // This will:
+      // 1. Try faststart on each file
+      // 2. If file needs conversion (H.264 High profile or yuv444p), convert to
+      //    Baseline + yuv420p
+      // 3. Overwrite original file with converted version
+      int processed = MP4Finalizer::MP4Finalizer::finalizeDirectory(
+          recordPath, true); // true = convert to compatible format if needed
+
+      std::cerr << "[InstanceRegistry] [MP4Finalizer] ✓ Completed finalization "
+                   "for instance "
+                << instanceId << std::endl;
+      std::cerr << "[InstanceRegistry] [MP4Finalizer] Converted " << processed
+                << " MP4 file(s) to compatible format" << std::endl;
+      std::cerr << "[InstanceRegistry] [MP4Finalizer] All files are now viewable "
+                   "with standard video players"
+                << std::endl;
+    });
+
+    // Detach thread so it runs independently and doesn't block instance stop
+    finalizeThread.detach();
+  }
 
   if (isInstanceLoggingEnabled()) {
     PLOG_INFO << "[Instance] Instance stopped successfully: " << instanceId

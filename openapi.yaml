@@ -4105,8 +4105,9 @@ paths:
         **Record Output Mode (using `path` parameter):**
         - When `enabled` is `true` and `path` is provided, video will be saved as MP4 files to the specified local directory
         - The path must exist and have write permissions (will be created if it doesn't exist)
-        - Uses `rtmp_des_node` to push data to local stream
-        - Files are saved in MP4 format to the specified path
+        - Uses `file_des_node` to save video directly to MP4 files
+        - Files are saved in MP4 format (H.264) to the specified path
+        - **Note**: Recorded files may use H.264 High profile with yuv444p pixel format, which may not be compatible with all video players (e.g., Windows Media Player, VSCode). To ensure maximum compatibility, convert files using `./scripts/convert_mp4_compatible.sh <file>` after recording stops.
 
         **Stream Output Mode (using `uri` parameter):**
         - **RTMP**: `rtmp://host:port/path/stream_key` - For RTMP streaming (e.g., to MediaMTX, YouTube Live, etc.)
@@ -4145,7 +4146,7 @@ paths:
                 summary: Enable record output to local path
                 value:
                   enabled: true
-                  path: "/mnt/sb1/data"
+                  path: "/opt/edge_ai_api/record"
               enableLocalRTMP:
                 summary: Enable local RTMP stream
                 value:
@@ -5822,7 +5823,9 @@ components:
             The requested path to save output video MP4 files. Required when enabled is true and using record output mode.
             The path must be a directory that exists or can be created, and must have write permissions.
             Directory will be created automatically if it doesn't exist.
-          example: "/mnt/sb1/data"
+            
+            **Note**: Recorded MP4 files may use H.264 High profile with yuv444p pixel format, which may not be compatible with all video players (e.g., Windows Media Player, VSCode). To ensure maximum compatibility, convert files using `./scripts/convert_mp4_compatible.sh <file>` after recording stops.
+          example: "/opt/edge_ai_api/record"
         uri:
           type: string
           format: uri

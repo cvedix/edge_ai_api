@@ -18,11 +18,15 @@
 #include <thread>
 #include <unordered_map>
 #include <vector>
+#include <memory>
 
 // Forward declarations
 namespace cvedix_nodes {
 class cvedix_node;
 }
+
+// Include MP4DirectoryWatcher header for unique_ptr (needs complete type)
+#include "utils/mp4_directory_watcher.h"
 
 /**
  * @brief Instance Registry
@@ -217,6 +221,11 @@ private:
       rtsp_reconnect_attempts_; // Track reconnect attempts
   mutable std::mutex
       rtsp_monitor_mutex_; // Separate mutex for RTSP monitor thread management
+
+  // MP4 directory watchers for auto-converting recordings
+  std::unordered_map<std::string, std::unique_ptr<class MP4Finalizer::MP4DirectoryWatcher>>
+      mp4_watchers_;
+  mutable std::mutex mp4_watcher_mutex_; // Mutex for MP4 watcher management
 
   // CRITICAL: Read-write lock to allow concurrent start operations but
   // serialize cleanup operations This allows multiple instances to start
