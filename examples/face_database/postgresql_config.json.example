@@ -1,0 +1,9 @@
+{
+  "type": "postgresql",
+  "host": "localhost",
+  "port": 5432,
+  "database": "face_recognition",
+  "username": "face_user",
+  "password": "your_postgresql_password"
+}
+

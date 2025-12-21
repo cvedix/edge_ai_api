@@ -1,4 +1,5 @@
 #include "api/recognition_handler.h"
+#include "config/system_config.h"
 #include "core/logger.h"
 #include "core/logging_flags.h"
 #include <algorithm>
@@ -3582,6 +3583,315 @@ void RecognitionHandler::handleOptionsDeleteAll(
   resp->setStatusCode(k200OK);
   resp->addHeader("Access-Control-Allow-Origin", "*");
   resp->addHeader("Access-Control-Allow-Methods", "DELETE, OPTIONS");
+  resp->addHeader("Access-Control-Allow-Headers", "Content-Type, x-api-key");
+  resp->addHeader("Access-Control-Max-Age", "3600");
+  callback(resp);
+}
+
+void RecognitionHandler::configureFaceDatabaseConnection(
+    const HttpRequestPtr &req,
+    std::function<void(const HttpResponsePtr &)> &&callback) {
+  auto start_time = std::chrono::steady_clock::now();
+
+  if (isApiLoggingEnabled()) {
+    PLOG_INFO << "[API] POST /v1/recognition/face-database/connection - "
+                 "Configure face database connection";
+    PLOG_DEBUG << "[API] Request from: " << req->getPeerAddr().toIpPort();
+  }
+
+  try {
+    // Parse JSON request body
+    Json::Value requestJson;
+    auto bodyView = req->getBody();
+    if (bodyView.empty()) {
+      callback(createErrorResponse(400, "Bad request",
+                                   "Request body is required"));
+      return;
+    }
+    std::string requestBody(bodyView.data(), bodyView.size());
+
+    Json::CharReaderBuilder builder;
+    std::unique_ptr<Json::CharReader> reader(builder.newCharReader());
+    std::string errors;
+    if (!reader->parse(requestBody.c_str(),
+                       requestBody.c_str() + requestBody.length(), &requestJson,
+                       &errors)) {
+      if (isApiLoggingEnabled()) {
+        PLOG_WARNING << "[API] POST /v1/recognition/face-database/connection - "
+                        "Invalid JSON: "
+                     << errors;
+      }
+      callback(createErrorResponse(400, "Bad request",
+                                   "Invalid JSON: " + errors));
+      return;
+    }
+
+    // Check if user wants to disable database connection
+    if (requestJson.isMember("enabled") && requestJson["enabled"].isBool() &&
+        !requestJson["enabled"].asBool()) {
+      // Disable database connection, use default file
+      auto &systemConfig = SystemConfig::getInstance();
+      Json::Value faceDbConfig(Json::objectValue);
+      faceDbConfig["enabled"] = false;
+
+      if (!systemConfig.updateConfigSection("face_database", faceDbConfig)) {
+        callback(createErrorResponse(500, "Internal server error",
+                                     "Failed to save configuration"));
+        return;
+      }
+
+      if (!systemConfig.saveConfig()) {
+        callback(createErrorResponse(500, "Internal server error",
+                                     "Failed to persist configuration"));
+        return;
+      }
+
+      Json::Value response(Json::objectValue);
+      response["message"] = "Database connection disabled. Using default "
+                            "face_database.txt file";
+      response["enabled"] = false;
+      response["default_file"] = resolveDatabasePath();
+
+      auto resp = HttpResponse::newHttpJsonResponse(response);
+      resp->setStatusCode(k200OK);
+      resp->addHeader("Access-Control-Allow-Origin", "*");
+      resp->addHeader("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
+      resp->addHeader("Access-Control-Allow-Headers",
+                     "Content-Type, x-api-key");
+
+      if (isApiLoggingEnabled()) {
+        PLOG_INFO << "[API] POST /v1/recognition/face-database/connection - "
+                     "Database connection disabled";
+      }
+
+      callback(resp);
+      return;
+    }
+
+    // Validate required fields for enabling database connection
+    if (!requestJson.isMember("type") || !requestJson["type"].isString()) {
+      callback(createErrorResponse(400, "Bad request",
+                                   "Field 'type' (mysql/postgresql) is required"));
+      return;
+    }
+
+    std::string dbType = requestJson["type"].asString();
+    std::transform(dbType.begin(), dbType.end(), dbType.begin(), ::tolower);
+
+    if (dbType != "mysql" && dbType != "postgresql") {
+      callback(createErrorResponse(
+          400, "Bad request",
+          "Field 'type' must be either 'mysql' or 'postgresql'"));
+      return;
+    }
+
+    // Validate required fields for database connection
+    std::vector<std::string> requiredFields = {"host", "database", "username",
+                                                "password"};
+    for (const auto &field : requiredFields) {
+      if (!requestJson.isMember(field) || !requestJson[field].isString()) {
+        callback(createErrorResponse(400, "Bad request",
+                                     "Field '" + field + "' is required"));
+        return;
+      }
+    }
+
+    // Build database configuration JSON
+    Json::Value dbConfig(Json::objectValue);
+    dbConfig["type"] = dbType;
+    dbConfig["host"] = requestJson["host"].asString();
+    dbConfig["database"] = requestJson["database"].asString();
+    dbConfig["username"] = requestJson["username"].asString();
+    dbConfig["password"] = requestJson["password"].asString();
+
+    // Optional fields
+    if (requestJson.isMember("port") && requestJson["port"].isInt()) {
+      dbConfig["port"] = requestJson["port"].asInt();
+    } else if (requestJson.isMember("port") &&
+               requestJson["port"].isString()) {
+      // Try to parse port as string
+      try {
+        int port = std::stoi(requestJson["port"].asString());
+        dbConfig["port"] = port;
+      } catch (...) {
+        // Use default port if parsing fails
+        dbConfig["port"] = (dbType == "mysql") ? 3306 : 5432;
+      }
+    } else {
+      // Default ports
+      dbConfig["port"] = (dbType == "mysql") ? 3306 : 5432;
+    }
+
+    if (requestJson.isMember("charset") && requestJson["charset"].isString()) {
+      dbConfig["charset"] = requestJson["charset"].asString();
+    } else {
+      dbConfig["charset"] = "utf8mb4";
+    }
+
+    // Store configuration in SystemConfig
+    auto &systemConfig = SystemConfig::getInstance();
+    Json::Value faceDbConfig(Json::objectValue);
+    faceDbConfig["connection"] = dbConfig;
+    faceDbConfig["enabled"] = true;
+
+    // Update config section
+    if (!systemConfig.updateConfigSection("face_database", faceDbConfig)) {
+      if (isApiLoggingEnabled()) {
+        PLOG_ERROR << "[API] POST /v1/recognition/face-database/connection - "
+                      "Failed to save configuration";
+      }
+      callback(createErrorResponse(500, "Internal server error",
+                                   "Failed to save database configuration"));
+      return;
+    }
+
+    // Save config to file
+    if (!systemConfig.saveConfig()) {
+      if (isApiLoggingEnabled()) {
+        PLOG_ERROR << "[API] POST /v1/recognition/face-database/connection - "
+                      "Failed to persist configuration to file";
+      }
+      callback(createErrorResponse(500, "Internal server error",
+                                   "Failed to persist configuration"));
+      return;
+    }
+
+    // Build success response
+    Json::Value response(Json::objectValue);
+    response["message"] = "Face database connection configured successfully";
+    response["config"] = dbConfig;
+    response["note"] =
+        "Database connection will be used instead of face_database.txt file";
+
+    auto resp = HttpResponse::newHttpJsonResponse(response);
+    resp->setStatusCode(k200OK);
+
+    // Add CORS headers
+    resp->addHeader("Access-Control-Allow-Origin", "*");
+    resp->addHeader("Access-Control-Allow-Methods", "POST, OPTIONS");
+    resp->addHeader("Access-Control-Allow-Headers", "Content-Type, x-api-key");
+
+    auto end_time = std::chrono::steady_clock::now();
+    auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(
+        end_time - start_time);
+
+    if (isApiLoggingEnabled()) {
+      PLOG_INFO << "[API] POST /v1/recognition/face-database/connection - "
+                   "Success - "
+                << duration.count() << "ms";
+    }
+
+    callback(resp);
+
+  } catch (const std::exception &e) {
+    auto end_time = std::chrono::steady_clock::now();
+    auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(
+        end_time - start_time);
+    if (isApiLoggingEnabled()) {
+      PLOG_ERROR << "[API] POST /v1/recognition/face-database/connection - "
+                    "Exception: "
+                 << e.what() << " - " << duration.count() << "ms";
+    }
+    callback(createErrorResponse(500, "Internal server error", e.what()));
+  } catch (...) {
+    auto end_time = std::chrono::steady_clock::now();
+    auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(
+        end_time - start_time);
+    if (isApiLoggingEnabled()) {
+      PLOG_ERROR << "[API] POST /v1/recognition/face-database/connection - "
+                    "Unknown exception - "
+                 << duration.count() << "ms";
+    }
+    callback(createErrorResponse(500, "Internal server error",
+                                "Unknown error occurred"));
+  }
+}
+
+void RecognitionHandler::getFaceDatabaseConnection(
+    const HttpRequestPtr &req,
+    std::function<void(const HttpResponsePtr &)> &&callback) {
+  auto start_time = std::chrono::steady_clock::now();
+
+  if (isApiLoggingEnabled()) {
+    PLOG_INFO << "[API] GET /v1/recognition/face-database/connection - Get "
+                 "face database connection configuration";
+    PLOG_DEBUG << "[API] Request from: " << req->getPeerAddr().toIpPort();
+  }
+
+  try {
+    auto &systemConfig = SystemConfig::getInstance();
+    Json::Value faceDbConfig = systemConfig.getConfigSection("face_database");
+
+    Json::Value response(Json::objectValue);
+
+    if (faceDbConfig.isNull() || !faceDbConfig.isMember("enabled") ||
+        !faceDbConfig["enabled"].asBool()) {
+      // No database configured, using default file
+      response["enabled"] = false;
+      response["message"] = "No database connection configured. Using default "
+                            "face_database.txt file";
+      response["default_file"] = resolveDatabasePath();
+    } else {
+      // Database configured
+      response["enabled"] = true;
+      if (faceDbConfig.isMember("connection")) {
+        response["config"] = faceDbConfig["connection"];
+      }
+      response["message"] = "Database connection is configured and enabled";
+    }
+
+    auto resp = HttpResponse::newHttpJsonResponse(response);
+    resp->setStatusCode(k200OK);
+
+    // Add CORS headers
+    resp->addHeader("Access-Control-Allow-Origin", "*");
+    resp->addHeader("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
+    resp->addHeader("Access-Control-Allow-Headers", "Content-Type, x-api-key");
+
+    auto end_time = std::chrono::steady_clock::now();
+    auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(
+        end_time - start_time);
+
+    if (isApiLoggingEnabled()) {
+      PLOG_INFO << "[API] GET /v1/recognition/face-database/connection - "
+                   "Success - "
+                << duration.count() << "ms";
+    }
+
+    callback(resp);
+
+  } catch (const std::exception &e) {
+    auto end_time = std::chrono::steady_clock::now();
+    auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(
+        end_time - start_time);
+    if (isApiLoggingEnabled()) {
+      PLOG_ERROR << "[API] GET /v1/recognition/face-database/connection - "
+                    "Exception: "
+                 << e.what() << " - " << duration.count() << "ms";
+    }
+    callback(createErrorResponse(500, "Internal server error", e.what()));
+  } catch (...) {
+    auto end_time = std::chrono::steady_clock::now();
+    auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(
+        end_time - start_time);
+    if (isApiLoggingEnabled()) {
+      PLOG_ERROR << "[API] GET /v1/recognition/face-database/connection - "
+                    "Unknown exception - "
+                 << duration.count() << "ms";
+    }
+    callback(createErrorResponse(500, "Internal server error",
+                                "Unknown error occurred"));
+  }
+}
+
+void RecognitionHandler::handleOptionsFaceDatabaseConnection(
+    const HttpRequestPtr &req,
+    std::function<void(const HttpResponsePtr &)> &&callback) {
+  (void)req; // Suppress unused parameter warning
+  auto resp = HttpResponse::newHttpResponse();
+  resp->setStatusCode(k200OK);
+  resp->addHeader("Access-Control-Allow-Origin", "*");
+  resp->addHeader("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
   resp->addHeader("Access-Control-Allow-Headers", "Content-Type, x-api-key");
   resp->addHeader("Access-Control-Max-Age", "3600");
   callback(resp);

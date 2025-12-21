@@ -61,6 +61,12 @@ public:
                 "/v1/recognition/search", Post);
   ADD_METHOD_TO(RecognitionHandler::handleOptionsSearch,
                 "/v1/recognition/search", Options);
+  ADD_METHOD_TO(RecognitionHandler::configureFaceDatabaseConnection,
+                "/v1/recognition/face-database/connection", Post);
+  ADD_METHOD_TO(RecognitionHandler::getFaceDatabaseConnection,
+                "/v1/recognition/face-database/connection", Get);
+  ADD_METHOD_TO(RecognitionHandler::handleOptionsFaceDatabaseConnection,
+                "/v1/recognition/face-database/connection", Options);
   METHOD_LIST_END
 
   /**
@@ -166,6 +172,31 @@ public:
    * @brief Handle OPTIONS request for CORS preflight (search endpoint)
    */
   void handleOptionsSearch(
+      const HttpRequestPtr &req,
+      std::function<void(const HttpResponsePtr &)> &&callback);
+
+  /**
+   * @brief Handle POST /v1/recognition/face-database/connection
+   * Configure face database connection (MySQL/PostgreSQL)
+   * If not configured, uses default face_database.txt file
+   */
+  void configureFaceDatabaseConnection(
+      const HttpRequestPtr &req,
+      std::function<void(const HttpResponsePtr &)> &&callback);
+
+  /**
+   * @brief Handle GET /v1/recognition/face-database/connection
+   * Get current face database connection configuration
+   */
+  void getFaceDatabaseConnection(
+      const HttpRequestPtr &req,
+      std::function<void(const HttpResponsePtr &)> &&callback);
+
+  /**
+   * @brief Handle OPTIONS request for CORS preflight (face database connection
+   * endpoint)
+   */
+  void handleOptionsFaceDatabaseConnection(
       const HttpRequestPtr &req,
       std::function<void(const HttpResponsePtr &)> &&callback);
 
