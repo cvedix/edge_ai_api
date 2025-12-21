@@ -2542,7 +2542,7 @@ paths:
            - `subject` (varchar 255) - Subject/name of the person
            - `base64_image` (longtext) - Base64-encoded face image
            - `embedding` (text) - Face embedding vector (comma-separated floats)
-           - `create_at` (timestamp) - Creation timestamp
+           - `created_at` (timestamp) - Creation timestamp
            - `machine_id` (varchar 255) - Machine identifier
            - `mac_address` (varchar 255) - MAC address
 

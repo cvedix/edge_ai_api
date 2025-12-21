@@ -63,7 +63,7 @@ Kết quả mong đợi:
 | subject     | varchar(255) | YES  |     | NULL              |                   |
 | base64_image| longtext     | YES  |     | NULL              |                   |
 | embedding   | text         | YES  |     | NULL              |                   |
-| create_at   | timestamp    | YES  |     | CURRENT_TIMESTAMP | DEFAULT_GENERATED |
+| created_at  | timestamp    | YES  |     | CURRENT_TIMESTAMP | DEFAULT_GENERATED |
 | machine_id  | varchar(255) | YES  |     | NULL              |                   |
 | mac_address | varchar(255) | YES  |     | NULL              |                   |
 +-------------+--------------+------+-----+-------------------+-------------------+
@@ -105,7 +105,7 @@ CREATE TABLE IF NOT EXISTS face_libraries (
     subject VARCHAR(255),
     base64_image LONGTEXT,
     embedding TEXT,
-    create_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     machine_id VARCHAR(255),
     mac_address VARCHAR(255),
     INDEX idx_image_id (image_id),
