@@ -1,0 +1,19 @@
+{
+  "type": "mysql",
+  "host": "localhost",
+  "port": 3306,
+  "database": "face_recognition",
+  "username": "root",
+  "password": "your_mysql_password",
+  "charset": "utf8mb4"
+}
+
+{
+  "type": "mysql",
+  "host": "localhost",
+  "port": 3306,
+  "database": "face_recognition",
+  "username": "face_user",
+  "password": "***@123",
+  "charset": "utf8mb4"
+}

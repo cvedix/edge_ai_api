@@ -193,14 +193,49 @@ curl -X POST http://localhost:8080/v1/core/solutions \
 | `/v1/recognition/faces` | POST | Register face |
 | `/v1/recognition/faces` | GET | List faces |
 | `/v1/recognition/recognize` | POST | Recognize face |
+| `/v1/recognition/face-database/connection` | POST | Configure database connection (MySQL/PostgreSQL) |
+| `/v1/recognition/face-database/connection` | GET | Get database connection configuration |
 
 ### Database Location
 
 Face database được lưu theo thứ tự:
-1. `FACE_DATABASE_PATH` env var
-2. `/opt/edge_ai_api/data/face_database.txt`
-3. `~/.local/share/edge_ai_api/face_database.txt`
-4. `./face_database.txt`
+1. **Database connection** (nếu đã cấu hình) - MySQL/PostgreSQL
+2. `FACE_DATABASE_PATH` env var
+3. `/opt/edge_ai_api/data/face_database.txt`
+4. `~/.local/share/edge_ai_api/face_database.txt`
+5. `./face_database.txt`
+
+> 📖 **Xem thêm:** [Face Database Connection Guide](./FACE_DATABASE_CONNECTION.md) - Hướng dẫn chi tiết về cấu hình database connection
+
+### Configure Database Connection
+
+Cấu hình kết nối MySQL/PostgreSQL để lưu trữ face data:
+
+```bash
+curl -X POST http://localhost:8080/v1/recognition/face-database/connection \
+  -H "Content-Type: application/json" \
+  -d '{
+    "type": "mysql",
+    "host": "localhost",
+    "port": 3306,
+    "database": "face_recognition",
+    "username": "face_user",
+    "password": "your_password",
+    "charset": "utf8mb4"
+  }'
+```
+
+**Tắt database connection (dùng file mặc định):**
+```bash
+curl -X POST http://localhost:8080/v1/recognition/face-database/connection \
+  -H "Content-Type: application/json" \
+  -d '{"enabled": false}'
+```
+
+**Lấy cấu hình hiện tại:**
+```bash
+curl http://localhost:8080/v1/recognition/face-database/connection
+```
 
 ### Register Face
 

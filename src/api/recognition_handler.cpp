@@ -1,10 +1,13 @@
 #include "api/recognition_handler.h"
+#include "config/system_config.h"
 #include "core/logger.h"
 #include "core/logging_flags.h"
 #include <algorithm>
 #include <cctype>
 #include <chrono>
 #include <cmath>
+#include <cstdlib>
+#include <cstring>
 #include <drogon/HttpResponse.h>
 #include <filesystem>
 #include <fstream>
@@ -17,6 +20,8 @@
 #include <random>
 #include <set>
 #include <sstream>
+#include <sys/wait.h>
+#include <unistd.h>
 
 // Static storage members
 std::unordered_map<std::string, std::vector<std::string>>
@@ -267,6 +272,71 @@ extract_embedding_from_image(const cv::Mat &aligned_face,
   }
 
   return embedding;
+}
+
+// Helper function: Check if face database connection is enabled
+static bool isDatabaseConnectionEnabled() {
+  try {
+    auto &systemConfig = SystemConfig::getInstance();
+    Json::Value faceDbConfig = systemConfig.getConfigSection("face_database");
+    
+    if (isApiLoggingEnabled()) {
+      PLOG_DEBUG << "[isDatabaseConnectionEnabled] Config section: " 
+                 << (faceDbConfig.isNull() ? "null" : "exists");
+      if (!faceDbConfig.isNull()) {
+        PLOG_DEBUG << "[isDatabaseConnectionEnabled] Has 'enabled': " 
+                   << faceDbConfig.isMember("enabled");
+        if (faceDbConfig.isMember("enabled")) {
+          PLOG_DEBUG << "[isDatabaseConnectionEnabled] Enabled value: " 
+                     << faceDbConfig["enabled"].asBool();
+        }
+      }
+    }
+    
+    if (faceDbConfig.isNull() || !faceDbConfig.isMember("enabled")) {
+      if (isApiLoggingEnabled()) {
+        PLOG_DEBUG << "[isDatabaseConnectionEnabled] Database not enabled (config null or missing enabled field)";
+      }
+      return false;
+    }
+    
+    bool enabled = faceDbConfig["enabled"].asBool();
+    if (isApiLoggingEnabled()) {
+      PLOG_DEBUG << "[isDatabaseConnectionEnabled] Database enabled: " << enabled;
+    }
+    return enabled;
+  } catch (const std::exception &e) {
+    if (isApiLoggingEnabled()) {
+      PLOG_ERROR << "[isDatabaseConnectionEnabled] Exception: " << e.what();
+    }
+    return false;
+  } catch (...) {
+    if (isApiLoggingEnabled()) {
+      PLOG_ERROR << "[isDatabaseConnectionEnabled] Unknown exception";
+    }
+    return false;
+  }
+}
+
+// Helper function: Get face database connection config
+static Json::Value getDatabaseConnectionConfig() {
+  try {
+    auto &systemConfig = SystemConfig::getInstance();
+    Json::Value faceDbConfig = systemConfig.getConfigSection("face_database");
+    
+    if (faceDbConfig.isNull() || !faceDbConfig.isMember("enabled") ||
+        !faceDbConfig["enabled"].asBool()) {
+      return Json::Value(Json::nullValue);
+    }
+    
+    if (faceDbConfig.isMember("connection")) {
+      return faceDbConfig["connection"];
+    }
+    
+    return Json::Value(Json::nullValue);
+  } catch (...) {
+    return Json::Value(Json::nullValue);
+  }
 }
 
 // Helper function: Resolve database file path with 3-tier fallback
@@ -853,7 +923,840 @@ public:
 };
 
 // Global database instance
+// Database Helper Class for MySQL/PostgreSQL operations
+// TODO: Implement actual database connection using Drogon's DbClient or other library
+class FaceDatabaseHelper {
+private:
+  Json::Value dbConfig_;
+  bool enabled_;
+
+public:
+  FaceDatabaseHelper() { reloadConfig(); }
+
+  void reloadConfig() {
+    enabled_ = isDatabaseConnectionEnabled();
+    if (enabled_) {
+      dbConfig_ = getDatabaseConnectionConfig();
+      if (dbConfig_.isNull()) {
+        enabled_ = false;
+        if (isApiLoggingEnabled()) {
+          PLOG_WARNING << "[FaceDatabaseHelper] Database config is null, disabled";
+        }
+      } else {
+        if (isApiLoggingEnabled()) {
+          PLOG_INFO << "[FaceDatabaseHelper] Database connection enabled: "
+                    << dbConfig_["type"].asString() << "://" 
+                    << dbConfig_["host"].asString() << ":" 
+                    << dbConfig_["port"].asInt() << "/" 
+                    << dbConfig_["database"].asString();
+        }
+      }
+    } else {
+      if (isApiLoggingEnabled()) {
+        PLOG_DEBUG << "[FaceDatabaseHelper] Database connection not enabled";
+      }
+    }
+  }
+
+  bool isEnabled() const { return enabled_; }
+
+  // Test database connection
+  bool testConnection(std::string &error) {
+    if (!enabled_) {
+      error = "Database connection not enabled";
+      return false;
+    }
+
+    std::string testSql = "SELECT 1";
+    return executeMySQLCommand(testSql, error);
+  }
+
+  // Helper: Escape SQL string
+  std::string escapeSqlString(const std::string &str) {
+    std::string escaped;
+    escaped.reserve(str.length() * 2);
+    for (char c : str) {
+      if (c == '\'') {
+        escaped += "''";
+      } else if (c == '\\') {
+        escaped += "\\\\";
+      } else {
+        escaped += c;
+      }
+    }
+    return escaped;
+  }
+
+  // Helper: Convert embedding vector to comma-separated string
+  std::string embeddingToString(const std::vector<float> &embedding) {
+    std::ostringstream oss;
+    for (size_t i = 0; i < embedding.size(); i++) {
+      if (i > 0)
+        oss << ",";
+      oss << std::fixed << std::setprecision(6) << embedding[i];
+    }
+    return oss.str();
+  }
+
+  // Helper: Execute MySQL command using temporary file for SQL and password
+  bool executeMySQLCommand(const std::string &sql, std::string &error) {
+    if (dbConfig_.isNull() || !dbConfig_.isMember("host") ||
+        !dbConfig_.isMember("database") || !dbConfig_.isMember("username") ||
+        !dbConfig_.isMember("password")) {
+      error = "Database configuration incomplete";
+      return false;
+    }
+
+    std::string host = dbConfig_["host"].asString();
+    int port = dbConfig_.isMember("port") ? dbConfig_["port"].asInt() : 3306;
+    std::string database = dbConfig_["database"].asString();
+    std::string username = dbConfig_["username"].asString();
+    std::string password = dbConfig_["password"].asString();
+
+    // Create temporary file for SQL query
+    char tmpFile[] = "/tmp/mysql_query_XXXXXX";
+    int fd = mkstemp(tmpFile);
+    if (fd == -1) {
+      error = "Failed to create temporary file";
+      return false;
+    }
+
+    // Write SQL to temp file
+    ssize_t written = write(fd, sql.c_str(), sql.length());
+    close(fd);
+
+    if (written != static_cast<ssize_t>(sql.length())) {
+      unlink(tmpFile);
+      error = "Failed to write SQL to temporary file";
+      return false;
+    }
+
+    // Build mysql command - use MYSQL_PWD environment variable for password
+    // Use setenv to set password, then execute mysql command
+    // This is safer than passing password in command line
+    
+    // Set environment variable
+    if (setenv("MYSQL_PWD", password.c_str(), 1) != 0) {
+      unlink(tmpFile);
+      error = "Failed to set MYSQL_PWD environment variable";
+      return false;
+    }
+
+    std::ostringstream cmd;
+    cmd << "mysql -h " << host << " -P " << port
+        << " -u " << username << " " << database << " < " << tmpFile << " 2>&1";
+
+    if (isApiLoggingEnabled()) {
+      PLOG_DEBUG << "[FaceDatabaseHelper] Executing MySQL command: mysql -h " << host 
+                 << " -P " << port << " -u " << username << " " << database;
+    }
+
+    // Execute command
+    FILE *pipe = popen(cmd.str().c_str(), "r");
+    if (!pipe) {
+      unlink(tmpFile);
+      error = "Failed to execute MySQL command";
+      return false;
+    }
+
+    char buffer[1024];
+    std::string result;
+    while (fgets(buffer, sizeof(buffer), pipe) != nullptr) {
+      result += buffer;
+    }
+
+    int status = pclose(pipe);
+    unlink(tmpFile); // Clean up temp file
+    unsetenv("MYSQL_PWD"); // Clear password from environment
+
+    if (status != 0) {
+      // Trim result
+      if (!result.empty() && result.back() == '\n') {
+        result.pop_back();
+      }
+      error = "MySQL command failed (exit code " + std::to_string(status) + "): " + result;
+      if (isApiLoggingEnabled()) {
+        PLOG_ERROR << "[FaceDatabaseHelper] MySQL error: " << error;
+        PLOG_DEBUG << "[FaceDatabaseHelper] SQL (first 200 chars): " 
+                   << sql.substr(0, 200);
+      }
+      return false;
+    }
+
+    if (isApiLoggingEnabled() && !result.empty()) {
+      PLOG_DEBUG << "[FaceDatabaseHelper] MySQL result: " << result;
+    }
+
+    return true;
+  }
+
+  // Helper: Execute MySQL SELECT query and return results
+  bool executeMySQLQuery(const std::string &sql, std::string &result, std::string &error) {
+    if (dbConfig_.isNull() || !dbConfig_.isMember("host") ||
+        !dbConfig_.isMember("database") || !dbConfig_.isMember("username") ||
+        !dbConfig_.isMember("password")) {
+      error = "Database configuration incomplete";
+      return false;
+    }
+
+    std::string host = dbConfig_["host"].asString();
+    int port = dbConfig_.isMember("port") ? dbConfig_["port"].asInt() : 3306;
+    std::string database = dbConfig_["database"].asString();
+    std::string username = dbConfig_["username"].asString();
+    std::string password = dbConfig_["password"].asString();
+
+    // Create temporary file for SQL query
+    char tmpFile[] = "/tmp/mysql_query_XXXXXX";
+    int fd = mkstemp(tmpFile);
+    if (fd == -1) {
+      error = "Failed to create temporary file";
+      return false;
+    }
+
+    // Write SQL to temp file
+    ssize_t written = write(fd, sql.c_str(), sql.length());
+    close(fd);
+
+    if (written != static_cast<ssize_t>(sql.length())) {
+      unlink(tmpFile);
+      error = "Failed to write SQL to temporary file";
+      return false;
+    }
+
+    // Set environment variable for password
+    if (setenv("MYSQL_PWD", password.c_str(), 1) != 0) {
+      unlink(tmpFile);
+      error = "Failed to set MYSQL_PWD environment variable";
+      return false;
+    }
+
+    // Use -N (skip column names) and -B (batch mode, tab-separated) for clean output
+    std::ostringstream cmd;
+    cmd << "mysql -h " << host << " -P " << port
+        << " -u " << username << " -N -B " << database << " < " << tmpFile << " 2>&1";
+
+    if (isApiLoggingEnabled()) {
+      PLOG_DEBUG << "[FaceDatabaseHelper] Executing MySQL query: mysql -h " << host 
+                 << " -P " << port << " -u " << username << " " << database;
+    }
+
+    // Execute command
+    FILE *pipe = popen(cmd.str().c_str(), "r");
+    if (!pipe) {
+      unlink(tmpFile);
+      error = "Failed to execute MySQL command";
+      return false;
+    }
+
+    char buffer[1024];
+    result.clear();
+    while (fgets(buffer, sizeof(buffer), pipe) != nullptr) {
+      result += buffer;
+    }
+
+    int status = pclose(pipe);
+    unlink(tmpFile); // Clean up temp file
+    unsetenv("MYSQL_PWD"); // Clear password from environment
+
+    if (status != 0) {
+      // Trim result
+      if (!result.empty() && result.back() == '\n') {
+        result.pop_back();
+      }
+      error = "MySQL query failed (exit code " + std::to_string(status) + "): " + result;
+      if (isApiLoggingEnabled()) {
+        PLOG_ERROR << "[FaceDatabaseHelper] MySQL query error: " << error;
+        PLOG_DEBUG << "[FaceDatabaseHelper] SQL (first 200 chars): " 
+                   << sql.substr(0, 200);
+      }
+      return false;
+    }
+
+    if (isApiLoggingEnabled() && !result.empty()) {
+      PLOG_DEBUG << "[FaceDatabaseHelper] MySQL query result length: " << result.length();
+    }
+
+    return true;
+  }
+
+  // Save face to database
+  bool saveFace(const std::string &imageId, const std::string &subject,
+                const std::string &base64Image, const std::vector<float> &embedding,
+                std::string &error) {
+    if (!enabled_) {
+      error = "Database connection not enabled";
+      return false;
+    }
+
+    if (dbConfig_.isNull()) {
+      error = "Database configuration not available";
+      return false;
+    }
+
+    // Escape strings for SQL
+    std::string escapedImageId = escapeSqlString(imageId);
+    std::string escapedSubject = escapeSqlString(subject);
+    std::string escapedBase64 = escapeSqlString(base64Image);
+    std::string embeddingStr = embeddingToString(embedding);
+    std::string escapedEmbedding = escapeSqlString(embeddingStr);
+
+    // Get current timestamp
+    auto now = std::chrono::system_clock::now();
+    auto time_t = std::chrono::system_clock::to_time_t(now);
+    std::ostringstream timestamp;
+    timestamp << std::put_time(std::localtime(&time_t), "%Y-%m-%d %H:%M:%S");
+
+    // Build SQL INSERT statement
+    // Note: Column name is 'created_at' (with 'd'), not 'create_at'
+    std::ostringstream sql;
+    sql << "INSERT INTO face_libraries (image_id, subject, base64_image, "
+           "embedding, created_at) VALUES ('"
+        << escapedImageId << "', '" << escapedSubject << "', '" << escapedBase64
+        << "', '" << escapedEmbedding << "', '" << timestamp.str() << "')";
+
+    if (isApiLoggingEnabled()) {
+      PLOG_INFO << "[FaceDatabaseHelper] Saving face to database: image_id="
+                << imageId << ", subject=" << subject;
+      PLOG_DEBUG << "[FaceDatabaseHelper] SQL: INSERT INTO face_libraries (image_id, subject, base64_image, embedding, created_at) VALUES (...)";
+    }
+
+    if (executeMySQLCommand(sql.str(), error)) {
+      if (isApiLoggingEnabled()) {
+        PLOG_INFO << "[FaceDatabaseHelper] Successfully saved face to database: image_id="
+                  << imageId << ", subject=" << subject;
+      }
+      return true;
+    } else {
+      if (isApiLoggingEnabled()) {
+        PLOG_ERROR << "[FaceDatabaseHelper] Failed to save face to database: " << error;
+      }
+    }
+
+    return false;
+  }
+
+  // Load all faces from database
+  bool loadAllFaces(std::map<std::string, std::vector<float>> &faces,
+                    std::string &error) {
+    if (!enabled_) {
+      error = "Database connection not enabled";
+      return false;
+    }
+
+    // Query all faces from database
+    std::string sql = "SELECT subject, embedding FROM face_libraries";
+    std::string result;
+    
+    if (!executeMySQLQuery(sql, result, error)) {
+      if (isApiLoggingEnabled()) {
+        PLOG_ERROR << "[FaceDatabaseHelper] Failed to load faces from database: " << error;
+      }
+      return false;
+    }
+
+    if (result.empty()) {
+      // No faces in database
+      faces.clear();
+      if (isApiLoggingEnabled()) {
+        PLOG_INFO << "[FaceDatabaseHelper] No faces found in database";
+      }
+      return true;
+    }
+
+    // Parse result - tab-separated values: subject\tembedding
+    std::istringstream iss(result);
+    std::string line;
+    faces.clear();
+    
+    while (std::getline(iss, line)) {
+      if (line.empty()) continue;
+      
+      // Split by tab
+      size_t tabPos = line.find('\t');
+      if (tabPos == std::string::npos) continue;
+      
+      std::string subject = line.substr(0, tabPos);
+      std::string embeddingStr = line.substr(tabPos + 1);
+      
+      // Trim whitespace
+      subject.erase(0, subject.find_first_not_of(" \t\n\r"));
+      subject.erase(subject.find_last_not_of(" \t\n\r") + 1);
+      embeddingStr.erase(0, embeddingStr.find_first_not_of(" \t\n\r"));
+      embeddingStr.erase(embeddingStr.find_last_not_of(" \t\n\r") + 1);
+      
+      // Parse embedding (comma-separated floats)
+      std::vector<float> embedding;
+      std::istringstream embStream(embeddingStr);
+      std::string val;
+      while (std::getline(embStream, val, ',')) {
+        val.erase(0, val.find_first_not_of(" \t\n\r"));
+        val.erase(val.find_last_not_of(" \t\n\r") + 1);
+        if (val.empty()) continue;
+        try {
+          embedding.push_back(std::stof(val));
+        } catch (...) {
+          // Skip invalid value
+          continue;
+        }
+      }
+      
+      if (!embedding.empty() && !subject.empty()) {
+        // For same subject, we keep the first embedding (or could merge)
+        if (faces.find(subject) == faces.end()) {
+          faces[subject] = embedding;
+        }
+      }
+    }
+
+    if (isApiLoggingEnabled()) {
+      PLOG_INFO << "[FaceDatabaseHelper] Loaded " << faces.size() << " face subject(s) from database";
+    }
+    
+    return true;
+  }
+
+  // Load all faces with embeddings and image data from database for recognition/search
+  bool loadAllFacesWithDetails(std::map<std::string, std::vector<float>> &embeddings,
+                                std::map<std::string, std::string> &base64Images,
+                                std::map<std::string, std::vector<std::string>> &subjectImageIds,
+                                std::string &error) {
+    if (!enabled_) {
+      error = "Database connection not enabled";
+      return false;
+    }
+
+    // Query all faces from database with image_id, subject, embedding, base64_image
+    std::string sql = "SELECT image_id, subject, embedding, base64_image FROM face_libraries";
+    std::string result;
+    
+    if (!executeMySQLQuery(sql, result, error)) {
+      if (isApiLoggingEnabled()) {
+        PLOG_ERROR << "[FaceDatabaseHelper] Failed to load faces with details from database: " << error;
+      }
+      return false;
+    }
+
+    embeddings.clear();
+    base64Images.clear();
+    subjectImageIds.clear();
+
+    if (result.empty()) {
+      if (isApiLoggingEnabled()) {
+        PLOG_INFO << "[FaceDatabaseHelper] No faces found in database";
+      }
+      return true;
+    }
+
+    // Parse result - tab-separated values: image_id\tsubject\tembedding\tbase64_image
+    std::istringstream iss(result);
+    std::string line;
+    
+    while (std::getline(iss, line)) {
+      if (line.empty()) continue;
+      
+      // Split by tab
+      std::vector<std::string> fields;
+      std::istringstream lineStream(line);
+      std::string field;
+      while (std::getline(lineStream, field, '\t')) {
+        fields.push_back(field);
+      }
+      
+      if (fields.size() < 3) continue; // Need at least image_id, subject, embedding
+      
+      std::string imageId = fields[0];
+      std::string subject = fields[1];
+      std::string embeddingStr = fields[2];
+      std::string base64Image = fields.size() > 3 ? fields[3] : "";
+      
+      // Trim whitespace
+      imageId.erase(0, imageId.find_first_not_of(" \t\n\r"));
+      imageId.erase(imageId.find_last_not_of(" \t\n\r") + 1);
+      subject.erase(0, subject.find_first_not_of(" \t\n\r"));
+      subject.erase(subject.find_last_not_of(" \t\n\r") + 1);
+      embeddingStr.erase(0, embeddingStr.find_first_not_of(" \t\n\r"));
+      embeddingStr.erase(embeddingStr.find_last_not_of(" \t\n\r") + 1);
+      
+      if (imageId.empty() || subject.empty() || embeddingStr.empty()) continue;
+      
+      // Parse embedding (comma-separated floats)
+      std::vector<float> embedding;
+      std::istringstream embStream(embeddingStr);
+      std::string val;
+      while (std::getline(embStream, val, ',')) {
+        val.erase(0, val.find_first_not_of(" \t\n\r"));
+        val.erase(val.find_last_not_of(" \t\n\r") + 1);
+        if (val.empty()) continue;
+        try {
+          embedding.push_back(std::stof(val));
+        } catch (...) {
+          continue;
+        }
+      }
+      
+      if (!embedding.empty()) {
+        // Store embedding (keep first one for each subject, or could average)
+        if (embeddings.find(subject) == embeddings.end()) {
+          embeddings[subject] = embedding;
+        }
+        
+        // Store base64 image (keep first one for each subject)
+        if (!base64Image.empty() && base64Images.find(subject) == base64Images.end()) {
+          base64Images[subject] = base64Image;
+        }
+        
+        // Store image_id mapping
+        subjectImageIds[subject].push_back(imageId);
+      }
+    }
+
+    if (isApiLoggingEnabled()) {
+      PLOG_INFO << "[FaceDatabaseHelper] Loaded " << embeddings.size() 
+                << " face subject(s) with details from database";
+    }
+    
+    return true;
+  }
+
+  // Get faces from database with pagination and optional subject filter
+  bool getFacesFromDatabase(int page, int size, const std::string &subjectFilter,
+                           std::vector<std::pair<std::string, std::string>> &faces,
+                           int &totalCount, std::string &error) {
+    if (!enabled_) {
+      error = "Database connection not enabled";
+      return false;
+    }
+
+    // Build WHERE clause
+    std::string whereClause = "";
+    if (!subjectFilter.empty()) {
+      std::string escapedSubject = escapeSqlString(subjectFilter);
+      whereClause = "WHERE subject = '" + escapedSubject + "'";
+    }
+
+    // Get total count
+    std::string countSql = "SELECT COUNT(*) FROM face_libraries " + whereClause;
+    std::string countResult;
+    
+    if (!executeMySQLQuery(countSql, countResult, error)) {
+      if (isApiLoggingEnabled()) {
+        PLOG_ERROR << "[FaceDatabaseHelper] Failed to get face count from database: " << error;
+      }
+      return false;
+    }
+
+    // Parse count
+    try {
+      totalCount = std::stoi(countResult);
+    } catch (...) {
+      totalCount = 0;
+    }
+
+    // Get paginated faces
+    int offset = page * size;
+    std::string sql = "SELECT image_id, subject FROM face_libraries " + whereClause +
+                      " ORDER BY created_at DESC LIMIT " + std::to_string(size) +
+                      " OFFSET " + std::to_string(offset);
+    
+    std::string result;
+    if (!executeMySQLQuery(sql, result, error)) {
+      if (isApiLoggingEnabled()) {
+        PLOG_ERROR << "[FaceDatabaseHelper] Failed to get faces from database: " << error;
+      }
+      return false;
+    }
+
+    faces.clear();
+    if (result.empty()) {
+      return true;
+    }
+
+    // Parse result - tab-separated values: image_id\tsubject
+    std::istringstream iss(result);
+    std::string line;
+    
+    while (std::getline(iss, line)) {
+      if (line.empty()) continue;
+      
+      // Split by tab
+      size_t tabPos = line.find('\t');
+      if (tabPos == std::string::npos) continue;
+      
+      std::string imageId = line.substr(0, tabPos);
+      std::string subject = line.substr(tabPos + 1);
+      
+      if (!imageId.empty() && !subject.empty()) {
+        faces.push_back({imageId, subject});
+      }
+    }
+
+    if (isApiLoggingEnabled()) {
+      PLOG_DEBUG << "[FaceDatabaseHelper] Retrieved " << faces.size() 
+                 << " face(s) from database (page=" << page << ", size=" << size << ")";
+    }
+    
+    return true;
+  }
+
+  // Delete face from database by image_id
+  bool deleteFace(const std::string &imageId, std::string &error) {
+    if (!enabled_) {
+      error = "Database connection not enabled";
+      return false;
+    }
+
+    std::string escapedImageId = escapeSqlString(imageId);
+    std::string sql = "DELETE FROM face_libraries WHERE image_id = '" + escapedImageId + "'";
+
+    if (isApiLoggingEnabled()) {
+      PLOG_INFO << "[FaceDatabaseHelper] Deleting face from database: image_id=" << imageId;
+    }
+
+    if (executeMySQLCommand(sql, error)) {
+      if (isApiLoggingEnabled()) {
+        PLOG_INFO << "[FaceDatabaseHelper] Successfully deleted face from database: image_id=" << imageId;
+      }
+      return true;
+    } else {
+      if (isApiLoggingEnabled()) {
+        PLOG_ERROR << "[FaceDatabaseHelper] Failed to delete face from database: " << error;
+      }
+      return false;
+    }
+  }
+
+  // Find face by image_id in database
+  bool findFaceByImageId(const std::string &imageId, std::string &subject, std::string &error) {
+    if (!enabled_) {
+      error = "Database connection not enabled";
+      return false;
+    }
+
+    std::string escapedImageId = escapeSqlString(imageId);
+    std::string sql = "SELECT subject FROM face_libraries WHERE image_id = '" + escapedImageId + "' LIMIT 1";
+    
+    std::string result;
+    if (!executeMySQLQuery(sql, result, error)) {
+      if (isApiLoggingEnabled()) {
+        PLOG_ERROR << "[FaceDatabaseHelper] Failed to find face by image_id: " << error;
+      }
+      return false;
+    }
+
+    if (result.empty()) {
+      return false; // Not found
+    }
+
+    // Parse result - should be just the subject name
+    // MySQL -N -B returns tab-separated values, but for single column it's just the value
+    std::istringstream iss(result);
+    std::string line;
+    if (std::getline(iss, line)) {
+      // Trim whitespace
+      line.erase(0, line.find_first_not_of(" \t\n\r"));
+      line.erase(line.find_last_not_of(" \t\n\r") + 1);
+      if (!line.empty()) {
+        subject = line;
+        return true;
+      }
+    }
+
+    return false;
+  }
+
+  // Find faces by subject name in database
+  bool findFacesBySubject(const std::string &subjectName, std::vector<std::string> &imageIds, std::string &error) {
+    if (!enabled_) {
+      error = "Database connection not enabled";
+      return false;
+    }
+
+    std::string escapedSubject = escapeSqlString(subjectName);
+    std::string sql = "SELECT image_id FROM face_libraries WHERE subject = '" + escapedSubject + "'";
+    
+    std::string result;
+    if (!executeMySQLQuery(sql, result, error)) {
+      if (isApiLoggingEnabled()) {
+        PLOG_ERROR << "[FaceDatabaseHelper] Failed to find faces by subject: " << error;
+      }
+      return false;
+    }
+
+    imageIds.clear();
+    if (result.empty()) {
+      return false; // Not found
+    }
+
+    // Parse result - should be list of image_ids
+    // MySQL -N -B returns tab-separated values, but for single column it's just the value per line
+    std::istringstream iss(result);
+    std::string line;
+    while (std::getline(iss, line)) {
+      // Trim whitespace
+      line.erase(0, line.find_first_not_of(" \t\n\r"));
+      line.erase(line.find_last_not_of(" \t\n\r") + 1);
+      if (!line.empty()) {
+        imageIds.push_back(line);
+      }
+    }
+
+    return !imageIds.empty();
+  }
+
+  // Delete all faces for a subject from database
+  bool deleteSubject(const std::string &subject, std::string &error) {
+    if (!enabled_) {
+      error = "Database connection not enabled";
+      return false;
+    }
+
+    std::string escapedSubject = escapeSqlString(subject);
+    std::string sql = "DELETE FROM face_libraries WHERE subject = '" + escapedSubject + "'";
+
+    if (isApiLoggingEnabled()) {
+      PLOG_INFO << "[FaceDatabaseHelper] Deleting subject from database: subject=" << subject;
+    }
+
+    if (executeMySQLCommand(sql, error)) {
+      if (isApiLoggingEnabled()) {
+        PLOG_INFO << "[FaceDatabaseHelper] Successfully deleted subject from database: subject=" << subject;
+      }
+      return true;
+    } else {
+      if (isApiLoggingEnabled()) {
+        PLOG_ERROR << "[FaceDatabaseHelper] Failed to delete subject from database: " << error;
+      }
+      return false;
+    }
+  }
+
+  // Delete all faces from database
+  bool deleteAllFaces(std::string &error) {
+    if (!enabled_) {
+      error = "Database connection not enabled";
+      return false;
+    }
+
+    std::string sql = "DELETE FROM face_libraries";
+
+    if (isApiLoggingEnabled()) {
+      PLOG_INFO << "[FaceDatabaseHelper] Deleting all faces from database";
+    }
+
+    if (executeMySQLCommand(sql, error)) {
+      if (isApiLoggingEnabled()) {
+        PLOG_INFO << "[FaceDatabaseHelper] Successfully deleted all faces from database";
+      }
+      return true;
+    } else {
+      if (isApiLoggingEnabled()) {
+        PLOG_ERROR << "[FaceDatabaseHelper] Failed to delete all faces from database: " << error;
+      }
+      return false;
+    }
+  }
+
+  // Update subject name in database (rename subject)
+  bool updateSubjectName(const std::string &oldSubjectName, const std::string &newSubjectName, 
+                        bool mergeEmbeddings, std::string &error) {
+    if (!enabled_) {
+      error = "Database connection not enabled";
+      return false;
+    }
+
+    std::string escapedOldSubject = escapeSqlString(oldSubjectName);
+    std::string escapedNewSubject = escapeSqlString(newSubjectName);
+
+    if (mergeEmbeddings) {
+      // Check if new subject exists
+      std::vector<std::string> existingImageIds;
+      if (findFacesBySubject(newSubjectName, existingImageIds, error)) {
+        // New subject exists - need to merge embeddings
+        // For merge, we'll update all old subject records to new subject name
+        // The embeddings will be averaged at application level if needed
+        std::string sql = "UPDATE face_libraries SET subject = '" + escapedNewSubject + 
+                         "' WHERE subject = '" + escapedOldSubject + "'";
+        
+        if (isApiLoggingEnabled()) {
+          PLOG_INFO << "[FaceDatabaseHelper] Merging subjects in database: " 
+                    << oldSubjectName << " -> " << newSubjectName;
+        }
+
+        if (executeMySQLCommand(sql, error)) {
+          if (isApiLoggingEnabled()) {
+            PLOG_INFO << "[FaceDatabaseHelper] Successfully merged subjects in database";
+          }
+          return true;
+        } else {
+          if (isApiLoggingEnabled()) {
+            PLOG_ERROR << "[FaceDatabaseHelper] Failed to merge subjects in database: " << error;
+          }
+          return false;
+        }
+      }
+    }
+
+    // Simple rename (new subject doesn't exist or no merge needed)
+    std::string sql = "UPDATE face_libraries SET subject = '" + escapedNewSubject + 
+                     "' WHERE subject = '" + escapedOldSubject + "'";
+
+    if (isApiLoggingEnabled()) {
+      PLOG_INFO << "[FaceDatabaseHelper] Renaming subject in database: " 
+                << oldSubjectName << " -> " << newSubjectName;
+    }
+
+    if (executeMySQLCommand(sql, error)) {
+      if (isApiLoggingEnabled()) {
+        PLOG_INFO << "[FaceDatabaseHelper] Successfully renamed subject in database";
+      }
+      return true;
+    } else {
+      if (isApiLoggingEnabled()) {
+        PLOG_ERROR << "[FaceDatabaseHelper] Failed to rename subject in database: " << error;
+      }
+      return false;
+    }
+  }
+
+  // Log request to face_log table
+  bool logRequest(const std::string &requestType, const std::string &clientIp,
+                  const std::string &requestBody, const std::string &responseBody,
+                  int responseCode, const std::string &notes, std::string &error) {
+    if (!enabled_) {
+      // Logging is optional, don't return error
+      return false;
+    }
+
+    // TODO: Implement actual database log operation
+    
+    if (isApiLoggingEnabled()) {
+      PLOG_DEBUG << "[FaceDatabaseHelper] Would log request to database: "
+                 << "type=" << requestType;
+    }
+    
+    return false;
+  }
+};
+
 static std::unique_ptr<FaceDatabase> g_database;
+static std::unique_ptr<FaceDatabaseHelper> g_db_helper;
+
+static FaceDatabaseHelper &get_db_helper() {
+  if (!g_db_helper) {
+    g_db_helper = std::make_unique<FaceDatabaseHelper>();
+    if (isApiLoggingEnabled()) {
+      if (g_db_helper->isEnabled()) {
+        PLOG_INFO << "[RecognitionHandler] FaceDatabaseHelper created - Database connection enabled";
+      } else {
+        PLOG_INFO << "[RecognitionHandler] FaceDatabaseHelper created - Using file-based storage";
+      }
+    }
+  } else {
+    // Reload config in case it was changed
+    g_db_helper->reloadConfig();
+  }
+  return *g_db_helper;
+}
 
 static FaceDatabase &get_database() {
   if (!g_database) {
@@ -878,8 +1781,32 @@ static FaceDatabase &get_database() {
 
     // Populate image_id_to_subject_ and face_subjects_storage_ from loaded
     // database
-    const auto &db_map = g_database->get_database();
-    RecognitionHandler::populateStorageFromDatabase(db_map);
+    // Check if database connection is enabled
+    FaceDatabaseHelper &dbHelper = get_db_helper();
+    if (dbHelper.isEnabled()) {
+      // Try to load from database first
+      std::map<std::string, std::vector<float>> dbFaces;
+      std::string dbError;
+      if (dbHelper.loadAllFaces(dbFaces, dbError)) {
+        if (isApiLoggingEnabled()) {
+          PLOG_INFO << "[RecognitionHandler] Loaded " << dbFaces.size() 
+                    << " faces from database";
+        }
+        RecognitionHandler::populateStorageFromDatabase(dbFaces);
+      } else {
+        // Database load failed, fallback to file
+        if (isApiLoggingEnabled()) {
+          PLOG_WARNING << "[RecognitionHandler] Database load failed: " << dbError 
+                      << ", falling back to file";
+        }
+        const auto &db_map = g_database->get_database();
+        RecognitionHandler::populateStorageFromDatabase(db_map);
+      }
+    } else {
+      // Use file-based storage
+      const auto &db_map = g_database->get_database();
+      RecognitionHandler::populateStorageFromDatabase(db_map);
+    }
   }
   return *g_database;
 }
@@ -1440,12 +2367,31 @@ Json::Value RecognitionHandler::processFaceRecognition(
       return result;
     }
 
-    // Get database instance
+    // Get database instance (for model paths)
     FaceDatabase &db = get_database();
 
     // Check if models are available
     std::string detector_path = db.get_detector_model_path();
     std::string onnx_path = db.get_onnx_model_path();
+    
+    // Load embeddings from database or file
+    std::map<std::string, std::vector<float>> database;
+    FaceDatabaseHelper &dbHelper = get_db_helper();
+    if (dbHelper.isEnabled()) {
+      // Load from database
+      std::string dbError;
+      if (!dbHelper.loadAllFaces(database, dbError)) {
+        if (isApiLoggingEnabled()) {
+          PLOG_WARNING << "[RecognitionHandler] Failed to load faces from database: " << dbError
+                      << ", falling back to file";
+        }
+        // Fallback to file
+        database = db.get_database();
+      }
+    } else {
+      // Use file-based storage
+      database = db.get_database();
+    }
 
     if (detector_path.empty()) {
       if (isApiLoggingEnabled()) {
@@ -1680,9 +2626,8 @@ Json::Value RecognitionHandler::processFaceRecognition(
         face_embedding = average_embeddings(embeddings);
       }
 
-      // Compare with database
+      // Compare with database (already loaded above)
       Json::Value subjects(Json::arrayValue);
-      const auto &database = db.get_database();
 
       if (isApiLoggingEnabled()) {
         PLOG_DEBUG << "[RecognitionHandler] Processing face " << (i + 1) << "/"
@@ -2016,7 +2961,111 @@ bool RecognitionHandler::registerSubject(
 
     imageId = generateImageId();
 
-    // Register face using FaceDatabase
+    // Check if database connection is enabled
+    FaceDatabaseHelper &dbHelper = get_db_helper();
+    bool useDatabase = dbHelper.isEnabled();
+
+    if (isApiLoggingEnabled()) {
+      PLOG_INFO << "[RecognitionHandler] Register subject: " << subjectName 
+                << ", Database enabled: " << (useDatabase ? "yes" : "no");
+    }
+
+    if (useDatabase) {
+      // Test database connection first
+      std::string testError;
+      if (!dbHelper.testConnection(testError)) {
+        if (isApiLoggingEnabled()) {
+          PLOG_WARNING << "[RecognitionHandler] Database connection test failed: " << testError
+                      << ", falling back to file";
+        }
+        useDatabase = false;
+      } else {
+        if (isApiLoggingEnabled()) {
+          PLOG_INFO << "[RecognitionHandler] Database connection test successful, will save to database";
+        }
+      }
+    } else {
+      if (isApiLoggingEnabled()) {
+        PLOG_INFO << "[RecognitionHandler] Database not enabled, using file-based storage";
+      }
+    }
+
+    if (useDatabase) {
+      // Try to save to database first
+      FaceDatabase &db = get_database();
+      
+      // Extract embedding using FaceDatabase
+      // Note: register_face_from_image will save to file, but we'll remove it if database save succeeds
+      std::string dbError;
+      if (!db.register_face_from_image(imageData, subjectName, detProbThreshold,
+                                       dbError)) {
+        // If embedding extraction fails, fallback to file (already saved)
+        if (isApiLoggingEnabled()) {
+          PLOG_WARNING << "[RecognitionHandler] Failed to extract embedding: " << dbError;
+        }
+        error = "Failed to extract face embedding: " + dbError;
+        return false;
+      }
+      
+      // Get embedding for database save
+      const auto &database = db.get_database();
+      auto it = database.find(subjectName);
+      if (it != database.end()) {
+        std::string base64Image = encodeBase64(imageData);
+        std::string dbSaveError;
+        
+        // Try to save to database
+        if (isApiLoggingEnabled()) {
+          PLOG_INFO << "[RecognitionHandler] Attempting to save to database: image_id=" << imageId 
+                    << ", subject=" << subjectName << ", embedding_size=" << it->second.size();
+        }
+        
+        if (dbHelper.saveFace(imageId, subjectName, base64Image, it->second, dbSaveError)) {
+          if (isApiLoggingEnabled()) {
+            PLOG_INFO << "[RecognitionHandler] ✓ Face saved to database successfully: image_id=" << imageId 
+                      << ", subject=" << subjectName;
+          }
+          
+          // Remove from file database since we're using database
+          db.remove_subject(subjectName);
+          
+          if (isApiLoggingEnabled()) {
+            PLOG_DEBUG << "[RecognitionHandler] Removed subject from file database";
+          }
+          
+          // Store image_id -> subject_name mapping and face image in memory
+          {
+            std::lock_guard<std::mutex> lock(storage_mutex_);
+            image_id_to_subject_[imageId] = subjectName;
+            face_subjects_storage_[subjectName].push_back(imageId);
+            face_images_storage_[subjectName] = base64Image;
+          }
+          
+          return true;
+        } else {
+          // Database save failed, keep file-based storage (already saved by register_face_from_image)
+          if (isApiLoggingEnabled()) {
+            PLOG_ERROR << "[RecognitionHandler] ✗ Database save FAILED: " << dbSaveError;
+            PLOG_WARNING << "[RecognitionHandler] Using file-based storage as fallback";
+            PLOG_WARNING << "[RecognitionHandler] Check MySQL connection, permissions, and logs";
+          }
+          // File already saved, just update memory storage
+          {
+            std::lock_guard<std::mutex> lock(storage_mutex_);
+            image_id_to_subject_[imageId] = subjectName;
+            face_subjects_storage_[subjectName].push_back(imageId);
+            face_images_storage_[subjectName] = base64Image;
+          }
+          return true;
+        }
+      } else {
+        // Embedding not found (should not happen)
+        error = "Failed to get embedding after extraction";
+        return false;
+      }
+    }
+
+    // Use file-based storage (database not enabled)
     FaceDatabase &db = get_database();
     std::string dbError;
     if (!db.register_face_from_image(imageData, subjectName, detProbThreshold,
@@ -2365,6 +3414,44 @@ RecognitionHandler::getFaceSubjects(int page, int size,
                                     const std::string &subjectFilter) const {
   Json::Value result;
 
+  FaceDatabaseHelper &dbHelper = get_db_helper();
+  
+  // Check if database connection is enabled
+  if (dbHelper.isEnabled()) {
+    // Use database
+    std::vector<std::pair<std::string, std::string>> faces;
+    int totalCount = 0;
+    std::string error;
+    
+    if (dbHelper.getFacesFromDatabase(page, size, subjectFilter, faces, totalCount, error)) {
+      // Build response from database results
+      Json::Value facesArray(Json::arrayValue);
+      for (const auto &[imageId, subject] : faces) {
+        Json::Value face;
+        face["image_id"] = imageId;
+        face["subject"] = subject;
+        facesArray.append(face);
+      }
+
+      int totalPages = (totalCount + size - 1) / size; // Ceiling division
+
+      result["faces"] = facesArray;
+      result["page_number"] = page;
+      result["page_size"] = size;
+      result["total_pages"] = totalPages;
+      result["total_elements"] = totalCount;
+
+      return result;
+    } else {
+      // Database query failed, fallback to file-based storage
+      if (isApiLoggingEnabled()) {
+        PLOG_WARNING << "[API] Failed to get faces from database: " << error 
+                     << ", falling back to file storage";
+      }
+    }
+  }
+
+  // Use file-based storage (fallback or when database not enabled)
   // Ensure database is loaded before accessing storage
   get_database();
 
@@ -2479,39 +3566,77 @@ bool RecognitionHandler::renameSubjectName(const std::string &oldSubjectName,
     return true;
   }
 
-  // Check if old subject exists in FaceDatabase
-  // Wrap in try-catch to handle database initialization errors gracefully
+  // Check if database connection is enabled
+  FaceDatabaseHelper &dbHelper = get_db_helper();
+  bool useDatabase = dbHelper.isEnabled();
+  
+  bool db_has_old = false;
+  bool need_merge = false;
+  
+  if (useDatabase) {
+    // Check if old subject exists in database
+    std::string dbError;
+    std::vector<std::string> oldImageIds;
+    if (dbHelper.findFacesBySubject(oldSubjectName, oldImageIds, dbError)) {
+      db_has_old = true;
+      
+      // Check if new subject exists (for merge)
+      std::vector<std::string> newImageIds;
+      if (dbHelper.findFacesBySubject(newSubjectName, newImageIds, dbError)) {
+        need_merge = true;
+      }
+    }
+  }
+  
+  // Check if old subject exists in file-based storage or memory
   const std::map<std::string, std::vector<float>> *db_map = nullptr;
   FaceDatabase *db = nullptr;
   std::map<std::string, std::vector<float>>::const_iterator db_old_it;
-  try {
-    db = &get_database();
-    db_map = &db->get_database();
-    db_old_it = db_map->find(oldSubjectName);
-  } catch (const std::exception &e) {
-    // If database initialization fails, we can still check memory storage
-    // This allows the rename to work even if database file is inaccessible
-    db_map = nullptr;
-    db = nullptr;
-    // Create an invalid iterator to indicate database is not available
-    static const std::map<std::string, std::vector<float>> empty_map;
-    db_old_it = empty_map.end();
+  
+  if (!useDatabase) {
+    // Use file-based storage
+    try {
+      db = &get_database();
+      db_map = &db->get_database();
+      db_old_it = db_map->find(oldSubjectName);
+      db_has_old = (db_map != nullptr && db_old_it != db_map->end());
+      
+      if (db_has_old) {
+        // Check if new subject exists (for merge)
+        auto db_new_it = db_map->find(newSubjectName);
+        need_merge = (db_new_it != db_map->end());
+      }
+    } catch (const std::exception &e) {
+      db_map = nullptr;
+      db = nullptr;
+      static const std::map<std::string, std::vector<float>> empty_map;
+      db_old_it = empty_map.end();
+    }
   }
 
-  // Check if old subject exists in storage
+  // Check if old subject exists in memory storage
   std::lock_guard<std::mutex> lock(storage_mutex_);
   auto oldIt = face_subjects_storage_.find(oldSubjectName);
 
   // Subject must exist in at least one place
-  bool db_has_old = (db_map != nullptr && db_old_it != db_map->end());
   if (!db_has_old &&
       (oldIt == face_subjects_storage_.end() || oldIt->second.empty())) {
     error = "Subject '" + oldSubjectName + "' not found in face database";
     return false;
   }
 
-  // Update FaceDatabase: rename subject in database file
-  if (db_has_old && db != nullptr && db_map != nullptr) {
+  // Update database or file
+  if (useDatabase && db_has_old) {
+    // Update database
+    std::string dbError;
+    if (!dbHelper.updateSubjectName(oldSubjectName, newSubjectName, need_merge, dbError)) {
+      if (isApiLoggingEnabled()) {
+        PLOG_WARNING << "[RecognitionHandler] Failed to update subject name in database: " << dbError;
+      }
+      // Continue with memory storage update even if database update fails
+    }
+  } else if (db_has_old && db != nullptr && db_map != nullptr) {
+    // Update file-based storage
     // Check if new subject already exists in database
     auto db_new_it = db_map->find(newSubjectName);
     bool need_merge = (db_new_it != db_map->end());
@@ -2967,6 +4092,20 @@ void RecognitionHandler::deleteFaceSubject(
   try {
     // Extract identifier from URL path (can be image_id or subject name)
     std::string path = req->getPath();
+    
+    // Check if this is actually a face-database/connection request
+    if (path.find("/face-database/connection") != std::string::npos) {
+      // This should be handled by deleteFaceDatabaseConnection, not here
+      if (isApiLoggingEnabled()) {
+        PLOG_WARNING << "[API] DELETE /v1/recognition/faces/{image_id} - "
+                        "Request path matches face-database/connection, "
+                        "should be handled by deleteFaceDatabaseConnection";
+      }
+      callback(createErrorResponse(404, "Not Found", 
+                                   "Endpoint not found. Use DELETE /v1/recognition/face-database/connection instead"));
+      return;
+    }
+    
     size_t facesPos = path.find("/faces/");
     if (facesPos == std::string::npos) {
       if (isApiLoggingEnabled()) {
@@ -2998,62 +4137,113 @@ void RecognitionHandler::deleteFaceSubject(
       PLOG_DEBUG << "[API] Delete face subject with identifier: " << identifier;
     }
 
-    std::lock_guard<std::mutex> lock(storage_mutex_);
-
-    // Check if identifier is an image_id or subject name
+    FaceDatabaseHelper &dbHelper = get_db_helper();
     std::string subjectName;
     std::vector<std::string> deletedImageIds;
 
-    auto imageIt = image_id_to_subject_.find(identifier);
-    if (imageIt != image_id_to_subject_.end()) {
-      // It's an image_id
-      subjectName = imageIt->second;
-      deletedImageIds.push_back(identifier);
-      image_id_to_subject_.erase(imageIt);
+    // Check if database connection is enabled
+    if (dbHelper.isEnabled()) {
+      // Query from database
+      std::string dbError;
+      
+      // Try to find by image_id first
+      if (dbHelper.findFaceByImageId(identifier, subjectName, dbError)) {
+        // Found by image_id
+        deletedImageIds.push_back(identifier);
+      } else {
+        // Try to find by subject name
+        if (dbHelper.findFacesBySubject(identifier, deletedImageIds, dbError)) {
+          // Found by subject name
+          subjectName = identifier;
+        } else {
+          // Not found in database
+          if (isApiLoggingEnabled()) {
+            PLOG_WARNING << "[API] DELETE /v1/recognition/faces/{image_id} - "
+                            "Face not found in database: "
+                         << identifier;
+          }
+          callback(createErrorResponse(404, "Not Found",
+                                       "Face subject with identifier '" +
+                                           identifier + "' not found"));
+          return;
+        }
+      }
+    } else {
+      // Use file-based storage
+      std::lock_guard<std::mutex> lock(storage_mutex_);
 
-      // Remove from face_subjects_storage_
-      auto subjectIt = face_subjects_storage_.find(subjectName);
-      if (subjectIt != face_subjects_storage_.end()) {
-        auto &imageIds = subjectIt->second;
-        auto idIt = std::find(imageIds.begin(), imageIds.end(), identifier);
-        if (idIt != imageIds.end()) {
-          imageIds.erase(idIt);
-          if (imageIds.empty()) {
-            face_subjects_storage_.erase(subjectIt);
+      auto imageIt = image_id_to_subject_.find(identifier);
+      if (imageIt != image_id_to_subject_.end()) {
+        // It's an image_id
+        subjectName = imageIt->second;
+        deletedImageIds.push_back(identifier);
+        image_id_to_subject_.erase(imageIt);
+
+        // Remove from face_subjects_storage_
+        auto subjectIt = face_subjects_storage_.find(subjectName);
+        if (subjectIt != face_subjects_storage_.end()) {
+          auto &imageIds = subjectIt->second;
+          auto idIt = std::find(imageIds.begin(), imageIds.end(), identifier);
+          if (idIt != imageIds.end()) {
+            imageIds.erase(idIt);
+            if (imageIds.empty()) {
+              face_subjects_storage_.erase(subjectIt);
+            }
+          }
+        }
+      } else {
+        // Check if it's a subject name
+        auto subjectIt = face_subjects_storage_.find(identifier);
+        if (subjectIt != face_subjects_storage_.end()) {
+          // It's a subject name - delete all images for this subject
+          subjectName = identifier;
+          deletedImageIds = subjectIt->second;
+
+          // Remove all image_id mappings
+          for (const auto &imageId : deletedImageIds) {
+            image_id_to_subject_.erase(imageId);
+          }
+
+          // Remove subject
+          face_subjects_storage_.erase(subjectIt);
+        } else {
+          if (isApiLoggingEnabled()) {
+            PLOG_WARNING << "[API] DELETE /v1/recognition/faces/{image_id} - "
+                            "Face not found: "
+                         << identifier;
+          }
+          callback(createErrorResponse(404, "Not Found",
+                                       "Face subject with identifier '" +
+                                           identifier + "' not found"));
+          return;
+        }
+      }
+    }
+
+    // Remove from database or file
+    if (dbHelper.isEnabled()) {
+      // Use database
+      std::string dbError;
+      if (deletedImageIds.size() == 1) {
+        // Delete single image
+        if (!dbHelper.deleteFace(deletedImageIds[0], dbError)) {
+          if (isApiLoggingEnabled()) {
+            PLOG_WARNING << "[API] Failed to delete face from database: " << dbError;
+          }
+        }
+      } else {
+        // Delete all images for subject
+        if (!dbHelper.deleteSubject(subjectName, dbError)) {
+          if (isApiLoggingEnabled()) {
+            PLOG_WARNING << "[API] Failed to delete subject from database: " << dbError;
           }
         }
       }
     } else {
-      // Check if it's a subject name
-      auto subjectIt = face_subjects_storage_.find(identifier);
-      if (subjectIt != face_subjects_storage_.end()) {
-        // It's a subject name - delete all images for this subject
-        subjectName = identifier;
-        deletedImageIds = subjectIt->second;
-
-        // Remove all image_id mappings
-        for (const auto &imageId : deletedImageIds) {
-          image_id_to_subject_.erase(imageId);
-        }
-
-        // Remove subject
-        face_subjects_storage_.erase(subjectIt);
-      } else {
-        if (isApiLoggingEnabled()) {
-          PLOG_WARNING << "[API] DELETE /v1/recognition/faces/{image_id} - "
-                          "Face not found: "
-                       << identifier;
-        }
-        callback(createErrorResponse(404, "Not Found",
-                                     "Face subject with identifier '" +
-                                         identifier + "' not found"));
-        return;
-      }
+      // Use file-based storage
+      FaceDatabase &db = get_database();
+      db.remove_subject(subjectName);
     }
-
-    // Also remove from face database file
-    FaceDatabase &db = get_database();
-    db.remove_subject(subjectName);
 
     // Build response
     Json::Value response;
@@ -3257,8 +4447,29 @@ void RecognitionHandler::searchAppearanceSubject(
       return;
     }
 
+    // Load embeddings from database or file
+    std::map<std::string, std::vector<float>> database;
+    std::map<std::string, std::string> base64Images;
+    std::map<std::string, std::vector<std::string>> subjectImageIds;
+    
+    FaceDatabaseHelper &dbHelper = get_db_helper();
+    if (dbHelper.isEnabled()) {
+      // Load from database with details
+      std::string dbError;
+      if (!dbHelper.loadAllFacesWithDetails(database, base64Images, subjectImageIds, dbError)) {
+        if (isApiLoggingEnabled()) {
+          PLOG_WARNING << "[RecognitionHandler] Failed to load faces from database: " << dbError
+                      << ", falling back to file";
+        }
+        // Fallback to file
+        database = db.get_database();
+      }
+    } else {
+      // Use file-based storage
+      database = db.get_database();
+    }
+    
     // Compare with all faces in database
-    const auto &database = db.get_database();
     std::vector<std::tuple<std::string, std::string, double, std::string>>
         matches; // image_id, subject_name, similarity, face_image_base64
 
@@ -3269,7 +4480,19 @@ void RecognitionHandler::searchAppearanceSubject(
         // Get image_id and face_image for this subject
         std::string imageId;
         std::string faceImageBase64;
-        {
+        
+        if (dbHelper.isEnabled()) {
+          // Get from database-loaded data
+          auto imgIdsIt = subjectImageIds.find(subject_name);
+          if (imgIdsIt != subjectImageIds.end() && !imgIdsIt->second.empty()) {
+            imageId = imgIdsIt->second[0]; // Get first image_id
+          }
+          auto imgIt = base64Images.find(subject_name);
+          if (imgIt != base64Images.end()) {
+            faceImageBase64 = imgIt->second;
+          }
+        } else {
+          // Get from in-memory storage
           std::lock_guard<std::mutex> lock(storage_mutex_);
           auto it = face_subjects_storage_.find(subject_name);
           if (it != face_subjects_storage_.end() && !it->second.empty()) {
@@ -3426,19 +4649,36 @@ void RecognitionHandler::deleteMultipleFaceSubjects(
       // will be ignored")
     }
 
-    // Remove subjects from face database file
+    // Remove from database or file
     // Wrap in try-catch to handle database initialization errors gracefully
     try {
-      FaceDatabase &db = get_database();
-      for (const auto &subject : subjectsToDelete) {
-        db.remove_subject(subject);
+      FaceDatabaseHelper &dbHelper = get_db_helper();
+      if (dbHelper.isEnabled()) {
+        // Use database - delete each image_id from database
+        std::string dbError;
+        for (const auto &deletedFace : deletedFaces) {
+          std::string imageId = deletedFace["image_id"].asString();
+          if (!dbHelper.deleteFace(imageId, dbError)) {
+            if (isApiLoggingEnabled()) {
+              PLOG_WARNING << "[API] POST /v1/recognition/faces/delete - Warning: "
+                              "Failed to delete face from database: image_id="
+                           << imageId << ", error: " << dbError;
+            }
+          }
+        }
+      } else {
+        // Use file-based storage
+        FaceDatabase &db = get_database();
+        for (const auto &subject : subjectsToDelete) {
+          db.remove_subject(subject);
+        }
       }
     } catch (const std::exception &e) {
       // If database access fails, log but continue - we still return success
       // with the deleted faces we managed to remove from memory storage
       if (isApiLoggingEnabled()) {
         PLOG_WARNING << "[API] POST /v1/recognition/faces/delete - Warning: "
-                        "Failed to update database file: "
+                        "Failed to update database/file: "
                      << e.what();
       }
     }
@@ -3511,9 +4751,21 @@ void RecognitionHandler::deleteAllFaceSubjects(
     image_id_to_subject_.clear();
     face_subjects_storage_.clear();
 
-    // Also clear from face database file
-    FaceDatabase &db = get_database();
-    db.clear_all();
+    // Clear from database or file
+    FaceDatabaseHelper &dbHelper = get_db_helper();
+    if (dbHelper.isEnabled()) {
+      // Use database
+      std::string dbError;
+      if (!dbHelper.deleteAllFaces(dbError)) {
+        if (isApiLoggingEnabled()) {
+          PLOG_WARNING << "[API] Failed to delete all faces from database: " << dbError;
+        }
+      }
+    } else {
+      // Use file-based storage
+      FaceDatabase &db = get_database();
+      db.clear_all();
+    }
 
     // Build response
     Json::Value response;
@@ -3582,6 +4834,423 @@ void RecognitionHandler::handleOptionsDeleteAll(
   resp->setStatusCode(k200OK);
   resp->addHeader("Access-Control-Allow-Origin", "*");
   resp->addHeader("Access-Control-Allow-Methods", "DELETE, OPTIONS");
+  resp->addHeader("Access-Control-Allow-Headers", "Content-Type, x-api-key");
+  resp->addHeader("Access-Control-Max-Age", "3600");
+  callback(resp);
+}
+
+void RecognitionHandler::configureFaceDatabaseConnection(
+    const HttpRequestPtr &req,
+    std::function<void(const HttpResponsePtr &)> &&callback) {
+  auto start_time = std::chrono::steady_clock::now();
+
+  if (isApiLoggingEnabled()) {
+    PLOG_INFO << "[API] POST /v1/recognition/face-database/connection - "
+                 "Configure face database connection";
+    PLOG_DEBUG << "[API] Request from: " << req->getPeerAddr().toIpPort();
+  }
+
+  try {
+    // Parse JSON request body
+    Json::Value requestJson;
+    auto bodyView = req->getBody();
+    if (bodyView.empty()) {
+      callback(createErrorResponse(400, "Bad request",
+                                   "Request body is required"));
+      return;
+    }
+    std::string requestBody(bodyView.data(), bodyView.size());
+
+    Json::CharReaderBuilder builder;
+    std::unique_ptr<Json::CharReader> reader(builder.newCharReader());
+    std::string errors;
+    if (!reader->parse(requestBody.c_str(),
+                       requestBody.c_str() + requestBody.length(), &requestJson,
+                       &errors)) {
+      if (isApiLoggingEnabled()) {
+        PLOG_WARNING << "[API] POST /v1/recognition/face-database/connection - "
+                        "Invalid JSON: "
+                     << errors;
+      }
+      callback(createErrorResponse(400, "Bad request",
+                                   "Invalid JSON: " + errors));
+      return;
+    }
+
+    // Check if user wants to disable database connection
+    if (requestJson.isMember("enabled") && requestJson["enabled"].isBool() &&
+        !requestJson["enabled"].asBool()) {
+      // Disable database connection, use default file
+      auto &systemConfig = SystemConfig::getInstance();
+      Json::Value faceDbConfig(Json::objectValue);
+      faceDbConfig["enabled"] = false;
+
+      if (!systemConfig.updateConfigSection("face_database", faceDbConfig)) {
+        callback(createErrorResponse(500, "Internal server error",
+                                     "Failed to save configuration"));
+        return;
+      }
+
+      if (!systemConfig.saveConfig()) {
+        callback(createErrorResponse(500, "Internal server error",
+                                     "Failed to persist configuration"));
+        return;
+      }
+
+      Json::Value response(Json::objectValue);
+      response["message"] = "Database connection disabled. Using default "
+                            "face_database.txt file";
+      response["enabled"] = false;
+      response["default_file"] = resolveDatabasePath();
+
+      auto resp = HttpResponse::newHttpJsonResponse(response);
+      resp->setStatusCode(k200OK);
+      resp->addHeader("Access-Control-Allow-Origin", "*");
+      resp->addHeader("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
+      resp->addHeader("Access-Control-Allow-Headers",
+                     "Content-Type, x-api-key");
+
+      if (isApiLoggingEnabled()) {
+        PLOG_INFO << "[API] POST /v1/recognition/face-database/connection - "
+                     "Database connection disabled";
+      }
+
+      callback(resp);
+      return;
+    }
+
+    // Validate required fields for enabling database connection
+    if (!requestJson.isMember("type") || !requestJson["type"].isString()) {
+      callback(createErrorResponse(400, "Bad request",
+                                   "Field 'type' (mysql/postgresql) is required"));
+      return;
+    }
+
+    std::string dbType = requestJson["type"].asString();
+    std::transform(dbType.begin(), dbType.end(), dbType.begin(), ::tolower);
+
+    if (dbType != "mysql" && dbType != "postgresql") {
+      callback(createErrorResponse(
+          400, "Bad request",
+          "Field 'type' must be either 'mysql' or 'postgresql'"));
+      return;
+    }
+
+    // Validate required fields for database connection
+    std::vector<std::string> requiredFields = {"host", "database", "username",
+                                                "password"};
+    for (const auto &field : requiredFields) {
+      if (!requestJson.isMember(field) || !requestJson[field].isString()) {
+        callback(createErrorResponse(400, "Bad request",
+                                     "Field '" + field + "' is required"));
+        return;
+      }
+    }
+
+    // Build database configuration JSON
+    Json::Value dbConfig(Json::objectValue);
+    dbConfig["type"] = dbType;
+    dbConfig["host"] = requestJson["host"].asString();
+    dbConfig["database"] = requestJson["database"].asString();
+    dbConfig["username"] = requestJson["username"].asString();
+    dbConfig["password"] = requestJson["password"].asString();
+
+    // Optional fields
+    if (requestJson.isMember("port") && requestJson["port"].isInt()) {
+      dbConfig["port"] = requestJson["port"].asInt();
+    } else if (requestJson.isMember("port") &&
+               requestJson["port"].isString()) {
+      // Try to parse port as string
+      try {
+        int port = std::stoi(requestJson["port"].asString());
+        dbConfig["port"] = port;
+      } catch (...) {
+        // Use default port if parsing fails
+        dbConfig["port"] = (dbType == "mysql") ? 3306 : 5432;
+      }
+    } else {
+      // Default ports
+      dbConfig["port"] = (dbType == "mysql") ? 3306 : 5432;
+    }
+
+    if (requestJson.isMember("charset") && requestJson["charset"].isString()) {
+      dbConfig["charset"] = requestJson["charset"].asString();
+    } else {
+      dbConfig["charset"] = "utf8mb4";
+    }
+
+    // Store configuration in SystemConfig
+    auto &systemConfig = SystemConfig::getInstance();
+    Json::Value faceDbConfig(Json::objectValue);
+    faceDbConfig["connection"] = dbConfig;
+    faceDbConfig["enabled"] = true;
+
+    // Update config section
+    if (!systemConfig.updateConfigSection("face_database", faceDbConfig)) {
+      if (isApiLoggingEnabled()) {
+        PLOG_ERROR << "[API] POST /v1/recognition/face-database/connection - "
+                      "Failed to save configuration";
+      }
+      callback(createErrorResponse(500, "Internal server error",
+                                   "Failed to save database configuration"));
+      return;
+    }
+
+    // Save config to file
+    if (!systemConfig.saveConfig()) {
+      if (isApiLoggingEnabled()) {
+        PLOG_ERROR << "[API] POST /v1/recognition/face-database/connection - "
+                      "Failed to persist configuration to file";
+      }
+      callback(createErrorResponse(500, "Internal server error",
+                                   "Failed to persist configuration"));
+      return;
+    }
+
+    // Build success response
+    Json::Value response(Json::objectValue);
+    response["message"] = "Face database connection configured successfully";
+    response["config"] = dbConfig;
+    response["note"] =
+        "Database connection will be used instead of face_database.txt file";
+
+    auto resp = HttpResponse::newHttpJsonResponse(response);
+    resp->setStatusCode(k200OK);
+
+    // Add CORS headers
+    resp->addHeader("Access-Control-Allow-Origin", "*");
+    resp->addHeader("Access-Control-Allow-Methods", "POST, OPTIONS");
+    resp->addHeader("Access-Control-Allow-Headers", "Content-Type, x-api-key");
+
+    auto end_time = std::chrono::steady_clock::now();
+    auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(
+        end_time - start_time);
+
+    if (isApiLoggingEnabled()) {
+      PLOG_INFO << "[API] POST /v1/recognition/face-database/connection - "
+                   "Success - "
+                << duration.count() << "ms";
+    }
+
+    callback(resp);
+
+  } catch (const std::exception &e) {
+    auto end_time = std::chrono::steady_clock::now();
+    auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(
+        end_time - start_time);
+    if (isApiLoggingEnabled()) {
+      PLOG_ERROR << "[API] POST /v1/recognition/face-database/connection - "
+                    "Exception: "
+                 << e.what() << " - " << duration.count() << "ms";
+    }
+    callback(createErrorResponse(500, "Internal server error", e.what()));
+  } catch (...) {
+    auto end_time = std::chrono::steady_clock::now();
+    auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(
+        end_time - start_time);
+    if (isApiLoggingEnabled()) {
+      PLOG_ERROR << "[API] POST /v1/recognition/face-database/connection - "
+                    "Unknown exception - "
+                 << duration.count() << "ms";
+    }
+    callback(createErrorResponse(500, "Internal server error",
+                                "Unknown error occurred"));
+  }
+}
+
+void RecognitionHandler::getFaceDatabaseConnection(
+    const HttpRequestPtr &req,
+    std::function<void(const HttpResponsePtr &)> &&callback) {
+  auto start_time = std::chrono::steady_clock::now();
+
+  if (isApiLoggingEnabled()) {
+    PLOG_INFO << "[API] GET /v1/recognition/face-database/connection - Get "
+                 "face database connection configuration";
+    PLOG_DEBUG << "[API] Request from: " << req->getPeerAddr().toIpPort();
+  }
+
+  try {
+    auto &systemConfig = SystemConfig::getInstance();
+    Json::Value faceDbConfig = systemConfig.getConfigSection("face_database");
+
+    Json::Value response(Json::objectValue);
+
+    if (faceDbConfig.isNull() || !faceDbConfig.isMember("enabled") ||
+        !faceDbConfig["enabled"].asBool()) {
+      // No database configured, using default file
+      response["enabled"] = false;
+      response["message"] = "No database connection configured. Using default "
+                            "face_database.txt file";
+      response["default_file"] = resolveDatabasePath();
+    } else {
+      // Database configured
+      response["enabled"] = true;
+      if (faceDbConfig.isMember("connection")) {
+        response["config"] = faceDbConfig["connection"];
+      }
+      response["message"] = "Database connection is configured and enabled";
+    }
+
+    auto resp = HttpResponse::newHttpJsonResponse(response);
+    resp->setStatusCode(k200OK);
+
+    // Add CORS headers
+    resp->addHeader("Access-Control-Allow-Origin", "*");
+    resp->addHeader("Access-Control-Allow-Methods", "GET, POST, DELETE, OPTIONS");
+    resp->addHeader("Access-Control-Allow-Headers", "Content-Type, x-api-key");
+
+    auto end_time = std::chrono::steady_clock::now();
+    auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(
+        end_time - start_time);
+
+    if (isApiLoggingEnabled()) {
+      PLOG_INFO << "[API] GET /v1/recognition/face-database/connection - "
+                   "Success - "
+                << duration.count() << "ms";
+    }
+
+    callback(resp);
+
+  } catch (const std::exception &e) {
+    auto end_time = std::chrono::steady_clock::now();
+    auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(
+        end_time - start_time);
+    if (isApiLoggingEnabled()) {
+      PLOG_ERROR << "[API] GET /v1/recognition/face-database/connection - "
+                    "Exception: "
+                 << e.what() << " - " << duration.count() << "ms";
+    }
+    callback(createErrorResponse(500, "Internal server error", e.what()));
+  } catch (...) {
+    auto end_time = std::chrono::steady_clock::now();
+    auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(
+        end_time - start_time);
+    if (isApiLoggingEnabled()) {
+      PLOG_ERROR << "[API] GET /v1/recognition/face-database/connection - "
+                    "Unknown exception - "
+                 << duration.count() << "ms";
+    }
+    callback(createErrorResponse(500, "Internal server error",
+                                "Unknown error occurred"));
+  }
+}
+
+void RecognitionHandler::deleteFaceDatabaseConnection(
+    const HttpRequestPtr &req,
+    std::function<void(const HttpResponsePtr &)> &&callback) {
+  auto start_time = std::chrono::steady_clock::now();
+
+  if (isApiLoggingEnabled()) {
+    PLOG_INFO << "[API] DELETE /v1/recognition/face-database/connection - Delete "
+                 "face database connection configuration";
+    PLOG_DEBUG << "[API] Request from: " << req->getPeerAddr().toIpPort();
+  }
+
+  try {
+    auto &systemConfig = SystemConfig::getInstance();
+    Json::Value faceDbConfig = systemConfig.getConfigSection("face_database");
+
+    // Check if database connection is configured
+    if (faceDbConfig.isNull() || !faceDbConfig.isMember("enabled") ||
+        !faceDbConfig["enabled"].asBool()) {
+      // No database configured
+      Json::Value response(Json::objectValue);
+      response["message"] = "No database connection configured to delete";
+      response["enabled"] = false;
+      response["default_file"] = resolveDatabasePath();
+
+      auto resp = HttpResponse::newHttpJsonResponse(response);
+      resp->setStatusCode(k200OK);
+      resp->addHeader("Access-Control-Allow-Origin", "*");
+      resp->addHeader("Access-Control-Allow-Methods", "DELETE, OPTIONS");
+      resp->addHeader("Access-Control-Allow-Headers", "Content-Type, x-api-key");
+
+      if (isApiLoggingEnabled()) {
+        PLOG_INFO << "[API] DELETE /v1/recognition/face-database/connection - "
+                     "No configuration to delete";
+      }
+
+      callback(resp);
+      return;
+    }
+
+    // Delete database configuration by setting enabled to false
+    Json::Value newConfig(Json::objectValue);
+    newConfig["enabled"] = false;
+
+    if (!systemConfig.updateConfigSection("face_database", newConfig)) {
+      callback(createErrorResponse(500, "Internal server error",
+                                   "Failed to update configuration"));
+      return;
+    }
+
+    if (!systemConfig.saveConfig()) {
+      callback(createErrorResponse(500, "Internal server error",
+                                   "Failed to persist configuration"));
+      return;
+    }
+
+    // Reload database helper config
+    get_db_helper().reloadConfig();
+
+    Json::Value response(Json::objectValue);
+    response["message"] = "Database connection configuration deleted successfully. "
+                         "System will now use default face_database.txt file";
+    response["enabled"] = false;
+    response["default_file"] = resolveDatabasePath();
+
+    auto resp = HttpResponse::newHttpJsonResponse(response);
+    resp->setStatusCode(k200OK);
+
+    // Add CORS headers
+    resp->addHeader("Access-Control-Allow-Origin", "*");
+    resp->addHeader("Access-Control-Allow-Methods", "DELETE, OPTIONS");
+    resp->addHeader("Access-Control-Allow-Headers", "Content-Type, x-api-key");
+
+    auto end_time = std::chrono::steady_clock::now();
+    auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(
+        end_time - start_time);
+
+    if (isApiLoggingEnabled()) {
+      PLOG_INFO << "[API] DELETE /v1/recognition/face-database/connection - "
+                   "Success - "
+                << duration.count() << "ms";
+    }
+
+    callback(resp);
+
+  } catch (const std::exception &e) {
+    auto end_time = std::chrono::steady_clock::now();
+    auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(
+        end_time - start_time);
+    if (isApiLoggingEnabled()) {
+      PLOG_ERROR << "[API] DELETE /v1/recognition/face-database/connection - "
+                    "Exception: "
+                 << e.what() << " - " << duration.count() << "ms";
+    }
+    callback(createErrorResponse(500, "Internal server error", e.what()));
+  } catch (...) {
+    auto end_time = std::chrono::steady_clock::now();
+    auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(
+        end_time - start_time);
+    if (isApiLoggingEnabled()) {
+      PLOG_ERROR << "[API] DELETE /v1/recognition/face-database/connection - "
+                    "Unknown exception - "
+                 << duration.count() << "ms";
+    }
+    callback(createErrorResponse(500, "Internal server error",
+                                "Unknown error occurred"));
+  }
+}
+
+void RecognitionHandler::handleOptionsFaceDatabaseConnection(
+    const HttpRequestPtr &req,
+    std::function<void(const HttpResponsePtr &)> &&callback) {
+  (void)req; // Suppress unused parameter warning
+  auto resp = HttpResponse::newHttpResponse();
+  resp->setStatusCode(k200OK);
+  resp->addHeader("Access-Control-Allow-Origin", "*");
+  resp->addHeader("Access-Control-Allow-Methods", "GET, POST, DELETE, OPTIONS");
   resp->addHeader("Access-Control-Allow-Headers", "Content-Type, x-api-key");
   resp->addHeader("Access-Control-Max-Age", "3600");
   callback(resp);

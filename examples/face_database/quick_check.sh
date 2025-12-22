@@ -1,0 +1,40 @@
+#!/bin/bash
+
+# Quick check commands cho MySQL local server
+
+DB_USER="${DB_USER:-root}"
+DB_NAME="${DB_NAME:-face_recognition}"
+
+echo "=== Quick Check Commands ==="
+echo ""
+echo "1. Kiểm tra MySQL đang chạy:"
+echo "   sudo systemctl status mysql"
+echo "   # hoặc"
+echo "   sudo service mysql status"
+echo ""
+echo "2. Kết nối MySQL:"
+echo "   mysql -u $DB_USER -p"
+echo ""
+echo "3. Kiểm tra databases:"
+echo "   mysql -u $DB_USER -p -e 'SHOW DATABASES;'"
+echo ""
+echo "4. Kiểm tra database face_recognition:"
+echo "   mysql -u $DB_USER -p -e 'USE $DB_NAME; SHOW TABLES;'"
+echo ""
+echo "5. Kiểm tra cấu trúc bảng face_libraries:"
+echo "   mysql -u $DB_USER -p -e 'USE $DB_NAME; DESCRIBE face_libraries;'"
+echo ""
+echo "6. Kiểm tra cấu trúc bảng face_log:"
+echo "   mysql -u $DB_USER -p -e 'USE $DB_NAME; DESCRIBE face_log;'"
+echo ""
+echo "7. Xem dữ liệu trong face_libraries:"
+echo "   mysql -u $DB_USER -p -e 'USE $DB_NAME; SELECT * FROM face_libraries ORDER BY id DESC LIMIT 5;'"
+echo ""
+echo "8. Xem dữ liệu trong face_log:"
+echo "   mysql -u $DB_USER -p -e 'USE $DB_NAME; SELECT * FROM face_log ORDER BY id DESC LIMIT 5;'"
+echo ""
+echo "9. Đếm số records:"
+echo "   mysql -u $DB_USER -p -e 'USE $DB_NAME; SELECT COUNT(*) FROM face_libraries; SELECT COUNT(*) FROM face_log;'"
+echo ""
+
+
