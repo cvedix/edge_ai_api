@@ -1278,11 +1278,20 @@ public:
       std::string subject = line.substr(0, tabPos);
       std::string embeddingStr = line.substr(tabPos + 1);
       
+      // Trim whitespace
+      subject.erase(0, subject.find_first_not_of(" \t\n\r"));
+      subject.erase(subject.find_last_not_of(" \t\n\r") + 1);
+      embeddingStr.erase(0, embeddingStr.find_first_not_of(" \t\n\r"));
+      embeddingStr.erase(embeddingStr.find_last_not_of(" \t\n\r") + 1);
+      
       // Parse embedding (comma-separated floats)
       std::vector<float> embedding;
       std::istringstream embStream(embeddingStr);
       std::string val;
       while (std::getline(embStream, val, ',')) {
+        val.erase(0, val.find_first_not_of(" \t\n\r"));
+        val.erase(val.find_last_not_of(" \t\n\r") + 1);
+        if (val.empty()) continue;
         try {
           embedding.push_back(std::stof(val));
         } catch (...) {
@@ -1291,7 +1300,7 @@ public:
         }
       }
       
-      if (!embedding.empty()) {
+      if (!embedding.empty() && !subject.empty()) {
         // For same subject, we keep the first embedding (or could merge)
         if (faces.find(subject) == faces.end()) {
           faces[subject] = embedding;
@@ -1301,6 +1310,109 @@ public:
 
     if (isApiLoggingEnabled()) {
       PLOG_INFO << "[FaceDatabaseHelper] Loaded " << faces.size() << " face subject(s) from database";
+    }
+    
+    return true;
+  }
+
+  // Load all faces with embeddings and image data from database for recognition/search
+  bool loadAllFacesWithDetails(std::map<std::string, std::vector<float>> &embeddings,
+                                std::map<std::string, std::string> &base64Images,
+                                std::map<std::string, std::vector<std::string>> &subjectImageIds,
+                                std::string &error) {
+    if (!enabled_) {
+      error = "Database connection not enabled";
+      return false;
+    }
+
+    // Query all faces from database with image_id, subject, embedding, base64_image
+    std::string sql = "SELECT image_id, subject, embedding, base64_image FROM face_libraries";
+    std::string result;
+    
+    if (!executeMySQLQuery(sql, result, error)) {
+      if (isApiLoggingEnabled()) {
+        PLOG_ERROR << "[FaceDatabaseHelper] Failed to load faces with details from database: " << error;
+      }
+      return false;
+    }
+
+    embeddings.clear();
+    base64Images.clear();
+    subjectImageIds.clear();
+
+    if (result.empty()) {
+      if (isApiLoggingEnabled()) {
+        PLOG_INFO << "[FaceDatabaseHelper] No faces found in database";
+      }
+      return true;
+    }
+
+    // Parse result - tab-separated values: image_id\tsubject\tembedding\tbase64_image
+    std::istringstream iss(result);
+    std::string line;
+    
+    while (std::getline(iss, line)) {
+      if (line.empty()) continue;
+      
+      // Split by tab
+      std::vector<std::string> fields;
+      std::istringstream lineStream(line);
+      std::string field;
+      while (std::getline(lineStream, field, '\t')) {
+        fields.push_back(field);
+      }
+      
+      if (fields.size() < 3) continue; // Need at least image_id, subject, embedding
+      
+      std::string imageId = fields[0];
+      std::string subject = fields[1];
+      std::string embeddingStr = fields[2];
+      std::string base64Image = fields.size() > 3 ? fields[3] : "";
+      
+      // Trim whitespace
+      imageId.erase(0, imageId.find_first_not_of(" \t\n\r"));
+      imageId.erase(imageId.find_last_not_of(" \t\n\r") + 1);
+      subject.erase(0, subject.find_first_not_of(" \t\n\r"));
+      subject.erase(subject.find_last_not_of(" \t\n\r") + 1);
+      embeddingStr.erase(0, embeddingStr.find_first_not_of(" \t\n\r"));
+      embeddingStr.erase(embeddingStr.find_last_not_of(" \t\n\r") + 1);
+      
+      if (imageId.empty() || subject.empty() || embeddingStr.empty()) continue;
+      
+      // Parse embedding (comma-separated floats)
+      std::vector<float> embedding;
+      std::istringstream embStream(embeddingStr);
+      std::string val;
+      while (std::getline(embStream, val, ',')) {
+        val.erase(0, val.find_first_not_of(" \t\n\r"));
+        val.erase(val.find_last_not_of(" \t\n\r") + 1);
+        if (val.empty()) continue;
+        try {
+          embedding.push_back(std::stof(val));
+        } catch (...) {
+          continue;
+        }
+      }
+      
+      if (!embedding.empty()) {
+        // Store embedding (keep first one for each subject, or could average)
+        if (embeddings.find(subject) == embeddings.end()) {
+          embeddings[subject] = embedding;
+        }
+        
+        // Store base64 image (keep first one for each subject)
+        if (!base64Image.empty() && base64Images.find(subject) == base64Images.end()) {
+          base64Images[subject] = base64Image;
+        }
+        
+        // Store image_id mapping
+        subjectImageIds[subject].push_back(imageId);
+      }
+    }
+
+    if (isApiLoggingEnabled()) {
+      PLOG_INFO << "[FaceDatabaseHelper] Loaded " << embeddings.size() 
+                << " face subject(s) with details from database";
     }
     
     return true;
@@ -1539,6 +1651,68 @@ public:
     } else {
       if (isApiLoggingEnabled()) {
         PLOG_ERROR << "[FaceDatabaseHelper] Failed to delete all faces from database: " << error;
+      }
+      return false;
+    }
+  }
+
+  // Update subject name in database (rename subject)
+  bool updateSubjectName(const std::string &oldSubjectName, const std::string &newSubjectName, 
+                        bool mergeEmbeddings, std::string &error) {
+    if (!enabled_) {
+      error = "Database connection not enabled";
+      return false;
+    }
+
+    std::string escapedOldSubject = escapeSqlString(oldSubjectName);
+    std::string escapedNewSubject = escapeSqlString(newSubjectName);
+
+    if (mergeEmbeddings) {
+      // Check if new subject exists
+      std::vector<std::string> existingImageIds;
+      if (findFacesBySubject(newSubjectName, existingImageIds, error)) {
+        // New subject exists - need to merge embeddings
+        // For merge, we'll update all old subject records to new subject name
+        // The embeddings will be averaged at application level if needed
+        std::string sql = "UPDATE face_libraries SET subject = '" + escapedNewSubject + 
+                         "' WHERE subject = '" + escapedOldSubject + "'";
+        
+        if (isApiLoggingEnabled()) {
+          PLOG_INFO << "[FaceDatabaseHelper] Merging subjects in database: " 
+                    << oldSubjectName << " -> " << newSubjectName;
+        }
+
+        if (executeMySQLCommand(sql, error)) {
+          if (isApiLoggingEnabled()) {
+            PLOG_INFO << "[FaceDatabaseHelper] Successfully merged subjects in database";
+          }
+          return true;
+        } else {
+          if (isApiLoggingEnabled()) {
+            PLOG_ERROR << "[FaceDatabaseHelper] Failed to merge subjects in database: " << error;
+          }
+          return false;
+        }
+      }
+    }
+
+    // Simple rename (new subject doesn't exist or no merge needed)
+    std::string sql = "UPDATE face_libraries SET subject = '" + escapedNewSubject + 
+                     "' WHERE subject = '" + escapedOldSubject + "'";
+
+    if (isApiLoggingEnabled()) {
+      PLOG_INFO << "[FaceDatabaseHelper] Renaming subject in database: " 
+                << oldSubjectName << " -> " << newSubjectName;
+    }
+
+    if (executeMySQLCommand(sql, error)) {
+      if (isApiLoggingEnabled()) {
+        PLOG_INFO << "[FaceDatabaseHelper] Successfully renamed subject in database";
+      }
+      return true;
+    } else {
+      if (isApiLoggingEnabled()) {
+        PLOG_ERROR << "[FaceDatabaseHelper] Failed to rename subject in database: " << error;
       }
       return false;
     }
@@ -2193,12 +2367,31 @@ Json::Value RecognitionHandler::processFaceRecognition(
       return result;
     }
 
-    // Get database instance
+    // Get database instance (for model paths)
     FaceDatabase &db = get_database();
 
     // Check if models are available
     std::string detector_path = db.get_detector_model_path();
     std::string onnx_path = db.get_onnx_model_path();
+    
+    // Load embeddings from database or file
+    std::map<std::string, std::vector<float>> database;
+    FaceDatabaseHelper &dbHelper = get_db_helper();
+    if (dbHelper.isEnabled()) {
+      // Load from database
+      std::string dbError;
+      if (!dbHelper.loadAllFaces(database, dbError)) {
+        if (isApiLoggingEnabled()) {
+          PLOG_WARNING << "[RecognitionHandler] Failed to load faces from database: " << dbError
+                      << ", falling back to file";
+        }
+        // Fallback to file
+        database = db.get_database();
+      }
+    } else {
+      // Use file-based storage
+      database = db.get_database();
+    }
 
     if (detector_path.empty()) {
       if (isApiLoggingEnabled()) {
@@ -2433,9 +2626,8 @@ Json::Value RecognitionHandler::processFaceRecognition(
         face_embedding = average_embeddings(embeddings);
       }
 
-      // Compare with database
+      // Compare with database (already loaded above)
       Json::Value subjects(Json::arrayValue);
-      const auto &database = db.get_database();
 
       if (isApiLoggingEnabled()) {
         PLOG_DEBUG << "[RecognitionHandler] Processing face " << (i + 1) << "/"
@@ -3374,39 +3566,77 @@ bool RecognitionHandler::renameSubjectName(const std::string &oldSubjectName,
     return true;
   }
 
-  // Check if old subject exists in FaceDatabase
-  // Wrap in try-catch to handle database initialization errors gracefully
+  // Check if database connection is enabled
+  FaceDatabaseHelper &dbHelper = get_db_helper();
+  bool useDatabase = dbHelper.isEnabled();
+  
+  bool db_has_old = false;
+  bool need_merge = false;
+  
+  if (useDatabase) {
+    // Check if old subject exists in database
+    std::string dbError;
+    std::vector<std::string> oldImageIds;
+    if (dbHelper.findFacesBySubject(oldSubjectName, oldImageIds, dbError)) {
+      db_has_old = true;
+      
+      // Check if new subject exists (for merge)
+      std::vector<std::string> newImageIds;
+      if (dbHelper.findFacesBySubject(newSubjectName, newImageIds, dbError)) {
+        need_merge = true;
+      }
+    }
+  }
+  
+  // Check if old subject exists in file-based storage or memory
   const std::map<std::string, std::vector<float>> *db_map = nullptr;
   FaceDatabase *db = nullptr;
   std::map<std::string, std::vector<float>>::const_iterator db_old_it;
-  try {
-    db = &get_database();
-    db_map = &db->get_database();
-    db_old_it = db_map->find(oldSubjectName);
-  } catch (const std::exception &e) {
-    // If database initialization fails, we can still check memory storage
-    // This allows the rename to work even if database file is inaccessible
-    db_map = nullptr;
-    db = nullptr;
-    // Create an invalid iterator to indicate database is not available
-    static const std::map<std::string, std::vector<float>> empty_map;
-    db_old_it = empty_map.end();
+  
+  if (!useDatabase) {
+    // Use file-based storage
+    try {
+      db = &get_database();
+      db_map = &db->get_database();
+      db_old_it = db_map->find(oldSubjectName);
+      db_has_old = (db_map != nullptr && db_old_it != db_map->end());
+      
+      if (db_has_old) {
+        // Check if new subject exists (for merge)
+        auto db_new_it = db_map->find(newSubjectName);
+        need_merge = (db_new_it != db_map->end());
+      }
+    } catch (const std::exception &e) {
+      db_map = nullptr;
+      db = nullptr;
+      static const std::map<std::string, std::vector<float>> empty_map;
+      db_old_it = empty_map.end();
+    }
   }
 
-  // Check if old subject exists in storage
+  // Check if old subject exists in memory storage
   std::lock_guard<std::mutex> lock(storage_mutex_);
   auto oldIt = face_subjects_storage_.find(oldSubjectName);
 
   // Subject must exist in at least one place
-  bool db_has_old = (db_map != nullptr && db_old_it != db_map->end());
   if (!db_has_old &&
       (oldIt == face_subjects_storage_.end() || oldIt->second.empty())) {
     error = "Subject '" + oldSubjectName + "' not found in face database";
     return false;
   }
 
-  // Update FaceDatabase: rename subject in database file
-  if (db_has_old && db != nullptr && db_map != nullptr) {
+  // Update database or file
+  if (useDatabase && db_has_old) {
+    // Update database
+    std::string dbError;
+    if (!dbHelper.updateSubjectName(oldSubjectName, newSubjectName, need_merge, dbError)) {
+      if (isApiLoggingEnabled()) {
+        PLOG_WARNING << "[RecognitionHandler] Failed to update subject name in database: " << dbError;
+      }
+      // Continue with memory storage update even if database update fails
+    }
+  } else if (db_has_old && db != nullptr && db_map != nullptr) {
+    // Update file-based storage
     // Check if new subject already exists in database
     auto db_new_it = db_map->find(newSubjectName);
     bool need_merge = (db_new_it != db_map->end());
@@ -4217,8 +4447,29 @@ void RecognitionHandler::searchAppearanceSubject(
       return;
     }
 
+    // Load embeddings from database or file
+    std::map<std::string, std::vector<float>> database;
+    std::map<std::string, std::string> base64Images;
+    std::map<std::string, std::vector<std::string>> subjectImageIds;
+    
+    FaceDatabaseHelper &dbHelper = get_db_helper();
+    if (dbHelper.isEnabled()) {
+      // Load from database with details
+      std::string dbError;
+      if (!dbHelper.loadAllFacesWithDetails(database, base64Images, subjectImageIds, dbError)) {
+        if (isApiLoggingEnabled()) {
+          PLOG_WARNING << "[RecognitionHandler] Failed to load faces from database: " << dbError
+                      << ", falling back to file";
+        }
+        // Fallback to file
+        database = db.get_database();
+      }
+    } else {
+      // Use file-based storage
+      database = db.get_database();
+    }
+    
     // Compare with all faces in database
-    const auto &database = db.get_database();
     std::vector<std::tuple<std::string, std::string, double, std::string>>
         matches; // image_id, subject_name, similarity, face_image_base64
 
@@ -4229,7 +4480,19 @@ void RecognitionHandler::searchAppearanceSubject(
         // Get image_id and face_image for this subject
         std::string imageId;
         std::string faceImageBase64;
-        {
+        
+        if (dbHelper.isEnabled()) {
+          // Get from database-loaded data
+          auto imgIdsIt = subjectImageIds.find(subject_name);
+          if (imgIdsIt != subjectImageIds.end() && !imgIdsIt->second.empty()) {
+            imageId = imgIdsIt->second[0]; // Get first image_id
+          }
+          auto imgIt = base64Images.find(subject_name);
+          if (imgIt != base64Images.end()) {
+            faceImageBase64 = imgIt->second;
+          }
+        } else {
+          // Get from in-memory storage
           std::lock_guard<std::mutex> lock(storage_mutex_);
           auto it = face_subjects_storage_.find(subject_name);
           if (it != face_subjects_storage_.end() && !it->second.empty()) {
