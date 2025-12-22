@@ -39,14 +39,22 @@ public:
                 "/v1/recognition/faces", Post);
   ADD_METHOD_TO(RecognitionHandler::listFaceSubjects, "/v1/recognition/faces",
                 Get);
-  ADD_METHOD_TO(RecognitionHandler::deleteFaceSubject,
-                "/v1/recognition/faces/{image_id}", Delete);
   ADD_METHOD_TO(RecognitionHandler::deleteMultipleFaceSubjects,
                 "/v1/recognition/faces/delete", Post);
   ADD_METHOD_TO(RecognitionHandler::deleteAllFaceSubjects,
                 "/v1/recognition/faces/all", Delete);
+  ADD_METHOD_TO(RecognitionHandler::deleteFaceSubject,
+                "/v1/recognition/faces/{image_id}", Delete);
   ADD_METHOD_TO(RecognitionHandler::renameSubject,
                 "/v1/recognition/subjects/{subject}", Put);
+  ADD_METHOD_TO(RecognitionHandler::configureFaceDatabaseConnection,
+                "/v1/recognition/face-database/connection", Post);
+  ADD_METHOD_TO(RecognitionHandler::getFaceDatabaseConnection,
+                "/v1/recognition/face-database/connection", Get);
+  ADD_METHOD_TO(RecognitionHandler::deleteFaceDatabaseConnection,
+                "/v1/recognition/face-database/connection", Delete);
+  ADD_METHOD_TO(RecognitionHandler::handleOptionsFaceDatabaseConnection,
+                "/v1/recognition/face-database/connection", Options);
   ADD_METHOD_TO(RecognitionHandler::handleOptions, "/v1/recognition/recognize",
                 Options);
   ADD_METHOD_TO(RecognitionHandler::handleOptionsFaces, "/v1/recognition/faces",
@@ -61,12 +69,6 @@ public:
                 "/v1/recognition/search", Post);
   ADD_METHOD_TO(RecognitionHandler::handleOptionsSearch,
                 "/v1/recognition/search", Options);
-  ADD_METHOD_TO(RecognitionHandler::configureFaceDatabaseConnection,
-                "/v1/recognition/face-database/connection", Post);
-  ADD_METHOD_TO(RecognitionHandler::getFaceDatabaseConnection,
-                "/v1/recognition/face-database/connection", Get);
-  ADD_METHOD_TO(RecognitionHandler::handleOptionsFaceDatabaseConnection,
-                "/v1/recognition/face-database/connection", Options);
   METHOD_LIST_END
 
   /**
@@ -189,6 +191,15 @@ public:
    * Get current face database connection configuration
    */
   void getFaceDatabaseConnection(
+      const HttpRequestPtr &req,
+      std::function<void(const HttpResponsePtr &)> &&callback);
+
+  /**
+   * @brief Handle DELETE /v1/recognition/face-database/connection
+   * Delete face database connection configuration
+   * After deletion, system will use default face_database.txt file
+   */
+  void deleteFaceDatabaseConnection(
       const HttpRequestPtr &req,
       std::function<void(const HttpResponsePtr &)> &&callback);
 
