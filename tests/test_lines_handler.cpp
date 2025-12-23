@@ -109,7 +109,7 @@ protected:
 // Test GET /v1/core/instance/{instanceId}/lines - Instance not found
 TEST_F(LinesHandlerTest, GetAllLinesInstanceNotFound) {
   auto req = HttpRequest::newHttpRequest();
-  req->setPath("/v1/core/instances/nonexistent-id/lines");
+  req->setPath("/v1/core/instance/nonexistent-id/lines");
   req->setMethod(Get);
 
   HttpResponsePtr response;
@@ -134,7 +134,7 @@ TEST_F(LinesHandlerTest, GetAllLinesEmpty) {
   }
 
   auto req = HttpRequest::newHttpRequest();
-  req->setPath("/v1/core/instances/" + instance_id_ + "/lines");
+  req->setPath("/v1/core/instance/" + instance_id_ + "/lines");
   req->setMethod(Get);
 
   HttpResponsePtr response;
@@ -164,7 +164,7 @@ TEST_F(LinesHandlerTest, CreateLine) {
   }
 
   auto req = HttpRequest::newHttpRequest();
-  req->setPath("/v1/core/instances/" + instance_id_ + "/lines");
+  req->setPath("/v1/core/instance/" + instance_id_ + "/lines");
   req->setMethod(Post);
 
   Json::Value body;
@@ -230,7 +230,7 @@ TEST_F(LinesHandlerTest, CreateLineInvalidCoordinates) {
   }
 
   auto req = HttpRequest::newHttpRequest();
-  req->setPath("/v1/core/instances/" + instance_id_ + "/lines");
+  req->setPath("/v1/core/instance/" + instance_id_ + "/lines");
   req->setMethod(Post);
 
   Json::Value body;
@@ -267,7 +267,7 @@ TEST_F(LinesHandlerTest, GetLineById) {
 
   // First create a line
   auto createReq = HttpRequest::newHttpRequest();
-  createReq->setPath("/v1/core/instances/" + instance_id_ + "/lines");
+  createReq->setPath("/v1/core/instance/" + instance_id_ + "/lines");
   createReq->setMethod(Post);
 
   Json::Value body;
@@ -312,7 +312,7 @@ TEST_F(LinesHandlerTest, GetLineById) {
 
   // Now get the line by ID
   auto req = HttpRequest::newHttpRequest();
-  req->setPath("/v1/core/instances/" + instance_id_ + "/lines/" + line_id);
+  req->setPath("/v1/core/instance/" + instance_id_ + "/lines/" + line_id);
   req->setMethod(Get);
 
   HttpResponsePtr response;
@@ -345,7 +345,7 @@ TEST_F(LinesHandlerTest, GetLineByIdNotFound) {
   }
 
   auto req = HttpRequest::newHttpRequest();
-  req->setPath("/v1/core/instances/" + instance_id_ +
+  req->setPath("/v1/core/instance/" + instance_id_ +
                "/lines/nonexistent-line-id");
   req->setMethod(Get);
 
@@ -372,7 +372,7 @@ TEST_F(LinesHandlerTest, UpdateLine) {
 
   // First create a line
   auto createReq = HttpRequest::newHttpRequest();
-  createReq->setPath("/v1/core/instances/" + instance_id_ + "/lines");
+  createReq->setPath("/v1/core/instance/" + instance_id_ + "/lines");
   createReq->setMethod(Post);
 
   Json::Value createBody;
@@ -417,7 +417,7 @@ TEST_F(LinesHandlerTest, UpdateLine) {
 
   // Now update the line
   auto req = HttpRequest::newHttpRequest();
-  req->setPath("/v1/core/instances/" + instance_id_ + "/lines/" + line_id);
+  req->setPath("/v1/core/instance/" + instance_id_ + "/lines/" + line_id);
   req->setMethod(Put);
 
   Json::Value body;
@@ -479,7 +479,7 @@ TEST_F(LinesHandlerTest, UpdateLineNotFound) {
   }
 
   auto req = HttpRequest::newHttpRequest();
-  req->setPath("/v1/core/instances/" + instance_id_ +
+  req->setPath("/v1/core/instance/" + instance_id_ +
                "/lines/nonexistent-line-id");
   req->setMethod(Put);
 
@@ -529,7 +529,7 @@ TEST_F(LinesHandlerTest, UpdateLineInvalidCoordinates) {
 
   // First create a line
   auto createReq = HttpRequest::newHttpRequest();
-  createReq->setPath("/v1/core/instances/" + instance_id_ + "/lines");
+  createReq->setPath("/v1/core/instance/" + instance_id_ + "/lines");
   createReq->setMethod(Post);
 
   Json::Value createBody;
@@ -569,7 +569,7 @@ TEST_F(LinesHandlerTest, UpdateLineInvalidCoordinates) {
 
   // Now try to update with invalid coordinates
   auto req = HttpRequest::newHttpRequest();
-  req->setPath("/v1/core/instances/" + instance_id_ + "/lines/" + line_id);
+  req->setPath("/v1/core/instance/" + instance_id_ + "/lines/" + line_id);
   req->setMethod(Put);
 
   Json::Value body;
@@ -606,7 +606,7 @@ TEST_F(LinesHandlerTest, DeleteLineById) {
 
   // First create a line
   auto createReq = HttpRequest::newHttpRequest();
-  createReq->setPath("/v1/core/instances/" + instance_id_ + "/lines");
+  createReq->setPath("/v1/core/instance/" + instance_id_ + "/lines");
   createReq->setMethod(Post);
 
   Json::Value body;
@@ -646,7 +646,7 @@ TEST_F(LinesHandlerTest, DeleteLineById) {
 
   // Now delete the line
   auto req = HttpRequest::newHttpRequest();
-  req->setPath("/v1/core/instances/" + instance_id_ + "/lines/" + line_id);
+  req->setPath("/v1/core/instance/" + instance_id_ + "/lines/" + line_id);
   req->setMethod(Delete);
 
   HttpResponsePtr response;
@@ -675,7 +675,7 @@ TEST_F(LinesHandlerTest, DeleteLineByIdNotFound) {
   }
 
   auto req = HttpRequest::newHttpRequest();
-  req->setPath("/v1/core/instances/" + instance_id_ +
+  req->setPath("/v1/core/instance/" + instance_id_ +
                "/lines/nonexistent-line-id");
   req->setMethod(Delete);
 
@@ -703,7 +703,7 @@ TEST_F(LinesHandlerTest, DeleteAllLines) {
   // First create a couple of lines
   for (int i = 0; i < 2; i++) {
     auto createReq = HttpRequest::newHttpRequest();
-    createReq->setPath("/v1/core/instances/" + instance_id_ + "/lines");
+    createReq->setPath("/v1/core/instance/" + instance_id_ + "/lines");
     createReq->setMethod(Post);
 
     Json::Value body;
@@ -733,7 +733,7 @@ TEST_F(LinesHandlerTest, DeleteAllLines) {
 
   // Now delete all lines
   auto req = HttpRequest::newHttpRequest();
-  req->setPath("/v1/core/instances/" + instance_id_ + "/lines");
+  req->setPath("/v1/core/instance/" + instance_id_ + "/lines");
   req->setMethod(Delete);
 
   HttpResponsePtr response;
@@ -758,7 +758,7 @@ TEST_F(LinesHandlerTest, DeleteAllLines) {
 // Test OPTIONS request
 TEST_F(LinesHandlerTest, HandleOptions) {
   auto req = HttpRequest::newHttpRequest();
-  req->setPath("/v1/core/instances/test/lines");
+  req->setPath("/v1/core/instance/test/lines");
   req->setMethod(Options);
 
   HttpResponsePtr response;

@@ -10,11 +10,11 @@ graph TB
 
     API --> HealthHandler[Health Handler<br/>/v1/core/health]
     API --> VersionHandler[Version Handler<br/>/v1/core/version]
-    API --> InstanceHandler[Instance Handler<br/>/v1/core/instances/*]
+    API --> InstanceHandler[Instance Handler<br/>/v1/core/instance/*]
     API --> CreateInstanceHandler[Create Instance Handler<br/>/v1/core/instance]
     API --> SolutionHandler[Solution Handler<br/>/v1/core/solutions/*]
     API --> GroupHandler[Group Handler<br/>/v1/core/groups/*]
-    API --> LinesHandler[Lines Handler<br/>/v1/core/instances/*/lines/*]
+    API --> LinesHandler[Lines Handler<br/>/v1/core/instance/*/lines/*]
     API --> NodeHandler[Node Handler<br/>/v1/core/nodes/*]
     API --> RecognitionHandler[Recognition Handler<br/>/v1/recognition/*]
     API --> MetricsHandler[Metrics Handler<br/>/v1/core/metrics]
@@ -259,11 +259,11 @@ Tất cả API handlers sử dụng **IInstanceManager interface**, cho phép ho
 
 - **HealthHandler**: Health check endpoint (`/v1/core/health`)
 - **VersionHandler**: Version information endpoint (`/v1/core/version`)
-- **InstanceHandler**: Instance management endpoints (`/v1/core/instances/*`)
+- **InstanceHandler**: Instance management endpoints (`/v1/core/instance/*`)
 - **CreateInstanceHandler**: Create instance endpoint (`/v1/core/instance`)
 - **SolutionHandler**: Solution management endpoints (`/v1/core/solutions/*`)
 - **GroupHandler**: Group management endpoints (`/v1/core/groups/*`)
-- **LinesHandler**: Crossing lines management endpoints (`/v1/core/instances/{id}/lines/*`)
+- **LinesHandler**: Crossing lines management endpoints (`/v1/core/instance/{id}/lines/*`)
 - **NodeHandler**: Node management endpoints (`/v1/core/nodes/*`)
 - **RecognitionHandler**: Face recognition endpoints (`/v1/recognition/*`)
 - **MetricsHandler**: Metrics endpoint (`/v1/core/metrics`)
@@ -293,11 +293,11 @@ graph TB
 
     API --> Health[/v1/core/health]
     API --> Version[/v1/core/version]
-    API --> Instances[/v1/core/instances]
+    API --> Instances[/v1/core/instance]
     API --> CreateInstance[POST /v1/core/instance]
     API --> Solutions[/v1/core/solutions]
     API --> Groups[/v1/core/groups]
-    API --> Lines[/v1/core/instances/:id/lines]
+    API --> Lines[/v1/core/instance/:id/lines]
     API --> Nodes[/v1/core/nodes]
     API --> Recognition[/v1/recognition]
     API --> Metrics[/v1/core/metrics]

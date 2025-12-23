@@ -102,11 +102,11 @@ curl -X POST http://localhost:8080/v1/core/instance \
   -d '{"name": "camera_1", "solution": "face_detection", "autoStart": true}'
 
 # List instances
-curl http://localhost:8080/v1/core/instances
+curl http://localhost:8080/v1/core/instance
 
 # Start/Stop
-curl -X POST http://localhost:8080/v1/core/instances/{id}/start
-curl -X POST http://localhost:8080/v1/core/instances/{id}/stop
+curl -X POST http://localhost:8080/v1/core/instance/{id}/start
+curl -X POST http://localhost:8080/v1/core/instance/{id}/stop
 ```
 
 ### Swagger UI

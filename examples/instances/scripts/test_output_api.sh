@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# Script để test API endpoint /v1/core/instances/{instanceId}/output
+# Script để test API endpoint /v1/core/instance/{instanceId}/output
 # Sử dụng instance face_detection_file_source để test
 
 API_BASE="http://localhost:8848/v1/core"

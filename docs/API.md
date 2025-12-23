@@ -36,21 +36,21 @@ curl http://localhost:8080/v1/core/health
 | Endpoint | Method | Mô Tả |
 |----------|--------|-------|
 | `/v1/core/instance` | POST | Tạo instance |
-| `/v1/core/instances` | GET | List instances |
-| `/v1/core/instances/{id}` | GET | Chi tiết instance |
-| `/v1/core/instances/{id}` | PUT | Update instance |
-| `/v1/core/instances/{id}` | DELETE | Xóa instance |
-| `/v1/core/instances/{id}/start` | POST | Start instance |
-| `/v1/core/instances/{id}/stop` | POST | Stop instance |
-| `/v1/core/instances/{id}/restart` | POST | Restart instance |
+| `/v1/core/instance` | GET | List instances |
+| `/v1/core/instance/{id}` | GET | Chi tiết instance |
+| `/v1/core/instance/{id}` | PUT | Update instance |
+| `/v1/core/instance/{id}` | DELETE | Xóa instance |
+| `/v1/core/instance/{id}/start` | POST | Start instance |
+| `/v1/core/instance/{id}/stop` | POST | Stop instance |
+| `/v1/core/instance/{id}/restart` | POST | Restart instance |
 | `/v1/core/instance/{id}/config` | GET/POST | Instance config |
 | `/v1/core/instance/{id}/input` | POST | Change input |
-| `/v1/core/instances/{id}/output` | GET | Get output |
-| `/v1/core/instances/{id}/frame` | GET | Get latest frame |
+| `/v1/core/instance/{id}/output` | GET | Get output |
+| `/v1/core/instance/{id}/frame` | GET | Get latest frame |
 | `/v1/core/instance/{id}/statistics` | GET | Get statistics |
 | `/v1/core/instance/{id}/output/stream` | GET/POST | Stream/Record output |
-| `/v1/core/instances/batch/start` | POST | Batch start |
-| `/v1/core/instances/batch/stop` | POST | Batch stop |
+| `/v1/core/instance/batch/start` | POST | Batch start |
+| `/v1/core/instance/batch/stop` | POST | Batch stop |
 
 ### Pipeline là gì?
 
@@ -95,7 +95,7 @@ curl -X POST http://localhost:8080/v1/core/instance \
 ### Update Instance
 
 ```bash
-curl -X PUT http://localhost:8080/v1/core/instances/{instanceId} \
+curl -X PUT http://localhost:8080/v1/core/instance/{instanceId} \
   -H "Content-Type: application/json" \
   -d '{
     "name": "Updated Name",
@@ -109,7 +109,7 @@ curl -X PUT http://localhost:8080/v1/core/instances/{instanceId} \
 
 ```bash
 # Get latest frame (base64 JPEG)
-curl http://localhost:8080/v1/core/instances/{id}/frame
+curl http://localhost:8080/v1/core/instance/{id}/frame
 
 # Get statistics
 curl http://localhost:8080/v1/core/instance/{id}/statistics

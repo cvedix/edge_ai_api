@@ -220,7 +220,7 @@ void InstanceHandler::listInstances(
   auto start_time = std::chrono::steady_clock::now();
 
   if (isApiLoggingEnabled()) {
-    PLOG_INFO << "[API] GET /v1/core/instances - List instances";
+    PLOG_INFO << "[API] GET /v1/core/instance - List instances";
     PLOG_DEBUG << "[API] Request from: " << req->getPeerAddr().toIpPort();
   }
 
@@ -228,7 +228,7 @@ void InstanceHandler::listInstances(
     // Check if registry is set
     if (!instance_manager_) {
       if (isApiLoggingEnabled()) {
-        PLOG_ERROR << "[API] GET /v1/core/instances - Error: Instance registry "
+        PLOG_ERROR << "[API] GET /v1/core/instance - Error: Instance registry "
                       "not initialized";
       }
       callback(createErrorResponse(500, "Internal server error",
@@ -268,7 +268,7 @@ void InstanceHandler::listInstances(
       if (status == std::future_status::timeout) {
         if (isApiLoggingEnabled()) {
           PLOG_WARNING
-              << "[API] GET /v1/core/instances - Timeout getting instances "
+              << "[API] GET /v1/core/instance - Timeout getting instances "
                  "(2.5s) - mutex may be locked or operation is slow";
         }
         std::cerr << "[InstanceHandler] WARNING: getAllInstances() timeout "
@@ -284,7 +284,7 @@ void InstanceHandler::listInstances(
           allInstances = future.get();
         } catch (const std::exception &e) {
           if (isApiLoggingEnabled()) {
-            PLOG_ERROR << "[API] GET /v1/core/instances - Exception getting "
+            PLOG_ERROR << "[API] GET /v1/core/instance - Exception getting "
                           "instances: "
                        << e.what();
           }
@@ -296,7 +296,7 @@ void InstanceHandler::listInstances(
           return;
         } catch (...) {
           if (isApiLoggingEnabled()) {
-            PLOG_ERROR << "[API] GET /v1/core/instances - Unknown exception "
+            PLOG_ERROR << "[API] GET /v1/core/instance - Unknown exception "
                           "getting instances";
           }
           std::cerr << "[InstanceHandler] Unknown exception getting instances"
@@ -308,7 +308,7 @@ void InstanceHandler::listInstances(
       } else {
         // Should not happen, but handle it
         if (isApiLoggingEnabled()) {
-          PLOG_WARNING << "[API] GET /v1/core/instances - Future status is not "
+          PLOG_WARNING << "[API] GET /v1/core/instance - Future status is not "
                           "ready or timeout";
         }
         callback(createErrorResponse(500, "Internal server error",
@@ -318,7 +318,7 @@ void InstanceHandler::listInstances(
     } catch (const std::exception &e) {
       if (isApiLoggingEnabled()) {
         PLOG_ERROR
-            << "[API] GET /v1/core/instances - Exception creating async task: "
+            << "[API] GET /v1/core/instance - Exception creating async task: "
             << e.what();
       }
       std::cerr << "[InstanceHandler] Exception creating async task: "
@@ -329,7 +329,7 @@ void InstanceHandler::listInstances(
       return;
     } catch (...) {
       if (isApiLoggingEnabled()) {
-        PLOG_ERROR << "[API] GET /v1/core/instances - Unknown exception "
+        PLOG_ERROR << "[API] GET /v1/core/instance - Unknown exception "
                       "creating async task";
       }
       std::cerr << "[InstanceHandler] Unknown exception creating async task"
@@ -380,7 +380,7 @@ void InstanceHandler::listInstances(
         end_time - start_time);
 
     if (isApiLoggingEnabled()) {
-      PLOG_INFO << "[API] GET /v1/core/instances - Success: " << totalCount
+      PLOG_INFO << "[API] GET /v1/core/instance - Success: " << totalCount
                 << " instances (running: " << runningCount
                 << ", stopped: " << stoppedCount << ") - " << duration.count()
                 << "ms";
@@ -393,7 +393,7 @@ void InstanceHandler::listInstances(
     auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(
         end_time - start_time);
     if (isApiLoggingEnabled()) {
-      PLOG_ERROR << "[API] GET /v1/core/instances - Exception: " << e.what()
+      PLOG_ERROR << "[API] GET /v1/core/instance - Exception: " << e.what()
                  << " - " << duration.count() << "ms";
     }
     std::cerr << "[InstanceHandler] Exception: " << e.what() << std::endl;
@@ -403,7 +403,7 @@ void InstanceHandler::listInstances(
     auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(
         end_time - start_time);
     if (isApiLoggingEnabled()) {
-      PLOG_ERROR << "[API] GET /v1/core/instances - Unknown exception - "
+      PLOG_ERROR << "[API] GET /v1/core/instance - Unknown exception - "
                  << duration.count() << "ms";
     }
     std::cerr << "[InstanceHandler] Unknown exception" << std::endl;
@@ -422,7 +422,7 @@ void InstanceHandler::getInstance(
   std::string instanceId = extractInstanceId(req);
 
   if (isApiLoggingEnabled()) {
-    PLOG_INFO << "[API] GET /v1/core/instances/" << instanceId
+    PLOG_INFO << "[API] GET /v1/core/instance/" << instanceId
               << " - Get instance details";
     PLOG_DEBUG << "[API] Request from: " << req->getPeerAddr().toIpPort();
   }
@@ -431,7 +431,7 @@ void InstanceHandler::getInstance(
     // Check if registry is set
     if (!instance_manager_) {
       if (isApiLoggingEnabled()) {
-        PLOG_ERROR << "[API] GET /v1/core/instances/" << instanceId
+        PLOG_ERROR << "[API] GET /v1/core/instance/" << instanceId
                    << " - Error: Instance registry not initialized";
       }
       callback(createErrorResponse(500, "Internal server error",
@@ -441,7 +441,7 @@ void InstanceHandler::getInstance(
 
     if (instanceId.empty()) {
       if (isApiLoggingEnabled()) {
-        PLOG_WARNING << "[API] GET /v1/core/instances/{id} - Error: Instance "
+        PLOG_WARNING << "[API] GET /v1/core/instance/{id} - Error: Instance "
                         "ID is empty";
       }
       callback(createErrorResponse(400, "Invalid request",
@@ -469,7 +469,7 @@ void InstanceHandler::getInstance(
       auto status = future.wait_for(std::chrono::seconds(1));
       if (status == std::future_status::timeout) {
         if (isApiLoggingEnabled()) {
-          PLOG_WARNING << "[API] GET /v1/core/instances/" << instanceId
+          PLOG_WARNING << "[API] GET /v1/core/instance/" << instanceId
                        << " - Timeout getting instance (1s)";
         }
         callback(createErrorResponse(
@@ -496,7 +496,7 @@ void InstanceHandler::getInstance(
       auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(
           end_time - start_time);
       if (isApiLoggingEnabled()) {
-        PLOG_WARNING << "[API] GET /v1/core/instances/" << instanceId
+        PLOG_WARNING << "[API] GET /v1/core/instance/" << instanceId
                      << " - Not found - " << duration.count() << "ms";
       }
       callback(createErrorResponse(404, "Not found",
@@ -512,7 +512,7 @@ void InstanceHandler::getInstance(
 
     if (isApiLoggingEnabled()) {
       const auto &info = optInfo.value();
-      PLOG_INFO << "[API] GET /v1/core/instances/" << instanceId
+      PLOG_INFO << "[API] GET /v1/core/instance/" << instanceId
                 << " - Success: " << info.displayName
                 << " (running: " << (info.running ? "true" : "false")
                 << ", fps: " << std::fixed << std::setprecision(2) << info.fps
@@ -526,7 +526,7 @@ void InstanceHandler::getInstance(
     auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(
         end_time - start_time);
     if (isApiLoggingEnabled()) {
-      PLOG_ERROR << "[API] GET /v1/core/instances/" << instanceId
+      PLOG_ERROR << "[API] GET /v1/core/instance/" << instanceId
                  << " - Exception: " << e.what() << " - " << duration.count()
                  << "ms";
     }
@@ -536,7 +536,7 @@ void InstanceHandler::getInstance(
     auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(
         end_time - start_time);
     if (isApiLoggingEnabled()) {
-      PLOG_ERROR << "[API] GET /v1/core/instances/" << instanceId
+      PLOG_ERROR << "[API] GET /v1/core/instance/" << instanceId
                  << " - Unknown exception - " << duration.count() << "ms";
     }
     callback(createErrorResponse(500, "Internal server error",
@@ -554,7 +554,7 @@ void InstanceHandler::startInstance(
   std::string instanceId = extractInstanceId(req);
 
   if (isApiLoggingEnabled()) {
-    PLOG_INFO << "[API] POST /v1/core/instances/" << instanceId
+    PLOG_INFO << "[API] POST /v1/core/instance/" << instanceId
               << "/start - Start instance";
   }
 
@@ -562,7 +562,7 @@ void InstanceHandler::startInstance(
     // Check if registry is set
     if (!instance_manager_) {
       if (isApiLoggingEnabled()) {
-        PLOG_ERROR << "[API] POST /v1/core/instances/" << instanceId
+        PLOG_ERROR << "[API] POST /v1/core/instance/" << instanceId
                    << "/start - Error: Instance registry not initialized";
       }
       callback(createErrorResponse(500, "Internal server error",
@@ -572,7 +572,7 @@ void InstanceHandler::startInstance(
 
     if (instanceId.empty()) {
       if (isApiLoggingEnabled()) {
-        PLOG_WARNING << "[API] POST /v1/core/instances/{id}/start - Error: "
+        PLOG_WARNING << "[API] POST /v1/core/instance/{id}/start - Error: "
                         "Instance ID is empty";
       }
       callback(createErrorResponse(400, "Invalid request",
@@ -584,7 +584,7 @@ void InstanceHandler::startInstance(
     // OPTIMIZED: Run startInstance() in detached thread to avoid blocking API
     // thread and other instances This allows multiple instances to start
     // concurrently without blocking each other The instance will start in
-    // background, and status can be checked via GET /v1/core/instances/{id}
+    // background, and status can be checked via GET /v1/core/instance/{id}
     std::thread startThread([this, instanceId]() {
       try {
         instance_manager_->startInstance(instanceId);
@@ -599,20 +599,20 @@ void InstanceHandler::startInstance(
     startThread.detach(); // Detach thread - instance starts in background
 
     // Return immediately - instance is starting in background
-    // Client can check status using GET /v1/core/instances/{id}
+    // Client can check status using GET /v1/core/instance/{id}
     auto optInfo = instance_manager_->getInstance(instanceId);
     if (optInfo.has_value()) {
       auto end_time = std::chrono::steady_clock::now();
       auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(
           end_time - start_time);
       if (isApiLoggingEnabled()) {
-        PLOG_INFO << "[API] POST /v1/core/instances/" << instanceId
+        PLOG_INFO << "[API] POST /v1/core/instance/" << instanceId
                   << "/start - Accepted (async) - " << duration.count() << "ms";
       }
       Json::Value response = instanceInfoToJson(optInfo.value());
       response["message"] = "Instance start request accepted. Instance is "
                             "starting in background. "
-                            "Check status using GET /v1/core/instances/" +
+                            "Check status using GET /v1/core/instance/" +
                             instanceId;
       response["status"] = "starting"; // Indicate that instance is starting
       callback(createSuccessResponse(
@@ -627,7 +627,7 @@ void InstanceHandler::startInstance(
     auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(
         end_time - start_time);
     if (isApiLoggingEnabled()) {
-      PLOG_ERROR << "[API] POST /v1/core/instances/" << instanceId
+      PLOG_ERROR << "[API] POST /v1/core/instance/" << instanceId
                  << "/start - Exception: " << e.what() << " - "
                  << duration.count() << "ms";
     }
@@ -638,7 +638,7 @@ void InstanceHandler::startInstance(
     auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(
         end_time - start_time);
     if (isApiLoggingEnabled()) {
-      PLOG_ERROR << "[API] POST /v1/core/instances/" << instanceId
+      PLOG_ERROR << "[API] POST /v1/core/instance/" << instanceId
                  << "/start - Unknown exception - " << duration.count() << "ms";
     }
     std::cerr << "[InstanceHandler] Unknown exception" << std::endl;
@@ -657,7 +657,7 @@ void InstanceHandler::stopInstance(
   std::string instanceId = extractInstanceId(req);
 
   if (isApiLoggingEnabled()) {
-    PLOG_INFO << "[API] POST /v1/core/instances/" << instanceId
+    PLOG_INFO << "[API] POST /v1/core/instance/" << instanceId
               << "/stop - Stop instance";
   }
 
@@ -665,7 +665,7 @@ void InstanceHandler::stopInstance(
     // Check if registry is set
     if (!instance_manager_) {
       if (isApiLoggingEnabled()) {
-        PLOG_ERROR << "[API] POST /v1/core/instances/" << instanceId
+        PLOG_ERROR << "[API] POST /v1/core/instance/" << instanceId
                    << "/stop - Error: Instance registry not initialized";
       }
       callback(createErrorResponse(500, "Internal server error",
@@ -675,7 +675,7 @@ void InstanceHandler::stopInstance(
 
     if (instanceId.empty()) {
       if (isApiLoggingEnabled()) {
-        PLOG_WARNING << "[API] POST /v1/core/instances/{id}/stop - Error: "
+        PLOG_WARNING << "[API] POST /v1/core/instance/{id}/stop - Error: "
                         "Instance ID is empty";
       }
       callback(createErrorResponse(400, "Invalid request",
@@ -686,7 +686,7 @@ void InstanceHandler::stopInstance(
     // OPTIMIZED: Run stopInstance() in detached thread to avoid blocking API
     // thread and other instances This allows multiple instances to stop
     // concurrently without blocking each other The instance will stop in
-    // background, and status can be checked via GET /v1/core/instances/{id}
+    // background, and status can be checked via GET /v1/core/instance/{id}
     std::thread stopThread([this, instanceId]() {
       try {
         instance_manager_->stopInstance(instanceId);
@@ -701,20 +701,20 @@ void InstanceHandler::stopInstance(
     stopThread.detach(); // Detach thread - instance stops in background
 
     // Return immediately - instance is stopping in background
-    // Client can check status using GET /v1/core/instances/{id}
+    // Client can check status using GET /v1/core/instance/{id}
     auto optInfo = instance_manager_->getInstance(instanceId);
     if (optInfo.has_value()) {
       auto end_time = std::chrono::steady_clock::now();
       auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(
           end_time - start_time);
       if (isApiLoggingEnabled()) {
-        PLOG_INFO << "[API] POST /v1/core/instances/" << instanceId
+        PLOG_INFO << "[API] POST /v1/core/instance/" << instanceId
                   << "/stop - Accepted (async) - " << duration.count() << "ms";
       }
       Json::Value response = instanceInfoToJson(optInfo.value());
       response["message"] =
           "Instance stop request accepted. Instance is stopping in background. "
-          "Check status using GET /v1/core/instances/" +
+          "Check status using GET /v1/core/instance/" +
           instanceId;
       response["status"] = "stopping"; // Indicate that instance is stopping
       callback(createSuccessResponse(
@@ -729,7 +729,7 @@ void InstanceHandler::stopInstance(
     auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(
         end_time - start_time);
     if (isApiLoggingEnabled()) {
-      PLOG_ERROR << "[API] POST /v1/core/instances/" << instanceId
+      PLOG_ERROR << "[API] POST /v1/core/instance/" << instanceId
                  << "/stop - Exception: " << e.what() << " - "
                  << duration.count() << "ms";
     }
@@ -740,7 +740,7 @@ void InstanceHandler::stopInstance(
     auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(
         end_time - start_time);
     if (isApiLoggingEnabled()) {
-      PLOG_ERROR << "[API] POST /v1/core/instances/" << instanceId
+      PLOG_ERROR << "[API] POST /v1/core/instance/" << instanceId
                  << "/stop - Unknown exception - " << duration.count() << "ms";
     }
     std::cerr << "[InstanceHandler] Unknown exception" << std::endl;
@@ -773,7 +773,7 @@ void InstanceHandler::restartInstance(
     // OPTIMIZED: Run restartInstance() in detached thread to avoid blocking API
     // thread and other instances This allows multiple instances to restart
     // concurrently without blocking each other The instance will restart in
-    // background, and status can be checked via GET /v1/core/instances/{id}
+    // background, and status can be checked via GET /v1/core/instance/{id}
     std::thread restartThread([this, instanceId]() {
       try {
         // First, stop the instance if it's running
@@ -798,13 +798,13 @@ void InstanceHandler::restartInstance(
     restartThread.detach(); // Detach thread - instance restarts in background
 
     // Return immediately - instance is restarting in background
-    // Client can check status using GET /v1/core/instances/{id}
+    // Client can check status using GET /v1/core/instance/{id}
     auto optInfo = instance_manager_->getInstance(instanceId);
     if (optInfo.has_value()) {
       Json::Value response = instanceInfoToJson(optInfo.value());
       response["message"] = "Instance restart request accepted. Instance is "
                             "restarting in background. "
-                            "Check status using GET /v1/core/instances/" +
+                            "Check status using GET /v1/core/instance/" +
                             instanceId;
       response["status"] = "restarting"; // Indicate that instance is restarting
       callback(createSuccessResponse(
@@ -1012,7 +1012,7 @@ void InstanceHandler::deleteInstance(
     // can take time (cleanup, DNN state clearing) This allows multiple
     // instances to be deleted concurrently without blocking each other The
     // instance will be deleted in background, and status can be checked via GET
-    // /v1/core/instances/{id}
+    // /v1/core/instance/{id}
 
     // Check if instance exists first (before async deletion)
     auto optInfo = instance_manager_->getInstance(instanceId);
@@ -1041,7 +1041,7 @@ void InstanceHandler::deleteInstance(
     response["success"] = true;
     response["message"] = "Instance deletion request accepted. Instance is "
                           "being deleted in background. "
-                          "Check status using GET /v1/core/instances/" +
+                          "Check status using GET /v1/core/instance/" +
                           instanceId;
     response["instanceId"] = instanceId;
     response["status"] = "deleting"; // Indicate that instance is being deleted
@@ -1066,7 +1066,7 @@ void InstanceHandler::deleteAllInstances(
   auto start_time = std::chrono::steady_clock::now();
 
   if (isApiLoggingEnabled()) {
-    PLOG_INFO << "[API] DELETE /v1/core/instances - Delete all instances";
+    PLOG_INFO << "[API] DELETE /v1/core/instance - Delete all instances";
     PLOG_DEBUG << "[API] Request from: " << req->getPeerAddr().toIpPort();
   }
 
@@ -1074,7 +1074,7 @@ void InstanceHandler::deleteAllInstances(
     // Check if registry is set
     if (!instance_manager_) {
       if (isApiLoggingEnabled()) {
-        PLOG_ERROR << "[API] DELETE /v1/core/instances - Error: Instance "
+        PLOG_ERROR << "[API] DELETE /v1/core/instance - Error: Instance "
                       "registry not initialized";
       }
       callback(createErrorResponse(500, "Internal server error",
@@ -1101,7 +1101,7 @@ void InstanceHandler::deleteAllInstances(
       auto status = future.wait_for(std::chrono::milliseconds(2500));
       if (status == std::future_status::timeout) {
         if (isApiLoggingEnabled()) {
-          PLOG_WARNING << "[API] DELETE /v1/core/instances - Timeout getting "
+          PLOG_WARNING << "[API] DELETE /v1/core/instance - Timeout getting "
                           "instances (2.5s)";
         }
         callback(createErrorResponse(
@@ -1113,7 +1113,7 @@ void InstanceHandler::deleteAllInstances(
           allInstances = future.get();
         } catch (const std::exception &e) {
           if (isApiLoggingEnabled()) {
-            PLOG_ERROR << "[API] DELETE /v1/core/instances - Exception getting "
+            PLOG_ERROR << "[API] DELETE /v1/core/instance - Exception getting "
                           "instances: "
                        << e.what();
           }
@@ -1123,7 +1123,7 @@ void InstanceHandler::deleteAllInstances(
           return;
         } catch (...) {
           if (isApiLoggingEnabled()) {
-            PLOG_ERROR << "[API] DELETE /v1/core/instances - Unknown exception "
+            PLOG_ERROR << "[API] DELETE /v1/core/instance - Unknown exception "
                           "getting instances";
           }
           callback(createErrorResponse(500, "Internal server error",
@@ -1133,7 +1133,7 @@ void InstanceHandler::deleteAllInstances(
       }
     } catch (const std::exception &e) {
       if (isApiLoggingEnabled()) {
-        PLOG_ERROR << "[API] DELETE /v1/core/instances - Exception creating "
+        PLOG_ERROR << "[API] DELETE /v1/core/instance - Exception creating "
                       "async task: "
                    << e.what();
       }
@@ -1143,7 +1143,7 @@ void InstanceHandler::deleteAllInstances(
       return;
     } catch (...) {
       if (isApiLoggingEnabled()) {
-        PLOG_ERROR << "[API] DELETE /v1/core/instances - Unknown exception "
+        PLOG_ERROR << "[API] DELETE /v1/core/instance - Unknown exception "
                       "creating async task";
       }
       callback(createErrorResponse(500, "Internal server error",
@@ -1166,7 +1166,7 @@ void InstanceHandler::deleteAllInstances(
           end_time - start_time);
 
       if (isApiLoggingEnabled()) {
-        PLOG_INFO << "[API] DELETE /v1/core/instances - Success: No instances "
+        PLOG_INFO << "[API] DELETE /v1/core/instance - Success: No instances "
                      "to delete - "
                   << duration.count() << "ms";
       }
@@ -1233,7 +1233,7 @@ void InstanceHandler::deleteAllInstances(
         end_time - start_time);
 
     if (isApiLoggingEnabled()) {
-      PLOG_INFO << "[API] DELETE /v1/core/instances - Success: " << successCount
+      PLOG_INFO << "[API] DELETE /v1/core/instance - Success: " << successCount
                 << " deleted, " << failureCount << " failed out of "
                 << instanceIds.size() << " total - " << duration.count()
                 << "ms";
@@ -1246,7 +1246,7 @@ void InstanceHandler::deleteAllInstances(
     auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(
         end_time - start_time);
     if (isApiLoggingEnabled()) {
-      PLOG_ERROR << "[API] DELETE /v1/core/instances - Exception: " << e.what()
+      PLOG_ERROR << "[API] DELETE /v1/core/instance - Exception: " << e.what()
                  << " - " << duration.count() << "ms";
     }
     std::cerr << "[InstanceHandler] Exception in deleteAllInstances: "
@@ -1257,7 +1257,7 @@ void InstanceHandler::deleteAllInstances(
     auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(
         end_time - start_time);
     if (isApiLoggingEnabled()) {
-      PLOG_ERROR << "[API] DELETE /v1/core/instances - Unknown exception - "
+      PLOG_ERROR << "[API] DELETE /v1/core/instance - Unknown exception - "
                  << duration.count() << "ms";
     }
     std::cerr << "[InstanceHandler] Unknown exception in deleteAllInstances"
@@ -1462,7 +1462,7 @@ void InstanceHandler::getLastFrame(
   std::string instanceId = extractInstanceId(req);
 
   if (isApiLoggingEnabled()) {
-    PLOG_INFO << "[API] GET /v1/core/instances/" << instanceId
+    PLOG_INFO << "[API] GET /v1/core/instance/" << instanceId
               << "/frame - Get last frame";
     PLOG_DEBUG << "[API] Request from: " << req->getPeerAddr().toIpPort();
   }
@@ -1471,7 +1471,7 @@ void InstanceHandler::getLastFrame(
     // Check if registry is set
     if (!instance_manager_) {
       if (isApiLoggingEnabled()) {
-        PLOG_ERROR << "[API] GET /v1/core/instances/" << instanceId
+        PLOG_ERROR << "[API] GET /v1/core/instance/" << instanceId
                    << "/frame - Error: Instance registry not initialized";
       }
       callback(createErrorResponse(500, "Internal server error",
@@ -1481,7 +1481,7 @@ void InstanceHandler::getLastFrame(
 
     if (instanceId.empty()) {
       if (isApiLoggingEnabled()) {
-        PLOG_WARNING << "[API] GET /v1/core/instances/{instanceId}/frame - "
+        PLOG_WARNING << "[API] GET /v1/core/instance/{instanceId}/frame - "
                         "Error: Instance ID is empty";
       }
       callback(createErrorResponse(400, "Invalid request",
@@ -1496,7 +1496,7 @@ void InstanceHandler::getLastFrame(
       auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(
           end_time - start_time);
       if (isApiLoggingEnabled()) {
-        PLOG_WARNING << "[API] GET /v1/core/instances/" << instanceId
+        PLOG_WARNING << "[API] GET /v1/core/instance/" << instanceId
                      << "/frame - Instance not found - " << duration.count()
                      << "ms";
       }
@@ -1520,7 +1520,7 @@ void InstanceHandler::getLastFrame(
         end_time - start_time);
 
     if (isApiLoggingEnabled()) {
-      PLOG_INFO << "[API] GET /v1/core/instances/" << instanceId
+      PLOG_INFO << "[API] GET /v1/core/instance/" << instanceId
                 << "/frame - Success - " << duration.count()
                 << "ms (frame size: " << frameBase64.length() << " chars)";
     }
@@ -1533,7 +1533,7 @@ void InstanceHandler::getLastFrame(
         end_time - start_time);
     if (isApiLoggingEnabled()) {
       PLOG_ERROR
-          << "[API] GET /v1/core/instances/{instanceId}/frame - Exception: "
+          << "[API] GET /v1/core/instance/{instanceId}/frame - Exception: "
           << e.what() << " - " << duration.count() << "ms";
     }
     callback(createErrorResponse(500, "Internal server error", e.what()));
@@ -1542,7 +1542,7 @@ void InstanceHandler::getLastFrame(
     auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(
         end_time - start_time);
     if (isApiLoggingEnabled()) {
-      PLOG_ERROR << "[API] GET /v1/core/instances/{instanceId}/frame - Unknown "
+      PLOG_ERROR << "[API] GET /v1/core/instance/{instanceId}/frame - Unknown "
                     "exception - "
                  << duration.count() << "ms";
     }

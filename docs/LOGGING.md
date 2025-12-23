@@ -38,9 +38,9 @@ Log tất cả các request và response của REST API.
 
 **Ví dụ log:**
 ```
-[API] GET /v1/core/instances - Success: 5 instances (running: 2, stopped: 3) - 12ms
-[API] POST /v1/core/instances/abc-123/start - Success - 234ms
-[API] GET /v1/core/instances/xyz-789 - Success: face_detection (running: true, fps: 25.50) - 8ms
+[API] GET /v1/core/instance - Success: 5 instances (running: 2, stopped: 3) - 12ms
+[API] POST /v1/core/instance/abc-123/start - Success - 234ms
+[API] GET /v1/core/instance/xyz-789 - Success: face_detection (running: true, fps: 25.50) - 8ms
 [API] POST /v1/core/instance - Success: Created instance abc-123 (Face Detection, solution: face_detection) - 156ms
 ```
 

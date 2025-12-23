@@ -2751,7 +2751,7 @@ bool InstanceRegistry::startPipeline(
                    "for details"
                 << std::endl;
       std::cerr << "[InstanceRegistry]   3. Check instance status: GET "
-                   "/v1/core/instances/<instanceId>"
+                   "/v1/core/instance/<instanceId>"
                 << std::endl;
       std::cerr << "[InstanceRegistry]   4. Monitor file creation:"
                 << std::endl;

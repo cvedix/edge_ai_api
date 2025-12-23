@@ -19,72 +19,72 @@ using namespace drogon;
  * Handles crossing lines management for ba_crossline instances.
  *
  * Endpoints:
- * - GET /v1/core/instances/{instanceId}/lines - Get all lines
- * - POST /v1/core/instances/{instanceId}/lines - Create a new line
- * - DELETE /v1/core/instances/{instanceId}/lines - Delete all lines
- * - GET /v1/core/instances/{instanceId}/lines/{lineId} - Get a specific line
- * - PUT /v1/core/instances/{instanceId}/lines/{lineId} - Update a specific line
- * - DELETE /v1/core/instances/{instanceId}/lines/{lineId} - Delete a specific
+ * - GET /v1/core/instance/{instanceId}/lines - Get all lines
+ * - POST /v1/core/instance/{instanceId}/lines - Create a new line
+ * - DELETE /v1/core/instance/{instanceId}/lines - Delete all lines
+ * - GET /v1/core/instance/{instanceId}/lines/{lineId} - Get a specific line
+ * - PUT /v1/core/instance/{instanceId}/lines/{lineId} - Update a specific line
+ * - DELETE /v1/core/instance/{instanceId}/lines/{lineId} - Delete a specific
  * line
  */
 class LinesHandler : public drogon::HttpController<LinesHandler> {
 public:
   METHOD_LIST_BEGIN
   ADD_METHOD_TO(LinesHandler::getAllLines,
-                "/v1/core/instances/{instanceId}/lines", Get);
+                "/v1/core/instance/{instanceId}/lines", Get);
   ADD_METHOD_TO(LinesHandler::createLine,
-                "/v1/core/instances/{instanceId}/lines", Post);
+                "/v1/core/instance/{instanceId}/lines", Post);
   ADD_METHOD_TO(LinesHandler::deleteAllLines,
-                "/v1/core/instances/{instanceId}/lines", Delete);
+                "/v1/core/instance/{instanceId}/lines", Delete);
   ADD_METHOD_TO(LinesHandler::getLine,
-                "/v1/core/instances/{instanceId}/lines/{lineId}", Get);
+                "/v1/core/instance/{instanceId}/lines/{lineId}", Get);
   ADD_METHOD_TO(LinesHandler::updateLine,
-                "/v1/core/instances/{instanceId}/lines/{lineId}", Put);
+                "/v1/core/instance/{instanceId}/lines/{lineId}", Put);
   ADD_METHOD_TO(LinesHandler::deleteLine,
-                "/v1/core/instances/{instanceId}/lines/{lineId}", Delete);
+                "/v1/core/instance/{instanceId}/lines/{lineId}", Delete);
   ADD_METHOD_TO(LinesHandler::handleOptions,
-                "/v1/core/instances/{instanceId}/lines", Options);
+                "/v1/core/instance/{instanceId}/lines", Options);
   ADD_METHOD_TO(LinesHandler::handleOptions,
-                "/v1/core/instances/{instanceId}/lines/{lineId}", Options);
+                "/v1/core/instance/{instanceId}/lines/{lineId}", Options);
   METHOD_LIST_END
 
   /**
-   * @brief Handle GET /v1/core/instances/{instanceId}/lines
+   * @brief Handle GET /v1/core/instance/{instanceId}/lines
    * Gets all crossing lines for an instance
    */
   void getAllLines(const HttpRequestPtr &req,
                    std::function<void(const HttpResponsePtr &)> &&callback);
 
   /**
-   * @brief Handle POST /v1/core/instances/{instanceId}/lines
+   * @brief Handle POST /v1/core/instance/{instanceId}/lines
    * Creates a new crossing line for an instance
    */
   void createLine(const HttpRequestPtr &req,
                   std::function<void(const HttpResponsePtr &)> &&callback);
 
   /**
-   * @brief Handle DELETE /v1/core/instances/{instanceId}/lines
+   * @brief Handle DELETE /v1/core/instance/{instanceId}/lines
    * Deletes all crossing lines for an instance
    */
   void deleteAllLines(const HttpRequestPtr &req,
                       std::function<void(const HttpResponsePtr &)> &&callback);
 
   /**
-   * @brief Handle GET /v1/core/instances/{instanceId}/lines/{lineId}
+   * @brief Handle GET /v1/core/instance/{instanceId}/lines/{lineId}
    * Gets a specific crossing line by ID
    */
   void getLine(const HttpRequestPtr &req,
                std::function<void(const HttpResponsePtr &)> &&callback);
 
   /**
-   * @brief Handle PUT /v1/core/instances/{instanceId}/lines/{lineId}
+   * @brief Handle PUT /v1/core/instance/{instanceId}/lines/{lineId}
    * Updates a specific crossing line by ID
    */
   void updateLine(const HttpRequestPtr &req,
                   std::function<void(const HttpResponsePtr &)> &&callback);
 
   /**
-   * @brief Handle DELETE /v1/core/instances/{instanceId}/lines/{lineId}
+   * @brief Handle DELETE /v1/core/instance/{instanceId}/lines/{lineId}
    * Deletes a specific crossing line by ID
    */
   void deleteLine(const HttpRequestPtr &req,

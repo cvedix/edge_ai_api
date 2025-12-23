@@ -3980,7 +3980,7 @@
             "method": "GET",
             "header": [],
             "url": {
-              "raw": "{{baseUrl}}/v1/core/instances",
+              "raw": "{{baseUrl}}/v1/core/instance",
               "host": [
                 "{{baseUrl}}"
               ],
@@ -4000,7 +4000,7 @@
                 "method": "GET",
                 "header": [],
                 "url": {
-                  "raw": "{{baseUrl}}/v1/core/instances",
+                  "raw": "{{baseUrl}}/v1/core/instance",
                   "host": [
                     "{{baseUrl}}"
                   ],
@@ -4030,7 +4030,7 @@
                 "method": "GET",
                 "header": [],
                 "url": {
-                  "raw": "{{baseUrl}}/v1/core/instances",
+                  "raw": "{{baseUrl}}/v1/core/instance",
                   "host": [
                     "{{baseUrl}}"
                   ],
@@ -4062,7 +4062,7 @@
             "method": "DELETE",
             "header": [],
             "url": {
-              "raw": "{{baseUrl}}/v1/core/instances",
+              "raw": "{{baseUrl}}/v1/core/instance",
               "host": [
                 "{{baseUrl}}"
               ],
@@ -4082,7 +4082,7 @@
                 "method": "DELETE",
                 "header": [],
                 "url": {
-                  "raw": "{{baseUrl}}/v1/core/instances",
+                  "raw": "{{baseUrl}}/v1/core/instance",
                   "host": [
                     "{{baseUrl}}"
                   ],
@@ -4112,7 +4112,7 @@
                 "method": "DELETE",
                 "header": [],
                 "url": {
-                  "raw": "{{baseUrl}}/v1/core/instances",
+                  "raw": "{{baseUrl}}/v1/core/instance",
                   "host": [
                     "{{baseUrl}}"
                   ],
@@ -4142,7 +4142,7 @@
                 "method": "DELETE",
                 "header": [],
                 "url": {
-                  "raw": "{{baseUrl}}/v1/core/instances",
+                  "raw": "{{baseUrl}}/v1/core/instance",
                   "host": [
                     "{{baseUrl}}"
                   ],
@@ -4174,7 +4174,7 @@
             "method": "OPTIONS",
             "header": [],
             "url": {
-              "raw": "{{baseUrl}}/v1/core/instances",
+              "raw": "{{baseUrl}}/v1/core/instance",
               "host": [
                 "{{baseUrl}}"
               ],
@@ -4194,7 +4194,7 @@
                 "method": "OPTIONS",
                 "header": [],
                 "url": {
-                  "raw": "{{baseUrl}}/v1/core/instances",
+                  "raw": "{{baseUrl}}/v1/core/instance",
                   "host": [
                     "{{baseUrl}}"
                   ],
@@ -4226,7 +4226,7 @@
             "method": "GET",
             "header": [],
             "url": {
-              "raw": "{{baseUrl}}/v1/core/instances/{instanceId}",
+              "raw": "{{baseUrl}}/v1/core/instance/{instanceId}",
               "host": [
                 "{{baseUrl}}"
               ],
@@ -4247,7 +4247,7 @@
                 "method": "GET",
                 "header": [],
                 "url": {
-                  "raw": "{{baseUrl}}/v1/core/instances/{instanceId}",
+                  "raw": "{{baseUrl}}/v1/core/instance/{instanceId}",
                   "host": [
                     "{{baseUrl}}"
                   ],
@@ -4278,7 +4278,7 @@
                 "method": "GET",
                 "header": [],
                 "url": {
-                  "raw": "{{baseUrl}}/v1/core/instances/{instanceId}",
+                  "raw": "{{baseUrl}}/v1/core/instance/{instanceId}",
                   "host": [
                     "{{baseUrl}}"
                   ],
@@ -4309,7 +4309,7 @@
                 "method": "GET",
                 "header": [],
                 "url": {
-                  "raw": "{{baseUrl}}/v1/core/instances/{instanceId}",
+                  "raw": "{{baseUrl}}/v1/core/instance/{instanceId}",
                   "host": [
                     "{{baseUrl}}"
                   ],
@@ -4347,7 +4347,7 @@
               }
             ],
             "url": {
-              "raw": "{{baseUrl}}/v1/core/instances/{instanceId}",
+              "raw": "{{baseUrl}}/v1/core/instance/{instanceId}",
               "host": [
                 "{{baseUrl}}"
               ],
@@ -4377,7 +4377,7 @@
                 "method": "PUT",
                 "header": [],
                 "url": {
-                  "raw": "{{baseUrl}}/v1/core/instances/{instanceId}",
+                  "raw": "{{baseUrl}}/v1/core/instance/{instanceId}",
                   "host": [
                     "{{baseUrl}}"
                   ],
@@ -4408,7 +4408,7 @@
                 "method": "PUT",
                 "header": [],
                 "url": {
-                  "raw": "{{baseUrl}}/v1/core/instances/{instanceId}",
+                  "raw": "{{baseUrl}}/v1/core/instance/{instanceId}",
                   "host": [
                     "{{baseUrl}}"
                   ],
@@ -4439,7 +4439,7 @@
                 "method": "PUT",
                 "header": [],
                 "url": {
-                  "raw": "{{baseUrl}}/v1/core/instances/{instanceId}",
+                  "raw": "{{baseUrl}}/v1/core/instance/{instanceId}",
                   "host": [
                     "{{baseUrl}}"
                   ],
@@ -4470,7 +4470,7 @@
                 "method": "PUT",
                 "header": [],
                 "url": {
-                  "raw": "{{baseUrl}}/v1/core/instances/{instanceId}",
+                  "raw": "{{baseUrl}}/v1/core/instance/{instanceId}",
                   "host": [
                     "{{baseUrl}}"
                   ],
@@ -4503,7 +4503,7 @@
             "method": "DELETE",
             "header": [],
             "url": {
-              "raw": "{{baseUrl}}/v1/core/instances/{instanceId}",
+              "raw": "{{baseUrl}}/v1/core/instance/{instanceId}",
               "host": [
                 "{{baseUrl}}"
               ],
@@ -4524,7 +4524,7 @@
                 "method": "DELETE",
                 "header": [],
                 "url": {
-                  "raw": "{{baseUrl}}/v1/core/instances/{instanceId}",
+                  "raw": "{{baseUrl}}/v1/core/instance/{instanceId}",
                   "host": [
                     "{{baseUrl}}"
                   ],
@@ -4555,7 +4555,7 @@
                 "method": "DELETE",
                 "header": [],
                 "url": {
-                  "raw": "{{baseUrl}}/v1/core/instances/{instanceId}",
+                  "raw": "{{baseUrl}}/v1/core/instance/{instanceId}",
                   "host": [
                     "{{baseUrl}}"
                   ],
@@ -4586,7 +4586,7 @@
                 "method": "DELETE",
                 "header": [],
                 "url": {
-                  "raw": "{{baseUrl}}/v1/core/instances/{instanceId}",
+                  "raw": "{{baseUrl}}/v1/core/instance/{instanceId}",
                   "host": [
                     "{{baseUrl}}"
                   ],
@@ -4619,7 +4619,7 @@
             "method": "POST",
             "header": [],
             "url": {
-              "raw": "{{baseUrl}}/v1/core/instances/{instanceId}/start",
+              "raw": "{{baseUrl}}/v1/core/instance/{instanceId}/start",
               "host": [
                 "{{baseUrl}}"
               ],
@@ -4641,7 +4641,7 @@
                 "method": "POST",
                 "header": [],
                 "url": {
-                  "raw": "{{baseUrl}}/v1/core/instances/{instanceId}/start",
+                  "raw": "{{baseUrl}}/v1/core/instance/{instanceId}/start",
                   "host": [
                     "{{baseUrl}}"
                   ],
@@ -4673,7 +4673,7 @@
                 "method": "POST",
                 "header": [],
                 "url": {
-                  "raw": "{{baseUrl}}/v1/core/instances/{instanceId}/start",
+                  "raw": "{{baseUrl}}/v1/core/instance/{instanceId}/start",
                   "host": [
                     "{{baseUrl}}"
                   ],
@@ -4705,7 +4705,7 @@
                 "method": "POST",
                 "header": [],
                 "url": {
-                  "raw": "{{baseUrl}}/v1/core/instances/{instanceId}/start",
+                  "raw": "{{baseUrl}}/v1/core/instance/{instanceId}/start",
                   "host": [
                     "{{baseUrl}}"
                   ],
@@ -4737,7 +4737,7 @@
                 "method": "POST",
                 "header": [],
                 "url": {
-                  "raw": "{{baseUrl}}/v1/core/instances/{instanceId}/start",
+                  "raw": "{{baseUrl}}/v1/core/instance/{instanceId}/start",
                   "host": [
                     "{{baseUrl}}"
                   ],
@@ -4771,7 +4771,7 @@
             "method": "POST",
             "header": [],
             "url": {
-              "raw": "{{baseUrl}}/v1/core/instances/{instanceId}/stop",
+              "raw": "{{baseUrl}}/v1/core/instance/{instanceId}/stop",
               "host": [
                 "{{baseUrl}}"
               ],
@@ -4793,7 +4793,7 @@
                 "method": "POST",
                 "header": [],
                 "url": {
-                  "raw": "{{baseUrl}}/v1/core/instances/{instanceId}/stop",
+                  "raw": "{{baseUrl}}/v1/core/instance/{instanceId}/stop",
                   "host": [
                     "{{baseUrl}}"
                   ],
@@ -4825,7 +4825,7 @@
                 "method": "POST",
                 "header": [],
                 "url": {
-                  "raw": "{{baseUrl}}/v1/core/instances/{instanceId}/stop",
+                  "raw": "{{baseUrl}}/v1/core/instance/{instanceId}/stop",
                   "host": [
                     "{{baseUrl}}"
                   ],
@@ -4857,7 +4857,7 @@
                 "method": "POST",
                 "header": [],
                 "url": {
-                  "raw": "{{baseUrl}}/v1/core/instances/{instanceId}/stop",
+                  "raw": "{{baseUrl}}/v1/core/instance/{instanceId}/stop",
                   "host": [
                     "{{baseUrl}}"
                   ],
@@ -4889,7 +4889,7 @@
                 "method": "POST",
                 "header": [],
                 "url": {
-                  "raw": "{{baseUrl}}/v1/core/instances/{instanceId}/stop",
+                  "raw": "{{baseUrl}}/v1/core/instance/{instanceId}/stop",
                   "host": [
                     "{{baseUrl}}"
                   ],
@@ -4923,7 +4923,7 @@
             "method": "POST",
             "header": [],
             "url": {
-              "raw": "{{baseUrl}}/v1/core/instances/{instanceId}/restart",
+              "raw": "{{baseUrl}}/v1/core/instance/{instanceId}/restart",
               "host": [
                 "{{baseUrl}}"
               ],
@@ -4945,7 +4945,7 @@
                 "method": "POST",
                 "header": [],
                 "url": {
-                  "raw": "{{baseUrl}}/v1/core/instances/{instanceId}/restart",
+                  "raw": "{{baseUrl}}/v1/core/instance/{instanceId}/restart",
                   "host": [
                     "{{baseUrl}}"
                   ],
@@ -4977,7 +4977,7 @@
                 "method": "POST",
                 "header": [],
                 "url": {
-                  "raw": "{{baseUrl}}/v1/core/instances/{instanceId}/restart",
+                  "raw": "{{baseUrl}}/v1/core/instance/{instanceId}/restart",
                   "host": [
                     "{{baseUrl}}"
                   ],
@@ -5009,7 +5009,7 @@
                 "method": "POST",
                 "header": [],
                 "url": {
-                  "raw": "{{baseUrl}}/v1/core/instances/{instanceId}/restart",
+                  "raw": "{{baseUrl}}/v1/core/instance/{instanceId}/restart",
                   "host": [
                     "{{baseUrl}}"
                   ],
@@ -5041,7 +5041,7 @@
                 "method": "POST",
                 "header": [],
                 "url": {
-                  "raw": "{{baseUrl}}/v1/core/instances/{instanceId}/restart",
+                  "raw": "{{baseUrl}}/v1/core/instance/{instanceId}/restart",
                   "host": [
                     "{{baseUrl}}"
                   ],
@@ -5075,7 +5075,7 @@
             "method": "OPTIONS",
             "header": [],
             "url": {
-              "raw": "{{baseUrl}}/v1/core/instances/{instanceId}/restart",
+              "raw": "{{baseUrl}}/v1/core/instance/{instanceId}/restart",
               "host": [
                 "{{baseUrl}}"
               ],
@@ -5097,7 +5097,7 @@
                 "method": "OPTIONS",
                 "header": [],
                 "url": {
-                  "raw": "{{baseUrl}}/v1/core/instances/{instanceId}/restart",
+                  "raw": "{{baseUrl}}/v1/core/instance/{instanceId}/restart",
                   "host": [
                     "{{baseUrl}}"
                   ],
@@ -5131,7 +5131,7 @@
             "method": "GET",
             "header": [],
             "url": {
-              "raw": "{{baseUrl}}/v1/core/instances/{instanceId}/output",
+              "raw": "{{baseUrl}}/v1/core/instance/{instanceId}/output",
               "host": [
                 "{{baseUrl}}"
               ],
@@ -5153,7 +5153,7 @@
                 "method": "GET",
                 "header": [],
                 "url": {
-                  "raw": "{{baseUrl}}/v1/core/instances/{instanceId}/output",
+                  "raw": "{{baseUrl}}/v1/core/instance/{instanceId}/output",
                   "host": [
                     "{{baseUrl}}"
                   ],
@@ -5185,7 +5185,7 @@
                 "method": "GET",
                 "header": [],
                 "url": {
-                  "raw": "{{baseUrl}}/v1/core/instances/{instanceId}/output",
+                  "raw": "{{baseUrl}}/v1/core/instance/{instanceId}/output",
                   "host": [
                     "{{baseUrl}}"
                   ],
@@ -5217,7 +5217,7 @@
                 "method": "GET",
                 "header": [],
                 "url": {
-                  "raw": "{{baseUrl}}/v1/core/instances/{instanceId}/output",
+                  "raw": "{{baseUrl}}/v1/core/instance/{instanceId}/output",
                   "host": [
                     "{{baseUrl}}"
                   ],
@@ -5251,7 +5251,7 @@
             "method": "OPTIONS",
             "header": [],
             "url": {
-              "raw": "{{baseUrl}}/v1/core/instances/{instanceId}/output",
+              "raw": "{{baseUrl}}/v1/core/instance/{instanceId}/output",
               "host": [
                 "{{baseUrl}}"
               ],
@@ -5273,7 +5273,7 @@
                 "method": "OPTIONS",
                 "header": [],
                 "url": {
-                  "raw": "{{baseUrl}}/v1/core/instances/{instanceId}/output",
+                  "raw": "{{baseUrl}}/v1/core/instance/{instanceId}/output",
                   "host": [
                     "{{baseUrl}}"
                   ],
@@ -5307,7 +5307,7 @@
             "method": "GET",
             "header": [],
             "url": {
-              "raw": "{{baseUrl}}/v1/core/instances/{instanceId}/frame",
+              "raw": "{{baseUrl}}/v1/core/instance/{instanceId}/frame",
               "host": [
                 "{{baseUrl}}"
               ],
@@ -5329,7 +5329,7 @@
                 "method": "GET",
                 "header": [],
                 "url": {
-                  "raw": "{{baseUrl}}/v1/core/instances/{instanceId}/frame",
+                  "raw": "{{baseUrl}}/v1/core/instance/{instanceId}/frame",
                   "host": [
                     "{{baseUrl}}"
                   ],
@@ -5361,7 +5361,7 @@
                 "method": "GET",
                 "header": [],
                 "url": {
-                  "raw": "{{baseUrl}}/v1/core/instances/{instanceId}/frame",
+                  "raw": "{{baseUrl}}/v1/core/instance/{instanceId}/frame",
                   "host": [
                     "{{baseUrl}}"
                   ],
@@ -5393,7 +5393,7 @@
                 "method": "GET",
                 "header": [],
                 "url": {
-                  "raw": "{{baseUrl}}/v1/core/instances/{instanceId}/frame",
+                  "raw": "{{baseUrl}}/v1/core/instance/{instanceId}/frame",
                   "host": [
                     "{{baseUrl}}"
                   ],
@@ -5425,7 +5425,7 @@
                 "method": "GET",
                 "header": [],
                 "url": {
-                  "raw": "{{baseUrl}}/v1/core/instances/{instanceId}/frame",
+                  "raw": "{{baseUrl}}/v1/core/instance/{instanceId}/frame",
                   "host": [
                     "{{baseUrl}}"
                   ],
@@ -5459,7 +5459,7 @@
             "method": "OPTIONS",
             "header": [],
             "url": {
-              "raw": "{{baseUrl}}/v1/core/instances/{instanceId}/frame",
+              "raw": "{{baseUrl}}/v1/core/instance/{instanceId}/frame",
               "host": [
                 "{{baseUrl}}"
               ],
@@ -5481,7 +5481,7 @@
                 "method": "OPTIONS",
                 "header": [],
                 "url": {
-                  "raw": "{{baseUrl}}/v1/core/instances/{instanceId}/frame",
+                  "raw": "{{baseUrl}}/v1/core/instance/{instanceId}/frame",
                   "host": [
                     "{{baseUrl}}"
                   ],
@@ -5520,7 +5520,7 @@
               }
             ],
             "url": {
-              "raw": "{{baseUrl}}/v1/core/instances/batch/start",
+              "raw": "{{baseUrl}}/v1/core/instance/batch/start",
               "host": [
                 "{{baseUrl}}"
               ],
@@ -5551,7 +5551,7 @@
                 "method": "POST",
                 "header": [],
                 "url": {
-                  "raw": "{{baseUrl}}/v1/core/instances/batch/start",
+                  "raw": "{{baseUrl}}/v1/core/instance/batch/start",
                   "host": [
                     "{{baseUrl}}"
                   ],
@@ -5583,7 +5583,7 @@
                 "method": "POST",
                 "header": [],
                 "url": {
-                  "raw": "{{baseUrl}}/v1/core/instances/batch/start",
+                  "raw": "{{baseUrl}}/v1/core/instance/batch/start",
                   "host": [
                     "{{baseUrl}}"
                   ],
@@ -5615,7 +5615,7 @@
                 "method": "POST",
                 "header": [],
                 "url": {
-                  "raw": "{{baseUrl}}/v1/core/instances/batch/start",
+                  "raw": "{{baseUrl}}/v1/core/instance/batch/start",
                   "host": [
                     "{{baseUrl}}"
                   ],
@@ -5649,7 +5649,7 @@
             "method": "OPTIONS",
             "header": [],
             "url": {
-              "raw": "{{baseUrl}}/v1/core/instances/batch/start",
+              "raw": "{{baseUrl}}/v1/core/instance/batch/start",
               "host": [
                 "{{baseUrl}}"
               ],
@@ -5671,7 +5671,7 @@
                 "method": "OPTIONS",
                 "header": [],
                 "url": {
-                  "raw": "{{baseUrl}}/v1/core/instances/batch/start",
+                  "raw": "{{baseUrl}}/v1/core/instance/batch/start",
                   "host": [
                     "{{baseUrl}}"
                   ],
@@ -5710,7 +5710,7 @@
               }
             ],
             "url": {
-              "raw": "{{baseUrl}}/v1/core/instances/batch/stop",
+              "raw": "{{baseUrl}}/v1/core/instance/batch/stop",
               "host": [
                 "{{baseUrl}}"
               ],
@@ -5741,7 +5741,7 @@
                 "method": "POST",
                 "header": [],
                 "url": {
-                  "raw": "{{baseUrl}}/v1/core/instances/batch/stop",
+                  "raw": "{{baseUrl}}/v1/core/instance/batch/stop",
                   "host": [
                     "{{baseUrl}}"
                   ],
@@ -5773,7 +5773,7 @@
                 "method": "POST",
                 "header": [],
                 "url": {
-                  "raw": "{{baseUrl}}/v1/core/instances/batch/stop",
+                  "raw": "{{baseUrl}}/v1/core/instance/batch/stop",
                   "host": [
                     "{{baseUrl}}"
                   ],
@@ -5805,7 +5805,7 @@
                 "method": "POST",
                 "header": [],
                 "url": {
-                  "raw": "{{baseUrl}}/v1/core/instances/batch/stop",
+                  "raw": "{{baseUrl}}/v1/core/instance/batch/stop",
                   "host": [
                     "{{baseUrl}}"
                   ],
@@ -5839,7 +5839,7 @@
             "method": "OPTIONS",
             "header": [],
             "url": {
-              "raw": "{{baseUrl}}/v1/core/instances/batch/stop",
+              "raw": "{{baseUrl}}/v1/core/instance/batch/stop",
               "host": [
                 "{{baseUrl}}"
               ],
@@ -5861,7 +5861,7 @@
                 "method": "OPTIONS",
                 "header": [],
                 "url": {
-                  "raw": "{{baseUrl}}/v1/core/instances/batch/stop",
+                  "raw": "{{baseUrl}}/v1/core/instance/batch/stop",
                   "host": [
                     "{{baseUrl}}"
                   ],
@@ -5900,7 +5900,7 @@
               }
             ],
             "url": {
-              "raw": "{{baseUrl}}/v1/core/instances/batch/restart",
+              "raw": "{{baseUrl}}/v1/core/instance/batch/restart",
               "host": [
                 "{{baseUrl}}"
               ],
@@ -5931,7 +5931,7 @@
                 "method": "POST",
                 "header": [],
                 "url": {
-                  "raw": "{{baseUrl}}/v1/core/instances/batch/restart",
+                  "raw": "{{baseUrl}}/v1/core/instance/batch/restart",
                   "host": [
                     "{{baseUrl}}"
                   ],
@@ -5963,7 +5963,7 @@
                 "method": "POST",
                 "header": [],
                 "url": {
-                  "raw": "{{baseUrl}}/v1/core/instances/batch/restart",
+                  "raw": "{{baseUrl}}/v1/core/instance/batch/restart",
                   "host": [
                     "{{baseUrl}}"
                   ],
@@ -5995,7 +5995,7 @@
                 "method": "POST",
                 "header": [],
                 "url": {
-                  "raw": "{{baseUrl}}/v1/core/instances/batch/restart",
+                  "raw": "{{baseUrl}}/v1/core/instance/batch/restart",
                   "host": [
                     "{{baseUrl}}"
                   ],
@@ -6029,7 +6029,7 @@
             "method": "OPTIONS",
             "header": [],
             "url": {
-              "raw": "{{baseUrl}}/v1/core/instances/batch/restart",
+              "raw": "{{baseUrl}}/v1/core/instance/batch/restart",
               "host": [
                 "{{baseUrl}}"
               ],
@@ -6051,7 +6051,7 @@
                 "method": "OPTIONS",
                 "header": [],
                 "url": {
-                  "raw": "{{baseUrl}}/v1/core/instances/batch/restart",
+                  "raw": "{{baseUrl}}/v1/core/instance/batch/restart",
                   "host": [
                     "{{baseUrl}}"
                   ],
@@ -6268,7 +6268,7 @@
               }
             ],
             "url": {
-              "raw": "{{baseUrl}}/v1/core/instances/{instanceId}/input",
+              "raw": "{{baseUrl}}/v1/core/instance/{instanceId}/input",
               "host": [
                 "{{baseUrl}}"
               ],
@@ -6299,7 +6299,7 @@
                 "method": "POST",
                 "header": [],
                 "url": {
-                  "raw": "{{baseUrl}}/v1/core/instances/{instanceId}/input",
+                  "raw": "{{baseUrl}}/v1/core/instance/{instanceId}/input",
                   "host": [
                     "{{baseUrl}}"
                   ],
@@ -6331,7 +6331,7 @@
                 "method": "POST",
                 "header": [],
                 "url": {
-                  "raw": "{{baseUrl}}/v1/core/instances/{instanceId}/input",
+                  "raw": "{{baseUrl}}/v1/core/instance/{instanceId}/input",
                   "host": [
                     "{{baseUrl}}"
                   ],
@@ -6363,7 +6363,7 @@
                 "method": "POST",
                 "header": [],
                 "url": {
-                  "raw": "{{baseUrl}}/v1/core/instances/{instanceId}/input",
+                  "raw": "{{baseUrl}}/v1/core/instance/{instanceId}/input",
                   "host": [
                     "{{baseUrl}}"
                   ],
@@ -6395,7 +6395,7 @@
                 "method": "POST",
                 "header": [],
                 "url": {
-                  "raw": "{{baseUrl}}/v1/core/instances/{instanceId}/input",
+                  "raw": "{{baseUrl}}/v1/core/instance/{instanceId}/input",
                   "host": [
                     "{{baseUrl}}"
                   ],
@@ -6429,7 +6429,7 @@
             "method": "OPTIONS",
             "header": [],
             "url": {
-              "raw": "{{baseUrl}}/v1/core/instances/{instanceId}/input",
+              "raw": "{{baseUrl}}/v1/core/instance/{instanceId}/input",
               "host": [
                 "{{baseUrl}}"
               ],
@@ -6451,7 +6451,7 @@
                 "method": "OPTIONS",
                 "header": [],
                 "url": {
-                  "raw": "{{baseUrl}}/v1/core/instances/{instanceId}/input",
+                  "raw": "{{baseUrl}}/v1/core/instance/{instanceId}/input",
                   "host": [
                     "{{baseUrl}}"
                   ],
@@ -6485,7 +6485,7 @@
             "method": "GET",
             "header": [],
             "url": {
-              "raw": "{{baseUrl}}/v1/core/instances/{instanceId}/config",
+              "raw": "{{baseUrl}}/v1/core/instance/{instanceId}/config",
               "host": [
                 "{{baseUrl}}"
               ],
@@ -6507,7 +6507,7 @@
                 "method": "GET",
                 "header": [],
                 "url": {
-                  "raw": "{{baseUrl}}/v1/core/instances/{instanceId}/config",
+                  "raw": "{{baseUrl}}/v1/core/instance/{instanceId}/config",
                   "host": [
                     "{{baseUrl}}"
                   ],
@@ -6539,7 +6539,7 @@
                 "method": "GET",
                 "header": [],
                 "url": {
-                  "raw": "{{baseUrl}}/v1/core/instances/{instanceId}/config",
+                  "raw": "{{baseUrl}}/v1/core/instance/{instanceId}/config",
                   "host": [
                     "{{baseUrl}}"
                   ],
@@ -6571,7 +6571,7 @@
                 "method": "GET",
                 "header": [],
                 "url": {
-                  "raw": "{{baseUrl}}/v1/core/instances/{instanceId}/config",
+                  "raw": "{{baseUrl}}/v1/core/instance/{instanceId}/config",
                   "host": [
                     "{{baseUrl}}"
                   ],
@@ -6610,7 +6610,7 @@
               }
             ],
             "url": {
-              "raw": "{{baseUrl}}/v1/core/instances/{instanceId}/config",
+              "raw": "{{baseUrl}}/v1/core/instance/{instanceId}/config",
               "host": [
                 "{{baseUrl}}"
               ],
@@ -6641,7 +6641,7 @@
                 "method": "POST",
                 "header": [],
                 "url": {
-                  "raw": "{{baseUrl}}/v1/core/instances/{instanceId}/config",
+                  "raw": "{{baseUrl}}/v1/core/instance/{instanceId}/config",
                   "host": [
                     "{{baseUrl}}"
                   ],
@@ -6673,7 +6673,7 @@
                 "method": "POST",
                 "header": [],
                 "url": {
-                  "raw": "{{baseUrl}}/v1/core/instances/{instanceId}/config",
+                  "raw": "{{baseUrl}}/v1/core/instance/{instanceId}/config",
                   "host": [
                     "{{baseUrl}}"
                   ],
@@ -6705,7 +6705,7 @@
                 "method": "POST",
                 "header": [],
                 "url": {
-                  "raw": "{{baseUrl}}/v1/core/instances/{instanceId}/config",
+                  "raw": "{{baseUrl}}/v1/core/instance/{instanceId}/config",
                   "host": [
                     "{{baseUrl}}"
                   ],
@@ -6737,7 +6737,7 @@
                 "method": "POST",
                 "header": [],
                 "url": {
-                  "raw": "{{baseUrl}}/v1/core/instances/{instanceId}/config",
+                  "raw": "{{baseUrl}}/v1/core/instance/{instanceId}/config",
                   "host": [
                     "{{baseUrl}}"
                   ],
@@ -6771,7 +6771,7 @@
             "method": "OPTIONS",
             "header": [],
             "url": {
-              "raw": "{{baseUrl}}/v1/core/instances/{instanceId}/config",
+              "raw": "{{baseUrl}}/v1/core/instance/{instanceId}/config",
               "host": [
                 "{{baseUrl}}"
               ],
@@ -6793,7 +6793,7 @@
                 "method": "OPTIONS",
                 "header": [],
                 "url": {
-                  "raw": "{{baseUrl}}/v1/core/instances/{instanceId}/config",
+                  "raw": "{{baseUrl}}/v1/core/instance/{instanceId}/config",
                   "host": [
                     "{{baseUrl}}"
                   ],
@@ -6827,7 +6827,7 @@
             "method": "GET",
             "header": [],
             "url": {
-              "raw": "{{baseUrl}}/v1/core/instances/{instanceId}/statistics",
+              "raw": "{{baseUrl}}/v1/core/instance/{instanceId}/statistics",
               "host": [
                 "{{baseUrl}}"
               ],
@@ -6849,7 +6849,7 @@
                 "method": "GET",
                 "header": [],
                 "url": {
-                  "raw": "{{baseUrl}}/v1/core/instances/{instanceId}/statistics",
+                  "raw": "{{baseUrl}}/v1/core/instance/{instanceId}/statistics",
                   "host": [
                     "{{baseUrl}}"
                   ],
@@ -6881,7 +6881,7 @@
                 "method": "GET",
                 "header": [],
                 "url": {
-                  "raw": "{{baseUrl}}/v1/core/instances/{instanceId}/statistics",
+                  "raw": "{{baseUrl}}/v1/core/instance/{instanceId}/statistics",
                   "host": [
                     "{{baseUrl}}"
                   ],
@@ -6913,7 +6913,7 @@
                 "method": "GET",
                 "header": [],
                 "url": {
-                  "raw": "{{baseUrl}}/v1/core/instances/{instanceId}/statistics",
+                  "raw": "{{baseUrl}}/v1/core/instance/{instanceId}/statistics",
                   "host": [
                     "{{baseUrl}}"
                   ],
@@ -6945,7 +6945,7 @@
                 "method": "GET",
                 "header": [],
                 "url": {
-                  "raw": "{{baseUrl}}/v1/core/instances/{instanceId}/statistics",
+                  "raw": "{{baseUrl}}/v1/core/instance/{instanceId}/statistics",
                   "host": [
                     "{{baseUrl}}"
                   ],
@@ -6979,7 +6979,7 @@
             "method": "OPTIONS",
             "header": [],
             "url": {
-              "raw": "{{baseUrl}}/v1/core/instances/{instanceId}/statistics",
+              "raw": "{{baseUrl}}/v1/core/instance/{instanceId}/statistics",
               "host": [
                 "{{baseUrl}}"
               ],
@@ -7001,7 +7001,7 @@
                 "method": "OPTIONS",
                 "header": [],
                 "url": {
-                  "raw": "{{baseUrl}}/v1/core/instances/{instanceId}/statistics",
+                  "raw": "{{baseUrl}}/v1/core/instance/{instanceId}/statistics",
                   "host": [
                     "{{baseUrl}}"
                   ],
@@ -7035,7 +7035,7 @@
             "method": "GET",
             "header": [],
             "url": {
-              "raw": "{{baseUrl}}/v1/core/instances/{instanceId}/output/stream",
+              "raw": "{{baseUrl}}/v1/core/instance/{instanceId}/output/stream",
               "host": [
                 "{{baseUrl}}"
               ],
@@ -7058,7 +7058,7 @@
                 "method": "GET",
                 "header": [],
                 "url": {
-                  "raw": "{{baseUrl}}/v1/core/instances/{instanceId}/output/stream",
+                  "raw": "{{baseUrl}}/v1/core/instance/{instanceId}/output/stream",
                   "host": [
                     "{{baseUrl}}"
                   ],
@@ -7091,7 +7091,7 @@
                 "method": "GET",
                 "header": [],
                 "url": {
-                  "raw": "{{baseUrl}}/v1/core/instances/{instanceId}/output/stream",
+                  "raw": "{{baseUrl}}/v1/core/instance/{instanceId}/output/stream",
                   "host": [
                     "{{baseUrl}}"
                   ],
@@ -7124,7 +7124,7 @@
                 "method": "GET",
                 "header": [],
                 "url": {
-                  "raw": "{{baseUrl}}/v1/core/instances/{instanceId}/output/stream",
+                  "raw": "{{baseUrl}}/v1/core/instance/{instanceId}/output/stream",
                   "host": [
                     "{{baseUrl}}"
                   ],
@@ -7164,7 +7164,7 @@
               }
             ],
             "url": {
-              "raw": "{{baseUrl}}/v1/core/instances/{instanceId}/output/stream",
+              "raw": "{{baseUrl}}/v1/core/instance/{instanceId}/output/stream",
               "host": [
                 "{{baseUrl}}"
               ],
@@ -7196,7 +7196,7 @@
                 "method": "POST",
                 "header": [],
                 "url": {
-                  "raw": "{{baseUrl}}/v1/core/instances/{instanceId}/output/stream",
+                  "raw": "{{baseUrl}}/v1/core/instance/{instanceId}/output/stream",
                   "host": [
                     "{{baseUrl}}"
                   ],
@@ -7229,7 +7229,7 @@
                 "method": "POST",
                 "header": [],
                 "url": {
-                  "raw": "{{baseUrl}}/v1/core/instances/{instanceId}/output/stream",
+                  "raw": "{{baseUrl}}/v1/core/instance/{instanceId}/output/stream",
                   "host": [
                     "{{baseUrl}}"
                   ],
@@ -7262,7 +7262,7 @@
                 "method": "POST",
                 "header": [],
                 "url": {
-                  "raw": "{{baseUrl}}/v1/core/instances/{instanceId}/output/stream",
+                  "raw": "{{baseUrl}}/v1/core/instance/{instanceId}/output/stream",
                   "host": [
                     "{{baseUrl}}"
                   ],
@@ -7295,7 +7295,7 @@
                 "method": "POST",
                 "header": [],
                 "url": {
-                  "raw": "{{baseUrl}}/v1/core/instances/{instanceId}/output/stream",
+                  "raw": "{{baseUrl}}/v1/core/instance/{instanceId}/output/stream",
                   "host": [
                     "{{baseUrl}}"
                   ],
@@ -7330,7 +7330,7 @@
             "method": "OPTIONS",
             "header": [],
             "url": {
-              "raw": "{{baseUrl}}/v1/core/instances/{instanceId}/output/stream",
+              "raw": "{{baseUrl}}/v1/core/instance/{instanceId}/output/stream",
               "host": [
                 "{{baseUrl}}"
               ],
@@ -7353,7 +7353,7 @@
                 "method": "OPTIONS",
                 "header": [],
                 "url": {
-                  "raw": "{{baseUrl}}/v1/core/instances/{instanceId}/output/stream",
+                  "raw": "{{baseUrl}}/v1/core/instance/{instanceId}/output/stream",
                   "host": [
                     "{{baseUrl}}"
                   ],
@@ -7393,7 +7393,7 @@
             "method": "GET",
             "header": [],
             "url": {
-              "raw": "{{baseUrl}}/v1/core/instances/{instanceId}/lines",
+              "raw": "{{baseUrl}}/v1/core/instance/{instanceId}/lines",
               "host": [
                 "{{baseUrl}}"
               ],
@@ -7415,7 +7415,7 @@
                 "method": "GET",
                 "header": [],
                 "url": {
-                  "raw": "{{baseUrl}}/v1/core/instances/{instanceId}/lines",
+                  "raw": "{{baseUrl}}/v1/core/instance/{instanceId}/lines",
                   "host": [
                     "{{baseUrl}}"
                   ],
@@ -7447,7 +7447,7 @@
                 "method": "GET",
                 "header": [],
                 "url": {
-                  "raw": "{{baseUrl}}/v1/core/instances/{instanceId}/lines",
+                  "raw": "{{baseUrl}}/v1/core/instance/{instanceId}/lines",
                   "host": [
                     "{{baseUrl}}"
                   ],
@@ -7479,7 +7479,7 @@
                 "method": "GET",
                 "header": [],
                 "url": {
-                  "raw": "{{baseUrl}}/v1/core/instances/{instanceId}/lines",
+                  "raw": "{{baseUrl}}/v1/core/instance/{instanceId}/lines",
                   "host": [
                     "{{baseUrl}}"
                   ],
@@ -7518,7 +7518,7 @@
               }
             ],
             "url": {
-              "raw": "{{baseUrl}}/v1/core/instances/{instanceId}/lines",
+              "raw": "{{baseUrl}}/v1/core/instance/{instanceId}/lines",
               "host": [
                 "{{baseUrl}}"
               ],
@@ -7549,7 +7549,7 @@
                 "method": "POST",
                 "header": [],
                 "url": {
-                  "raw": "{{baseUrl}}/v1/core/instances/{instanceId}/lines",
+                  "raw": "{{baseUrl}}/v1/core/instance/{instanceId}/lines",
                   "host": [
                     "{{baseUrl}}"
                   ],
@@ -7581,7 +7581,7 @@
                 "method": "POST",
                 "header": [],
                 "url": {
-                  "raw": "{{baseUrl}}/v1/core/instances/{instanceId}/lines",
+                  "raw": "{{baseUrl}}/v1/core/instance/{instanceId}/lines",
                   "host": [
                     "{{baseUrl}}"
                   ],
@@ -7613,7 +7613,7 @@
                 "method": "POST",
                 "header": [],
                 "url": {
-                  "raw": "{{baseUrl}}/v1/core/instances/{instanceId}/lines",
+                  "raw": "{{baseUrl}}/v1/core/instance/{instanceId}/lines",
                   "host": [
                     "{{baseUrl}}"
                   ],
@@ -7645,7 +7645,7 @@
                 "method": "POST",
                 "header": [],
                 "url": {
-                  "raw": "{{baseUrl}}/v1/core/instances/{instanceId}/lines",
+                  "raw": "{{baseUrl}}/v1/core/instance/{instanceId}/lines",
                   "host": [
                     "{{baseUrl}}"
                   ],
@@ -7679,7 +7679,7 @@
             "method": "DELETE",
             "header": [],
             "url": {
-              "raw": "{{baseUrl}}/v1/core/instances/{instanceId}/lines",
+              "raw": "{{baseUrl}}/v1/core/instance/{instanceId}/lines",
               "host": [
                 "{{baseUrl}}"
               ],
@@ -7701,7 +7701,7 @@
                 "method": "DELETE",
                 "header": [],
                 "url": {
-                  "raw": "{{baseUrl}}/v1/core/instances/{instanceId}/lines",
+                  "raw": "{{baseUrl}}/v1/core/instance/{instanceId}/lines",
                   "host": [
                     "{{baseUrl}}"
                   ],
@@ -7733,7 +7733,7 @@
                 "method": "DELETE",
                 "header": [],
                 "url": {
-                  "raw": "{{baseUrl}}/v1/core/instances/{instanceId}/lines",
+                  "raw": "{{baseUrl}}/v1/core/instance/{instanceId}/lines",
                   "host": [
                     "{{baseUrl}}"
                   ],
@@ -7765,7 +7765,7 @@
                 "method": "DELETE",
                 "header": [],
                 "url": {
-                  "raw": "{{baseUrl}}/v1/core/instances/{instanceId}/lines",
+                  "raw": "{{baseUrl}}/v1/core/instance/{instanceId}/lines",
                   "host": [
                     "{{baseUrl}}"
                   ],
@@ -7799,7 +7799,7 @@
             "method": "OPTIONS",
             "header": [],
             "url": {
-              "raw": "{{baseUrl}}/v1/core/instances/{instanceId}/lines",
+              "raw": "{{baseUrl}}/v1/core/instance/{instanceId}/lines",
               "host": [
                 "{{baseUrl}}"
               ],
@@ -7821,7 +7821,7 @@
                 "method": "OPTIONS",
                 "header": [],
                 "url": {
-                  "raw": "{{baseUrl}}/v1/core/instances/{instanceId}/lines",
+                  "raw": "{{baseUrl}}/v1/core/instance/{instanceId}/lines",
                   "host": [
                     "{{baseUrl}}"
                   ],
@@ -7855,7 +7855,7 @@
             "method": "GET",
             "header": [],
             "url": {
-              "raw": "{{baseUrl}}/v1/core/instances/{instanceId}/lines/{lineId}",
+              "raw": "{{baseUrl}}/v1/core/instance/{instanceId}/lines/{lineId}",
               "host": [
                 "{{baseUrl}}"
               ],
@@ -7878,7 +7878,7 @@
                 "method": "GET",
                 "header": [],
                 "url": {
-                  "raw": "{{baseUrl}}/v1/core/instances/{instanceId}/lines/{lineId}",
+                  "raw": "{{baseUrl}}/v1/core/instance/{instanceId}/lines/{lineId}",
                   "host": [
                     "{{baseUrl}}"
                   ],
@@ -7911,7 +7911,7 @@
                 "method": "GET",
                 "header": [],
                 "url": {
-                  "raw": "{{baseUrl}}/v1/core/instances/{instanceId}/lines/{lineId}",
+                  "raw": "{{baseUrl}}/v1/core/instance/{instanceId}/lines/{lineId}",
                   "host": [
                     "{{baseUrl}}"
                   ],
@@ -7944,7 +7944,7 @@
                 "method": "GET",
                 "header": [],
                 "url": {
-                  "raw": "{{baseUrl}}/v1/core/instances/{instanceId}/lines/{lineId}",
+                  "raw": "{{baseUrl}}/v1/core/instance/{instanceId}/lines/{lineId}",
                   "host": [
                     "{{baseUrl}}"
                   ],
@@ -7984,7 +7984,7 @@
               }
             ],
             "url": {
-              "raw": "{{baseUrl}}/v1/core/instances/{instanceId}/lines/{lineId}",
+              "raw": "{{baseUrl}}/v1/core/instance/{instanceId}/lines/{lineId}",
               "host": [
                 "{{baseUrl}}"
               ],
@@ -8016,7 +8016,7 @@
                 "method": "PUT",
                 "header": [],
                 "url": {
-                  "raw": "{{baseUrl}}/v1/core/instances/{instanceId}/lines/{lineId}",
+                  "raw": "{{baseUrl}}/v1/core/instance/{instanceId}/lines/{lineId}",
                   "host": [
                     "{{baseUrl}}"
                   ],
@@ -8049,7 +8049,7 @@
                 "method": "PUT",
                 "header": [],
                 "url": {
-                  "raw": "{{baseUrl}}/v1/core/instances/{instanceId}/lines/{lineId}",
+                  "raw": "{{baseUrl}}/v1/core/instance/{instanceId}/lines/{lineId}",
                   "host": [
                     "{{baseUrl}}"
                   ],
@@ -8082,7 +8082,7 @@
                 "method": "PUT",
                 "header": [],
                 "url": {
-                  "raw": "{{baseUrl}}/v1/core/instances/{instanceId}/lines/{lineId}",
+                  "raw": "{{baseUrl}}/v1/core/instance/{instanceId}/lines/{lineId}",
                   "host": [
                     "{{baseUrl}}"
                   ],
@@ -8115,7 +8115,7 @@
                 "method": "PUT",
                 "header": [],
                 "url": {
-                  "raw": "{{baseUrl}}/v1/core/instances/{instanceId}/lines/{lineId}",
+                  "raw": "{{baseUrl}}/v1/core/instance/{instanceId}/lines/{lineId}",
                   "host": [
                     "{{baseUrl}}"
                   ],
@@ -8150,7 +8150,7 @@
             "method": "DELETE",
             "header": [],
             "url": {
-              "raw": "{{baseUrl}}/v1/core/instances/{instanceId}/lines/{lineId}",
+              "raw": "{{baseUrl}}/v1/core/instance/{instanceId}/lines/{lineId}",
               "host": [
                 "{{baseUrl}}"
               ],
@@ -8173,7 +8173,7 @@
                 "method": "DELETE",
                 "header": [],
                 "url": {
-                  "raw": "{{baseUrl}}/v1/core/instances/{instanceId}/lines/{lineId}",
+                  "raw": "{{baseUrl}}/v1/core/instance/{instanceId}/lines/{lineId}",
                   "host": [
                     "{{baseUrl}}"
                   ],
@@ -8206,7 +8206,7 @@
                 "method": "DELETE",
                 "header": [],
                 "url": {
-                  "raw": "{{baseUrl}}/v1/core/instances/{instanceId}/lines/{lineId}",
+                  "raw": "{{baseUrl}}/v1/core/instance/{instanceId}/lines/{lineId}",
                   "host": [
                     "{{baseUrl}}"
                   ],
@@ -8239,7 +8239,7 @@
                 "method": "DELETE",
                 "header": [],
                 "url": {
-                  "raw": "{{baseUrl}}/v1/core/instances/{instanceId}/lines/{lineId}",
+                  "raw": "{{baseUrl}}/v1/core/instance/{instanceId}/lines/{lineId}",
                   "host": [
                     "{{baseUrl}}"
                   ],
@@ -8274,7 +8274,7 @@
             "method": "OPTIONS",
             "header": [],
             "url": {
-              "raw": "{{baseUrl}}/v1/core/instances/{instanceId}/lines/{lineId}",
+              "raw": "{{baseUrl}}/v1/core/instance/{instanceId}/lines/{lineId}",
               "host": [
                 "{{baseUrl}}"
               ],
@@ -8297,7 +8297,7 @@
                 "method": "OPTIONS",
                 "header": [],
                 "url": {
-                  "raw": "{{baseUrl}}/v1/core/instances/{instanceId}/lines/{lineId}",
+                  "raw": "{{baseUrl}}/v1/core/instance/{instanceId}/lines/{lineId}",
                   "host": [
                     "{{baseUrl}}"
                   ],

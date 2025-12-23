@@ -20,29 +20,29 @@ class UpdateInstanceRequest;
  * Endpoints:
  * - GET /v1/core/instance/status/summary - Get instance status summary (total,
  * running, stopped counts)
- * - GET /v1/core/instances - List all instances
- * - GET /v1/core/instances/{instanceId} - Get instance details
- * - PUT /v1/core/instances/{instanceId} - Update instance information
- * - POST /v1/core/instances/{instanceId}/start - Start an instance
- * - POST /v1/core/instances/{instanceId}/stop - Stop an instance
- * - POST /v1/core/instances/{instanceId}/restart - Restart an instance
- * - DELETE /v1/core/instances/{instanceId} - Delete an instance
- * - DELETE /v1/core/instances - Delete all instances
- * - POST /v1/core/instances/batch/start - Start multiple instances concurrently
- * - POST /v1/core/instances/batch/stop - Stop multiple instances concurrently
- * - POST /v1/core/instances/batch/restart - Restart multiple instances
+ * - GET /v1/core/instance - List all instances
+ * - GET /v1/core/instance/{instanceId} - Get instance details
+ * - PUT /v1/core/instance/{instanceId} - Update instance information
+ * - POST /v1/core/instance/{instanceId}/start - Start an instance
+ * - POST /v1/core/instance/{instanceId}/stop - Stop an instance
+ * - POST /v1/core/instance/{instanceId}/restart - Restart an instance
+ * - DELETE /v1/core/instance/{instanceId} - Delete an instance
+ * - DELETE /v1/core/instance - Delete all instances
+ * - POST /v1/core/instance/batch/start - Start multiple instances concurrently
+ * - POST /v1/core/instance/batch/stop - Stop multiple instances concurrently
+ * - POST /v1/core/instance/batch/restart - Restart multiple instances
  * concurrently
- * - GET /v1/core/instances/{instanceId}/output - Get instance output/processing
+ * - GET /v1/core/instance/{instanceId}/output - Get instance output/processing
  * results
- * - POST /v1/core/instances/{instanceId}/input - Set input source for an
+ * - POST /v1/core/instance/{instanceId}/input - Set input source for an
  * instance
- * - GET /v1/core/instances/{instanceId}/config - Get instance configuration
- * - POST /v1/core/instances/{instanceId}/config - Set config value at a
+ * - GET /v1/core/instance/{instanceId}/config - Get instance configuration
+ * - POST /v1/core/instance/{instanceId}/config - Set config value at a
  * specific path
- * - GET /v1/core/instances/{instanceId}/statistics - Get instance statistics
- * - GET /v1/core/instances/{instanceId}/output/stream - Get stream output
+ * - GET /v1/core/instance/{instanceId}/statistics - Get instance statistics
+ * - GET /v1/core/instance/{instanceId}/output/stream - Get stream output
  * configuration
- * - POST /v1/core/instances/{instanceId}/output/stream - Configure stream
+ * - POST /v1/core/instance/{instanceId}/output/stream - Configure stream
  * output (RTMP/RTSP/HLS)
  */
 class InstanceHandler : public drogon::HttpController<InstanceHandler> {
@@ -50,73 +50,73 @@ public:
   METHOD_LIST_BEGIN
   ADD_METHOD_TO(InstanceHandler::getStatusSummary,
                 "/v1/core/instance/status/summary", Get);
-  // Routes for /v1/core/instances (without path parameter) - must come before
+  // Routes for /v1/core/instance (without path parameter) - must come before
   // routes with {instanceId}
-  ADD_METHOD_TO(InstanceHandler::listInstances, "/v1/core/instances", Get);
-  ADD_METHOD_TO(InstanceHandler::deleteAllInstances, "/v1/core/instances",
+  ADD_METHOD_TO(InstanceHandler::listInstances, "/v1/core/instance", Get);
+  ADD_METHOD_TO(InstanceHandler::deleteAllInstances, "/v1/core/instance",
                 Delete);
-  // Routes for /v1/core/instances/{instanceId} (with path parameter)
-  ADD_METHOD_TO(InstanceHandler::getInstance, "/v1/core/instances/{instanceId}",
+  // Routes for /v1/core/instance/{instanceId} (with path parameter)
+  ADD_METHOD_TO(InstanceHandler::getInstance, "/v1/core/instance/{instanceId}",
                 Get);
   ADD_METHOD_TO(InstanceHandler::updateInstance,
-                "/v1/core/instances/{instanceId}", Put);
+                "/v1/core/instance/{instanceId}", Put);
   ADD_METHOD_TO(InstanceHandler::deleteInstance,
-                "/v1/core/instances/{instanceId}", Delete);
+                "/v1/core/instance/{instanceId}", Delete);
   ADD_METHOD_TO(InstanceHandler::startInstance,
-                "/v1/core/instances/{instanceId}/start", Post);
+                "/v1/core/instance/{instanceId}/start", Post);
   ADD_METHOD_TO(InstanceHandler::stopInstance,
-                "/v1/core/instances/{instanceId}/stop", Post);
+                "/v1/core/instance/{instanceId}/stop", Post);
   ADD_METHOD_TO(InstanceHandler::restartInstance,
-                "/v1/core/instances/{instanceId}/restart", Post);
+                "/v1/core/instance/{instanceId}/restart", Post);
   ADD_METHOD_TO(InstanceHandler::getInstanceOutput,
-                "/v1/core/instances/{instanceId}/output", Get);
+                "/v1/core/instance/{instanceId}/output", Get);
   ADD_METHOD_TO(InstanceHandler::batchStartInstances,
-                "/v1/core/instances/batch/start", Post);
+                "/v1/core/instance/batch/start", Post);
   ADD_METHOD_TO(InstanceHandler::batchStopInstances,
-                "/v1/core/instances/batch/stop", Post);
+                "/v1/core/instance/batch/stop", Post);
   ADD_METHOD_TO(InstanceHandler::batchRestartInstances,
-                "/v1/core/instances/batch/restart", Post);
+                "/v1/core/instance/batch/restart", Post);
   ADD_METHOD_TO(InstanceHandler::setInstanceInput,
-                "/v1/core/instances/{instanceId}/input", Post);
+                "/v1/core/instance/{instanceId}/input", Post);
   ADD_METHOD_TO(InstanceHandler::getConfig,
-                "/v1/core/instances/{instanceId}/config", Get);
+                "/v1/core/instance/{instanceId}/config", Get);
   ADD_METHOD_TO(InstanceHandler::setConfig,
-                "/v1/core/instances/{instanceId}/config", Post);
+                "/v1/core/instance/{instanceId}/config", Post);
   ADD_METHOD_TO(InstanceHandler::getStatistics,
-                "/v1/core/instances/{instanceId}/statistics", Get);
+                "/v1/core/instance/{instanceId}/statistics", Get);
   ADD_METHOD_TO(InstanceHandler::getLastFrame,
-                "/v1/core/instances/{instanceId}/frame", Get);
+                "/v1/core/instance/{instanceId}/frame", Get);
   ADD_METHOD_TO(InstanceHandler::getStreamOutput,
-                "/v1/core/instances/{instanceId}/output/stream", Get);
+                "/v1/core/instance/{instanceId}/output/stream", Get);
   ADD_METHOD_TO(InstanceHandler::configureStreamOutput,
-                "/v1/core/instances/{instanceId}/output/stream", Post);
-  ADD_METHOD_TO(InstanceHandler::handleOptions, "/v1/core/instances", Options);
+                "/v1/core/instance/{instanceId}/output/stream", Post);
+  ADD_METHOD_TO(InstanceHandler::handleOptions, "/v1/core/instance", Options);
   ADD_METHOD_TO(InstanceHandler::handleOptions,
-                "/v1/core/instances/{instanceId}", Options);
+                "/v1/core/instance/{instanceId}", Options);
   ADD_METHOD_TO(InstanceHandler::handleOptions,
-                "/v1/core/instances/{instanceId}/start", Options);
+                "/v1/core/instance/{instanceId}/start", Options);
   ADD_METHOD_TO(InstanceHandler::handleOptions,
-                "/v1/core/instances/{instanceId}/stop", Options);
+                "/v1/core/instance/{instanceId}/stop", Options);
   ADD_METHOD_TO(InstanceHandler::handleOptions,
-                "/v1/core/instances/{instanceId}/restart", Options);
+                "/v1/core/instance/{instanceId}/restart", Options);
   ADD_METHOD_TO(InstanceHandler::handleOptions,
-                "/v1/core/instances/{instanceId}/output", Options);
+                "/v1/core/instance/{instanceId}/output", Options);
   ADD_METHOD_TO(InstanceHandler::handleOptions,
-                "/v1/core/instances/{instanceId}/input", Options);
+                "/v1/core/instance/{instanceId}/input", Options);
   ADD_METHOD_TO(InstanceHandler::handleOptions,
-                "/v1/core/instances/{instanceId}/config", Options);
+                "/v1/core/instance/{instanceId}/config", Options);
   ADD_METHOD_TO(InstanceHandler::handleOptions,
-                "/v1/core/instances/{instanceId}/statistics", Options);
+                "/v1/core/instance/{instanceId}/statistics", Options);
   ADD_METHOD_TO(InstanceHandler::handleOptions,
-                "/v1/core/instances/{instanceId}/frame", Options);
+                "/v1/core/instance/{instanceId}/frame", Options);
   ADD_METHOD_TO(InstanceHandler::handleOptions,
-                "/v1/core/instances/{instanceId}/output/stream", Options);
-  ADD_METHOD_TO(InstanceHandler::handleOptions,
-                "/v1/core/instances/batch/start", Options);
-  ADD_METHOD_TO(InstanceHandler::handleOptions, "/v1/core/instances/batch/stop",
+                "/v1/core/instance/{instanceId}/output/stream", Options);
+  ADD_METHOD_TO(InstanceHandler::handleOptions, "/v1/core/instance/batch/start",
+                Options);
+  ADD_METHOD_TO(InstanceHandler::handleOptions, "/v1/core/instance/batch/stop",
                 Options);
   ADD_METHOD_TO(InstanceHandler::handleOptions,
-                "/v1/core/instances/batch/restart", Options);
+                "/v1/core/instance/batch/restart", Options);
   ADD_METHOD_TO(InstanceHandler::handleOptions,
                 "/v1/core/instance/status/summary", Options);
   METHOD_LIST_END
@@ -131,21 +131,21 @@ public:
                    std::function<void(const HttpResponsePtr &)> &&callback);
 
   /**
-   * @brief Handle GET /v1/core/instances
+   * @brief Handle GET /v1/core/instance
    * Lists all instances with summary information
    */
   void listInstances(const HttpRequestPtr &req,
                      std::function<void(const HttpResponsePtr &)> &&callback);
 
   /**
-   * @brief Handle GET /v1/core/instances/{instanceId}
+   * @brief Handle GET /v1/core/instance/{instanceId}
    * Gets detailed information about a specific instance
    */
   void getInstance(const HttpRequestPtr &req,
                    std::function<void(const HttpResponsePtr &)> &&callback);
 
   /**
-   * @brief Handle GET /v1/core/instances/{instanceId}/output
+   * @brief Handle GET /v1/core/instance/{instanceId}/output
    * Gets real-time output/processing results for a specific instance
    */
   void
@@ -153,35 +153,35 @@ public:
                     std::function<void(const HttpResponsePtr &)> &&callback);
 
   /**
-   * @brief Handle POST /v1/core/instances/{instanceId}/start
+   * @brief Handle POST /v1/core/instance/{instanceId}/start
    * Starts an instance pipeline
    */
   void startInstance(const HttpRequestPtr &req,
                      std::function<void(const HttpResponsePtr &)> &&callback);
 
   /**
-   * @brief Handle POST /v1/core/instances/{instanceId}/stop
+   * @brief Handle POST /v1/core/instance/{instanceId}/stop
    * Stops an instance pipeline
    */
   void stopInstance(const HttpRequestPtr &req,
                     std::function<void(const HttpResponsePtr &)> &&callback);
 
   /**
-   * @brief Handle POST /v1/core/instances/{instanceId}/restart
+   * @brief Handle POST /v1/core/instance/{instanceId}/restart
    * Restarts an instance (stops then starts)
    */
   void restartInstance(const HttpRequestPtr &req,
                        std::function<void(const HttpResponsePtr &)> &&callback);
 
   /**
-   * @brief Handle DELETE /v1/core/instances/{instanceId}
+   * @brief Handle DELETE /v1/core/instance/{instanceId}
    * Deletes an instance
    */
   void deleteInstance(const HttpRequestPtr &req,
                       std::function<void(const HttpResponsePtr &)> &&callback);
 
   /**
-   * @brief Handle DELETE /v1/core/instances
+   * @brief Handle DELETE /v1/core/instance
    * Deletes all instances
    */
   void
@@ -189,14 +189,14 @@ public:
                      std::function<void(const HttpResponsePtr &)> &&callback);
 
   /**
-   * @brief Handle PUT /v1/core/instances/{instanceId}
+   * @brief Handle PUT /v1/core/instance/{instanceId}
    * Updates instance information
    */
   void updateInstance(const HttpRequestPtr &req,
                       std::function<void(const HttpResponsePtr &)> &&callback);
 
   /**
-   * @brief Handle POST /v1/core/instances/batch/start
+   * @brief Handle POST /v1/core/instance/batch/start
    * Starts multiple instances concurrently
    */
   void
@@ -204,7 +204,7 @@ public:
                       std::function<void(const HttpResponsePtr &)> &&callback);
 
   /**
-   * @brief Handle POST /v1/core/instances/batch/stop
+   * @brief Handle POST /v1/core/instance/batch/stop
    * Stops multiple instances concurrently
    */
   void
@@ -212,7 +212,7 @@ public:
                      std::function<void(const HttpResponsePtr &)> &&callback);
 
   /**
-   * @brief Handle POST /v1/core/instances/batch/restart
+   * @brief Handle POST /v1/core/instance/batch/restart
    * Restarts multiple instances concurrently
    */
   void batchRestartInstances(
@@ -220,7 +220,7 @@ public:
       std::function<void(const HttpResponsePtr &)> &&callback);
 
   /**
-   * @brief Handle POST /v1/core/instances/{instanceId}/input
+   * @brief Handle POST /v1/core/instance/{instanceId}/input
    * Sets input source for an instance
    */
   void
@@ -228,14 +228,14 @@ public:
                    std::function<void(const HttpResponsePtr &)> &&callback);
 
   /**
-   * @brief Handle GET /v1/core/instances/{instanceId}/config
+   * @brief Handle GET /v1/core/instance/{instanceId}/config
    * Gets instance configuration (config format, not runtime state)
    */
   void getConfig(const HttpRequestPtr &req,
                  std::function<void(const HttpResponsePtr &)> &&callback);
 
   /**
-   * @brief Handle POST /v1/core/instances/{instanceId}/config
+   * @brief Handle POST /v1/core/instance/{instanceId}/config
    * Sets config value at a specific path (nested path supported with "/"
    * separator)
    */
@@ -243,28 +243,28 @@ public:
                  std::function<void(const HttpResponsePtr &)> &&callback);
 
   /**
-   * @brief Handle GET /v1/core/instances/{instanceId}/statistics
+   * @brief Handle GET /v1/core/instance/{instanceId}/statistics
    * Gets real-time statistics for a specific instance
    */
   void getStatistics(const HttpRequestPtr &req,
                      std::function<void(const HttpResponsePtr &)> &&callback);
 
   /**
-   * @brief Handle GET /v1/core/instances/{instanceId}/frame
+   * @brief Handle GET /v1/core/instance/{instanceId}/frame
    * Gets the last frame from a running instance
    */
   void getLastFrame(const HttpRequestPtr &req,
                     std::function<void(const HttpResponsePtr &)> &&callback);
 
   /**
-   * @brief Handle GET /v1/core/instances/{instanceId}/output/stream
+   * @brief Handle GET /v1/core/instance/{instanceId}/output/stream
    * Gets stream output configuration for an instance
    */
   void getStreamOutput(const HttpRequestPtr &req,
                        std::function<void(const HttpResponsePtr &)> &&callback);
 
   /**
-   * @brief Handle POST /v1/core/instances/{instanceId}/output/stream
+   * @brief Handle POST /v1/core/instance/{instanceId}/output/stream
    * Configures stream output for an instance (RTMP/RTSP/HLS)
    */
   void configureStreamOutput(

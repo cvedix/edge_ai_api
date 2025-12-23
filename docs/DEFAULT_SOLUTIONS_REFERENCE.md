@@ -72,7 +72,7 @@ Kết quả sẽ có:
 
 ```bash
 # Tạo instance với default solution
-curl -X POST http://localhost:8080/v1/core/instances \
+curl -X POST http://localhost:8080/v1/core/instance \
   -H "Content-Type: application/json" \
   -d '{
     "name": "my_instance",

@@ -3054,7 +3054,7 @@ paths:
                 type: string
                 example: "Content-Type, Authorization"
 
-  /v1/core/instances:
+  /v1/core/instance:
     get:
       summary: List all instances
       description: |
@@ -3198,6 +3198,114 @@ paths:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
 
+    post:
+      summary: Create a new AI instance
+      description: |
+        Creates and registers a new AI instance with the specified configuration. Returns the instance ID (UUID) that can be used to control the instance.
+
+        **Configuration Options:**
+        - **Basic Settings:** name, group, solution, persistent mode
+        - **Performance:** frame rate limits, input pixel limits, input orientation
+        - **Detection:** detector mode, sensitivity levels, sensor modality
+        - **Processing Modes:** metadata mode, statistics mode, diagnostics mode, debug mode
+        - **Auto Management:** auto-start, auto-restart, blocking readahead queue
+        - **Solution Parameters:** RTSP_URL, MODEL_PATH, FILE_PATH, RTMP_URL, etc. (via additionalParams)
+
+        **Solution Types:**
+        - `face_detection`: Face detection with RTSP input
+        - `face_detection_file`: Face detection with file input
+        - `object_detection`: Object detection (YOLO)
+        - `face_detection_rtmp`: Face detection with RTMP streaming
+        - Custom solutions registered via solution management endpoints
+
+        **Persistence:**
+        - If `persistent: true`, the instance will be saved to a JSON file in the instances directory
+        - Persistent instances are automatically loaded when the server restarts
+        - Instance configuration files are stored in `/var/lib/edge_ai_api/instances` (configurable via `INSTANCES_DIR` environment variable)
+
+        **Auto Start:**
+        - If `autoStart: true`, the instance will automatically start after creation
+        - The pipeline will be built and started immediately
+
+        **Returns:** The created instance information including the generated UUID that can be used for subsequent operations.
+      operationId: createInstance
+      tags:
+        - Instances
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateInstanceRequest'
+            example:
+              name: "Face Detection Camera 1"
+              group: "cameras"
+              solution: "face_detection"
+              persistent: true
+              frameRateLimit: 30
+              metadataMode: true
+              statisticsMode: true
+              diagnosticsMode: false
+              debugMode: false
+              detectorMode: "SmartDetection"
+              detectionSensitivity: "Medium"
+              movementSensitivity: "Low"
+              sensorModality: "RGB"
+              autoStart: true
+              autoRestart: false
+              blockingReadaheadQueue: false
+              inputOrientation: 0
+              inputPixelLimit: 1920
+              RTSP_URL: "rtsp://localhost:8554/stream"
+              MODEL_NAME: "yunet_2023mar"
+      responses:
+        '201':
+          description: Instance created successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/InstanceInfo'
+              example:
+                instanceId: "550e8400-e29b-41d4-a716-446655440000"
+                displayName: "Face Detection Camera 1"
+                group: "cameras"
+                solutionId: "face_detection"
+                solutionName: "Face Detection"
+                persistent: true
+                loaded: true
+                running: true
+                fps: 0.0
+                version: "2025.0.1.2"
+                frameRateLimit: 30
+                metadataMode: true
+                statisticsMode: true
+                diagnosticsMode: false
+                debugMode: false
+                readOnly: false
+                autoStart: true
+                autoRestart: false
+                systemInstance: false
+                inputPixelLimit: 1920
+                inputOrientation: 0
+                detectorMode: "SmartDetection"
+                detectionSensitivity: "Medium"
+                movementSensitivity: "Low"
+                sensorModality: "RGB"
+                originator:
+                  address: ""
+        '400':
+          description: Bad request (validation failed)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
     options:
       summary: CORS preflight for list instances
       operationId: listInstancesOptions
@@ -3207,7 +3315,7 @@ paths:
         '200':
           description: CORS preflight response
 
-  /v1/core/instances/{instanceId}:
+  /v1/core/instance/{instanceId}:
     get:
       summary: Get instance details
       description: |
@@ -3370,7 +3478,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
 
-  /v1/core/instances/{instanceId}/start:
+  /v1/core/instance/{instanceId}/start:
     post:
       summary: Start an instance
       description: |
@@ -3430,7 +3538,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
 
-  /v1/core/instances/{instanceId}/stop:
+  /v1/core/instance/{instanceId}/stop:
     post:
       summary: Stop an instance
       description: |
@@ -3486,7 +3594,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
 
-  /v1/core/instances/{instanceId}/restart:
+  /v1/core/instance/{instanceId}/restart:
     post:
       summary: Restart an instance
       description: |
@@ -3553,7 +3661,7 @@ paths:
         '200':
           description: CORS preflight response
 
-  /v1/core/instances/{instanceId}/output:
+  /v1/core/instance/{instanceId}/output:
     get:
       summary: Get instance output and processing results
       description: |
@@ -3682,7 +3790,7 @@ paths:
         '200':
           description: CORS preflight response
 
-  /v1/core/instances/{instanceId}/frame:
+  /v1/core/instance/{instanceId}/frame:
     get:
       summary: Get last frame from instance
       description: |
@@ -3745,7 +3853,7 @@ paths:
         '200':
           description: CORS preflight response
 
-  /v1/core/instances/batch/start:
+  /v1/core/instance/batch/start:
     post:
       summary: Start multiple instances concurrently
       description: |
@@ -3856,7 +3964,7 @@ paths:
         '200':
           description: CORS preflight response
 
-  /v1/core/instances/batch/stop:
+  /v1/core/instance/batch/stop:
     post:
       summary: Stop multiple instances concurrently
       description: |
@@ -3967,7 +4075,7 @@ paths:
         '200':
           description: CORS preflight response
 
-  /v1/core/instances/batch/restart:
+  /v1/core/instance/batch/restart:
     post:
       summary: Restart multiple instances concurrently
       description: Restarts multiple instances concurrently by stopping and then starting them. All operations run in parallel for optimal performance.
@@ -4447,124 +4555,7 @@ paths:
         '200':
           description: CORS preflight response
 
-  /v1/core/instance:
-    post:
-      summary: Create a new AI instance
-      description: |
-        Creates and registers a new AI instance with the specified configuration. Returns the instance ID (UUID) that can be used to control the instance.
-
-        **Configuration Options:**
-        - **Basic Settings:** name, group, solution, persistent mode
-        - **Performance:** frame rate limits, input pixel limits, input orientation
-        - **Detection:** detector mode, sensitivity levels, sensor modality
-        - **Processing Modes:** metadata mode, statistics mode, diagnostics mode, debug mode
-        - **Auto Management:** auto-start, auto-restart, blocking readahead queue
-        - **Solution Parameters:** RTSP_URL, MODEL_PATH, FILE_PATH, RTMP_URL, etc. (via additionalParams)
-
-        **Solution Types:**
-        - `face_detection`: Face detection with RTSP input
-        - `face_detection_file`: Face detection with file input
-        - `object_detection`: Object detection (YOLO)
-        - `face_detection_rtmp`: Face detection with RTMP streaming
-        - Custom solutions registered via solution management endpoints
-
-        **Persistence:**
-        - If `persistent: true`, the instance will be saved to a JSON file in the instances directory
-        - Persistent instances are automatically loaded when the server restarts
-        - Instance configuration files are stored in `/var/lib/edge_ai_api/instances` (configurable via `INSTANCES_DIR` environment variable)
-
-        **Auto Start:**
-        - If `autoStart: true`, the instance will automatically start after creation
-        - The pipeline will be built and started immediately
-
-        **Returns:** The created instance information including the generated UUID that can be used for subsequent operations.
-      operationId: createInstance
-      tags:
-        - Instances
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: '#/components/schemas/CreateInstanceRequest'
-            example:
-              name: "Face Detection Camera 1"
-              group: "cameras"
-              solution: "face_detection"
-              persistent: true
-              frameRateLimit: 30
-              metadataMode: true
-              statisticsMode: true
-              diagnosticsMode: false
-              debugMode: false
-              detectorMode: "SmartDetection"
-              detectionSensitivity: "Medium"
-              movementSensitivity: "Low"
-              sensorModality: "RGB"
-              autoStart: true
-              autoRestart: false
-              blockingReadaheadQueue: false
-              inputOrientation: 0
-              inputPixelLimit: 1920
-              RTSP_URL: "rtsp://localhost:8554/stream"
-              MODEL_NAME: "yunet_2023mar"
-      responses:
-        '201':
-          description: Instance created successfully
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/InstanceInfo'
-              example:
-                instanceId: "550e8400-e29b-41d4-a716-446655440000"
-                displayName: "Face Detection Camera 1"
-                group: "cameras"
-                solutionId: "face_detection"
-                solutionName: "Face Detection"
-                persistent: true
-                loaded: true
-                running: true
-                fps: 0.0
-                version: "2025.0.1.2"
-                frameRateLimit: 30
-                metadataMode: true
-                statisticsMode: true
-                diagnosticsMode: false
-                debugMode: false
-                readOnly: false
-                autoStart: true
-                autoRestart: false
-                systemInstance: false
-                inputPixelLimit: 1920
-                inputOrientation: 0
-                detectorMode: "SmartDetection"
-                detectionSensitivity: "Medium"
-                movementSensitivity: "Low"
-                sensorModality: "RGB"
-                originator:
-                  address: ""
-        '400':
-          description: Bad request (validation failed)
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
-        '500':
-          description: Internal server error
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
-    options:
-      summary: CORS preflight for create instance
-      operationId: createInstanceOptions
-      tags:
-        - Instances
-      responses:
-        '200':
-          description: CORS preflight response
-
-  /v1/core/instances/{instanceId}/input:
+  /v1/core/instance/{instanceId}/input:
     post:
       summary: Set input source for an instance
       description: |
@@ -4625,7 +4616,7 @@ paths:
         '200':
           description: CORS preflight response
 
-  /v1/core/instances/{instanceId}/config:
+  /v1/core/instance/{instanceId}/config:
     get:
       summary: Get instance configuration
       description: |
@@ -4757,7 +4748,7 @@ paths:
         '200':
           description: CORS preflight response
 
-  /v1/core/instances/{instanceId}/statistics:
+  /v1/core/instance/{instanceId}/statistics:
     get:
       summary: Get instance statistics
       description: |
@@ -4837,7 +4828,7 @@ paths:
         '200':
           description: CORS preflight response
 
-  /v1/core/instances/{instanceId}/output/stream:
+  /v1/core/instance/{instanceId}/output/stream:
     get:
       summary: Get stream output configuration
       description: |
@@ -4985,7 +4976,7 @@ paths:
         '200':
           description: CORS preflight response
 
-  /v1/core/instances/{instanceId}/lines:
+  /v1/core/instance/{instanceId}/lines:
     get:
       summary: Get all crossing lines
       description: |
@@ -5132,7 +5123,7 @@ paths:
         '200':
           description: CORS preflight response
 
-  /v1/core/instances/{instanceId}/lines/{lineId}:
+  /v1/core/instance/{instanceId}/lines/{lineId}:
     get:
       summary: Get a specific crossing line
       description: |
@@ -7159,7 +7150,7 @@ components:
             - MODEL_PATH: Direct path to model file
             - CrossingLines: (ba_crossline only) JSON string array of crossing lines configuration.
               Format: `[{"id":"uuid","name":"Line Name","coordinates":[{"x":0,"y":250},{"x":700,"y":220}],"direction":"Both","classes":["Vehicle"],"color":[255,0,0,255]}]`
-              Supports multiple lines. Can be managed via `/v1/core/instances/{instanceId}/lines` API endpoints.
+              Supports multiple lines. Can be managed via `/v1/core/instance/{instanceId}/lines` API endpoints.
           additionalProperties:
             type: string
 

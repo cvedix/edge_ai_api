@@ -325,7 +325,7 @@ void LinesHandler::getAllLines(
   try {
     if (!instance_manager_) {
       if (isApiLoggingEnabled()) {
-        PLOG_ERROR << "[API] GET /v1/core/instances/" << instanceId
+        PLOG_ERROR << "[API] GET /v1/core/instance/" << instanceId
                    << "/lines - Error: Instance manager not initialized";
       }
       callback(createErrorResponse(500, "Internal server error",
@@ -335,7 +335,7 @@ void LinesHandler::getAllLines(
 
     if (instanceId.empty()) {
       if (isApiLoggingEnabled()) {
-        PLOG_WARNING << "[API] GET /v1/core/instances/{instanceId}/lines - "
+        PLOG_WARNING << "[API] GET /v1/core/instance/{instanceId}/lines - "
                         "Error: Instance ID is empty";
       }
       callback(
