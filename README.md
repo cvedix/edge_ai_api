@@ -146,8 +146,8 @@ Xem đầy đủ: [docs/API.md](docs/API.md)
 
 **Logs API:**
 ```bash
-curl http://localhost:8080/v1/core/logs
-curl "http://localhost:8080/v1/core/logs/api?level=ERROR&tail=100"
+curl http://localhost:8080/v1/core/log
+curl "http://localhost:8080/v1/core/log/api?level=ERROR&tail=100"
 ```
 
 ---

@@ -2438,7 +2438,7 @@ PipelineBuilder::createFaceDetectorNode(
                    "CVEDIX_DATA_ROOT=/path/to/cvedix_data"
                 << std::endl;
       std::cerr << "[PipelineBuilder]   2. Upload via API: POST "
-                   "/v1/core/models/upload"
+                   "/v1/core/model/upload"
                 << std::endl;
       std::cerr << "[PipelineBuilder]      Then use MODEL_PATH in "
                    "additionalParams when creating instance"

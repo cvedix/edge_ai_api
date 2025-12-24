@@ -238,25 +238,25 @@ Edge AI API Server cung cấp các endpoints để truy cập logs qua REST API 
 
 ```bash
 # List tất cả log files theo category
-curl -X GET http://localhost:8080/v1/core/logs
+curl -X GET http://localhost:8080/v1/core/log
 
 # Get logs từ category api
-curl -X GET http://localhost:8080/v1/core/logs/api
+curl -X GET http://localhost:8080/v1/core/log/api
 
 # Get logs từ category instance cho một ngày cụ thể
-curl -X GET http://localhost:8080/v1/core/logs/instance/2025-01-15
+curl -X GET http://localhost:8080/v1/core/log/instance/2025-01-15
 
 # Filter theo log level (chỉ ERROR logs)
-curl -X GET "http://localhost:8080/v1/core/logs/api?level=ERROR"
+curl -X GET "http://localhost:8080/v1/core/log/api?level=ERROR"
 
 # Get 100 dòng cuối cùng (tail)
-curl -X GET "http://localhost:8080/v1/core/logs/api?tail=100"
+curl -X GET "http://localhost:8080/v1/core/log/api?tail=100"
 
 # Filter theo time range
-curl -X GET "http://localhost:8080/v1/core/logs/api?from=2025-01-15T10:00:00.000Z&to=2025-01-15T11:00:00.000Z"
+curl -X GET "http://localhost:8080/v1/core/log/api?from=2025-01-15T10:00:00.000Z&to=2025-01-15T11:00:00.000Z"
 
 # Kết hợp nhiều filters
-curl -X GET "http://localhost:8080/v1/core/logs/api?level=ERROR&tail=50"
+curl -X GET "http://localhost:8080/v1/core/log/api?level=ERROR&tail=50"
 ```
 
 **Xem chi tiết:** [API_REFERENCE.md](API_REFERENCE.md) - Tài liệu đầy đủ về Logs API endpoints
@@ -435,7 +435,7 @@ find logs/ -name "*.log" | wc -l
 df -h logs/
 
 # Hoặc sử dụng API
-curl http://localhost:8080/v1/core/logs
+curl http://localhost:8080/v1/core/log
 ```
 
 ---

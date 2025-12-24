@@ -655,7 +655,7 @@ paths:
         '200':
           description: CORS preflight response
 
-  /v1/core/logs:
+  /v1/core/log:
     get:
       summary: List all log files by category
       description: |
@@ -704,7 +704,7 @@ paths:
         '200':
           description: CORS preflight response
 
-  /v1/core/logs/{category}:
+  /v1/core/log/{category}:
     get:
       summary: Get logs by category
       description: |
@@ -801,7 +801,7 @@ paths:
         '200':
           description: CORS preflight response
 
-  /v1/core/logs/{category}/{date}:
+  /v1/core/log/{category}/{date}:
     get:
       summary: Get logs by category and date
       description: |
@@ -1174,7 +1174,7 @@ paths:
                   # TYPE http_requests_total counter
                   http_requests_total{method="GET",path="/v1/core/health"} 100
 
-  /v1/core/models/upload:
+  /v1/core/model/upload:
     post:
       summary: Upload a model file
       description: Uploads a model file (ONNX, weights, etc.) to the server. The file will be saved in the models directory.
@@ -1265,7 +1265,7 @@ paths:
         '200':
           description: CORS preflight response
 
-  /v1/core/models/list:
+  /v1/core/model/list:
     get:
       summary: List uploaded model files
       description: Returns a list of all model files that have been uploaded to the server.
@@ -1306,7 +1306,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
 
-  /v1/core/models/{modelName}:
+  /v1/core/model/{modelName}:
     put:
       summary: Rename a model file
       description: Renames a model file on the server.
@@ -1421,7 +1421,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
 
-  /v1/core/videos/upload:
+  /v1/core/video/upload:
     post:
       summary: Upload a video file
       description: Uploads a video file (MP4, AVI, MKV, etc.) to the server. The file will be saved in the videos directory.
@@ -1512,7 +1512,7 @@ paths:
         '200':
           description: CORS preflight response
 
-  /v1/core/videos/list:
+  /v1/core/video/list:
     get:
       summary: List uploaded video files
       description: Returns a list of all video files that have been uploaded to the server.
@@ -1553,7 +1553,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
 
-  /v1/core/videos/{videoName}:
+  /v1/core/video/{videoName}:
     put:
       summary: Rename a video file
       description: Renames a video file on the server.
@@ -2798,7 +2798,7 @@ paths:
         '200':
           description: CORS preflight response
 
-  /v1/core/fonts/upload:
+  /v1/core/font/upload:
     post:
       summary: Upload a font file
       description: Uploads a font file (TTF, OTF, WOFF, WOFF2, etc.) to the server. The file will be saved in the fonts directory.
@@ -2888,7 +2888,7 @@ paths:
         '200':
           description: CORS preflight response
 
-  /v1/core/fonts/list:
+  /v1/core/font/list:
     get:
       summary: List uploaded font files
       description: Returns a list of all font files that have been uploaded to the server.
@@ -2929,7 +2929,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
 
-  /v1/core/fonts/{fontName}:
+  /v1/core/font/{fontName}:
     put:
       summary: Rename a font file
       description: Renames a font file on the server.
@@ -5290,7 +5290,7 @@ paths:
         '200':
           description: CORS preflight response
 
-  /v1/core/solutions:
+  /v1/core/solution:
     get:
       summary: List all solutions
       description: Returns a list of all available solutions with summary information including solution type and pipeline node count.
@@ -5399,7 +5399,7 @@ paths:
         '200':
           description: CORS preflight response
 
-  /v1/core/solutions/{solutionId}:
+  /v1/core/solution/{solutionId}:
     get:
       summary: Get solution details
       description: Returns detailed information about a specific solution including full pipeline configuration.
@@ -5534,7 +5534,7 @@ paths:
         '200':
           description: CORS preflight response
 
-  /v1/core/solutions/{solutionId}/parameters:
+  /v1/core/solution/{solutionId}/parameters:
     get:
       summary: Get solution parameter schema
       description: |
@@ -5832,16 +5832,18 @@ paths:
         '200':
           description: CORS preflight response
 
-  /v1/core/solutions/{solutionId}/instance-body:
+  /v1/core/solution/{solutionId}/instance-body:
     get:
       summary: Get example instance creation body
       description: |
-        Returns an example request body for creating an instance with this solution.
+        Returns an example request body for creating an instance with this solution, along with detailed schema metadata for UI flexibility.
         This includes:
         - **Standard Fields**: Common instance creation fields with default values
         - **Additional Parameters**: Solution-specific parameters with example values based on parameter names
+        - **Schema**: Detailed metadata for all fields including types, validation rules, UI hints, descriptions, examples, and categories
 
-        Users can copy this body, modify the values, and use it to create an instance via POST /v1/core/instance.
+        The response body can be used directly to create an instance via POST /v1/core/instance.
+        The schema field provides rich metadata for UI to dynamically render forms, validate inputs, and provide better user experience.
       operationId: getSolutionInstanceBody
       tags:
         - Solutions
@@ -5859,106 +5861,327 @@ paths:
             application/json:
               schema:
                 type: object
+                description: Example request body that can be used directly to create an instance, plus detailed schema metadata
                 properties:
-                  solutionId:
+                  name:
+                    type: string
+                    description: Instance name
+                    example: "example_instance"
+                  group:
+                    type: string
+                    description: Group name
+                    example: "default"
+                  solution:
                     type: string
                     description: Solution ID
                     example: "face_detection"
-                  solutionName:
+                  persistent:
+                    type: boolean
+                    description: Save instance to JSON file
+                    example: false
+                  autoStart:
+                    type: boolean
+                    description: Automatically start instance when created
+                    example: false
+                  frameRateLimit:
+                    type: integer
+                    description: Frame rate limit (FPS, 0 = unlimited)
+                    example: 0
+                  detectionSensitivity:
                     type: string
-                    description: Solution display name
-                    example: "Face Detection"
-                  description:
+                    enum: ["Low", "Medium", "High", "Normal", "Slow"]
+                    description: Detection sensitivity level
+                    example: "Low"
+                  detectorMode:
                     type: string
-                    description: Description of the response
-                    example: "Example request body for creating an instance with this solution"
-                  requestBody:
+                    enum: ["SmartDetection", "FullRegionInference", "MosaicInference"]
+                    description: Detector mode
+                    example: "SmartDetection"
+                  metadataMode:
+                    type: boolean
+                    description: Enable metadata mode (output detection results as JSON)
+                    example: false
+                  statisticsMode:
+                    type: boolean
+                    description: Enable statistics mode
+                    example: false
+                  diagnosticsMode:
+                    type: boolean
+                    description: Enable diagnostics mode
+                    example: false
+                  debugMode:
+                    type: boolean
+                    description: Enable debug mode
+                    example: false
+                  additionalParams:
                     type: object
-                    description: Example request body for creating an instance
+                    description: Solution-specific parameters organized by input/output
                     properties:
-                      name:
-                        type: string
-                        description: Instance name
-                        example: "example_instance"
-                      group:
-                        type: string
-                        description: Group name
-                        example: "default"
-                      solution:
-                        type: string
-                        description: Solution ID
-                        example: "face_detection"
-                      persistent:
-                        type: boolean
-                        description: Save instance to JSON file
-                        example: false
-                      autoStart:
-                        type: boolean
-                        description: Automatically start instance when created
-                        example: false
-                      frameRateLimit:
-                        type: integer
-                        description: Frame rate limit (FPS)
-                        example: 0
-                      detectionSensitivity:
-                        type: string
-                        enum: ["Low", "Medium", "High", "Normal", "Slow"]
-                        description: Detection sensitivity level
-                        example: "Low"
-                      detectorMode:
-                        type: string
-                        enum: ["SmartDetection", "FullRegionInference", "MosaicInference"]
-                        description: Detector mode
-                        example: "SmartDetection"
-                      metadataMode:
-                        type: boolean
-                        description: Enable metadata mode
-                        example: false
-                      statisticsMode:
-                        type: boolean
-                        description: Enable statistics mode
-                        example: false
-                      diagnosticsMode:
-                        type: boolean
-                        description: Enable diagnostics mode
-                        example: false
-                      debugMode:
-                        type: boolean
-                        description: Enable debug mode
-                        example: false
-                      additionalParams:
+                      input:
                         type: object
-                        description: Solution-specific parameters with example values
+                        description: Input parameters (e.g., RTSP_URL, FILE_PATH, MODEL_PATH)
                         additionalProperties:
                           type: string
                         example:
                           RTSP_URL: "rtsp://example.com/stream"
-                          MODEL_PATH: "./models/example.model"
-                  note:
-                    type: string
-                    description: Note for users
-                    example: "Replace example values with actual values before creating instance"
+                          MODEL_PATH: "./models/face/yunet.onnx"
+                      output:
+                        type: object
+                        description: Output parameters (e.g., MQTT_BROKER_URL, RTMP_URL, ENABLE_SCREEN_DES)
+                        additionalProperties:
+                          type: string
+                        example:
+                          MQTT_BROKER_URL: "localhost"
+                          MQTT_PORT: "1883"
+                          MQTT_TOPIC: "events"
+                          ENABLE_SCREEN_DES: "false"
+                  schema:
+                    type: object
+                    description: Detailed schema metadata for UI flexibility
+                    properties:
+                      standardFields:
+                        type: object
+                        description: Schema metadata for standard instance creation fields
+                        additionalProperties:
+                          type: object
+                          properties:
+                            name:
+                              type: string
+                            type:
+                              type: string
+                            required:
+                              type: boolean
+                            description:
+                              type: string
+                            default:
+                              description: Default value (type varies)
+                            pattern:
+                              type: string
+                            patternDescription:
+                              type: string
+                            minimum:
+                              type: number
+                            maximum:
+                              type: number
+                            enum:
+                              type: array
+                              items:
+                                type: string
+                            uiHints:
+                              type: object
+                              properties:
+                                inputType:
+                                  type: string
+                                widget:
+                                  type: string
+                            examples:
+                              type: array
+                              items:
+                                type: string
+                      additionalParams:
+                        type: object
+                        description: Schema metadata for additional parameters
+                        properties:
+                          input:
+                            type: object
+                            description: Schema for input parameters
+                            additionalProperties:
+                              type: object
+                              properties:
+                                name:
+                                  type: string
+                                type:
+                                  type: string
+                                required:
+                                  type: boolean
+                                description:
+                                  type: string
+                                example:
+                                  type: string
+                                default:
+                                  description: Default value (type varies)
+                                uiHints:
+                                  type: object
+                                validation:
+                                  type: object
+                                examples:
+                                  type: array
+                                  items:
+                                    type: string
+                                category:
+                                  type: string
+                                usedInNodes:
+                                  type: array
+                                  items:
+                                    type: string
+                          output:
+                            type: object
+                            description: Schema for output parameters
+                            additionalProperties:
+                              type: object
+                              properties:
+                                name:
+                                  type: string
+                                type:
+                                  type: string
+                                required:
+                                  type: boolean
+                                description:
+                                  type: string
+                                example:
+                                  type: string
+                                default:
+                                  description: Default value (type varies)
+                                uiHints:
+                                  type: object
+                                validation:
+                                  type: object
+                                examples:
+                                  type: array
+                                  items:
+                                    type: string
+                                category:
+                                  type: string
+                                usedInNodes:
+                                  type: array
+                                  items:
+                                    type: string
+                      flexibleInputOutput:
+                        type: object
+                        description: Schema for flexible input/output options that can be added to any instance
+                        properties:
+                          description:
+                            type: string
+                          input:
+                            type: object
+                            properties:
+                              description:
+                                type: string
+                              mutuallyExclusive:
+                                type: boolean
+                              parameters:
+                                type: object
+                                additionalProperties:
+                                  type: object
+                          output:
+                            type: object
+                            properties:
+                              description:
+                                type: string
+                              mutuallyExclusive:
+                                type: boolean
+                              parameters:
+                                type: object
+                                additionalProperties:
+                                  type: object
               example:
-                solutionId: "face_detection"
-                solutionName: "Face Detection"
-                description: "Example request body for creating an instance with this solution"
-                requestBody:
-                  name: "example_instance"
-                  group: "default"
-                  solution: "face_detection"
-                  persistent: false
-                  autoStart: false
-                  frameRateLimit: 0
-                  detectionSensitivity: "Low"
-                  detectorMode: "SmartDetection"
-                  metadataMode: false
-                  statisticsMode: false
-                  diagnosticsMode: false
-                  debugMode: false
-                  additionalParams:
+                name: "example_instance"
+                group: "default"
+                solution: "face_detection"
+                persistent: false
+                autoStart: false
+                frameRateLimit: 0
+                detectionSensitivity: "Low"
+                detectorMode: "SmartDetection"
+                metadataMode: false
+                statisticsMode: false
+                diagnosticsMode: false
+                debugMode: false
+                additionalParams:
+                  input:
                     RTSP_URL: "rtsp://example.com/stream"
                     MODEL_PATH: "./models/face/yunet.onnx"
-                note: "Replace example values with actual values before creating instance"
+                  output:
+                    MQTT_BROKER_URL: "localhost"
+                    MQTT_PORT: "1883"
+                    MQTT_TOPIC: "events"
+                    ENABLE_SCREEN_DES: "false"
+                schema:
+                  standardFields:
+                    name:
+                      name: "name"
+                      type: "string"
+                      required: true
+                      description: "Instance name (pattern: ^[A-Za-z0-9 -_]+$)"
+                      pattern: "^[A-Za-z0-9 -_]+$"
+                      uiHints:
+                        inputType: "text"
+                        widget: "input"
+                      examples: ["my_instance", "camera_01"]
+                    frameRateLimit:
+                      name: "frameRateLimit"
+                      type: "integer"
+                      required: false
+                      description: "Frame rate limit (FPS, 0 = unlimited)"
+                      default: 0
+                      minimum: 0
+                      uiHints:
+                        inputType: "number"
+                        widget: "input"
+                      examples: ["0", "10", "30"]
+                  additionalParams:
+                    input:
+                      RTSP_URL:
+                        name: "RTSP_URL"
+                        type: "string"
+                        required: true
+                        description: "RTSP stream URL (e.g., rtsp://camera-ip:8554/stream)"
+                        example: "rtsp://example.com/stream"
+                        uiHints:
+                          inputType: "url"
+                          widget: "url-input"
+                          placeholder: "rtsp://camera-ip:8554/stream"
+                        validation:
+                          pattern: "^(rtsp|rtmp|http|https|file|udp)://.+"
+                          patternDescription: "Must be a valid URL (rtsp://, rtmp://, http://, https://, file://, or udp://)"
+                        examples: ["rtsp://192.168.1.100:8554/stream1", "rtsp://admin:password@camera-ip:554/stream"]
+                        category: "connection"
+                        usedInNodes: ["rtsp_src"]
+                    output:
+                      MQTT_BROKER_URL:
+                        name: "MQTT_BROKER_URL"
+                        type: "string"
+                        required: false
+                        description: "MQTT broker address (hostname or IP). Leave empty to disable MQTT output."
+                        example: "localhost"
+                        uiHints:
+                          inputType: "text"
+                          widget: "input"
+                          placeholder: "localhost"
+                        examples: ["localhost", "192.168.1.100", "mqtt.example.com"]
+                        category: "output"
+                  flexibleInputOutput:
+                    description: "Flexible input/output options that can be added to any instance"
+                    input:
+                      description: "Choose ONE input source. Pipeline builder auto-detects input type."
+                      mutuallyExclusive: true
+                      parameters:
+                        FILE_PATH:
+                          name: "FILE_PATH"
+                          type: "string"
+                          required: false
+                          description: "Local video file path or URL (supports file://, rtsp://, rtmp://, http://, https://). Pipeline builder auto-detects input type."
+                          example: "./cvedix_data/test_video/example.mp4"
+                          uiHints:
+                            inputType: "file"
+                            widget: "file-picker"
+                            placeholder: "/path/to/video.mp4"
+                          category: "connection"
+                    output:
+                      description: "Add any combination of outputs. Pipeline builder auto-adds nodes."
+                      mutuallyExclusive: false
+                      parameters:
+                        MQTT_BROKER_URL:
+                          name: "MQTT_BROKER_URL"
+                          type: "string"
+                          required: false
+                          description: "MQTT broker address (enables MQTT output). Leave empty to disable."
+                          example: "localhost"
+                          uiHints:
+                            inputType: "text"
+                            widget: "input"
+                            placeholder: "localhost"
+                          category: "output"
         '404':
           description: Solution not found
           content:
@@ -5980,7 +6203,7 @@ paths:
         '200':
           description: CORS preflight response
 
-  /v1/core/nodes:
+  /v1/core/node:
     get:
       summary: List all pre-configured nodes
       description: |
@@ -6059,7 +6282,7 @@ paths:
         '200':
           description: CORS preflight response
 
-  /v1/core/nodes/{nodeId}:
+  /v1/core/node/{nodeId}:
     get:
       summary: Get node details
       description: Returns detailed information about a specific pre-configured node
@@ -6081,6 +6304,43 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/NodeResponse'
+              example:
+                nodeId: "node_rtsp_des_default"
+                templateId: "rtsp_des_template"
+                displayName: "RTSP Destination"
+                nodeType: "rtsp_des"
+                category: "destination"
+                description: "Output video stream via RTSP"
+                inUse: false
+                parameters:
+                  channel: "0"
+                  port: "8000"
+                requiredParameters: ["port"]
+                optionalParameters: ["channel", "stream_name"]
+                templateDetailUrl: "/v1/core/node/template/rtsp_des_template"
+                input:
+                  - type: "video_frames"
+                    description: "Video frames from previous node"
+                    format: "BGR/RGB image frames"
+                  - type: "metadata"
+                    description: "Metadata from previous nodes"
+                    format: "JSON metadata"
+                output:
+                  - type: "rtsp_stream"
+                    description: "RTSP video stream"
+                    protocol: "RTSP"
+                    accessInfo: "Access via RTSP URL: rtsp://<host>:8000/stream (default: rtsp://localhost:8000/stream)"
+                    example: "rtsp://localhost:8000/stream"
+                    configurableParameters:
+                      - name: "port"
+                        description: "RTSP server port"
+                        default: "8000"
+                        affects: "RTSP URL port"
+                      - name: "stream_name"
+                        description: "RTSP stream name/path"
+                        default: "stream"
+                        affects: "RTSP URL path"
+                createdAt: "2025-12-16T11:33:52Z"
         '404':
           description: Node not found
           content:
@@ -6201,7 +6461,7 @@ paths:
         '200':
           description: CORS preflight response
 
-  /v1/core/nodes/templates:
+  /v1/core/node/template:
     get:
       summary: List all node templates
       description: |
@@ -6299,7 +6559,7 @@ paths:
         '200':
           description: CORS preflight response
 
-  /v1/core/nodes/templates/{templateId}:
+  /v1/core/node/template/{templateId}:
     get:
       summary: Get template details
       description: Returns detailed information about a specific node template
@@ -6342,7 +6602,7 @@ paths:
         '200':
           description: CORS preflight response
 
-  /v1/core/nodes/stats:
+  /v1/core/node/stats:
     get:
       summary: Get node pool statistics
       description: Returns statistics about the node pool including total templates, total nodes, available nodes, and nodes by category
@@ -7748,7 +8008,7 @@ components:
                   xml_file_broker, xml_socket_broker, msg_broker, ba_socket_broker, embeddings_socket_broker,
                   embeddings_properties_socket_broker, plate_socket_broker, expr_socket_broker
 
-                  See GET /v1/core/nodes/templates for complete list with descriptions.
+                  See GET /v1/core/node/template for complete list with descriptions.
                 example: "rtsp_src"
               nodeName:
                 type: string
@@ -7941,6 +8201,8 @@ components:
         - inUse
         - parameters
         - createdAt
+        - input
+        - output
       properties:
         nodeId:
           type: string
@@ -7980,6 +8242,265 @@ components:
             rtsp_url: "rtsp://localhost:8554/stream1"
             channel: "0"
             resize_ratio: "1.0"
+        requiredParameters:
+          type: array
+          description: List of required parameter names (from template)
+          items:
+            type: string
+          example: ["rtsp_url"]
+        optionalParameters:
+          type: array
+          description: List of optional parameter names (from template)
+          items:
+            type: string
+          example: ["channel", "resize_ratio"]
+        templateDetailUrl:
+          type: string
+          description: URL to get detailed template information
+          example: "/v1/core/node/template/rtsp_src_template"
+        parameterSchema:
+          type: object
+          description: |
+            Detailed schema for all parameters, providing UI-friendly metadata including:
+            - Type information (string, number, integer, boolean)
+            - Validation rules (min, max, pattern, enum)
+            - UI hints (input type, widget type, placeholder)
+            - Descriptions and examples
+            - Categories for grouping
+          additionalProperties:
+            type: object
+            properties:
+              name:
+                type: string
+                description: Parameter name
+              type:
+                type: string
+                description: Parameter data type
+                enum: ["string", "number", "integer", "boolean"]
+              required:
+                type: boolean
+                description: Whether this parameter is required
+              currentValue:
+                type: string
+                description: Current value of the parameter
+              default:
+                type: string
+                description: Default value
+              description:
+                type: string
+                description: Detailed description of the parameter
+              category:
+                type: string
+                description: Parameter category for UI grouping
+                enum: ["connection", "performance", "model", "output", "display", "general"]
+              uiHints:
+                type: object
+                properties:
+                  inputType:
+                    type: string
+                    description: HTML input type
+                    enum: ["text", "number", "url", "file", "checkbox"]
+                  widget:
+                    type: string
+                    description: Recommended UI widget type
+                    enum: ["input", "slider", "switch", "url-input", "file-picker"]
+                  placeholder:
+                    type: string
+                    description: Placeholder text for input field
+              validation:
+                type: object
+                properties:
+                  min:
+                    type: number
+                    description: Minimum value (for numbers)
+                  max:
+                    type: number
+                    description: Maximum value (for numbers)
+                  step:
+                    type: number
+                    description: Step value (for sliders)
+                  pattern:
+                    type: string
+                    description: Regex pattern (for strings)
+                  patternDescription:
+                    type: string
+                    description: Human-readable pattern description
+                  enum:
+                    type: array
+                    description: Allowed values (for enums)
+                    items:
+                      type: string
+              examples:
+                type: array
+                description: Example values
+                items:
+                  type: string
+          example:
+            rtsp_url:
+              name: "rtsp_url"
+              type: "string"
+              required: true
+              description: "RTSP stream URL (e.g., rtsp://camera-ip:8554/stream)"
+              category: "connection"
+              uiHints:
+                inputType: "url"
+                widget: "url-input"
+                placeholder: "rtsp://camera-ip:8554/stream"
+              validation:
+                pattern: "^(rtsp|rtmp|http|https|file|udp)://.+"
+                patternDescription: "Must be a valid URL (rtsp://, rtmp://, http://, https://, file://, or udp://)"
+              examples:
+                - "rtsp://192.168.1.100:8554/stream1"
+                - "rtsp://admin:password@camera-ip:554/stream"
+            channel:
+              name: "channel"
+              type: "integer"
+              required: false
+              default: "0"
+              currentValue: "0"
+              description: "Channel number for multi-channel processing (0-15)"
+              category: "connection"
+              uiHints:
+                inputType: "number"
+                widget: "input"
+                placeholder: "0"
+              validation:
+                min: 0
+                max: 15
+        input:
+          type: array
+          description: |
+            What this node requires as input from the pipeline. Each item describes the input type with details.
+            - source nodes: external_source - receives input from external source (RTSP, file, etc.)
+            - detector nodes: video_frames - requires video frames from previous node
+            - processor nodes: video_frames, metadata - requires video frames and metadata
+            - destination nodes: video_frames, metadata - requires video frames and metadata
+            - broker nodes: metadata, detection_results - requires metadata and detection results
+          items:
+            type: object
+            properties:
+              type:
+                type: string
+                description: Input type identifier
+                example: "video_frames"
+              description:
+                type: string
+                description: Detailed description of the input
+                example: "Video frames from previous node"
+              format:
+                type: string
+                description: Data format (if applicable)
+                example: "BGR/RGB image frames"
+              multiple:
+                type: boolean
+                description: Whether this input/output supports multiple connections
+                example: false
+              optional:
+                type: boolean
+                description: Whether this input is optional
+                example: false
+              minInputs:
+                type: integer
+                description: Minimum number of inputs required (for multiple inputs)
+                example: 2
+              maxInputs:
+                type: integer
+                description: Maximum number of inputs allowed (-1 for unlimited)
+                example: -1
+              maxOutputs:
+                type: integer
+                description: Maximum number of outputs (-1 for unlimited, only for outputs)
+                example: -1
+          example:
+            - type: "external_source"
+              description: "Receives input from external source (file, RTSP, RTMP, etc.)"
+            - type: "video_frames"
+              description: "Video frames from multiple channels/nodes (supports multiple inputs)"
+              format: "BGR/RGB image frames"
+              multiple: true
+              minInputs: 2
+              maxInputs: -1
+        output:
+          type: array
+          description: |
+            What this node produces as output for the pipeline. Each item describes the output type with details including how to access it.
+            - source nodes: video_frames - outputs video frames
+            - detector nodes: video_frames, detection_results - outputs video frames and detection results
+            - processor nodes: video_frames, metadata - outputs processed video frames and metadata
+            - destination nodes: specific output type (rtsp_stream, rtmp_stream, video_file, etc.) - outputs to external destination
+            - broker nodes: specific output type (mqtt_messages, kafka_messages, socket_messages, etc.) - outputs to external broker
+          items:
+            type: object
+            properties:
+              type:
+                type: string
+                description: Output type identifier
+                example: "rtsp_stream"
+              description:
+                type: string
+                description: Detailed description of the output
+                example: "RTSP video stream"
+              protocol:
+                type: string
+                description: Protocol used (if applicable)
+                example: "RTSP"
+              format:
+                type: string
+                description: Data format (if applicable)
+                example: "MP4 video file"
+              accessInfo:
+                type: string
+                description: Information on how to access/use the output
+                example: "Access via RTSP URL: rtsp://<host>:8000/stream (default: rtsp://localhost:8000/stream)"
+              example:
+                type: string
+                description: Example of how to access the output
+                example: "rtsp://localhost:8000/stream"
+              configurableParameters:
+                type: array
+                description: Parameters that can be configured to affect the output
+                items:
+                  type: object
+                  properties:
+                    name:
+                      type: string
+                      description: Parameter name
+                      example: "port"
+                    description:
+                      type: string
+                      description: Parameter description
+                      example: "RTSP server port"
+                    default:
+                      type: string
+                      description: Default value
+                      example: "8000"
+                    affects:
+                      type: string
+                      description: What part of the output this parameter affects
+                      example: "RTSP URL port"
+              multiple:
+                type: boolean
+                description: Whether this output supports multiple connections
+                example: false
+              maxOutputs:
+                type: integer
+                description: Maximum number of outputs (-1 for unlimited)
+                example: -1
+          example:
+            - type: "rtsp_stream"
+              description: "RTSP video stream"
+              protocol: "RTSP"
+              accessInfo: "Access via RTSP URL: rtsp://<host>:8000/stream (default: rtsp://localhost:8000/stream)"
+              example: "rtsp://localhost:8000/stream"
+              configurableParameters:
+                - name: "port"
+                  description: "RTSP server port"
+                  default: "8000"
+                  affects: "RTSP URL port"
+                - name: "stream_name"
+                  description: "RTSP stream name/path"
+                  default: "stream"
+                  affects: "RTSP URL path"
         createdAt:
           type: string
           format: date-time

@@ -2334,7 +2334,7 @@
             "method": "POST",
             "header": [],
             "url": {
-              "raw": "{{baseUrl}}/v1/core/fonts/upload",
+              "raw": "{{baseUrl}}/v1/core/font/upload",
               "host": [
                 "{{baseUrl}}"
               ],
@@ -2370,7 +2370,7 @@
                 "method": "POST",
                 "header": [],
                 "url": {
-                  "raw": "{{baseUrl}}/v1/core/fonts/upload",
+                  "raw": "{{baseUrl}}/v1/core/font/upload",
                   "host": [
                     "{{baseUrl}}"
                   ],
@@ -2401,7 +2401,7 @@
                 "method": "POST",
                 "header": [],
                 "url": {
-                  "raw": "{{baseUrl}}/v1/core/fonts/upload",
+                  "raw": "{{baseUrl}}/v1/core/font/upload",
                   "host": [
                     "{{baseUrl}}"
                   ],
@@ -2432,7 +2432,7 @@
                 "method": "POST",
                 "header": [],
                 "url": {
-                  "raw": "{{baseUrl}}/v1/core/fonts/upload",
+                  "raw": "{{baseUrl}}/v1/core/font/upload",
                   "host": [
                     "{{baseUrl}}"
                   ],
@@ -2463,7 +2463,7 @@
                 "method": "POST",
                 "header": [],
                 "url": {
-                  "raw": "{{baseUrl}}/v1/core/fonts/upload",
+                  "raw": "{{baseUrl}}/v1/core/font/upload",
                   "host": [
                     "{{baseUrl}}"
                   ],
@@ -2494,7 +2494,7 @@
                 "method": "POST",
                 "header": [],
                 "url": {
-                  "raw": "{{baseUrl}}/v1/core/fonts/upload",
+                  "raw": "{{baseUrl}}/v1/core/font/upload",
                   "host": [
                     "{{baseUrl}}"
                   ],
@@ -2527,7 +2527,7 @@
             "method": "OPTIONS",
             "header": [],
             "url": {
-              "raw": "{{baseUrl}}/v1/core/fonts/upload",
+              "raw": "{{baseUrl}}/v1/core/font/upload",
               "host": [
                 "{{baseUrl}}"
               ],
@@ -2548,7 +2548,7 @@
                 "method": "OPTIONS",
                 "header": [],
                 "url": {
-                  "raw": "{{baseUrl}}/v1/core/fonts/upload",
+                  "raw": "{{baseUrl}}/v1/core/font/upload",
                   "host": [
                     "{{baseUrl}}"
                   ],
@@ -2581,7 +2581,7 @@
             "method": "GET",
             "header": [],
             "url": {
-              "raw": "{{baseUrl}}/v1/core/fonts/list",
+              "raw": "{{baseUrl}}/v1/core/font/list",
               "host": [
                 "{{baseUrl}}"
               ],
@@ -2602,7 +2602,7 @@
                 "method": "GET",
                 "header": [],
                 "url": {
-                  "raw": "{{baseUrl}}/v1/core/fonts/list",
+                  "raw": "{{baseUrl}}/v1/core/font/list",
                   "host": [
                     "{{baseUrl}}"
                   ],
@@ -2633,7 +2633,7 @@
                 "method": "GET",
                 "header": [],
                 "url": {
-                  "raw": "{{baseUrl}}/v1/core/fonts/list",
+                  "raw": "{{baseUrl}}/v1/core/font/list",
                   "host": [
                     "{{baseUrl}}"
                   ],
@@ -2671,7 +2671,7 @@
               }
             ],
             "url": {
-              "raw": "{{baseUrl}}/v1/core/fonts/{fontName}",
+              "raw": "{{baseUrl}}/v1/core/font/{fontName}",
               "host": [
                 "{{baseUrl}}"
               ],
@@ -2701,7 +2701,7 @@
                 "method": "PUT",
                 "header": [],
                 "url": {
-                  "raw": "{{baseUrl}}/v1/core/fonts/{fontName}",
+                  "raw": "{{baseUrl}}/v1/core/font/{fontName}",
                   "host": [
                     "{{baseUrl}}"
                   ],
@@ -2732,7 +2732,7 @@
                 "method": "PUT",
                 "header": [],
                 "url": {
-                  "raw": "{{baseUrl}}/v1/core/fonts/{fontName}",
+                  "raw": "{{baseUrl}}/v1/core/font/{fontName}",
                   "host": [
                     "{{baseUrl}}"
                   ],
@@ -2763,7 +2763,7 @@
                 "method": "PUT",
                 "header": [],
                 "url": {
-                  "raw": "{{baseUrl}}/v1/core/fonts/{fontName}",
+                  "raw": "{{baseUrl}}/v1/core/font/{fontName}",
                   "host": [
                     "{{baseUrl}}"
                   ],
@@ -2794,7 +2794,7 @@
                 "method": "PUT",
                 "header": [],
                 "url": {
-                  "raw": "{{baseUrl}}/v1/core/fonts/{fontName}",
+                  "raw": "{{baseUrl}}/v1/core/font/{fontName}",
                   "host": [
                     "{{baseUrl}}"
                   ],
@@ -2825,7 +2825,7 @@
                 "method": "PUT",
                 "header": [],
                 "url": {
-                  "raw": "{{baseUrl}}/v1/core/fonts/{fontName}",
+                  "raw": "{{baseUrl}}/v1/core/font/{fontName}",
                   "host": [
                     "{{baseUrl}}"
                   ],
@@ -2858,7 +2858,7 @@
             "method": "OPTIONS",
             "header": [],
             "url": {
-              "raw": "{{baseUrl}}/v1/core/fonts/{fontName}",
+              "raw": "{{baseUrl}}/v1/core/font/{fontName}",
               "host": [
                 "{{baseUrl}}"
               ],
@@ -2879,7 +2879,7 @@
                 "method": "OPTIONS",
                 "header": [],
                 "url": {
-                  "raw": "{{baseUrl}}/v1/core/fonts/{fontName}",
+                  "raw": "{{baseUrl}}/v1/core/font/{fontName}",
                   "host": [
                     "{{baseUrl}}"
                   ],
@@ -8337,7 +8337,7 @@
             "method": "GET",
             "header": [],
             "url": {
-              "raw": "{{baseUrl}}/v1/core/logs",
+              "raw": "{{baseUrl}}/v1/core/log",
               "host": [
                 "{{baseUrl}}"
               ],
@@ -8357,7 +8357,7 @@
                 "method": "GET",
                 "header": [],
                 "url": {
-                  "raw": "{{baseUrl}}/v1/core/logs",
+                  "raw": "{{baseUrl}}/v1/core/log",
                   "host": [
                     "{{baseUrl}}"
                   ],
@@ -8387,7 +8387,7 @@
                 "method": "GET",
                 "header": [],
                 "url": {
-                  "raw": "{{baseUrl}}/v1/core/logs",
+                  "raw": "{{baseUrl}}/v1/core/log",
                   "host": [
                     "{{baseUrl}}"
                   ],
@@ -8419,7 +8419,7 @@
             "method": "OPTIONS",
             "header": [],
             "url": {
-              "raw": "{{baseUrl}}/v1/core/logs",
+              "raw": "{{baseUrl}}/v1/core/log",
               "host": [
                 "{{baseUrl}}"
               ],
@@ -8439,7 +8439,7 @@
                 "method": "OPTIONS",
                 "header": [],
                 "url": {
-                  "raw": "{{baseUrl}}/v1/core/logs",
+                  "raw": "{{baseUrl}}/v1/core/log",
                   "host": [
                     "{{baseUrl}}"
                   ],
@@ -8471,7 +8471,7 @@
             "method": "GET",
             "header": [],
             "url": {
-              "raw": "{{baseUrl}}/v1/core/logs/{category}",
+              "raw": "{{baseUrl}}/v1/core/log/{category}",
               "host": [
                 "{{baseUrl}}"
               ],
@@ -8517,7 +8517,7 @@
                 "method": "GET",
                 "header": [],
                 "url": {
-                  "raw": "{{baseUrl}}/v1/core/logs/{category}",
+                  "raw": "{{baseUrl}}/v1/core/log/{category}",
                   "host": [
                     "{{baseUrl}}"
                   ],
@@ -8573,7 +8573,7 @@
                 "method": "GET",
                 "header": [],
                 "url": {
-                  "raw": "{{baseUrl}}/v1/core/logs/{category}",
+                  "raw": "{{baseUrl}}/v1/core/log/{category}",
                   "host": [
                     "{{baseUrl}}"
                   ],
@@ -8629,7 +8629,7 @@
                 "method": "GET",
                 "header": [],
                 "url": {
-                  "raw": "{{baseUrl}}/v1/core/logs/{category}",
+                  "raw": "{{baseUrl}}/v1/core/log/{category}",
                   "host": [
                     "{{baseUrl}}"
                   ],
@@ -8687,7 +8687,7 @@
             "method": "OPTIONS",
             "header": [],
             "url": {
-              "raw": "{{baseUrl}}/v1/core/logs/{category}",
+              "raw": "{{baseUrl}}/v1/core/log/{category}",
               "host": [
                 "{{baseUrl}}"
               ],
@@ -8708,7 +8708,7 @@
                 "method": "OPTIONS",
                 "header": [],
                 "url": {
-                  "raw": "{{baseUrl}}/v1/core/logs/{category}",
+                  "raw": "{{baseUrl}}/v1/core/log/{category}",
                   "host": [
                     "{{baseUrl}}"
                   ],
@@ -8741,7 +8741,7 @@
             "method": "GET",
             "header": [],
             "url": {
-              "raw": "{{baseUrl}}/v1/core/logs/{category}/{date}",
+              "raw": "{{baseUrl}}/v1/core/log/{category}/{date}",
               "host": [
                 "{{baseUrl}}"
               ],
@@ -8788,7 +8788,7 @@
                 "method": "GET",
                 "header": [],
                 "url": {
-                  "raw": "{{baseUrl}}/v1/core/logs/{category}/{date}",
+                  "raw": "{{baseUrl}}/v1/core/log/{category}/{date}",
                   "host": [
                     "{{baseUrl}}"
                   ],
@@ -8845,7 +8845,7 @@
                 "method": "GET",
                 "header": [],
                 "url": {
-                  "raw": "{{baseUrl}}/v1/core/logs/{category}/{date}",
+                  "raw": "{{baseUrl}}/v1/core/log/{category}/{date}",
                   "host": [
                     "{{baseUrl}}"
                   ],
@@ -8902,7 +8902,7 @@
                 "method": "GET",
                 "header": [],
                 "url": {
-                  "raw": "{{baseUrl}}/v1/core/logs/{category}/{date}",
+                  "raw": "{{baseUrl}}/v1/core/log/{category}/{date}",
                   "host": [
                     "{{baseUrl}}"
                   ],
@@ -8959,7 +8959,7 @@
                 "method": "GET",
                 "header": [],
                 "url": {
-                  "raw": "{{baseUrl}}/v1/core/logs/{category}/{date}",
+                  "raw": "{{baseUrl}}/v1/core/log/{category}/{date}",
                   "host": [
                     "{{baseUrl}}"
                   ],
@@ -9018,7 +9018,7 @@
             "method": "OPTIONS",
             "header": [],
             "url": {
-              "raw": "{{baseUrl}}/v1/core/logs/{category}/{date}",
+              "raw": "{{baseUrl}}/v1/core/log/{category}/{date}",
               "host": [
                 "{{baseUrl}}"
               ],
@@ -9040,7 +9040,7 @@
                 "method": "OPTIONS",
                 "header": [],
                 "url": {
-                  "raw": "{{baseUrl}}/v1/core/logs/{category}/{date}",
+                  "raw": "{{baseUrl}}/v1/core/log/{category}/{date}",
                   "host": [
                     "{{baseUrl}}"
                   ],
@@ -9079,7 +9079,7 @@
             "method": "POST",
             "header": [],
             "url": {
-              "raw": "{{baseUrl}}/v1/core/models/upload",
+              "raw": "{{baseUrl}}/v1/core/model/upload",
               "host": [
                 "{{baseUrl}}"
               ],
@@ -9115,7 +9115,7 @@
                 "method": "POST",
                 "header": [],
                 "url": {
-                  "raw": "{{baseUrl}}/v1/core/models/upload",
+                  "raw": "{{baseUrl}}/v1/core/model/upload",
                   "host": [
                     "{{baseUrl}}"
                   ],
@@ -9146,7 +9146,7 @@
                 "method": "POST",
                 "header": [],
                 "url": {
-                  "raw": "{{baseUrl}}/v1/core/models/upload",
+                  "raw": "{{baseUrl}}/v1/core/model/upload",
                   "host": [
                     "{{baseUrl}}"
                   ],
@@ -9177,7 +9177,7 @@
                 "method": "POST",
                 "header": [],
                 "url": {
-                  "raw": "{{baseUrl}}/v1/core/models/upload",
+                  "raw": "{{baseUrl}}/v1/core/model/upload",
                   "host": [
                     "{{baseUrl}}"
                   ],
@@ -9208,7 +9208,7 @@
                 "method": "POST",
                 "header": [],
                 "url": {
-                  "raw": "{{baseUrl}}/v1/core/models/upload",
+                  "raw": "{{baseUrl}}/v1/core/model/upload",
                   "host": [
                     "{{baseUrl}}"
                   ],
@@ -9241,7 +9241,7 @@
             "method": "OPTIONS",
             "header": [],
             "url": {
-              "raw": "{{baseUrl}}/v1/core/models/upload",
+              "raw": "{{baseUrl}}/v1/core/model/upload",
               "host": [
                 "{{baseUrl}}"
               ],
@@ -9262,7 +9262,7 @@
                 "method": "OPTIONS",
                 "header": [],
                 "url": {
-                  "raw": "{{baseUrl}}/v1/core/models/upload",
+                  "raw": "{{baseUrl}}/v1/core/model/upload",
                   "host": [
                     "{{baseUrl}}"
                   ],
@@ -9295,7 +9295,7 @@
             "method": "GET",
             "header": [],
             "url": {
-              "raw": "{{baseUrl}}/v1/core/models/list",
+              "raw": "{{baseUrl}}/v1/core/model/list",
               "host": [
                 "{{baseUrl}}"
               ],
@@ -9316,7 +9316,7 @@
                 "method": "GET",
                 "header": [],
                 "url": {
-                  "raw": "{{baseUrl}}/v1/core/models/list",
+                  "raw": "{{baseUrl}}/v1/core/model/list",
                   "host": [
                     "{{baseUrl}}"
                   ],
@@ -9347,7 +9347,7 @@
                 "method": "GET",
                 "header": [],
                 "url": {
-                  "raw": "{{baseUrl}}/v1/core/models/list",
+                  "raw": "{{baseUrl}}/v1/core/model/list",
                   "host": [
                     "{{baseUrl}}"
                   ],
@@ -9385,7 +9385,7 @@
               }
             ],
             "url": {
-              "raw": "{{baseUrl}}/v1/core/models/{modelName}",
+              "raw": "{{baseUrl}}/v1/core/model/{modelName}",
               "host": [
                 "{{baseUrl}}"
               ],
@@ -9415,7 +9415,7 @@
                 "method": "PUT",
                 "header": [],
                 "url": {
-                  "raw": "{{baseUrl}}/v1/core/models/{modelName}",
+                  "raw": "{{baseUrl}}/v1/core/model/{modelName}",
                   "host": [
                     "{{baseUrl}}"
                   ],
@@ -9446,7 +9446,7 @@
                 "method": "PUT",
                 "header": [],
                 "url": {
-                  "raw": "{{baseUrl}}/v1/core/models/{modelName}",
+                  "raw": "{{baseUrl}}/v1/core/model/{modelName}",
                   "host": [
                     "{{baseUrl}}"
                   ],
@@ -9477,7 +9477,7 @@
                 "method": "PUT",
                 "header": [],
                 "url": {
-                  "raw": "{{baseUrl}}/v1/core/models/{modelName}",
+                  "raw": "{{baseUrl}}/v1/core/model/{modelName}",
                   "host": [
                     "{{baseUrl}}"
                   ],
@@ -9508,7 +9508,7 @@
                 "method": "PUT",
                 "header": [],
                 "url": {
-                  "raw": "{{baseUrl}}/v1/core/models/{modelName}",
+                  "raw": "{{baseUrl}}/v1/core/model/{modelName}",
                   "host": [
                     "{{baseUrl}}"
                   ],
@@ -9539,7 +9539,7 @@
                 "method": "PUT",
                 "header": [],
                 "url": {
-                  "raw": "{{baseUrl}}/v1/core/models/{modelName}",
+                  "raw": "{{baseUrl}}/v1/core/model/{modelName}",
                   "host": [
                     "{{baseUrl}}"
                   ],
@@ -9572,7 +9572,7 @@
             "method": "DELETE",
             "header": [],
             "url": {
-              "raw": "{{baseUrl}}/v1/core/models/{modelName}",
+              "raw": "{{baseUrl}}/v1/core/model/{modelName}",
               "host": [
                 "{{baseUrl}}"
               ],
@@ -9593,7 +9593,7 @@
                 "method": "DELETE",
                 "header": [],
                 "url": {
-                  "raw": "{{baseUrl}}/v1/core/models/{modelName}",
+                  "raw": "{{baseUrl}}/v1/core/model/{modelName}",
                   "host": [
                     "{{baseUrl}}"
                   ],
@@ -9624,7 +9624,7 @@
                 "method": "DELETE",
                 "header": [],
                 "url": {
-                  "raw": "{{baseUrl}}/v1/core/models/{modelName}",
+                  "raw": "{{baseUrl}}/v1/core/model/{modelName}",
                   "host": [
                     "{{baseUrl}}"
                   ],
@@ -9655,7 +9655,7 @@
                 "method": "DELETE",
                 "header": [],
                 "url": {
-                  "raw": "{{baseUrl}}/v1/core/models/{modelName}",
+                  "raw": "{{baseUrl}}/v1/core/model/{modelName}",
                   "host": [
                     "{{baseUrl}}"
                   ],
@@ -9686,7 +9686,7 @@
                 "method": "DELETE",
                 "header": [],
                 "url": {
-                  "raw": "{{baseUrl}}/v1/core/models/{modelName}",
+                  "raw": "{{baseUrl}}/v1/core/model/{modelName}",
                   "host": [
                     "{{baseUrl}}"
                   ],
@@ -9724,7 +9724,7 @@
             "method": "GET",
             "header": [],
             "url": {
-              "raw": "{{baseUrl}}/v1/core/nodes",
+              "raw": "{{baseUrl}}/v1/core/node",
               "host": [
                 "{{baseUrl}}"
               ],
@@ -9757,7 +9757,7 @@
                 "method": "GET",
                 "header": [],
                 "url": {
-                  "raw": "{{baseUrl}}/v1/core/nodes",
+                  "raw": "{{baseUrl}}/v1/core/node",
                   "host": [
                     "{{baseUrl}}"
                   ],
@@ -9800,7 +9800,7 @@
                 "method": "GET",
                 "header": [],
                 "url": {
-                  "raw": "{{baseUrl}}/v1/core/nodes",
+                  "raw": "{{baseUrl}}/v1/core/node",
                   "host": [
                     "{{baseUrl}}"
                   ],
@@ -9850,7 +9850,7 @@
               }
             ],
             "url": {
-              "raw": "{{baseUrl}}/v1/core/nodes",
+              "raw": "{{baseUrl}}/v1/core/node",
               "host": [
                 "{{baseUrl}}"
               ],
@@ -9879,7 +9879,7 @@
                 "method": "POST",
                 "header": [],
                 "url": {
-                  "raw": "{{baseUrl}}/v1/core/nodes",
+                  "raw": "{{baseUrl}}/v1/core/node",
                   "host": [
                     "{{baseUrl}}"
                   ],
@@ -9909,7 +9909,7 @@
                 "method": "POST",
                 "header": [],
                 "url": {
-                  "raw": "{{baseUrl}}/v1/core/nodes",
+                  "raw": "{{baseUrl}}/v1/core/node",
                   "host": [
                     "{{baseUrl}}"
                   ],
@@ -9939,7 +9939,7 @@
                 "method": "POST",
                 "header": [],
                 "url": {
-                  "raw": "{{baseUrl}}/v1/core/nodes",
+                  "raw": "{{baseUrl}}/v1/core/node",
                   "host": [
                     "{{baseUrl}}"
                   ],
@@ -9971,7 +9971,7 @@
             "method": "OPTIONS",
             "header": [],
             "url": {
-              "raw": "{{baseUrl}}/v1/core/nodes",
+              "raw": "{{baseUrl}}/v1/core/node",
               "host": [
                 "{{baseUrl}}"
               ],
@@ -9991,7 +9991,7 @@
                 "method": "OPTIONS",
                 "header": [],
                 "url": {
-                  "raw": "{{baseUrl}}/v1/core/nodes",
+                  "raw": "{{baseUrl}}/v1/core/node",
                   "host": [
                     "{{baseUrl}}"
                   ],
@@ -10023,7 +10023,7 @@
             "method": "GET",
             "header": [],
             "url": {
-              "raw": "{{baseUrl}}/v1/core/nodes/{nodeId}",
+              "raw": "{{baseUrl}}/v1/core/node/{nodeId}",
               "host": [
                 "{{baseUrl}}"
               ],
@@ -10044,7 +10044,7 @@
                 "method": "GET",
                 "header": [],
                 "url": {
-                  "raw": "{{baseUrl}}/v1/core/nodes/{nodeId}",
+                  "raw": "{{baseUrl}}/v1/core/node/{nodeId}",
                   "host": [
                     "{{baseUrl}}"
                   ],
@@ -10075,7 +10075,7 @@
                 "method": "GET",
                 "header": [],
                 "url": {
-                  "raw": "{{baseUrl}}/v1/core/nodes/{nodeId}",
+                  "raw": "{{baseUrl}}/v1/core/node/{nodeId}",
                   "host": [
                     "{{baseUrl}}"
                   ],
@@ -10106,7 +10106,7 @@
                 "method": "GET",
                 "header": [],
                 "url": {
-                  "raw": "{{baseUrl}}/v1/core/nodes/{nodeId}",
+                  "raw": "{{baseUrl}}/v1/core/node/{nodeId}",
                   "host": [
                     "{{baseUrl}}"
                   ],
@@ -10144,7 +10144,7 @@
               }
             ],
             "url": {
-              "raw": "{{baseUrl}}/v1/core/nodes/{nodeId}",
+              "raw": "{{baseUrl}}/v1/core/node/{nodeId}",
               "host": [
                 "{{baseUrl}}"
               ],
@@ -10174,7 +10174,7 @@
                 "method": "PUT",
                 "header": [],
                 "url": {
-                  "raw": "{{baseUrl}}/v1/core/nodes/{nodeId}",
+                  "raw": "{{baseUrl}}/v1/core/node/{nodeId}",
                   "host": [
                     "{{baseUrl}}"
                   ],
@@ -10205,7 +10205,7 @@
                 "method": "PUT",
                 "header": [],
                 "url": {
-                  "raw": "{{baseUrl}}/v1/core/nodes/{nodeId}",
+                  "raw": "{{baseUrl}}/v1/core/node/{nodeId}",
                   "host": [
                     "{{baseUrl}}"
                   ],
@@ -10236,7 +10236,7 @@
                 "method": "PUT",
                 "header": [],
                 "url": {
-                  "raw": "{{baseUrl}}/v1/core/nodes/{nodeId}",
+                  "raw": "{{baseUrl}}/v1/core/node/{nodeId}",
                   "host": [
                     "{{baseUrl}}"
                   ],
@@ -10267,7 +10267,7 @@
                 "method": "PUT",
                 "header": [],
                 "url": {
-                  "raw": "{{baseUrl}}/v1/core/nodes/{nodeId}",
+                  "raw": "{{baseUrl}}/v1/core/node/{nodeId}",
                   "host": [
                     "{{baseUrl}}"
                   ],
@@ -10298,7 +10298,7 @@
                 "method": "PUT",
                 "header": [],
                 "url": {
-                  "raw": "{{baseUrl}}/v1/core/nodes/{nodeId}",
+                  "raw": "{{baseUrl}}/v1/core/node/{nodeId}",
                   "host": [
                     "{{baseUrl}}"
                   ],
@@ -10331,7 +10331,7 @@
             "method": "DELETE",
             "header": [],
             "url": {
-              "raw": "{{baseUrl}}/v1/core/nodes/{nodeId}",
+              "raw": "{{baseUrl}}/v1/core/node/{nodeId}",
               "host": [
                 "{{baseUrl}}"
               ],
@@ -10352,7 +10352,7 @@
                 "method": "DELETE",
                 "header": [],
                 "url": {
-                  "raw": "{{baseUrl}}/v1/core/nodes/{nodeId}",
+                  "raw": "{{baseUrl}}/v1/core/node/{nodeId}",
                   "host": [
                     "{{baseUrl}}"
                   ],
@@ -10383,7 +10383,7 @@
                 "method": "DELETE",
                 "header": [],
                 "url": {
-                  "raw": "{{baseUrl}}/v1/core/nodes/{nodeId}",
+                  "raw": "{{baseUrl}}/v1/core/node/{nodeId}",
                   "host": [
                     "{{baseUrl}}"
                   ],
@@ -10414,7 +10414,7 @@
                 "method": "DELETE",
                 "header": [],
                 "url": {
-                  "raw": "{{baseUrl}}/v1/core/nodes/{nodeId}",
+                  "raw": "{{baseUrl}}/v1/core/node/{nodeId}",
                   "host": [
                     "{{baseUrl}}"
                   ],
@@ -10445,7 +10445,7 @@
                 "method": "DELETE",
                 "header": [],
                 "url": {
-                  "raw": "{{baseUrl}}/v1/core/nodes/{nodeId}",
+                  "raw": "{{baseUrl}}/v1/core/node/{nodeId}",
                   "host": [
                     "{{baseUrl}}"
                   ],
@@ -10478,7 +10478,7 @@
             "method": "OPTIONS",
             "header": [],
             "url": {
-              "raw": "{{baseUrl}}/v1/core/nodes/{nodeId}",
+              "raw": "{{baseUrl}}/v1/core/node/{nodeId}",
               "host": [
                 "{{baseUrl}}"
               ],
@@ -10499,7 +10499,7 @@
                 "method": "OPTIONS",
                 "header": [],
                 "url": {
-                  "raw": "{{baseUrl}}/v1/core/nodes/{nodeId}",
+                  "raw": "{{baseUrl}}/v1/core/node/{nodeId}",
                   "host": [
                     "{{baseUrl}}"
                   ],
@@ -10532,7 +10532,7 @@
             "method": "GET",
             "header": [],
             "url": {
-              "raw": "{{baseUrl}}/v1/core/nodes/templates",
+              "raw": "{{baseUrl}}/v1/core/node/template",
               "host": [
                 "{{baseUrl}}"
               ],
@@ -10553,7 +10553,7 @@
                 "method": "GET",
                 "header": [],
                 "url": {
-                  "raw": "{{baseUrl}}/v1/core/nodes/templates",
+                  "raw": "{{baseUrl}}/v1/core/node/template",
                   "host": [
                     "{{baseUrl}}"
                   ],
@@ -10584,7 +10584,7 @@
                 "method": "GET",
                 "header": [],
                 "url": {
-                  "raw": "{{baseUrl}}/v1/core/nodes/templates",
+                  "raw": "{{baseUrl}}/v1/core/node/template",
                   "host": [
                     "{{baseUrl}}"
                   ],
@@ -10617,7 +10617,7 @@
             "method": "OPTIONS",
             "header": [],
             "url": {
-              "raw": "{{baseUrl}}/v1/core/nodes/templates",
+              "raw": "{{baseUrl}}/v1/core/node/template",
               "host": [
                 "{{baseUrl}}"
               ],
@@ -10638,7 +10638,7 @@
                 "method": "OPTIONS",
                 "header": [],
                 "url": {
-                  "raw": "{{baseUrl}}/v1/core/nodes/templates",
+                  "raw": "{{baseUrl}}/v1/core/node/template",
                   "host": [
                     "{{baseUrl}}"
                   ],
@@ -10671,7 +10671,7 @@
             "method": "GET",
             "header": [],
             "url": {
-              "raw": "{{baseUrl}}/v1/core/nodes/templates/{templateId}",
+              "raw": "{{baseUrl}}/v1/core/node/template/{templateId}",
               "host": [
                 "{{baseUrl}}"
               ],
@@ -10693,7 +10693,7 @@
                 "method": "GET",
                 "header": [],
                 "url": {
-                  "raw": "{{baseUrl}}/v1/core/nodes/templates/{templateId}",
+                  "raw": "{{baseUrl}}/v1/core/node/template/{templateId}",
                   "host": [
                     "{{baseUrl}}"
                   ],
@@ -10725,7 +10725,7 @@
                 "method": "GET",
                 "header": [],
                 "url": {
-                  "raw": "{{baseUrl}}/v1/core/nodes/templates/{templateId}",
+                  "raw": "{{baseUrl}}/v1/core/node/template/{templateId}",
                   "host": [
                     "{{baseUrl}}"
                   ],
@@ -10757,7 +10757,7 @@
                 "method": "GET",
                 "header": [],
                 "url": {
-                  "raw": "{{baseUrl}}/v1/core/nodes/templates/{templateId}",
+                  "raw": "{{baseUrl}}/v1/core/node/template/{templateId}",
                   "host": [
                     "{{baseUrl}}"
                   ],
@@ -10791,7 +10791,7 @@
             "method": "OPTIONS",
             "header": [],
             "url": {
-              "raw": "{{baseUrl}}/v1/core/nodes/templates/{templateId}",
+              "raw": "{{baseUrl}}/v1/core/node/template/{templateId}",
               "host": [
                 "{{baseUrl}}"
               ],
@@ -10813,7 +10813,7 @@
                 "method": "OPTIONS",
                 "header": [],
                 "url": {
-                  "raw": "{{baseUrl}}/v1/core/nodes/templates/{templateId}",
+                  "raw": "{{baseUrl}}/v1/core/node/template/{templateId}",
                   "host": [
                     "{{baseUrl}}"
                   ],
@@ -10847,7 +10847,7 @@
             "method": "GET",
             "header": [],
             "url": {
-              "raw": "{{baseUrl}}/v1/core/nodes/stats",
+              "raw": "{{baseUrl}}/v1/core/node/stats",
               "host": [
                 "{{baseUrl}}"
               ],
@@ -10868,7 +10868,7 @@
                 "method": "GET",
                 "header": [],
                 "url": {
-                  "raw": "{{baseUrl}}/v1/core/nodes/stats",
+                  "raw": "{{baseUrl}}/v1/core/node/stats",
                   "host": [
                     "{{baseUrl}}"
                   ],
@@ -10899,7 +10899,7 @@
                 "method": "GET",
                 "header": [],
                 "url": {
-                  "raw": "{{baseUrl}}/v1/core/nodes/stats",
+                  "raw": "{{baseUrl}}/v1/core/node/stats",
                   "host": [
                     "{{baseUrl}}"
                   ],
@@ -10932,7 +10932,7 @@
             "method": "OPTIONS",
             "header": [],
             "url": {
-              "raw": "{{baseUrl}}/v1/core/nodes/stats",
+              "raw": "{{baseUrl}}/v1/core/node/stats",
               "host": [
                 "{{baseUrl}}"
               ],
@@ -10953,7 +10953,7 @@
                 "method": "OPTIONS",
                 "header": [],
                 "url": {
-                  "raw": "{{baseUrl}}/v1/core/nodes/stats",
+                  "raw": "{{baseUrl}}/v1/core/node/stats",
                   "host": [
                     "{{baseUrl}}"
                   ],
@@ -12870,7 +12870,7 @@
             "method": "GET",
             "header": [],
             "url": {
-              "raw": "{{baseUrl}}/v1/core/solutions",
+              "raw": "{{baseUrl}}/v1/core/solution",
               "host": [
                 "{{baseUrl}}"
               ],
@@ -12890,7 +12890,7 @@
                 "method": "GET",
                 "header": [],
                 "url": {
-                  "raw": "{{baseUrl}}/v1/core/solutions",
+                  "raw": "{{baseUrl}}/v1/core/solution",
                   "host": [
                     "{{baseUrl}}"
                   ],
@@ -12920,7 +12920,7 @@
                 "method": "GET",
                 "header": [],
                 "url": {
-                  "raw": "{{baseUrl}}/v1/core/solutions",
+                  "raw": "{{baseUrl}}/v1/core/solution",
                   "host": [
                     "{{baseUrl}}"
                   ],
@@ -12957,7 +12957,7 @@
               }
             ],
             "url": {
-              "raw": "{{baseUrl}}/v1/core/solutions",
+              "raw": "{{baseUrl}}/v1/core/solution",
               "host": [
                 "{{baseUrl}}"
               ],
@@ -12986,7 +12986,7 @@
                 "method": "POST",
                 "header": [],
                 "url": {
-                  "raw": "{{baseUrl}}/v1/core/solutions",
+                  "raw": "{{baseUrl}}/v1/core/solution",
                   "host": [
                     "{{baseUrl}}"
                   ],
@@ -13016,7 +13016,7 @@
                 "method": "POST",
                 "header": [],
                 "url": {
-                  "raw": "{{baseUrl}}/v1/core/solutions",
+                  "raw": "{{baseUrl}}/v1/core/solution",
                   "host": [
                     "{{baseUrl}}"
                   ],
@@ -13046,7 +13046,7 @@
                 "method": "POST",
                 "header": [],
                 "url": {
-                  "raw": "{{baseUrl}}/v1/core/solutions",
+                  "raw": "{{baseUrl}}/v1/core/solution",
                   "host": [
                     "{{baseUrl}}"
                   ],
@@ -13076,7 +13076,7 @@
                 "method": "POST",
                 "header": [],
                 "url": {
-                  "raw": "{{baseUrl}}/v1/core/solutions",
+                  "raw": "{{baseUrl}}/v1/core/solution",
                   "host": [
                     "{{baseUrl}}"
                   ],
@@ -13108,7 +13108,7 @@
             "method": "OPTIONS",
             "header": [],
             "url": {
-              "raw": "{{baseUrl}}/v1/core/solutions",
+              "raw": "{{baseUrl}}/v1/core/solution",
               "host": [
                 "{{baseUrl}}"
               ],
@@ -13128,7 +13128,7 @@
                 "method": "OPTIONS",
                 "header": [],
                 "url": {
-                  "raw": "{{baseUrl}}/v1/core/solutions",
+                  "raw": "{{baseUrl}}/v1/core/solution",
                   "host": [
                     "{{baseUrl}}"
                   ],
@@ -13160,7 +13160,7 @@
             "method": "GET",
             "header": [],
             "url": {
-              "raw": "{{baseUrl}}/v1/core/solutions/{solutionId}",
+              "raw": "{{baseUrl}}/v1/core/solution/{solutionId}",
               "host": [
                 "{{baseUrl}}"
               ],
@@ -13181,7 +13181,7 @@
                 "method": "GET",
                 "header": [],
                 "url": {
-                  "raw": "{{baseUrl}}/v1/core/solutions/{solutionId}",
+                  "raw": "{{baseUrl}}/v1/core/solution/{solutionId}",
                   "host": [
                     "{{baseUrl}}"
                   ],
@@ -13212,7 +13212,7 @@
                 "method": "GET",
                 "header": [],
                 "url": {
-                  "raw": "{{baseUrl}}/v1/core/solutions/{solutionId}",
+                  "raw": "{{baseUrl}}/v1/core/solution/{solutionId}",
                   "host": [
                     "{{baseUrl}}"
                   ],
@@ -13243,7 +13243,7 @@
                 "method": "GET",
                 "header": [],
                 "url": {
-                  "raw": "{{baseUrl}}/v1/core/solutions/{solutionId}",
+                  "raw": "{{baseUrl}}/v1/core/solution/{solutionId}",
                   "host": [
                     "{{baseUrl}}"
                   ],
@@ -13281,7 +13281,7 @@
               }
             ],
             "url": {
-              "raw": "{{baseUrl}}/v1/core/solutions/{solutionId}",
+              "raw": "{{baseUrl}}/v1/core/solution/{solutionId}",
               "host": [
                 "{{baseUrl}}"
               ],
@@ -13311,7 +13311,7 @@
                 "method": "PUT",
                 "header": [],
                 "url": {
-                  "raw": "{{baseUrl}}/v1/core/solutions/{solutionId}",
+                  "raw": "{{baseUrl}}/v1/core/solution/{solutionId}",
                   "host": [
                     "{{baseUrl}}"
                   ],
@@ -13342,7 +13342,7 @@
                 "method": "PUT",
                 "header": [],
                 "url": {
-                  "raw": "{{baseUrl}}/v1/core/solutions/{solutionId}",
+                  "raw": "{{baseUrl}}/v1/core/solution/{solutionId}",
                   "host": [
                     "{{baseUrl}}"
                   ],
@@ -13373,7 +13373,7 @@
                 "method": "PUT",
                 "header": [],
                 "url": {
-                  "raw": "{{baseUrl}}/v1/core/solutions/{solutionId}",
+                  "raw": "{{baseUrl}}/v1/core/solution/{solutionId}",
                   "host": [
                     "{{baseUrl}}"
                   ],
@@ -13404,7 +13404,7 @@
                 "method": "PUT",
                 "header": [],
                 "url": {
-                  "raw": "{{baseUrl}}/v1/core/solutions/{solutionId}",
+                  "raw": "{{baseUrl}}/v1/core/solution/{solutionId}",
                   "host": [
                     "{{baseUrl}}"
                   ],
@@ -13435,7 +13435,7 @@
                 "method": "PUT",
                 "header": [],
                 "url": {
-                  "raw": "{{baseUrl}}/v1/core/solutions/{solutionId}",
+                  "raw": "{{baseUrl}}/v1/core/solution/{solutionId}",
                   "host": [
                     "{{baseUrl}}"
                   ],
@@ -13468,7 +13468,7 @@
             "method": "DELETE",
             "header": [],
             "url": {
-              "raw": "{{baseUrl}}/v1/core/solutions/{solutionId}",
+              "raw": "{{baseUrl}}/v1/core/solution/{solutionId}",
               "host": [
                 "{{baseUrl}}"
               ],
@@ -13489,7 +13489,7 @@
                 "method": "DELETE",
                 "header": [],
                 "url": {
-                  "raw": "{{baseUrl}}/v1/core/solutions/{solutionId}",
+                  "raw": "{{baseUrl}}/v1/core/solution/{solutionId}",
                   "host": [
                     "{{baseUrl}}"
                   ],
@@ -13520,7 +13520,7 @@
                 "method": "DELETE",
                 "header": [],
                 "url": {
-                  "raw": "{{baseUrl}}/v1/core/solutions/{solutionId}",
+                  "raw": "{{baseUrl}}/v1/core/solution/{solutionId}",
                   "host": [
                     "{{baseUrl}}"
                   ],
@@ -13551,7 +13551,7 @@
                 "method": "DELETE",
                 "header": [],
                 "url": {
-                  "raw": "{{baseUrl}}/v1/core/solutions/{solutionId}",
+                  "raw": "{{baseUrl}}/v1/core/solution/{solutionId}",
                   "host": [
                     "{{baseUrl}}"
                   ],
@@ -13582,7 +13582,7 @@
                 "method": "DELETE",
                 "header": [],
                 "url": {
-                  "raw": "{{baseUrl}}/v1/core/solutions/{solutionId}",
+                  "raw": "{{baseUrl}}/v1/core/solution/{solutionId}",
                   "host": [
                     "{{baseUrl}}"
                   ],
@@ -13615,7 +13615,7 @@
             "method": "OPTIONS",
             "header": [],
             "url": {
-              "raw": "{{baseUrl}}/v1/core/solutions/{solutionId}",
+              "raw": "{{baseUrl}}/v1/core/solution/{solutionId}",
               "host": [
                 "{{baseUrl}}"
               ],
@@ -13636,7 +13636,7 @@
                 "method": "OPTIONS",
                 "header": [],
                 "url": {
-                  "raw": "{{baseUrl}}/v1/core/solutions/{solutionId}",
+                  "raw": "{{baseUrl}}/v1/core/solution/{solutionId}",
                   "host": [
                     "{{baseUrl}}"
                   ],
@@ -13669,7 +13669,7 @@
             "method": "GET",
             "header": [],
             "url": {
-              "raw": "{{baseUrl}}/v1/core/solutions/{solutionId}/parameters",
+              "raw": "{{baseUrl}}/v1/core/solution/{solutionId}/parameters",
               "host": [
                 "{{baseUrl}}"
               ],
@@ -13691,7 +13691,7 @@
                 "method": "GET",
                 "header": [],
                 "url": {
-                  "raw": "{{baseUrl}}/v1/core/solutions/{solutionId}/parameters",
+                  "raw": "{{baseUrl}}/v1/core/solution/{solutionId}/parameters",
                   "host": [
                     "{{baseUrl}}"
                   ],
@@ -13723,7 +13723,7 @@
                 "method": "GET",
                 "header": [],
                 "url": {
-                  "raw": "{{baseUrl}}/v1/core/solutions/{solutionId}/parameters",
+                  "raw": "{{baseUrl}}/v1/core/solution/{solutionId}/parameters",
                   "host": [
                     "{{baseUrl}}"
                   ],
@@ -13755,7 +13755,7 @@
                 "method": "GET",
                 "header": [],
                 "url": {
-                  "raw": "{{baseUrl}}/v1/core/solutions/{solutionId}/parameters",
+                  "raw": "{{baseUrl}}/v1/core/solution/{solutionId}/parameters",
                   "host": [
                     "{{baseUrl}}"
                   ],
@@ -13789,7 +13789,7 @@
             "method": "OPTIONS",
             "header": [],
             "url": {
-              "raw": "{{baseUrl}}/v1/core/solutions/{solutionId}/parameters",
+              "raw": "{{baseUrl}}/v1/core/solution/{solutionId}/parameters",
               "host": [
                 "{{baseUrl}}"
               ],
@@ -13811,7 +13811,7 @@
                 "method": "OPTIONS",
                 "header": [],
                 "url": {
-                  "raw": "{{baseUrl}}/v1/core/solutions/{solutionId}/parameters",
+                  "raw": "{{baseUrl}}/v1/core/solution/{solutionId}/parameters",
                   "host": [
                     "{{baseUrl}}"
                   ],
@@ -13845,7 +13845,7 @@
             "method": "GET",
             "header": [],
             "url": {
-              "raw": "{{baseUrl}}/v1/core/solutions/{solutionId}/instance-body",
+              "raw": "{{baseUrl}}/v1/core/solution/{solutionId}/instance-body",
               "host": [
                 "{{baseUrl}}"
               ],
@@ -13867,7 +13867,7 @@
                 "method": "GET",
                 "header": [],
                 "url": {
-                  "raw": "{{baseUrl}}/v1/core/solutions/{solutionId}/instance-body",
+                  "raw": "{{baseUrl}}/v1/core/solution/{solutionId}/instance-body",
                   "host": [
                     "{{baseUrl}}"
                   ],
@@ -13899,7 +13899,7 @@
                 "method": "GET",
                 "header": [],
                 "url": {
-                  "raw": "{{baseUrl}}/v1/core/solutions/{solutionId}/instance-body",
+                  "raw": "{{baseUrl}}/v1/core/solution/{solutionId}/instance-body",
                   "host": [
                     "{{baseUrl}}"
                   ],
@@ -13931,7 +13931,7 @@
                 "method": "GET",
                 "header": [],
                 "url": {
-                  "raw": "{{baseUrl}}/v1/core/solutions/{solutionId}/instance-body",
+                  "raw": "{{baseUrl}}/v1/core/solution/{solutionId}/instance-body",
                   "host": [
                     "{{baseUrl}}"
                   ],
@@ -13965,7 +13965,7 @@
             "method": "OPTIONS",
             "header": [],
             "url": {
-              "raw": "{{baseUrl}}/v1/core/solutions/{solutionId}/instance-body",
+              "raw": "{{baseUrl}}/v1/core/solution/{solutionId}/instance-body",
               "host": [
                 "{{baseUrl}}"
               ],
@@ -13987,7 +13987,7 @@
                 "method": "OPTIONS",
                 "header": [],
                 "url": {
-                  "raw": "{{baseUrl}}/v1/core/solutions/{solutionId}/instance-body",
+                  "raw": "{{baseUrl}}/v1/core/solution/{solutionId}/instance-body",
                   "host": [
                     "{{baseUrl}}"
                   ],
@@ -14026,7 +14026,7 @@
             "method": "POST",
             "header": [],
             "url": {
-              "raw": "{{baseUrl}}/v1/core/videos/upload",
+              "raw": "{{baseUrl}}/v1/core/video/upload",
               "host": [
                 "{{baseUrl}}"
               ],
@@ -14062,7 +14062,7 @@
                 "method": "POST",
                 "header": [],
                 "url": {
-                  "raw": "{{baseUrl}}/v1/core/videos/upload",
+                  "raw": "{{baseUrl}}/v1/core/video/upload",
                   "host": [
                     "{{baseUrl}}"
                   ],
@@ -14093,7 +14093,7 @@
                 "method": "POST",
                 "header": [],
                 "url": {
-                  "raw": "{{baseUrl}}/v1/core/videos/upload",
+                  "raw": "{{baseUrl}}/v1/core/video/upload",
                   "host": [
                     "{{baseUrl}}"
                   ],
@@ -14124,7 +14124,7 @@
                 "method": "POST",
                 "header": [],
                 "url": {
-                  "raw": "{{baseUrl}}/v1/core/videos/upload",
+                  "raw": "{{baseUrl}}/v1/core/video/upload",
                   "host": [
                     "{{baseUrl}}"
                   ],
@@ -14155,7 +14155,7 @@
                 "method": "POST",
                 "header": [],
                 "url": {
-                  "raw": "{{baseUrl}}/v1/core/videos/upload",
+                  "raw": "{{baseUrl}}/v1/core/video/upload",
                   "host": [
                     "{{baseUrl}}"
                   ],
@@ -14188,7 +14188,7 @@
             "method": "OPTIONS",
             "header": [],
             "url": {
-              "raw": "{{baseUrl}}/v1/core/videos/upload",
+              "raw": "{{baseUrl}}/v1/core/video/upload",
               "host": [
                 "{{baseUrl}}"
               ],
@@ -14209,7 +14209,7 @@
                 "method": "OPTIONS",
                 "header": [],
                 "url": {
-                  "raw": "{{baseUrl}}/v1/core/videos/upload",
+                  "raw": "{{baseUrl}}/v1/core/video/upload",
                   "host": [
                     "{{baseUrl}}"
                   ],
@@ -14242,7 +14242,7 @@
             "method": "GET",
             "header": [],
             "url": {
-              "raw": "{{baseUrl}}/v1/core/videos/list",
+              "raw": "{{baseUrl}}/v1/core/video/list",
               "host": [
                 "{{baseUrl}}"
               ],
@@ -14263,7 +14263,7 @@
                 "method": "GET",
                 "header": [],
                 "url": {
-                  "raw": "{{baseUrl}}/v1/core/videos/list",
+                  "raw": "{{baseUrl}}/v1/core/video/list",
                   "host": [
                     "{{baseUrl}}"
                   ],
@@ -14294,7 +14294,7 @@
                 "method": "GET",
                 "header": [],
                 "url": {
-                  "raw": "{{baseUrl}}/v1/core/videos/list",
+                  "raw": "{{baseUrl}}/v1/core/video/list",
                   "host": [
                     "{{baseUrl}}"
                   ],
@@ -14332,7 +14332,7 @@
               }
             ],
             "url": {
-              "raw": "{{baseUrl}}/v1/core/videos/{videoName}",
+              "raw": "{{baseUrl}}/v1/core/video/{videoName}",
               "host": [
                 "{{baseUrl}}"
               ],
@@ -14362,7 +14362,7 @@
                 "method": "PUT",
                 "header": [],
                 "url": {
-                  "raw": "{{baseUrl}}/v1/core/videos/{videoName}",
+                  "raw": "{{baseUrl}}/v1/core/video/{videoName}",
                   "host": [
                     "{{baseUrl}}"
                   ],
@@ -14393,7 +14393,7 @@
                 "method": "PUT",
                 "header": [],
                 "url": {
-                  "raw": "{{baseUrl}}/v1/core/videos/{videoName}",
+                  "raw": "{{baseUrl}}/v1/core/video/{videoName}",
                   "host": [
                     "{{baseUrl}}"
                   ],
@@ -14424,7 +14424,7 @@
                 "method": "PUT",
                 "header": [],
                 "url": {
-                  "raw": "{{baseUrl}}/v1/core/videos/{videoName}",
+                  "raw": "{{baseUrl}}/v1/core/video/{videoName}",
                   "host": [
                     "{{baseUrl}}"
                   ],
@@ -14455,7 +14455,7 @@
                 "method": "PUT",
                 "header": [],
                 "url": {
-                  "raw": "{{baseUrl}}/v1/core/videos/{videoName}",
+                  "raw": "{{baseUrl}}/v1/core/video/{videoName}",
                   "host": [
                     "{{baseUrl}}"
                   ],
@@ -14486,7 +14486,7 @@
                 "method": "PUT",
                 "header": [],
                 "url": {
-                  "raw": "{{baseUrl}}/v1/core/videos/{videoName}",
+                  "raw": "{{baseUrl}}/v1/core/video/{videoName}",
                   "host": [
                     "{{baseUrl}}"
                   ],
@@ -14519,7 +14519,7 @@
             "method": "DELETE",
             "header": [],
             "url": {
-              "raw": "{{baseUrl}}/v1/core/videos/{videoName}",
+              "raw": "{{baseUrl}}/v1/core/video/{videoName}",
               "host": [
                 "{{baseUrl}}"
               ],
@@ -14540,7 +14540,7 @@
                 "method": "DELETE",
                 "header": [],
                 "url": {
-                  "raw": "{{baseUrl}}/v1/core/videos/{videoName}",
+                  "raw": "{{baseUrl}}/v1/core/video/{videoName}",
                   "host": [
                     "{{baseUrl}}"
                   ],
@@ -14571,7 +14571,7 @@
                 "method": "DELETE",
                 "header": [],
                 "url": {
-                  "raw": "{{baseUrl}}/v1/core/videos/{videoName}",
+                  "raw": "{{baseUrl}}/v1/core/video/{videoName}",
                   "host": [
                     "{{baseUrl}}"
                   ],
@@ -14602,7 +14602,7 @@
                 "method": "DELETE",
                 "header": [],
                 "url": {
-                  "raw": "{{baseUrl}}/v1/core/videos/{videoName}",
+                  "raw": "{{baseUrl}}/v1/core/video/{videoName}",
                   "host": [
                     "{{baseUrl}}"
                   ],
@@ -14633,7 +14633,7 @@
                 "method": "DELETE",
                 "header": [],
                 "url": {
-                  "raw": "{{baseUrl}}/v1/core/videos/{videoName}",
+                  "raw": "{{baseUrl}}/v1/core/video/{videoName}",
                   "host": [
                     "{{baseUrl}}"
                   ],

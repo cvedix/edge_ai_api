@@ -251,14 +251,14 @@ void SolutionHandler::listSolutions(
   auto start_time = std::chrono::steady_clock::now();
 
   if (isApiLoggingEnabled()) {
-    PLOG_INFO << "[API] GET /v1/core/solutions - List solutions";
+    PLOG_INFO << "[API] GET /v1/core/solution - List solutions";
     PLOG_DEBUG << "[API] Request from: " << req->getPeerAddr().toIpPort();
   }
 
   try {
     if (!solution_registry_) {
       if (isApiLoggingEnabled()) {
-        PLOG_ERROR << "[API] GET /v1/core/solutions - Error: Solution registry "
+        PLOG_ERROR << "[API] GET /v1/core/solution - Error: Solution registry "
                       "not initialized";
       }
       callback(createErrorResponse(500, "Internal server error",
@@ -304,7 +304,7 @@ void SolutionHandler::listSolutions(
         end_time - start_time);
 
     if (isApiLoggingEnabled()) {
-      PLOG_INFO << "[API] GET /v1/core/solutions - Success: " << totalCount
+      PLOG_INFO << "[API] GET /v1/core/solution - Success: " << totalCount
                 << " solutions (default: " << defaultCount
                 << ", custom: " << customCount << ") - " << duration.count()
                 << "ms";
@@ -317,7 +317,7 @@ void SolutionHandler::listSolutions(
     auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(
         end_time - start_time);
     if (isApiLoggingEnabled()) {
-      PLOG_ERROR << "[API] GET /v1/core/solutions - Exception: " << e.what()
+      PLOG_ERROR << "[API] GET /v1/core/solution - Exception: " << e.what()
                  << " - " << duration.count() << "ms";
     }
     std::cerr << "[SolutionHandler] Exception: " << e.what() << std::endl;
@@ -327,7 +327,7 @@ void SolutionHandler::listSolutions(
     auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(
         end_time - start_time);
     if (isApiLoggingEnabled()) {
-      PLOG_ERROR << "[API] GET /v1/core/solutions - Unknown exception - "
+      PLOG_ERROR << "[API] GET /v1/core/solution - Unknown exception - "
                  << duration.count() << "ms";
     }
     std::cerr << "[SolutionHandler] Unknown exception" << std::endl;
@@ -345,14 +345,14 @@ void SolutionHandler::getSolution(
   std::string solutionId = extractSolutionId(req);
 
   if (isApiLoggingEnabled()) {
-    PLOG_INFO << "[API] GET /v1/core/solutions/" << solutionId
+    PLOG_INFO << "[API] GET /v1/core/solution/" << solutionId
               << " - Get solution";
   }
 
   try {
     if (!solution_registry_) {
       if (isApiLoggingEnabled()) {
-        PLOG_ERROR << "[API] GET /v1/core/solutions/" << solutionId
+        PLOG_ERROR << "[API] GET /v1/core/solution/" << solutionId
                    << " - Error: Solution registry not initialized";
       }
       callback(createErrorResponse(500, "Internal server error",
@@ -362,7 +362,7 @@ void SolutionHandler::getSolution(
 
     if (solutionId.empty()) {
       if (isApiLoggingEnabled()) {
-        PLOG_WARNING << "[API] GET /v1/core/solutions/{id} - Error: Solution "
+        PLOG_WARNING << "[API] GET /v1/core/solution/{id} - Error: Solution "
                         "ID is empty";
       }
       callback(createErrorResponse(400, "Invalid request",
@@ -376,7 +376,7 @@ void SolutionHandler::getSolution(
       auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(
           end_time - start_time);
       if (isApiLoggingEnabled()) {
-        PLOG_WARNING << "[API] GET /v1/core/solutions/" << solutionId
+        PLOG_WARNING << "[API] GET /v1/core/solution/" << solutionId
                      << " - Not found - " << duration.count() << "ms";
       }
       callback(createErrorResponse(404, "Not found",
@@ -391,7 +391,7 @@ void SolutionHandler::getSolution(
         end_time - start_time);
 
     if (isApiLoggingEnabled()) {
-      PLOG_INFO << "[API] GET /v1/core/solutions/" << solutionId
+      PLOG_INFO << "[API] GET /v1/core/solution/" << solutionId
                 << " - Success - " << duration.count() << "ms";
     }
 
@@ -402,7 +402,7 @@ void SolutionHandler::getSolution(
     auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(
         end_time - start_time);
     if (isApiLoggingEnabled()) {
-      PLOG_ERROR << "[API] GET /v1/core/solutions/" << solutionId
+      PLOG_ERROR << "[API] GET /v1/core/solution/" << solutionId
                  << " - Exception: " << e.what() << " - " << duration.count()
                  << "ms";
     }
@@ -413,7 +413,7 @@ void SolutionHandler::getSolution(
     auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(
         end_time - start_time);
     if (isApiLoggingEnabled()) {
-      PLOG_ERROR << "[API] GET /v1/core/solutions/" << solutionId
+      PLOG_ERROR << "[API] GET /v1/core/solution/" << solutionId
                  << " - Unknown exception - " << duration.count() << "ms";
     }
     std::cerr << "[SolutionHandler] Unknown exception" << std::endl;
@@ -429,14 +429,14 @@ void SolutionHandler::createSolution(
   auto start_time = std::chrono::steady_clock::now();
 
   if (isApiLoggingEnabled()) {
-    PLOG_INFO << "[API] POST /v1/core/solutions - Create solution";
+    PLOG_INFO << "[API] POST /v1/core/solution - Create solution";
     PLOG_DEBUG << "[API] Request from: " << req->getPeerAddr().toIpPort();
   }
 
   try {
     if (!solution_registry_ || !solution_storage_) {
       if (isApiLoggingEnabled()) {
-        PLOG_ERROR << "[API] POST /v1/core/solutions - Error: Solution "
+        PLOG_ERROR << "[API] POST /v1/core/solution - Error: Solution "
                       "registry or storage not initialized";
       }
       callback(
@@ -450,7 +450,7 @@ void SolutionHandler::createSolution(
     if (!json) {
       if (isApiLoggingEnabled()) {
         PLOG_WARNING
-            << "[API] POST /v1/core/solutions - Error: Invalid JSON body";
+            << "[API] POST /v1/core/solution - Error: Invalid JSON body";
       }
       callback(createErrorResponse(400, "Invalid request",
                                    "Request body must be valid JSON"));
@@ -462,7 +462,7 @@ void SolutionHandler::createSolution(
     auto optConfig = parseSolutionConfig(*json, parseError);
     if (!optConfig.has_value()) {
       if (isApiLoggingEnabled()) {
-        PLOG_WARNING << "[API] POST /v1/core/solutions - Parse error: "
+        PLOG_WARNING << "[API] POST /v1/core/solution - Parse error: "
                      << parseError;
       }
       callback(createErrorResponse(400, "Invalid request", parseError));
@@ -479,7 +479,7 @@ void SolutionHandler::createSolution(
       // Check if it's a default solution - cannot override default solutions
       if (solution_registry_->isDefaultSolution(config.solutionId)) {
         if (isApiLoggingEnabled()) {
-          PLOG_WARNING << "[API] POST /v1/core/solutions - Error: Cannot "
+          PLOG_WARNING << "[API] POST /v1/core/solution - Error: Cannot "
                           "override default solution: "
                        << config.solutionId;
         }
@@ -493,14 +493,14 @@ void SolutionHandler::createSolution(
 
       // Solution exists and is not default - return conflict
       if (isApiLoggingEnabled()) {
-        PLOG_WARNING << "[API] POST /v1/core/solutions - Error: Solution "
+        PLOG_WARNING << "[API] POST /v1/core/solution - Error: Solution "
                         "already exists: "
                      << config.solutionId;
       }
       callback(createErrorResponse(
           409, "Conflict",
           "Solution with ID '" + config.solutionId +
-              "' already exists. Use PUT /v1/core/solutions/" +
+              "' already exists. Use PUT /v1/core/solution/" +
               config.solutionId + " to update it."));
       return;
     }
@@ -530,7 +530,7 @@ void SolutionHandler::createSolution(
         }
       }
       if (isApiLoggingEnabled()) {
-        PLOG_WARNING << "[API] POST /v1/core/solutions - Error: " << errorMsg;
+        PLOG_WARNING << "[API] POST /v1/core/solution - Error: " << errorMsg;
       }
       callback(createErrorResponse(400, "Invalid request", errorMsg));
       return;
@@ -569,7 +569,7 @@ void SolutionHandler::createSolution(
         end_time - start_time);
 
     if (isApiLoggingEnabled()) {
-      PLOG_INFO << "[API] POST /v1/core/solutions - Success: Created solution "
+      PLOG_INFO << "[API] POST /v1/core/solution - Success: Created solution "
                 << config.solutionId << " (" << config.solutionName << ") - "
                 << duration.count() << "ms";
     }
@@ -588,7 +588,7 @@ void SolutionHandler::createSolution(
     auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(
         end_time - start_time);
     if (isApiLoggingEnabled()) {
-      PLOG_ERROR << "[API] POST /v1/core/solutions - Exception: " << e.what()
+      PLOG_ERROR << "[API] POST /v1/core/solution - Exception: " << e.what()
                  << " - " << duration.count() << "ms";
     }
     std::cerr << "[SolutionHandler] Exception: " << e.what() << std::endl;
@@ -598,7 +598,7 @@ void SolutionHandler::createSolution(
     auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(
         end_time - start_time);
     if (isApiLoggingEnabled()) {
-      PLOG_ERROR << "[API] POST /v1/core/solutions - Unknown exception - "
+      PLOG_ERROR << "[API] POST /v1/core/solution - Unknown exception - "
                  << duration.count() << "ms";
     }
     std::cerr << "[SolutionHandler] Unknown exception" << std::endl;
@@ -616,14 +616,14 @@ void SolutionHandler::updateSolution(
   std::string solutionId = extractSolutionId(req);
 
   if (isApiLoggingEnabled()) {
-    PLOG_INFO << "[API] PUT /v1/core/solutions/" << solutionId
+    PLOG_INFO << "[API] PUT /v1/core/solution/" << solutionId
               << " - Update solution";
   }
 
   try {
     if (!solution_registry_ || !solution_storage_) {
       if (isApiLoggingEnabled()) {
-        PLOG_ERROR << "[API] PUT /v1/core/solutions/" << solutionId
+        PLOG_ERROR << "[API] PUT /v1/core/solution/" << solutionId
                    << " - Error: Solution registry or storage not initialized";
       }
       callback(
@@ -634,7 +634,7 @@ void SolutionHandler::updateSolution(
 
     if (solutionId.empty()) {
       if (isApiLoggingEnabled()) {
-        PLOG_WARNING << "[API] PUT /v1/core/solutions/{id} - Error: Solution "
+        PLOG_WARNING << "[API] PUT /v1/core/solution/{id} - Error: Solution "
                         "ID is empty";
       }
       callback(createErrorResponse(400, "Invalid request",
@@ -645,7 +645,7 @@ void SolutionHandler::updateSolution(
     // Check if solution exists
     if (!solution_registry_->hasSolution(solutionId)) {
       if (isApiLoggingEnabled()) {
-        PLOG_WARNING << "[API] PUT /v1/core/solutions/" << solutionId
+        PLOG_WARNING << "[API] PUT /v1/core/solution/" << solutionId
                      << " - Not found";
       }
       callback(createErrorResponse(404, "Not found",
@@ -656,7 +656,7 @@ void SolutionHandler::updateSolution(
     // Check if it's a default solution
     if (solution_registry_->isDefaultSolution(solutionId)) {
       if (isApiLoggingEnabled()) {
-        PLOG_WARNING << "[API] PUT /v1/core/solutions/" << solutionId
+        PLOG_WARNING << "[API] PUT /v1/core/solution/" << solutionId
                      << " - Cannot update default solution";
       }
       callback(createErrorResponse(
@@ -668,7 +668,7 @@ void SolutionHandler::updateSolution(
     auto json = req->getJsonObject();
     if (!json) {
       if (isApiLoggingEnabled()) {
-        PLOG_WARNING << "[API] PUT /v1/core/solutions/" << solutionId
+        PLOG_WARNING << "[API] PUT /v1/core/solution/" << solutionId
                      << " - Error: Invalid JSON body";
       }
       callback(createErrorResponse(400, "Invalid request",
@@ -681,7 +681,7 @@ void SolutionHandler::updateSolution(
     auto optConfig = parseSolutionConfig(*json, parseError);
     if (!optConfig.has_value()) {
       if (isApiLoggingEnabled()) {
-        PLOG_WARNING << "[API] PUT /v1/core/solutions/" << solutionId
+        PLOG_WARNING << "[API] PUT /v1/core/solution/" << solutionId
                      << " - Parse error: " << parseError;
       }
       callback(createErrorResponse(400, "Invalid request", parseError));
@@ -693,7 +693,7 @@ void SolutionHandler::updateSolution(
     // Ensure solutionId matches
     if (config.solutionId != solutionId) {
       if (isApiLoggingEnabled()) {
-        PLOG_WARNING << "[API] PUT /v1/core/solutions/" << solutionId
+        PLOG_WARNING << "[API] PUT /v1/core/solution/" << solutionId
                      << " - Solution ID mismatch";
       }
       callback(
@@ -730,7 +730,7 @@ void SolutionHandler::updateSolution(
         }
       }
       if (isApiLoggingEnabled()) {
-        PLOG_WARNING << "[API] PUT /v1/core/solutions/" << solutionId
+        PLOG_WARNING << "[API] PUT /v1/core/solution/" << solutionId
                      << " - Error: " << errorMsg;
       }
       callback(createErrorResponse(400, "Invalid request", errorMsg));
@@ -740,7 +740,7 @@ void SolutionHandler::updateSolution(
     // Update solution
     if (!solution_registry_->updateSolution(config)) {
       if (isApiLoggingEnabled()) {
-        PLOG_ERROR << "[API] PUT /v1/core/solutions/" << solutionId
+        PLOG_ERROR << "[API] PUT /v1/core/solution/" << solutionId
                    << " - Failed to update";
       }
       callback(createErrorResponse(500, "Internal server error",
@@ -779,7 +779,7 @@ void SolutionHandler::updateSolution(
         end_time - start_time);
 
     if (isApiLoggingEnabled()) {
-      PLOG_INFO << "[API] PUT /v1/core/solutions/" << solutionId
+      PLOG_INFO << "[API] PUT /v1/core/solution/" << solutionId
                 << " - Success - " << duration.count() << "ms";
     }
 
@@ -790,7 +790,7 @@ void SolutionHandler::updateSolution(
     auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(
         end_time - start_time);
     if (isApiLoggingEnabled()) {
-      PLOG_ERROR << "[API] PUT /v1/core/solutions/" << solutionId
+      PLOG_ERROR << "[API] PUT /v1/core/solution/" << solutionId
                  << " - Exception: " << e.what() << " - " << duration.count()
                  << "ms";
     }
@@ -801,7 +801,7 @@ void SolutionHandler::updateSolution(
     auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(
         end_time - start_time);
     if (isApiLoggingEnabled()) {
-      PLOG_ERROR << "[API] PUT /v1/core/solutions/" << solutionId
+      PLOG_ERROR << "[API] PUT /v1/core/solution/" << solutionId
                  << " - Unknown exception - " << duration.count() << "ms";
     }
     std::cerr << "[SolutionHandler] Unknown exception" << std::endl;
@@ -819,14 +819,14 @@ void SolutionHandler::deleteSolution(
   std::string solutionId = extractSolutionId(req);
 
   if (isApiLoggingEnabled()) {
-    PLOG_INFO << "[API] DELETE /v1/core/solutions/" << solutionId
+    PLOG_INFO << "[API] DELETE /v1/core/solution/" << solutionId
               << " - Delete solution";
   }
 
   try {
     if (!solution_registry_ || !solution_storage_) {
       if (isApiLoggingEnabled()) {
-        PLOG_ERROR << "[API] DELETE /v1/core/solutions/" << solutionId
+        PLOG_ERROR << "[API] DELETE /v1/core/solution/" << solutionId
                    << " - Error: Solution registry or storage not initialized";
       }
       callback(
@@ -837,7 +837,7 @@ void SolutionHandler::deleteSolution(
 
     if (solutionId.empty()) {
       if (isApiLoggingEnabled()) {
-        PLOG_WARNING << "[API] DELETE /v1/core/solutions/{id} - Error: "
+        PLOG_WARNING << "[API] DELETE /v1/core/solution/{id} - Error: "
                         "Solution ID is empty";
       }
       callback(createErrorResponse(400, "Invalid request",
@@ -848,7 +848,7 @@ void SolutionHandler::deleteSolution(
     // Check if solution exists
     if (!solution_registry_->hasSolution(solutionId)) {
       if (isApiLoggingEnabled()) {
-        PLOG_WARNING << "[API] DELETE /v1/core/solutions/" << solutionId
+        PLOG_WARNING << "[API] DELETE /v1/core/solution/" << solutionId
                      << " - Not found";
       }
       callback(createErrorResponse(404, "Not found",
@@ -859,7 +859,7 @@ void SolutionHandler::deleteSolution(
     // Check if it's a default solution
     if (solution_registry_->isDefaultSolution(solutionId)) {
       if (isApiLoggingEnabled()) {
-        PLOG_WARNING << "[API] DELETE /v1/core/solutions/" << solutionId
+        PLOG_WARNING << "[API] DELETE /v1/core/solution/" << solutionId
                      << " - Cannot delete default solution";
       }
       callback(createErrorResponse(
@@ -870,7 +870,7 @@ void SolutionHandler::deleteSolution(
     // Delete from registry
     if (!solution_registry_->deleteSolution(solutionId)) {
       if (isApiLoggingEnabled()) {
-        PLOG_ERROR << "[API] DELETE /v1/core/solutions/" << solutionId
+        PLOG_ERROR << "[API] DELETE /v1/core/solution/" << solutionId
                    << " - Failed to delete from registry";
       }
       callback(createErrorResponse(500, "Internal server error",
@@ -894,7 +894,7 @@ void SolutionHandler::deleteSolution(
         end_time - start_time);
 
     if (isApiLoggingEnabled()) {
-      PLOG_INFO << "[API] DELETE /v1/core/solutions/" << solutionId
+      PLOG_INFO << "[API] DELETE /v1/core/solution/" << solutionId
                 << " - Success - " << duration.count() << "ms";
     }
 
@@ -905,7 +905,7 @@ void SolutionHandler::deleteSolution(
     auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(
         end_time - start_time);
     if (isApiLoggingEnabled()) {
-      PLOG_ERROR << "[API] DELETE /v1/core/solutions/" << solutionId
+      PLOG_ERROR << "[API] DELETE /v1/core/solution/" << solutionId
                  << " - Exception: " << e.what() << " - " << duration.count()
                  << "ms";
     }
@@ -916,7 +916,7 @@ void SolutionHandler::deleteSolution(
     auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(
         end_time - start_time);
     if (isApiLoggingEnabled()) {
-      PLOG_ERROR << "[API] DELETE /v1/core/solutions/" << solutionId
+      PLOG_ERROR << "[API] DELETE /v1/core/solution/" << solutionId
                  << " - Unknown exception - " << duration.count() << "ms";
     }
     std::cerr << "[SolutionHandler] Unknown exception" << std::endl;
@@ -934,14 +934,14 @@ void SolutionHandler::getSolutionParameters(
   std::string solutionId = extractSolutionId(req);
 
   if (isApiLoggingEnabled()) {
-    PLOG_INFO << "[API] GET /v1/core/solutions/" << solutionId
+    PLOG_INFO << "[API] GET /v1/core/solution/" << solutionId
               << "/parameters - Get solution parameters";
   }
 
   try {
     if (!solution_registry_) {
       if (isApiLoggingEnabled()) {
-        PLOG_ERROR << "[API] GET /v1/core/solutions/" << solutionId
+        PLOG_ERROR << "[API] GET /v1/core/solution/" << solutionId
                    << "/parameters - Error: Solution registry not initialized";
       }
       callback(createErrorResponse(500, "Internal server error",
@@ -951,7 +951,7 @@ void SolutionHandler::getSolutionParameters(
 
     if (solutionId.empty()) {
       if (isApiLoggingEnabled()) {
-        PLOG_WARNING << "[API] GET /v1/core/solutions/{id}/parameters - Error: "
+        PLOG_WARNING << "[API] GET /v1/core/solution/{id}/parameters - Error: "
                         "Solution ID is empty";
       }
       callback(createErrorResponse(400, "Invalid request",
@@ -965,7 +965,7 @@ void SolutionHandler::getSolutionParameters(
       auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(
           end_time - start_time);
       if (isApiLoggingEnabled()) {
-        PLOG_WARNING << "[API] GET /v1/core/solutions/" << solutionId
+        PLOG_WARNING << "[API] GET /v1/core/solution/" << solutionId
                      << "/parameters - Not found - " << duration.count()
                      << "ms";
       }
@@ -1391,7 +1391,7 @@ void SolutionHandler::getSolutionParameters(
         end_time - start_time);
 
     if (isApiLoggingEnabled()) {
-      PLOG_INFO << "[API] GET /v1/core/solutions/" << solutionId
+      PLOG_INFO << "[API] GET /v1/core/solution/" << solutionId
                 << "/parameters - Success - " << duration.count() << "ms";
     }
 
@@ -1402,7 +1402,7 @@ void SolutionHandler::getSolutionParameters(
     auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(
         end_time - start_time);
     if (isApiLoggingEnabled()) {
-      PLOG_ERROR << "[API] GET /v1/core/solutions/" << solutionId
+      PLOG_ERROR << "[API] GET /v1/core/solution/" << solutionId
                  << "/parameters - Exception: " << e.what() << " - "
                  << duration.count() << "ms";
     }
@@ -1413,7 +1413,7 @@ void SolutionHandler::getSolutionParameters(
     auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(
         end_time - start_time);
     if (isApiLoggingEnabled()) {
-      PLOG_ERROR << "[API] GET /v1/core/solutions/" << solutionId
+      PLOG_ERROR << "[API] GET /v1/core/solution/" << solutionId
                  << "/parameters - Unknown exception - " << duration.count()
                  << "ms";
     }
@@ -1432,7 +1432,7 @@ void SolutionHandler::getSolutionInstanceBody(
   std::string solutionId = extractSolutionId(req);
 
   if (isApiLoggingEnabled()) {
-    PLOG_INFO << "[API] GET /v1/core/solutions/" << solutionId
+    PLOG_INFO << "[API] GET /v1/core/solution/" << solutionId
               << "/instance-body - Get instance body";
   }
 
@@ -1440,7 +1440,7 @@ void SolutionHandler::getSolutionInstanceBody(
     if (!solution_registry_) {
       if (isApiLoggingEnabled()) {
         PLOG_ERROR
-            << "[API] GET /v1/core/solutions/" << solutionId
+            << "[API] GET /v1/core/solution/" << solutionId
             << "/instance-body - Error: Solution registry not initialized";
       }
       callback(createErrorResponse(500, "Internal server error",
@@ -1450,7 +1450,7 @@ void SolutionHandler::getSolutionInstanceBody(
 
     if (solutionId.empty()) {
       if (isApiLoggingEnabled()) {
-        PLOG_WARNING << "[API] GET /v1/core/solutions/{id}/instance-body - "
+        PLOG_WARNING << "[API] GET /v1/core/solution/{id}/instance-body - "
                         "Error: Solution ID is empty";
       }
       callback(createErrorResponse(400, "Invalid request",
@@ -1464,7 +1464,7 @@ void SolutionHandler::getSolutionInstanceBody(
       auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(
           end_time - start_time);
       if (isApiLoggingEnabled()) {
-        PLOG_WARNING << "[API] GET /v1/core/solutions/" << solutionId
+        PLOG_WARNING << "[API] GET /v1/core/solution/" << solutionId
                      << "/instance-body - Not found - " << duration.count()
                      << "ms";
       }
@@ -1821,6 +1821,83 @@ void SolutionHandler::getSolutionInstanceBody(
 
     body["additionalParams"] = additionalParams;
 
+    // Add detailed schema metadata for UI
+    Json::Value schema(Json::objectValue);
+
+    // Standard fields schema
+    Json::Value standardFieldsSchema(Json::objectValue);
+    addStandardFieldSchema(standardFieldsSchema, "name", "string", true,
+                           "Instance name (pattern: ^[A-Za-z0-9 -_]+$)",
+                           "^[A-Za-z0-9 -_]+$", "example_instance");
+    addStandardFieldSchema(standardFieldsSchema, "group", "string", false,
+                           "Group name (pattern: ^[A-Za-z0-9 -_]+$)",
+                           "^[A-Za-z0-9 -_]+$", "default");
+    addStandardFieldSchema(standardFieldsSchema, "solution", "string", false,
+                           "Solution ID (must match existing solution)", "",
+                           solutionId);
+    addStandardFieldSchema(standardFieldsSchema, "persistent", "boolean", false,
+                           "Save instance to JSON file", "", false);
+    addStandardFieldSchema(standardFieldsSchema, "autoStart", "boolean", false,
+                           "Automatically start instance when created", "",
+                           false);
+    addStandardFieldSchema(standardFieldsSchema, "frameRateLimit", "integer",
+                           false, "Frame rate limit (FPS, 0 = unlimited)", "",
+                           0, 0);
+    addStandardFieldSchema(standardFieldsSchema, "detectionSensitivity",
+                           "string", false, "Detection sensitivity level", "",
+                           "Low", -1, -1,
+                           {"Low", "Medium", "High", "Normal", "Slow"});
+    addStandardFieldSchema(
+        standardFieldsSchema, "detectorMode", "string", false, "Detector mode",
+        "", "SmartDetection", -1, -1,
+        {"SmartDetection", "FullRegionInference", "MosaicInference"});
+    addStandardFieldSchema(
+        standardFieldsSchema, "metadataMode", "boolean", false,
+        "Enable metadata mode (output detection results as JSON)", "", false);
+    addStandardFieldSchema(standardFieldsSchema, "statisticsMode", "boolean",
+                           false, "Enable statistics mode", "", false);
+    addStandardFieldSchema(standardFieldsSchema, "diagnosticsMode", "boolean",
+                           false, "Enable diagnostics mode", "", false);
+    addStandardFieldSchema(standardFieldsSchema, "debugMode", "boolean", false,
+                           "Enable debug mode", "", false);
+
+    schema["standardFields"] = standardFieldsSchema;
+
+    // Additional parameters schema (input/output)
+    Json::Value additionalParamsSchema(Json::objectValue);
+    Json::Value inputParamsSchema(Json::objectValue);
+    Json::Value outputParamsSchema(Json::objectValue);
+
+    // Process input parameters
+    for (const auto &paramName : inputParams.getMemberNames()) {
+      Json::Value paramSchema = buildParameterSchema(
+          paramName, inputParams[paramName].asString(), allParams,
+          paramDefaults, templatesByType, config);
+      inputParamsSchema[paramName] = paramSchema;
+    }
+
+    // Process output parameters
+    for (const auto &paramName : outputParamsObj.getMemberNames()) {
+      Json::Value paramSchema = buildParameterSchema(
+          paramName, outputParamsObj[paramName].asString(), allParams,
+          paramDefaults, templatesByType, config);
+      outputParamsSchema[paramName] = paramSchema;
+    }
+
+    additionalParamsSchema["input"] = inputParamsSchema;
+    additionalParamsSchema["output"] = outputParamsSchema;
+    schema["additionalParams"] = additionalParamsSchema;
+
+    // Add flexible input/output schema
+    Json::Value flexibleIOSchema(Json::objectValue);
+    flexibleIOSchema["description"] =
+        "Flexible input/output options that can be added to any instance";
+    flexibleIOSchema["input"] = buildFlexibleInputSchema();
+    flexibleIOSchema["output"] = buildFlexibleOutputSchema();
+    schema["flexibleInputOutput"] = flexibleIOSchema;
+
+    body["schema"] = schema;
+
     // Return body directly (no wrapper) - can be used directly to create
     // instance
     auto end_time = std::chrono::steady_clock::now();
@@ -1828,7 +1905,7 @@ void SolutionHandler::getSolutionInstanceBody(
         end_time - start_time);
 
     if (isApiLoggingEnabled()) {
-      PLOG_INFO << "[API] GET /v1/core/solutions/" << solutionId
+      PLOG_INFO << "[API] GET /v1/core/solution/" << solutionId
                 << "/instance-body - Success - " << duration.count() << "ms";
     }
 
@@ -1839,7 +1916,7 @@ void SolutionHandler::getSolutionInstanceBody(
     auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(
         end_time - start_time);
     if (isApiLoggingEnabled()) {
-      PLOG_ERROR << "[API] GET /v1/core/solutions/" << solutionId
+      PLOG_ERROR << "[API] GET /v1/core/solution/" << solutionId
                  << "/instance-body - Exception: " << e.what() << " - "
                  << duration.count() << "ms";
     }
@@ -1850,7 +1927,7 @@ void SolutionHandler::getSolutionInstanceBody(
     auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(
         end_time - start_time);
     if (isApiLoggingEnabled()) {
-      PLOG_ERROR << "[API] GET /v1/core/solutions/" << solutionId
+      PLOG_ERROR << "[API] GET /v1/core/solution/" << solutionId
                  << "/instance-body - Unknown exception - " << duration.count()
                  << "ms";
     }
@@ -1872,4 +1949,584 @@ void SolutionHandler::handleOptions(
                   "Content-Type, Authorization");
   resp->addHeader("Access-Control-Max-Age", "3600");
   callback(resp);
+}
+
+// Helper functions for building parameter schema metadata
+void SolutionHandler::addStandardFieldSchema(
+    Json::Value &schema, const std::string &fieldName, const std::string &type,
+    bool required, const std::string &description, const std::string &pattern,
+    const Json::Value &defaultValue, int min, int max,
+    const std::vector<std::string> &enumValues) const {
+  Json::Value fieldSchema(Json::objectValue);
+  fieldSchema["name"] = fieldName;
+  fieldSchema["type"] = type;
+  fieldSchema["required"] = required;
+  fieldSchema["description"] = description;
+
+  if (!defaultValue.isNull()) {
+    fieldSchema["default"] = defaultValue;
+  }
+
+  if (!pattern.empty()) {
+    fieldSchema["pattern"] = pattern;
+    if (pattern == "^[A-Za-z0-9 -_]+$") {
+      fieldSchema["patternDescription"] =
+          "Alphanumeric characters, spaces, hyphens, and underscores only";
+    }
+  }
+
+  if (min >= 0) {
+    fieldSchema["minimum"] = min;
+  }
+  if (max >= 0) {
+    fieldSchema["maximum"] = max;
+  }
+
+  if (!enumValues.empty()) {
+    Json::Value enumArray(Json::arrayValue);
+    for (const auto &val : enumValues) {
+      enumArray.append(val);
+    }
+    fieldSchema["enum"] = enumArray;
+  }
+
+  // Add UI hints
+  Json::Value uiHints(Json::objectValue);
+  if (type == "boolean") {
+    uiHints["inputType"] = "checkbox";
+    uiHints["widget"] = "switch";
+  } else if (type == "integer") {
+    uiHints["inputType"] = "number";
+    uiHints["widget"] = "input";
+  } else if (!enumValues.empty()) {
+    uiHints["inputType"] = "select";
+    uiHints["widget"] = "select";
+  } else {
+    uiHints["inputType"] = "text";
+    uiHints["widget"] = "input";
+  }
+  fieldSchema["uiHints"] = uiHints;
+
+  // Add examples
+  Json::Value examples(Json::arrayValue);
+  if (fieldName == "name") {
+    examples.append("my_instance");
+    examples.append("camera_01");
+  } else if (fieldName == "group") {
+    examples.append("production");
+    examples.append("testing");
+  } else if (fieldName == "frameRateLimit") {
+    examples.append("0");
+    examples.append("10");
+    examples.append("30");
+  }
+  if (examples.size() > 0) {
+    fieldSchema["examples"] = examples;
+  }
+
+  schema[fieldName] = fieldSchema;
+}
+
+Json::Value SolutionHandler::buildParameterSchema(
+    const std::string &paramName, const std::string &exampleValue,
+    const std::set<std::string> &allParams,
+    const std::map<std::string, std::string> &paramDefaults,
+    const std::map<std::string, class NodePoolManager::NodeTemplate>
+        &templatesByType,
+    const class SolutionConfig &config) const {
+  Json::Value paramSchema(Json::objectValue);
+
+  paramSchema["name"] = paramName;
+  std::string paramType = inferParameterType(paramName);
+  paramSchema["type"] = paramType;
+
+  // Check if required
+  bool isRequired = false;
+  // Check if parameter is used in pipeline with ${VAR} placeholder
+  std::regex varPattern("\\$\\{([A-Za-z0-9_]+)\\}");
+  for (const auto &node : config.pipeline) {
+    for (const auto &param : node.parameters) {
+      std::string value = param.second;
+      std::sregex_iterator iter(value.begin(), value.end(), varPattern);
+      std::sregex_iterator end;
+      for (; iter != end; ++iter) {
+        std::string varName = (*iter)[1].str();
+        if (varName == paramName) {
+          isRequired = true;
+          break;
+        }
+      }
+      if (isRequired)
+        break;
+    }
+    if (isRequired)
+      break;
+  }
+
+  paramSchema["required"] = isRequired;
+  paramSchema["example"] = exampleValue;
+
+  // Get default value
+  auto defIt = paramDefaults.find(paramName);
+  if (defIt != paramDefaults.end()) {
+    std::string defaultValue = defIt->second;
+    // Check if default contains variables
+    std::sregex_iterator iter(defaultValue.begin(), defaultValue.end(),
+                              varPattern);
+    std::sregex_iterator end;
+    if (iter == end) {
+      // Literal default
+      paramSchema["default"] = defaultValue;
+    }
+  }
+
+  // Add UI hints
+  Json::Value uiHints(Json::objectValue);
+  uiHints["inputType"] = getInputType(paramName, paramType);
+  uiHints["widget"] = getWidgetType(paramName, paramType);
+  std::string placeholder = getPlaceholder(paramName);
+  if (!placeholder.empty()) {
+    uiHints["placeholder"] = placeholder;
+  }
+  paramSchema["uiHints"] = uiHints;
+
+  // Add validation rules
+  Json::Value validation(Json::objectValue);
+  addValidationRules(validation, paramName, paramType);
+  if (validation.size() > 0) {
+    paramSchema["validation"] = validation;
+  }
+
+  // Add description
+  paramSchema["description"] = getParameterDescription(paramName);
+
+  // Add examples
+  Json::Value examples(Json::arrayValue);
+  auto exampleValues = getParameterExamples(paramName);
+  for (const auto &ex : exampleValues) {
+    examples.append(ex);
+  }
+  if (examples.size() > 0) {
+    paramSchema["examples"] = examples;
+  }
+
+  // Add category
+  paramSchema["category"] = getParameterCategory(paramName);
+
+  // Find which nodes use this parameter
+  Json::Value usedInNodes(Json::arrayValue);
+  for (const auto &node : config.pipeline) {
+    for (const auto &param : node.parameters) {
+      std::string value = param.second;
+      std::sregex_iterator iter(value.begin(), value.end(), varPattern);
+      std::sregex_iterator end;
+      for (; iter != end; ++iter) {
+        std::string varName = (*iter)[1].str();
+        if (varName == paramName) {
+          usedInNodes.append(node.nodeType);
+          break;
+        }
+      }
+    }
+  }
+  if (usedInNodes.size() > 0) {
+    paramSchema["usedInNodes"] = usedInNodes;
+  }
+
+  return paramSchema;
+}
+
+Json::Value SolutionHandler::buildFlexibleInputSchema() const {
+  Json::Value inputSchema(Json::objectValue);
+  inputSchema["description"] =
+      "Choose ONE input source. Pipeline builder auto-detects input type.";
+  inputSchema["mutuallyExclusive"] = true;
+
+  Json::Value params(Json::objectValue);
+
+  // Helper to build simple parameter schema for flexible params
+  auto buildFlexibleParam = [this](const std::string &name,
+                                   const std::string &example,
+                                   const std::string &desc) -> Json::Value {
+    Json::Value param(Json::objectValue);
+    param["name"] = name;
+    param["type"] = inferParameterType(name);
+    param["required"] = false;
+    param["example"] = example;
+    param["description"] = desc;
+
+    Json::Value uiHints(Json::objectValue);
+    uiHints["inputType"] = getInputType(name, param["type"].asString());
+    uiHints["widget"] = getWidgetType(name, param["type"].asString());
+    std::string placeholder = getPlaceholder(name);
+    if (!placeholder.empty()) {
+      uiHints["placeholder"] = placeholder;
+    }
+    param["uiHints"] = uiHints;
+
+    Json::Value validation(Json::objectValue);
+    addValidationRules(validation, name, param["type"].asString());
+    if (validation.size() > 0) {
+      param["validation"] = validation;
+    }
+
+    auto examples = getParameterExamples(name);
+    if (!examples.empty()) {
+      Json::Value examplesArray(Json::arrayValue);
+      for (const auto &ex : examples) {
+        examplesArray.append(ex);
+      }
+      param["examples"] = examplesArray;
+    }
+
+    param["category"] = getParameterCategory(name);
+    return param;
+  };
+
+  // FILE_PATH
+  params["FILE_PATH"] = buildFlexibleParam(
+      "FILE_PATH", "./cvedix_data/test_video/example.mp4",
+      "Local video file path or URL (supports file://, rtsp://, rtmp://, "
+      "http://, https://). Pipeline builder auto-detects input type.");
+
+  // RTSP_SRC_URL
+  params["RTSP_SRC_URL"] = buildFlexibleParam(
+      "RTSP_SRC_URL", "rtsp://camera-ip:8554/stream",
+      "RTSP stream URL (overrides FILE_PATH if both provided)");
+
+  // RTMP_SRC_URL
+  params["RTMP_SRC_URL"] =
+      buildFlexibleParam("RTMP_SRC_URL", "rtmp://input-server:1935/live/input",
+                         "RTMP input stream URL");
+
+  // HLS_URL
+  params["HLS_URL"] = buildFlexibleParam(
+      "HLS_URL", "http://example.com/stream.m3u8", "HLS stream URL (.m3u8)");
+
+  inputSchema["parameters"] = params;
+  return inputSchema;
+}
+
+Json::Value SolutionHandler::buildFlexibleOutputSchema() const {
+  Json::Value outputSchema(Json::objectValue);
+  outputSchema["description"] =
+      "Add any combination of outputs. Pipeline builder auto-adds nodes.";
+  outputSchema["mutuallyExclusive"] = false;
+
+  Json::Value params(Json::objectValue);
+
+  // Helper to build simple parameter schema for flexible params
+  auto buildFlexibleParam = [this](const std::string &name,
+                                   const std::string &example,
+                                   const std::string &desc) -> Json::Value {
+    Json::Value param(Json::objectValue);
+    param["name"] = name;
+    param["type"] = inferParameterType(name);
+    param["required"] = false;
+    param["example"] = example;
+    param["description"] = desc;
+
+    Json::Value uiHints(Json::objectValue);
+    uiHints["inputType"] = getInputType(name, param["type"].asString());
+    uiHints["widget"] = getWidgetType(name, param["type"].asString());
+    std::string placeholder = getPlaceholder(name);
+    if (!placeholder.empty()) {
+      uiHints["placeholder"] = placeholder;
+    }
+    param["uiHints"] = uiHints;
+
+    Json::Value validation(Json::objectValue);
+    addValidationRules(validation, name, param["type"].asString());
+    if (validation.size() > 0) {
+      param["validation"] = validation;
+    }
+
+    auto examples = getParameterExamples(name);
+    if (!examples.empty()) {
+      Json::Value examplesArray(Json::arrayValue);
+      for (const auto &ex : examples) {
+        examplesArray.append(ex);
+      }
+      param["examples"] = examplesArray;
+    }
+
+    param["category"] = getParameterCategory(name);
+    return param;
+  };
+
+  // MQTT
+  params["MQTT_BROKER_URL"] = buildFlexibleParam(
+      "MQTT_BROKER_URL", "localhost",
+      "MQTT broker address (enables MQTT output). Leave empty to disable.");
+  params["MQTT_PORT"] =
+      buildFlexibleParam("MQTT_PORT", "1883", "MQTT broker port");
+  params["MQTT_TOPIC"] = buildFlexibleParam("MQTT_TOPIC", "events",
+                                            "MQTT topic for publishing events");
+
+  // RTMP
+  params["RTMP_URL"] = buildFlexibleParam(
+      "RTMP_URL", "rtmp://server:1935/live/stream",
+      "RTMP destination URL (enables RTMP streaming output)");
+
+  // Screen
+  params["ENABLE_SCREEN_DES"] = buildFlexibleParam(
+      "ENABLE_SCREEN_DES", "false", "Enable screen display (true/false)");
+
+  // Recording
+  params["RECORD_PATH"] = buildFlexibleParam(
+      "RECORD_PATH", "./output/recordings", "Path for video recording output");
+
+  outputSchema["parameters"] = params;
+  return outputSchema;
+}
+
+// Helper functions for parameter metadata (similar to NodeHandler)
+std::string
+SolutionHandler::inferParameterType(const std::string &paramName) const {
+  std::string upperParam = paramName;
+  std::transform(upperParam.begin(), upperParam.end(), upperParam.begin(),
+                 ::toupper);
+
+  if (upperParam.find("THRESHOLD") != std::string::npos ||
+      upperParam.find("RATIO") != std::string::npos ||
+      upperParam.find("SCORE") != std::string::npos) {
+    return "number";
+  }
+  if (upperParam.find("PORT") != std::string::npos ||
+      upperParam.find("CHANNEL") != std::string::npos ||
+      upperParam.find("WIDTH") != std::string::npos ||
+      upperParam.find("HEIGHT") != std::string::npos ||
+      upperParam.find("TOP_K") != std::string::npos) {
+    return "integer";
+  }
+  if (upperParam.find("ENABLE") != std::string::npos || upperParam == "OSD" ||
+      upperParam.find("DISABLE") != std::string::npos) {
+    return "boolean";
+  }
+  return "string";
+}
+
+std::string SolutionHandler::getInputType(const std::string &paramName,
+                                          const std::string &paramType) const {
+  if (paramType == "number" || paramType == "integer") {
+    return "number";
+  }
+  if (paramType == "boolean") {
+    return "checkbox";
+  }
+  std::string upperParam = paramName;
+  std::transform(upperParam.begin(), upperParam.end(), upperParam.begin(),
+                 ::toupper);
+  if (upperParam.find("URL") != std::string::npos) {
+    return "url";
+  }
+  if (upperParam.find("PATH") != std::string::npos ||
+      upperParam.find("DIR") != std::string::npos) {
+    return "file";
+  }
+  return "text";
+}
+
+std::string SolutionHandler::getWidgetType(const std::string &paramName,
+                                           const std::string &paramType) const {
+  if (paramType == "boolean") {
+    return "switch";
+  }
+  if (paramName.find("threshold") != std::string::npos ||
+      paramName.find("ratio") != std::string::npos) {
+    return "slider";
+  }
+  std::string upperParam = paramName;
+  std::transform(upperParam.begin(), upperParam.end(), upperParam.begin(),
+                 ::toupper);
+  if (upperParam.find("URL") != std::string::npos) {
+    return "url-input";
+  }
+  if (upperParam.find("PATH") != std::string::npos) {
+    return "file-picker";
+  }
+  return "input";
+}
+
+std::string
+SolutionHandler::getPlaceholder(const std::string &paramName) const {
+  std::string upperParam = paramName;
+  std::transform(upperParam.begin(), upperParam.end(), upperParam.begin(),
+                 ::toupper);
+
+  if (upperParam == "RTSP_SRC_URL" || upperParam == "RTSP_URL") {
+    return "rtsp://camera-ip:8554/stream";
+  }
+  if (upperParam == "RTMP_SRC_URL" || upperParam == "RTMP_URL") {
+    return "rtmp://localhost:1935/live/stream";
+  }
+  if (upperParam == "FILE_PATH") {
+    return "/path/to/video.mp4";
+  }
+  if (upperParam.find("MODEL_PATH") != std::string::npos) {
+    return "/opt/cvedix/models/example.onnx";
+  }
+  if (upperParam == "MQTT_BROKER_URL") {
+    return "localhost";
+  }
+  if (upperParam == "MQTT_PORT") {
+    return "1883";
+  }
+  if (upperParam == "MQTT_TOPIC") {
+    return "events";
+  }
+  return "";
+}
+
+void SolutionHandler::addValidationRules(Json::Value &validation,
+                                         const std::string &paramName,
+                                         const std::string &paramType) const {
+  std::string upperParam = paramName;
+  std::transform(upperParam.begin(), upperParam.end(), upperParam.begin(),
+                 ::toupper);
+
+  if (paramType == "number" || paramType == "integer") {
+    if (upperParam.find("THRESHOLD") != std::string::npos ||
+        upperParam.find("SCORE") != std::string::npos) {
+      validation["min"] = 0.0;
+      validation["max"] = 1.0;
+      validation["step"] = 0.01;
+    }
+    if (upperParam.find("RATIO") != std::string::npos) {
+      validation["min"] = 0.0;
+      validation["max"] = 1.0;
+      validation["step"] = 0.1;
+    }
+    if (upperParam.find("PORT") != std::string::npos) {
+      validation["min"] = 1;
+      validation["max"] = 65535;
+    }
+    if (upperParam.find("CHANNEL") != std::string::npos) {
+      validation["min"] = 0;
+      validation["max"] = 15;
+    }
+  }
+
+  if (paramType == "string") {
+    if (upperParam.find("URL") != std::string::npos) {
+      validation["pattern"] = "^(rtsp|rtmp|http|https|file|udp)://.+";
+      validation["patternDescription"] =
+          "Must be a valid URL (rtsp://, rtmp://, http://, https://, file://, "
+          "or udp://)";
+    }
+    if (upperParam.find("PATH") != std::string::npos) {
+      validation["pattern"] = "^[^\\0]+$";
+      validation["patternDescription"] = "Must be a valid file path";
+    }
+  }
+}
+
+std::string
+SolutionHandler::getParameterDescription(const std::string &paramName) const {
+  std::string upperParam = paramName;
+  std::transform(upperParam.begin(), upperParam.end(), upperParam.begin(),
+                 ::toupper);
+
+  if (upperParam == "FILE_PATH") {
+    return "Path to video file or URL (supports file://, rtsp://, rtmp://, "
+           "http://, https://). Pipeline builder auto-detects input type.";
+  }
+  if (upperParam == "RTSP_SRC_URL" || upperParam == "RTSP_URL") {
+    return "RTSP stream URL (e.g., rtsp://camera-ip:8554/stream)";
+  }
+  if (upperParam == "RTMP_SRC_URL" || upperParam == "RTMP_URL") {
+    return "RTMP stream URL (e.g., rtmp://localhost:1935/live/stream)";
+  }
+  if (upperParam.find("MODEL_PATH") != std::string::npos) {
+    return "Path to model file (.onnx, .trt, .rknn, etc.)";
+  }
+  if (upperParam == "MQTT_BROKER_URL") {
+    return "MQTT broker address (hostname or IP). Leave empty to disable MQTT "
+           "output.";
+  }
+  if (upperParam == "MQTT_PORT") {
+    return "MQTT broker port (default: 1883)";
+  }
+  if (upperParam == "MQTT_TOPIC") {
+    return "MQTT topic to publish messages to";
+  }
+  if (upperParam == "ENABLE_SCREEN_DES") {
+    return "Enable screen display (true/false)";
+  }
+  if (upperParam.find("THRESHOLD") != std::string::npos) {
+    return "Confidence threshold (0.0-1.0). Higher values = fewer detections "
+           "but more accurate";
+  }
+  if (upperParam.find("RATIO") != std::string::npos) {
+    return "Resize ratio (0.0-1.0). 1.0 = no resize, smaller values = "
+           "downscale";
+  }
+  return "Parameter: " + paramName;
+}
+
+std::vector<std::string>
+SolutionHandler::getParameterExamples(const std::string &paramName) const {
+  std::vector<std::string> examples;
+  std::string upperParam = paramName;
+  std::transform(upperParam.begin(), upperParam.end(), upperParam.begin(),
+                 ::toupper);
+
+  if (upperParam == "FILE_PATH") {
+    examples.push_back("./cvedix_data/test_video/example.mp4");
+    examples.push_back("file:///path/to/video.mp4");
+    examples.push_back("rtsp://camera-ip:8554/stream");
+  }
+  if (upperParam == "RTSP_SRC_URL" || upperParam == "RTSP_URL") {
+    examples.push_back("rtsp://192.168.1.100:8554/stream1");
+    examples.push_back("rtsp://admin:password@camera-ip:554/stream");
+  }
+  if (upperParam == "RTMP_SRC_URL" || upperParam == "RTMP_URL") {
+    examples.push_back("rtmp://localhost:1935/live/stream");
+    examples.push_back("rtmp://youtube.com/live2/stream-key");
+  }
+  if (upperParam.find("MODEL_PATH") != std::string::npos) {
+    examples.push_back("/opt/cvedix/models/yunet.onnx");
+    examples.push_back("/opt/cvedix/models/yolov8.engine");
+  }
+  if (upperParam == "MQTT_BROKER_URL") {
+    examples.push_back("localhost");
+    examples.push_back("192.168.1.100");
+    examples.push_back("mqtt.example.com");
+  }
+  if (upperParam == "MQTT_TOPIC") {
+    examples.push_back("detections");
+    examples.push_back("events");
+    examples.push_back("camera/stream1/events");
+  }
+
+  return examples;
+}
+
+std::string
+SolutionHandler::getParameterCategory(const std::string &paramName) const {
+  std::string upperParam = paramName;
+  std::transform(upperParam.begin(), upperParam.end(), upperParam.begin(),
+                 ::toupper);
+
+  if (upperParam.find("URL") != std::string::npos ||
+      upperParam.find("PATH") != std::string::npos ||
+      upperParam.find("PORT") != std::string::npos) {
+    return "connection";
+  }
+  if (upperParam.find("THRESHOLD") != std::string::npos ||
+      upperParam.find("RATIO") != std::string::npos) {
+    return "performance";
+  }
+  if (upperParam.find("MODEL") != std::string::npos ||
+      upperParam.find("WEIGHTS") != std::string::npos ||
+      upperParam.find("CONFIG") != std::string::npos ||
+      upperParam.find("LABELS") != std::string::npos) {
+    return "model";
+  }
+  if (upperParam.find("MQTT") != std::string::npos ||
+      upperParam.find("RTMP") != std::string::npos ||
+      upperParam == "ENABLE_SCREEN_DES" || upperParam == "RECORD_PATH") {
+    return "output";
+  }
+  return "general";
 }

@@ -30,7 +30,7 @@ cd build
 
 ```bash
 # List tất cả solutions (sẽ thấy default solutions)
-curl http://localhost:8080/v1/core/solutions | jq
+curl http://localhost:8080/v1/core/solution | jq
 ```
 
 Kết quả sẽ có:
@@ -314,10 +314,10 @@ grep -A 5 "initializeDefaultSolutions" src/main.cpp
 
 ```bash
 # List solutions
-curl http://localhost:8080/v1/core/solutions | jq '.solutions[] | select(.isDefault == true)'
+curl http://localhost:8080/v1/core/solution | jq '.solutions[] | select(.isDefault == true)'
 
 # Get chi tiết từng solution
-curl http://localhost:8080/v1/core/solutions/face_detection | jq
+curl http://localhost:8080/v1/core/solution/face_detection | jq
 ```
 
 ---

@@ -1794,15 +1794,15 @@ int main(int argc, char *argv[]) {
     PLOG_INFO << "  GET /v1/core/instance/{id}/frame - Get last frame";
     PLOG_INFO
         << "  GET /v1/core/instance/{id}/statistics - Get instance statistics";
-    PLOG_INFO << "  POST /v1/core/models/upload - Upload model file";
-    PLOG_INFO << "  GET /v1/core/models/list - List uploaded models";
-    PLOG_INFO << "  DELETE /v1/core/models/{modelName} - Delete model file";
-    PLOG_INFO << "  POST /v1/core/videos/upload - Upload video file";
-    PLOG_INFO << "  GET /v1/core/videos/list - List uploaded videos";
-    PLOG_INFO << "  DELETE /v1/core/videos/{videoName} - Delete video file";
-    PLOG_INFO << "  POST /v1/core/fonts/upload - Upload font file";
-    PLOG_INFO << "  GET /v1/core/fonts/list - List uploaded fonts";
-    PLOG_INFO << "  DELETE /v1/core/fonts/{fontName} - Delete font file";
+    PLOG_INFO << "  POST /v1/core/model/upload - Upload model file";
+    PLOG_INFO << "  GET /v1/core/model/list - List uploaded models";
+    PLOG_INFO << "  DELETE /v1/core/model/{modelName} - Delete model file";
+    PLOG_INFO << "  POST /v1/core/video/upload - Upload video file";
+    PLOG_INFO << "  GET /v1/core/video/list - List uploaded videos";
+    PLOG_INFO << "  DELETE /v1/core/video/{videoName} - Delete video file";
+    PLOG_INFO << "  POST /v1/core/font/upload - Upload font file";
+    PLOG_INFO << "  GET /v1/core/font/list - List uploaded fonts";
+    PLOG_INFO << "  DELETE /v1/core/font/{fontName} - Delete font file";
     PLOG_INFO << "  GET /swagger         - Swagger UI (all versions)";
     PLOG_INFO << "  GET /v1/swagger      - Swagger UI for API v1";
     PLOG_INFO << "  GET /v2/swagger      - Swagger UI for API v2";
@@ -2817,11 +2817,11 @@ int main(int argc, char *argv[]) {
     PLOG_INFO << "  DELETE /v1/core/instance/{instanceId} - Delete instance";
 
     PLOG_INFO << "[Main] Solution management initialized";
-    PLOG_INFO << "  GET /v1/core/solutions - List all solutions";
-    PLOG_INFO << "  GET /v1/core/solutions/{solutionId} - Get solution details";
-    PLOG_INFO << "  POST /v1/core/solutions - Create new solution";
-    PLOG_INFO << "  PUT /v1/core/solutions/{solutionId} - Update solution";
-    PLOG_INFO << "  DELETE /v1/core/solutions/{solutionId} - Delete solution";
+    PLOG_INFO << "  GET /v1/core/solution - List all solutions";
+    PLOG_INFO << "  GET /v1/core/solution/{solutionId} - Get solution details";
+    PLOG_INFO << "  POST /v1/core/solution - Create new solution";
+    PLOG_INFO << "  PUT /v1/core/solution/{solutionId} - Update solution";
+    PLOG_INFO << "  DELETE /v1/core/solution/{solutionId} - Delete solution";
     PLOG_INFO << "  Instances directory: " << instancesDir;
 
     PLOG_INFO << "[Main] Group management initialized";
@@ -2834,36 +2834,36 @@ int main(int argc, char *argv[]) {
         << "  GET /v1/core/groups/{groupId}/instances - Get instances in group";
     PLOG_INFO << "  Groups directory: " << groupsDir;
     PLOG_INFO << "[Main] Model upload handler initialized";
-    PLOG_INFO << "  POST /v1/core/models/upload - Upload model file";
-    PLOG_INFO << "  GET /v1/core/models/list - List uploaded models";
-    PLOG_INFO << "  PUT /v1/core/models/{modelName} - Rename model file";
-    PLOG_INFO << "  DELETE /v1/core/models/{modelName} - Delete model file";
+    PLOG_INFO << "  POST /v1/core/model/upload - Upload model file";
+    PLOG_INFO << "  GET /v1/core/model/list - List uploaded models";
+    PLOG_INFO << "  PUT /v1/core/model/{modelName} - Rename model file";
+    PLOG_INFO << "  DELETE /v1/core/model/{modelName} - Delete model file";
     PLOG_INFO << "  Models directory: " << modelsDir;
     PLOG_INFO << "[Main] Video upload handler initialized";
-    PLOG_INFO << "  POST /v1/core/videos/upload - Upload video file";
-    PLOG_INFO << "  GET /v1/core/videos/list - List uploaded videos";
-    PLOG_INFO << "  PUT /v1/core/videos/{videoName} - Rename video file";
-    PLOG_INFO << "  DELETE /v1/core/videos/{videoName} - Delete video file";
+    PLOG_INFO << "  POST /v1/core/video/upload - Upload video file";
+    PLOG_INFO << "  GET /v1/core/video/list - List uploaded videos";
+    PLOG_INFO << "  PUT /v1/core/video/{videoName} - Rename video file";
+    PLOG_INFO << "  DELETE /v1/core/video/{videoName} - Delete video file";
     PLOG_INFO << "  Videos directory: " << videosDir;
     PLOG_INFO << "[Main] Font upload handler initialized";
-    PLOG_INFO << "  POST /v1/core/fonts/upload - Upload font file";
-    PLOG_INFO << "  GET /v1/core/fonts/list - List uploaded fonts";
-    PLOG_INFO << "  PUT /v1/core/fonts/{fontName} - Rename font file";
-    PLOG_INFO << "  DELETE /v1/core/fonts/{fontName} - Delete font file";
+    PLOG_INFO << "  POST /v1/core/font/upload - Upload font file";
+    PLOG_INFO << "  GET /v1/core/font/list - List uploaded fonts";
+    PLOG_INFO << "  PUT /v1/core/font/{fontName} - Rename font file";
+    PLOG_INFO << "  DELETE /v1/core/font/{fontName} - Delete font file";
     PLOG_INFO << "  Fonts directory: " << fontsDir;
 
     PLOG_INFO << "[Main] Video upload handler initialized";
-    PLOG_INFO << "  POST /v1/core/videos/upload - Upload video file";
-    PLOG_INFO << "  GET /v1/core/videos/list - List uploaded videos";
-    PLOG_INFO << "  PUT /v1/core/videos/{videoName} - Rename video file";
-    PLOG_INFO << "  DELETE /v1/core/videos/{videoName} - Delete video file";
+    PLOG_INFO << "  POST /v1/core/video/upload - Upload video file";
+    PLOG_INFO << "  GET /v1/core/video/list - List uploaded videos";
+    PLOG_INFO << "  PUT /v1/core/video/{videoName} - Rename video file";
+    PLOG_INFO << "  DELETE /v1/core/video/{videoName} - Delete video file";
     PLOG_INFO << "  Videos directory: " << videosDir;
 
     PLOG_INFO << "[Main] Font upload handler initialized";
-    PLOG_INFO << "  POST /v1/core/fonts/upload - Upload font file";
-    PLOG_INFO << "  GET /v1/core/fonts/list - List uploaded fonts";
-    PLOG_INFO << "  PUT /v1/core/fonts/{fontName} - Rename font file";
-    PLOG_INFO << "  DELETE /v1/core/fonts/{fontName} - Delete font file";
+    PLOG_INFO << "  POST /v1/core/font/upload - Upload font file";
+    PLOG_INFO << "  GET /v1/core/font/list - List uploaded fonts";
+    PLOG_INFO << "  PUT /v1/core/font/{fontName} - Rename font file";
+    PLOG_INFO << "  DELETE /v1/core/font/{fontName} - Delete font file";
     PLOG_INFO << "  Fonts directory: " << fontsDir;
 
     PLOG_INFO << "[Main] Configuration management initialized";

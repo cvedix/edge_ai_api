@@ -17,10 +17,10 @@ protected:
   std::unique_ptr<NodePoolHandler> handler_;
 };
 
-// Test GET /v1/core/nodes/templates returns valid JSON
+// Test GET /v1/core/node/template returns valid JSON
 TEST_F(NodePoolHandlerTest, GetTemplatesReturnsValidJson) {
   auto req = HttpRequest::newHttpRequest();
-  req->setPath("/v1/core/nodes/templates");
+  req->setPath("/v1/core/node/template");
   req->setMethod(Get);
 
   HttpResponsePtr response;
@@ -42,10 +42,10 @@ TEST_F(NodePoolHandlerTest, GetTemplatesReturnsValidJson) {
   ASSERT_NE(json, nullptr);
 }
 
-// Test GET /v1/core/nodes/templates/{category} returns valid JSON
+// Test GET /v1/core/node/template/{category} returns valid JSON
 TEST_F(NodePoolHandlerTest, GetTemplatesByCategoryReturnsValidJson) {
   auto req = HttpRequest::newHttpRequest();
-  req->setPath("/v1/core/nodes/templates/inference");
+  req->setPath("/v1/core/node/template/inference");
   req->setParameter("category", "inference");
   req->setMethod(Get);
 
@@ -68,10 +68,10 @@ TEST_F(NodePoolHandlerTest, GetTemplatesByCategoryReturnsValidJson) {
   ASSERT_NE(json, nullptr);
 }
 
-// Test GET /v1/core/nodes/preconfigured returns valid JSON
+// Test GET /v1/core/node/preconfigured returns valid JSON
 TEST_F(NodePoolHandlerTest, GetPreConfiguredNodesReturnsValidJson) {
   auto req = HttpRequest::newHttpRequest();
-  req->setPath("/v1/core/nodes/preconfigured");
+  req->setPath("/v1/core/node/preconfigured");
   req->setMethod(Get);
 
   HttpResponsePtr response;
@@ -93,10 +93,10 @@ TEST_F(NodePoolHandlerTest, GetPreConfiguredNodesReturnsValidJson) {
   ASSERT_NE(json, nullptr);
 }
 
-// Test GET /v1/core/nodes/preconfigured/available returns valid JSON
+// Test GET /v1/core/node/preconfigured/available returns valid JSON
 TEST_F(NodePoolHandlerTest, GetAvailableNodesReturnsValidJson) {
   auto req = HttpRequest::newHttpRequest();
-  req->setPath("/v1/core/nodes/preconfigured/available");
+  req->setPath("/v1/core/node/preconfigured/available");
   req->setMethod(Get);
 
   HttpResponsePtr response;
@@ -118,10 +118,10 @@ TEST_F(NodePoolHandlerTest, GetAvailableNodesReturnsValidJson) {
   ASSERT_NE(json, nullptr);
 }
 
-// Test GET /v1/core/nodes/stats returns valid JSON
+// Test GET /v1/core/node/stats returns valid JSON
 TEST_F(NodePoolHandlerTest, GetStatsReturnsValidJson) {
   auto req = HttpRequest::newHttpRequest();
-  req->setPath("/v1/core/nodes/stats");
+  req->setPath("/v1/core/node/stats");
   req->setMethod(Get);
 
   HttpResponsePtr response;
@@ -146,7 +146,7 @@ TEST_F(NodePoolHandlerTest, GetStatsReturnsValidJson) {
 // Test OPTIONS request
 TEST_F(NodePoolHandlerTest, HandleOptions) {
   auto req = HttpRequest::newHttpRequest();
-  req->setPath("/v1/core/nodes/templates");
+  req->setPath("/v1/core/node/template");
   req->setMethod(Options);
 
   HttpResponsePtr response;

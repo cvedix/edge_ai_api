@@ -70,7 +70,7 @@ Mỗi solution file là một JSON với cấu trúc sau:
 ### 1. Tạo solution từ file JSON
 
 ```bash
-curl -X POST http://localhost:8080/v1/core/solutions \
+curl -X POST http://localhost:8080/v1/core/solution \
   -H "Content-Type: application/json" \
   -d @examples/solutions/test_face_detection.json
 ```
@@ -78,7 +78,7 @@ curl -X POST http://localhost:8080/v1/core/solutions \
 ### 2. Kiểm tra solution đã tạo
 
 ```bash
-curl http://localhost:8080/v1/core/solutions/test_face_detection
+curl http://localhost:8080/v1/core/solution/test_face_detection
 ```
 
 ### 3. Tạo instance từ solution
