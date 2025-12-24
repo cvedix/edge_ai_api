@@ -111,6 +111,7 @@ TEST_F(SolutionHandlerTest, ListSolutionsReturnsValidJson) {
 TEST_F(SolutionHandlerTest, GetSolutionSuccess) {
   auto req = HttpRequest::newHttpRequest();
   req->setPath("/v1/core/solution/test_solution");
+  req->setParameter("solutionId", "test_solution");
   req->setMethod(Get);
 
   HttpResponsePtr response;
@@ -123,6 +124,15 @@ TEST_F(SolutionHandlerTest, GetSolutionSuccess) {
 
   std::this_thread::sleep_for(std::chrono::milliseconds(100));
 
+  if (!callbackCalled) {
+    FAIL() << "Callback was not called";
+  }
+  if (response == nullptr) {
+    FAIL() << "Response is nullptr";
+  }
+  if (response->statusCode() != k200OK) {
+    FAIL() << "Expected status code 200, got " << response->statusCode();
+  }
   ASSERT_TRUE(callbackCalled);
   ASSERT_NE(response, nullptr);
   EXPECT_EQ(response->statusCode(), k200OK);
@@ -146,6 +156,7 @@ TEST_F(SolutionHandlerTest, GetSolutionSuccess) {
 TEST_F(SolutionHandlerTest, GetSolutionNotFound) {
   auto req = HttpRequest::newHttpRequest();
   req->setPath("/v1/core/solution/nonexistent");
+  req->setParameter("solutionId", "nonexistent");
   req->setMethod(Get);
 
   HttpResponsePtr response;
@@ -158,6 +169,15 @@ TEST_F(SolutionHandlerTest, GetSolutionNotFound) {
 
   std::this_thread::sleep_for(std::chrono::milliseconds(100));
 
+  if (!callbackCalled) {
+    FAIL() << "Callback was not called";
+  }
+  if (response == nullptr) {
+    FAIL() << "Response is nullptr";
+  }
+  if (response->statusCode() != k404NotFound) {
+    FAIL() << "Expected status code 404, got " << response->statusCode();
+  }
   ASSERT_TRUE(callbackCalled);
   ASSERT_NE(response, nullptr);
   EXPECT_EQ(response->statusCode(), k404NotFound);
@@ -322,6 +342,7 @@ TEST_F(SolutionHandlerTest, DeleteSolutionSuccess) {
 
   auto req = HttpRequest::newHttpRequest();
   req->setPath("/v1/core/solution/custom_solution");
+  req->setParameter("solutionId", "custom_solution");
   req->setMethod(Delete);
 
   HttpResponsePtr response;
@@ -334,6 +355,15 @@ TEST_F(SolutionHandlerTest, DeleteSolutionSuccess) {
 
   std::this_thread::sleep_for(std::chrono::milliseconds(100));
 
+  if (!callbackCalled) {
+    FAIL() << "Callback was not called";
+  }
+  if (response == nullptr) {
+    FAIL() << "Response is nullptr";
+  }
+  if (response->statusCode() != k200OK) {
+    FAIL() << "Expected status code 200, got " << response->statusCode();
+  }
   ASSERT_TRUE(callbackCalled);
   ASSERT_NE(response, nullptr);
   EXPECT_EQ(response->statusCode(), k200OK);
@@ -347,6 +377,7 @@ TEST_F(SolutionHandlerTest, DeleteSolutionSuccess) {
 TEST_F(SolutionHandlerTest, DeleteSolutionNotFound) {
   auto req = HttpRequest::newHttpRequest();
   req->setPath("/v1/core/solution/nonexistent");
+  req->setParameter("solutionId", "nonexistent");
   req->setMethod(Delete);
 
   HttpResponsePtr response;

@@ -27,20 +27,45 @@ void SolutionHandler::setSolutionStorage(SolutionStorage *storage) {
 
 std::string
 SolutionHandler::extractSolutionId(const HttpRequestPtr &req) const {
-  // Try getParameter first (standard way)
+  // Try getParameter first (standard way - Drogon auto-extracts from route
+  // pattern)
   std::string solutionId = req->getParameter("solutionId");
 
-  // Fallback: extract from path if getParameter doesn't work
+  // Fallback: extract from path if getParameter doesn't work (e.g., in unit
+  // tests)
   if (solutionId.empty()) {
     std::string path = req->getPath();
-    size_t solutionsPos = path.find("/solutions/");
-    if (solutionsPos != std::string::npos) {
-      size_t start = solutionsPos + 11; // length of "/solutions/"
+
+    // Pattern: /v1/core/solution/{solutionId} or
+    // /v1/core/solution/{solutionId}/... Try "/solution/" (singular) first -
+    // this is the current API pattern
+    size_t solutionPos = path.find("/solution/");
+    if (solutionPos != std::string::npos) {
+      size_t start = solutionPos + 10; // length of "/solution/"
       size_t end = path.find("/", start);
       if (end == std::string::npos) {
         end = path.length();
       }
       solutionId = path.substr(start, end - start);
+    } else {
+      // Try "/solution" at end of path (no trailing slash)
+      size_t solutionEndPos = path.rfind("/solution");
+      if (solutionEndPos != std::string::npos &&
+          solutionEndPos + 9 == path.length()) {
+        // This is just "/solution" without ID, return empty
+        solutionId = "";
+      } else {
+        // Fallback to plural form for backward compatibility
+        size_t solutionsPos = path.find("/solutions/");
+        if (solutionsPos != std::string::npos) {
+          size_t start = solutionsPos + 11; // length of "/solutions/"
+          size_t end = path.find("/", start);
+          if (end == std::string::npos) {
+            end = path.length();
+          }
+          solutionId = path.substr(start, end - start);
+        }
+      }
     }
   }
 
