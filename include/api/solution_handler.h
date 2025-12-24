@@ -1,5 +1,6 @@
 #pragma once
 
+#include "core/node_pool_manager.h"
 #include <drogon/HttpController.h>
 #include <drogon/HttpRequest.h>
 #include <drogon/HttpResponse.h>
@@ -13,73 +14,73 @@ using namespace drogon;
  * Handles solution management operations.
  *
  * Endpoints:
- * - GET /v1/core/solutions - List all solutions
- * - GET /v1/core/solutions/{solutionId} - Get solution details
- * - POST /v1/core/solutions - Create a new solution
- * - PUT /v1/core/solutions/{solutionId} - Update a solution
- * - DELETE /v1/core/solutions/{solutionId} - Delete a solution
+ * - GET /v1/core/solution - List all solutions
+ * - GET /v1/core/solution/{solutionId} - Get solution details
+ * - POST /v1/core/solution - Create a new solution
+ * - PUT /v1/core/solution/{solutionId} - Update a solution
+ * - DELETE /v1/core/solution/{solutionId} - Delete a solution
  */
 class SolutionHandler : public drogon::HttpController<SolutionHandler> {
 public:
   METHOD_LIST_BEGIN
-  ADD_METHOD_TO(SolutionHandler::listSolutions, "/v1/core/solutions", Get);
-  ADD_METHOD_TO(SolutionHandler::getSolution, "/v1/core/solutions/{solutionId}",
+  ADD_METHOD_TO(SolutionHandler::listSolutions, "/v1/core/solution", Get);
+  ADD_METHOD_TO(SolutionHandler::getSolution, "/v1/core/solution/{solutionId}",
                 Get);
   ADD_METHOD_TO(SolutionHandler::getSolutionParameters,
-                "/v1/core/solutions/{solutionId}/parameters", Get);
+                "/v1/core/solution/{solutionId}/parameters", Get);
   ADD_METHOD_TO(SolutionHandler::getSolutionInstanceBody,
-                "/v1/core/solutions/{solutionId}/instance-body", Get);
-  ADD_METHOD_TO(SolutionHandler::createSolution, "/v1/core/solutions", Post);
+                "/v1/core/solution/{solutionId}/instance-body", Get);
+  ADD_METHOD_TO(SolutionHandler::createSolution, "/v1/core/solution", Post);
   ADD_METHOD_TO(SolutionHandler::updateSolution,
-                "/v1/core/solutions/{solutionId}", Put);
+                "/v1/core/solution/{solutionId}", Put);
   ADD_METHOD_TO(SolutionHandler::deleteSolution,
-                "/v1/core/solutions/{solutionId}", Delete);
-  ADD_METHOD_TO(SolutionHandler::handleOptions, "/v1/core/solutions", Options);
+                "/v1/core/solution/{solutionId}", Delete);
+  ADD_METHOD_TO(SolutionHandler::handleOptions, "/v1/core/solution", Options);
   ADD_METHOD_TO(SolutionHandler::handleOptions,
-                "/v1/core/solutions/{solutionId}", Options);
+                "/v1/core/solution/{solutionId}", Options);
   ADD_METHOD_TO(SolutionHandler::handleOptions,
-                "/v1/core/solutions/{solutionId}/parameters", Options);
+                "/v1/core/solution/{solutionId}/parameters", Options);
   ADD_METHOD_TO(SolutionHandler::handleOptions,
-                "/v1/core/solutions/{solutionId}/instance-body", Options);
+                "/v1/core/solution/{solutionId}/instance-body", Options);
   METHOD_LIST_END
 
   /**
-   * @brief Handle GET /v1/core/solutions
+   * @brief Handle GET /v1/core/solution
    * Lists all solutions with summary information
    */
   void listSolutions(const HttpRequestPtr &req,
                      std::function<void(const HttpResponsePtr &)> &&callback);
 
   /**
-   * @brief Handle GET /v1/core/solutions/{solutionId}
+   * @brief Handle GET /v1/core/solution/{solutionId}
    * Gets detailed information about a specific solution
    */
   void getSolution(const HttpRequestPtr &req,
                    std::function<void(const HttpResponsePtr &)> &&callback);
 
   /**
-   * @brief Handle POST /v1/core/solutions
+   * @brief Handle POST /v1/core/solution
    * Creates a new solution
    */
   void createSolution(const HttpRequestPtr &req,
                       std::function<void(const HttpResponsePtr &)> &&callback);
 
   /**
-   * @brief Handle PUT /v1/core/solutions/{solutionId}
+   * @brief Handle PUT /v1/core/solution/{solutionId}
    * Updates an existing solution
    */
   void updateSolution(const HttpRequestPtr &req,
                       std::function<void(const HttpResponsePtr &)> &&callback);
 
   /**
-   * @brief Handle DELETE /v1/core/solutions/{solutionId}
+   * @brief Handle DELETE /v1/core/solution/{solutionId}
    * Deletes a solution (default solutions cannot be deleted)
    */
   void deleteSolution(const HttpRequestPtr &req,
                       std::function<void(const HttpResponsePtr &)> &&callback);
 
   /**
-   * @brief Handle GET /v1/core/solutions/{solutionId}/parameters
+   * @brief Handle GET /v1/core/solution/{solutionId}/parameters
    * Returns parameter schema for creating an instance with this solution
    */
   void getSolutionParameters(
@@ -87,7 +88,7 @@ public:
       std::function<void(const HttpResponsePtr &)> &&callback);
 
   /**
-   * @brief Handle GET /v1/core/solutions/{solutionId}/instance-body
+   * @brief Handle GET /v1/core/solution/{solutionId}/instance-body
    * Returns example request body for creating an instance with this solution
    */
   void getSolutionInstanceBody(
@@ -143,4 +144,37 @@ private:
    */
   bool validateSolutionId(const std::string &solutionId,
                           std::string &error) const;
+
+  // Helper functions for building parameter schema metadata
+  void addStandardFieldSchema(
+      Json::Value &schema, const std::string &fieldName,
+      const std::string &type, bool required, const std::string &description,
+      const std::string &pattern = "",
+      const Json::Value &defaultValue = Json::Value(), int min = -1,
+      int max = -1, const std::vector<std::string> &enumValues = {}) const;
+
+  Json::Value buildParameterSchema(
+      const std::string &paramName, const std::string &exampleValue,
+      const std::set<std::string> &allParams,
+      const std::map<std::string, std::string> &paramDefaults,
+      const std::map<std::string, class NodePoolManager::NodeTemplate>
+          &templatesByType,
+      const class SolutionConfig &config) const;
+
+  Json::Value buildFlexibleInputSchema() const;
+  Json::Value buildFlexibleOutputSchema() const;
+
+  // Helper functions for parameter metadata (similar to NodeHandler)
+  std::string inferParameterType(const std::string &paramName) const;
+  std::string getInputType(const std::string &paramName,
+                           const std::string &paramType) const;
+  std::string getWidgetType(const std::string &paramName,
+                            const std::string &paramType) const;
+  std::string getPlaceholder(const std::string &paramName) const;
+  void addValidationRules(Json::Value &validation, const std::string &paramName,
+                          const std::string &paramType) const;
+  std::string getParameterDescription(const std::string &paramName) const;
+  std::vector<std::string>
+  getParameterExamples(const std::string &paramName) const;
+  std::string getParameterCategory(const std::string &paramName) const;
 };

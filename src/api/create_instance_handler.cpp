@@ -101,7 +101,7 @@ void CreateInstanceHandler::createInstance(
             createErrorResponse(400, "Invalid solution",
                                 "Solution not found: " + createReq.solution +
                                     ". Please check available solutions using "
-                                    "GET /v1/core/solutions"));
+                                    "GET /v1/core/solution"));
         return;
       }
     }

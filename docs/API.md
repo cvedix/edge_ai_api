@@ -161,15 +161,15 @@ Hệ thống auto-detect input type từ `FILE_PATH`:
 
 | Endpoint | Method | Mô Tả |
 |----------|--------|-------|
-| `/v1/core/solutions` | GET | List solutions |
-| `/v1/core/solutions` | POST | Create solution |
-| `/v1/core/solutions/{id}` | GET/PUT/DELETE | CRUD solution |
-| `/v1/core/solutions/{id}/parameters` | GET | Get parameters |
+| `/v1/core/solution` | GET | List solutions |
+| `/v1/core/solution` | POST | Create solution |
+| `/v1/core/solution/{id}` | GET/PUT/DELETE | CRUD solution |
+| `/v1/core/solution/{id}/parameters` | GET | Get parameters |
 
 ### Tạo Solution
 
 ```bash
-curl -X POST http://localhost:8080/v1/core/solutions \
+curl -X POST http://localhost:8080/v1/core/solution \
   -H "Content-Type: application/json" \
   -d '{
     "solutionId": "face_detection_mqtt",
@@ -309,18 +309,18 @@ fetch('http://localhost:8080/v1/recognition/recognize?det_prob_threshold=0.5', {
 
 | Endpoint | Method | Mô Tả |
 |----------|--------|-------|
-| `/v1/core/nodes` | GET | List nodes |
-| `/v1/core/nodes/templates` | GET | Node templates |
-| `/v1/core/nodes/preconfigured` | GET | Pre-configured nodes |
-| `/v1/core/nodes/build-solution` | POST | Build solution from nodes |
+| `/v1/core/node` | GET | List nodes |
+| `/v1/core/node/template` | GET | Node templates |
+| `/v1/core/node/preconfigured` | GET | Pre-configured nodes |
+| `/v1/core/node/build-solution` | POST | Build solution from nodes |
 
 ### Model APIs
 
 | Endpoint | Method | Mô Tả |
 |----------|--------|-------|
-| `/v1/core/models/upload` | POST | Upload model |
-| `/v1/core/models/list` | GET | List models |
-| `/v1/core/models/{name}` | DELETE | Delete model |
+| `/v1/core/model/upload` | POST | Upload model |
+| `/v1/core/model/list` | GET | List models |
+| `/v1/core/model/{name}` | DELETE | Delete model |
 
 ---
 
@@ -352,15 +352,15 @@ curl -X POST http://localhost:8080/v1/core/config \
 |----------|--------|-------|
 | `/v1/core/system/info` | GET | Hardware info |
 | `/v1/core/system/status` | GET | System status |
-| `/v1/core/logs` | GET | List logs |
-| `/v1/core/logs/{category}` | GET | Get logs by category |
+| `/v1/core/log` | GET | List logs |
+| `/v1/core/log/{category}` | GET | Get logs by category |
 
 ```bash
 # System info
 curl http://localhost:8080/v1/core/system/info
 
 # Logs
-curl "http://localhost:8080/v1/core/logs/api?level=ERROR&tail=100"
+curl "http://localhost:8080/v1/core/log/api?level=ERROR&tail=100"
 ```
 
 ---
@@ -439,8 +439,8 @@ curl "http://localhost:8080/v1/core/logs/api?level=ERROR&tail=100"
 ## Troubleshooting
 
 ### Instance không start
-- Kiểm tra solution: `GET /v1/core/solutions/{id}`
-- Kiểm tra logs: `GET /v1/core/logs/instance?tail=100`
+- Kiểm tra solution: `GET /v1/core/solution/{id}`
+- Kiểm tra logs: `GET /v1/core/log/instance?tail=100`
 - Verify parameters trong `additionalParams`
 
 ### Face Recognition trả về `{"result": []}`

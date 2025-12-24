@@ -12,15 +12,15 @@ graph TB
     API --> VersionHandler[Version Handler<br/>/v1/core/version]
     API --> InstanceHandler[Instance Handler<br/>/v1/core/instance/*]
     API --> CreateInstanceHandler[Create Instance Handler<br/>/v1/core/instance]
-    API --> SolutionHandler[Solution Handler<br/>/v1/core/solutions/*]
+    API --> SolutionHandler[Solution Handler<br/>/v1/core/solution/*]
     API --> GroupHandler[Group Handler<br/>/v1/core/groups/*]
     API --> LinesHandler[Lines Handler<br/>/v1/core/instance/*/lines/*]
-    API --> NodeHandler[Node Handler<br/>/v1/core/nodes/*]
+    API --> NodeHandler[Node Handler<br/>/v1/core/node/*]
     API --> RecognitionHandler[Recognition Handler<br/>/v1/recognition/*]
     API --> MetricsHandler[Metrics Handler<br/>/v1/core/metrics]
     API --> SystemInfoHandler[System Info Handler<br/>/v1/core/system/*]
     API --> ConfigHandler[Config Handler<br/>/v1/core/config/*]
-    API --> LogHandler[Log Handler<br/>/v1/core/logs/*]
+    API --> LogHandler[Log Handler<br/>/v1/core/log/*]
     API --> SwaggerHandler[Swagger Handler<br/>/swagger, /openapi.yaml]
 
     subgraph "Instance Management"
@@ -261,15 +261,15 @@ Tất cả API handlers sử dụng **IInstanceManager interface**, cho phép ho
 - **VersionHandler**: Version information endpoint (`/v1/core/version`)
 - **InstanceHandler**: Instance management endpoints (`/v1/core/instance/*`)
 - **CreateInstanceHandler**: Create instance endpoint (`/v1/core/instance`)
-- **SolutionHandler**: Solution management endpoints (`/v1/core/solutions/*`)
+- **SolutionHandler**: Solution management endpoints (`/v1/core/solution/*`)
 - **GroupHandler**: Group management endpoints (`/v1/core/groups/*`)
 - **LinesHandler**: Crossing lines management endpoints (`/v1/core/instance/{id}/lines/*`)
-- **NodeHandler**: Node management endpoints (`/v1/core/nodes/*`)
+- **NodeHandler**: Node management endpoints (`/v1/core/node/*`)
 - **RecognitionHandler**: Face recognition endpoints (`/v1/recognition/*`)
 - **MetricsHandler**: Metrics endpoint (`/v1/core/metrics`)
 - **SystemInfoHandler**: System information endpoints (`/v1/core/system/*`)
 - **ConfigHandler**: Configuration endpoints (`/v1/core/config/*`)
-- **LogHandler**: Logs access endpoints (`/v1/core/logs/*`)
+- **LogHandler**: Logs access endpoints (`/v1/core/log/*`)
 - **SwaggerHandler**: API documentation endpoints (`/swagger`, `/openapi.yaml`)
 
 ### Watchdog Service
@@ -295,15 +295,15 @@ graph TB
     API --> Version[/v1/core/version]
     API --> Instances[/v1/core/instance]
     API --> CreateInstance[POST /v1/core/instance]
-    API --> Solutions[/v1/core/solutions]
+    API --> Solutions[/v1/core/solution]
     API --> Groups[/v1/core/groups]
     API --> Lines[/v1/core/instance/:id/lines]
-    API --> Nodes[/v1/core/nodes]
+    API --> Nodes[/v1/core/node]
     API --> Recognition[/v1/recognition]
     API --> Metrics[/v1/core/metrics]
     API --> SystemInfo[/v1/core/system]
     API --> Config[/v1/core/config]
-    API --> Logs[/v1/core/logs]
+    API --> Logs[/v1/core/log]
     API --> Swagger[/swagger, /openapi.yaml]
 
     Instances --> List[GET /instances]

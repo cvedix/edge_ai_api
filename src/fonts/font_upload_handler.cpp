@@ -473,7 +473,7 @@ void FontUploadHandler::uploadFont(
           fileInfo["originalFilename"] = partFilename;
           fileInfo["path"] = std::filesystem::canonical(partFilePath).string();
           fileInfo["size"] = static_cast<Json::Int64>(fileSize);
-          fileInfo["url"] = "/v1/core/fonts/" + finalFilename;
+          fileInfo["url"] = "/v1/core/font/" + finalFilename;
           uploadedFiles.append(fileInfo);
 
           fileCount++;
@@ -787,7 +787,7 @@ void FontUploadHandler::uploadFont(
     response["originalFilename"] = originalFilename;
     response["path"] = canonicalPath;
     response["size"] = fileSize;
-    response["url"] = "/v1/core/fonts/" + sanitizedFilename;
+    response["url"] = "/v1/core/font/" + sanitizedFilename;
 
     auto resp = HttpResponse::newHttpJsonResponse(response);
     resp->setStatusCode(k201Created);

@@ -71,7 +71,7 @@ protected:
 // Test list solutions endpoint returns valid JSON
 TEST_F(SolutionHandlerTest, ListSolutionsReturnsValidJson) {
   auto req = HttpRequest::newHttpRequest();
-  req->setPath("/v1/core/solutions");
+  req->setPath("/v1/core/solution");
   req->setMethod(Get);
 
   HttpResponsePtr response;
@@ -110,7 +110,8 @@ TEST_F(SolutionHandlerTest, ListSolutionsReturnsValidJson) {
 // Test get solution endpoint - success case
 TEST_F(SolutionHandlerTest, GetSolutionSuccess) {
   auto req = HttpRequest::newHttpRequest();
-  req->setPath("/v1/core/solutions/test_solution");
+  req->setPath("/v1/core/solution/test_solution");
+  req->setParameter("solutionId", "test_solution");
   req->setMethod(Get);
 
   HttpResponsePtr response;
@@ -123,6 +124,15 @@ TEST_F(SolutionHandlerTest, GetSolutionSuccess) {
 
   std::this_thread::sleep_for(std::chrono::milliseconds(100));
 
+  if (!callbackCalled) {
+    FAIL() << "Callback was not called";
+  }
+  if (response == nullptr) {
+    FAIL() << "Response is nullptr";
+  }
+  if (response->statusCode() != k200OK) {
+    FAIL() << "Expected status code 200, got " << response->statusCode();
+  }
   ASSERT_TRUE(callbackCalled);
   ASSERT_NE(response, nullptr);
   EXPECT_EQ(response->statusCode(), k200OK);
@@ -145,7 +155,8 @@ TEST_F(SolutionHandlerTest, GetSolutionSuccess) {
 // Test get solution endpoint - not found case
 TEST_F(SolutionHandlerTest, GetSolutionNotFound) {
   auto req = HttpRequest::newHttpRequest();
-  req->setPath("/v1/core/solutions/nonexistent");
+  req->setPath("/v1/core/solution/nonexistent");
+  req->setParameter("solutionId", "nonexistent");
   req->setMethod(Get);
 
   HttpResponsePtr response;
@@ -158,6 +169,15 @@ TEST_F(SolutionHandlerTest, GetSolutionNotFound) {
 
   std::this_thread::sleep_for(std::chrono::milliseconds(100));
 
+  if (!callbackCalled) {
+    FAIL() << "Callback was not called";
+  }
+  if (response == nullptr) {
+    FAIL() << "Response is nullptr";
+  }
+  if (response->statusCode() != k404NotFound) {
+    FAIL() << "Expected status code 404, got " << response->statusCode();
+  }
   ASSERT_TRUE(callbackCalled);
   ASSERT_NE(response, nullptr);
   EXPECT_EQ(response->statusCode(), k404NotFound);
@@ -170,7 +190,7 @@ TEST_F(SolutionHandlerTest, GetSolutionNotFound) {
 // Test create solution endpoint - success case
 TEST_F(SolutionHandlerTest, DISABLED_CreateSolutionSuccess) {
   auto req = HttpRequest::newHttpRequest();
-  req->setPath("/v1/core/solutions");
+  req->setPath("/v1/core/solution");
   req->setMethod(Post);
 
   // Create JSON body
@@ -214,7 +234,7 @@ TEST_F(SolutionHandlerTest, DISABLED_CreateSolutionSuccess) {
 // Test create solution endpoint - invalid JSON
 TEST_F(SolutionHandlerTest, CreateSolutionInvalidJson) {
   auto req = HttpRequest::newHttpRequest();
-  req->setPath("/v1/core/solutions");
+  req->setPath("/v1/core/solution");
   req->setMethod(Post);
   req->setBody("invalid json");
 
@@ -239,7 +259,7 @@ TEST_F(SolutionHandlerTest, CreateSolutionInvalidJson) {
 // Test create solution endpoint - missing required field
 TEST_F(SolutionHandlerTest, CreateSolutionMissingRequiredField) {
   auto req = HttpRequest::newHttpRequest();
-  req->setPath("/v1/core/solutions");
+  req->setPath("/v1/core/solution");
   req->setMethod(Post);
 
   // Create JSON body without solutionId
@@ -270,7 +290,7 @@ TEST_F(SolutionHandlerTest, CreateSolutionMissingRequiredField) {
 // Test update solution endpoint - success case
 TEST_F(SolutionHandlerTest, DISABLED_UpdateSolutionSuccess) {
   auto req = HttpRequest::newHttpRequest();
-  req->setPath("/v1/core/solutions/test_solution");
+  req->setPath("/v1/core/solution/test_solution");
   req->setMethod(Put);
 
   // Create JSON body
@@ -321,7 +341,8 @@ TEST_F(SolutionHandlerTest, DeleteSolutionSuccess) {
   registry_->registerSolution(customConfig);
 
   auto req = HttpRequest::newHttpRequest();
-  req->setPath("/v1/core/solutions/custom_solution");
+  req->setPath("/v1/core/solution/custom_solution");
+  req->setParameter("solutionId", "custom_solution");
   req->setMethod(Delete);
 
   HttpResponsePtr response;
@@ -334,6 +355,15 @@ TEST_F(SolutionHandlerTest, DeleteSolutionSuccess) {
 
   std::this_thread::sleep_for(std::chrono::milliseconds(100));
 
+  if (!callbackCalled) {
+    FAIL() << "Callback was not called";
+  }
+  if (response == nullptr) {
+    FAIL() << "Response is nullptr";
+  }
+  if (response->statusCode() != k200OK) {
+    FAIL() << "Expected status code 200, got " << response->statusCode();
+  }
   ASSERT_TRUE(callbackCalled);
   ASSERT_NE(response, nullptr);
   EXPECT_EQ(response->statusCode(), k200OK);
@@ -346,7 +376,8 @@ TEST_F(SolutionHandlerTest, DeleteSolutionSuccess) {
 // Test delete solution endpoint - not found
 TEST_F(SolutionHandlerTest, DeleteSolutionNotFound) {
   auto req = HttpRequest::newHttpRequest();
-  req->setPath("/v1/core/solutions/nonexistent");
+  req->setPath("/v1/core/solution/nonexistent");
+  req->setParameter("solutionId", "nonexistent");
   req->setMethod(Delete);
 
   HttpResponsePtr response;
@@ -372,7 +403,7 @@ TEST_F(SolutionHandlerTest, ListSolutionsRegistryNotInitialized) {
   SolutionHandler::setSolutionRegistry(nullptr);
 
   auto req = HttpRequest::newHttpRequest();
-  req->setPath("/v1/core/solutions");
+  req->setPath("/v1/core/solution");
   req->setMethod(Get);
 
   HttpResponsePtr response;

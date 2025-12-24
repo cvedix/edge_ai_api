@@ -97,10 +97,8 @@ bool SolutionRegistry::isDefaultSolution(const std::string &solutionId) const {
 
 void SolutionRegistry::initializeDefaultSolutions() {
   registerFaceDetectionSolution();
-  registerFaceDetectionFileSolution(); // Add face detection with file source
-  registerObjectDetectionSolution();   // Add YOLO-based solution
-  registerFaceDetectionRTMPSolution(); // Add face detection with RTMP streaming
-  registerBACrosslineSolution(); // Add behavior analysis crossline solution
+  registerObjectDetectionSolution(); // Add YOLO-based solution
+  registerBACrosslineSolution();     // Add behavior analysis crossline solution
 
   // Register new node-based solutions
   registerYOLOv11DetectionSolution();

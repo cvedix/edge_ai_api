@@ -858,12 +858,52 @@ size_t NodePoolManager::createDefaultNodesFromTemplates() {
     nodeParams = nodeTemplate.defaultParameters;
 
     // Check required parameters - if any required parameter doesn't have a
-    // default, skip
+    // default, use placeholder values for common parameters
     for (const auto &required : nodeTemplate.requiredParameters) {
       if (nodeParams.find(required) == nodeParams.end()) {
-        // Required parameter missing - cannot create node without it
-        canCreate = false;
-        break;
+        // Try to provide placeholder values for common required parameters
+        if (required == "file_path" || required == "port_or_location" ||
+            required == "location" || required == "uri") {
+          // Use empty string as placeholder - user will need to set it
+          nodeParams[required] = "";
+        } else if (required == "rtsp_url" || required == "rtmp_url" ||
+                   required == "rtmp_des_url") {
+          // Use placeholder URL
+          nodeParams[required] = "";
+        } else if (required == "model_path" || required == "weights_path" ||
+                   required == "config_path" || required == "labels_path" ||
+                   required == "model_config_path") {
+          // Use empty string for model paths - user will need to set it
+          nodeParams[required] = "";
+        } else if (required == "save_dir") {
+          // Use default save directory
+          nodeParams[required] = "./output/{instanceId}";
+        } else if (required == "port") {
+          // Use default port based on node type
+          if (nodeTemplate.nodeType == "rtsp_des") {
+            nodeParams[required] = "8000";
+          } else {
+            nodeParams[required] = "8554";
+          }
+        } else if (required == "socket_host" || required == "mqtt_broker" ||
+                   required == "kafka_broker") {
+          // Use localhost as default
+          nodeParams[required] = "localhost";
+        } else if (required == "socket_port" || required == "mqtt_port") {
+          // Use default ports
+          if (required == "mqtt_port") {
+            nodeParams[required] = "1883";
+          } else {
+            nodeParams[required] = "8080";
+          }
+        } else if (required == "mqtt_topic" || required == "kafka_topic") {
+          // Use default topic
+          nodeParams[required] = "detections";
+        } else {
+          // Unknown required parameter without default - cannot create node
+          canCreate = false;
+          break;
+        }
       }
     }
 

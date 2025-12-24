@@ -18,10 +18,10 @@ protected:
   std::unique_ptr<NodeHandler> handler_;
 };
 
-// Test GET /v1/core/nodes returns valid JSON
+// Test GET /v1/core/node returns valid JSON
 TEST_F(NodeHandlerTest, ListNodesReturnsValidJson) {
   auto req = HttpRequest::newHttpRequest();
-  req->setPath("/v1/core/nodes");
+  req->setPath("/v1/core/node");
   req->setMethod(Get);
 
   HttpResponsePtr response;
@@ -46,10 +46,10 @@ TEST_F(NodeHandlerTest, ListNodesReturnsValidJson) {
   EXPECT_TRUE(json->isMember("nodes") || json->isMember("total"));
 }
 
-// Test GET /v1/core/nodes/{nodeId} with valid nodeId
+// Test GET /v1/core/node/{nodeId} with valid nodeId
 TEST_F(NodeHandlerTest, GetNodeWithValidId) {
   auto req = HttpRequest::newHttpRequest();
-  req->setPath("/v1/core/nodes/test_node_id");
+  req->setPath("/v1/core/node/test_node_id");
   req->setParameter("nodeId", "test_node_id");
   req->setMethod(Get);
 
@@ -70,10 +70,10 @@ TEST_F(NodeHandlerTest, GetNodeWithValidId) {
               response->statusCode() == k404NotFound);
 }
 
-// Test GET /v1/core/nodes/templates returns valid JSON
+// Test GET /v1/core/node/template returns valid JSON
 TEST_F(NodeHandlerTest, ListTemplatesReturnsValidJson) {
   auto req = HttpRequest::newHttpRequest();
-  req->setPath("/v1/core/nodes/templates");
+  req->setPath("/v1/core/node/template");
   req->setMethod(Get);
 
   HttpResponsePtr response;
@@ -95,10 +95,10 @@ TEST_F(NodeHandlerTest, ListTemplatesReturnsValidJson) {
   ASSERT_NE(json, nullptr);
 }
 
-// Test GET /v1/core/nodes/stats returns valid JSON
+// Test GET /v1/core/node/stats returns valid JSON
 TEST_F(NodeHandlerTest, GetStatsReturnsValidJson) {
   auto req = HttpRequest::newHttpRequest();
-  req->setPath("/v1/core/nodes/stats");
+  req->setPath("/v1/core/node/stats");
   req->setMethod(Get);
 
   HttpResponsePtr response;
@@ -120,10 +120,10 @@ TEST_F(NodeHandlerTest, GetStatsReturnsValidJson) {
   ASSERT_NE(json, nullptr);
 }
 
-// Test POST /v1/core/nodes with valid JSON
+// Test POST /v1/core/node with valid JSON
 TEST_F(NodeHandlerTest, CreateNodeWithValidJson) {
   auto req = HttpRequest::newHttpRequest();
-  req->setPath("/v1/core/nodes");
+  req->setPath("/v1/core/node");
   req->setMethod(Post);
 
   Json::Value body;
@@ -152,7 +152,7 @@ TEST_F(NodeHandlerTest, CreateNodeWithValidJson) {
 // Test OPTIONS request
 TEST_F(NodeHandlerTest, HandleOptions) {
   auto req = HttpRequest::newHttpRequest();
-  req->setPath("/v1/core/nodes");
+  req->setPath("/v1/core/node");
   req->setMethod(Options);
 
   HttpResponsePtr response;

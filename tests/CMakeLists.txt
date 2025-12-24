@@ -355,3 +355,7 @@ endif()
 # Enable testing
 enable_testing()
 add_test(NAME edge_ai_api_tests COMMAND edge_ai_api_tests)
+# Set LD_LIBRARY_PATH for test to find OpenCV libraries
+set_tests_properties(edge_ai_api_tests PROPERTIES
+    ENVIRONMENT "LD_LIBRARY_PATH=/opt/edge_ai_api/lib:/usr/local/lib:$<TARGET_FILE_DIR:edge_ai_api_tests>/../lib:$ENV{LD_LIBRARY_PATH}"
+)
