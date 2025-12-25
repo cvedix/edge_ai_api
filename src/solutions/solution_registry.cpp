@@ -97,8 +97,9 @@ bool SolutionRegistry::isDefaultSolution(const std::string &solutionId) const {
 
 void SolutionRegistry::initializeDefaultSolutions() {
   registerFaceDetectionSolution();
-  registerObjectDetectionSolution(); // Add YOLO-based solution
-  registerBACrosslineSolution();     // Add behavior analysis crossline solution
+  registerFaceDetectionRTMPSolution(); // face_detection_rtmp
+  registerObjectDetectionSolution();   // Add YOLO-based solution
+  registerBACrosslineSolution(); // Add behavior analysis crossline solution
 
   // Register new node-based solutions
   registerYOLOv11DetectionSolution();
@@ -107,6 +108,17 @@ void SolutionRegistry::initializeDefaultSolutions() {
   registerMLLMAnalysisSolution();
   registerMaskRCNNDetectionSolution(); // Add MaskRCNN detection solution
   registerMaskRCNNRTMPSolution();      // Add MaskRCNN with RTMP streaming
+
+  // Register all _default solutions
+  registerFaceDetectionFileSolution();          // face_detection_file_default
+  registerFaceDetectionDefaultSolution();       // face_detection_default
+  registerFaceDetectionRTMPDefaultSolution();   // face_detection_rtmp_default
+  registerFaceDetectionRTSPDefaultSolution();   // face_detection_rtsp_default
+  registerRTSPFaceDetectionDefaultSolution();   // rtsp_face_detection_default
+  registerMinimalDefaultSolution();             // minimal_default
+  registerObjectDetectionYOLODefaultSolution(); // object_detection_yolo_default
+  registerBACrosslineDefaultSolution();         // ba_crossline_default
+  registerBACrosslineMQTTDefaultSolution();     // ba_crossline_mqtt_default
 
 #ifdef CVEDIX_WITH_RKNN
   registerRKNNYOLOv11DetectionSolution();
@@ -170,8 +182,8 @@ void SolutionRegistry::registerFaceDetectionSolution() {
 
 void SolutionRegistry::registerFaceDetectionFileSolution() {
   SolutionConfig config;
-  config.solutionId = "face_detection_file";
-  config.solutionName = "Face Detection with File Source";
+  config.solutionId = "face_detection_file_default";
+  config.solutionName = "Face Detection - File Source";
   config.solutionType = "face_detection";
   config.isDefault = true;
 
@@ -181,17 +193,13 @@ void SolutionRegistry::registerFaceDetectionFileSolution() {
   fileSrc.nodeName = "file_src_{instanceId}";
   fileSrc.parameters["file_path"] = "${FILE_PATH}";
   fileSrc.parameters["channel"] = "0";
-  fileSrc.parameters["resize_ratio"] =
-      "1.0"; // Use resize_ratio instead of fps (must be > 0 and <= 1.0)
+  fileSrc.parameters["resize_ratio"] = "${RESIZE_RATIO}";
   config.pipeline.push_back(fileSrc);
 
   // YuNet Face Detector Node
   SolutionConfig::NodeConfig faceDetector;
   faceDetector.nodeType = "yunet_face_detector";
   faceDetector.nodeName = "face_detector_{instanceId}";
-  // Use ${MODEL_PATH} placeholder - can be overridden via
-  // additionalParams["MODEL_PATH"] in request Default to yunet.onnx if not
-  // provided
   faceDetector.parameters["model_path"] = "${MODEL_PATH}";
   faceDetector.parameters["score_threshold"] = "${detectionSensitivity}";
   faceDetector.parameters["nms_threshold"] = "0.5";
@@ -211,6 +219,7 @@ void SolutionRegistry::registerFaceDetectionFileSolution() {
   config.defaults["detectorMode"] = "SmartDetection";
   config.defaults["detectionSensitivity"] = "0.7";
   config.defaults["sensorModality"] = "RGB";
+  config.defaults["RESIZE_RATIO"] = "1.0";
 
   registerSolution(config);
 }
@@ -775,8 +784,8 @@ void SolutionRegistry::registerTRTInsightFaceRecognitionSolution() {
 
 void SolutionRegistry::registerMaskRCNNDetectionSolution() {
   SolutionConfig config;
-  config.solutionId = "mask_rcnn_detection";
-  config.solutionName = "MaskRCNN Detection";
+  config.solutionId = "mask_rcnn_detection_default";
+  config.solutionName = "MaskRCNN Detection Solution";
   config.solutionType = "segmentation";
   config.isDefault = true;
 
@@ -840,7 +849,7 @@ void SolutionRegistry::registerMaskRCNNDetectionSolution() {
 
 void SolutionRegistry::registerMaskRCNNRTMPSolution() {
   SolutionConfig config;
-  config.solutionId = "mask_rcnn_rtmp";
+  config.solutionId = "mask_rcnn_rtmp_default";
   config.solutionName = "MaskRCNN Detection with RTMP Streaming";
   config.solutionType = "segmentation";
   config.isDefault = true;
@@ -902,6 +911,434 @@ void SolutionRegistry::registerMaskRCNNRTMPSolution() {
   config.defaults["INPUT_WIDTH"] = "416";
   config.defaults["INPUT_HEIGHT"] = "416";
   config.defaults["SCORE_THRESHOLD"] = "0.5";
+
+  registerSolution(config);
+}
+
+void SolutionRegistry::registerFaceDetectionRTMPDefaultSolution() {
+  SolutionConfig config;
+  config.solutionId = "face_detection_rtmp_default";
+  config.solutionName = "Face Detection - RTMP Streaming";
+  config.solutionType = "face_detection";
+  config.isDefault = true;
+
+  // File Source Node
+  SolutionConfig::NodeConfig fileSrc;
+  fileSrc.nodeType = "file_src";
+  fileSrc.nodeName = "file_src_{instanceId}";
+  fileSrc.parameters["file_path"] = "${FILE_PATH}";
+  fileSrc.parameters["channel"] = "0";
+  fileSrc.parameters["resize_ratio"] = "${RESIZE_RATIO}";
+  config.pipeline.push_back(fileSrc);
+
+  // YuNet Face Detector Node
+  SolutionConfig::NodeConfig faceDetector;
+  faceDetector.nodeType = "yunet_face_detector";
+  faceDetector.nodeName = "face_detector_{instanceId}";
+  faceDetector.parameters["model_path"] = "${MODEL_PATH}";
+  faceDetector.parameters["score_threshold"] = "${detectionSensitivity}";
+  faceDetector.parameters["nms_threshold"] = "0.5";
+  faceDetector.parameters["top_k"] = "50";
+  config.pipeline.push_back(faceDetector);
+
+  // Face OSD v2 Node
+  SolutionConfig::NodeConfig faceOsd;
+  faceOsd.nodeType = "face_osd_v2";
+  faceOsd.nodeName = "face_osd_{instanceId}";
+  config.pipeline.push_back(faceOsd);
+
+  // RTMP Destination Node
+  SolutionConfig::NodeConfig rtmpDes;
+  rtmpDes.nodeType = "rtmp_des";
+  rtmpDes.nodeName = "rtmp_des_{instanceId}";
+  rtmpDes.parameters["rtmp_url"] = "${RTMP_URL}";
+  rtmpDes.parameters["channel"] = "0";
+  config.pipeline.push_back(rtmpDes);
+
+  // Default configurations
+  config.defaults["detectorMode"] = "SmartDetection";
+  config.defaults["detectionSensitivity"] = "0.7";
+  config.defaults["sensorModality"] = "RGB";
+  config.defaults["RESIZE_RATIO"] = "1.0";
+
+  registerSolution(config);
+}
+
+void SolutionRegistry::registerFaceDetectionRTSPDefaultSolution() {
+  SolutionConfig config;
+  config.solutionId = "face_detection_rtsp_default";
+  config.solutionName = "Face Detection - RTSP Stream";
+  config.solutionType = "face_detection";
+  config.isDefault = true;
+
+  // RTSP Source Node
+  SolutionConfig::NodeConfig rtspSrc;
+  rtspSrc.nodeType = "rtsp_src";
+  rtspSrc.nodeName = "rtsp_src_{instanceId}";
+  rtspSrc.parameters["rtsp_url"] = "${RTSP_URL}";
+  rtspSrc.parameters["channel"] = "0";
+  rtspSrc.parameters["resize_ratio"] = "${RESIZE_RATIO}";
+  config.pipeline.push_back(rtspSrc);
+
+  // YuNet Face Detector Node
+  SolutionConfig::NodeConfig faceDetector;
+  faceDetector.nodeType = "yunet_face_detector";
+  faceDetector.nodeName = "face_detector_{instanceId}";
+  faceDetector.parameters["model_path"] = "${MODEL_PATH}";
+  faceDetector.parameters["score_threshold"] = "${detectionSensitivity}";
+  faceDetector.parameters["nms_threshold"] = "0.5";
+  faceDetector.parameters["top_k"] = "50";
+  config.pipeline.push_back(faceDetector);
+
+  // File Destination Node
+  SolutionConfig::NodeConfig fileDes;
+  fileDes.nodeType = "file_des";
+  fileDes.nodeName = "file_des_{instanceId}";
+  fileDes.parameters["save_dir"] = "./output/{instanceId}";
+  fileDes.parameters["name_prefix"] = "face_detection_rtsp";
+  fileDes.parameters["osd"] = "true";
+  config.pipeline.push_back(fileDes);
+
+  // Default configurations
+  config.defaults["detectorMode"] = "SmartDetection";
+  config.defaults["detectionSensitivity"] = "0.6";
+  config.defaults["sensorModality"] = "RGB";
+  config.defaults["RESIZE_RATIO"] = "1.0";
+
+  registerSolution(config);
+}
+
+void SolutionRegistry::registerMinimalDefaultSolution() {
+  SolutionConfig config;
+  config.solutionId = "minimal_default";
+  config.solutionName = "Minimal Solution";
+  config.solutionType = "face_detection";
+  config.isDefault = true;
+
+  // File Source Node
+  SolutionConfig::NodeConfig fileSrc;
+  fileSrc.nodeType = "file_src";
+  fileSrc.nodeName = "file_src_{instanceId}";
+  fileSrc.parameters["file_path"] = "${FILE_PATH}";
+  fileSrc.parameters["channel"] = "0";
+  fileSrc.parameters["resize_ratio"] = "0.5";
+  config.pipeline.push_back(fileSrc);
+
+  // YuNet Face Detector Node
+  SolutionConfig::NodeConfig faceDetector;
+  faceDetector.nodeType = "yunet_face_detector";
+  faceDetector.nodeName = "face_detector_{instanceId}";
+  faceDetector.parameters["model_path"] = "${MODEL_PATH}";
+  faceDetector.parameters["score_threshold"] = "0.5";
+  faceDetector.parameters["nms_threshold"] = "0.4";
+  faceDetector.parameters["top_k"] = "30";
+  config.pipeline.push_back(faceDetector);
+
+  // File Destination Node
+  SolutionConfig::NodeConfig fileDes;
+  fileDes.nodeType = "file_des";
+  fileDes.nodeName = "file_des_{instanceId}";
+  fileDes.parameters["save_dir"] = "./output/{instanceId}";
+  fileDes.parameters["name_prefix"] = "minimal_test";
+  fileDes.parameters["osd"] = "false";
+  config.pipeline.push_back(fileDes);
+
+  // Default configurations
+  config.defaults["detectorMode"] = "SmartDetection";
+  config.defaults["detectionSensitivity"] = "0.5";
+  config.defaults["sensorModality"] = "RGB";
+
+  registerSolution(config);
+}
+
+void SolutionRegistry::registerFaceDetectionDefaultSolution() {
+  SolutionConfig config;
+  config.solutionId = "face_detection_default";
+  config.solutionName = "Face Detection Solution";
+  config.solutionType = "face_detection";
+  config.isDefault = true;
+
+  // File Source Node
+  SolutionConfig::NodeConfig fileSrc;
+  fileSrc.nodeType = "file_src";
+  fileSrc.nodeName = "file_src_{instanceId}";
+  fileSrc.parameters["file_path"] = "${FILE_PATH}";
+  fileSrc.parameters["channel"] = "0";
+  fileSrc.parameters["resize_ratio"] = "1.0";
+  config.pipeline.push_back(fileSrc);
+
+  // YuNet Face Detector Node
+  SolutionConfig::NodeConfig faceDetector;
+  faceDetector.nodeType = "yunet_face_detector";
+  faceDetector.nodeName = "face_detector_{instanceId}";
+  faceDetector.parameters["model_path"] = "${MODEL_PATH}";
+  faceDetector.parameters["score_threshold"] = "${detectionSensitivity}";
+  faceDetector.parameters["nms_threshold"] = "0.5";
+  faceDetector.parameters["top_k"] = "50";
+  config.pipeline.push_back(faceDetector);
+
+  // File Destination Node
+  SolutionConfig::NodeConfig fileDes;
+  fileDes.nodeType = "file_des";
+  fileDes.nodeName = "file_des_{instanceId}";
+  fileDes.parameters["save_dir"] = "./output/{instanceId}";
+  fileDes.parameters["name_prefix"] = "test_face_detection";
+  fileDes.parameters["osd"] = "true";
+  config.pipeline.push_back(fileDes);
+
+  // Default configurations
+  config.defaults["detectorMode"] = "SmartDetection";
+  config.defaults["detectionSensitivity"] = "0.7";
+  config.defaults["sensorModality"] = "RGB";
+
+  registerSolution(config);
+}
+
+void SolutionRegistry::registerRTSPFaceDetectionDefaultSolution() {
+  SolutionConfig config;
+  config.solutionId = "rtsp_face_detection_default";
+  config.solutionName = "RTSP Face Detection Solution";
+  config.solutionType = "face_detection";
+  config.isDefault = true;
+
+  // RTSP Source Node
+  SolutionConfig::NodeConfig rtspSrc;
+  rtspSrc.nodeType = "rtsp_src";
+  rtspSrc.nodeName = "rtsp_src_{instanceId}";
+  rtspSrc.parameters["rtsp_url"] = "${RTSP_URL}";
+  rtspSrc.parameters["channel"] = "0";
+  rtspSrc.parameters["resize_ratio"] = "1.0";
+  config.pipeline.push_back(rtspSrc);
+
+  // YuNet Face Detector Node
+  SolutionConfig::NodeConfig faceDetector;
+  faceDetector.nodeType = "yunet_face_detector";
+  faceDetector.nodeName = "face_detector_{instanceId}";
+  faceDetector.parameters["model_path"] = "${MODEL_PATH}";
+  faceDetector.parameters["score_threshold"] = "${detectionSensitivity}";
+  faceDetector.parameters["nms_threshold"] = "0.5";
+  faceDetector.parameters["top_k"] = "50";
+  config.pipeline.push_back(faceDetector);
+
+  // File Destination Node
+  SolutionConfig::NodeConfig fileDes;
+  fileDes.nodeType = "file_des";
+  fileDes.nodeName = "file_des_{instanceId}";
+  fileDes.parameters["save_dir"] = "./output/{instanceId}";
+  fileDes.parameters["name_prefix"] = "test_rtsp_face";
+  fileDes.parameters["osd"] = "true";
+  config.pipeline.push_back(fileDes);
+
+  // Default configurations
+  config.defaults["detectorMode"] = "SmartDetection";
+  config.defaults["detectionSensitivity"] = "0.6";
+  config.defaults["sensorModality"] = "RGB";
+  config.defaults["RTSP_URL"] = "rtsp://localhost/stream";
+
+  registerSolution(config);
+}
+
+void SolutionRegistry::registerObjectDetectionYOLODefaultSolution() {
+  SolutionConfig config;
+  config.solutionId = "object_detection_yolo_default";
+  config.solutionName = "Object Detection - YOLO";
+  config.solutionType = "object_detection";
+  config.isDefault = true;
+
+  // File Source Node
+  SolutionConfig::NodeConfig fileSrc;
+  fileSrc.nodeType = "file_src";
+  fileSrc.nodeName = "file_src_{instanceId}";
+  fileSrc.parameters["file_path"] = "${FILE_PATH}";
+  fileSrc.parameters["channel"] = "0";
+  fileSrc.parameters["resize_ratio"] = "${RESIZE_RATIO}";
+  config.pipeline.push_back(fileSrc);
+
+  // YOLO Detector Node
+  SolutionConfig::NodeConfig yoloDetector;
+  yoloDetector.nodeType = "yolo_detector";
+  yoloDetector.nodeName = "yolo_detector_{instanceId}";
+  yoloDetector.parameters["weights_path"] = "${MODEL_PATH}";
+  yoloDetector.parameters["config_path"] = "${CONFIG_PATH}";
+  yoloDetector.parameters["labels_path"] = "${LABELS_PATH}";
+  yoloDetector.parameters["score_threshold"] = "${detectionSensitivity}";
+  yoloDetector.parameters["nms_threshold"] = "0.4";
+  config.pipeline.push_back(yoloDetector);
+
+  // OSD v3 Node
+  SolutionConfig::NodeConfig osd;
+  osd.nodeType = "osd_v3";
+  osd.nodeName = "osd_{instanceId}";
+  osd.parameters["labels_path"] = "${LABELS_PATH}";
+  config.pipeline.push_back(osd);
+
+  // File Destination Node
+  SolutionConfig::NodeConfig fileDes;
+  fileDes.nodeType = "file_des";
+  fileDes.nodeName = "file_des_{instanceId}";
+  fileDes.parameters["save_dir"] = "./output/{instanceId}";
+  fileDes.parameters["name_prefix"] = "object_detection";
+  fileDes.parameters["osd"] = "true";
+  config.pipeline.push_back(fileDes);
+
+  // Default configurations
+  config.defaults["detectorMode"] = "SmartDetection";
+  config.defaults["detectionSensitivity"] = "0.5";
+  config.defaults["sensorModality"] = "RGB";
+  config.defaults["RESIZE_RATIO"] = "1.0";
+
+  registerSolution(config);
+}
+
+void SolutionRegistry::registerBACrosslineDefaultSolution() {
+  SolutionConfig config;
+  config.solutionId = "ba_crossline_default";
+  config.solutionName =
+      "Behavior Analysis - Crossline Detection (Flexible Input/Output)";
+  config.solutionType = "behavior_analysis";
+  config.isDefault = true;
+
+  // File Source Node
+  SolutionConfig::NodeConfig fileSrc;
+  fileSrc.nodeType = "file_src";
+  fileSrc.nodeName = "file_src_{instanceId}";
+  fileSrc.parameters["file_path"] = "${FILE_PATH}";
+  fileSrc.parameters["channel"] = "0";
+  fileSrc.parameters["resize_ratio"] = "${RESIZE_RATIO}";
+  config.pipeline.push_back(fileSrc);
+
+  // YOLO Detector Node
+  SolutionConfig::NodeConfig yoloDetector;
+  yoloDetector.nodeType = "yolo_detector";
+  yoloDetector.nodeName = "yolo_detector_{instanceId}";
+  yoloDetector.parameters["weights_path"] = "${WEIGHTS_PATH}";
+  yoloDetector.parameters["config_path"] = "${CONFIG_PATH}";
+  yoloDetector.parameters["labels_path"] = "${LABELS_PATH}";
+  config.pipeline.push_back(yoloDetector);
+
+  // SORT Tracker Node
+  SolutionConfig::NodeConfig sortTrack;
+  sortTrack.nodeType = "sort_track";
+  sortTrack.nodeName = "sort_tracker_{instanceId}";
+  config.pipeline.push_back(sortTrack);
+
+  // BA Crossline Node
+  SolutionConfig::NodeConfig baCrossline;
+  baCrossline.nodeType = "ba_crossline";
+  baCrossline.nodeName = "ba_crossline_{instanceId}";
+  baCrossline.parameters["line_channel"] = "0";
+  baCrossline.parameters["line_start_x"] = "${CROSSLINE_START_X}";
+  baCrossline.parameters["line_start_y"] = "${CROSSLINE_START_Y}";
+  baCrossline.parameters["line_end_x"] = "${CROSSLINE_END_X}";
+  baCrossline.parameters["line_end_y"] = "${CROSSLINE_END_Y}";
+  config.pipeline.push_back(baCrossline);
+
+  // JSON Crossline MQTT Broker Node
+  SolutionConfig::NodeConfig jsonMqtt;
+  jsonMqtt.nodeType = "json_crossline_mqtt_broker";
+  jsonMqtt.nodeName = "json_crossline_mqtt_broker_{instanceId}";
+  config.pipeline.push_back(jsonMqtt);
+
+  // BA Crossline OSD Node
+  SolutionConfig::NodeConfig baOsd;
+  baOsd.nodeType = "ba_crossline_osd";
+  baOsd.nodeName = "osd_{instanceId}";
+  config.pipeline.push_back(baOsd);
+
+  // Screen Destination Node
+  SolutionConfig::NodeConfig screenDes;
+  screenDes.nodeType = "screen_des";
+  screenDes.nodeName = "screen_des_{instanceId}";
+  screenDes.parameters["channel"] = "0";
+  screenDes.parameters["enabled"] = "${ENABLE_SCREEN_DES}";
+  config.pipeline.push_back(screenDes);
+
+  // RTMP Destination Node
+  SolutionConfig::NodeConfig rtmpDes;
+  rtmpDes.nodeType = "rtmp_des";
+  rtmpDes.nodeName = "rtmp_des_{instanceId}";
+  rtmpDes.parameters["rtmp_url"] = "${RTMP_URL}";
+  rtmpDes.parameters["channel"] = "0";
+  config.pipeline.push_back(rtmpDes);
+
+  // Default configurations
+  config.defaults["detectorMode"] = "SmartDetection";
+  config.defaults["detectionSensitivity"] = "0.7";
+  config.defaults["sensorModality"] = "RGB";
+
+  registerSolution(config);
+}
+
+void SolutionRegistry::registerBACrosslineMQTTDefaultSolution() {
+  SolutionConfig config;
+  config.solutionId = "ba_crossline_mqtt_default";
+  config.solutionName = "Behavior Analysis - Crossline with MQTT";
+  config.solutionType = "behavior_analysis";
+  config.isDefault = true;
+
+  // File Source Node
+  SolutionConfig::NodeConfig fileSrc;
+  fileSrc.nodeType = "file_src";
+  fileSrc.nodeName = "file_src_{instanceId}";
+  fileSrc.parameters["file_path"] = "${FILE_PATH}";
+  fileSrc.parameters["channel"] = "0";
+  fileSrc.parameters["resize_ratio"] = "${RESIZE_RATIO}";
+  config.pipeline.push_back(fileSrc);
+
+  // YOLO Detector Node
+  SolutionConfig::NodeConfig yoloDetector;
+  yoloDetector.nodeType = "yolo_detector";
+  yoloDetector.nodeName = "yolo_detector_{instanceId}";
+  yoloDetector.parameters["weights_path"] = "${WEIGHTS_PATH}";
+  yoloDetector.parameters["config_path"] = "${CONFIG_PATH}";
+  yoloDetector.parameters["labels_path"] = "${LABELS_PATH}";
+  yoloDetector.parameters["score_threshold"] = "${detectionSensitivity}";
+  yoloDetector.parameters["nms_threshold"] = "0.4";
+  config.pipeline.push_back(yoloDetector);
+
+  // SORT Tracker Node
+  SolutionConfig::NodeConfig sortTrack;
+  sortTrack.nodeType = "sort_track";
+  sortTrack.nodeName = "sort_tracker_{instanceId}";
+  config.pipeline.push_back(sortTrack);
+
+  // BA Crossline Node
+  SolutionConfig::NodeConfig baCrossline;
+  baCrossline.nodeType = "ba_crossline";
+  baCrossline.nodeName = "ba_crossline_{instanceId}";
+  baCrossline.parameters["line_channel"] = "0";
+  baCrossline.parameters["line_start_x"] = "${CROSSLINE_START_X}";
+  baCrossline.parameters["line_start_y"] = "${CROSSLINE_START_Y}";
+  baCrossline.parameters["line_end_x"] = "${CROSSLINE_END_X}";
+  baCrossline.parameters["line_end_y"] = "${CROSSLINE_END_Y}";
+  config.pipeline.push_back(baCrossline);
+
+  // JSON Crossline MQTT Broker Node
+  SolutionConfig::NodeConfig jsonMqtt;
+  jsonMqtt.nodeType = "json_crossline_mqtt_broker";
+  jsonMqtt.nodeName = "json_crossline_mqtt_broker_{instanceId}";
+  config.pipeline.push_back(jsonMqtt);
+
+  // BA Crossline OSD Node
+  SolutionConfig::NodeConfig baOsd;
+  baOsd.nodeType = "ba_crossline_osd";
+  baOsd.nodeName = "osd_{instanceId}";
+  config.pipeline.push_back(baOsd);
+
+  // File Destination Node
+  SolutionConfig::NodeConfig fileDes;
+  fileDes.nodeType = "file_des";
+  fileDes.nodeName = "file_des_{instanceId}";
+  fileDes.parameters["save_dir"] = "./output/{instanceId}";
+  fileDes.parameters["name_prefix"] = "ba_crossline_mqtt";
+  fileDes.parameters["osd"] = "true";
+  config.pipeline.push_back(fileDes);
+
+  // Default configurations
+  config.defaults["detectorMode"] = "SmartDetection";
+  config.defaults["detectionSensitivity"] = "0.7";
+  config.defaults["sensorModality"] = "RGB";
+  config.defaults["RESIZE_RATIO"] = "1.0";
 
   registerSolution(config);
 }
