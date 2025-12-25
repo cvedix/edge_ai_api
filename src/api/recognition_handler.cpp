@@ -3245,6 +3245,98 @@ void RecognitionHandler::registerFaceSubject(
       return;
     }
 
+    // Check if image contains a person using face detection model
+    cv::Mat image = cv::imdecode(imageData, cv::IMREAD_COLOR);
+    if (image.empty()) {
+      if (isApiLoggingEnabled()) {
+        PLOG_WARNING << "[API] POST /v1/recognition/faces - Failed to decode image";
+      }
+      callback(createErrorResponse(400, "Invalid request", 
+                                   "Invalid image format or corrupted image data"));
+      return;
+    }
+
+    // Get face detector model path
+    FaceDatabase &db = get_database();
+    std::string detector_path = db.get_detector_model_path();
+    if (detector_path.empty()) {
+      if (isApiLoggingEnabled()) {
+        PLOG_WARNING << "[API] POST /v1/recognition/faces - Face detector model not found";
+      }
+      callback(createErrorResponse(500, "Internal server error", 
+                                   "Face detector model not found"));
+      return;
+    }
+
+    // Create face detector and detect faces
+    cv::Ptr<cv::FaceDetectorYN> face_detector;
+    try {
+      face_detector = cv::FaceDetectorYN::create(
+          detector_path, "", cv::Size(320, 320),
+          static_cast<float>(detProbThreshold), 0.3f, 5000,
+          cv::dnn::DNN_BACKEND_OPENCV, cv::dnn::DNN_TARGET_CPU);
+    } catch (const cv::Exception &e) {
+      if (isApiLoggingEnabled()) {
+        PLOG_ERROR << "[API] POST /v1/recognition/faces - Failed to create face detector: " << e.what();
+      }
+      callback(createErrorResponse(500, "Internal server error", 
+                                   "Failed to create face detector"));
+      return;
+    } catch (const std::exception &e) {
+      if (isApiLoggingEnabled()) {
+        PLOG_ERROR << "[API] POST /v1/recognition/faces - Failed to create face detector: " << e.what();
+      }
+      callback(createErrorResponse(500, "Internal server error", 
+                                   "Failed to create face detector"));
+      return;
+    }
+
+    if (face_detector.empty()) {
+      if (isApiLoggingEnabled()) {
+        PLOG_ERROR << "[API] POST /v1/recognition/faces - Face detector creation returned empty";
+      }
+      callback(createErrorResponse(500, "Internal server error", 
+                                   "Face detector creation failed"));
+      return;
+    }
+
+    face_detector->setInputSize(image.size());
+    cv::Mat faces;
+    try {
+      face_detector->detect(image, faces);
+    } catch (const cv::Exception &e) {
+      if (isApiLoggingEnabled()) {
+        PLOG_ERROR << "[API] POST /v1/recognition/faces - Face detection exception: " << e.what();
+      }
+      callback(createErrorResponse(500, "Internal server error", 
+                                   "Face detection failed"));
+      return;
+    } catch (const std::exception &e) {
+      if (isApiLoggingEnabled()) {
+        PLOG_ERROR << "[API] POST /v1/recognition/faces - Face detection exception: " << e.what();
+      }
+      callback(createErrorResponse(500, "Internal server error", 
+                                   "Face detection failed"));
+      return;
+    }
+
+    // Check if any face (person) was detected
+    if (faces.rows == 0 || faces.empty()) {
+      if (isApiLoggingEnabled()) {
+        PLOG_WARNING << "[API] POST /v1/recognition/faces - No person detected in image. "
+                     << "Image size: " << image.cols << "x" << image.rows
+                     << ", detection threshold: " << detProbThreshold;
+      }
+      callback(createErrorResponse(400, "Registration failed", 
+                                   "No person detected in image. Please ensure the image contains a clear face."));
+      return;
+    }
+
+    if (isApiLoggingEnabled()) {
+      PLOG_DEBUG << "[API] POST /v1/recognition/faces - Person detected: " << faces.rows 
+                 << " face(s) found, proceeding with registration";
+    }
+
     // Register subject
     std::string imageId;
     std::string registerError;
