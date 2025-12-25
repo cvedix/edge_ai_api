@@ -5844,6 +5844,19 @@ paths:
 
         The response body can be used directly to create an instance via POST /v1/core/instance.
         The schema field provides rich metadata for UI to dynamically render forms, validate inputs, and provide better user experience.
+
+        **Minimal Mode** (`?minimal=true`):
+        - Returns only essential fields: `name`, `solution`, `group`, `autoStart`
+        - Only includes required additionalParams (parameters without default values)
+        - Excludes optional output parameters (MQTT, RTMP, Screen if not set)
+        - Simplified schema without flexibleInputOutput
+        - Use this mode for simple, user-friendly forms with minimal fields
+
+        **Full Mode** (default):
+        - Returns all available fields including advanced options
+        - Includes all additionalParams (input and output)
+        - Complete schema with flexibleInputOutput options
+        - Use this mode for advanced configuration or when user clicks "Advanced Options"
       operationId: getSolutionInstanceBody
       tags:
         - Solutions
@@ -5854,6 +5867,16 @@ paths:
           schema:
             type: string
           description: Solution ID
+        - name: minimal
+          in: query
+          required: false
+          schema:
+            type: boolean
+            default: false
+          description: |
+            If true, returns only essential fields for minimal UI form.
+            Returns only required parameters and common optional fields (name, solution, group, autoStart).
+            Recommended for initial form rendering to avoid overwhelming users with too many fields.
       responses:
         '200':
           description: Example instance creation body
