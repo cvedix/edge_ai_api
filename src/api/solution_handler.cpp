@@ -508,6 +508,8 @@ void SolutionHandler::listSolutions(
 
     response["solutions"] = solutions;
     response["total"] = totalCount;
+    response["default"] = defaultCount;
+    response["custom"] = customCount;
 
     auto end_time = std::chrono::steady_clock::now();
     auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(
