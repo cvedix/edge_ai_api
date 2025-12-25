@@ -6,6 +6,10 @@ Thư mục này chứa các examples, documentation và scripts để làm việ
 
 ```
 examples/
+├── default_solutions/ # Default solutions sẵn có để chọn và sử dụng
+│   ├── *.json        # Solution configuration files
+│   ├── index.json    # Catalog danh sách solutions
+│   └── *.sh          # Helper scripts
 ├── instances/         # Example files và scripts cho instances
 │   ├── create/       # Examples để tạo instances
 │   ├── update/       # Examples để cập nhật instances
@@ -36,7 +40,47 @@ Solution examples và tests:
 
 Xem [solutions/README.md](./solutions/README.md) để biết chi tiết.
 
+### ⭐ `default_solutions/`
+**Default solutions sẵn có để người dùng chọn và sử dụng ngay:**
+- Các solution đã được cấu hình sẵn theo category
+- File `index.json` chứa catalog đầy đủ
+- Helper scripts để list và create solutions
+- Documentation chi tiết cho từng solution
+
+**Cách sử dụng nhanh:**
+```bash
+# Xem danh sách solutions có sẵn
+./default_solutions/list_solutions.sh
+
+# Tạo một solution
+./default_solutions/create_solution.sh default_face_detection_file
+```
+
+Xem [default_solutions/README.md](./default_solutions/README.md) để biết chi tiết.
+
 ## Quick Start
+
+### 0. Sử dụng Default Solutions (Khuyến nghị cho người mới)
+
+```bash
+# Xem danh sách tất cả solutions (bao gồm cả default solutions chưa load)
+curl http://localhost:8080/v1/core/solution
+
+# Lấy example request body để tạo instance (sẽ tự động load default solution nếu chưa có)
+curl http://localhost:8080/v1/core/solution/default_face_detection_file/instance-body
+
+# Sau đó tạo instance với solution
+curl -X POST http://localhost:8080/v1/core/instance \
+  -H "Content-Type: application/json" \
+  -d '{
+    "name": "my_face_detection",
+    "solution": "default_face_detection_file",
+    "additionalParams": {
+      "FILE_PATH": "/path/to/video.mp4",
+      "MODEL_PATH": "/path/to/model.onnx"
+    }
+  }'
+```
 
 ### 1. Tạo Instance với Basic Solution
 
@@ -74,6 +118,7 @@ curl -X PUT http://localhost:8080/v1/core/instance/{instanceId} \
 
 ## Documentation
 
+- **[Default Solutions](./default_solutions/README.md)** ⭐ - **Bắt đầu từ đây!** Danh sách solutions sẵn có
 - [Instances Examples](./instances/README.md) - Hướng dẫn sử dụng instance examples
 - [Solutions Reference](../docs/DEFAULT_SOLUTIONS_REFERENCE.md) - Documentation về các solutions
 - [Instance Guide](../docs/INSTANCE_GUIDE.md) - Hướng dẫn tạo và cập nhật instances
