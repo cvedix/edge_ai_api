@@ -9,10 +9,14 @@
 #include <algorithm>
 #include <cctype>
 #include <chrono>
+#include <cstring>
 #include <drogon/HttpResponse.h>
+#include <filesystem>
+#include <fstream>
 #include <map>
 #include <regex>
 #include <set>
+#include <unistd.h>
 
 SolutionRegistry *SolutionHandler::solution_registry_ = nullptr;
 SolutionStorage *SolutionHandler::solution_storage_ = nullptr;
@@ -47,6 +51,22 @@ SolutionHandler::extractSolutionId(const HttpRequestPtr &req) const {
         end = path.length();
       }
       solutionId = path.substr(start, end - start);
+
+      // Special handling for /v1/core/solution/defaults/{solutionId}
+      // If we got "defaults", skip it and get the next segment
+      if (solutionId == "defaults") {
+        if (end < path.length()) {
+          start = end + 1;
+          end = path.find("/", start);
+          if (end == std::string::npos) {
+            end = path.length();
+          }
+          solutionId = path.substr(start, end - start);
+        } else {
+          // Path ends with "/defaults", no solutionId
+          solutionId = "";
+        }
+      }
     } else {
       // Try "/solution" at end of path (no trailing slash)
       size_t solutionEndPos = path.rfind("/solution");
@@ -291,7 +311,7 @@ void SolutionHandler::listSolutions(
       return;
     }
 
-    // Get all solutions
+    // Get all solutions from registry
     auto allSolutions = solution_registry_->getAllSolutions();
 
     // Build response
@@ -301,16 +321,69 @@ void SolutionHandler::listSolutions(
     int totalCount = 0;
     int defaultCount = 0;
     int customCount = 0;
+    int availableDefaultCount = 0;
 
+    // Add solutions from registry
+    std::set<std::string> registeredSolutionIds;
     for (const auto &[solutionId, config] : allSolutions) {
       Json::Value solution;
-      solution["solutionId"] = config.solutionId;
-      solution["solutionName"] = config.solutionName;
+      solution["id"] = config.solutionId; // Use "id" to match index.json format
+      solution["solutionId"] =
+          config.solutionId; // Keep for backward compatibility
+      solution["name"] =
+          config.solutionName; // Use "name" to match index.json format
+      solution["solutionName"] =
+          config.solutionName; // Keep for backward compatibility
       solution["solutionType"] = config.solutionType;
       solution["isDefault"] = config.isDefault;
       solution["pipelineNodeCount"] = static_cast<int>(config.pipeline.size());
+      solution["loaded"] = true; // Already loaded in registry
+
+      // Infer category and generate metadata
+      std::string category = config.solutionType;
+      if (category.empty() || category == "unknown") {
+        // Try to infer from solutionId
+        std::string lowerId = solutionId;
+        std::transform(lowerId.begin(), lowerId.end(), lowerId.begin(),
+                       ::tolower);
+        if (lowerId.find("face") != std::string::npos) {
+          category = "face_detection";
+        } else if (lowerId.find("object") != std::string::npos ||
+                   lowerId.find("yolo") != std::string::npos) {
+          category = "object_detection";
+        } else if (lowerId.find("mask") != std::string::npos ||
+                   lowerId.find("rcnn") != std::string::npos) {
+          category = "segmentation";
+        } else if (lowerId.find("ba") != std::string::npos ||
+                   lowerId.find("crossline") != std::string::npos) {
+          category = "behavior_analysis";
+        } else {
+          category = config.solutionType;
+        }
+      }
+      solution["category"] = category;
+      solution["description"] = config.solutionName;
+
+      // Generate useCase in Vietnamese based on solutionId
+      std::string useCase = generateUseCase(solutionId, category);
+      solution["useCase"] = useCase;
+
+      // Determine difficulty
+      std::string difficulty = "intermediate";
+      std::string lowerId = solutionId;
+      std::transform(lowerId.begin(), lowerId.end(), lowerId.begin(),
+                     ::tolower);
+      if (lowerId.find("minimal") != std::string::npos) {
+        difficulty = "beginner";
+      } else if (lowerId.find("mask") != std::string::npos ||
+                 lowerId.find("ba") != std::string::npos ||
+                 lowerId.find("crossline") != std::string::npos) {
+        difficulty = "advanced";
+      }
+      solution["difficulty"] = difficulty;
 
       solutions.append(solution);
+      registeredSolutionIds.insert(config.solutionId);
       totalCount++;
       if (config.isDefault) {
         defaultCount++;
@@ -319,10 +392,122 @@ void SolutionHandler::listSolutions(
       }
     }
 
+    // Add default solutions from filesystem that are not yet loaded
+    try {
+      std::string dir = getDefaultSolutionsDir();
+      std::vector<std::string> defaultFiles = listDefaultSolutionFiles();
+
+      // List from files and load metadata from individual files
+      for (const auto &filename : defaultFiles) {
+        std::string solutionId = filename;
+        // Remove .json extension
+        if (solutionId.size() > 5 &&
+            solutionId.substr(solutionId.size() - 5) == ".json") {
+          solutionId = solutionId.substr(0, solutionId.size() - 5);
+        }
+
+        if (registeredSolutionIds.find(solutionId) ==
+            registeredSolutionIds.end()) {
+          // Not yet loaded, try to load metadata from file
+          Json::Value solution;
+          solution["id"] = solutionId;
+          solution["solutionId"] = solutionId;
+          solution["isDefault"] = false;
+          solution["loaded"] = false;
+          solution["available"] = true;
+          solution["file"] = filename;
+
+          // Try to load solution file to get metadata
+          std::string filepath = dir + "/" + filename;
+          std::string solutionName = solutionId;
+          std::string solutionType = "";
+          std::string description = solutionId;
+
+          if (std::filesystem::exists(filepath) &&
+              std::filesystem::is_regular_file(filepath)) {
+            try {
+              std::ifstream file(filepath);
+              if (file.is_open()) {
+                Json::CharReaderBuilder builder;
+                std::string parseErrors;
+                Json::Value fileData;
+                if (Json::parseFromStream(builder, file, &fileData,
+                                          &parseErrors)) {
+                  if (fileData.isMember("solutionName")) {
+                    solutionName = fileData["solutionName"].asString();
+                  }
+                  if (fileData.isMember("solutionType")) {
+                    solutionType = fileData["solutionType"].asString();
+                  }
+                  if (fileData.isMember("description")) {
+                    description = fileData["description"].asString();
+                  }
+                }
+              }
+            } catch (...) {
+              // If file parsing fails, use defaults
+            }
+          }
+
+          solution["name"] = solutionName;
+          solution["solutionName"] = solutionName;
+          solution["solutionType"] = solutionType;
+          solution["description"] = description;
+
+          // Infer category and generate metadata
+          std::string category = solutionType;
+          std::string lowerId = solutionId;
+          std::transform(lowerId.begin(), lowerId.end(), lowerId.begin(),
+                         ::tolower);
+
+          if (category.empty() || category == "unknown") {
+            if (lowerId.find("face") != std::string::npos) {
+              category = "face_detection";
+            } else if (lowerId.find("object") != std::string::npos ||
+                       lowerId.find("yolo") != std::string::npos) {
+              category = "object_detection";
+            } else if (lowerId.find("mask") != std::string::npos ||
+                       lowerId.find("rcnn") != std::string::npos) {
+              category = "segmentation";
+            } else if (lowerId.find("ba") != std::string::npos ||
+                       lowerId.find("crossline") != std::string::npos) {
+              category = "behavior_analysis";
+            } else {
+              category = "general";
+            }
+          }
+          solution["category"] = category;
+
+          // Generate useCase in Vietnamese
+          std::string useCase = generateUseCase(solutionId, category);
+          solution["useCase"] = useCase;
+
+          // Determine difficulty
+          std::string difficulty = "intermediate";
+          if (lowerId.find("minimal") != std::string::npos) {
+            difficulty = "beginner";
+          } else if (lowerId.find("mask") != std::string::npos ||
+                     lowerId.find("ba") != std::string::npos ||
+                     lowerId.find("crossline") != std::string::npos) {
+            difficulty = "advanced";
+          }
+          solution["difficulty"] = difficulty;
+
+          solutions.append(solution);
+          totalCount++;
+        }
+      }
+    } catch (const std::exception &e) {
+      if (isApiLoggingEnabled()) {
+        PLOG_WARNING
+            << "[API] Error loading default solutions from filesystem: "
+            << e.what();
+      }
+      // Continue without default solutions
+    }
+
     response["solutions"] = solutions;
     response["total"] = totalCount;
-    response["default"] = defaultCount;
-    response["custom"] = customCount;
 
     auto end_time = std::chrono::steady_clock::now();
     auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(
@@ -1484,15 +1669,164 @@ void SolutionHandler::getSolutionInstanceBody(
     }
 
     auto optConfig = solution_registry_->getSolution(solutionId);
+
+    // If solution not found in registry, try to load from default_solutions
+    // directory
     if (!optConfig.has_value()) {
-      auto end_time = std::chrono::steady_clock::now();
-      auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(
-          end_time - start_time);
       if (isApiLoggingEnabled()) {
-        PLOG_WARNING << "[API] GET /v1/core/solution/" << solutionId
-                     << "/instance-body - Not found - " << duration.count()
-                     << "ms";
+        PLOG_INFO
+            << "[API] Solution " << solutionId
+            << " not found in registry, trying to load from default_solutions";
       }
+
+      if (!solution_registry_ || !solution_storage_) {
+        callback(createErrorResponse(
+            500, "Internal server error",
+            "Solution registry or storage not initialized"));
+        return;
+      }
+
+      // Check if this is a system default solution ID (even if not loaded yet)
+      // System default solutions should not be loaded from default_solutions
+      // directory
+      if (solution_registry_->isDefaultSolution(solutionId)) {
+        // This is a system default solution, but not found in registry
+        // This shouldn't happen normally, but handle gracefully
+        if (isApiLoggingEnabled()) {
+          PLOG_WARNING << "[API] System default solution " << solutionId
+                       << " not found in registry";
+        }
+        callback(createErrorResponse(500, "Internal server error",
+                                     "System default solution not available: " +
+                                         solutionId));
+        return;
+      }
+
+      // Try to load from default_solutions directory
+      std::string error;
+      auto loadedConfig = loadDefaultSolutionFromFile(solutionId, error);
+      if (loadedConfig.has_value()) {
+        SolutionConfig config = loadedConfig.value();
+
+        // Double-check: ensure solutionId matches and check for conflicts
+        if (config.solutionId != solutionId) {
+          if (isApiLoggingEnabled()) {
+            PLOG_WARNING << "[API] Solution ID mismatch: requested "
+                         << solutionId << ", got " << config.solutionId;
+          }
+          callback(createErrorResponse(
+              400, "Bad request",
+              "Solution ID mismatch in file: expected " + solutionId +
+                  ", got " + config.solutionId));
+          return;
+        }
+
+        // Check if solution already exists (race condition check)
+        // Also check if it's a system default solution
+        if (solution_registry_->hasSolution(config.solutionId)) {
+          // Solution exists, get it
+          optConfig = solution_registry_->getSolution(solutionId);
+        } else if (solution_registry_->isDefaultSolution(config.solutionId)) {
+          // This shouldn't happen, but handle it
+          if (isApiLoggingEnabled()) {
+            PLOG_WARNING << "[API] Attempted to load system default solution "
+                         << config.solutionId << " from file";
+          }
+          callback(createErrorResponse(
+              403, "Forbidden",
+              "Cannot load system default solution from file: " +
+                  config.solutionId));
+          return;
+        } else {
+          // Validate node types before registering
+          auto &nodePool = NodePoolManager::getInstance();
+          auto allTemplates = nodePool.getAllTemplates();
+          std::set<std::string> supportedNodeTypes;
+          for (const auto &template_ : allTemplates) {
+            supportedNodeTypes.insert(template_.nodeType);
+          }
+
+          bool hasUnsupportedNodes = false;
+          for (const auto &nodeConfig : config.pipeline) {
+            if (supportedNodeTypes.find(nodeConfig.nodeType) ==
+                supportedNodeTypes.end()) {
+              hasUnsupportedNodes = true;
+              break;
+            }
+          }
+
+          if (!hasUnsupportedNodes) {
+            // Final check before registering (double-check for race condition)
+            if (solution_registry_->hasSolution(config.solutionId)) {
+              // Another thread already registered it, get the existing one
+              optConfig = solution_registry_->getSolution(solutionId);
+            } else {
+              // Register solution
+              solution_registry_->registerSolution(config);
+
+              // Verify registration succeeded
+              auto registeredConfig =
+                  solution_registry_->getSolution(solutionId);
+              if (!registeredConfig.has_value()) {
+                if (isApiLoggingEnabled()) {
+                  PLOG_ERROR << "[API] Failed to register solution: "
+                             << solutionId;
+                }
+                callback(createErrorResponse(500, "Internal server error",
+                                             "Failed to register solution: " +
+                                                 solutionId));
+                return;
+              }
+
+              // Save to storage (non-blocking, failure is acceptable)
+              if (!solution_storage_->saveSolution(config)) {
+                if (isApiLoggingEnabled()) {
+                  PLOG_WARNING << "[API] Failed to save solution to storage: "
+                               << solutionId;
+                }
+                // Continue anyway - solution is registered in memory
+              }
+
+              // Create nodes for node types in this solution
+              nodePool.createNodesFromSolution(config);
+
+              if (isApiLoggingEnabled()) {
+                PLOG_INFO << "[API] Auto-loaded default solution: "
+                          << solutionId;
+              }
+
+              optConfig = registeredConfig;
+            }
+          } else {
+            if (isApiLoggingEnabled()) {
+              PLOG_WARNING << "[API] Cannot load default solution "
+                           << solutionId << ": contains unsupported node types";
+            }
+            callback(createErrorResponse(
+                400, "Bad request",
+                "Default solution contains unsupported node types"));
+            return;
+          }
+        }
+      } else {
+        // Not found in default_solutions either
+        auto end_time = std::chrono::steady_clock::now();
+        auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(
+            end_time - start_time);
+        if (isApiLoggingEnabled()) {
+          PLOG_WARNING << "[API] GET /v1/core/solution/" << solutionId
+                       << "/instance-body - Not found - " << duration.count()
+                       << "ms";
+        }
+        callback(createErrorResponse(404, "Not found",
+                                     "Solution not found: " + solutionId +
+                                         ". Available default solutions can be "
+                                         "loaded via GET /v1/core/solution"));
+        return;
+      }
+    }
+
+    if (!optConfig.has_value()) {
       callback(createErrorResponse(404, "Not found",
                                    "Solution not found: " + solutionId));
       return;
@@ -1500,22 +1834,38 @@ void SolutionHandler::getSolutionInstanceBody(
 
     const SolutionConfig &config = optConfig.value();
 
+    // Check if minimal mode is requested
+    bool minimalMode = false;
+    std::string minimalParam = req->getParameter("minimal");
+    if (!minimalParam.empty() &&
+        (minimalParam == "true" || minimalParam == "1")) {
+      minimalMode = true;
+    }
+
     // Build example request body
     Json::Value body(Json::objectValue);
 
-    // Standard fields
+    // Standard fields - always include essential ones
     body["name"] = "example_instance";
-    body["group"] = "default";
     body["solution"] = solutionId;
-    body["persistent"] = false;
-    body["autoStart"] = false;
-    body["frameRateLimit"] = 0;
-    body["detectionSensitivity"] = "Low";
-    body["detectorMode"] = "SmartDetection";
-    body["metadataMode"] = false;
-    body["statisticsMode"] = false;
-    body["diagnosticsMode"] = false;
-    body["debugMode"] = false;
+
+    // Include optional but commonly used fields
+    if (!minimalMode) {
+      body["group"] = "default";
+      body["persistent"] = false;
+      body["autoStart"] = false;
+      body["frameRateLimit"] = 0;
+      body["detectionSensitivity"] = "Low";
+      body["detectorMode"] = "SmartDetection";
+      body["metadataMode"] = false;
+      body["statisticsMode"] = false;
+      body["diagnosticsMode"] = false;
+      body["debugMode"] = false;
+    } else {
+      // Minimal mode: only include commonly used optional fields
+      body["group"] = "default";
+      body["autoStart"] = false;
+    }
 
     // Get node templates for additional parameter information
     auto &nodePool = NodePoolManager::getInstance();
@@ -1619,11 +1969,83 @@ void SolutionHandler::getSolutionInstanceBody(
       }
     }
 
+    // Detect output nodes in pipeline and add corresponding output parameters
+    // This handles cases where output nodes exist but don't have explicit
+    // parameters
+    bool hasMQTTBroker = false;
+    bool hasRTMPDes = false;
+    bool hasScreenDes = false;
+
+    for (const auto &node : config.pipeline) {
+      std::string nodeType = node.nodeType;
+      if (nodeType == "json_mqtt_broker" ||
+          nodeType == "json_crossline_mqtt_broker" ||
+          nodeType == "json_enhanced_mqtt_broker") {
+        hasMQTTBroker = true;
+      } else if (nodeType == "rtmp_des") {
+        hasRTMPDes = true;
+      } else if (nodeType == "screen_des") {
+        hasScreenDes = true;
+      }
+    }
+
+    // Add MQTT output parameters if MQTT broker node exists
+    if (hasMQTTBroker) {
+      if (allParams.find("MQTT_BROKER_URL") == allParams.end()) {
+        allParams.insert("MQTT_BROKER_URL");
+      }
+      if (allParams.find("MQTT_PORT") == allParams.end()) {
+        allParams.insert("MQTT_PORT");
+        paramDefaults["MQTT_PORT"] = "1883";
+      }
+      if (allParams.find("MQTT_TOPIC") == allParams.end()) {
+        allParams.insert("MQTT_TOPIC");
+        paramDefaults["MQTT_TOPIC"] = "events";
+      }
+      if (allParams.find("MQTT_USERNAME") == allParams.end()) {
+        allParams.insert("MQTT_USERNAME");
+        paramDefaults["MQTT_USERNAME"] = "";
+      }
+      if (allParams.find("MQTT_PASSWORD") == allParams.end()) {
+        allParams.insert("MQTT_PASSWORD");
+        paramDefaults["MQTT_PASSWORD"] = "";
+      }
+    }
+
+    // Add RTMP output parameter if RTMP destination node exists
+    if (hasRTMPDes) {
+      if (allParams.find("RTMP_URL") == allParams.end() &&
+          allParams.find("RTMP_DES_URL") == allParams.end()) {
+        allParams.insert("RTMP_URL");
+      }
+    }
+
+    // Add screen output parameter if screen destination node exists
+    if (hasScreenDes) {
+      if (allParams.find("ENABLE_SCREEN_DES") == allParams.end()) {
+        allParams.insert("ENABLE_SCREEN_DES");
+        paramDefaults["ENABLE_SCREEN_DES"] = "false";
+      }
+    }
+
     // Helper function to generate example value based on parameter name
     auto generateExampleValue = [](const std::string &param) -> std::string {
       std::string upperParam = param;
       std::transform(upperParam.begin(), upperParam.end(), upperParam.begin(),
                      ::toupper);
+
+      // Flexible Output - MQTT parameters (check before generic URL pattern)
+      if (upperParam == "MQTT_BROKER_URL") {
+        return "localhost";
+      } else if (upperParam == "MQTT_PORT") {
+        return "1883";
+      } else if (upperParam == "MQTT_TOPIC") {
+        return "events";
+      } else if (upperParam == "MQTT_USERNAME") {
+        return "";
+      } else if (upperParam == "MQTT_PASSWORD") {
+        return "";
+      }
 
       // Flexible Input parameters (auto-detected by pipeline builder)
       if (upperParam == "RTSP_SRC_URL") {
@@ -1645,19 +2067,6 @@ void SolutionHandler::getSolutionInstanceBody(
         return "rtmp://example.com/live/stream";
       } else if (upperParam.find("URL") != std::string::npos) {
         return "http://example.com";
-      }
-
-      // Flexible Output - MQTT parameters
-      if (upperParam == "MQTT_BROKER_URL") {
-        return "localhost";
-      } else if (upperParam == "MQTT_PORT") {
-        return "1883";
-      } else if (upperParam == "MQTT_TOPIC") {
-        return "events";
-      } else if (upperParam == "MQTT_USERNAME") {
-        return "";
-      } else if (upperParam == "MQTT_PASSWORD") {
-        return "";
       }
 
       // Flexible Output - RTMP destination
@@ -1792,6 +2201,46 @@ void SolutionHandler::getSolutionInstanceBody(
         continue; // Skip this parameter
       }
 
+      // In minimal mode, only include required parameters (no default value or
+      // default contains variables) Exception: Include output parameters if
+      // solution has corresponding output nodes (they work together)
+      if (minimalMode) {
+        std::string upperParamCheck = param;
+        std::transform(upperParamCheck.begin(), upperParamCheck.end(),
+                       upperParamCheck.begin(), ::toupper);
+
+        // Always include all MQTT parameters if solution has MQTT broker node
+        if (hasMQTTBroker && (upperParamCheck == "MQTT_BROKER_URL" ||
+                              upperParamCheck == "MQTT_PORT" ||
+                              upperParamCheck == "MQTT_TOPIC" ||
+                              upperParamCheck == "MQTT_USERNAME" ||
+                              upperParamCheck == "MQTT_PASSWORD")) {
+          // Include it - don't skip
+        } else if (hasRTMPDes && (upperParamCheck == "RTMP_URL" ||
+                                  upperParamCheck == "RTMP_DES_URL")) {
+          // Always include RTMP_URL if solution has RTMP destination node
+          // Include it - don't skip
+        } else if (hasScreenDes && upperParamCheck == "ENABLE_SCREEN_DES") {
+          // Always include ENABLE_SCREEN_DES if solution has screen destination
+          // node Include it - don't skip
+        } else {
+          auto defIt = paramDefaults.find(param);
+          if (defIt != paramDefaults.end()) {
+            std::string defaultValue = defIt->second;
+            // Check if default contains variables (if yes, it's required)
+            std::sregex_iterator iter(defaultValue.begin(), defaultValue.end(),
+                                      varPattern);
+            std::sregex_iterator end;
+            if (iter == end) {
+              // Has literal default value, skip in minimal mode (it's optional)
+              continue;
+            }
+            // Default contains variables, it's required - include it
+          }
+          // No default value, it's required - include it
+        }
+      }
+
       // Determine example value
       std::string exampleValue;
       auto defIt = paramDefaults.find(param);
@@ -1821,28 +2270,79 @@ void SolutionHandler::getSolutionInstanceBody(
       }
     }
 
-    // Add default output parameters if not already present
-    if (!outputParamsObj.isMember("ENABLE_SCREEN_DES")) {
-      outputParamsObj["ENABLE_SCREEN_DES"] = "false";
-    }
-    if (!outputParamsObj.isMember("MQTT_BROKER_URL")) {
-      outputParamsObj["MQTT_BROKER_URL"] = "";
-    }
-    if (!outputParamsObj.isMember("MQTT_PORT")) {
-      outputParamsObj["MQTT_PORT"] = "1883";
-    }
-    if (!outputParamsObj.isMember("MQTT_TOPIC")) {
-      outputParamsObj["MQTT_TOPIC"] = "events";
-    }
-    if (!outputParamsObj.isMember("MQTT_USERNAME")) {
-      outputParamsObj["MQTT_USERNAME"] = "";
-    }
-    if (!outputParamsObj.isMember("MQTT_PASSWORD")) {
-      outputParamsObj["MQTT_PASSWORD"] = "";
+    // In minimal mode, filter out optional output parameters
+    if (minimalMode) {
+      // Remove empty optional output parameters
+      // But keep all MQTT parameters if solution has MQTT broker node (they
+      // work together)
+      std::vector<std::string> keysToRemove;
+      for (const auto &key : outputParamsObj.getMemberNames()) {
+        std::string upperKey = key;
+        std::transform(upperKey.begin(), upperKey.end(), upperKey.begin(),
+                       ::toupper);
+        std::string value = outputParamsObj[key].asString();
+
+        // Keep all MQTT parameters if solution has MQTT broker node
+        if (hasMQTTBroker &&
+            (upperKey == "MQTT_BROKER_URL" || upperKey == "MQTT_PORT" ||
+             upperKey == "MQTT_TOPIC" || upperKey == "MQTT_USERNAME" ||
+             upperKey == "MQTT_PASSWORD")) {
+          continue; // Keep this parameter
+        }
+
+        // Keep ENABLE_SCREEN_DES if solution has screen destination node
+        if (hasScreenDes && upperKey == "ENABLE_SCREEN_DES") {
+          continue; // Keep this parameter
+        }
+
+        // Keep RTMP_URL if solution has RTMP destination node
+        if (hasRTMPDes &&
+            (upperKey == "RTMP_URL" || upperKey == "RTMP_DES_URL")) {
+          continue; // Keep this parameter
+        }
+
+        if (value.empty() || value == "false" || value == "1883" ||
+            value == "events") {
+          keysToRemove.push_back(key);
+        }
+      }
+      for (const auto &key : keysToRemove) {
+        outputParamsObj.removeMember(key);
+      }
+    } else {
+      // Add default output parameters if not already present (full mode)
+      if (hasScreenDes && !outputParamsObj.isMember("ENABLE_SCREEN_DES")) {
+        outputParamsObj["ENABLE_SCREEN_DES"] = "false";
+      }
+      // Only add MQTT parameters if solution has MQTT broker node
+      if (hasMQTTBroker) {
+        if (!outputParamsObj.isMember("MQTT_BROKER_URL")) {
+          outputParamsObj["MQTT_BROKER_URL"] = "";
+        }
+        if (!outputParamsObj.isMember("MQTT_PORT")) {
+          outputParamsObj["MQTT_PORT"] = "1883";
+        }
+        if (!outputParamsObj.isMember("MQTT_TOPIC")) {
+          outputParamsObj["MQTT_TOPIC"] = "events";
+        }
+        if (!outputParamsObj.isMember("MQTT_USERNAME")) {
+          outputParamsObj["MQTT_USERNAME"] = "";
+        }
+        if (!outputParamsObj.isMember("MQTT_PASSWORD")) {
+          outputParamsObj["MQTT_PASSWORD"] = "";
+        }
+      }
+      // Only add RTMP parameter if solution has RTMP destination node
+      if (hasRTMPDes && !outputParamsObj.isMember("RTMP_URL") &&
+          !outputParamsObj.isMember("RTMP_DES_URL")) {
+        outputParamsObj["RTMP_URL"] = "";
+      }
     }
 
     additionalParams["input"] = inputParams;
-    additionalParams["output"] = outputParamsObj;
+    if (!outputParamsObj.empty()) {
+      additionalParams["output"] = outputParamsObj;
+    }
 
     body["additionalParams"] = additionalParams;
 
@@ -1886,7 +2386,17 @@ void SolutionHandler::getSolutionInstanceBody(
     addStandardFieldSchema(standardFieldsSchema, "debugMode", "boolean", false,
                            "Enable debug mode", "", false);
 
-    schema["standardFields"] = standardFieldsSchema;
+    // In minimal mode, only include essential standard fields in schema
+    if (minimalMode) {
+      Json::Value minimalStandardFields(Json::objectValue);
+      minimalStandardFields["name"] = standardFieldsSchema["name"];
+      minimalStandardFields["group"] = standardFieldsSchema["group"];
+      minimalStandardFields["solution"] = standardFieldsSchema["solution"];
+      minimalStandardFields["autoStart"] = standardFieldsSchema["autoStart"];
+      schema["standardFields"] = minimalStandardFields;
+    } else {
+      schema["standardFields"] = standardFieldsSchema;
+    }
 
     // Additional parameters schema (input/output)
     Json::Value additionalParamsSchema(Json::objectValue);
@@ -1898,7 +2408,11 @@ void SolutionHandler::getSolutionInstanceBody(
       Json::Value paramSchema = buildParameterSchema(
           paramName, inputParams[paramName].asString(), allParams,
           paramDefaults, templatesByType, config);
-      inputParamsSchema[paramName] = paramSchema;
+
+      // In minimal mode, only include required parameters in schema
+      if (!minimalMode || paramSchema["required"].asBool()) {
+        inputParamsSchema[paramName] = paramSchema;
+      }
     }
 
     // Process output parameters
@@ -1906,20 +2420,55 @@ void SolutionHandler::getSolutionInstanceBody(
       Json::Value paramSchema = buildParameterSchema(
           paramName, outputParamsObj[paramName].asString(), allParams,
           paramDefaults, templatesByType, config);
-      outputParamsSchema[paramName] = paramSchema;
+
+      // In minimal mode, include required parameters OR MQTT parameters if
+      // solution has MQTT broker node
+      if (minimalMode) {
+        std::string upperParamName = paramName;
+        std::transform(upperParamName.begin(), upperParamName.end(),
+                       upperParamName.begin(), ::toupper);
+
+        // Include if required OR if it's an MQTT parameter and solution has
+        // MQTT broker node
+        bool isMQTTParam =
+            (upperParamName == "MQTT_BROKER_URL" ||
+             upperParamName == "MQTT_PORT" || upperParamName == "MQTT_TOPIC" ||
+             upperParamName == "MQTT_USERNAME" ||
+             upperParamName == "MQTT_PASSWORD");
+
+        // Include if required OR (is MQTT param and has MQTT broker) OR (is
+        // ENABLE_SCREEN_DES and has screen des) OR (is RTMP_URL and has RTMP
+        // des)
+        bool isRTMPParam =
+            (upperParamName == "RTMP_URL" || upperParamName == "RTMP_DES_URL");
+
+        if (paramSchema["required"].asBool() ||
+            (isMQTTParam && hasMQTTBroker) ||
+            (upperParamName == "ENABLE_SCREEN_DES" && hasScreenDes) ||
+            (isRTMPParam && hasRTMPDes)) {
+          outputParamsSchema[paramName] = paramSchema;
+        }
+      } else {
+        // Full mode: include all
+        outputParamsSchema[paramName] = paramSchema;
+      }
     }
 
     additionalParamsSchema["input"] = inputParamsSchema;
-    additionalParamsSchema["output"] = outputParamsSchema;
+    if (!outputParamsSchema.empty()) {
+      additionalParamsSchema["output"] = outputParamsSchema;
+    }
     schema["additionalParams"] = additionalParamsSchema;
 
-    // Add flexible input/output schema
-    Json::Value flexibleIOSchema(Json::objectValue);
-    flexibleIOSchema["description"] =
-        "Flexible input/output options that can be added to any instance";
-    flexibleIOSchema["input"] = buildFlexibleInputSchema();
-    flexibleIOSchema["output"] = buildFlexibleOutputSchema();
-    schema["flexibleInputOutput"] = flexibleIOSchema;
+    // Add flexible input/output schema only in full mode
+    if (!minimalMode) {
+      Json::Value flexibleIOSchema(Json::objectValue);
+      flexibleIOSchema["description"] =
+          "Flexible input/output options that can be added to any instance";
+      flexibleIOSchema["input"] = buildFlexibleInputSchema();
+      flexibleIOSchema["output"] = buildFlexibleOutputSchema();
+      schema["flexibleInputOutput"] = flexibleIOSchema;
+    }
 
     body["schema"] = schema;
 
@@ -1974,6 +2523,418 @@ void SolutionHandler::handleOptions(
                   "Content-Type, Authorization");
   resp->addHeader("Access-Control-Max-Age", "3600");
   callback(resp);
+}
+
+std::string SolutionHandler::getDefaultSolutionsDir() const {
+  // Try multiple paths to find examples/default_solutions directory
+  std::vector<std::string> possiblePaths = {
+      "./examples/default_solutions",
+      "../examples/default_solutions",
+      "../../examples/default_solutions",
+      "/opt/edge_ai_api/examples/default_solutions",
+  };
+
+  // Also try relative to executable path
+  try {
+    char exePath[1024];
+    ssize_t len = readlink("/proc/self/exe", exePath, sizeof(exePath) - 1);
+    if (len != -1) {
+      exePath[len] = '\0';
+      std::filesystem::path exe(exePath);
+      std::filesystem::path exeDir = exe.parent_path();
+
+      // Try going up from bin/ or build/bin/
+      for (int i = 0; i < 5; i++) {
+        std::filesystem::path testPath = exeDir;
+        for (int j = 0; j < i; j++) {
+          testPath = testPath.parent_path();
+        }
+        std::filesystem::path examplesPath =
+            testPath / "examples" / "default_solutions";
+        if (std::filesystem::exists(examplesPath) &&
+            std::filesystem::is_directory(examplesPath)) {
+          return examplesPath.string();
+        }
+      }
+    }
+  } catch (...) {
+    // Ignore errors, continue with other paths
+  }
+
+  // Try current directory and common paths
+  for (const auto &path : possiblePaths) {
+    if (std::filesystem::exists(path) && std::filesystem::is_directory(path)) {
+      return path;
+    }
+  }
+
+  // Default fallback
+  return "./examples/default_solutions";
+}
+
+std::vector<std::string> SolutionHandler::listDefaultSolutionFiles() const {
+  std::vector<std::string> files;
+  std::string dir = getDefaultSolutionsDir();
+
+  try {
+    if (!std::filesystem::exists(dir) || !std::filesystem::is_directory(dir)) {
+      return files;
+    }
+
+    for (const auto &entry : std::filesystem::directory_iterator(dir)) {
+      if (entry.is_regular_file() && entry.path().extension() == ".json") {
+        std::string filename = entry.path().filename().string();
+        // Skip index.json
+        if (filename != "index.json") {
+          files.push_back(filename);
+        }
+      }
+    }
+  } catch (const std::exception &e) {
+    if (isApiLoggingEnabled()) {
+      PLOG_WARNING << "[API] Error listing default solution files: "
+                   << e.what();
+    }
+  }
+
+  return files;
+}
+
+std::optional<SolutionConfig>
+SolutionHandler::loadDefaultSolutionFromFile(const std::string &solutionId,
+                                             std::string &error) const {
+  std::string dir = getDefaultSolutionsDir();
+  std::string filepath = dir + "/" + solutionId + ".json";
+
+  // Also try without .json extension if solutionId already has it
+  if (solutionId.find(".json") != std::string::npos) {
+    filepath = dir + "/" + solutionId;
+  }
+
+  try {
+    if (!std::filesystem::exists(filepath)) {
+      error = "Default solution file not found: " + filepath;
+      return std::nullopt;
+    }
+
+    std::ifstream file(filepath);
+    if (!file.is_open()) {
+      error = "Failed to open file: " + filepath;
+      return std::nullopt;
+    }
+
+    Json::CharReaderBuilder builder;
+    std::string parseErrors;
+    Json::Value json;
+    if (!Json::parseFromStream(builder, file, &json, &parseErrors)) {
+      error = "Failed to parse JSON: " + parseErrors;
+      return std::nullopt;
+    }
+
+    // Parse solution config using existing parser
+    std::string parseError;
+    auto optConfig = parseSolutionConfig(json, parseError);
+    if (!optConfig.has_value()) {
+      error = "Failed to parse solution config: " + parseError;
+      return std::nullopt;
+    }
+
+    SolutionConfig config = optConfig.value();
+    // Ensure isDefault is false (these are templates, not system defaults)
+    config.isDefault = false;
+
+    return config;
+  } catch (const std::exception &e) {
+    error = "Exception loading default solution: " + std::string(e.what());
+    return std::nullopt;
+  }
+}
+
+void SolutionHandler::listDefaultSolutions(
+    const HttpRequestPtr &req,
+    std::function<void(const HttpResponsePtr &)> &&callback) {
+
+  auto start_time = std::chrono::steady_clock::now();
+
+  if (isApiLoggingEnabled()) {
+    PLOG_INFO
+        << "[API] GET /v1/core/solution/defaults - List default solutions";
+  }
+
+  try {
+    std::string dir = getDefaultSolutionsDir();
+    std::vector<std::string> files = listDefaultSolutionFiles();
+
+    Json::Value response;
+    Json::Value solutions(Json::arrayValue);
+
+    // Try to load index.json for metadata
+    std::string indexPath = dir + "/index.json";
+    Json::Value indexData(Json::objectValue);
+    bool hasIndex = false;
+
+    if (std::filesystem::exists(indexPath)) {
+      try {
+        std::ifstream indexFile(indexPath);
+        if (indexFile.is_open()) {
+          Json::CharReaderBuilder builder;
+          std::string parseErrors;
+          if (Json::parseFromStream(builder, indexFile, &indexData,
+                                    &parseErrors)) {
+            hasIndex = true;
+          }
+        }
+      } catch (...) {
+        // Ignore index parsing errors
+      }
+    }
+
+    // Build response from index.json if available, otherwise from files
+    if (hasIndex && indexData.isMember("solutions")) {
+      // Use metadata from index.json
+      for (const auto &solJson : indexData["solutions"]) {
+        Json::Value solution;
+        solution["solutionId"] = solJson["id"];
+        solution["file"] = solJson["file"];
+        solution["name"] = solJson["name"];
+        solution["category"] = solJson["category"];
+        solution["description"] = solJson["description"];
+        solution["useCase"] = solJson["useCase"];
+        solution["difficulty"] = solJson["difficulty"];
+
+        // Check if file exists
+        std::string filepath = dir + "/" + solJson["file"].asString();
+        solution["available"] = std::filesystem::exists(filepath) &&
+                                std::filesystem::is_regular_file(filepath);
+
+        solutions.append(solution);
+      }
+
+      // Add categories if available
+      if (indexData.isMember("categories")) {
+        response["categories"] = indexData["categories"];
+      }
+    } else {
+      // Fallback: list from files
+      for (const auto &filename : files) {
+        Json::Value solution;
+        std::string solutionId = filename;
+        // Remove .json extension
+        if (solutionId.size() > 5 &&
+            solutionId.substr(solutionId.size() - 5) == ".json") {
+          solutionId = solutionId.substr(0, solutionId.size() - 5);
+        }
+        solution["solutionId"] = solutionId;
+        solution["file"] = filename;
+        solution["available"] = true;
+        solutions.append(solution);
+      }
+    }
+
+    response["solutions"] = solutions;
+    response["total"] = static_cast<int>(solutions.size());
+    response["directory"] = dir;
+
+    auto end_time = std::chrono::steady_clock::now();
+    auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(
+        end_time - start_time);
+
+    if (isApiLoggingEnabled()) {
+      PLOG_INFO << "[API] GET /v1/core/solution/defaults - Success: "
+                << solutions.size() << " solutions - " << duration.count()
+                << "ms";
+    }
+
+    callback(createSuccessResponse(response));
+  } catch (const std::exception &e) {
+    auto end_time = std::chrono::steady_clock::now();
+    auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(
+        end_time - start_time);
+    if (isApiLoggingEnabled()) {
+      PLOG_ERROR << "[API] GET /v1/core/solution/defaults - Exception: "
+                 << e.what() << " - " << duration.count() << "ms";
+    }
+    callback(createErrorResponse(500, "Internal server error",
+                                 "Exception: " + std::string(e.what())));
+  } catch (...) {
+    auto end_time = std::chrono::steady_clock::now();
+    auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(
+        end_time - start_time);
+    if (isApiLoggingEnabled()) {
+      PLOG_ERROR
+          << "[API] GET /v1/core/solution/defaults - Unknown exception - "
+          << duration.count() << "ms";
+    }
+    callback(createErrorResponse(500, "Internal server error",
+                                 "Unknown error occurred"));
+  }
+}
+
+void SolutionHandler::loadDefaultSolution(
+    const HttpRequestPtr &req,
+    std::function<void(const HttpResponsePtr &)> &&callback) {
+
+  auto start_time = std::chrono::steady_clock::now();
+
+  std::string solutionId = extractSolutionId(req);
+
+  if (isApiLoggingEnabled()) {
+    PLOG_INFO << "[API] POST /v1/core/solution/defaults/" << solutionId
+              << " - Load default solution";
+  }
+
+  try {
+    if (!solution_registry_ || !solution_storage_) {
+      if (isApiLoggingEnabled()) {
+        PLOG_ERROR << "[API] POST /v1/core/solution/defaults/" << solutionId
+                   << " - Error: Solution registry or storage not initialized";
+      }
+      callback(
+          createErrorResponse(500, "Internal server error",
+                              "Solution registry or storage not initialized"));
+      return;
+    }
+
+    if (solutionId.empty()) {
+      if (isApiLoggingEnabled()) {
+        PLOG_WARNING << "[API] POST /v1/core/solution/defaults/{id} - Error: "
+                        "Solution ID is empty";
+      }
+      callback(createErrorResponse(400, "Invalid request",
+                                   "Solution ID is required"));
+      return;
+    }
+
+    // Load solution from file
+    std::string error;
+    auto optConfig = loadDefaultSolutionFromFile(solutionId, error);
+    if (!optConfig.has_value()) {
+      if (isApiLoggingEnabled()) {
+        PLOG_WARNING << "[API] POST /v1/core/solution/defaults/" << solutionId
+                     << " - Error: " << error;
+      }
+      callback(createErrorResponse(404, "Not found", error));
+      return;
+    }
+
+    SolutionConfig config = optConfig.value();
+
+    // Check if solution already exists
+    if (solution_registry_->hasSolution(config.solutionId)) {
+      // Check if it's a default solution - cannot override default solutions
+      if (solution_registry_->isDefaultSolution(config.solutionId)) {
+        if (isApiLoggingEnabled()) {
+          PLOG_WARNING << "[API] POST /v1/core/solution/defaults/" << solutionId
+                       << " - Error: Cannot override default solution: "
+                       << config.solutionId;
+        }
+        callback(createErrorResponse(
+            403, "Forbidden",
+            "Cannot create solution with ID '" + config.solutionId +
+                "': This ID is reserved for a default system solution."));
+        return;
+      }
+
+      // Solution exists and is not default - return conflict
+      if (isApiLoggingEnabled()) {
+        PLOG_WARNING << "[API] POST /v1/core/solution/defaults/" << solutionId
+                     << " - Error: Solution already exists: "
+                     << config.solutionId;
+      }
+      callback(createErrorResponse(
+          409, "Conflict",
+          "Solution with ID '" + config.solutionId +
+              "' already exists. Use PUT /v1/core/solution/" +
+              config.solutionId + " to update it."));
+      return;
+    }
+
+    // Validate node types
+    auto &nodePool = NodePoolManager::getInstance();
+    auto allTemplates = nodePool.getAllTemplates();
+    std::set<std::string> supportedNodeTypes;
+    for (const auto &template_ : allTemplates) {
+      supportedNodeTypes.insert(template_.nodeType);
+    }
+
+    std::vector<std::string> unsupportedNodeTypes;
+    for (const auto &nodeConfig : config.pipeline) {
+      if (supportedNodeTypes.find(nodeConfig.nodeType) ==
+          supportedNodeTypes.end()) {
+        unsupportedNodeTypes.push_back(nodeConfig.nodeType);
+      }
+    }
+
+    if (!unsupportedNodeTypes.empty()) {
+      std::string errorMsg = "Unsupported node types: ";
+      for (size_t i = 0; i < unsupportedNodeTypes.size(); i++) {
+        if (i > 0)
+          errorMsg += ", ";
+        errorMsg += unsupportedNodeTypes[i];
+      }
+      if (isApiLoggingEnabled()) {
+        PLOG_WARNING << "[API] POST /v1/core/solution/defaults/" << solutionId
+                     << " - Error: " << errorMsg;
+      }
+      callback(createErrorResponse(400, "Invalid request", errorMsg));
+      return;
+    }
+
+    // Register solution
+    solution_registry_->registerSolution(config);
+
+    // Save to storage
+    if (!solution_storage_->saveSolution(config)) {
+      if (isApiLoggingEnabled()) {
+        PLOG_WARNING << "[API] POST /v1/core/solution/defaults/" << solutionId
+                     << " - Warning: Failed to save solution to storage";
+      }
+      // Continue anyway - solution is registered in memory
+    }
+
+    // Create nodes for node types in this solution
+    size_t nodesCreated = nodePool.createNodesFromSolution(config);
+    if (nodesCreated > 0 && isApiLoggingEnabled()) {
+      PLOG_INFO << "[API] Created " << nodesCreated
+                << " nodes for solution: " << config.solutionId;
+    }
+
+    Json::Value response = solutionConfigToJson(config);
+    response["message"] = "Default solution loaded and created successfully";
+
+    auto end_time = std::chrono::steady_clock::now();
+    auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(
+        end_time - start_time);
+
+    if (isApiLoggingEnabled()) {
+      PLOG_INFO << "[API] POST /v1/core/solution/defaults/" << solutionId
+                << " - Success: Created solution " << config.solutionId << " - "
+                << duration.count() << "ms";
+    }
+
+    callback(createSuccessResponse(response, 201));
+  } catch (const std::exception &e) {
+    auto end_time = std::chrono::steady_clock::now();
+    auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(
+        end_time - start_time);
+    if (isApiLoggingEnabled()) {
+      PLOG_ERROR << "[API] POST /v1/core/solution/defaults/" << solutionId
+                 << " - Exception: " << e.what() << " - " << duration.count()
+                 << "ms";
+    }
+    callback(createErrorResponse(500, "Internal server error",
+                                 "Exception: " + std::string(e.what())));
+  } catch (...) {
+    auto end_time = std::chrono::steady_clock::now();
+    auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(
+        end_time - start_time);
+    if (isApiLoggingEnabled()) {
+      PLOG_ERROR << "[API] POST /v1/core/solution/defaults/" << solutionId
+                 << " - Unknown exception - " << duration.count() << "ms";
+    }
+    callback(createErrorResponse(500, "Internal server error",
+                                 "Unknown error occurred"));
+  }
 }
 
 // Helper functions for building parameter schema metadata
@@ -2525,6 +3486,77 @@ SolutionHandler::getParameterExamples(const std::string &paramName) const {
   }
 
   return examples;
+}
+
+std::string
+SolutionHandler::generateUseCase(const std::string &solutionId,
+                                 const std::string &category) const {
+  std::string lowerId = solutionId;
+  std::transform(lowerId.begin(), lowerId.end(), lowerId.begin(), ::tolower);
+
+  // Generate useCase in Vietnamese based on solutionId patterns
+  if (lowerId.find("minimal") != std::string::npos) {
+    return "Test nhanh hoặc demo đơn giản";
+  }
+
+  if (lowerId.find("file") != std::string::npos &&
+      lowerId.find("rtmp") == std::string::npos &&
+      lowerId.find("rtsp") == std::string::npos) {
+    return "Xử lý video file offline, phân tích batch";
+  }
+
+  if (lowerId.find("rtsp") != std::string::npos) {
+    return "Giám sát real-time từ camera IP";
+  }
+
+  if (lowerId.find("rtmp") != std::string::npos) {
+    return "Streaming kết quả detection lên server";
+  }
+
+  if (lowerId.find("mqtt") != std::string::npos) {
+    return "Tích hợp với hệ thống IoT, gửi events qua MQTT";
+  }
+
+  if (lowerId.find("crossline") != std::string::npos ||
+      (lowerId.find("ba") != std::string::npos &&
+       lowerId.find("crossline") != std::string::npos)) {
+    return "Đếm người/đối tượng vượt qua đường, phân tích hành vi";
+  }
+
+  if (lowerId.find("mask") != std::string::npos ||
+      lowerId.find("rcnn") != std::string::npos) {
+    return "Phân đoạn instance và tạo mask cho từng đối tượng";
+  }
+
+  if (category == "face_detection") {
+    return "Phát hiện khuôn mặt trong video hoặc stream";
+  }
+
+  if (category == "object_detection") {
+    return "Phát hiện đối tượng tổng quát (người, xe, đồ vật)";
+  }
+
+  if (category == "behavior_analysis") {
+    return "Phân tích hành vi và đếm đối tượng";
+  }
+
+  if (category == "segmentation") {
+    return "Phân đoạn và tạo mask cho đối tượng";
+  }
+
+  if (category == "face_recognition") {
+    return "Nhận diện và so khớp khuôn mặt";
+  }
+
+  if (category == "face_processing") {
+    return "Xử lý và biến đổi khuôn mặt";
+  }
+
+  if (category == "multimodal_analysis") {
+    return "Phân tích đa phương tiện với MLLM";
+  }
+
+  return "Giải pháp tổng quát cho xử lý video và AI";
 }
 
 std::string

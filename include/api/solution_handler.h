@@ -35,6 +35,10 @@ public:
                 "/v1/core/solution/{solutionId}", Put);
   ADD_METHOD_TO(SolutionHandler::deleteSolution,
                 "/v1/core/solution/{solutionId}", Delete);
+  ADD_METHOD_TO(SolutionHandler::listDefaultSolutions,
+                "/v1/core/solution/defaults", Get);
+  ADD_METHOD_TO(SolutionHandler::loadDefaultSolution,
+                "/v1/core/solution/defaults/{solutionId}", Post);
   ADD_METHOD_TO(SolutionHandler::handleOptions, "/v1/core/solution", Options);
   ADD_METHOD_TO(SolutionHandler::handleOptions,
                 "/v1/core/solution/{solutionId}", Options);
@@ -42,6 +46,10 @@ public:
                 "/v1/core/solution/{solutionId}/parameters", Options);
   ADD_METHOD_TO(SolutionHandler::handleOptions,
                 "/v1/core/solution/{solutionId}/instance-body", Options);
+  ADD_METHOD_TO(SolutionHandler::handleOptions, "/v1/core/solution/defaults",
+                Options);
+  ADD_METHOD_TO(SolutionHandler::handleOptions,
+                "/v1/core/solution/defaults/{solutionId}", Options);
   METHOD_LIST_END
 
   /**
@@ -77,6 +85,22 @@ public:
    * Deletes a solution (default solutions cannot be deleted)
    */
   void deleteSolution(const HttpRequestPtr &req,
+                      std::function<void(const HttpResponsePtr &)> &&callback);
+
+  /**
+   * @brief Handle GET /v1/core/solution/defaults
+   * Lists all available default solutions from examples/default_solutions/
+   */
+  void
+  listDefaultSolutions(const HttpRequestPtr &req,
+                       std::function<void(const HttpResponsePtr &)> &&callback);
+
+  /**
+   * @brief Handle POST /v1/core/solution/defaults/{solutionId}
+   * Loads and creates a solution from default_solutions directory
+   */
+  void
+  loadDefaultSolution(const HttpRequestPtr &req,
                       std::function<void(const HttpResponsePtr &)> &&callback);
 
   /**
@@ -177,4 +201,27 @@ private:
   std::vector<std::string>
   getParameterExamples(const std::string &paramName) const;
   std::string getParameterCategory(const std::string &paramName) const;
+
+  /**
+   * @brief Get path to default_solutions directory
+   */
+  std::string getDefaultSolutionsDir() const;
+
+  /**
+   * @brief Load default solution from JSON file
+   */
+  std::optional<SolutionConfig>
+  loadDefaultSolutionFromFile(const std::string &solutionId,
+                              std::string &error) const;
+
+  /**
+   * @brief List all default solution files in default_solutions directory
+   */
+  std::vector<std::string> listDefaultSolutionFiles() const;
+
+  /**
+   * @brief Generate useCase in Vietnamese based on solutionId and category
+   */
+  std::string generateUseCase(const std::string &solutionId,
+                              const std::string &category) const;
 };
