@@ -334,9 +334,84 @@ bool InstanceStorage::mergeConfigs(
         existingConfig[key] = Json::Value(Json::objectValue);
       }
 
-      // Deep merge: copy all fields from newConfig to existingConfig
-      for (const auto &nestedKey : newConfig[key].getMemberNames()) {
-        existingConfig[key][nestedKey] = newConfig[key][nestedKey];
+      // Special handling for AdditionalParams: flatten nested input/output
+      // structure
+      if (key == "AdditionalParams") {
+        Json::Value flattenedParams(Json::objectValue);
+
+        // Check if newParams has nested input/output structure
+        const Json::Value &newParams = newConfig[key];
+        bool hasNestedStructure =
+            newParams.isMember("input") || newParams.isMember("output");
+
+        if (hasNestedStructure) {
+          // If nested structure, start with existing params (to preserve keys
+          // not in the update)
+          flattenedParams = existingConfig[key];
+          if (!flattenedParams.isObject()) {
+            flattenedParams = Json::Value(Json::objectValue);
+          }
+
+          // Flatten input section - only replace keys that appear in the
+          // request
+          if (newParams.isMember("input") && newParams["input"].isObject()) {
+            for (const auto &inputKey : newParams["input"].getMemberNames()) {
+              if (newParams["input"][inputKey].isString()) {
+                flattenedParams[inputKey] = newParams["input"][inputKey];
+              }
+            }
+          }
+
+          // Flatten output section - only replace keys that appear in the
+          // request
+          if (newParams.isMember("output") && newParams["output"].isObject()) {
+            for (const auto &outputKey : newParams["output"].getMemberNames()) {
+              if (newParams["output"][outputKey].isString()) {
+                flattenedParams[outputKey] = newParams["output"][outputKey];
+              }
+            }
+          }
+
+          // Also merge flat keys (backward compatibility) - only replace keys
+          // in request
+          for (const auto &flatKey : newParams.getMemberNames()) {
+            if (flatKey != "input" && flatKey != "output" &&
+                newParams[flatKey].isString()) {
+              flattenedParams[flatKey] = newParams[flatKey];
+            }
+          }
+        } else {
+          // If flat structure, merge with existing params (preserve keys not in
+          // update) Start with existing params to preserve keys like
+          // WEIGHTS_PATH, CONFIG_PATH, etc.
+          flattenedParams = existingConfig[key];
+          if (!flattenedParams.isObject()) {
+            flattenedParams = Json::Value(Json::objectValue);
+          }
+
+          // Only update keys that appear in the new params (merge, don't
+          // replace)
+          std::cerr << "[InstanceStorage] Merging flat AdditionalParams: "
+                       "preserving existing keys, updating "
+                    << newParams.size() << " keys from update" << std::endl;
+          for (const auto &flatKey : newParams.getMemberNames()) {
+            if (newParams[flatKey].isString()) {
+              std::cerr << "[InstanceStorage] Updating key: " << flatKey
+                        << " = " << newParams[flatKey].asString() << std::endl;
+              flattenedParams[flatKey] = newParams[flatKey];
+            }
+          }
+        }
+
+        // Update AdditionalParams with merged/flattened version
+        std::cerr << "[InstanceStorage] Final AdditionalParams has "
+                  << flattenedParams.size() << " keys" << std::endl;
+        existingConfig[key] = flattenedParams;
+      } else {
+        // For other nested objects, do deep merge as before
+        for (const auto &nestedKey : newConfig[key].getMemberNames()) {
+          existingConfig[key][nestedKey] = newConfig[key][nestedKey];
+        }
       }
     }
   }
@@ -639,7 +714,14 @@ InstanceStorage::instanceInfoToConfigJson(const InstanceInfo &info,
 
   // Store additional parameters as nested config
   if (!info.additionalParams.empty()) {
+    std::cerr << "[InstanceStorage] Converting " << info.additionalParams.size()
+              << " additionalParams to config JSON" << std::endl;
     for (const auto &pair : info.additionalParams) {
+      // Skip internal flags
+      if (pair.first == "__REPLACE_INPUT_OUTPUT_PARAMS__") {
+        continue;
+      }
+
       // Store model paths and other configs
       if (pair.first == "MODEL_PATH" || pair.first == "SFACE_MODEL_PATH") {
         // These might be stored in ObjectAttributeExtraction or Detector
@@ -647,12 +729,16 @@ InstanceStorage::instanceInfoToConfigJson(const InstanceInfo &info,
         if (!config.isMember("AdditionalParams")) {
           config["AdditionalParams"] = Json::Value(Json::objectValue);
         }
+        std::cerr << "[InstanceStorage] Adding to config: " << pair.first
+                  << " = " << pair.second << std::endl;
         config["AdditionalParams"][pair.first] = pair.second;
       } else {
         // Store other params
         if (!config.isMember("AdditionalParams")) {
           config["AdditionalParams"] = Json::Value(Json::objectValue);
         }
+        std::cerr << "[InstanceStorage] Adding to config: " << pair.first
+                  << " = " << pair.second << std::endl;
         config["AdditionalParams"][pair.first] = pair.second;
       }
     }
