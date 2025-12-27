@@ -28,9 +28,11 @@
 #include "core/health_monitor.h"
 #include "core/logger.h"
 #include "core/logging_flags.h"
+#include "core/metrics_interceptor.h"
 #include "core/node_pool_manager.h"
 #include "core/node_storage.h"
 #include "core/pipeline_builder.h"
+#include "core/request_middleware.h"
 #include "core/watchdog.h"
 #include "fonts/font_upload_handler.h"
 #include "groups/group_registry.h"
@@ -3564,6 +3566,19 @@ int main(int argc, char *argv[]) {
     app.registerFilter(corsFilter);
     PLOG_INFO
         << "[Config] CORS filter registered for OPTIONS preflight handling";
+
+    // Register metrics middleware to track request metrics
+    // Note: The middleware stores timing info in request attributes.
+    // Metrics are recorded via MetricsInterceptor which should be called
+    // when responses are created. However, since Drogon's filter mechanism
+    // doesn't easily support callback wrapping, we'll need to ensure
+    // metrics are recorded. For now, the middleware stores timing info
+    // and handlers or other mechanisms can call MetricsInterceptor::intercept()
+    // to record metrics.
+    auto metricsMiddleware = std::make_shared<RequestMetricsMiddleware>();
+    app.registerFilter(metricsMiddleware);
+    PLOG_INFO
+        << "[Config] Metrics middleware registered for endpoint monitoring";
 
     // Explicitly disable HTTPS - we only use HTTP
     // With useSSL=false, Drogon will not check for SSL certificates

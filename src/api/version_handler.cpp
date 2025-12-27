@@ -1,4 +1,5 @@
 #include "api/version_handler.h"
+#include "core/metrics_interceptor.h"
 #include <drogon/HttpResponse.h>
 #include <json/json.h>
 
@@ -16,8 +17,10 @@
 #endif
 
 void VersionHandler::getVersion(
-    const HttpRequestPtr & /*req*/,
+    const HttpRequestPtr &req,
     std::function<void(const HttpResponsePtr &)> &&callback) {
+  // Set handler start time for accurate metrics
+  MetricsInterceptor::setHandlerStartTime(req);
   try {
     Json::Value response;
 
@@ -36,7 +39,8 @@ void VersionHandler::getVersion(
     resp->addHeader("Access-Control-Allow-Methods", "GET, OPTIONS");
     resp->addHeader("Access-Control-Allow-Headers", "Content-Type");
 
-    callback(resp);
+    // Record metrics and call callback
+    MetricsInterceptor::callWithMetrics(req, resp, std::move(callback));
   } catch (const std::exception &e) {
     // Error handling
     Json::Value errorResponse;
@@ -45,6 +49,8 @@ void VersionHandler::getVersion(
 
     auto resp = HttpResponse::newHttpJsonResponse(errorResponse);
     resp->setStatusCode(k500InternalServerError);
-    callback(resp);
+
+    // Record metrics and call callback
+    MetricsInterceptor::callWithMetrics(req, resp, std::move(callback));
   }
 }

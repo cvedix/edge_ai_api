@@ -1,5 +1,6 @@
 #include "api/log_handler.h"
 #include "core/log_manager.h"
+#include "core/metrics_interceptor.h"
 #include <algorithm>
 #include <cstdio>
 #include <ctime>
@@ -13,8 +14,11 @@
 namespace fs = std::filesystem;
 
 void LogHandler::listLogFiles(
-    const HttpRequestPtr & /*req*/,
+    const HttpRequestPtr &req,
     std::function<void(const HttpResponsePtr &)> &&callback) {
+  // Set handler start time for accurate metrics
+  MetricsInterceptor::setHandlerStartTime(req);
+
   try {
     Json::Value response;
     Json::Value categories(Json::objectValue);
@@ -49,10 +53,13 @@ void LogHandler::listLogFiles(
     resp->addHeader("Access-Control-Allow-Methods", "GET, OPTIONS");
     resp->addHeader("Access-Control-Allow-Headers", "Content-Type");
 
-    callback(resp);
+    // Record metrics and call callback
+    MetricsInterceptor::callWithMetrics(req, resp, std::move(callback));
   } catch (const std::exception &e) {
-    callback(createErrorResponse(k500InternalServerError,
-                                 "Internal server error", e.what()));
+    auto errorResp = createErrorResponse(k500InternalServerError,
+                                         "Internal server error", e.what());
+    // Record metrics and call callback
+    MetricsInterceptor::callWithMetrics(req, errorResp, std::move(callback));
   }
 }
 
@@ -63,9 +70,10 @@ std::string LogHandler::extractCategory(const HttpRequestPtr &req) const {
   // Fallback: extract from path if getParameter doesn't work
   if (category.empty()) {
     std::string path = req->getPath();
-    size_t logsPos = path.find("/logs/");
-    if (logsPos != std::string::npos) {
-      size_t start = logsPos + 6; // length of "/logs/"
+    // Look for "/log/" (singular) in path like "/v1/core/log/{category}"
+    size_t logPos = path.find("/log/");
+    if (logPos != std::string::npos) {
+      size_t start = logPos + 5; // length of "/log/"
       size_t end = path.find("/", start);
       if (end == std::string::npos) {
         end = path.length();
@@ -84,10 +92,10 @@ std::string LogHandler::extractDate(const HttpRequestPtr &req) const {
   // Fallback: extract from path if getParameter doesn't work
   if (date.empty()) {
     std::string path = req->getPath();
-    // Look for pattern: /logs/{category}/{date}
-    size_t logsPos = path.find("/logs/");
-    if (logsPos != std::string::npos) {
-      size_t categoryStart = logsPos + 6; // length of "/logs/"
+    // Look for pattern: /log/{category}/{date}
+    size_t logPos = path.find("/log/");
+    if (logPos != std::string::npos) {
+      size_t categoryStart = logPos + 5; // length of "/log/"
       size_t categoryEnd = path.find("/", categoryStart);
       if (categoryEnd != std::string::npos) {
         size_t dateStart = categoryEnd + 1;
@@ -106,6 +114,9 @@ std::string LogHandler::extractDate(const HttpRequestPtr &req) const {
 void LogHandler::getLogsByCategory(
     const HttpRequestPtr &req,
     std::function<void(const HttpResponsePtr &)> &&callback) {
+  // Set handler start time for accurate metrics
+  MetricsInterceptor::setHandlerStartTime(req);
+
   try {
     // Get category from path parameter
     std::string category_str = extractCategory(req);
@@ -158,7 +169,7 @@ void LogHandler::getLogsByCategory(
       resp->addHeader("Access-Control-Allow-Origin", "*");
       resp->addHeader("Access-Control-Allow-Methods", "GET, OPTIONS");
       resp->addHeader("Access-Control-Allow-Headers", "Content-Type");
-      callback(resp);
+      MetricsInterceptor::callWithMetrics(req, resp, std::move(callback));
       return;
     }
 
@@ -201,16 +212,22 @@ void LogHandler::getLogsByCategory(
     resp->addHeader("Access-Control-Allow-Methods", "GET, OPTIONS");
     resp->addHeader("Access-Control-Allow-Headers", "Content-Type");
 
-    callback(resp);
+    // Record metrics and call callback
+    MetricsInterceptor::callWithMetrics(req, resp, std::move(callback));
   } catch (const std::exception &e) {
-    callback(createErrorResponse(k500InternalServerError,
-                                 "Internal server error", e.what()));
+    auto errorResp = createErrorResponse(k500InternalServerError,
+                                         "Internal server error", e.what());
+    // Record metrics and call callback
+    MetricsInterceptor::callWithMetrics(req, errorResp, std::move(callback));
   }
 }
 
 void LogHandler::getLogsByCategoryAndDate(
     const HttpRequestPtr &req,
     std::function<void(const HttpResponsePtr &)> &&callback) {
+  // Set handler start time for accurate metrics
+  MetricsInterceptor::setHandlerStartTime(req);
+
   try {
     // Get category and date from path parameters
     std::string category_str = extractCategory(req);
@@ -288,22 +305,30 @@ void LogHandler::getLogsByCategoryAndDate(
     resp->addHeader("Access-Control-Allow-Methods", "GET, OPTIONS");
     resp->addHeader("Access-Control-Allow-Headers", "Content-Type");
 
-    callback(resp);
+    // Record metrics and call callback
+    MetricsInterceptor::callWithMetrics(req, resp, std::move(callback));
   } catch (const std::exception &e) {
-    callback(createErrorResponse(k500InternalServerError,
-                                 "Internal server error", e.what()));
+    auto errorResp = createErrorResponse(k500InternalServerError,
+                                         "Internal server error", e.what());
+    // Record metrics and call callback
+    MetricsInterceptor::callWithMetrics(req, errorResp, std::move(callback));
   }
 }
 
 void LogHandler::handleOptions(
-    const HttpRequestPtr & /*req*/,
+    const HttpRequestPtr &req,
     std::function<void(const HttpResponsePtr &)> &&callback) {
+  // Set handler start time for accurate metrics
+  MetricsInterceptor::setHandlerStartTime(req);
+
   auto resp = HttpResponse::newHttpResponse();
   resp->setStatusCode(k200OK);
   resp->addHeader("Access-Control-Allow-Origin", "*");
   resp->addHeader("Access-Control-Allow-Methods", "GET, OPTIONS");
   resp->addHeader("Access-Control-Allow-Headers", "Content-Type");
-  callback(resp);
+
+  // Record metrics and call callback
+  MetricsInterceptor::callWithMetrics(req, resp, std::move(callback));
 }
 
 Json::Value LogHandler::parseLogLine(const std::string &line) const {
@@ -563,9 +588,10 @@ time_t LogHandler::parseTimestamp(const std::string &timestamp) const {
     }
 
     // Try to parse with milliseconds
+    int milliseconds = 0; // Parse but ignore milliseconds
     if (sscanf(ts.c_str(), "%d-%d-%dT%d:%d:%d.%d", &tm.tm_year, &tm.tm_mon,
                &tm.tm_mday, &tm.tm_hour, &tm.tm_min, &tm.tm_sec,
-               &tm.tm_isdst) >= 6) {
+               &milliseconds) >= 6) {
       tm.tm_year -= 1900;
       tm.tm_mon -= 1;
       tm.tm_isdst = -1;

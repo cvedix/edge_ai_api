@@ -80,6 +80,7 @@ target_sources(edge_ai_api_tests PRIVATE
     ${CMAKE_SOURCE_DIR}/src/core/health_monitor.cpp
     ${CMAKE_SOURCE_DIR}/src/core/endpoint_monitor.cpp
     ${CMAKE_SOURCE_DIR}/src/core/request_middleware.cpp
+    ${CMAKE_SOURCE_DIR}/src/core/metrics_interceptor.cpp
     ${CMAKE_SOURCE_DIR}/src/instances/instance_storage.cpp
     ${CMAKE_SOURCE_DIR}/src/instances/instance_registry.cpp
     ${CMAKE_SOURCE_DIR}/src/instances/inprocess_instance_manager.cpp

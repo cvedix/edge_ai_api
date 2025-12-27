@@ -1,6 +1,7 @@
 #include "api/group_handler.h"
 #include "core/logger.h"
 #include "core/logging_flags.h"
+#include "core/metrics_interceptor.h"
 #include "groups/group_registry.h"
 #include "groups/group_storage.h"
 #include "instances/instance_manager.h"
@@ -732,8 +733,10 @@ void GroupHandler::getGroupInstances(
 }
 
 void GroupHandler::handleOptions(
-    const HttpRequestPtr & /*req*/,
+    const HttpRequestPtr &req,
     std::function<void(const HttpResponsePtr &)> &&callback) {
+  // Set handler start time for accurate metrics
+  MetricsInterceptor::setHandlerStartTime(req);
 
   auto resp = HttpResponse::newHttpResponse();
   resp->setStatusCode(k200OK);
@@ -743,5 +746,7 @@ void GroupHandler::handleOptions(
   resp->addHeader("Access-Control-Allow-Headers",
                   "Content-Type, Authorization");
   resp->addHeader("Access-Control-Max-Age", "3600");
-  callback(resp);
+
+  // Record metrics and call callback
+  MetricsInterceptor::callWithMetrics(req, resp, std::move(callback));
 }

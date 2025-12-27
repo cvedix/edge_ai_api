@@ -1,6 +1,7 @@
 #include "api/solution_handler.h"
 #include "core/logger.h"
 #include "core/logging_flags.h"
+#include "core/metrics_interceptor.h"
 #include "core/node_pool_manager.h"
 #include "core/node_template_registry.h"
 #include "models/solution_config.h"
@@ -292,6 +293,8 @@ HttpResponsePtr SolutionHandler::createSuccessResponse(const Json::Value &data,
 void SolutionHandler::listSolutions(
     const HttpRequestPtr &req,
     std::function<void(const HttpResponsePtr &)> &&callback) {
+  // Set handler start time for accurate metrics
+  MetricsInterceptor::setHandlerStartTime(req);
 
   auto start_time = std::chrono::steady_clock::now();
 
@@ -551,6 +554,8 @@ void SolutionHandler::listSolutions(
 void SolutionHandler::getSolution(
     const HttpRequestPtr &req,
     std::function<void(const HttpResponsePtr &)> &&callback) {
+  // Set handler start time for accurate metrics
+  MetricsInterceptor::setHandlerStartTime(req);
 
   auto start_time = std::chrono::steady_clock::now();
 
@@ -637,6 +642,8 @@ void SolutionHandler::getSolution(
 void SolutionHandler::createSolution(
     const HttpRequestPtr &req,
     std::function<void(const HttpResponsePtr &)> &&callback) {
+  // Set handler start time for accurate metrics
+  MetricsInterceptor::setHandlerStartTime(req);
 
   auto start_time = std::chrono::steady_clock::now();
 
@@ -793,7 +800,8 @@ void SolutionHandler::createSolution(
     resp->addHeader("Access-Control-Allow-Headers",
                     "Content-Type, Authorization");
 
-    callback(resp);
+    // Record metrics and call callback
+    MetricsInterceptor::callWithMetrics(req, resp, std::move(callback));
 
   } catch (const std::exception &e) {
     auto end_time = std::chrono::steady_clock::now();
@@ -822,6 +830,8 @@ void SolutionHandler::createSolution(
 void SolutionHandler::updateSolution(
     const HttpRequestPtr &req,
     std::function<void(const HttpResponsePtr &)> &&callback) {
+  // Set handler start time for accurate metrics
+  MetricsInterceptor::setHandlerStartTime(req);
 
   auto start_time = std::chrono::steady_clock::now();
 
@@ -1025,6 +1035,8 @@ void SolutionHandler::updateSolution(
 void SolutionHandler::deleteSolution(
     const HttpRequestPtr &req,
     std::function<void(const HttpResponsePtr &)> &&callback) {
+  // Set handler start time for accurate metrics
+  MetricsInterceptor::setHandlerStartTime(req);
 
   auto start_time = std::chrono::steady_clock::now();
 
@@ -2516,6 +2528,9 @@ void SolutionHandler::getSolutionInstanceBody(
 void SolutionHandler::handleOptions(
     const HttpRequestPtr &req,
     std::function<void(const HttpResponsePtr &)> &&callback) {
+  // Set handler start time for accurate metrics
+  MetricsInterceptor::setHandlerStartTime(req);
+
   auto resp = HttpResponse::newHttpResponse();
   resp->setStatusCode(k200OK);
   resp->addHeader("Access-Control-Allow-Origin", "*");
@@ -2524,7 +2539,9 @@ void SolutionHandler::handleOptions(
   resp->addHeader("Access-Control-Allow-Headers",
                   "Content-Type, Authorization");
   resp->addHeader("Access-Control-Max-Age", "3600");
-  callback(resp);
+
+  // Record metrics and call callback
+  MetricsInterceptor::callWithMetrics(req, resp, std::move(callback));
 }
 
 std::string SolutionHandler::getDefaultSolutionsDir() const {

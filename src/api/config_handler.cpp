@@ -2,6 +2,7 @@
 #include "config/system_config.h"
 #include "core/logger.h"
 #include "core/logging_flags.h"
+#include "core/metrics_interceptor.h"
 #include <algorithm>
 #include <chrono>
 #include <drogon/HttpResponse.h>
@@ -10,6 +11,9 @@
 void ConfigHandler::getConfig(
     const HttpRequestPtr &req,
     std::function<void(const HttpResponsePtr &)> &&callback) {
+  // Set handler start time for accurate metrics
+  MetricsInterceptor::setHandlerStartTime(req);
+
   // Check if path query parameter exists - if yes, route to getConfigSection
   std::string pathParam = req->getParameter("path");
   if (!pathParam.empty()) {
@@ -36,7 +40,8 @@ void ConfigHandler::getConfig(
                 << "ms";
     }
 
-    callback(createSuccessResponse(configJson));
+    auto resp = createSuccessResponse(configJson);
+    MetricsInterceptor::callWithMetrics(req, resp, std::move(callback));
 
   } catch (const std::exception &e) {
     auto end_time = std::chrono::steady_clock::now();
@@ -48,7 +53,8 @@ void ConfigHandler::getConfig(
                  << " - " << duration.count() << "ms";
     }
 
-    callback(createErrorResponse(500, "Internal server error", e.what()));
+    auto resp = createErrorResponse(500, "Internal server error", e.what());
+    MetricsInterceptor::callWithMetrics(req, resp, std::move(callback));
   } catch (...) {
     auto end_time = std::chrono::steady_clock::now();
     auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(
@@ -59,8 +65,9 @@ void ConfigHandler::getConfig(
                  << duration.count() << "ms";
     }
 
-    callback(createErrorResponse(500, "Internal server error",
-                                 "Unknown error occurred"));
+    auto resp = createErrorResponse(500, "Internal server error",
+                                    "Unknown error occurred");
+    MetricsInterceptor::callWithMetrics(req, resp, std::move(callback));
   }
 }
 
@@ -590,6 +597,9 @@ void ConfigHandler::resetConfig(
 void ConfigHandler::handleOptions(
     const HttpRequestPtr &req,
     std::function<void(const HttpResponsePtr &)> &&callback) {
+  // Set handler start time for accurate metrics
+  MetricsInterceptor::setHandlerStartTime(req);
+
   auto resp = HttpResponse::newHttpResponse();
   resp->setStatusCode(k200OK);
   resp->addHeader("Access-Control-Allow-Origin", "*");
@@ -598,7 +608,9 @@ void ConfigHandler::handleOptions(
   resp->addHeader("Access-Control-Allow-Headers",
                   "Content-Type, Authorization");
   resp->addHeader("Access-Control-Max-Age", "3600");
-  callback(resp);
+
+  // Record metrics and call callback
+  MetricsInterceptor::callWithMetrics(req, resp, std::move(callback));
 }
 
 std::string ConfigHandler::extractPath(const HttpRequestPtr &req) const {

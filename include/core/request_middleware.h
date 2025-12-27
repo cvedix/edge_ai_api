@@ -14,7 +14,7 @@
  * - Error count per endpoint
  */
 class RequestMetricsMiddleware
-    : public drogon::HttpFilter<RequestMetricsMiddleware> {
+    : public drogon::HttpFilter<RequestMetricsMiddleware, false> {
 public:
   RequestMetricsMiddleware() {}
 

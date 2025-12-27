@@ -1,11 +1,15 @@
 #include "api/endpoints_handler.h"
 #include "core/endpoint_monitor.h"
+#include "core/metrics_interceptor.h"
 #include <drogon/HttpResponse.h>
 #include <json/json.h>
 
 void EndpointsHandler::getEndpointsStats(
-    const HttpRequestPtr & /*req*/,
+    const HttpRequestPtr &req,
     std::function<void(const HttpResponsePtr &)> &&callback) {
+  // Set handler start time for accurate metrics
+  MetricsInterceptor::setHandlerStartTime(req);
+
   try {
     Json::Value response;
     Json::Value endpoints(Json::arrayValue);
@@ -64,7 +68,8 @@ void EndpointsHandler::getEndpointsStats(
     resp->addHeader("Access-Control-Allow-Methods", "GET, OPTIONS");
     resp->addHeader("Access-Control-Allow-Headers", "Content-Type");
 
-    callback(resp);
+    // Record metrics and call callback
+    MetricsInterceptor::callWithMetrics(req, resp, std::move(callback));
   } catch (const std::exception &e) {
     Json::Value errorResponse;
     errorResponse["error"] = "Internal server error";
@@ -72,6 +77,8 @@ void EndpointsHandler::getEndpointsStats(
 
     auto resp = HttpResponse::newHttpJsonResponse(errorResponse);
     resp->setStatusCode(k500InternalServerError);
-    callback(resp);
+
+    // Record metrics and call callback
+    MetricsInterceptor::callWithMetrics(req, resp, std::move(callback));
   }
 }

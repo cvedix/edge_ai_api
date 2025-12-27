@@ -1,8 +1,56 @@
 #include "core/performance_monitor.h"
 #include <algorithm>
 #include <iomanip>
+#include <map>
 #include <sstream>
+#include <vector>
 
+// New function to record request with method and status
+void PerformanceMonitor::recordRequest(const std::string &method,
+                                       const std::string &endpoint, int status,
+                                       double duration_seconds) {
+  // Create key: "method:endpoint:status"
+  std::string key = method + ":" + endpoint + ":" + std::to_string(status);
+
+  RequestMetrics *metrics_ptr = nullptr;
+  {
+    std::lock_guard<std::mutex> lock(mutex_);
+    metrics_ptr = &request_metrics_[key];
+  }
+
+  // Update counters atomically
+  metrics_ptr->count.fetch_add(1, std::memory_order_relaxed);
+
+  // For atomic<double>, use compare_exchange_weak loop to add
+  double current_total =
+      metrics_ptr->total_duration_seconds.load(std::memory_order_relaxed);
+  double new_total = current_total + duration_seconds;
+  while (!metrics_ptr->total_duration_seconds.compare_exchange_weak(
+      current_total, new_total, std::memory_order_relaxed)) {
+    new_total = current_total + duration_seconds;
+  }
+
+  // Update min/max
+  double current_min =
+      metrics_ptr->min_duration_seconds.load(std::memory_order_relaxed);
+  while (duration_seconds < current_min &&
+         !metrics_ptr->min_duration_seconds.compare_exchange_weak(
+             current_min, duration_seconds, std::memory_order_relaxed)) {
+    current_min =
+        metrics_ptr->min_duration_seconds.load(std::memory_order_relaxed);
+  }
+
+  double current_max =
+      metrics_ptr->max_duration_seconds.load(std::memory_order_relaxed);
+  while (duration_seconds > current_max &&
+         !metrics_ptr->max_duration_seconds.compare_exchange_weak(
+             current_max, duration_seconds, std::memory_order_relaxed)) {
+    current_max =
+        metrics_ptr->max_duration_seconds.load(std::memory_order_relaxed);
+  }
+}
+
+// Legacy function for backward compatibility
 void PerformanceMonitor::recordRequest(const std::string &endpoint,
                                        std::chrono::milliseconds latency,
                                        bool success) {
@@ -134,37 +182,111 @@ std::string PerformanceMonitor::getPrometheusMetrics() const {
 
   std::ostringstream oss;
 
-  for (const auto &[endpoint, metrics] : endpoint_metrics_) {
-    // Escape endpoint name for Prometheus
-    std::string safe_endpoint = endpoint;
-    std::replace(safe_endpoint.begin(), safe_endpoint.end(), '/', '_');
-    std::replace(safe_endpoint.begin(), safe_endpoint.end(), '-', '_');
+  if (request_metrics_.empty() && endpoint_metrics_.empty()) {
+    oss << "# No metrics available yet. Metrics will appear after requests are "
+           "processed.\n";
+    return oss.str();
+  }
 
-    oss << "# HELP http_requests_total Total number of HTTP requests\n";
-    oss << "# TYPE http_requests_total counter\n";
-    oss << "http_requests_total{endpoint=\"" << endpoint << "\"} "
-        << metrics.total_requests.load() << "\n";
+  // Histogram buckets: 0.1, 0.3, 0.5, 1.0, +Inf
+  const std::vector<double> buckets = {0.1, 0.3, 0.5, 1.0};
 
-    oss << "# HELP http_requests_successful Total number of successful HTTP "
-           "requests\n";
-    oss << "# TYPE http_requests_successful counter\n";
-    oss << "http_requests_successful{endpoint=\"" << endpoint << "\"} "
-        << metrics.successful_requests.load() << "\n";
+  // Group metrics by method:endpoint:status
+  std::map<std::string,
+           std::vector<std::pair<std::string, const RequestMetrics *>>>
+      grouped;
 
-    oss << "# HELP http_requests_failed Total number of failed HTTP requests\n";
-    oss << "# TYPE http_requests_failed counter\n";
-    oss << "http_requests_failed{endpoint=\"" << endpoint << "\"} "
-        << metrics.failed_requests.load() << "\n";
+  for (const auto &[key, metrics] : request_metrics_) {
+    // Parse key: "method:endpoint:status"
+    size_t pos1 = key.find(':');
+    size_t pos2 = key.find(':', pos1 + 1);
+    if (pos1 == std::string::npos || pos2 == std::string::npos)
+      continue;
 
-    oss << "# HELP http_request_latency_ms HTTP request latency in "
-           "milliseconds\n";
-    oss << "# TYPE http_request_latency_ms histogram\n";
-    oss << "http_request_latency_ms{endpoint=\"" << endpoint
-        << "\",quantile=\"0.5\"} " << metrics.avg_latency_ms.load() << "\n";
-    oss << "http_request_latency_ms{endpoint=\"" << endpoint
-        << "\",quantile=\"0.95\"} " << metrics.max_latency_ms.load() << "\n";
-    oss << "http_request_latency_ms{endpoint=\"" << endpoint
-        << "\",quantile=\"0.99\"} " << metrics.max_latency_ms.load() << "\n";
+    std::string method = key.substr(0, pos1);
+    std::string endpoint = key.substr(pos1 + 1, pos2 - pos1 - 1);
+    std::string status = key.substr(pos2 + 1);
+
+    std::string group_key = method + ":" + endpoint;
+    grouped[group_key].push_back({status, &metrics});
+  }
+
+  // Write http_requests_total counter
+  oss << "# HELP http_requests_total Total number of HTTP requests\n";
+  oss << "# TYPE http_requests_total counter\n";
+  for (const auto &[group_key, status_list] : grouped) {
+    size_t pos = group_key.find(':');
+    std::string method = group_key.substr(0, pos);
+    std::string endpoint = group_key.substr(pos + 1);
+
+    for (const auto &[status, metrics] : status_list) {
+      uint64_t count = metrics->count.load();
+      if (count > 0) {
+        oss << "http_requests_total{method=\"" << method << "\",endpoint=\""
+            << endpoint << "\",status=\"" << status << "\"} " << count << "\n";
+      }
+    }
+  }
+  oss << "\n";
+
+  // Write http_request_duration_seconds histogram
+  oss << "# HELP http_request_duration_seconds HTTP request latency\n";
+  oss << "# TYPE http_request_duration_seconds histogram\n";
+
+  for (const auto &[group_key, status_list] : grouped) {
+    size_t pos = group_key.find(':');
+    std::string method = group_key.substr(0, pos);
+    std::string endpoint = group_key.substr(pos + 1);
+
+    for (const auto &[status, metrics] : status_list) {
+      uint64_t count = metrics->count.load();
+      double total_duration = metrics->total_duration_seconds.load();
+
+      if (count == 0)
+        continue;
+
+      // Calculate buckets - for now, use average duration to estimate
+      // distribution In a production system, you'd want to track individual
+      // durations
+      std::vector<uint64_t> bucket_counts(buckets.size() + 1, 0);
+      double avg_duration = total_duration / count;
+
+      // Distribute requests into buckets based on average duration
+      // All requests go into buckets >= average, +Inf always has all
+      bool found_bucket = false;
+      for (size_t i = 0; i < buckets.size(); i++) {
+        if (avg_duration <= buckets[i]) {
+          bucket_counts[i] = count;
+          found_bucket = true;
+          // Fill all smaller buckets with 0 (they're below average)
+          break;
+        }
+      }
+      // If average is above all buckets, all go to +Inf
+      if (!found_bucket) {
+        // Average is > 1.0, all requests in +Inf
+      }
+      // +Inf bucket always contains all requests
+      bucket_counts[buckets.size()] = count;
+
+      // Write buckets
+      for (size_t i = 0; i < buckets.size(); i++) {
+        oss << "http_request_duration_seconds_bucket{method=\"" << method
+            << "\",endpoint=\"" << endpoint << "\",le=\"" << buckets[i]
+            << "\"} " << bucket_counts[i] << "\n";
+      }
+      oss << "http_request_duration_seconds_bucket{method=\"" << method
+          << "\",endpoint=\"" << endpoint << "\",le=\"+Inf\"} "
+          << bucket_counts[buckets.size()] << "\n";
+
+      // Write sum and count
+      oss << "http_request_duration_seconds_sum{method=\"" << method
+          << "\",endpoint=\"" << endpoint << "\"} " << std::fixed
+          << std::setprecision(2) << total_duration << "\n";
+      oss << "http_request_duration_seconds_count{method=\"" << method
+          << "\",endpoint=\"" << endpoint << "\"} " << count << "\n";
+      oss << "\n";
+    }
   }
 
   return oss.str();

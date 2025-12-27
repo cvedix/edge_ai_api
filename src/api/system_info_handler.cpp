@@ -1,4 +1,5 @@
 #include "api/system_info_handler.h"
+#include "core/metrics_interceptor.h"
 #include <algorithm>
 #include <chrono>
 #include <cmath>
@@ -18,8 +19,11 @@ static uint64_t g_last_idle_time = 0;
 static uint64_t g_last_total_time = 0;
 
 void SystemInfoHandler::getSystemInfo(
-    const HttpRequestPtr & /*req*/,
+    const HttpRequestPtr &req,
     std::function<void(const HttpResponsePtr &)> &&callback) {
+  // Set handler start time for accurate metrics
+  MetricsInterceptor::setHandlerStartTime(req);
+
   try {
     Json::Value response;
 
@@ -40,16 +44,22 @@ void SystemInfoHandler::getSystemInfo(
     resp->addHeader("Access-Control-Allow-Methods", "GET, OPTIONS");
     resp->addHeader("Access-Control-Allow-Headers", "Content-Type");
 
-    callback(resp);
+    // Record metrics and call callback
+    MetricsInterceptor::callWithMetrics(req, resp, std::move(callback));
   } catch (const std::exception &e) {
-    callback(createErrorResponse(k500InternalServerError,
-                                 "Internal server error", e.what()));
+    auto errorResp = createErrorResponse(k500InternalServerError,
+                                         "Internal server error", e.what());
+    // Record metrics and call callback
+    MetricsInterceptor::callWithMetrics(req, errorResp, std::move(callback));
   }
 }
 
 void SystemInfoHandler::getSystemStatus(
-    const HttpRequestPtr & /*req*/,
+    const HttpRequestPtr &req,
     std::function<void(const HttpResponsePtr &)> &&callback) {
+  // Set handler start time for accurate metrics
+  MetricsInterceptor::setHandlerStartTime(req);
+
   try {
     Json::Value response;
 
@@ -96,22 +106,30 @@ void SystemInfoHandler::getSystemStatus(
     resp->addHeader("Access-Control-Allow-Methods", "GET, OPTIONS");
     resp->addHeader("Access-Control-Allow-Headers", "Content-Type");
 
-    callback(resp);
+    // Record metrics and call callback
+    MetricsInterceptor::callWithMetrics(req, resp, std::move(callback));
   } catch (const std::exception &e) {
-    callback(createErrorResponse(k500InternalServerError,
-                                 "Internal server error", e.what()));
+    auto errorResp = createErrorResponse(k500InternalServerError,
+                                         "Internal server error", e.what());
+    // Record metrics and call callback
+    MetricsInterceptor::callWithMetrics(req, errorResp, std::move(callback));
   }
 }
 
 void SystemInfoHandler::handleOptions(
-    const HttpRequestPtr & /*req*/,
+    const HttpRequestPtr &req,
     std::function<void(const HttpResponsePtr &)> &&callback) {
+  // Set handler start time for accurate metrics
+  MetricsInterceptor::setHandlerStartTime(req);
+
   auto resp = HttpResponse::newHttpResponse();
   resp->setStatusCode(k200OK);
   resp->addHeader("Access-Control-Allow-Origin", "*");
   resp->addHeader("Access-Control-Allow-Methods", "GET, OPTIONS");
   resp->addHeader("Access-Control-Allow-Headers", "Content-Type");
-  callback(resp);
+
+  // Record metrics and call callback
+  MetricsInterceptor::callWithMetrics(req, resp, std::move(callback));
 }
 
 Json::Value SystemInfoHandler::getCPUInfo() const {

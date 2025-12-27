@@ -1,6 +1,7 @@
 #include "api/node_handler.h"
 #include "core/logger.h"
 #include "core/logging_flags.h"
+#include "core/metrics_interceptor.h"
 #include "core/node_pool_manager.h"
 #include <algorithm>
 #include <ctime>
@@ -14,6 +15,9 @@
 void NodeHandler::listNodes(
     const HttpRequestPtr &req,
     std::function<void(const HttpResponsePtr &)> &&callback) {
+  // Set handler start time for accurate metrics
+  MetricsInterceptor::setHandlerStartTime(req);
+
   auto start_time = std::chrono::steady_clock::now();
 
   if (isApiLoggingEnabled()) {
@@ -773,6 +777,9 @@ void NodeHandler::getStats(
 void NodeHandler::handleOptions(
     const HttpRequestPtr &req,
     std::function<void(const HttpResponsePtr &)> &&callback) {
+  // Set handler start time for accurate metrics
+  MetricsInterceptor::setHandlerStartTime(req);
+
   auto resp = HttpResponse::newHttpResponse();
   resp->setStatusCode(k200OK);
   resp->addHeader("Access-Control-Allow-Origin", "*");
@@ -781,7 +788,9 @@ void NodeHandler::handleOptions(
   resp->addHeader("Access-Control-Allow-Headers",
                   "Content-Type, Authorization");
   resp->addHeader("Access-Control-Max-Age", "3600");
-  callback(resp);
+
+  // Record metrics and call callback
+  MetricsInterceptor::callWithMetrics(req, resp, std::move(callback));
 }
 
 HttpResponsePtr NodeHandler::createSuccessResponse(const Json::Value &data,

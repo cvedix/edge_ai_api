@@ -1,5 +1,6 @@
 #include "models/model_upload_handler.h"
 #include "core/env_config.h"
+#include "core/metrics_interceptor.h"
 #include <algorithm>
 #include <cctype>
 #include <chrono>
@@ -318,6 +319,8 @@ ModelUploadHandler::extractModelName(const HttpRequestPtr &req) const {
 void ModelUploadHandler::uploadModel(
     const HttpRequestPtr &req,
     std::function<void(const HttpResponsePtr &)> &&callback) {
+  // Set handler start time for accurate metrics
+  MetricsInterceptor::setHandlerStartTime(req);
 
   try {
     // Check content type from header
@@ -737,7 +740,7 @@ void ModelUploadHandler::uploadModel(
                         "Content-Type, Content-Disposition");
         resp->addHeader("Access-Control-Max-Age", "3600");
 
-        callback(resp);
+        MetricsInterceptor::callWithMetrics(req, resp, std::move(callback));
       } else {
         // No files uploaded successfully
         std::string errorMsg = "No files were uploaded successfully";
@@ -1041,21 +1044,27 @@ void ModelUploadHandler::uploadModel(
               << sanitizedFilename << " (" << fileSize << " bytes)"
               << std::endl;
 
-    callback(resp);
+    // Record metrics and call callback
+    MetricsInterceptor::callWithMetrics(req, resp, std::move(callback));
 
   } catch (const std::exception &e) {
     std::cerr << "[ModelUploadHandler] Exception: " << e.what() << std::endl;
-    callback(createErrorResponse(500, "Internal server error", e.what()));
+    auto errorResp =
+        createErrorResponse(500, "Internal server error", e.what());
+    MetricsInterceptor::callWithMetrics(req, errorResp, std::move(callback));
   } catch (...) {
     std::cerr << "[ModelUploadHandler] Unknown exception" << std::endl;
-    callback(createErrorResponse(500, "Internal server error",
-                                 "Unknown error occurred"));
+    auto errorResp = createErrorResponse(500, "Internal server error",
+                                         "Unknown error occurred");
+    MetricsInterceptor::callWithMetrics(req, errorResp, std::move(callback));
   }
 }
 
 void ModelUploadHandler::listModels(
     const HttpRequestPtr &req,
     std::function<void(const HttpResponsePtr &)> &&callback) {
+  // Set handler start time for accurate metrics
+  MetricsInterceptor::setHandlerStartTime(req);
 
   try {
     // Get directory path from request
@@ -1086,7 +1095,7 @@ void ModelUploadHandler::listModels(
                       "POST, GET, PUT, DELETE, OPTIONS");
       resp->addHeader("Access-Control-Allow-Headers",
                       "Content-Type, Authorization");
-      callback(resp);
+      MetricsInterceptor::callWithMetrics(req, resp, std::move(callback));
       return;
     }
 
@@ -1188,15 +1197,20 @@ void ModelUploadHandler::listModels(
                     "POST, GET, PUT, DELETE, OPTIONS");
     resp->addHeader("Access-Control-Allow-Headers",
                     "Content-Type, Authorization");
-    callback(resp);
+
+    // Record metrics and call callback
+    MetricsInterceptor::callWithMetrics(req, resp, std::move(callback));
 
   } catch (const std::exception &e) {
     std::cerr << "[ModelUploadHandler] Exception: " << e.what() << std::endl;
-    callback(createErrorResponse(500, "Internal server error", e.what()));
+    auto errorResp =
+        createErrorResponse(500, "Internal server error", e.what());
+    MetricsInterceptor::callWithMetrics(req, errorResp, std::move(callback));
   } catch (...) {
     std::cerr << "[ModelUploadHandler] Unknown exception" << std::endl;
-    callback(createErrorResponse(500, "Internal server error",
-                                 "Unknown error occurred"));
+    auto errorResp = createErrorResponse(500, "Internal server error",
+                                         "Unknown error occurred");
+    MetricsInterceptor::callWithMetrics(req, errorResp, std::move(callback));
   }
 }
 
@@ -1352,21 +1366,27 @@ void ModelUploadHandler::renameModel(
     std::cerr << "[ModelUploadHandler] Model file renamed: "
               << sanitizedSourceName << " -> " << sanitizedNewName << std::endl;
 
-    callback(resp);
+    // Record metrics and call callback
+    MetricsInterceptor::callWithMetrics(req, resp, std::move(callback));
 
   } catch (const std::exception &e) {
     std::cerr << "[ModelUploadHandler] Exception: " << e.what() << std::endl;
-    callback(createErrorResponse(500, "Internal server error", e.what()));
+    auto errorResp =
+        createErrorResponse(500, "Internal server error", e.what());
+    MetricsInterceptor::callWithMetrics(req, errorResp, std::move(callback));
   } catch (...) {
     std::cerr << "[ModelUploadHandler] Unknown exception" << std::endl;
-    callback(createErrorResponse(500, "Internal server error",
-                                 "Unknown error occurred"));
+    auto errorResp = createErrorResponse(500, "Internal server error",
+                                         "Unknown error occurred");
+    MetricsInterceptor::callWithMetrics(req, errorResp, std::move(callback));
   }
 }
 
 void ModelUploadHandler::deleteModel(
     const HttpRequestPtr &req,
     std::function<void(const HttpResponsePtr &)> &&callback) {
+  // Set handler start time for accurate metrics
+  MetricsInterceptor::setHandlerStartTime(req);
 
   try {
     // Get model name from path parameter
@@ -1429,21 +1449,27 @@ void ModelUploadHandler::deleteModel(
     std::cerr << "[ModelUploadHandler] Model file deleted: "
               << sanitizedFilename << std::endl;
 
-    callback(resp);
+    // Record metrics and call callback
+    MetricsInterceptor::callWithMetrics(req, resp, std::move(callback));
 
   } catch (const std::exception &e) {
     std::cerr << "[ModelUploadHandler] Exception: " << e.what() << std::endl;
-    callback(createErrorResponse(500, "Internal server error", e.what()));
+    auto errorResp =
+        createErrorResponse(500, "Internal server error", e.what());
+    MetricsInterceptor::callWithMetrics(req, errorResp, std::move(callback));
   } catch (...) {
     std::cerr << "[ModelUploadHandler] Unknown exception" << std::endl;
-    callback(createErrorResponse(500, "Internal server error",
-                                 "Unknown error occurred"));
+    auto errorResp = createErrorResponse(500, "Internal server error",
+                                         "Unknown error occurred");
+    MetricsInterceptor::callWithMetrics(req, errorResp, std::move(callback));
   }
 }
 
 void ModelUploadHandler::handleOptions(
-    const HttpRequestPtr & /*req*/,
+    const HttpRequestPtr &req,
     std::function<void(const HttpResponsePtr &)> &&callback) {
+  // Set handler start time for accurate metrics
+  MetricsInterceptor::setHandlerStartTime(req);
 
   auto resp = HttpResponse::newHttpResponse();
   resp->setStatusCode(k200OK);
@@ -1452,7 +1478,9 @@ void ModelUploadHandler::handleOptions(
                   "POST, GET, PUT, DELETE, OPTIONS");
   resp->addHeader("Access-Control-Allow-Headers", "Content-Type");
   resp->addHeader("Access-Control-Max-Age", "3600");
-  callback(resp);
+
+  // Record metrics and call callback
+  MetricsInterceptor::callWithMetrics(req, resp, std::move(callback));
 }
 
 HttpResponsePtr
