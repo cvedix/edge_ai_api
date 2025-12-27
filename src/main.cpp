@@ -1,6 +1,7 @@
 #include "api/create_instance_handler.h"
 #include "api/health_handler.h"
 #include "api/instance_handler.h"
+#include "api/quick_instance_handler.h"
 #include "api/swagger_handler.h"
 #include "api/version_handler.h"
 #include "api/watchdog_handler.h"
@@ -8,6 +9,7 @@
 #ifdef ENABLE_SYSTEM_INFO_HANDLER
 #include "api/system_info_handler.h"
 #endif
+#include "api/ai_websocket.h"
 #include "api/config_handler.h"
 #include "api/endpoints_handler.h"
 #include "api/group_handler.h"
@@ -63,6 +65,7 @@
 #include <stdexcept>
 #include <string>
 #include <sys/socket.h>
+#include <sys/stat.h>
 #include <sys/types.h>
 #include <sys/wait.h>
 #include <thread>
@@ -1707,11 +1710,197 @@ uint16_t parsePort(const char *port_str, uint16_t default_port) {
   }
 }
 
+/**
+ * @brief Auto-detect and set GST_PLUGIN_PATH if not already set
+ * This ensures GStreamer can find plugins even when running directly (not via
+ * service)
+ *
+ * PRODUCTION NOTE: In production, GST_PLUGIN_PATH should be set in service file
+ * or .env This auto-detect is only a fallback for development/testing
+ * scenarios.
+ *
+ * @param enable_find_search If false, skip slow find command (recommended for
+ * production)
+ */
+static void setupGStreamerPluginPath(bool enable_find_search = false) {
+  // Check if GST_PLUGIN_PATH is already set
+  const char *existing_path = std::getenv("GST_PLUGIN_PATH");
+  if (existing_path && strlen(existing_path) > 0) {
+    // In production, this should always be the case (set in service file)
+    std::cerr << "[Main] GST_PLUGIN_PATH already set: " << existing_path
+              << std::endl;
+    return;
+  }
+
+  std::string plugin_path;
+
+  // Method 1: Try common paths first (fastest, no external commands)
+  // This covers 99% of production cases (Debian/Ubuntu x86_64, ARM64, ARM32,
+  // Fedora, etc.)
+  std::vector<std::string> common_paths = {
+      "/usr/lib/x86_64-linux-gnu/gstreamer-1.0",
+      "/usr/lib/aarch64-linux-gnu/gstreamer-1.0",
+      "/usr/lib/arm-linux-gnueabihf/gstreamer-1.0",
+      "/usr/lib64/gstreamer-1.0",
+      "/usr/lib/gstreamer-1.0",
+      "/usr/local/lib/gstreamer-1.0"};
+
+  for (const auto &path : common_paths) {
+    if (std::filesystem::exists(path) && std::filesystem::is_directory(path) &&
+        std::filesystem::exists(path + "/libgstcoreelements.so")) {
+      plugin_path = path;
+      break;
+    }
+  }
+
+  // Method 2: Try pkg-config (only if common paths failed)
+  // NOTE: This requires pkg-config to be installed and accessible
+  if (plugin_path.empty()) {
+    FILE *pipe = popen(
+        "pkg-config --variable=pluginsdir gstreamer-1.0 2>/dev/null", "r");
+    if (pipe) {
+      char buffer[512];
+      if (fgets(buffer, sizeof(buffer), pipe) != nullptr) {
+        std::string path(buffer);
+        // Remove trailing newline
+        if (!path.empty() && path.back() == '\n') {
+          path.pop_back();
+        }
+        if (!path.empty() && std::filesystem::exists(path) &&
+            std::filesystem::is_directory(path)) {
+          plugin_path = path;
+        }
+      }
+      pclose(pipe);
+    }
+  }
+
+  // Method 3: Try to find libgstcoreelements.so (SLOW - only for development)
+  // PRODUCTION: Skip this by default (enable_find_search=false)
+  // This can scan entire /usr filesystem which is slow and may fail in
+  // restricted environments
+  if (plugin_path.empty() && enable_find_search) {
+    FILE *pipe = popen(
+        "find /usr -name 'libgstcoreelements.so' 2>/dev/null | head -1", "r");
+    if (pipe) {
+      char buffer[512];
+      if (fgets(buffer, sizeof(buffer), pipe) != nullptr) {
+        std::string file_path(buffer);
+        // Remove trailing newline
+        if (!file_path.empty() && file_path.back() == '\n') {
+          file_path.pop_back();
+        }
+        if (!file_path.empty()) {
+          std::filesystem::path p(file_path);
+          plugin_path = p.parent_path().string();
+        }
+      }
+      pclose(pipe);
+    }
+  }
+
+  // Set GST_PLUGIN_PATH if found
+  if (!plugin_path.empty()) {
+    if (setenv("GST_PLUGIN_PATH", plugin_path.c_str(), 0) == 0) {
+      std::cerr << "[Main] ✓ Auto-detected and set GST_PLUGIN_PATH: "
+                << plugin_path << std::endl;
+      std::cerr << "[Main]   NOTE: For production, set GST_PLUGIN_PATH in "
+                   "service file or .env"
+                << std::endl;
+    } else {
+      std::cerr << "[Main] ⚠ Failed to set GST_PLUGIN_PATH" << std::endl;
+    }
+  } else {
+    std::cerr << "[Main] ⚠ Could not auto-detect GST_PLUGIN_PATH. "
+                 "GStreamer plugins may not be found."
+              << std::endl;
+    std::cerr << "[Main]   For production: Set GST_PLUGIN_PATH in service file "
+                 "or .env file"
+              << std::endl;
+    std::cerr << "[Main]   For development: export "
+                 "GST_PLUGIN_PATH=/path/to/gstreamer-1.0"
+              << std::endl;
+  }
+}
+
 int main(int argc, char *argv[]) {
   try {
+    // CRITICAL: Disable problematic GStreamer plugins FIRST, before anything
+    // else VA plugin (libgstva.so) can crash on systems with broken GPU drivers
+    // (nouveau, etc.) Must be done BEFORE GStreamer initializes (which happens
+    // when CVEDIX SDK loads)
+
+    // Method 1: Set rank to NONE - must be done before GStreamer init
+    const char *existing_rank = std::getenv("GST_PLUGIN_FEATURE_RANK");
+    std::string rank_env = existing_rank ? existing_rank : "";
+
+    // Add VA plugin blacklist if not already present
+    if (rank_env.find("va:") == std::string::npos &&
+        rank_env.find("vaapi:") == std::string::npos &&
+        rank_env.find("vaapidecode:") == std::string::npos &&
+        rank_env.find("vaapipostproc:") == std::string::npos) {
+      // Set rank to NONE (0) to disable VA plugins
+      if (!rank_env.empty()) {
+        rank_env += ",";
+      }
+      rank_env += "va:NONE,vaapi:NONE,vaapidecode:NONE,vaapipostproc:NONE";
+      setenv("GST_PLUGIN_FEATURE_RANK", rank_env.c_str(), 0);
+    }
+
+    // Method 2: Rename problematic plugin file to prevent loading
+    // This is more reliable - GStreamer won't find the file even if rank
+    // setting fails
+    const char *plugin_path_env = std::getenv("GST_PLUGIN_PATH");
+    std::string plugin_dir = plugin_path_env
+                                 ? plugin_path_env
+                                 : "/usr/lib/x86_64-linux-gnu/gstreamer-1.0";
+
+    std::string va_plugin_path = plugin_dir + "/libgstva.so";
+    std::string va_plugin_disabled = plugin_dir + "/libgstva.so.disabled";
+
+    if (std::filesystem::exists(va_plugin_path) &&
+        !std::filesystem::exists(va_plugin_disabled)) {
+      try {
+        std::filesystem::rename(va_plugin_path, va_plugin_disabled);
+        std::cerr << "[Main] ✓ Disabled VA plugin by renaming: "
+                  << va_plugin_path << " -> " << va_plugin_disabled
+                  << std::endl;
+        std::cerr << "[Main]   This prevents crashes on systems with broken "
+                     "GPU drivers (nouveau, etc.)"
+                  << std::endl;
+      } catch (const std::exception &e) {
+        // If rename fails (permission denied, etc.), just log warning
+        std::cerr << "[Main] ⚠ Could not rename VA plugin (may need root): "
+                  << e.what() << std::endl;
+        std::cerr << "[Main]   VA plugin may still cause crashes. Consider: "
+                  << "sudo mv " << va_plugin_path << " " << va_plugin_disabled
+                  << std::endl;
+        std::cerr << "[Main]   Or set in service file: "
+                     "GST_PLUGIN_FEATURE_RANK=va:NONE,vaapi:NONE,..."
+                  << std::endl;
+      }
+    } else if (std::filesystem::exists(va_plugin_disabled)) {
+      std::cerr << "[Main] ✓ VA plugin already disabled: " << va_plugin_disabled
+                << std::endl;
+    }
+
     // Parse command line arguments
     if (!parseArguments(argc, argv)) {
       return 0; // Help was requested, exit normally
+    }
+
+    // CRITICAL: Setup GStreamer plugin path BEFORE any GStreamer operations
+    // This ensures plugins can be found even when running directly (not via
+    // service) PRODUCTION: In production, GST_PLUGIN_PATH should be set in
+    // service file or .env This auto-detect is only a fallback. Skip slow find
+    // search for production.
+    bool enable_find_search = g_debug_mode.load(); // Only enable in debug mode
+    setupGStreamerPluginPath(enable_find_search);
+
+    // Log rank setting if applied
+    if (!rank_env.empty() && rank_env.find("va:NONE") != std::string::npos) {
+      std::cerr << "[Main] ✓ Set GST_PLUGIN_FEATURE_RANK to disable VA plugins"
+                << std::endl;
     }
 
     // Initialize categorized logger first (before any logging)
@@ -2250,6 +2439,8 @@ int main(int argc, char *argv[]) {
     // Register instance manager and solution registry with handlers
     CreateInstanceHandler::setInstanceManager(instanceManager.get());
     CreateInstanceHandler::setSolutionRegistry(&solutionRegistry);
+    QuickInstanceHandler::setInstanceManager(instanceManager.get());
+    QuickInstanceHandler::setSolutionRegistry(&solutionRegistry);
     InstanceHandler::setInstanceManager(instanceManager.get());
 
     // Register solution registry and storage with solution handler
@@ -2307,10 +2498,14 @@ int main(int argc, char *argv[]) {
     // Subprocess modes)
     LinesHandler::setInstanceManager(instanceManager.get());
 
+    // Register instance manager with WebSocket controller
+    AIWebSocketController::setInstanceManager(instanceManager.get());
+
     // CRITICAL: Create handler instances AFTER dependencies are set
     // This ensures handlers are ready when Drogon registers routes
     // Handlers created here depend on dependencies set above
     static CreateInstanceHandler createInstanceHandler;
+    static QuickInstanceHandler quickInstanceHandler;
     static InstanceHandler instanceHandler;
     static SolutionHandler solutionHandler;
     static GroupHandler groupHandler;

@@ -256,6 +256,7 @@ set(SOURCES
     src/api/endpoints_handler.cpp
     src/api/swagger_handler.cpp
     src/api/create_instance_handler.cpp
+    src/api/quick_instance_handler.cpp
     src/api/instance_handler.cpp
     src/api/solution_handler.cpp
     src/api/group_handler.cpp
@@ -313,7 +314,7 @@ set(SOURCES
     # src/core/performance_monitor.cpp
     # AI handlers (not needed for base code)
     # src/api/ai_handler.cpp
-    # src/api/ai_websocket.cpp
+    src/api/ai_websocket.cpp
     # src/api/metrics_handler.cpp
 )
 

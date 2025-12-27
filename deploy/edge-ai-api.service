@@ -45,6 +45,9 @@ Environment="API_PORT=8080"
 # Override: Set GST_PLUGIN_PATH in /opt/edge_ai_api/config/.env
 # To auto-detect: Run scripts/setup_gst_plugin_path.sh
 Environment="GST_PLUGIN_PATH=/usr/lib/x86_64-linux-gnu/gstreamer-1.0"
+# Disable problematic VA plugins that cause crashes on systems with broken GPU drivers
+# Set rank to NONE to prevent GStreamer from loading VA plugins
+Environment="GST_PLUGIN_FEATURE_RANK=va:NONE,vaapi:NONE,vaapidecode:NONE,vaapipostproc:NONE"
 
 [Install]
 WantedBy=multi-user.target
