@@ -7,51 +7,65 @@ namespace BackpressureController {
 void BackpressureController::configure(const std::string &instanceId,
                                        DropPolicy policy, double max_fps,
                                        size_t max_queue_size) {
-  std::lock_guard<std::mutex> lock(mutex_);
+  std::unique_lock<std::shared_mutex> config_lock(config_mutex_);
+  std::lock_guard<std::mutex> stats_lock(mutex_);
 
   InstanceConfig &config = configs_[instanceId];
   config.policy = policy;
-  config.max_fps = std::clamp(max_fps, MIN_FPS, MAX_FPS);
+  double clamped_fps = std::clamp(max_fps, MIN_FPS, MAX_FPS);
+  config.max_fps.store(clamped_fps, std::memory_order_relaxed);
   config.max_queue_size = max_queue_size;
-  config.min_frame_interval =
-      std::chrono::milliseconds(static_cast<int>(1000.0 / config.max_fps));
-  config.last_frame_time = std::chrono::steady_clock::now();
+  int64_t interval_ms = static_cast<int64_t>(1000.0 / clamped_fps);
+  config.min_frame_interval_ms.store(interval_ms, std::memory_order_relaxed);
+  auto now = std::chrono::steady_clock::now();
+  config.setLastFrameTime(now);
 
   // Initialize stats if not exists
   if (stats_.find(instanceId) == stats_.end()) {
     BackpressureStats &stats = stats_[instanceId];
-    stats.target_fps.store(config.max_fps);
+    stats.target_fps.store(clamped_fps);
     stats.current_fps.store(0.0);
   }
 }
 
 bool BackpressureController::shouldDropFrame(const std::string &instanceId) {
-  std::lock_guard<std::mutex> lock(mutex_);
+  // OPTIMIZATION: Lock-free fast path using shared_lock for concurrent reads
+  // This eliminates mutex contention in the hot path (called every frame)
 
-  auto configIt = configs_.find(instanceId);
-  if (configIt == configs_.end()) {
-    return false; // Not configured, don't drop
-  }
-
-  InstanceConfig &config = configIt->second;
-  auto now = std::chrono::steady_clock::now();
-
-  // Check FPS limiting
-  auto time_since_last = std::chrono::duration_cast<std::chrono::milliseconds>(
-      now - config.last_frame_time);
-
-  if (time_since_last < config.min_frame_interval) {
-    // Frame too soon - drop based on policy
-    if (config.policy == DropPolicy::DROP_NEWEST) {
-      return true; // Drop this new frame
+  InstanceConfig *config = nullptr;
+  {
+    // Use shared_lock for read-only access (allows concurrent readers)
+    std::shared_lock<std::shared_mutex> read_lock(config_mutex_);
+    auto configIt = configs_.find(instanceId);
+    if (configIt == configs_.end()) {
+      return false; // Not configured, don't drop
     }
-    // For DROP_OLDEST, we'd need queue access, but we don't have it here
-    // So we'll use DROP_NEWEST behavior
-    return true;
-  }
+    config = &configIt->second;
 
-  // Update last frame time
-  config.last_frame_time = now;
+    // Read atomic values while holding shared lock (safe)
+    // The lock ensures config pointer is valid
+    auto now = std::chrono::steady_clock::now();
+    auto last_frame_time = config->getLastFrameTime();
+    int64_t min_interval_ms =
+        config->min_frame_interval_ms.load(std::memory_order_relaxed);
+
+    // Check FPS limiting using atomic values
+    auto time_since_last =
+        std::chrono::duration_cast<std::chrono::milliseconds>(now -
+                                                              last_frame_time);
+
+    if (time_since_last.count() < min_interval_ms) {
+      // Frame too soon - drop based on policy
+      // For DROP_NEWEST (default), drop this new frame
+      return true;
+    }
+
+    // Update last frame time atomically (lock-free, safe even after lock
+    // release)
+    config->setLastFrameTime(now);
+  }
+  // Lock released - atomic operations are safe without lock
+
   return false;
 }
 
@@ -86,8 +100,19 @@ void BackpressureController::recordFrameProcessed(
     last_update = now;
   }
 
-  // Update adaptive FPS periodically
-  updateAdaptiveFPS(instanceId);
+  // Update adaptive FPS periodically (but not on every frame to avoid lock
+  // contention) Only update every N frames or use try_lock to avoid blocking
+  static thread_local std::unordered_map<std::string, uint64_t>
+      adaptive_update_counter;
+  auto &counter = adaptive_update_counter[instanceId];
+  counter++;
+
+  // Only call updateAdaptiveFPS every 30 frames (~1 second at 30 FPS)
+  // This reduces lock contention significantly
+  if (counter >= 30) {
+    counter = 0;
+    updateAdaptiveFPS(instanceId);
+  }
 }
 
 void BackpressureController::recordFrameDropped(const std::string &instanceId) {
@@ -170,7 +195,13 @@ void BackpressureController::resetStats(const std::string &instanceId) {
 }
 
 void BackpressureController::updateAdaptiveFPS(const std::string &instanceId) {
-  std::lock_guard<std::mutex> lock(mutex_);
+  // Use try_lock to avoid blocking if another thread is updating
+  // This prevents lock contention from blocking frame processing
+  std::unique_lock<std::mutex> lock(mutex_, std::try_to_lock);
+  if (!lock.owns_lock()) {
+    // Another thread is updating, skip this update
+    return;
+  }
 
   auto configIt = configs_.find(instanceId);
   if (configIt == configs_.end()) {
@@ -215,24 +246,26 @@ void BackpressureController::updateAdaptiveFPS(const std::string &instanceId) {
     new_target = std::max(new_target, MIN_FPS);
     stats.target_fps.store(new_target, std::memory_order_relaxed);
 
-    // Update config
-    config.max_fps = new_target;
-    config.min_frame_interval =
-        std::chrono::milliseconds(static_cast<int>(1000.0 / new_target));
+    // Update config atomically (lock-free for hot path reads)
+    config.max_fps.store(new_target, std::memory_order_relaxed);
+    int64_t interval_ms = static_cast<int64_t>(1000.0 / new_target);
+    config.min_frame_interval_ms.store(interval_ms, std::memory_order_relaxed);
 
     // Reset backpressure flag after reducing FPS
     stats.backpressure_detected.store(false, std::memory_order_relaxed);
   } else {
     // No backpressure - gradually increase FPS
     double new_target = current_target * FPS_INCREASE_FACTOR;
-    new_target = std::min(new_target, config.max_fps);
+    double max_fps_value = config.max_fps.load(std::memory_order_relaxed);
+    new_target = std::min(new_target, max_fps_value);
     new_target = std::min(new_target, MAX_FPS);
 
     if (new_target > current_target) {
       stats.target_fps.store(new_target, std::memory_order_relaxed);
-      config.max_fps = new_target;
-      config.min_frame_interval =
-          std::chrono::milliseconds(static_cast<int>(1000.0 / new_target));
+      config.max_fps.store(new_target, std::memory_order_relaxed);
+      int64_t interval_ms = static_cast<int64_t>(1000.0 / new_target);
+      config.min_frame_interval_ms.store(interval_ms,
+                                         std::memory_order_relaxed);
     }
   }
 }

@@ -11,6 +11,7 @@
 #include <atomic>
 #include <chrono>
 #include <mutex>
+#include <shared_mutex>
 #include <string>
 #include <unordered_map>
 
@@ -128,13 +129,34 @@ private:
 
   struct InstanceConfig {
     DropPolicy policy;
-    double max_fps;
+    // Use atomic for values accessed in hot path (shouldDropFrame)
+    std::atomic<double> max_fps{30.0};
+    std::atomic<int64_t> min_frame_interval_ms{33}; // 1000/30 FPS default
+    // Store time as nanoseconds since epoch for atomic access
+    std::atomic<int64_t> last_frame_time_ns{0};
     size_t max_queue_size;
-    std::chrono::steady_clock::time_point last_frame_time;
-    std::chrono::milliseconds min_frame_interval;
+
+    // Helper to get last_frame_time atomically
+    std::chrono::steady_clock::time_point getLastFrameTime() const {
+      int64_t ns = last_frame_time_ns.load(std::memory_order_relaxed);
+      if (ns == 0) {
+        return std::chrono::steady_clock::time_point{}; // Epoch
+      }
+      return std::chrono::steady_clock::time_point(
+          std::chrono::steady_clock::duration(std::chrono::nanoseconds(ns)));
+    }
+
+    // Helper to set last_frame_time atomically
+    void setLastFrameTime(const std::chrono::steady_clock::time_point &time) {
+      auto ns = std::chrono::duration_cast<std::chrono::nanoseconds>(
+                    time.time_since_epoch())
+                    .count();
+      last_frame_time_ns.store(ns, std::memory_order_relaxed);
+    }
   };
 
-  mutable std::mutex mutex_;
+  mutable std::mutex mutex_;               // For configuration changes
+  mutable std::shared_mutex config_mutex_; // For concurrent config reads
   std::unordered_map<std::string, InstanceConfig> configs_;
   std::unordered_map<std::string, BackpressureStats> stats_;
 

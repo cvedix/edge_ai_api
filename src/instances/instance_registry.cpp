@@ -2563,6 +2563,13 @@ bool InstanceRegistry::startPipeline(
     tracker.current_queue_size = 0;
     tracker.max_queue_size_seen = 0;
     tracker.expected_frames_from_source = 0;
+
+    // OPTIMIZATION: Cache RTSP instance flag to avoid repeated lookups in hot
+    // path
+    auto instanceIt = instances_.find(instanceId);
+    bool isRTSP =
+        (instanceIt != instances_.end() && !instanceIt->second.rtspUrl.empty());
+    tracker.is_rtsp_instance.store(isRTSP, std::memory_order_relaxed);
   }
 
   // PHASE 3: Configure backpressure control
@@ -4909,98 +4916,113 @@ void InstanceRegistry::setupFrameCaptureHook(
 
   // Setup hook on app_des_node if found
   if (appDesNode) {
-    appDesNode->set_app_des_result_hooker([this, instanceId](
-                                              std::string /*node_name*/,
-                                              std::shared_ptr<
-                                                  cvedix_objects::cvedix_meta>
-                                                  meta) {
-      try {
-        if (!meta) {
-          return;
-        }
-
-        if (meta->meta_type == cvedix_objects::cvedix_meta_type::FRAME) {
-          auto frame_meta =
-              std::dynamic_pointer_cast<cvedix_objects::cvedix_frame_meta>(
-                  meta);
-          if (!frame_meta) {
-            return;
-          }
-
-          // PHASE 3: Check backpressure control before processing frame
-          using namespace BackpressureController;
-          auto &backpressure =
-              BackpressureController::BackpressureController::getInstance();
-
-          // Check if we should drop this frame (FPS limiting, queue full, etc.)
-          if (backpressure.shouldDropFrame(instanceId)) {
-            backpressure.recordFrameDropped(instanceId);
-            return; // Drop frame early to prevent processing overhead
-          }
-
-          // PHASE 2 OPTIMIZATION: Update frame counter using atomic operations
-          // - NO LOCK needed! This eliminates lock contention in the hot path
-          // (called every frame)
-          {
-            // Try to get tracker pointer without lock (fast path)
-            // We need lock only to find/create tracker, not to increment
-            // counters
-            std::shared_lock<std::shared_timed_mutex> read_lock(mutex_);
-            auto trackerIt = statistics_trackers_.find(instanceId);
-            if (trackerIt != statistics_trackers_.end()) {
-              // Release lock before atomic operations
-              read_lock.unlock();
-
-              // Atomic increments - no lock needed!
-              trackerIt->second.frames_processed.fetch_add(
-                  1, std::memory_order_relaxed);
-              trackerIt->second.frame_count_since_last_update.fetch_add(
-                  1, std::memory_order_relaxed);
+    appDesNode->set_app_des_result_hooker(
+        [this, instanceId](std::string /*node_name*/,
+                           std::shared_ptr<cvedix_objects::cvedix_meta> meta) {
+          try {
+            if (!meta) {
+              return;
             }
-            // If tracker not found, it will be created later (not in hot path)
-          }
 
-          // PHASE 3: Record frame processed for backpressure tracking
-          backpressure.recordFrameProcessed(instanceId);
+            if (meta->meta_type == cvedix_objects::cvedix_meta_type::FRAME) {
+              auto frame_meta =
+                  std::dynamic_pointer_cast<cvedix_objects::cvedix_frame_meta>(
+                      meta);
+              if (!frame_meta) {
+                return;
+              }
 
-          // PHASE 1 OPTIMIZATION: Prefer OSD frame (processed with overlays),
-          // fallback to original frame Use reference to avoid unnecessary copy
-          // before updateFrameCache
-          const cv::Mat *frameToCache = nullptr;
-          if (!frame_meta->osd_frame.empty()) {
-            frameToCache = &frame_meta->osd_frame;
-          } else if (!frame_meta->frame.empty()) {
-            frameToCache = &frame_meta->frame;
-          }
+              // PHASE 3: Check backpressure control before processing frame
+              using namespace BackpressureController;
+              auto &backpressure =
+                  BackpressureController::BackpressureController::getInstance();
 
-          if (frameToCache && !frameToCache->empty()) {
-            updateFrameCache(instanceId, *frameToCache);
+              // Check if we should drop this frame (FPS limiting, queue full,
+              // etc.)
+              if (backpressure.shouldDropFrame(instanceId)) {
+                backpressure.recordFrameDropped(instanceId);
+                return; // Drop frame early to prevent processing overhead
+              }
 
-            // CRITICAL: Update RTSP activity when we receive frames
-            // This is the only reliable way to know RTSP is actually working
-            // Check if this is an RTSP instance by checking if instance has
-            // RTSP URL
-            {
-              std::shared_lock<std::shared_timed_mutex> read_lock(mutex_);
-              auto instanceIt = instances_.find(instanceId);
-              if (instanceIt != instances_.end() &&
-                  !instanceIt->second.rtspUrl.empty()) {
-                // This is an RTSP instance - update activity
-                updateRTSPActivity(instanceId);
+              // PHASE 2 OPTIMIZATION: Update frame counter using atomic
+              // operations
+              // - NO LOCK needed! This eliminates lock contention in the hot
+              // path (called every frame) OPTIMIZATION: Cache tracker pointer
+              // and RTSP flag to avoid repeated lookups
+              InstanceStatsTracker *trackerPtr = nullptr;
+              bool isRTSPInstance = false;
+              {
+                // Get tracker pointer in one lock
+                std::shared_lock<std::shared_timed_mutex> read_lock(mutex_);
+                auto trackerIt = statistics_trackers_.find(instanceId);
+                if (trackerIt != statistics_trackers_.end()) {
+                  trackerPtr = &trackerIt->second;
+                  // Read RTSP flag lock-free (cached during initialization)
+                  isRTSPInstance = trackerPtr->is_rtsp_instance.load(
+                      std::memory_order_relaxed);
+                }
+              }
+              // Lock released - now do atomic operations without lock
+
+              if (trackerPtr) {
+                // Atomic increments - no lock needed!
+                trackerPtr->frames_processed.fetch_add(
+                    1, std::memory_order_relaxed);
+                trackerPtr->frame_count_since_last_update.fetch_add(
+                    1, std::memory_order_relaxed);
+              }
+
+              // PHASE 3: Record frame processed for backpressure tracking
+              backpressure.recordFrameProcessed(instanceId);
+
+              // PHASE 1 OPTIMIZATION: Prefer OSD frame (processed with
+              // overlays), fallback to original frame Use reference to avoid
+              // unnecessary copy before updateFrameCache
+              const cv::Mat *frameToCache = nullptr;
+              if (!frame_meta->osd_frame.empty()) {
+                frameToCache = &frame_meta->osd_frame;
+              } else if (!frame_meta->frame.empty()) {
+                frameToCache = &frame_meta->frame;
+              }
+
+              if (frameToCache && !frameToCache->empty()) {
+                updateFrameCache(instanceId, *frameToCache);
+
+                // CRITICAL: Update RTSP activity when we receive frames
+                // This is the only reliable way to know RTSP is actually
+                // working OPTIMIZATION: Use cached RTSP flag (read lock-free
+                // above) No need to check again - flag is set during instance
+                // initialization
+                if (isRTSPInstance) {
+                  updateRTSPActivity(instanceId);
+                }
               }
             }
+          } catch (const std::exception &e) {
+            // OPTIMIZATION: Use static counter to throttle exception logging
+            // Exceptions should be rare, but if they occur frequently, logging
+            // every exception can impact performance
+            static thread_local uint64_t exception_count = 0;
+            exception_count++;
+
+            // Only log every 100th exception to avoid performance impact
+            if (exception_count % 100 == 1) {
+              std::cerr << "[InstanceRegistry] [ERROR] Exception in frame "
+                           "capture hook (count: "
+                        << exception_count << "): " << e.what() << std::endl;
+            }
+          } catch (...) {
+            static thread_local uint64_t unknown_exception_count = 0;
+            unknown_exception_count++;
+
+            if (unknown_exception_count % 100 == 1) {
+              std::cerr
+                  << "[InstanceRegistry] [ERROR] Unknown exception in frame "
+                     "capture hook (count: "
+                  << unknown_exception_count << ")" << std::endl;
+            }
           }
-        }
-      } catch (const std::exception &e) {
-        std::cerr
-            << "[InstanceRegistry] [ERROR] Exception in frame capture hook: "
-            << e.what() << std::endl;
-      } catch (...) {
-        std::cerr << "[InstanceRegistry] [ERROR] Unknown exception in frame "
-                     "capture hook"
-                  << std::endl;
-      }
-    });
+        });
 
     std::cerr << "[InstanceRegistry] ✓ Frame capture hook setup completed for "
                  "instance: "
@@ -5521,7 +5543,14 @@ void InstanceRegistry::stopRTSPMonitorThread(const std::string &instanceId) {
 }
 
 void InstanceRegistry::updateRTSPActivity(const std::string &instanceId) {
-  std::lock_guard<std::mutex> lock(rtsp_monitor_mutex_);
+  // OPTIMIZATION: Use try_lock to avoid blocking frame processing
+  // RTSP activity update is not critical - missing one update is acceptable
+  std::unique_lock<std::mutex> lock(rtsp_monitor_mutex_, std::try_to_lock);
+  if (!lock.owns_lock()) {
+    // Lock is busy - skip this update to avoid blocking frame processing
+    return;
+  }
+
   rtsp_last_activity_[instanceId] = std::chrono::steady_clock::now();
 
   // Mark as successfully connected when we receive activity (frames)

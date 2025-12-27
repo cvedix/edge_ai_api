@@ -251,6 +251,10 @@ private:
     std::atomic<uint64_t> dropped_frames{0};
     std::atomic<uint64_t> frame_count_since_last_update{0};
 
+    // OPTIMIZATION: Cache RTSP instance flag to avoid repeated lookups
+    // Set once during instance creation, read lock-free in hot path
+    std::atomic<bool> is_rtsp_instance{false};
+
     // Protected by mutex (updated less frequently)
     double last_fps = 0.0;
     std::chrono::steady_clock::time_point last_fps_update;

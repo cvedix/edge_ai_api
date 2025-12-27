@@ -283,6 +283,7 @@ void SystemConfig::initializeDefaults() {
 
   system["max_running_instances"] = 0; // 0 = unlimited
   system["modelforge_permissive"] = false;
+  system["auto_reload"] = false; // Default: disable auto reload
 
   config_json_["system"] = system;
 }
@@ -472,6 +473,26 @@ void SystemConfig::setWebServerConfig(const WebServerConfig &config) {
   config_json_["system"]["web_server"] = webServer;
 }
 
+void SystemConfig::initializeCurrentServerConfig(
+    const WebServerConfig &config) {
+  std::lock_guard<std::mutex> lock(mutex_);
+  current_server_config_ = config;
+  server_config_initialized_ = true;
+}
+
+bool SystemConfig::hasWebServerConfigChanged(
+    const WebServerConfig &newConfig) const {
+  std::lock_guard<std::mutex> lock(mutex_);
+
+  if (!server_config_initialized_) {
+    return false; // Server config not initialized yet
+  }
+
+  // Check if port or host changed (these require server restart)
+  return (current_server_config_.port != newConfig.port) ||
+         (current_server_config_.ipAddress != newConfig.ipAddress);
+}
+
 SystemConfig::LoggingConfig SystemConfig::getLoggingConfig() const {
   std::lock_guard<std::mutex> lock(mutex_);
   LoggingConfig config;
@@ -561,6 +582,28 @@ void SystemConfig::setModelforgePermissive(bool permissive) {
   }
 
   config_json_["system"]["modelforge_permissive"] = permissive;
+}
+
+bool SystemConfig::getAutoReload() const {
+  std::lock_guard<std::mutex> lock(mutex_);
+
+  if (config_json_.isMember("system") &&
+      config_json_["system"].isMember("auto_reload") &&
+      config_json_["system"]["auto_reload"].isBool()) {
+    return config_json_["system"]["auto_reload"].asBool();
+  }
+
+  return false; // Default: disabled
+}
+
+void SystemConfig::setAutoReload(bool enabled) {
+  std::lock_guard<std::mutex> lock(mutex_);
+
+  if (!config_json_.isMember("system")) {
+    config_json_["system"] = Json::Value(Json::objectValue);
+  }
+
+  config_json_["system"]["auto_reload"] = enabled;
 }
 
 std::string

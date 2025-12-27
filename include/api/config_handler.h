@@ -124,4 +124,23 @@ private:
    * @brief Validate JSON configuration
    */
   bool validateConfigJson(const Json::Value &json, std::string &error) const;
+
+  /**
+   * @brief Get auto_restart option from request (query param or JSON body)
+   * @param req HTTP request
+   * @param jsonBody JSON body (if available)
+   * @return true if auto_restart is requested, false otherwise
+   */
+  bool getAutoRestartOption(const HttpRequestPtr &req,
+                            const Json::Value *jsonBody = nullptr) const;
+
+  /**
+   * @brief Schedule system restart if needed
+   * @param shouldRestart Whether restart should be scheduled
+   * @param reason Reason for restart (for logging)
+   * @param delaySeconds Delay before restart (default: 3 seconds)
+   */
+  void scheduleRestartIfNeeded(bool shouldRestart,
+                               const std::string &reason = "",
+                               double delaySeconds = 3.0) const;
 };

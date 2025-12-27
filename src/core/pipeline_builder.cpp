@@ -3710,28 +3710,20 @@ PipelineBuilder::createBACrosslineNode(
             std::cerr << "[PipelineBuilder] Warning: Failed to parse line "
                          "parameters from solution config: "
                       << e.what() << std::endl;
-            std::cerr << "[PipelineBuilder] Falling back to default line "
-                         "configuration"
-                      << std::endl;
-            // Fall through to Priority 3
             hasValidParams = false;
           }
         } else {
-          std::cerr
-              << "[PipelineBuilder] Line parameters contain unresolved "
-                 "placeholders, falling back to default line configuration"
-              << std::endl;
+          std::cerr << "[PipelineBuilder] Line parameters contain unresolved "
+                       "placeholders"
+                    << std::endl;
           hasValidParams = false;
         }
       }
 
       if (!hasValidParams) {
-        // Priority 3: Default line for channel 0 (from sample)
-        cvedix_objects::cvedix_point start(0, 250);
-        cvedix_objects::cvedix_point end(700, 220);
-        lines[0] = cvedix_objects::cvedix_line(start, end);
-        std::cerr << "[PipelineBuilder] Using default line configuration "
-                     "(channel 0: (0,250) -> (700,220))"
+        std::cerr << "[PipelineBuilder] No valid line configuration found. "
+                     "BA crossline node will be created without lines. "
+                     "Lines can be added later via API."
                   << std::endl;
       }
     }

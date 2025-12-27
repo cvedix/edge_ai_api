@@ -3650,6 +3650,9 @@ int main(int argc, char *argv[]) {
     PLOG_INFO << "[Server] Access http://" << host << ":" << port
               << "/v1/swagger to view all APIs";
 
+    // Initialize current server config for auto-reload detection
+    systemConfig.initializeCurrentServerConfig(webServerConfig);
+
     // Schedule auto-start to run after server is ready (2 seconds delay)
     // This runs on the event loop thread but starts instances in a separate
     // thread to avoid blocking if instances fail to start, hang, or crash
