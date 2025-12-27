@@ -1,6 +1,7 @@
 #include "videos/video_upload_handler.h"
 #include "core/cors_helper.h"
 #include "core/env_config.h"
+#include "core/metrics_interceptor.h"
 #include <algorithm>
 #include <cctype>
 #include <chrono>
@@ -329,6 +330,8 @@ VideoUploadHandler::extractVideoName(const HttpRequestPtr &req) const {
 void VideoUploadHandler::uploadVideo(
     const HttpRequestPtr &req,
     std::function<void(const HttpResponsePtr &)> &&callback) {
+  // Set handler start time for accurate metrics
+  MetricsInterceptor::setHandlerStartTime(req);
 
   try {
     // Check content type from header
@@ -749,7 +752,7 @@ void VideoUploadHandler::uploadVideo(
         resp->setStatusCode(k201Created);
         CorsHelper::addAllowAllHeaders(resp);
 
-        callback(resp);
+        MetricsInterceptor::callWithMetrics(req, resp, std::move(callback));
       } else {
         // No files uploaded successfully
         std::string errorMsg = "No files were uploaded successfully";
@@ -1050,21 +1053,27 @@ void VideoUploadHandler::uploadVideo(
               << sanitizedFilename << " (" << fileSize << " bytes)"
               << std::endl;
 
-    callback(resp);
+    // Record metrics and call callback
+    MetricsInterceptor::callWithMetrics(req, resp, std::move(callback));
 
   } catch (const std::exception &e) {
     std::cerr << "[VideoUploadHandler] Exception: " << e.what() << std::endl;
-    callback(createErrorResponse(500, "Internal server error", e.what()));
+    auto errorResp =
+        createErrorResponse(500, "Internal server error", e.what());
+    MetricsInterceptor::callWithMetrics(req, errorResp, std::move(callback));
   } catch (...) {
     std::cerr << "[VideoUploadHandler] Unknown exception" << std::endl;
-    callback(createErrorResponse(500, "Internal server error",
-                                 "Unknown error occurred"));
+    auto errorResp = createErrorResponse(500, "Internal server error",
+                                         "Unknown error occurred");
+    MetricsInterceptor::callWithMetrics(req, errorResp, std::move(callback));
   }
 }
 
 void VideoUploadHandler::listVideos(
     const HttpRequestPtr &req,
     std::function<void(const HttpResponsePtr &)> &&callback) {
+  // Set handler start time for accurate metrics
+  MetricsInterceptor::setHandlerStartTime(req);
 
   try {
     // Get directory path from request
@@ -1091,7 +1100,7 @@ void VideoUploadHandler::listVideos(
       auto resp = HttpResponse::newHttpJsonResponse(response);
       resp->setStatusCode(k200OK);
       CorsHelper::addAllowAllHeaders(resp);
-      callback(resp);
+      MetricsInterceptor::callWithMetrics(req, resp, std::move(callback));
       return;
     }
 
@@ -1189,15 +1198,20 @@ void VideoUploadHandler::listVideos(
     auto resp = HttpResponse::newHttpJsonResponse(response);
     resp->setStatusCode(k200OK);
     CorsHelper::addAllowAllHeaders(resp);
-    callback(resp);
+
+    // Record metrics and call callback
+    MetricsInterceptor::callWithMetrics(req, resp, std::move(callback));
 
   } catch (const std::exception &e) {
     std::cerr << "[VideoUploadHandler] Exception: " << e.what() << std::endl;
-    callback(createErrorResponse(500, "Internal server error", e.what()));
+    auto errorResp =
+        createErrorResponse(500, "Internal server error", e.what());
+    MetricsInterceptor::callWithMetrics(req, errorResp, std::move(callback));
   } catch (...) {
     std::cerr << "[VideoUploadHandler] Unknown exception" << std::endl;
-    callback(createErrorResponse(500, "Internal server error",
-                                 "Unknown error occurred"));
+    auto errorResp = createErrorResponse(500, "Internal server error",
+                                         "Unknown error occurred");
+    MetricsInterceptor::callWithMetrics(req, errorResp, std::move(callback));
   }
 }
 
@@ -1348,21 +1362,27 @@ void VideoUploadHandler::renameVideo(
     std::cerr << "[VideoUploadHandler] Video file renamed: "
               << sanitizedSourceName << " -> " << sanitizedNewName << std::endl;
 
-    callback(resp);
+    // Record metrics and call callback
+    MetricsInterceptor::callWithMetrics(req, resp, std::move(callback));
 
   } catch (const std::exception &e) {
     std::cerr << "[VideoUploadHandler] Exception: " << e.what() << std::endl;
-    callback(createErrorResponse(500, "Internal server error", e.what()));
+    auto errorResp =
+        createErrorResponse(500, "Internal server error", e.what());
+    MetricsInterceptor::callWithMetrics(req, errorResp, std::move(callback));
   } catch (...) {
     std::cerr << "[VideoUploadHandler] Unknown exception" << std::endl;
-    callback(createErrorResponse(500, "Internal server error",
-                                 "Unknown error occurred"));
+    auto errorResp = createErrorResponse(500, "Internal server error",
+                                         "Unknown error occurred");
+    MetricsInterceptor::callWithMetrics(req, errorResp, std::move(callback));
   }
 }
 
 void VideoUploadHandler::deleteVideo(
     const HttpRequestPtr &req,
     std::function<void(const HttpResponsePtr &)> &&callback) {
+  // Set handler start time for accurate metrics
+  MetricsInterceptor::setHandlerStartTime(req);
 
   try {
     // Get video name from path parameter
@@ -1421,21 +1441,27 @@ void VideoUploadHandler::deleteVideo(
     std::cerr << "[VideoUploadHandler] Video file deleted: "
               << sanitizedFilename << std::endl;
 
-    callback(resp);
+    // Record metrics and call callback
+    MetricsInterceptor::callWithMetrics(req, resp, std::move(callback));
 
   } catch (const std::exception &e) {
     std::cerr << "[VideoUploadHandler] Exception: " << e.what() << std::endl;
-    callback(createErrorResponse(500, "Internal server error", e.what()));
+    auto errorResp =
+        createErrorResponse(500, "Internal server error", e.what());
+    MetricsInterceptor::callWithMetrics(req, errorResp, std::move(callback));
   } catch (...) {
     std::cerr << "[VideoUploadHandler] Unknown exception" << std::endl;
-    callback(createErrorResponse(500, "Internal server error",
-                                 "Unknown error occurred"));
+    auto errorResp = createErrorResponse(500, "Internal server error",
+                                         "Unknown error occurred");
+    MetricsInterceptor::callWithMetrics(req, errorResp, std::move(callback));
   }
 }
 
 void VideoUploadHandler::handleOptions(
     const HttpRequestPtr &req,
     std::function<void(const HttpResponsePtr &)> &&callback) {
+  // Set handler start time for accurate metrics
+  MetricsInterceptor::setHandlerStartTime(req);
 
   // Debug log to verify handler is called
   std::cerr << "[VideoUploadHandler] OPTIONS handler called!" << std::endl;
@@ -1450,7 +1476,8 @@ void VideoUploadHandler::handleOptions(
       << "[VideoUploadHandler] OPTIONS response sent with ALLOW ALL headers"
       << std::endl;
 
-  callback(resp);
+  // Record metrics and call callback
+  MetricsInterceptor::callWithMetrics(req, resp, std::move(callback));
 }
 
 HttpResponsePtr
