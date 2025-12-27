@@ -111,6 +111,18 @@ public:
   void setModelforgePermissive(bool permissive);
 
   /**
+   * @brief Get auto reload flag (for server restart on config change)
+   * @return true if auto reload is enabled
+   */
+  bool getAutoReload() const;
+
+  /**
+   * @brief Set auto reload flag
+   * @param enabled Enable or disable auto reload
+   */
+  void setAutoReload(bool enabled);
+
+  /**
    * @brief Get GStreamer decode pipeline for a platform
    * @param platform Platform name (auto, jetson, nvidia, msdk, vaapi)
    * @return Pipeline string if found, empty otherwise
@@ -213,6 +225,19 @@ public:
    */
   bool isLoaded() const;
 
+  /**
+   * @brief Initialize current server configuration (called at server startup)
+   * @param config Current web server configuration
+   */
+  void initializeCurrentServerConfig(const WebServerConfig &config);
+
+  /**
+   * @brief Check if web server config changed (port/host) and needs reload
+   * @param newConfig New web server configuration
+   * @return true if port or host changed
+   */
+  bool hasWebServerConfigChanged(const WebServerConfig &newConfig) const;
+
 private:
   SystemConfig() = default;
   ~SystemConfig() = default;
@@ -223,6 +248,10 @@ private:
   mutable std::mutex mutex_;
   Json::Value config_json_;
   bool loaded_ = false;
+
+  // Current running server configuration (for auto-reload detection)
+  WebServerConfig current_server_config_;
+  bool server_config_initialized_ = false;
 
   /**
    * @brief Initialize default configuration

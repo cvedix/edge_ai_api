@@ -1575,12 +1575,15 @@ bool InstanceRegistry::stopInstance(const std::string &instanceId) {
   // Each instance has independent GStreamer pipelines, so cleanup of one
   // instance should not affect other running instances. However, we still need
   // to wait to ensure this instance's GStreamer resources are fully released.
+  // FIXED: Increased wait time to ensure GStreamer elements are properly set to
+  // NULL state before process continues
   std::cerr << "[InstanceRegistry] Waiting for GStreamer final cleanup..."
             << std::endl;
   std::cerr << "[InstanceRegistry] NOTE: This cleanup only affects this "
                "instance, not other running instances"
             << std::endl;
-  std::this_thread::sleep_for(std::chrono::milliseconds(500));
+  std::this_thread::sleep_for(
+      std::chrono::milliseconds(1000)); // Increased from 500ms to 1000ms
 
   std::cerr << "[InstanceRegistry] ✓ Instance " << instanceId
             << " stopped successfully" << std::endl;
@@ -1998,13 +2001,27 @@ bool InstanceRegistry::updateInstance(const std::string &instanceId,
     }
 
     // Update additionalParams (merge with existing)
+    // Only replace keys that appear in the request body, keep others unchanged
     if (!req.additionalParams.empty()) {
       std::cerr << "[InstanceRegistry] Updating additionalParams..."
                 << std::endl;
+
+      // Merge: only replace keys that appear in the request
+      // Keys not in the request will remain unchanged
+      // Skip the internal flag if present (it's only used for marking nested
+      // structure)
       for (const auto &pair : req.additionalParams) {
+        // Skip internal flags
+        if (pair.first == "__REPLACE_INPUT_OUTPUT_PARAMS__") {
+          continue;
+        }
+
         std::cerr << "[InstanceRegistry]   " << pair.first << ": "
-                  << info.additionalParams[pair.first] << " -> " << pair.second
-                  << std::endl;
+                  << (info.additionalParams.find(pair.first) !=
+                              info.additionalParams.end()
+                          ? info.additionalParams[pair.first]
+                          : "<new>")
+                  << " -> " << pair.second << std::endl;
         info.additionalParams[pair.first] = pair.second;
       }
       hasChanges = true;
@@ -2159,7 +2176,10 @@ bool InstanceRegistry::updateInstance(const std::string &instanceId,
   } // Release lock here
 
   // Save to storage if persistent (do this outside lock)
+  std::cerr << "[InstanceRegistry] Instance persistent flag: "
+            << (isPersistent ? "true" : "false") << std::endl;
   if (isPersistent) {
+    std::cerr << "[InstanceRegistry] Saving instance to file..." << std::endl;
     bool saved = instance_storage_.saveInstance(instanceId, infoCopy);
     if (saved) {
       std::cerr << "[InstanceRegistry] Instance configuration saved to file"
@@ -2169,6 +2189,10 @@ bool InstanceRegistry::updateInstance(const std::string &instanceId,
                    "configuration to file"
                 << std::endl;
     }
+  } else {
+    std::cerr
+        << "[InstanceRegistry] Instance is not persistent, skipping file save"
+        << std::endl;
   }
 
   std::cerr << "[InstanceRegistry] ✓ Instance " << instanceId
@@ -2563,6 +2587,13 @@ bool InstanceRegistry::startPipeline(
     tracker.current_queue_size = 0;
     tracker.max_queue_size_seen = 0;
     tracker.expected_frames_from_source = 0;
+
+    // OPTIMIZATION: Cache RTSP instance flag to avoid repeated lookups in hot
+    // path
+    auto instanceIt = instances_.find(instanceId);
+    bool isRTSP =
+        (instanceIt != instances_.end() && !instanceIt->second.rtspUrl.empty());
+    tracker.is_rtsp_instance.store(isRTSP, std::memory_order_relaxed);
   }
 
   // PHASE 3: Configure backpressure control
@@ -3178,7 +3209,35 @@ void InstanceRegistry::stopPipeline(
       }
     }
 
-    // First, give destination nodes (like RTMP) time to flush and finalize
+    // CRITICAL: Stop destination nodes (RTMP) FIRST before stopping source
+    // nodes This ensures GStreamer elements are properly stopped and flushed
+    // before source stops sending data. This prevents GStreamer elements from
+    // being in PAUSED/READY state when disposed.
+    std::cerr << "[InstanceRegistry] Stopping destination nodes first..."
+              << std::endl;
+    for (const auto &node : nodes) {
+      if (!node) {
+        continue;
+      }
+
+      // Prepare RTMP destination nodes for cleanup
+      // Note: RTMP destination nodes don't have stop() method, so we just
+      // prepare them by waiting for buffers to flush
+      auto rtmpDesNode =
+          std::dynamic_pointer_cast<cvedix_nodes::cvedix_rtmp_des_node>(node);
+      if (rtmpDesNode) {
+        std::cerr << "[InstanceRegistry] Preparing RTMP destination node for "
+                     "cleanup..."
+                  << std::endl;
+        // Give it time to flush buffers before we stop source
+        // This helps reduce GStreamer warnings during cleanup
+        std::this_thread::sleep_for(std::chrono::milliseconds(200));
+        std::cerr << "[InstanceRegistry] ✓ RTMP destination node prepared"
+                  << std::endl;
+      }
+    }
+
+    // Give destination nodes time to flush and finalize
     // This helps reduce GStreamer warnings during cleanup and prevent
     // segmentation faults FIXED: Increased wait time to ensure elements are
     // properly set to NULL state before dispose
@@ -3187,10 +3246,10 @@ void InstanceRegistry::stopPipeline(
           << "[InstanceRegistry] Waiting for destination nodes to finalize..."
           << std::endl;
       std::this_thread::sleep_for(
-          std::chrono::milliseconds(300)); // Increased from 200ms to 300ms
+          std::chrono::milliseconds(500)); // Increased from 300ms to 500ms
     }
 
-    // First, stop the source node if it exists (typically the first node)
+    // Now stop the source node (typically the first node)
     // This is important to stop the connection retry loop or file reading
     if (!nodes.empty() && nodes[0]) {
       // Try RTSP source node first
@@ -3296,8 +3355,10 @@ void InstanceRegistry::stopPipeline(
             }
           } // CRITICAL: Release lock here - cleanup wait happens without lock
 
-          // Give it a moment to fully stop (without holding lock)
-          std::this_thread::sleep_for(std::chrono::milliseconds(100));
+          // Give it more time to fully stop (without holding lock)
+          // This ensures GStreamer pipeline is properly stopped before cleanup
+          std::this_thread::sleep_for(
+              std::chrono::milliseconds(300)); // Increased from 100ms to 300ms
         } catch (const std::exception &e) {
           std::cerr << "[InstanceRegistry] ✗ Exception stopping RTSP node: "
                     << e.what() << std::endl;
@@ -3343,8 +3404,12 @@ void InstanceRegistry::stopPipeline(
             // CRITICAL: Use exclusive lock for cleanup operations
             std::unique_lock<std::shared_mutex> gstLock(gstreamer_ops_mutex_);
 
-            // For RTMP source, stop and detach
+            // For RTMP source, stop first, then wait, then detach
             rtmpNode->stop();
+
+            // Give it time to stop properly before detaching
+            std::this_thread::sleep_for(std::chrono::milliseconds(200));
+
             rtmpNode->detach_recursively();
             std::cerr << "[InstanceRegistry] ✓ RTMP source node stopped"
                       << std::endl;
@@ -3390,22 +3455,61 @@ void InstanceRegistry::stopPipeline(
                         << std::endl;
             }
             try {
-              // CRITICAL: Use exclusive lock for cleanup operations
+              // CRITICAL: Stop file source first before detaching
+              // This ensures GStreamer pipeline is properly stopped before
+              // cleanup Use exclusive lock for cleanup operations
               std::unique_lock<std::shared_mutex> gstLock(gstreamer_ops_mutex_);
 
-              // For file source, we need to detach to stop reading
+              // Try to stop the file source first
+              try {
+                fileNode->stop();
+                std::cerr << "[InstanceRegistry] ✓ File source node stopped"
+                          << std::endl;
+              } catch (const std::exception &e) {
+                std::cerr
+                    << "[InstanceRegistry] ⚠ Exception stopping file node "
+                       "(will try detach): "
+                    << e.what() << std::endl;
+              } catch (...) {
+                std::cerr << "[InstanceRegistry] ⚠ Unknown error stopping file "
+                             "node (will try detach)"
+                          << std::endl;
+              }
+
+              // Give it time to stop properly
+              std::this_thread::sleep_for(std::chrono::milliseconds(200));
+
+              // Now detach to stop reading and cleanup
               // But we'll keep the nodes in memory so they can be restarted
               // (unless deletion)
               fileNode->detach_recursively();
-              std::cerr << "[InstanceRegistry] ✓ File source node stopped"
+              std::cerr << "[InstanceRegistry] ✓ File source node detached"
                         << std::endl;
             } catch (const std::exception &e) {
               std::cerr << "[InstanceRegistry] ✗ Exception stopping file node: "
                         << e.what() << std::endl;
+              // Try force detach as fallback
+              try {
+                fileNode->detach_recursively();
+                std::cerr << "[InstanceRegistry] ✓ File node force detached"
+                          << std::endl;
+              } catch (...) {
+                std::cerr << "[InstanceRegistry] ✗ Force detach also failed"
+                          << std::endl;
+              }
             } catch (...) {
               std::cerr
                   << "[InstanceRegistry] ✗ Unknown error stopping file node"
                   << std::endl;
+              // Try force detach as fallback
+              try {
+                fileNode->detach_recursively();
+                std::cerr << "[InstanceRegistry] ✓ File node force detached"
+                          << std::endl;
+              } catch (...) {
+                std::cerr << "[InstanceRegistry] ✗ Force detach also failed"
+                          << std::endl;
+              }
             }
           } else {
             // Generic stop for other source types
@@ -3445,6 +3549,41 @@ void InstanceRegistry::stopPipeline(
       }
     }
 
+    // CRITICAL: Now detach all destination nodes after source is stopped
+    // This ensures proper cleanup order: stop destination -> stop source ->
+    // detach destination -> detach source
+    std::cerr << "[InstanceRegistry] Detaching destination nodes..."
+              << std::endl;
+    for (const auto &node : nodes) {
+      if (!node) {
+        continue;
+      }
+
+      auto rtmpDesNode =
+          std::dynamic_pointer_cast<cvedix_nodes::cvedix_rtmp_des_node>(node);
+      if (rtmpDesNode) {
+        try {
+          // CRITICAL: Use exclusive lock for cleanup operations
+          std::unique_lock<std::shared_mutex> gstLock(gstreamer_ops_mutex_);
+
+          // Detach the node
+          rtmpDesNode->detach_recursively();
+
+          std::cerr << "[InstanceRegistry] ✓ RTMP destination node detached"
+                    << std::endl;
+        } catch (const std::exception &e) {
+          std::cerr
+              << "[InstanceRegistry] ✗ Exception detaching RTMP destination "
+                 "node: "
+              << e.what() << std::endl;
+        } catch (...) {
+          std::cerr << "[InstanceRegistry] ✗ Unknown error detaching RTMP "
+                       "destination node"
+                    << std::endl;
+        }
+      }
+    }
+
     // Give GStreamer time to properly cleanup after detach
     // This helps reduce warnings about VideoWriter finalization and prevent
     // segmentation faults FIXED: Increased wait time to ensure GStreamer
@@ -3452,8 +3591,8 @@ void InstanceRegistry::stopPipeline(
     if (isDeletion) {
       std::cerr << "[InstanceRegistry] Waiting for GStreamer cleanup..."
                 << std::endl;
-      std::this_thread::sleep_for(
-          std::chrono::milliseconds(500)); // Increased from 300ms to 500ms
+      std::this_thread::sleep_for(std::chrono::milliseconds(
+          800)); // Increased from 500ms to 800ms for better cleanup
       std::cerr << "[InstanceRegistry] Pipeline stopped and fully destroyed "
                    "(all nodes cleared)"
                 << std::endl;
@@ -3996,6 +4135,28 @@ bool InstanceRegistry::updateInstanceFromConfig(const std::string &instanceId,
                                           "Global"};
   preserveKeys.insert(preserveKeys.end(), specialKeys.begin(),
                       specialKeys.end());
+
+  // Debug: log what's in configJson
+  std::cerr << "[InstanceRegistry] configJson keys: ";
+  for (const auto &key : configJson.getMemberNames()) {
+    std::cerr << key << " ";
+  }
+  std::cerr << std::endl;
+
+  if (configJson.isMember("AdditionalParams")) {
+    std::cerr << "[InstanceRegistry] configJson has AdditionalParams"
+              << std::endl;
+    if (configJson["AdditionalParams"].isObject()) {
+      std::cerr << "[InstanceRegistry] AdditionalParams keys: ";
+      for (const auto &key : configJson["AdditionalParams"].getMemberNames()) {
+        std::cerr << key << " ";
+      }
+      std::cerr << std::endl;
+    }
+  } else {
+    std::cerr << "[InstanceRegistry] configJson does NOT have AdditionalParams"
+              << std::endl;
+  }
 
   // Merge configs (preserve Zone, Tripwire, DetectorRegions if not in update)
   if (!instance_storage_.mergeConfigs(existingConfig, configJson,
@@ -4909,98 +5070,113 @@ void InstanceRegistry::setupFrameCaptureHook(
 
   // Setup hook on app_des_node if found
   if (appDesNode) {
-    appDesNode->set_app_des_result_hooker([this, instanceId](
-                                              std::string /*node_name*/,
-                                              std::shared_ptr<
-                                                  cvedix_objects::cvedix_meta>
-                                                  meta) {
-      try {
-        if (!meta) {
-          return;
-        }
-
-        if (meta->meta_type == cvedix_objects::cvedix_meta_type::FRAME) {
-          auto frame_meta =
-              std::dynamic_pointer_cast<cvedix_objects::cvedix_frame_meta>(
-                  meta);
-          if (!frame_meta) {
-            return;
-          }
-
-          // PHASE 3: Check backpressure control before processing frame
-          using namespace BackpressureController;
-          auto &backpressure =
-              BackpressureController::BackpressureController::getInstance();
-
-          // Check if we should drop this frame (FPS limiting, queue full, etc.)
-          if (backpressure.shouldDropFrame(instanceId)) {
-            backpressure.recordFrameDropped(instanceId);
-            return; // Drop frame early to prevent processing overhead
-          }
-
-          // PHASE 2 OPTIMIZATION: Update frame counter using atomic operations
-          // - NO LOCK needed! This eliminates lock contention in the hot path
-          // (called every frame)
-          {
-            // Try to get tracker pointer without lock (fast path)
-            // We need lock only to find/create tracker, not to increment
-            // counters
-            std::shared_lock<std::shared_timed_mutex> read_lock(mutex_);
-            auto trackerIt = statistics_trackers_.find(instanceId);
-            if (trackerIt != statistics_trackers_.end()) {
-              // Release lock before atomic operations
-              read_lock.unlock();
-
-              // Atomic increments - no lock needed!
-              trackerIt->second.frames_processed.fetch_add(
-                  1, std::memory_order_relaxed);
-              trackerIt->second.frame_count_since_last_update.fetch_add(
-                  1, std::memory_order_relaxed);
+    appDesNode->set_app_des_result_hooker(
+        [this, instanceId](std::string /*node_name*/,
+                           std::shared_ptr<cvedix_objects::cvedix_meta> meta) {
+          try {
+            if (!meta) {
+              return;
             }
-            // If tracker not found, it will be created later (not in hot path)
-          }
 
-          // PHASE 3: Record frame processed for backpressure tracking
-          backpressure.recordFrameProcessed(instanceId);
+            if (meta->meta_type == cvedix_objects::cvedix_meta_type::FRAME) {
+              auto frame_meta =
+                  std::dynamic_pointer_cast<cvedix_objects::cvedix_frame_meta>(
+                      meta);
+              if (!frame_meta) {
+                return;
+              }
 
-          // PHASE 1 OPTIMIZATION: Prefer OSD frame (processed with overlays),
-          // fallback to original frame Use reference to avoid unnecessary copy
-          // before updateFrameCache
-          const cv::Mat *frameToCache = nullptr;
-          if (!frame_meta->osd_frame.empty()) {
-            frameToCache = &frame_meta->osd_frame;
-          } else if (!frame_meta->frame.empty()) {
-            frameToCache = &frame_meta->frame;
-          }
+              // PHASE 3: Check backpressure control before processing frame
+              using namespace BackpressureController;
+              auto &backpressure =
+                  BackpressureController::BackpressureController::getInstance();
 
-          if (frameToCache && !frameToCache->empty()) {
-            updateFrameCache(instanceId, *frameToCache);
+              // Check if we should drop this frame (FPS limiting, queue full,
+              // etc.)
+              if (backpressure.shouldDropFrame(instanceId)) {
+                backpressure.recordFrameDropped(instanceId);
+                return; // Drop frame early to prevent processing overhead
+              }
 
-            // CRITICAL: Update RTSP activity when we receive frames
-            // This is the only reliable way to know RTSP is actually working
-            // Check if this is an RTSP instance by checking if instance has
-            // RTSP URL
-            {
-              std::shared_lock<std::shared_timed_mutex> read_lock(mutex_);
-              auto instanceIt = instances_.find(instanceId);
-              if (instanceIt != instances_.end() &&
-                  !instanceIt->second.rtspUrl.empty()) {
-                // This is an RTSP instance - update activity
-                updateRTSPActivity(instanceId);
+              // PHASE 2 OPTIMIZATION: Update frame counter using atomic
+              // operations
+              // - NO LOCK needed! This eliminates lock contention in the hot
+              // path (called every frame) OPTIMIZATION: Cache tracker pointer
+              // and RTSP flag to avoid repeated lookups
+              InstanceStatsTracker *trackerPtr = nullptr;
+              bool isRTSPInstance = false;
+              {
+                // Get tracker pointer in one lock
+                std::shared_lock<std::shared_timed_mutex> read_lock(mutex_);
+                auto trackerIt = statistics_trackers_.find(instanceId);
+                if (trackerIt != statistics_trackers_.end()) {
+                  trackerPtr = &trackerIt->second;
+                  // Read RTSP flag lock-free (cached during initialization)
+                  isRTSPInstance = trackerPtr->is_rtsp_instance.load(
+                      std::memory_order_relaxed);
+                }
+              }
+              // Lock released - now do atomic operations without lock
+
+              if (trackerPtr) {
+                // Atomic increments - no lock needed!
+                trackerPtr->frames_processed.fetch_add(
+                    1, std::memory_order_relaxed);
+                trackerPtr->frame_count_since_last_update.fetch_add(
+                    1, std::memory_order_relaxed);
+              }
+
+              // PHASE 3: Record frame processed for backpressure tracking
+              backpressure.recordFrameProcessed(instanceId);
+
+              // PHASE 1 OPTIMIZATION: Prefer OSD frame (processed with
+              // overlays), fallback to original frame Use reference to avoid
+              // unnecessary copy before updateFrameCache
+              const cv::Mat *frameToCache = nullptr;
+              if (!frame_meta->osd_frame.empty()) {
+                frameToCache = &frame_meta->osd_frame;
+              } else if (!frame_meta->frame.empty()) {
+                frameToCache = &frame_meta->frame;
+              }
+
+              if (frameToCache && !frameToCache->empty()) {
+                updateFrameCache(instanceId, *frameToCache);
+
+                // CRITICAL: Update RTSP activity when we receive frames
+                // This is the only reliable way to know RTSP is actually
+                // working OPTIMIZATION: Use cached RTSP flag (read lock-free
+                // above) No need to check again - flag is set during instance
+                // initialization
+                if (isRTSPInstance) {
+                  updateRTSPActivity(instanceId);
+                }
               }
             }
+          } catch (const std::exception &e) {
+            // OPTIMIZATION: Use static counter to throttle exception logging
+            // Exceptions should be rare, but if they occur frequently, logging
+            // every exception can impact performance
+            static thread_local uint64_t exception_count = 0;
+            exception_count++;
+
+            // Only log every 100th exception to avoid performance impact
+            if (exception_count % 100 == 1) {
+              std::cerr << "[InstanceRegistry] [ERROR] Exception in frame "
+                           "capture hook (count: "
+                        << exception_count << "): " << e.what() << std::endl;
+            }
+          } catch (...) {
+            static thread_local uint64_t unknown_exception_count = 0;
+            unknown_exception_count++;
+
+            if (unknown_exception_count % 100 == 1) {
+              std::cerr
+                  << "[InstanceRegistry] [ERROR] Unknown exception in frame "
+                     "capture hook (count: "
+                  << unknown_exception_count << ")" << std::endl;
+            }
           }
-        }
-      } catch (const std::exception &e) {
-        std::cerr
-            << "[InstanceRegistry] [ERROR] Exception in frame capture hook: "
-            << e.what() << std::endl;
-      } catch (...) {
-        std::cerr << "[InstanceRegistry] [ERROR] Unknown exception in frame "
-                     "capture hook"
-                  << std::endl;
-      }
-    });
+        });
 
     std::cerr << "[InstanceRegistry] ✓ Frame capture hook setup completed for "
                  "instance: "
@@ -5521,7 +5697,14 @@ void InstanceRegistry::stopRTSPMonitorThread(const std::string &instanceId) {
 }
 
 void InstanceRegistry::updateRTSPActivity(const std::string &instanceId) {
-  std::lock_guard<std::mutex> lock(rtsp_monitor_mutex_);
+  // OPTIMIZATION: Use try_lock to avoid blocking frame processing
+  // RTSP activity update is not critical - missing one update is acceptable
+  std::unique_lock<std::mutex> lock(rtsp_monitor_mutex_, std::try_to_lock);
+  if (!lock.owns_lock()) {
+    // Lock is busy - skip this update to avoid blocking frame processing
+    return;
+  }
+
   rtsp_last_activity_[instanceId] = std::chrono::steady_clock::now();
 
   // Mark as successfully connected when we receive activity (frames)

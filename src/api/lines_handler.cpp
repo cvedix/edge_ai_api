@@ -452,7 +452,7 @@ void LinesHandler::createLine(
       return;
     }
 
-    // Parse JSON body
+    // Parse JSON body - support both single object and array
     auto json = req->getJsonObject();
     if (!json) {
       if (isApiLoggingEnabled()) {
@@ -464,105 +464,216 @@ void LinesHandler::createLine(
       return;
     }
 
-    // Validate required fields
-    if (!json->isMember("coordinates") || !(*json)["coordinates"].isArray()) {
+    Json::Value linesToAdd(Json::arrayValue);
+    bool isArrayRequest = json->isArray();
+
+    if (isArrayRequest) {
+      // Handle array request (multiple lines)
       if (isApiLoggingEnabled()) {
-        PLOG_WARNING
-            << "[API] POST /v1/core/instance/" << instanceId
-            << "/lines - Error: Missing or invalid 'coordinates' field";
+        PLOG_DEBUG << "[API] POST /v1/core/instance/" << instanceId
+                   << "/lines - Processing array request with " << json->size()
+                   << " line(s)";
       }
-      callback(createErrorResponse(
-          400, "Bad request",
-          "Field 'coordinates' is required and must be an array"));
-      return;
-    }
 
-    // Validate coordinates
-    std::string coordError;
-    if (!validateCoordinates((*json)["coordinates"], coordError)) {
-      if (isApiLoggingEnabled()) {
-        PLOG_WARNING << "[API] POST /v1/core/instance/" << instanceId
-                     << "/lines - Validation error: " << coordError;
-      }
-      callback(createErrorResponse(400, "Bad request", coordError));
-      return;
-    }
-
-    // Validate optional fields
-    if (json->isMember("direction") && (*json)["direction"].isString()) {
-      std::string dirError;
-      if (!validateDirection((*json)["direction"].asString(), dirError)) {
-        if (isApiLoggingEnabled()) {
-          PLOG_WARNING << "[API] POST /v1/core/instance/" << instanceId
-                       << "/lines - Validation error: " << dirError;
+      // Validate each line in the array
+      for (Json::ArrayIndex i = 0; i < json->size(); ++i) {
+        const Json::Value &line = (*json)[i];
+        if (!line.isObject()) {
+          callback(createErrorResponse(400, "Bad request",
+                                       "Line at index " + std::to_string(i) +
+                                           " must be an object"));
+          return;
         }
-        callback(createErrorResponse(400, "Bad request", dirError));
+
+        // Validate coordinates
+        if (!line.isMember("coordinates") || !line["coordinates"].isArray()) {
+          callback(createErrorResponse(
+              400, "Bad request",
+              "Line at index " + std::to_string(i) +
+                  ": Missing or invalid 'coordinates' field"));
+          return;
+        }
+
+        std::string coordError;
+        if (!validateCoordinates(line["coordinates"], coordError)) {
+          callback(createErrorResponse(400, "Bad request",
+                                       "Line at index " + std::to_string(i) +
+                                           ": " + coordError));
+          return;
+        }
+
+        // Validate optional fields
+        if (line.isMember("direction") && line["direction"].isString()) {
+          std::string dirError;
+          if (!validateDirection(line["direction"].asString(), dirError)) {
+            callback(createErrorResponse(400, "Bad request",
+                                         "Line at index " + std::to_string(i) +
+                                             ": " + dirError));
+            return;
+          }
+        }
+
+        if (line.isMember("classes") && line["classes"].isArray()) {
+          std::string classesError;
+          if (!validateClasses(line["classes"], classesError)) {
+            callback(createErrorResponse(400, "Bad request",
+                                         "Line at index " + std::to_string(i) +
+                                             ": " + classesError));
+            return;
+          }
+        }
+
+        if (line.isMember("color") && line["color"].isArray()) {
+          std::string colorError;
+          if (!validateColor(line["color"], colorError)) {
+            callback(createErrorResponse(400, "Bad request",
+                                         "Line at index " + std::to_string(i) +
+                                             ": " + colorError));
+            return;
+          }
+        }
+
+        // Create line object with defaults
+        Json::Value newLine(Json::objectValue);
+        newLine["id"] = UUIDGenerator::generateUUID();
+
+        if (line.isMember("name") && line["name"].isString()) {
+          newLine["name"] = line["name"];
+        }
+
+        newLine["coordinates"] = line["coordinates"];
+
+        if (line.isMember("classes") && line["classes"].isArray()) {
+          newLine["classes"] = line["classes"];
+        } else {
+          newLine["classes"] = Json::Value(Json::arrayValue);
+        }
+
+        if (line.isMember("direction") && line["direction"].isString()) {
+          newLine["direction"] = line["direction"];
+        } else {
+          newLine["direction"] = "Both";
+        }
+
+        if (line.isMember("color") && line["color"].isArray()) {
+          newLine["color"] = line["color"];
+        } else {
+          Json::Value defaultColor(Json::arrayValue);
+          defaultColor.append(255); // R
+          defaultColor.append(0);   // G
+          defaultColor.append(0);   // B
+          defaultColor.append(255); // A
+          newLine["color"] = defaultColor;
+        }
+
+        linesToAdd.append(newLine);
+      }
+    } else {
+      // Handle single object request (one line) - original behavior
+      // Validate required fields
+      if (!json->isMember("coordinates") || !(*json)["coordinates"].isArray()) {
+        if (isApiLoggingEnabled()) {
+          PLOG_WARNING
+              << "[API] POST /v1/core/instance/" << instanceId
+              << "/lines - Error: Missing or invalid 'coordinates' field";
+        }
+        callback(createErrorResponse(
+            400, "Bad request",
+            "Field 'coordinates' is required and must be an array"));
         return;
       }
-    }
 
-    if (json->isMember("classes") && (*json)["classes"].isArray()) {
-      std::string classesError;
-      if (!validateClasses((*json)["classes"], classesError)) {
+      // Validate coordinates
+      std::string coordError;
+      if (!validateCoordinates((*json)["coordinates"], coordError)) {
         if (isApiLoggingEnabled()) {
           PLOG_WARNING << "[API] POST /v1/core/instance/" << instanceId
-                       << "/lines - Validation error: " << classesError;
+                       << "/lines - Validation error: " << coordError;
         }
-        callback(createErrorResponse(400, "Bad request", classesError));
+        callback(createErrorResponse(400, "Bad request", coordError));
         return;
       }
-    }
 
-    if (json->isMember("color") && (*json)["color"].isArray()) {
-      std::string colorError;
-      if (!validateColor((*json)["color"], colorError)) {
-        if (isApiLoggingEnabled()) {
-          PLOG_WARNING << "[API] POST /v1/core/instance/" << instanceId
-                       << "/lines - Validation error: " << colorError;
+      // Validate optional fields
+      if (json->isMember("direction") && (*json)["direction"].isString()) {
+        std::string dirError;
+        if (!validateDirection((*json)["direction"].asString(), dirError)) {
+          if (isApiLoggingEnabled()) {
+            PLOG_WARNING << "[API] POST /v1/core/instance/" << instanceId
+                         << "/lines - Validation error: " << dirError;
+          }
+          callback(createErrorResponse(400, "Bad request", dirError));
+          return;
         }
-        callback(createErrorResponse(400, "Bad request", colorError));
-        return;
       }
+
+      if (json->isMember("classes") && (*json)["classes"].isArray()) {
+        std::string classesError;
+        if (!validateClasses((*json)["classes"], classesError)) {
+          if (isApiLoggingEnabled()) {
+            PLOG_WARNING << "[API] POST /v1/core/instance/" << instanceId
+                         << "/lines - Validation error: " << classesError;
+          }
+          callback(createErrorResponse(400, "Bad request", classesError));
+          return;
+        }
+      }
+
+      if (json->isMember("color") && (*json)["color"].isArray()) {
+        std::string colorError;
+        if (!validateColor((*json)["color"], colorError)) {
+          if (isApiLoggingEnabled()) {
+            PLOG_WARNING << "[API] POST /v1/core/instance/" << instanceId
+                         << "/lines - Validation error: " << colorError;
+          }
+          callback(createErrorResponse(400, "Bad request", colorError));
+          return;
+        }
+      }
+
+      // Create new line object
+      Json::Value newLine(Json::objectValue);
+      newLine["id"] = UUIDGenerator::generateUUID();
+
+      if (json->isMember("name") && (*json)["name"].isString()) {
+        newLine["name"] = (*json)["name"];
+      }
+
+      newLine["coordinates"] = (*json)["coordinates"];
+
+      if (json->isMember("classes") && (*json)["classes"].isArray()) {
+        newLine["classes"] = (*json)["classes"];
+      } else {
+        newLine["classes"] = Json::Value(Json::arrayValue);
+      }
+
+      if (json->isMember("direction") && (*json)["direction"].isString()) {
+        newLine["direction"] = (*json)["direction"];
+      } else {
+        newLine["direction"] = "Both";
+      }
+
+      if (json->isMember("color") && (*json)["color"].isArray()) {
+        newLine["color"] = (*json)["color"];
+      } else {
+        Json::Value defaultColor(Json::arrayValue);
+        defaultColor.append(255); // R
+        defaultColor.append(0);   // G
+        defaultColor.append(0);   // B
+        defaultColor.append(255); // A
+        newLine["color"] = defaultColor;
+      }
+
+      linesToAdd.append(newLine);
     }
 
     // Load existing lines
     Json::Value linesArray = loadLinesFromConfig(instanceId);
 
-    // Create new line object
-    Json::Value newLine(Json::objectValue);
-    newLine["id"] = UUIDGenerator::generateUUID();
-
-    if (json->isMember("name") && (*json)["name"].isString()) {
-      newLine["name"] = (*json)["name"];
+    // Append all new lines to existing lines
+    for (Json::ArrayIndex i = 0; i < linesToAdd.size(); ++i) {
+      linesArray.append(linesToAdd[i]);
     }
-
-    newLine["coordinates"] = (*json)["coordinates"];
-
-    if (json->isMember("classes") && (*json)["classes"].isArray()) {
-      newLine["classes"] = (*json)["classes"];
-    } else {
-      newLine["classes"] = Json::Value(Json::arrayValue);
-    }
-
-    if (json->isMember("direction") && (*json)["direction"].isString()) {
-      newLine["direction"] = (*json)["direction"];
-    } else {
-      newLine["direction"] = "Both";
-    }
-
-    if (json->isMember("color") && (*json)["color"].isArray()) {
-      newLine["color"] = (*json)["color"];
-    } else {
-      Json::Value defaultColor(Json::arrayValue);
-      defaultColor.append(255); // R
-      defaultColor.append(0);   // G
-      defaultColor.append(0);   // B
-      defaultColor.append(255); // A
-      newLine["color"] = defaultColor;
-    }
-
-    // Append new line to array
-    linesArray.append(newLine);
 
     // Save to config
     if (!saveLinesToConfig(instanceId, linesArray)) {
@@ -595,13 +706,29 @@ void LinesHandler::createLine(
     auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(
         end_time - start_time);
 
-    if (isApiLoggingEnabled()) {
-      PLOG_INFO << "[API] POST /v1/core/instance/" << instanceId
-                << "/lines - Success: Created line " << newLine["id"].asString()
-                << " - " << duration.count() << "ms";
+    // Prepare response based on request type
+    if (isArrayRequest) {
+      // Multiple lines: return array with metadata
+      if (isApiLoggingEnabled()) {
+        PLOG_INFO << "[API] POST /v1/core/instance/" << instanceId
+                  << "/lines - Success: Created " << linesToAdd.size()
+                  << " line(s) - " << duration.count() << "ms";
+      }
+      Json::Value response;
+      response["message"] = "Lines created successfully";
+      response["count"] = static_cast<int>(linesToAdd.size());
+      response["lines"] = linesToAdd;
+      callback(createSuccessResponse(response, 201));
+    } else {
+      // Single line: return single line object (backward compatible)
+      if (isApiLoggingEnabled()) {
+        PLOG_INFO << "[API] POST /v1/core/instance/" << instanceId
+                  << "/lines - Success: Created line "
+                  << linesToAdd[0]["id"].asString() << " - " << duration.count()
+                  << "ms";
+      }
+      callback(createSuccessResponse(linesToAdd[0], 201));
     }
-
-    callback(createSuccessResponse(newLine, 201));
 
   } catch (const std::exception &e) {
     auto end_time = std::chrono::steady_clock::now();

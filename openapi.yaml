@@ -192,6 +192,9 @@ paths:
                       enabled: true
                       ip_address: "0.0.0.0"
                       port: 8080
+                    auto_reload: false
+                    max_running_instances: 0
+                    modelforge_permissive: false
         '500':
           description: Server error
           content:
@@ -204,21 +207,40 @@ paths:
         Updates the system configuration by merging the provided JSON with the existing configuration.
         Only the provided fields will be updated; other fields remain unchanged.
         The configuration is saved to the config file after update.
+
+        **Auto Restart:**
+        - By default, the server will NOT automatically restart after configuration changes
+        - To enable automatic restart, set `auto_restart=true` as a query parameter or in the JSON body
+        - When `auto_restart=true`, the server will restart after 3 seconds if web server config changed
       operationId: createOrUpdateConfig
       tags:
         - Config
+      parameters:
+        - name: auto_restart
+          in: query
+          required: false
+          schema:
+            type: boolean
+            default: false
+          description: |
+            If set to `true`, the server will automatically restart after configuration update.
+            Default is `false` (no automatic restart).
+            Can also be set in the JSON body as `auto_restart` field.
+          example: false
       requestBody:
         required: true
         content:
           application/json:
             schema:
               type: object
-              description: Configuration object to merge
+              description: Configuration object to merge. Can optionally include `auto_restart` field (boolean) to trigger server restart.
               additionalProperties: true
               example:
                 system:
                   web_server:
                     port: 8080
+                  auto_reload: false
+                auto_restart: false
       responses:
         '200':
           description: Configuration updated successfully
@@ -234,6 +256,22 @@ paths:
                     type: object
                     description: Updated full configuration
                     additionalProperties: true
+                  warning:
+                    type: string
+                    description: Warning message if server restart is scheduled (when auto_restart=true)
+                    example: "Server will restart in 3 seconds (auto_restart requested)."
+                  restart_scheduled:
+                    type: boolean
+                    description: True if server restart is scheduled (when auto_restart=true)
+                    example: true
+                  info:
+                    type: string
+                    description: Info message if restart is required but auto_restart was not set
+                    example: "Web server port/host changed. Please restart server manually to apply changes, or set auto_restart=true to restart automatically."
+                  restart_required:
+                    type: boolean
+                    description: True if restart is required but auto_restart was not set
+                    example: false
         '400':
           description: Invalid request or validation failed
           content:
@@ -252,16 +290,33 @@ paths:
         Replaces the entire system configuration with the provided JSON.
         All existing configuration will be replaced with the new values.
         The configuration is saved to the config file after replacement.
+
+        **Auto Restart:**
+        - By default, the server will NOT automatically restart after configuration changes
+        - To enable automatic restart, set `auto_restart=true` as a query parameter or in the JSON body
+        - When `auto_restart=true`, the server will restart after 3 seconds if web server config changed
       operationId: replaceConfig
       tags:
         - Config
+      parameters:
+        - name: auto_restart
+          in: query
+          required: false
+          schema:
+            type: boolean
+            default: false
+          description: |
+            If set to `true`, the server will automatically restart after configuration replacement.
+            Default is `false` (no automatic restart).
+            Can also be set in the JSON body as `auto_restart` field.
+          example: false
       requestBody:
         required: true
         content:
           application/json:
             schema:
               type: object
-              description: Complete configuration object to replace existing config
+              description: Complete configuration object to replace existing config. Can optionally include `auto_restart` field (boolean) to trigger server restart.
               additionalProperties: true
               example:
                 auto_device_list:
@@ -270,6 +325,10 @@ paths:
                   web_server:
                     enabled: true
                     port: 8080
+                  auto_reload: false
+                  max_running_instances: 0
+                  modelforge_permissive: false
+                auto_restart: false
       responses:
         '200':
           description: Configuration replaced successfully
@@ -285,6 +344,22 @@ paths:
                     type: object
                     description: New full configuration
                     additionalProperties: true
+                  warning:
+                    type: string
+                    description: Warning message if server restart is scheduled (when auto_reload=true and port/host changed)
+                    example: "Web server port/host changed. Server will restart in 3 seconds to apply changes."
+                  restart_scheduled:
+                    type: boolean
+                    description: True if server restart is scheduled (auto_reload=true and port/host changed)
+                    example: true
+                  info:
+                    type: string
+                    description: Info message if restart is required but auto_reload is disabled
+                    example: "Web server port/host changed, but auto_reload is disabled. Please restart server manually to apply changes."
+                  restart_required:
+                    type: boolean
+                    description: True if restart is required but auto_reload is disabled
+                    example: false
         '400':
           description: Invalid request or validation failed
           content:
@@ -308,6 +383,11 @@ paths:
 
         Only the provided fields in the section will be updated.
         The configuration is saved to the config file after update.
+
+        **Auto Restart:**
+        - By default, the server will NOT automatically restart after configuration changes
+        - To enable automatic restart, set `auto_restart=true` as a query parameter or in the JSON body
+        - When `auto_restart=true`, the server will restart after 3 seconds if web server config changed
       operationId: updateConfigSectionQuery
       tags:
         - Config
@@ -319,16 +399,28 @@ paths:
             type: string
           description: Configuration path using `/` or `.` as separators
           example: "system/max_running_instances"
+        - name: auto_restart
+          in: query
+          required: false
+          schema:
+            type: boolean
+            default: false
+          description: |
+            If set to `true`, the server will automatically restart after configuration update.
+            Default is `false` (no automatic restart).
+            Can also be set in the JSON body as `auto_restart` field.
+          example: false
       requestBody:
         required: true
         content:
           application/json:
             schema:
               type: object
-              description: Configuration section value to update
+              description: Configuration section value to update. Can optionally include `auto_restart` field (boolean) to trigger server restart.
               additionalProperties: true
               example:
                 port: 8080
+                auto_restart: false
       responses:
         '200':
           description: Configuration section updated successfully
@@ -347,6 +439,22 @@ paths:
                     type: object
                     description: Updated configuration section value
                     additionalProperties: true
+                  warning:
+                    type: string
+                    description: Warning message if server restart is scheduled (when auto_restart=true)
+                    example: "Server will restart in 3 seconds (auto_restart requested)."
+                  restart_scheduled:
+                    type: boolean
+                    description: True if server restart is scheduled (when auto_restart=true)
+                    example: true
+                  info:
+                    type: string
+                    description: Info message if restart is required but auto_restart was not set
+                    example: "Web server port/host changed. Please restart server manually to apply changes, or set auto_restart=true to restart automatically."
+                  restart_required:
+                    type: boolean
+                    description: True if restart is required but auto_restart was not set
+                    example: false
         '400':
           description: Invalid request or validation failed
           content:
@@ -365,10 +473,20 @@ paths:
         Deletes a specific section of the system configuration at the given path.
 
         **Path Format:**
-        - Use forward slashes `/` or dots `.` as separators
-        - Examples: `system/max_running_instances`, `system.max_running_instances`
+        - Supports both forward slashes `/` and dots `.` as separators
+        - **Recommended:** Use forward slashes `/` for better compatibility
+        - Examples:
+          - `system/max_running_instances` (with forward slash - recommended)
+          - `system.max_running_instances` (with dot)
+          - `system/web_server/port` (nested path with forward slash)
+          - `system.web_server.port` (nested path with dot)
 
         The configuration is saved to the config file after deletion.
+
+        **Auto Restart:**
+        - By default, the server will NOT automatically restart after configuration deletion
+        - To enable automatic restart, set `auto_restart=true` as a query parameter
+        - When `auto_restart=true`, the server will restart after 3 seconds if web server config changed
       operationId: deleteConfigSectionQuery
       tags:
         - Config
@@ -378,8 +496,21 @@ paths:
           required: true
           schema:
             type: string
-          description: Configuration path using `/` or `.` as separators
+          description: |
+            Configuration path. Supports both `/` (forward slash) and `.` (dot) as separators.
+            **Recommended:** Use forward slashes `/` for better compatibility.
+            Examples: `system/max_running_instances`, `system.web_server`, `system/web_server/port`
           example: "system/max_running_instances"
+        - name: auto_restart
+          in: query
+          required: false
+          schema:
+            type: boolean
+            default: false
+          description: |
+            If set to `true`, the server will automatically restart after configuration deletion.
+            Default is `false` (no automatic restart).
+          example: false
       responses:
         '200':
           description: Configuration section deleted successfully
@@ -394,6 +525,22 @@ paths:
                   path:
                     type: string
                     example: "system/max_running_instances"
+                  warning:
+                    type: string
+                    description: Warning message if server restart is scheduled (when auto_restart=true)
+                    example: "Server will restart in 3 seconds (auto_restart requested)."
+                  restart_scheduled:
+                    type: boolean
+                    description: True if server restart is scheduled (when auto_restart=true)
+                    example: true
+                  info:
+                    type: string
+                    description: Info message if restart is required but auto_restart was not set
+                    example: "Web server port/host changed. Please restart server manually to apply changes, or set auto_restart=true to restart automatically."
+                  restart_required:
+                    type: boolean
+                    description: True if restart is required but auto_restart was not set
+                    example: false
         '400':
           description: Invalid request (empty path)
           content:
@@ -431,9 +578,38 @@ paths:
 
         **Warning:** This operation will replace all configuration with default values.
         Consider backing up your configuration before resetting.
+
+        **Auto Restart:**
+        - By default, the server will NOT automatically restart after configuration reset
+        - To enable automatic restart, set `auto_restart=true` as a query parameter or in the JSON body
+        - When `auto_restart=true`, the server will restart after 3 seconds if web server config changed
       operationId: resetConfig
       tags:
         - Config
+      parameters:
+        - name: auto_restart
+          in: query
+          required: false
+          schema:
+            type: boolean
+            default: false
+          description: |
+            If set to `true`, the server will automatically restart after configuration reset.
+            Default is `false` (no automatic restart).
+            Can also be set in the JSON body as `auto_restart` field.
+          example: false
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              description: Optional JSON body. Can include `auto_restart` field (boolean) to trigger server restart.
+              properties:
+                auto_restart:
+                  type: boolean
+                  description: If true, server will restart after reset
+                  example: false
       responses:
         '200':
           description: Configuration reset successfully
@@ -449,6 +625,22 @@ paths:
                     type: object
                     description: Default configuration object
                     additionalProperties: true
+                  warning:
+                    type: string
+                    description: Warning message if server restart is scheduled (when auto_restart=true)
+                    example: "Server will restart in 3 seconds (auto_restart requested)."
+                  restart_scheduled:
+                    type: boolean
+                    description: True if server restart is scheduled (when auto_restart=true)
+                    example: true
+                  info:
+                    type: string
+                    description: Info message if restart is required but auto_restart was not set
+                    example: "Web server port/host changed. Please restart server manually to apply changes, or set auto_restart=true to restart automatically."
+                  restart_required:
+                    type: boolean
+                    description: True if restart is required but auto_restart was not set
+                    example: false
         '500':
           description: Server error
           content:
@@ -527,6 +719,11 @@ paths:
 
         Only the provided fields in the section will be updated.
         The configuration is saved to the config file after update.
+
+        **Auto Restart:**
+        - By default, the server will NOT automatically restart after configuration changes
+        - To enable automatic restart, set `auto_restart=true` as a query parameter or in the JSON body
+        - When `auto_restart=true`, the server will restart after 3 seconds if web server config changed
       operationId: updateConfigSection
       tags:
         - Config
@@ -541,6 +738,17 @@ paths:
             Examples: `system.max_running_instances`, `system.web_server`
             Note: Forward slashes are NOT supported in path parameter (use query parameter instead)
           example: "system.max_running_instances"
+        - name: auto_restart
+          in: query
+          required: false
+          schema:
+            type: boolean
+            default: false
+          description: |
+            If set to `true`, the server will automatically restart after configuration update.
+            Default is `false` (no automatic restart).
+            Can also be set in the JSON body as `auto_restart` field.
+          example: false
       requestBody:
         required: true
         content:
@@ -569,6 +777,22 @@ paths:
                     type: object
                     description: Updated configuration section value
                     additionalProperties: true
+                  warning:
+                    type: string
+                    description: Warning message if server restart is scheduled (when auto_restart=true)
+                    example: "Server will restart in 3 seconds (auto_restart requested)."
+                  restart_scheduled:
+                    type: boolean
+                    description: True if server restart is scheduled (when auto_restart=true)
+                    example: true
+                  info:
+                    type: string
+                    description: Info message if restart is required but auto_restart was not set
+                    example: "Web server port/host changed. Please restart server manually to apply changes, or set auto_restart=true to restart automatically."
+                  restart_required:
+                    type: boolean
+                    description: True if restart is required but auto_restart was not set
+                    example: false
         '400':
           description: Invalid request or validation failed
           content:
@@ -593,6 +817,11 @@ paths:
         **Recommended:** Use query parameter instead: `DELETE /v1/core/config?path=system/max_running_instances`
 
         The configuration is saved to the config file after deletion.
+
+        **Auto Restart:**
+        - By default, the server will NOT automatically restart after configuration deletion
+        - To enable automatic restart, set `auto_restart=true` as a query parameter
+        - When `auto_restart=true`, the server will restart after 3 seconds if web server config changed
       operationId: deleteConfigSection
       tags:
         - Config
@@ -607,6 +836,16 @@ paths:
             Examples: `system.max_running_instances`, `system.web_server`
             Note: Forward slashes are NOT supported in path parameter (use query parameter instead)
           example: "system.max_running_instances"
+        - name: auto_restart
+          in: query
+          required: false
+          schema:
+            type: boolean
+            default: false
+          description: |
+            If set to `true`, the server will automatically restart after configuration deletion.
+            Default is `false` (no automatic restart).
+          example: false
       responses:
         '200':
           description: Configuration section deleted successfully
@@ -621,6 +860,22 @@ paths:
                   path:
                     type: string
                     example: "system/web_server"
+                  warning:
+                    type: string
+                    description: Warning message if server restart is scheduled (when auto_restart=true)
+                    example: "Server will restart in 3 seconds (auto_restart requested)."
+                  restart_scheduled:
+                    type: boolean
+                    description: True if server restart is scheduled (when auto_restart=true)
+                    example: true
+                  info:
+                    type: string
+                    description: Info message if restart is required but auto_restart was not set
+                    example: "Web server port/host changed. Please restart server manually to apply changes, or set auto_restart=true to restart automatically."
+                  restart_required:
+                    type: boolean
+                    description: True if restart is required but auto_restart was not set
+                    example: false
         '400':
           description: Invalid request (empty path)
           content:
@@ -3645,6 +3900,35 @@ paths:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
 
+    options:
+      summary: CORS preflight for update instance
+      operationId: updateInstanceOptions
+      tags:
+        - Instances
+      parameters:
+        - name: instanceId
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Instance ID (UUID)
+      responses:
+        '200':
+          description: CORS preflight response
+          headers:
+            Access-Control-Allow-Origin:
+              schema:
+                type: string
+                example: "*"
+            Access-Control-Allow-Methods:
+              schema:
+                type: string
+                example: "GET, PUT, DELETE, OPTIONS"
+            Access-Control-Allow-Headers:
+              schema:
+                type: string
+                example: "Content-Type, Authorization"
+
     delete:
       summary: Delete an instance
       description: |
@@ -5233,12 +5517,16 @@ paths:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
     post:
-      summary: Create a new crossing line
+      summary: Create one or more crossing lines
       description: |
-        Creates a new crossing line for a ba_crossline instance.
-        The line will be drawn on the video stream and used for counting objects.
+        Creates one or more crossing lines for a ba_crossline instance.
+        The lines will be drawn on the video stream and used for counting objects.
 
-        **Real-time Update:** The line is immediately applied to the running video stream without requiring instance restart.
+        **Request Format:**
+        - Single line: Send a single object (CreateLineRequest)
+        - Multiple lines: Send an array of objects [CreateLineRequest, ...]
+
+        **Real-time Update:** Lines are immediately applied to the running video stream without requiring instance restart.
       operationId: createLine
       tags:
         - Lines
@@ -5255,10 +5543,14 @@ paths:
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/CreateLineRequest'
+              oneOf:
+                - $ref: '#/components/schemas/CreateLineRequest'
+                - type: array
+                  items:
+                    $ref: '#/components/schemas/CreateLineRequest'
             examples:
-              simpleLine:
-                summary: Simple two-point line
+              singleLine:
+                summary: Single line (object)
                 value:
                   name: "Counting Line 1"
                   coordinates:
@@ -5269,13 +5561,47 @@ paths:
                   direction: "Both"
                   classes: ["Person", "Vehicle"]
                   color: [255, 0, 0, 255]
+              multipleLines:
+                summary: Multiple lines (array)
+                value:
+                  - name: "Entry Line"
+                    coordinates:
+                      - x: 0
+                        y: 250
+                      - x: 700
+                        y: 220
+                    direction: "Up"
+                    classes: ["Vehicle"]
+                    color: [255, 0, 0, 255]
+                  - name: "Exit Line"
+                    coordinates:
+                      - x: 100
+                        y: 400
+                      - x: 800
+                        y: 380
+                    direction: "Down"
+                    classes: ["Vehicle"]
+                    color: [0, 255, 0, 255]
       responses:
         '201':
-          description: Line created successfully
+          description: Line(s) created successfully. Returns single line object for single request, or object with metadata for array request.
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/CrossingLine'
+                oneOf:
+                  - $ref: '#/components/schemas/CrossingLine'
+                  - type: object
+                    properties:
+                      message:
+                        type: string
+                        example: "Lines created successfully"
+                      count:
+                        type: integer
+                        example: 2
+                      lines:
+                        type: array
+                        items:
+                          $ref: '#/components/schemas/CrossingLine'
         '400':
           description: Bad request (invalid coordinates or parameters)
           content:
