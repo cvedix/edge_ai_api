@@ -3245,7 +3245,7 @@ void RecognitionHandler::registerFaceSubject(
       return;
     }
 
-    // Check if image contains a person using face detection model
+    // Decode image first
     cv::Mat image = cv::imdecode(imageData, cv::IMREAD_COLOR);
     if (image.empty()) {
       if (isApiLoggingEnabled()) {
@@ -3256,7 +3256,8 @@ void RecognitionHandler::registerFaceSubject(
       return;
     }
 
-    // Get face detector model path
+    // Face detection node: Check if image contains a face before registration
+    // This step is mandatory - images without detected faces will be rejected
     FaceDatabase &db = get_database();
     std::string detector_path = db.get_detector_model_path();
     if (detector_path.empty()) {
@@ -3268,11 +3269,17 @@ void RecognitionHandler::registerFaceSubject(
       return;
     }
 
-    // Create face detector and detect faces
+    // Create face detector with actual image size for better accuracy
     cv::Ptr<cv::FaceDetectorYN> face_detector;
     try {
+      // Use actual image size instead of fixed 320x320 for better detection accuracy
+      cv::Size inputSize = image.size();
+      // Ensure minimum size for detector (some models require minimum dimensions)
+      if (inputSize.width < 320) inputSize.width = 320;
+      if (inputSize.height < 320) inputSize.height = 320;
+      
       face_detector = cv::FaceDetectorYN::create(
-          detector_path, "", cv::Size(320, 320),
+          detector_path, "", inputSize,
           static_cast<float>(detProbThreshold), 0.3f, 5000,
           cv::dnn::DNN_BACKEND_OPENCV, cv::dnn::DNN_TARGET_CPU);
     } catch (const cv::Exception &e) {
@@ -3300,7 +3307,15 @@ void RecognitionHandler::registerFaceSubject(
       return;
     }
 
+    // Set input size to actual image size for detection
     face_detector->setInputSize(image.size());
+    
+    if (isApiLoggingEnabled()) {
+      PLOG_DEBUG << "[API] POST /v1/recognition/faces - Running face detection on image: "
+                 << image.cols << "x" << image.rows << " pixels, threshold: " << detProbThreshold;
+    }
+
+    // Detect faces in the image
     cv::Mat faces;
     try {
       face_detector->detect(image, faces);
@@ -3320,21 +3335,44 @@ void RecognitionHandler::registerFaceSubject(
       return;
     }
 
-    // Check if any face (person) was detected
+    // Validate: Reject image if no face is detected
+    // This is a mandatory check - user must upload an image with a detectable face
     if (faces.rows == 0 || faces.empty()) {
       if (isApiLoggingEnabled()) {
-        PLOG_WARNING << "[API] POST /v1/recognition/faces - No person detected in image. "
+        PLOG_WARNING << "[API] POST /v1/recognition/faces - Face detection node: No face detected in image. "
                      << "Image size: " << image.cols << "x" << image.rows
-                     << ", detection threshold: " << detProbThreshold;
+                     << ", detection threshold: " << detProbThreshold
+                     << ". Registration rejected - user must upload an image with a detectable face.";
       }
       callback(createErrorResponse(400, "Registration failed", 
-                                   "No person detected in image. Please ensure the image contains a clear face."));
+                                   "No face detected in the uploaded image. Please upload a different image that contains a clear, detectable face. The image must show a person's face clearly."));
+      return;
+    }
+
+    // Additional validation: Check if detected faces meet minimum confidence threshold
+    int validFaceCount = 0;
+    for (int i = 0; i < faces.rows; i++) {
+      // faces matrix format: [x, y, w, h, x_re, y_re, x_le, y_le, x_nt, y_nt, x_rcm, y_rcm, x_lcm, y_lcm, confidence]
+      float confidence = faces.at<float>(i, 14);
+      if (confidence >= static_cast<float>(detProbThreshold)) {
+        validFaceCount++;
+      }
+    }
+
+    if (validFaceCount == 0) {
+      if (isApiLoggingEnabled()) {
+        PLOG_WARNING << "[API] POST /v1/recognition/faces - Face detection node: No faces with sufficient confidence. "
+                     << "Detected " << faces.rows << " face(s) but none met threshold " << detProbThreshold;
+      }
+      callback(createErrorResponse(400, "Registration failed", 
+                                   "No face detected with sufficient confidence in the uploaded image. Please upload a different image with a clearer, more visible face."));
       return;
     }
 
     if (isApiLoggingEnabled()) {
-      PLOG_DEBUG << "[API] POST /v1/recognition/faces - Person detected: " << faces.rows 
-                 << " face(s) found, proceeding with registration";
+      PLOG_INFO << "[API] POST /v1/recognition/faces - Face detection node: Successfully detected " 
+                 << validFaceCount << " valid face(s) out of " << faces.rows 
+                 << " detected, proceeding with registration";
     }
 
     // Register subject

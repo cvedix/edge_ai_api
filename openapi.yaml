@@ -1910,6 +1910,10 @@ paths:
         Registers a face subject by storing the image. You can add as many images as you want to train the system.
         Images should contain only a single face.
 
+        **Face Detection Validation**: Before registration, the system performs mandatory face detection.
+        If no face is detected in the uploaded image, the registration will be rejected with a 400 error.
+        The user must upload a different image that contains a clear, detectable face.
+
         This endpoint accepts image data in two formats:
         1. **Multipart/form-data**: Upload file directly (recommended for file uploads)
         2. **Application/json**: Send base64-encoded image string
@@ -1994,7 +1998,12 @@ paths:
                 image_id: "6b135f5b-a365-4522-b1f1-4c9ac2dd0728"
                 subject: "subject1"
         '400':
-          description: Invalid request (missing subject, invalid image format, etc.)
+          description: |
+            Invalid request. Possible reasons:
+            - Missing required query parameter: subject
+            - Invalid image format or corrupted image data
+            - No face detected in the uploaded image (registration will be rejected)
+            - Face detected but confidence below threshold
           content:
             application/json:
               schema:
