@@ -3900,6 +3900,35 @@ paths:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
 
+    options:
+      summary: CORS preflight for update instance
+      operationId: updateInstanceOptions
+      tags:
+        - Instances
+      parameters:
+        - name: instanceId
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Instance ID (UUID)
+      responses:
+        '200':
+          description: CORS preflight response
+          headers:
+            Access-Control-Allow-Origin:
+              schema:
+                type: string
+                example: "*"
+            Access-Control-Allow-Methods:
+              schema:
+                type: string
+                example: "GET, PUT, DELETE, OPTIONS"
+            Access-Control-Allow-Headers:
+              schema:
+                type: string
+                example: "Content-Type, Authorization"
+
     delete:
       summary: Delete an instance
       description: |
