@@ -42,10 +42,14 @@ public:
                 "/v1/core/instance/{instanceId}/lines/{lineId}", Put);
   ADD_METHOD_TO(LinesHandler::deleteLine,
                 "/v1/core/instance/{instanceId}/lines/{lineId}", Delete);
+  ADD_METHOD_TO(LinesHandler::batchUpdateLines,
+                "/v1/core/instance/{instanceId}/lines/batch", Post);
   ADD_METHOD_TO(LinesHandler::handleOptions,
                 "/v1/core/instance/{instanceId}/lines", Options);
   ADD_METHOD_TO(LinesHandler::handleOptions,
                 "/v1/core/instance/{instanceId}/lines/{lineId}", Options);
+  ADD_METHOD_TO(LinesHandler::handleOptions,
+                "/v1/core/instance/{instanceId}/lines/batch", Options);
   METHOD_LIST_END
 
   /**
@@ -89,6 +93,14 @@ public:
    */
   void deleteLine(const HttpRequestPtr &req,
                   std::function<void(const HttpResponsePtr &)> &&callback);
+
+  /**
+   * @brief Handle POST /v1/core/instance/{instanceId}/lines/batch
+   * Updates multiple lines in a single request
+   */
+  void
+  batchUpdateLines(const HttpRequestPtr &req,
+                   std::function<void(const HttpResponsePtr &)> &&callback);
 
   /**
    * @brief Handle OPTIONS request for CORS preflight

@@ -1290,6 +1290,232 @@ void LinesHandler::deleteLine(
   }
 }
 
+void LinesHandler::batchUpdateLines(
+    const HttpRequestPtr &req,
+    std::function<void(const HttpResponsePtr &)> &&callback) {
+  auto start_time = std::chrono::steady_clock::now();
+
+  std::string instanceId = extractInstanceId(req);
+
+  if (isApiLoggingEnabled()) {
+    PLOG_INFO << "[API] POST /v1/core/instance/" << instanceId
+              << "/lines/batch - Batch update lines";
+    PLOG_DEBUG << "[API] Request from: " << req->getPeerAddr().toIpPort();
+  }
+
+  try {
+    if (!instance_manager_) {
+      if (isApiLoggingEnabled()) {
+        PLOG_ERROR << "[API] POST /v1/core/instance/" << instanceId
+                   << "/lines/batch - Error: Instance manager not initialized";
+      }
+      callback(createErrorResponse(500, "Internal server error",
+                                   "Instance manager not initialized"));
+      return;
+    }
+
+    if (instanceId.empty()) {
+      if (isApiLoggingEnabled()) {
+        PLOG_WARNING
+            << "[API] POST /v1/core/instance/{instanceId}/lines/batch - "
+               "Error: Instance ID is empty";
+      }
+      callback(
+          createErrorResponse(400, "Bad request", "Instance ID is required"));
+      return;
+    }
+
+    // Check if instance exists
+    auto optInfo = instance_manager_->getInstance(instanceId);
+    if (!optInfo.has_value()) {
+      auto end_time = std::chrono::steady_clock::now();
+      auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(
+          end_time - start_time);
+      if (isApiLoggingEnabled()) {
+        PLOG_WARNING << "[API] POST /v1/core/instance/" << instanceId
+                     << "/lines/batch - Instance not found - "
+                     << duration.count() << "ms";
+      }
+      callback(createErrorResponse(404, "Not found",
+                                   "Instance not found: " + instanceId));
+      return;
+    }
+
+    // Parse JSON body
+    auto json = req->getJsonObject();
+    if (!json) {
+      if (isApiLoggingEnabled()) {
+        PLOG_WARNING << "[API] POST /v1/core/instance/" << instanceId
+                     << "/lines/batch - Error: Invalid JSON body";
+      }
+      callback(createErrorResponse(400, "Bad request",
+                                   "Request body must be valid JSON"));
+      return;
+    }
+
+    // Validate lines array
+    if (!json->isMember("lines") || !(*json)["lines"].isArray()) {
+      if (isApiLoggingEnabled()) {
+        PLOG_WARNING
+            << "[API] POST /v1/core/instance/" << instanceId
+            << "/lines/batch - Error: Missing or invalid 'lines' array";
+      }
+      callback(createErrorResponse(400, "Bad request",
+                                   "Field 'lines' must be an array"));
+      return;
+    }
+
+    Json::Value linesArray = (*json)["lines"];
+
+    // Validate each line in the array
+    for (Json::ArrayIndex i = 0; i < linesArray.size(); ++i) {
+      const Json::Value &line = linesArray[i];
+      if (!line.isObject()) {
+        callback(createErrorResponse(400, "Bad request",
+                                     "Line at index " + std::to_string(i) +
+                                         " must be an object"));
+        return;
+      }
+
+      // Validate coordinates
+      if (line.isMember("coordinates")) {
+        std::string coordError;
+        if (!validateCoordinates(line["coordinates"], coordError)) {
+          callback(createErrorResponse(400, "Bad request",
+                                       "Line at index " + std::to_string(i) +
+                                           ": " + coordError));
+          return;
+        }
+      } else if (line.isMember("start") && line.isMember("end")) {
+        // Alternative format: start/end
+        Json::Value coords(Json::arrayValue);
+        coords.append(line["start"]);
+        coords.append(line["end"]);
+        std::string coordError;
+        if (!validateCoordinates(coords, coordError)) {
+          callback(createErrorResponse(400, "Bad request",
+                                       "Line at index " + std::to_string(i) +
+                                           ": " + coordError));
+          return;
+        }
+      } else {
+        callback(createErrorResponse(400, "Bad request",
+                                     "Line at index " + std::to_string(i) +
+                                         ": Missing coordinates or start/end"));
+        return;
+      }
+
+      // Validate classes (required for ba_crossline)
+      if (line.isMember("classes")) {
+        std::string classesError;
+        if (!validateClasses(line["classes"], classesError)) {
+          callback(createErrorResponse(400, "Bad request",
+                                       "Line at index " + std::to_string(i) +
+                                           ": " + classesError));
+          return;
+        }
+      }
+
+      // Validate direction if provided
+      if (line.isMember("direction")) {
+        std::string dirError;
+        if (!validateDirection(line["direction"].asString(), dirError)) {
+          callback(createErrorResponse(400, "Bad request",
+                                       "Line at index " + std::to_string(i) +
+                                           ": " + dirError));
+          return;
+        }
+      }
+
+      // Validate color if provided
+      if (line.isMember("color")) {
+        std::string colorError;
+        if (!validateColor(line["color"], colorError)) {
+          callback(createErrorResponse(400, "Bad request",
+                                       "Line at index " + std::to_string(i) +
+                                           ": " + colorError));
+          return;
+        }
+      }
+
+      // Ensure all lines have an ID - generate if missing
+      if (!line.isMember("id") || !line["id"].isString() ||
+          line["id"].asString().empty()) {
+        linesArray[i]["id"] = UUIDGenerator::generateUUID();
+        if (isApiLoggingEnabled()) {
+          PLOG_DEBUG << "[API] POST /v1/core/instance/" << instanceId
+                     << "/lines/batch - Generated UUID for line at index " << i;
+        }
+      }
+    }
+
+    // Save updated lines to config
+    if (!saveLinesToConfig(instanceId, linesArray)) {
+      if (isApiLoggingEnabled()) {
+        PLOG_ERROR << "[API] POST /v1/core/instance/" << instanceId
+                   << "/lines/batch - Failed to save lines to config";
+      }
+      callback(createErrorResponse(500, "Internal server error",
+                                   "Failed to save lines configuration"));
+      return;
+    }
+
+    // Try runtime update first (without restart)
+    if (updateLinesRuntime(instanceId, linesArray)) {
+      if (isApiLoggingEnabled()) {
+        PLOG_INFO << "[API] POST /v1/core/instance/" << instanceId
+                  << "/lines/batch - Lines updated runtime without restart";
+      }
+    } else {
+      // Fallback to restart if runtime update failed
+      if (isApiLoggingEnabled()) {
+        PLOG_WARNING << "[API] POST /v1/core/instance/" << instanceId
+                     << "/lines/batch - Runtime update failed, falling back to "
+                        "restart";
+      }
+      restartInstanceForLineUpdate(instanceId);
+    }
+
+    auto end_time = std::chrono::steady_clock::now();
+    auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(
+        end_time - start_time);
+
+    if (isApiLoggingEnabled()) {
+      PLOG_INFO << "[API] POST /v1/core/instance/" << instanceId
+                << "/lines/batch - Success - " << duration.count() << "ms ("
+                << linesArray.size() << " lines)";
+    }
+
+    Json::Value response;
+    response["message"] = "Lines updated successfully";
+    response["count"] = static_cast<int>(linesArray.size());
+    response["lines"] = linesArray;
+    callback(createSuccessResponse(response, 200));
+
+  } catch (const std::exception &e) {
+    auto end_time = std::chrono::steady_clock::now();
+    auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(
+        end_time - start_time);
+    if (isApiLoggingEnabled()) {
+      PLOG_ERROR << "[API] POST /v1/core/instance/" << instanceId
+                 << "/lines/batch - Exception: " << e.what() << " - "
+                 << duration.count() << "ms";
+    }
+    callback(createErrorResponse(500, "Internal server error", e.what()));
+  } catch (...) {
+    auto end_time = std::chrono::steady_clock::now();
+    auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(
+        end_time - start_time);
+    if (isApiLoggingEnabled()) {
+      PLOG_ERROR << "[API] POST /v1/core/instance/" << instanceId
+                 << "/lines/batch - Unknown exception - " << duration.count()
+                 << "ms";
+    }
+    callback(createErrorResponse(500, "Internal server error",
+                                 "Unknown error occurred"));
+  }
+}
+
 void LinesHandler::handleOptions(
     const HttpRequestPtr &req,
     std::function<void(const HttpResponsePtr &)> &&callback) {

@@ -90,6 +90,10 @@ public:
                 "/v1/core/instance/{instanceId}/output/stream", Get);
   ADD_METHOD_TO(InstanceHandler::configureStreamOutput,
                 "/v1/core/instance/{instanceId}/output/stream", Post);
+  ADD_METHOD_TO(InstanceHandler::getInstanceClasses,
+                "/v1/core/instance/{instanceId}/classes", Get);
+  ADD_METHOD_TO(InstanceHandler::getInstancePreview,
+                "/v1/core/instance/{instanceId}/preview", Get);
   ADD_METHOD_TO(InstanceHandler::handleOptions, "/v1/core/instance", Options);
   ADD_METHOD_TO(InstanceHandler::handleOptions,
                 "/v1/core/instance/{instanceId}", Options);
@@ -111,6 +115,10 @@ public:
                 "/v1/core/instance/{instanceId}/frame", Options);
   ADD_METHOD_TO(InstanceHandler::handleOptions,
                 "/v1/core/instance/{instanceId}/output/stream", Options);
+  ADD_METHOD_TO(InstanceHandler::handleOptions,
+                "/v1/core/instance/{instanceId}/classes", Options);
+  ADD_METHOD_TO(InstanceHandler::handleOptions,
+                "/v1/core/instance/{instanceId}/preview", Options);
   ADD_METHOD_TO(InstanceHandler::handleOptions, "/v1/core/instance/batch/start",
                 Options);
   ADD_METHOD_TO(InstanceHandler::handleOptions, "/v1/core/instance/batch/stop",
@@ -272,6 +280,22 @@ public:
       std::function<void(const HttpResponsePtr &)> &&callback);
 
   /**
+   * @brief Handle GET /v1/core/instance/{instanceId}/classes
+   * Gets available classes from labels file
+   */
+  void
+  getInstanceClasses(const HttpRequestPtr &req,
+                     std::function<void(const HttpResponsePtr &)> &&callback);
+
+  /**
+   * @brief Handle GET /v1/core/instance/{instanceId}/preview
+   * Gets preview frame (screenshot) from instance
+   */
+  void
+  getInstancePreview(const HttpRequestPtr &req,
+                     std::function<void(const HttpResponsePtr &)> &&callback);
+
+  /**
    * @brief Handle OPTIONS request for CORS preflight
    */
   void handleOptions(const HttpRequestPtr &req,
@@ -332,4 +356,12 @@ private:
    */
   bool setNestedJsonValue(Json::Value &root, const std::string &path,
                           const Json::Value &value) const;
+
+  /**
+   * @brief Read classes from labels file
+   * @param labelsPath Path to labels file
+   * @return Vector of class names
+   */
+  std::vector<std::string>
+  readClassesFromFile(const std::string &labelsPath) const;
 };
