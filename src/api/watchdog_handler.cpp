@@ -1,5 +1,6 @@
 #include "api/watchdog_handler.h"
 #include "core/health_monitor.h"
+#include "core/metrics_interceptor.h"
 #include "core/watchdog.h"
 #include <drogon/HttpResponse.h>
 #include <json/json.h>
@@ -9,8 +10,10 @@ Watchdog *WatchdogHandler::g_watchdog = nullptr;
 HealthMonitor *WatchdogHandler::g_health_monitor = nullptr;
 
 void WatchdogHandler::getWatchdogStatus(
-    const HttpRequestPtr & /*req*/,
+    const HttpRequestPtr &req,
     std::function<void(const HttpResponsePtr &)> &&callback) {
+  // Set handler start time for accurate metrics
+  MetricsInterceptor::setHandlerStartTime(req);
   try {
     Json::Value response;
 
@@ -69,7 +72,8 @@ void WatchdogHandler::getWatchdogStatus(
     resp->addHeader("Access-Control-Allow-Methods", "GET, OPTIONS");
     resp->addHeader("Access-Control-Allow-Headers", "Content-Type");
 
-    callback(resp);
+    // Record metrics and call callback
+    MetricsInterceptor::callWithMetrics(req, resp, std::move(callback));
   } catch (const std::exception &e) {
     Json::Value errorResponse;
     errorResponse["error"] = "Internal server error";
@@ -77,6 +81,8 @@ void WatchdogHandler::getWatchdogStatus(
 
     auto resp = HttpResponse::newHttpJsonResponse(errorResponse);
     resp->setStatusCode(k500InternalServerError);
-    callback(resp);
+
+    // Record metrics and call callback
+    MetricsInterceptor::callWithMetrics(req, resp, std::move(callback));
   }
 }

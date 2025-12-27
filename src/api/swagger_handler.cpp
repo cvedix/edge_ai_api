@@ -1,5 +1,6 @@
 #include "api/swagger_handler.h"
 #include "core/env_config.h"
+#include "core/metrics_interceptor.h"
 #include <algorithm>
 #include <cctype>
 #include <cstdlib>
@@ -20,6 +21,9 @@ const std::chrono::seconds SwaggerHandler::cache_ttl_(300); // 5 minutes cache
 void SwaggerHandler::getSwaggerUI(
     const HttpRequestPtr &req,
     std::function<void(const HttpResponsePtr &)> &&callback) {
+  // Set handler start time for accurate metrics
+  MetricsInterceptor::setHandlerStartTime(req);
+
   try {
     std::string path = req->path();
     std::string version = extractVersionFromPath(path);
@@ -29,7 +33,7 @@ void SwaggerHandler::getSwaggerUI(
       auto resp = HttpResponse::newHttpResponse();
       resp->setStatusCode(k400BadRequest);
       resp->setBody("Invalid API version format");
-      callback(resp);
+      MetricsInterceptor::callWithMetrics(req, resp, std::move(callback));
       return;
     }
 
@@ -57,7 +61,8 @@ void SwaggerHandler::getSwaggerUI(
     resp->addHeader("Access-Control-Allow-Methods", "GET, OPTIONS");
     resp->addHeader("Access-Control-Allow-Headers", "Content-Type");
 
-    callback(resp);
+    // Record metrics and call callback
+    MetricsInterceptor::callWithMetrics(req, resp, std::move(callback));
   } catch (const std::exception &e) {
     auto resp = HttpResponse::newHttpResponse();
     resp->setStatusCode(k500InternalServerError);
@@ -66,7 +71,7 @@ void SwaggerHandler::getSwaggerUI(
     resp->addHeader("Access-Control-Allow-Origin", "*");
     resp->addHeader("Access-Control-Allow-Methods", "GET, OPTIONS");
     resp->addHeader("Access-Control-Allow-Headers", "Content-Type");
-    callback(resp);
+    MetricsInterceptor::callWithMetrics(req, resp, std::move(callback));
   } catch (...) {
     auto resp = HttpResponse::newHttpResponse();
     resp->setStatusCode(k500InternalServerError);
@@ -75,13 +80,15 @@ void SwaggerHandler::getSwaggerUI(
     resp->addHeader("Access-Control-Allow-Origin", "*");
     resp->addHeader("Access-Control-Allow-Methods", "GET, OPTIONS");
     resp->addHeader("Access-Control-Allow-Headers", "Content-Type");
-    callback(resp);
+    MetricsInterceptor::callWithMetrics(req, resp, std::move(callback));
   }
 }
 
 void SwaggerHandler::getOpenAPISpec(
     const HttpRequestPtr &req,
     std::function<void(const HttpResponsePtr &)> &&callback) {
+  // Set handler start time for accurate metrics
+  MetricsInterceptor::setHandlerStartTime(req);
   try {
     std::string path = req->path();
     std::string version = extractVersionFromPath(path);
@@ -95,7 +102,7 @@ void SwaggerHandler::getOpenAPISpec(
       resp->addHeader("Access-Control-Allow-Origin", "*");
       resp->addHeader("Access-Control-Allow-Methods", "GET, OPTIONS");
       resp->addHeader("Access-Control-Allow-Headers", "Content-Type");
-      callback(resp);
+      MetricsInterceptor::callWithMetrics(req, resp, std::move(callback));
       return;
     }
 
@@ -118,7 +125,8 @@ void SwaggerHandler::getOpenAPISpec(
     resp->addHeader("Access-Control-Allow-Methods", "GET, OPTIONS");
     resp->addHeader("Access-Control-Allow-Headers", "Content-Type");
 
-    callback(resp);
+    // Record metrics and call callback
+    MetricsInterceptor::callWithMetrics(req, resp, std::move(callback));
   } catch (const std::exception &e) {
     auto resp = HttpResponse::newHttpResponse();
     resp->setStatusCode(k500InternalServerError);
@@ -127,7 +135,7 @@ void SwaggerHandler::getOpenAPISpec(
     resp->addHeader("Access-Control-Allow-Origin", "*");
     resp->addHeader("Access-Control-Allow-Methods", "GET, OPTIONS");
     resp->addHeader("Access-Control-Allow-Headers", "Content-Type");
-    callback(resp);
+    MetricsInterceptor::callWithMetrics(req, resp, std::move(callback));
   } catch (...) {
     auto resp = HttpResponse::newHttpResponse();
     resp->setStatusCode(k500InternalServerError);
@@ -136,7 +144,7 @@ void SwaggerHandler::getOpenAPISpec(
     resp->addHeader("Access-Control-Allow-Origin", "*");
     resp->addHeader("Access-Control-Allow-Methods", "GET, OPTIONS");
     resp->addHeader("Access-Control-Allow-Headers", "Content-Type");
-    callback(resp);
+    MetricsInterceptor::callWithMetrics(req, resp, std::move(callback));
   }
 }
 
@@ -707,11 +715,16 @@ SwaggerHandler::updateOpenAPIServerURLs(const std::string &yamlContent,
 void SwaggerHandler::handleOptions(
     const HttpRequestPtr &req,
     std::function<void(const HttpResponsePtr &)> &&callback) {
+  // Set handler start time for accurate metrics
+  MetricsInterceptor::setHandlerStartTime(req);
+
   auto resp = HttpResponse::newHttpResponse();
   resp->setStatusCode(k200OK);
   resp->addHeader("Access-Control-Allow-Origin", "*");
   resp->addHeader("Access-Control-Allow-Methods", "GET, OPTIONS");
   resp->addHeader("Access-Control-Allow-Headers", "Content-Type");
   resp->addHeader("Access-Control-Max-Age", "3600");
-  callback(resp);
+
+  // Record metrics and call callback
+  MetricsInterceptor::callWithMetrics(req, resp, std::move(callback));
 }
