@@ -273,6 +273,7 @@ set(SOURCES
     src/core/health_monitor.cpp
     src/core/endpoint_monitor.cpp
     src/core/request_middleware.cpp
+    src/core/metrics_interceptor.cpp
     src/core/cors_filter.cpp
     src/core/cors_helper.cpp
     src/core/ai_processor.cpp
@@ -311,11 +312,11 @@ set(SOURCES
     # src/core/ai_cache.cpp
     # src/core/priority_queue.cpp
     # src/core/circuit_breaker.cpp
-    # src/core/performance_monitor.cpp
+    src/core/performance_monitor.cpp
     # AI handlers (not needed for base code)
     # src/api/ai_handler.cpp
     src/api/ai_websocket.cpp
-    # src/api/metrics_handler.cpp
+    src/api/metrics_handler.cpp
 )
 
 # ============================================
@@ -912,6 +913,10 @@ if(EXISTS "${CMAKE_SOURCE_DIR}/third_party/hwinfo/CMakeLists.txt")
     # Define macro to enable SystemInfoHandler in main.cpp
     target_compile_definitions(edge_ai_api PRIVATE ENABLE_SYSTEM_INFO_HANDLER)
     message(STATUS "✓ system_info_handler enabled (hwinfo available)")
+
+    # Enable metrics handler - always enabled
+    target_compile_definitions(edge_ai_api PRIVATE ENABLE_METRICS_HANDLER)
+    message(STATUS "✓ metrics_handler enabled")
 elseif(AUTO_DOWNLOAD_DEPENDENCIES)
     # Use FetchContent to download hwinfo automatically
     message(STATUS "hwinfo submodule not found. Downloading via FetchContent...")
@@ -937,11 +942,19 @@ elseif(AUTO_DOWNLOAD_DEPENDENCIES)
     # Define macro to enable SystemInfoHandler in main.cpp
     target_compile_definitions(edge_ai_api PRIVATE ENABLE_SYSTEM_INFO_HANDLER)
     message(STATUS "✓ system_info_handler enabled (hwinfo available)")
+
+    # Enable metrics handler - always enabled
+    target_compile_definitions(edge_ai_api PRIVATE ENABLE_METRICS_HANDLER)
+    message(STATUS "✓ metrics_handler enabled")
 else()
     message(WARNING "hwinfo not found. System info endpoints will not work.")
     message(WARNING "Options:")
     message(WARNING "  1. Initialize submodule: git submodule update --init --recursive")
     message(WARNING "  2. Enable auto-download: cmake -DAUTO_DOWNLOAD_DEPENDENCIES=ON ..")
+
+    # Enable metrics handler even if hwinfo is not available
+    target_compile_definitions(edge_ai_api PRIVATE ENABLE_METRICS_HANDLER)
+    message(STATUS "✓ metrics_handler enabled")
 endif()
 
 # Additional libraries (if needed)
