@@ -1,4 +1,5 @@
 #include "api/ai_handler.h"
+#include "core/metrics_interceptor.h"
 #include "core/performance_monitor.h"
 #include <chrono>
 #include <drogon/HttpResponse.h>
@@ -57,6 +58,9 @@ std::string AIHandler::generateJobId() const {
 void AIHandler::processImage(
     const HttpRequestPtr &req,
     std::function<void(const HttpResponsePtr &)> &&callback) {
+  // Set handler start time for accurate metrics
+  MetricsInterceptor::setHandlerStartTime(req);
+
   auto start_time = std::chrono::steady_clock::now();
 
   try {
@@ -70,12 +74,8 @@ void AIHandler::processImage(
       auto resp = HttpResponse::newHttpJsonResponse(error);
       resp->setStatusCode(k429TooManyRequests);
 
-      auto latency = std::chrono::duration_cast<std::chrono::milliseconds>(
-          std::chrono::steady_clock::now() - start_time);
-      PerformanceMonitor::getInstance().recordRequest("/v1/core/ai/process",
-                                                      latency, false);
-
-      callback(resp);
+      // Record metrics and call callback
+      MetricsInterceptor::callWithMetrics(req, resp, std::move(callback));
       return;
     }
 
@@ -88,12 +88,8 @@ void AIHandler::processImage(
       auto resp = HttpResponse::newHttpJsonResponse(error);
       resp->setStatusCode(k400BadRequest);
 
-      auto latency = std::chrono::duration_cast<std::chrono::milliseconds>(
-          std::chrono::steady_clock::now() - start_time);
-      PerformanceMonitor::getInstance().recordRequest("/v1/core/ai/process",
-                                                      latency, false);
-
-      callback(resp);
+      // Record metrics and call callback
+      MetricsInterceptor::callWithMetrics(req, resp, std::move(callback));
       return;
     }
 
@@ -108,12 +104,8 @@ void AIHandler::processImage(
       auto resp = HttpResponse::newHttpJsonResponse(error);
       resp->setStatusCode(k400BadRequest);
 
-      auto latency = std::chrono::duration_cast<std::chrono::milliseconds>(
-          std::chrono::steady_clock::now() - start_time);
-      PerformanceMonitor::getInstance().recordRequest("/v1/core/ai/process",
-                                                      latency, false);
-
-      callback(resp);
+      // Record metrics and call callback
+      MetricsInterceptor::callWithMetrics(req, resp, std::move(callback));
       return;
     }
 
@@ -130,12 +122,8 @@ void AIHandler::processImage(
         auto resp = HttpResponse::newHttpJsonResponse(response);
         resp->setStatusCode(k200OK);
 
-        auto latency = std::chrono::duration_cast<std::chrono::milliseconds>(
-            std::chrono::steady_clock::now() - start_time);
-        PerformanceMonitor::getInstance().recordRequest("/v1/core/ai/process",
-                                                        latency, true);
-
-        callback(resp);
+        // Record metrics and call callback
+        MetricsInterceptor::callWithMetrics(req, resp, std::move(callback));
         return;
       }
     }
@@ -155,7 +143,10 @@ void AIHandler::processImage(
     PriorityQueue::Request request;
     request.priority = priority;
     request.request_id = job_id;
-    request.task = [image_data, config, cache_key, callback, start_time]() {
+    // Capture req to use in metrics recording
+    auto req_ptr = req;
+    request.task = [image_data, config, cache_key, callback, start_time,
+                    req_ptr]() {
       // Process AI request
       // TODO: Integrate with actual AI processor
 
@@ -179,12 +170,8 @@ void AIHandler::processImage(
       auto resp = HttpResponse::newHttpJsonResponse(result);
       resp->setStatusCode(k200OK);
 
-      auto latency = std::chrono::duration_cast<std::chrono::milliseconds>(
-          std::chrono::steady_clock::now() - start_time);
-      PerformanceMonitor::getInstance().recordRequest("/v1/core/ai/process",
-                                                      latency, true);
-
-      callback(resp);
+      // Record metrics and call callback
+      MetricsInterceptor::callWithMetrics(req_ptr, resp, std::move(callback));
     };
     request.timestamp = std::chrono::steady_clock::now();
     request.timeout = std::chrono::milliseconds(30000);
@@ -197,12 +184,8 @@ void AIHandler::processImage(
       auto resp = HttpResponse::newHttpJsonResponse(error);
       resp->setStatusCode(k503ServiceUnavailable);
 
-      auto latency = std::chrono::duration_cast<std::chrono::milliseconds>(
-          std::chrono::steady_clock::now() - start_time);
-      PerformanceMonitor::getInstance().recordRequest("/v1/core/ai/process",
-                                                      latency, false);
-
-      callback(resp);
+      // Record metrics and call callback
+      MetricsInterceptor::callWithMetrics(req, resp, std::move(callback));
       return;
     }
 
@@ -215,12 +198,8 @@ void AIHandler::processImage(
     auto resp = HttpResponse::newHttpJsonResponse(response);
     resp->setStatusCode(k202Accepted);
 
-    auto latency = std::chrono::duration_cast<std::chrono::milliseconds>(
-        std::chrono::steady_clock::now() - start_time);
-    PerformanceMonitor::getInstance().recordRequest("/v1/core/ai/process",
-                                                    latency, true);
-
-    callback(resp);
+    // Record metrics and call callback
+    MetricsInterceptor::callWithMetrics(req, resp, std::move(callback));
 
   } catch (const std::exception &e) {
     Json::Value error;
@@ -230,12 +209,8 @@ void AIHandler::processImage(
     auto resp = HttpResponse::newHttpJsonResponse(error);
     resp->setStatusCode(k500InternalServerError);
 
-    auto latency = std::chrono::duration_cast<std::chrono::milliseconds>(
-        std::chrono::steady_clock::now() - start_time);
-    PerformanceMonitor::getInstance().recordRequest("/v1/core/ai/process",
-                                                    latency, false);
-
-    callback(resp);
+    // Record metrics and call callback
+    MetricsInterceptor::callWithMetrics(req, resp, std::move(callback));
   }
 }
 
@@ -250,12 +225,17 @@ void AIHandler::processBatch(
 
   auto resp = HttpResponse::newHttpJsonResponse(response);
   resp->setStatusCode(k501NotImplemented);
-  callback(resp);
+
+  // Record metrics and call callback
+  MetricsInterceptor::callWithMetrics(req, resp, std::move(callback));
 }
 
 void AIHandler::getStatus(
     const HttpRequestPtr &req,
     std::function<void(const HttpResponsePtr &)> &&callback) {
+  // Set handler start time for accurate metrics
+  MetricsInterceptor::setHandlerStartTime(req);
+
   Json::Value response;
 
   if (request_queue_) {
@@ -273,12 +253,17 @@ void AIHandler::getStatus(
 
   auto resp = HttpResponse::newHttpJsonResponse(response);
   resp->setStatusCode(k200OK);
-  callback(resp);
+
+  // Record metrics and call callback
+  MetricsInterceptor::callWithMetrics(req, resp, std::move(callback));
 }
 
 void AIHandler::getMetrics(
     const HttpRequestPtr &req,
     std::function<void(const HttpResponsePtr &)> &&callback) {
+  // Set handler start time for accurate metrics
+  MetricsInterceptor::setHandlerStartTime(req);
+
   auto metrics = PerformanceMonitor::getInstance().getMetricsJSON();
 
   // Add cache stats
@@ -303,5 +288,7 @@ void AIHandler::getMetrics(
 
   auto resp = HttpResponse::newHttpJsonResponse(metrics);
   resp->setStatusCode(k200OK);
-  callback(resp);
+
+  // Record metrics and call callback
+  MetricsInterceptor::callWithMetrics(req, resp, std::move(callback));
 }
