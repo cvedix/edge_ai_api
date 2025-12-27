@@ -1,0 +1,57 @@
+{
+    "solutionId": "face_detection_rtmp_default",
+    "solutionName": "Face Detection - RTMP Streaming",
+    "solutionType": "face_detection",
+    "isDefault": false,
+    "description": "Face detection với file/RTSP input và stream kết quả qua RTMP",
+    "category": "face_detection",
+    "pipeline": [
+        {
+            "nodeType": "file_src",
+            "nodeName": "file_src_{instanceId}",
+            "parameters": {
+                "file_path": "${FILE_PATH}",
+                "channel": "0",
+                "resize_ratio": "${RESIZE_RATIO}"
+            }
+        },
+        {
+            "nodeType": "yunet_face_detector",
+            "nodeName": "face_detector_{instanceId}",
+            "parameters": {
+                "model_path": "${MODEL_PATH}",
+                "score_threshold": "${detectionSensitivity}",
+                "nms_threshold": "0.5",
+                "top_k": "50"
+            }
+        },
+        {
+            "nodeType": "face_osd_v2",
+            "nodeName": "face_osd_{instanceId}",
+            "parameters": {}
+        },
+        {
+            "nodeType": "rtmp_des",
+            "nodeName": "rtmp_des_{instanceId}",
+            "parameters": {
+                "rtmp_url": "${RTMP_URL}",
+                "channel": "0"
+            }
+        }
+    ],
+    "defaults": {
+        "detectorMode": "SmartDetection",
+        "detectionSensitivity": "0.7",
+        "sensorModality": "RGB",
+        "RESIZE_RATIO": "1.0"
+    },
+    "requiredParams": {
+        "FILE_PATH": "Đường dẫn file video input (hoặc dùng RTSP_URL)",
+        "RTMP_URL": "URL RTMP server để stream output",
+        "MODEL_PATH": "Đường dẫn model face detection (yunet)"
+    },
+    "optionalParams": {
+        "RTSP_URL": "URL RTSP stream (thay thế FILE_PATH)",
+        "RESIZE_RATIO": "Tỷ lệ resize video (0.0-1.0), mặc định 1.0"
+    }
+}

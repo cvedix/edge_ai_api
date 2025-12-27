@@ -1,0 +1,63 @@
+{
+    "solutionId": "object_detection_yolo_default",
+    "solutionName": "Object Detection - YOLO",
+    "solutionType": "object_detection",
+    "isDefault": false,
+    "description": "Object detection với YOLO model, hỗ trợ file/RTSP input và file/RTMP output",
+    "category": "object_detection",
+    "pipeline": [
+        {
+            "nodeType": "file_src",
+            "nodeName": "file_src_{instanceId}",
+            "parameters": {
+                "file_path": "${FILE_PATH}",
+                "channel": "0",
+                "resize_ratio": "${RESIZE_RATIO}"
+            }
+        },
+        {
+            "nodeType": "yolo_detector",
+            "nodeName": "yolo_detector_{instanceId}",
+            "parameters": {
+                "weights_path": "${MODEL_PATH}",
+                "config_path": "${CONFIG_PATH}",
+                "labels_path": "${LABELS_PATH}",
+                "score_threshold": "${detectionSensitivity}",
+                "nms_threshold": "0.4"
+            }
+        },
+        {
+            "nodeType": "osd_v3",
+            "nodeName": "osd_{instanceId}",
+            "parameters": {
+                "labels_path": "${LABELS_PATH}"
+            }
+        },
+        {
+            "nodeType": "file_des",
+            "nodeName": "file_des_{instanceId}",
+            "parameters": {
+                "save_dir": "./output/{instanceId}",
+                "name_prefix": "object_detection",
+                "osd": "true"
+            }
+        }
+    ],
+    "defaults": {
+        "detectorMode": "SmartDetection",
+        "detectionSensitivity": "0.5",
+        "sensorModality": "RGB",
+        "RESIZE_RATIO": "1.0"
+    },
+    "requiredParams": {
+        "FILE_PATH": "Đường dẫn file video input (hoặc dùng RTSP_URL)",
+        "MODEL_PATH": "Đường dẫn YOLO weights file (.weights)",
+        "CONFIG_PATH": "Đường dẫn YOLO config file (.cfg)",
+        "LABELS_PATH": "Đường dẫn labels file (.txt)"
+    },
+    "optionalParams": {
+        "RTSP_URL": "URL RTSP stream (thay thế FILE_PATH)",
+        "RTMP_URL": "URL RTMP server (thay thế file_des)",
+        "RESIZE_RATIO": "Tỷ lệ resize video (0.0-1.0), mặc định 1.0"
+    }
+}

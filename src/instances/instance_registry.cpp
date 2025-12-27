@@ -4975,6 +4975,20 @@ void InstanceRegistry::setupFrameCaptureHook(
 
           if (frameToCache && !frameToCache->empty()) {
             updateFrameCache(instanceId, *frameToCache);
+
+            // CRITICAL: Update RTSP activity when we receive frames
+            // This is the only reliable way to know RTSP is actually working
+            // Check if this is an RTSP instance by checking if instance has
+            // RTSP URL
+            {
+              std::shared_lock<std::shared_timed_mutex> read_lock(mutex_);
+              auto instanceIt = instances_.find(instanceId);
+              if (instanceIt != instances_.end() &&
+                  !instanceIt->second.rtspUrl.empty()) {
+                // This is an RTSP instance - update activity
+                updateRTSPActivity(instanceId);
+              }
+            }
           }
         }
       } catch (const std::exception &e) {
@@ -5138,8 +5152,11 @@ void InstanceRegistry::startRTSPMonitorThread(const std::string &instanceId) {
   {
     std::lock_guard<std::mutex> lock(rtsp_monitor_mutex_);
     rtsp_monitor_stop_flags_[instanceId] = stop_flag;
-    rtsp_last_activity_[instanceId] = std::chrono::steady_clock::now();
+    // CRITICAL: Do NOT initialize rtsp_last_activity_ with current time
+    // It should only be set when we actually receive frames from RTSP
+    // This prevents false positive "connected" detection
     rtsp_reconnect_attempts_[instanceId] = 0;
+    rtsp_has_connected_[instanceId] = false; // Initialize as not connected yet
   }
 
   // Start monitoring thread
@@ -5152,14 +5169,25 @@ void InstanceRegistry::startRTSPMonitorThread(const std::string &instanceId) {
 
     const auto check_interval = std::chrono::seconds(
         2); // Check every 2 seconds (faster detection for unstable streams)
-    const auto inactivity_timeout = std::chrono::seconds(
-        15); // Consider disconnected if no activity for 15 seconds (faster
-             // detection for unstable streams)
+
+    // CRITICAL: Different timeouts for initial connection vs disconnection
+    // - Initial connection: Allow 90 seconds for RTSP to establish (SDK retry
+    // can take 10-30s, plus stabilization)
+    // - After connection: Use 20 seconds for faster disconnection detection
+    const auto initial_connection_timeout =
+        std::chrono::seconds(90); // Allow 90 seconds for initial RTSP
+                                  // connection (SDK retry + stabilization)
+    const auto disconnection_timeout =
+        std::chrono::seconds(20); // Consider disconnected if no activity for 20
+                                  // seconds (after successful connection)
+
     const auto reconnect_cooldown =
         std::chrono::seconds(10); // Wait 10 seconds between reconnect attempts
     const int max_reconnect_attempts =
         10; // Maximum reconnect attempts before giving up
 
+    auto instance_start_time =
+        std::chrono::steady_clock::now(); // Track when instance started
     auto last_reconnect_attempt =
         std::chrono::steady_clock::now() -
         reconnect_cooldown; // Allow immediate first check
@@ -5205,21 +5233,37 @@ void InstanceRegistry::startRTSPMonitorThread(const std::string &instanceId) {
         break;
       }
 
-      // Get last activity time
-      auto last_activity = std::chrono::steady_clock::now();
+      // Get last activity time and connection status
+      bool has_activity = false;
+      auto last_activity = std::chrono::steady_clock::time_point();
+      bool has_connected = false;
       {
         std::lock_guard<std::mutex> lock(rtsp_monitor_mutex_);
         auto activityIt = rtsp_last_activity_.find(instanceId);
         if (activityIt != rtsp_last_activity_.end()) {
+          has_activity = true;
           last_activity = activityIt->second;
+        }
+        auto connectedIt = rtsp_has_connected_.find(instanceId);
+        if (connectedIt != rtsp_has_connected_.end()) {
+          has_connected = connectedIt->second.load();
         }
       }
 
       // Check if stream is inactive (no frames received for timeout period)
       auto now = std::chrono::steady_clock::now();
-      auto time_since_activity =
-          std::chrono::duration_cast<std::chrono::seconds>(now - last_activity)
-              .count();
+      auto time_since_start = std::chrono::duration_cast<std::chrono::seconds>(
+                                  now - instance_start_time)
+                                  .count();
+      int time_since_activity = 0;
+      if (has_activity) {
+        time_since_activity = std::chrono::duration_cast<std::chrono::seconds>(
+                                  now - last_activity)
+                                  .count();
+      } else {
+        // No activity yet - use time since start
+        time_since_activity = time_since_start;
+      }
 
       // Get current reconnect attempt count
       int reconnect_attempts = 0;
@@ -5231,8 +5275,23 @@ void InstanceRegistry::startRTSPMonitorThread(const std::string &instanceId) {
         }
       }
 
+      // CRITICAL: Use different timeout based on connection state
+      // - If never connected: Use initial_connection_timeout (90s) to allow SDK
+      // retry to complete
+      // - If connected before: Use disconnection_timeout (20s) for faster
+      // detection
+      int timeout_seconds = has_connected ? disconnection_timeout.count()
+                                          : initial_connection_timeout.count();
+
+      // CRITICAL: During initial connection phase (first 90 seconds), don't
+      // trigger reconnect The SDK is still retrying, and we shouldn't interfere
+      bool is_initial_connection_phase =
+          !has_connected &&
+          (time_since_start < initial_connection_timeout.count());
+
       // Check if stream appears to be disconnected
-      if (time_since_activity > inactivity_timeout.count()) {
+      if (!is_initial_connection_phase &&
+          time_since_activity > timeout_seconds) {
         std::cerr << "[InstanceRegistry] [RTSP Monitor] ⚠ Stream appears "
                      "disconnected (no activity for "
                   << time_since_activity << " seconds)" << std::endl;
@@ -5307,18 +5366,72 @@ void InstanceRegistry::startRTSPMonitorThread(const std::string &instanceId) {
           }
         }
       } else {
-        // Stream is active - reset reconnect attempts
-        if (reconnect_attempts > 0) {
-          std::cerr << "[InstanceRegistry] [RTSP Monitor] ✓ Stream is active "
-                       "again (activity "
-                    << time_since_activity << " seconds ago)" << std::endl;
-          {
-            std::lock_guard<std::mutex> lock(rtsp_monitor_mutex_);
-            auto attemptsIt = rtsp_reconnect_attempts_.find(instanceId);
-            if (attemptsIt != rtsp_reconnect_attempts_.end()) {
-              attemptsIt->second.store(0);
+        // Stream appears active (time_since_activity <= timeout)
+        // But we need to verify we actually have activity (not just initial
+        // state)
+        if (has_activity) {
+          // We have real activity - mark as connected and reset reconnect
+          // attempts
+          if (!has_connected) {
+            // First time we detect activity - mark as successfully connected
+            {
+              std::lock_guard<std::mutex> lock(rtsp_monitor_mutex_);
+              auto connectedIt = rtsp_has_connected_.find(instanceId);
+              if (connectedIt != rtsp_has_connected_.end()) {
+                connectedIt->second.store(true);
+              }
+            }
+            std::cerr
+                << "[InstanceRegistry] [RTSP Monitor] ✓ RTSP connection "
+                   "established successfully (first activity detected after "
+                << time_since_start << " seconds)" << std::endl;
+          }
+
+          if (reconnect_attempts > 0) {
+            std::cerr << "[InstanceRegistry] [RTSP Monitor] ✓ Stream is active "
+                         "again (activity "
+                      << time_since_activity << " seconds ago)" << std::endl;
+            {
+              std::lock_guard<std::mutex> lock(rtsp_monitor_mutex_);
+              auto attemptsIt = rtsp_reconnect_attempts_.find(instanceId);
+              if (attemptsIt != rtsp_reconnect_attempts_.end()) {
+                attemptsIt->second.store(0);
+              }
             }
           }
+        }
+        // If !has_activity, we're still in initial connection phase - don't log
+        // anything
+      }
+
+      // Log status during initial connection phase (but don't trigger
+      // reconnect) Only log at specific intervals to avoid spam: 10s, 30s, 60s,
+      // then every 30s
+      if (is_initial_connection_phase) {
+        static std::map<std::string, int> last_logged_time;
+        int last_logged = 0;
+        auto it = last_logged_time.find(instanceId);
+        if (it != last_logged_time.end()) {
+          last_logged = it->second;
+        }
+
+        bool should_log = false;
+        if (time_since_start == 10 || time_since_start == 30 ||
+            time_since_start == 60) {
+          should_log = true;
+        } else if (time_since_start > 60 &&
+                   (time_since_start - last_logged) >= 30) {
+          should_log = true;
+        }
+
+        if (should_log) {
+          std::cerr
+              << "[InstanceRegistry] [RTSP Monitor] ⏳ Initial connection "
+                 "phase: waiting for RTSP to establish ("
+              << time_since_start << "s / "
+              << initial_connection_timeout.count()
+              << "s). SDK is retrying connection..." << std::endl;
+          last_logged_time[instanceId] = time_since_start;
         }
       }
     }
@@ -5364,6 +5477,7 @@ void InstanceRegistry::stopRTSPMonitorThread(const std::string &instanceId) {
   }
   rtsp_last_activity_.erase(instanceId);
   rtsp_reconnect_attempts_.erase(instanceId);
+  rtsp_has_connected_.erase(instanceId);
 
   // Release lock before joining to avoid deadlock
   lock.unlock();
@@ -5409,6 +5523,13 @@ void InstanceRegistry::stopRTSPMonitorThread(const std::string &instanceId) {
 void InstanceRegistry::updateRTSPActivity(const std::string &instanceId) {
   std::lock_guard<std::mutex> lock(rtsp_monitor_mutex_);
   rtsp_last_activity_[instanceId] = std::chrono::steady_clock::now();
+
+  // Mark as successfully connected when we receive activity (frames)
+  auto connectedIt = rtsp_has_connected_.find(instanceId);
+  if (connectedIt != rtsp_has_connected_.end() && !connectedIt->second.load()) {
+    // First time we receive activity - mark as connected
+    connectedIt->second.store(true);
+  }
 }
 
 bool InstanceRegistry::reconnectRTSPStream(
@@ -5745,8 +5866,17 @@ bool InstanceRegistry::reconnectRTSPStream(
                    "successfully"
                 << std::endl;
 
-      // Update activity time
+      // Update activity time and mark as connected
       updateRTSPActivity(instanceId);
+
+      // Mark as successfully connected
+      {
+        std::lock_guard<std::mutex> lock(rtsp_monitor_mutex_);
+        auto connectedIt = rtsp_has_connected_.find(instanceId);
+        if (connectedIt != rtsp_has_connected_.end()) {
+          connectedIt->second.store(true);
+        }
+      }
 
       return true;
     } catch (const std::exception &e) {

@@ -143,6 +143,46 @@ private:
    */
   void registerMaskRCNNRTMPSolution();
 
+  /**
+   * @brief Register face_detection_default solution
+   */
+  void registerFaceDetectionDefaultSolution();
+
+  /**
+   * @brief Register face_detection_rtmp_default solution
+   */
+  void registerFaceDetectionRTMPDefaultSolution();
+
+  /**
+   * @brief Register face_detection_rtsp_default solution
+   */
+  void registerFaceDetectionRTSPDefaultSolution();
+
+  /**
+   * @brief Register rtsp_face_detection_default solution
+   */
+  void registerRTSPFaceDetectionDefaultSolution();
+
+  /**
+   * @brief Register minimal_default solution
+   */
+  void registerMinimalDefaultSolution();
+
+  /**
+   * @brief Register object_detection_yolo_default solution
+   */
+  void registerObjectDetectionYOLODefaultSolution();
+
+  /**
+   * @brief Register ba_crossline_default solution
+   */
+  void registerBACrosslineDefaultSolution();
+
+  /**
+   * @brief Register ba_crossline_mqtt_default solution
+   */
+  void registerBACrosslineMQTTDefaultSolution();
+
 #ifdef CVEDIX_WITH_RKNN
   /**
    * @brief Register RKNN YOLOv11 detection solution

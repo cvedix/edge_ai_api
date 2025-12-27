@@ -91,9 +91,19 @@ private:
   std::string sanitizeFilename(const std::string &filename) const;
 
   /**
+   * @brief Sanitize directory path to prevent path traversal
+   */
+  std::string sanitizeDirectoryPath(const std::string &dirPath) const;
+
+  /**
    * @brief Extract video name from request path
    */
   std::string extractVideoName(const HttpRequestPtr &req) const;
+
+  /**
+   * @brief Get directory path from request (query parameter or form data)
+   */
+  std::string getDirectoryPath(const HttpRequestPtr &req) const;
 
   /**
    * @brief Create error response

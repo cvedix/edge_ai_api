@@ -18,7 +18,6 @@
 #include <thread>
 #include <unordered_map>
 #include <vector>
-#include <memory>
 
 // Forward declarations
 namespace cvedix_nodes {
@@ -219,11 +218,15 @@ private:
                            // methods)
   std::unordered_map<std::string, std::atomic<int>>
       rtsp_reconnect_attempts_; // Track reconnect attempts
+  std::unordered_map<std::string, std::atomic<bool>>
+      rtsp_has_connected_; // Track if RTSP has ever successfully connected (to
+                           // distinguish initial connection from disconnection)
   mutable std::mutex
       rtsp_monitor_mutex_; // Separate mutex for RTSP monitor thread management
 
   // MP4 directory watchers for auto-converting recordings
-  std::unordered_map<std::string, std::unique_ptr<class MP4Finalizer::MP4DirectoryWatcher>>
+  std::unordered_map<std::string,
+                     std::unique_ptr<class MP4Finalizer::MP4DirectoryWatcher>>
       mp4_watchers_;
   mutable std::mutex mp4_watcher_mutex_; // Mutex for MP4 watcher management
 

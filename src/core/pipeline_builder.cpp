@@ -3673,23 +3673,59 @@ PipelineBuilder::createBACrosslineNode(
     // Priority 2: Fallback to solution config parameters if no lines from API
     if (!linesParsed) {
       // Check if we have line parameters from solution config
-      if (params.count("line_channel") && params.count("line_start_x") &&
+      // Also check if values are not placeholders (e.g., ${CROSSLINE_START_X})
+      bool hasValidParams =
+          params.count("line_channel") && params.count("line_start_x") &&
           params.count("line_start_y") && params.count("line_end_x") &&
-          params.count("line_end_y")) {
-        int channel = std::stoi(params.at("line_channel"));
-        int start_x = std::stoi(params.at("line_start_x"));
-        int start_y = std::stoi(params.at("line_start_y"));
-        int end_x = std::stoi(params.at("line_end_x"));
-        int end_y = std::stoi(params.at("line_end_y"));
+          params.count("line_end_y");
 
-        cvedix_objects::cvedix_point start(start_x, start_y);
-        cvedix_objects::cvedix_point end(end_x, end_y);
-        lines[channel] = cvedix_objects::cvedix_line(start, end);
-        std::cerr << "[PipelineBuilder] Using line configuration from solution "
-                     "config (channel "
-                  << channel << ": (" << start_x << "," << start_y << ") -> ("
-                  << end_x << "," << end_y << "))" << std::endl;
-      } else {
+      // Check if values are actual numbers (not placeholders)
+      if (hasValidParams) {
+        bool allValid = true;
+        for (const auto &key :
+             {"line_start_x", "line_start_y", "line_end_x", "line_end_y"}) {
+          if (params.at(key).find("${") != std::string::npos) {
+            allValid = false;
+            break;
+          }
+        }
+
+        if (allValid) {
+          try {
+            int channel = std::stoi(params.at("line_channel"));
+            int start_x = std::stoi(params.at("line_start_x"));
+            int start_y = std::stoi(params.at("line_start_y"));
+            int end_x = std::stoi(params.at("line_end_x"));
+            int end_y = std::stoi(params.at("line_end_y"));
+
+            cvedix_objects::cvedix_point start(start_x, start_y);
+            cvedix_objects::cvedix_point end(end_x, end_y);
+            lines[channel] = cvedix_objects::cvedix_line(start, end);
+            std::cerr
+                << "[PipelineBuilder] Using line configuration from solution "
+                   "config (channel "
+                << channel << ": (" << start_x << "," << start_y << ") -> ("
+                << end_x << "," << end_y << "))" << std::endl;
+          } catch (const std::exception &e) {
+            std::cerr << "[PipelineBuilder] Warning: Failed to parse line "
+                         "parameters from solution config: "
+                      << e.what() << std::endl;
+            std::cerr << "[PipelineBuilder] Falling back to default line "
+                         "configuration"
+                      << std::endl;
+            // Fall through to Priority 3
+            hasValidParams = false;
+          }
+        } else {
+          std::cerr
+              << "[PipelineBuilder] Line parameters contain unresolved "
+                 "placeholders, falling back to default line configuration"
+              << std::endl;
+          hasValidParams = false;
+        }
+      }
+
+      if (!hasValidParams) {
         // Priority 3: Default line for channel 0 (from sample)
         cvedix_objects::cvedix_point start(0, 250);
         cvedix_objects::cvedix_point end(700, 220);
