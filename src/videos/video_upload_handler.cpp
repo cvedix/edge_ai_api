@@ -71,21 +71,232 @@ VideoUploadHandler::sanitizeFilename(const std::string &filename) const {
 }
 
 std::string
+VideoUploadHandler::sanitizeDirectoryPath(const std::string &dirPath) const {
+  if (dirPath.empty()) {
+    return "";
+  }
+
+  std::string sanitized;
+  std::string currentSegment;
+
+  for (char c : dirPath) {
+    if (c == '/' || c == '\\') {
+      // End of segment, validate and add
+      if (!currentSegment.empty()) {
+        // Sanitize segment
+        std::string sanitizedSegment;
+        for (char segChar : currentSegment) {
+          // Allow alphanumeric, dash, underscore for directory names
+          if (std::isalnum(segChar) || segChar == '-' || segChar == '_') {
+            sanitizedSegment += segChar;
+          }
+        }
+        if (!sanitizedSegment.empty() && sanitizedSegment != "." &&
+            sanitizedSegment != "..") {
+          if (!sanitized.empty()) {
+            sanitized += "/";
+          }
+          sanitized += sanitizedSegment;
+        }
+        currentSegment.clear();
+      }
+    } else {
+      currentSegment += c;
+    }
+  }
+
+  // Handle last segment
+  if (!currentSegment.empty()) {
+    std::string sanitizedSegment;
+    for (char segChar : currentSegment) {
+      if (std::isalnum(segChar) || segChar == '-' || segChar == '_') {
+        sanitizedSegment += segChar;
+      }
+    }
+    if (!sanitizedSegment.empty() && sanitizedSegment != "." &&
+        sanitizedSegment != "..") {
+      if (!sanitized.empty()) {
+        sanitized += "/";
+      }
+      sanitized += sanitizedSegment;
+    }
+  }
+
+  // Remove any path traversal attempts
+  if (sanitized.find("..") != std::string::npos) {
+    sanitized.clear();
+  }
+
+  return sanitized;
+}
+
+std::string
+VideoUploadHandler::getDirectoryPath(const HttpRequestPtr &req) const {
+  // Try query parameter first
+  std::string dirPath = req->getParameter("directory");
+
+  // URL decode the directory path if it contains encoded characters
+  // (Drogon usually auto-decodes, but we do it explicitly for safety)
+  if (!dirPath.empty()) {
+    std::string decoded;
+    decoded.reserve(dirPath.length());
+    for (size_t i = 0; i < dirPath.length(); ++i) {
+      if (dirPath[i] == '%' && i + 2 < dirPath.length()) {
+        // Try to decode hex value
+        char hex[3] = {dirPath[i + 1], dirPath[i + 2], '\0'};
+        char *end;
+        unsigned long value = std::strtoul(hex, &end, 16);
+        if (*end == '\0' && value <= 255) {
+          decoded += static_cast<char>(value);
+          i += 2; // Skip the hex digits
+        } else {
+          decoded += dirPath[i]; // Invalid encoding, keep as-is
+        }
+      } else {
+        decoded += dirPath[i];
+      }
+    }
+    dirPath = decoded;
+  }
+
+  // If not in query, try to get from multipart form data
+  if (dirPath.empty()) {
+    std::string contentType = req->getHeader("Content-Type");
+    if (contentType.find("multipart/form-data") != std::string::npos) {
+      // Parse multipart to find directory field
+      std::string boundary;
+      size_t boundaryPos = contentType.find("boundary=");
+      if (boundaryPos != std::string::npos) {
+        boundaryPos += 9; // length of "boundary="
+        size_t endPos = contentType.find_first_of("; \r\n", boundaryPos);
+        if (endPos != std::string::npos) {
+          boundary = contentType.substr(boundaryPos, endPos - boundaryPos);
+        } else {
+          boundary = contentType.substr(boundaryPos);
+        }
+        // Remove quotes if present
+        if (!boundary.empty() && boundary.front() == '"' &&
+            boundary.back() == '"') {
+          boundary = boundary.substr(1, boundary.length() - 2);
+        }
+      }
+
+      if (!boundary.empty()) {
+        auto body = req->getBody();
+        if (!body.empty()) {
+          std::string bodyStr(reinterpret_cast<const char *>(body.data()),
+                              body.size());
+          std::string boundaryMarker = "--" + boundary;
+
+          // Look for directory field in multipart
+          size_t searchPos = 0;
+          size_t partStart = bodyStr.find(boundaryMarker, searchPos);
+          while (partStart != std::string::npos) {
+            partStart += boundaryMarker.length();
+            if (partStart >= bodyStr.length())
+              break;
+
+            // Skip \r\n
+            if (partStart < bodyStr.length() && bodyStr[partStart] == '\r')
+              partStart++;
+            if (partStart < bodyStr.length() && bodyStr[partStart] == '\n')
+              partStart++;
+
+            // Find Content-Disposition
+            size_t contentDispositionPos =
+                bodyStr.find("Content-Disposition:", partStart);
+            if (contentDispositionPos != std::string::npos &&
+                contentDispositionPos < partStart + 1024) {
+              // Check if this is a directory field
+              size_t namePos =
+                  bodyStr.find("name=\"directory\"", contentDispositionPos);
+              if (namePos == std::string::npos) {
+                namePos = bodyStr.find("name=directory", contentDispositionPos);
+              }
+
+              if (namePos != std::string::npos &&
+                  namePos < contentDispositionPos + 512) {
+                // Find content start
+                size_t contentStart =
+                    bodyStr.find("\r\n\r\n", contentDispositionPos);
+                if (contentStart != std::string::npos) {
+                  contentStart += 4;
+                } else {
+                  contentStart = bodyStr.find("\n\n", contentDispositionPos);
+                  if (contentStart != std::string::npos) {
+                    contentStart += 2;
+                  }
+                }
+
+                if (contentStart != std::string::npos) {
+                  // Find content end (next boundary)
+                  size_t nextBoundary =
+                      bodyStr.find(boundaryMarker, contentStart);
+                  size_t contentEnd = (nextBoundary != std::string::npos)
+                                          ? nextBoundary
+                                          : bodyStr.length();
+
+                  // Remove trailing \r\n
+                  while (contentEnd > contentStart &&
+                         (bodyStr[contentEnd - 1] == '\r' ||
+                          bodyStr[contentEnd - 1] == '\n')) {
+                    contentEnd--;
+                  }
+
+                  if (contentEnd > contentStart) {
+                    dirPath =
+                        bodyStr.substr(contentStart, contentEnd - contentStart);
+                    break; // Found directory, stop searching
+                  }
+                }
+              }
+            }
+
+            // Move to next boundary
+            partStart = bodyStr.find(boundaryMarker, partStart);
+          }
+        }
+      }
+    }
+  }
+
+  return sanitizeDirectoryPath(dirPath);
+}
+
+std::string
 VideoUploadHandler::extractVideoName(const HttpRequestPtr &req) const {
-  // Try getParameter first (standard way)
+  // Try getParameter first (standard way - Drogon auto-extracts from path
+  // pattern)
   std::string videoName = req->getParameter("videoName");
 
   // Fallback: extract from path if getParameter doesn't work
   if (videoName.empty()) {
-    std::string path = req->getPath();
-    size_t videosPos = path.find("/videos/");
-    if (videosPos != std::string::npos) {
-      size_t start = videosPos + 8;       // length of "/videos/"
+    // Try both path() and getPath() methods - path() includes query string
+    std::string path = req->path();
+    if (path.empty()) {
+      path = req->getPath();
+    }
+
+    // Try /v1/core/video/ pattern first
+    size_t videoPos = path.find("/v1/core/video/");
+    if (videoPos != std::string::npos) {
+      size_t start = videoPos + 15;       // length of "/v1/core/video/"
       size_t end = path.find("?", start); // Stop at query string if present
       if (end == std::string::npos) {
         end = path.length();
       }
       videoName = path.substr(start, end - start);
+    } else {
+      // Fallback to old pattern /videos/ for backward compatibility
+      size_t videosPos = path.find("/videos/");
+      if (videosPos != std::string::npos) {
+        size_t start = videosPos + 8;       // length of "/videos/"
+        size_t end = path.find("?", start); // Stop at query string if present
+        if (end == std::string::npos) {
+          end = path.length();
+        }
+        videoName = path.substr(start, end - start);
+      }
     }
   }
 
@@ -183,10 +394,18 @@ void VideoUploadHandler::uploadVideo(
       std::string boundaryMarker = "--" + boundary;
       std::string endBoundary = boundaryMarker + "--";
 
+      // Get directory path from request
+      std::string subDir = getDirectoryPath(req);
+
       // Ensure videos directory exists (with fallback if needed)
       std::string videosDir = getVideosDirectory();
       videosDir = EnvConfig::resolveDirectory(videosDir, "videos");
       std::filesystem::path videosPath(videosDir);
+
+      // Add subdirectory if specified
+      if (!subDir.empty()) {
+        videosPath /= subDir;
+      }
 
       // CRITICAL: Create directory if it doesn't exist
       try {
@@ -343,7 +562,12 @@ void VideoUploadHandler::uploadVideo(
         }
 
         if (contentEnd <= contentStart) {
-          errors.push_back("File '" + partFilename + "' has no content");
+          // Skip empty files (e.g., files= field with no value)
+          // Only add warning if filename suggests it was intended to be a file
+          if (!partFilename.empty() && partFilename != "files" &&
+              partFilename != "file") {
+            errors.push_back("File '" + partFilename + "' has no content");
+          }
           partStart = nextBoundary;
           continue;
         }
@@ -596,10 +820,18 @@ void VideoUploadHandler::uploadVideo(
         return;
       }
 
+      // Get directory path from request
+      std::string subDir = getDirectoryPath(req);
+
       // Ensure videos directory exists (with fallback if needed)
       std::string videosDir = getVideosDirectory();
       videosDir = EnvConfig::resolveDirectory(videosDir, "videos");
       std::filesystem::path videosPath(videosDir);
+
+      // Add subdirectory if specified
+      if (!subDir.empty()) {
+        videosPath /= subDir;
+      }
 
       // CRITICAL: Create directory if it doesn't exist
       try {
@@ -831,12 +1063,21 @@ void VideoUploadHandler::uploadVideo(
 }
 
 void VideoUploadHandler::listVideos(
-    const HttpRequestPtr & /*req*/,
+    const HttpRequestPtr &req,
     std::function<void(const HttpResponsePtr &)> &&callback) {
 
   try {
+    // Get directory path from request
+    std::string subDir = getDirectoryPath(req);
+
     std::string videosDir = getVideosDirectory();
+    videosDir = EnvConfig::resolveDirectory(videosDir, "videos");
     std::filesystem::path videosPath(videosDir);
+
+    // Add subdirectory if specified
+    if (!subDir.empty()) {
+      videosPath /= subDir;
+    }
 
     Json::Value response;
     Json::Value videos(Json::arrayValue);
@@ -855,29 +1096,88 @@ void VideoUploadHandler::listVideos(
     }
 
     // List all video files
+    // If no directory specified, recursively search all subdirectories
+    // If directory specified, only search that directory (non-recursive)
     int count = 0;
-    for (const auto &entry : std::filesystem::directory_iterator(videosPath)) {
-      if (entry.is_regular_file() &&
-          isValidVideoFile(entry.path().filename().string())) {
-        Json::Value video;
-        video["filename"] = entry.path().filename().string();
-        video["path"] = std::filesystem::canonical(entry.path()).string();
-        video["size"] =
-            static_cast<Json::Int64>(std::filesystem::file_size(entry.path()));
 
-        auto modTime = std::filesystem::last_write_time(entry.path());
-        auto sctp =
-            std::chrono::time_point_cast<std::chrono::system_clock::duration>(
-                modTime - std::filesystem::file_time_type::clock::now() +
-                std::chrono::system_clock::now());
-        auto timeT = std::chrono::system_clock::to_time_t(sctp);
+    if (subDir.empty()) {
+      // Recursive search: find all video files in all subdirectories
+      try {
+        for (const auto &entry :
+             std::filesystem::recursive_directory_iterator(videosPath)) {
+          try {
+            if (entry.is_regular_file() &&
+                isValidVideoFile(entry.path().filename().string())) {
+              Json::Value video;
+              video["filename"] = entry.path().filename().string();
 
-        std::stringstream ss;
-        ss << std::put_time(std::localtime(&timeT), "%Y-%m-%d %H:%M:%S");
-        video["modified"] = ss.str();
+              // Get relative path from base videos directory
+              try {
+                std::filesystem::path relativePath =
+                    std::filesystem::relative(entry.path(), videosPath);
+                video["relativePath"] = relativePath.string();
+              } catch (const std::exception &e) {
+                // If relative path fails, use filename only
+                video["relativePath"] = entry.path().filename().string();
+              }
 
-        videos.append(video);
-        count++;
+              video["path"] = std::filesystem::canonical(entry.path()).string();
+              video["size"] = static_cast<Json::Int64>(
+                  std::filesystem::file_size(entry.path()));
+
+              auto modTime = std::filesystem::last_write_time(entry.path());
+              auto sctp = std::chrono::time_point_cast<
+                  std::chrono::system_clock::duration>(
+                  modTime - std::filesystem::file_time_type::clock::now() +
+                  std::chrono::system_clock::now());
+              auto timeT = std::chrono::system_clock::to_time_t(sctp);
+
+              std::stringstream ss;
+              ss << std::put_time(std::localtime(&timeT), "%Y-%m-%d %H:%M:%S");
+              video["modified"] = ss.str();
+
+              videos.append(video);
+              count++;
+            }
+          } catch (const std::filesystem::filesystem_error &e) {
+            // Skip files/directories that can't be accessed (permission denied,
+            // etc.)
+            std::cerr << "[VideoUploadHandler] Skipping entry due to error: "
+                      << e.what() << std::endl;
+            continue;
+          }
+        }
+      } catch (const std::filesystem::filesystem_error &e) {
+        std::cerr << "[VideoUploadHandler] Error during recursive search: "
+                  << e.what() << std::endl;
+        // Continue with empty list or partial results
+      }
+    } else {
+      // Non-recursive: only search in specified directory
+      for (const auto &entry :
+           std::filesystem::directory_iterator(videosPath)) {
+        if (entry.is_regular_file() &&
+            isValidVideoFile(entry.path().filename().string())) {
+          Json::Value video;
+          video["filename"] = entry.path().filename().string();
+          video["path"] = std::filesystem::canonical(entry.path()).string();
+          video["size"] = static_cast<Json::Int64>(
+              std::filesystem::file_size(entry.path()));
+
+          auto modTime = std::filesystem::last_write_time(entry.path());
+          auto sctp =
+              std::chrono::time_point_cast<std::chrono::system_clock::duration>(
+                  modTime - std::filesystem::file_time_type::clock::now() +
+                  std::chrono::system_clock::now());
+          auto timeT = std::chrono::system_clock::to_time_t(sctp);
+
+          std::stringstream ss;
+          ss << std::put_time(std::localtime(&timeT), "%Y-%m-%d %H:%M:%S");
+          video["modified"] = ss.str();
+
+          videos.append(video);
+          count++;
+        }
       }
     }
 
@@ -992,12 +1292,21 @@ void VideoUploadHandler::renameVideo(
       return;
     }
 
+    // Get directory path from request
+    std::string subDir = getDirectoryPath(req);
+
     // Build file paths
     std::string videosDir = getVideosDirectory();
-    std::filesystem::path sourcePath =
-        std::filesystem::path(videosDir) / sanitizedSourceName;
-    std::filesystem::path destPath =
-        std::filesystem::path(videosDir) / sanitizedNewName;
+    videosDir = EnvConfig::resolveDirectory(videosDir, "videos");
+    std::filesystem::path videosPath(videosDir);
+
+    // Add subdirectory if specified
+    if (!subDir.empty()) {
+      videosPath /= subDir;
+    }
+
+    std::filesystem::path sourcePath = videosPath / sanitizedSourceName;
+    std::filesystem::path destPath = videosPath / sanitizedNewName;
 
     // Check if source file exists
     if (!std::filesystem::exists(sourcePath)) {
@@ -1072,10 +1381,20 @@ void VideoUploadHandler::deleteVideo(
       return;
     }
 
+    // Get directory path from request
+    std::string subDir = getDirectoryPath(req);
+
     // Build file path
     std::string videosDir = getVideosDirectory();
-    std::filesystem::path filePath =
-        std::filesystem::path(videosDir) / sanitizedFilename;
+    videosDir = EnvConfig::resolveDirectory(videosDir, "videos");
+    std::filesystem::path videosPath(videosDir);
+
+    // Add subdirectory if specified
+    if (!subDir.empty()) {
+      videosPath /= subDir;
+    }
+
+    std::filesystem::path filePath = videosPath / sanitizedFilename;
 
     // Check if file exists
     if (!std::filesystem::exists(filePath)) {
