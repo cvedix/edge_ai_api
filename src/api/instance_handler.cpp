@@ -2,6 +2,7 @@
 #include "core/env_config.h"
 #include "core/logger.h"
 #include "core/logging_flags.h"
+#include "core/metrics_interceptor.h"
 #include "instances/instance_info.h"
 #include "instances/instance_manager.h"
 #include "models/update_instance_request.h"
@@ -1816,7 +1817,7 @@ void InstanceHandler::setInstanceInput(
                       "GET, POST, PUT, DELETE, OPTIONS");
       resp->addHeader("Access-Control-Allow-Headers",
                       "Content-Type, Authorization");
-      callback(resp);
+      MetricsInterceptor::callWithMetrics(req, resp, std::move(callback));
     } else {
       auto end_time = std::chrono::steady_clock::now();
       auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(
@@ -2275,7 +2276,7 @@ void InstanceHandler::configureStreamOutput(
                         "GET, POST, PUT, DELETE, OPTIONS");
         resp->addHeader("Access-Control-Allow-Headers",
                         "Content-Type, Authorization");
-        callback(resp);
+        MetricsInterceptor::callWithMetrics(req, resp, std::move(callback));
       } else {
         auto end_time = std::chrono::steady_clock::now();
         auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(
@@ -2318,7 +2319,7 @@ void InstanceHandler::configureStreamOutput(
                         "GET, POST, PUT, DELETE, OPTIONS");
         resp->addHeader("Access-Control-Allow-Headers",
                         "Content-Type, Authorization");
-        callback(resp);
+        MetricsInterceptor::callWithMetrics(req, resp, std::move(callback));
       } else {
         auto end_time = std::chrono::steady_clock::now();
         auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(
@@ -2670,8 +2671,10 @@ InstanceHandler::readClassesFromFile(const std::string &labelsPath) const {
 }
 
 void InstanceHandler::handleOptions(
-    const HttpRequestPtr & /*req*/,
+    const HttpRequestPtr &req,
     std::function<void(const HttpResponsePtr &)> &&callback) {
+  // Set handler start time for accurate metrics
+  MetricsInterceptor::setHandlerStartTime(req);
 
   auto resp = HttpResponse::newHttpResponse();
   resp->setStatusCode(k200OK);
@@ -2681,7 +2684,9 @@ void InstanceHandler::handleOptions(
   resp->addHeader("Access-Control-Allow-Headers",
                   "Content-Type, Authorization");
   resp->addHeader("Access-Control-Max-Age", "3600");
-  callback(resp);
+
+  // Record metrics and call callback
+  MetricsInterceptor::callWithMetrics(req, resp, std::move(callback));
 }
 
 bool InstanceHandler::parseUpdateRequest(const Json::Value &json,
@@ -4108,7 +4113,7 @@ void InstanceHandler::setConfig(
                       "GET, POST, PUT, DELETE, OPTIONS");
       resp->addHeader("Access-Control-Allow-Headers",
                       "Content-Type, Authorization");
-      callback(resp);
+      MetricsInterceptor::callWithMetrics(req, resp, std::move(callback));
     } else {
       auto end_time = std::chrono::steady_clock::now();
       auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(
