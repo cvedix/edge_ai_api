@@ -862,6 +862,20 @@ void InstanceHandler::updateInstance(
         json->isMember("Detector") || json->isMember("Input") ||
         json->isMember("Output") || json->isMember("Zone");
 
+    if (isApiLoggingEnabled()) {
+      PLOG_DEBUG << "[API] Checking update format - isDirectConfigUpdate: "
+                 << (isDirectConfigUpdate ? "true" : "false");
+      PLOG_DEBUG << "[API] Request has InstanceId: "
+                 << json->isMember("InstanceId");
+      PLOG_DEBUG << "[API] Request has DisplayName: "
+                 << json->isMember("DisplayName");
+      PLOG_DEBUG << "[API] Request has Detector: "
+                 << json->isMember("Detector");
+      PLOG_DEBUG << "[API] Request has Input: " << json->isMember("Input");
+      PLOG_DEBUG << "[API] Request has Output: " << json->isMember("Output");
+      PLOG_DEBUG << "[API] Request has Zone: " << json->isMember("Zone");
+    }
+
     if (isDirectConfigUpdate) {
       // Direct config update - merge JSON directly into storage
       if (instance_manager_->updateInstanceFromConfig(instanceId, *json)) {
