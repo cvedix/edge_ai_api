@@ -8,6 +8,9 @@
 
 using namespace drogon;
 
+// Forward declarations
+class IInstanceManager;
+
 /**
  * @brief WebSocket controller for real-time AI streaming
  *
@@ -28,14 +31,28 @@ public:
 
   WS_PATH_LIST_BEGIN
   WS_PATH_ADD("/v1/core/ai/stream", drogon::Get);
+  WS_PATH_ADD("/v1/core/instance/{instanceId}/stream", drogon::Get);
   WS_PATH_LIST_END
+
+  /**
+   * @brief Set instance manager (dependency injection)
+   */
+  static void setInstanceManager(IInstanceManager *manager);
 
 private:
   void processStreamMessage(const WebSocketConnectionPtr &wsConnPtr,
                             const std::string &message);
 
+  void processInstanceStreamMessage(const WebSocketConnectionPtr &wsConnPtr,
+                                    const std::string &message,
+                                    const std::string &instanceId);
+
   void sendResult(const WebSocketConnectionPtr &wsConnPtr,
                   const std::string &result);
 
+  void sendInstanceUpdate(const WebSocketConnectionPtr &wsConnPtr,
+                          const std::string &instanceId);
+
   static std::atomic<size_t> active_connections_;
+  static IInstanceManager *instance_manager_;
 };
