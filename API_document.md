@@ -504,45 +504,44 @@ curl -X 'POST' \
 }'
 ```
 **Responses schema**
-* Processing job submitted successfully
+* 200 - Processing job submitted successfully
   ```
   {
     "job_id": "job_1234567890",
     "status": "queued"
   }
   ```
-* Bad request (invalid JSON or missing required fields)
-```
-{
-  "error": "string",
-  "code": 0,
-  "message": "string"
-}
-```
-* Rate limit exceeded
-```
-{
-  "error": "string",
-  "code": 0,
-  "message": "string"
-}
-```
-* Server error
-```
-{
-  "error": "string",
-  "code": 0,
-  "message": "string"
-}
-```
-* Not implemented
-```
-{
-  "error": "string",
-  "code": 0,
-  "message": "string"
-}
-```
+* 400 - Bad request (invalid JSON or missing required fields)
+  ```
+  {
+    "error": "Invalid request",
+    "message": "Request body must be valid JSON"
+  }
+  ```
+* 429 - Rate limit exceeded
+  ```
+  {
+    "error": "string",
+    "code": 0,
+    "message": "string"
+  }
+  ```
+* 500 - Server error
+  ```
+  {
+    "error": "string",
+    "code": 0,
+    "message": "string"
+  }
+  ```
+* 501 - Not implemented
+  ```
+  {
+    "error": "string",
+    "code": 0,
+    "message": "string"
+  }
+  ```
 ### Process batch of images/frames
 Processes multiple images/frames in a batch through the AI processing pipeline. Currently returns 501 Not Implemented. \
 API path: /v1/core/ai/batch 
@@ -572,30 +571,29 @@ curl -X 'POST' \
 }'
 ```
 **Responses schema**
-* Batch processing job submitted successfully
-```
-{
-  "job_ids": [
-    "string"
-  ]
-}
-```
-* Bad request
-```
-{
-  "error": "string",
-  "code": 0,
-  "message": "string"
-}
-```
-* Not implemented
-```
-{
-  "error": "string",
-  "code": 0,
-  "message": "string"
-}
-```
+* 200 - Batch processing job submitted successfully
+  ```
+  {
+    "job_ids": [
+      "string"
+    ]
+  }
+  ```
+* 400 - Bad request
+  ```
+  {
+    "error": "Invalid request",
+    "message": "Request body must be valid JSON"
+  }
+  ```
+* 501 - Not implemented
+  ```
+  {
+    "error": "string",
+    "code": 0,
+    "message": "string"
+  }
+  ```
 ### Get AI processing status
 Returns the current status of the AI processing system including queue size, queue max capacity, GPU availability, and other resource information. \
 API path: /v1/core/ai/status 
@@ -611,15 +609,15 @@ curl -X 'GET' \
   -H 'accept: application/json'
 ```
 **Responses schema**
-* AI processing status
-```
-{
-  "queue_size": 5,
-  "queue_max": 100,
-  "gpu_total": 2,
-  "gpu_available": 1
-}
-```
+* 200 - AI processing status
+  ```
+  {
+    "queue_size": 5,
+    "queue_max": 100,
+    "gpu_total": 2,
+    "gpu_available": 1
+  }
+  ```
 ### Get AI processing metrics
 Returns detailed metrics about AI processing including performance statistics, cache statistics, and rate limiter information. \
 API path: /v1/core/ai/metrics 
@@ -635,20 +633,20 @@ curl -X 'GET' \
   -H 'accept: application/json'
 ```
 **Responses schema**
-* AI processing metrics
-```
-{
-  "cache": {
-    "size": 0,
-    "max_size": 0,
-    "hit_rate": 0
-  },
-  "rate_limiter": {
-    "total_keys": 0,
-    "active_keys": 0
+* 200 - AI processing metrics
+  ```
+  {
+    "cache": {
+      "size": 0,
+      "max_size": 0,
+      "hit_rate": 0
+    },
+    "rate_limiter": {
+      "total_keys": 0,
+      "active_keys": 0
+    }
   }
-}
-```
+  ```
 
 ## Config API
 ### Get system configuration
