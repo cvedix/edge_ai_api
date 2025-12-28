@@ -2,8 +2,8 @@
 
 ## 📦 Version Information
 
-**Version:** 2025.0.1.3-Beta  
-**Release Date:** 2025-01-XX  
+**Version:** 2025.0.1.1
+**Release Date:** 2025-12-28  
 **Build Type:** Release
 
 ---
@@ -212,21 +212,14 @@ sudo apt-get install -y \
 
 Có 3 cách để build package:
 
-#### Cách 1: Dùng Wrapper Script (Khuyến Nghị)
-
-```bash
-# Từ project root
-./build_deb.sh
-```
-
-#### Cách 2: Dùng Đường Dẫn Đầy Đủ
+#### Cách 1: Dùng Đường Dẫn Đầy Đủ
 
 ```bash
 # Từ project root
 ./packaging/scripts/build_deb.sh
 ```
 
-#### Cách 3: Từ Thư Mục Packaging
+#### Cách 2: Từ Thư Mục Packaging
 
 ```bash
 cd packaging/scripts
