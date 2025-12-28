@@ -230,7 +230,7 @@ private:
   std::shared_ptr<cvedix_nodes::cvedix_node> createJSONCrosslineMQTTBrokerNode(
       const std::string &nodeName,
       const std::map<std::string, std::string> &params,
-      const CreateInstanceRequest &req);
+      const CreateInstanceRequest &req, const std::string &instanceId);
 
   /**
    * @brief Create JSON Kafka broker node

@@ -816,7 +816,7 @@ PipelineBuilder::buildPipeline(const SolutionConfig &solution,
           }
 
           auto mqttNode = createJSONCrosslineMQTTBrokerNode(
-              mqttNodeName, mqttConfig.parameters, req);
+              mqttNodeName, mqttConfig.parameters, req, instanceId);
           if (mqttNode) {
             // Find ba_crossline node to attach to (like in sample code)
             auto attachTarget = findAttachTargetForBroker(true);
@@ -1832,7 +1832,8 @@ PipelineBuilder::createNode(const SolutionConfig::NodeConfig &nodeConfig,
 #endif
     } else if (nodeConfig.nodeType == "json_crossline_mqtt_broker") {
 #ifdef CVEDIX_WITH_MQTT
-      return createJSONCrosslineMQTTBrokerNode(nodeName, params, req);
+      return createJSONCrosslineMQTTBrokerNode(nodeName, params, req,
+                                               instanceId);
 #else
       std::cerr << "[PipelineBuilder] json_crossline_mqtt_broker requires "
                    "CVEDIX_WITH_MQTT to be enabled"
@@ -6109,17 +6110,30 @@ struct best_thumbnail {
   }
 };
 
+struct line_count {
+  std::string line_id;
+  std::string line_name;
+  int count;
+  template <typename Archive> void serialize(Archive &archive) {
+    archive(cereal::make_nvp("line_id", line_id),
+            cereal::make_nvp("line_name", line_name),
+            cereal::make_nvp("count", count));
+  }
+};
+
 struct event {
   best_thumbnail best_thumbnail_obj;
   std::string type;
   std::string zone_id;
   std::string zone_name;
+  std::string line_id;
 
   template <typename Archive> void serialize(Archive &archive) {
     archive(cereal::make_nvp("best_thumbnail", best_thumbnail_obj),
             cereal::make_nvp("type", type),
             cereal::make_nvp("zone_id", zone_id),
-            cereal::make_nvp("zone_name", zone_name));
+            cereal::make_nvp("zone_name", zone_name),
+            cereal::make_nvp("line_id", line_id));
   }
 };
 
@@ -6129,13 +6143,19 @@ struct event_message {
   double frame_time;
   std::string system_date;
   std::string system_timestamp;
+  std::vector<line_count> line_counts;
+  std::string instance_id;
+  std::string instance_name;
 
   template <typename Archive> void serialize(Archive &archive) {
     archive(cereal::make_nvp("events", events),
             cereal::make_nvp("frame_id", frame_id),
             cereal::make_nvp("frame_time", frame_time),
             cereal::make_nvp("system_date", system_date),
-            cereal::make_nvp("system_timestamp", system_timestamp));
+            cereal::make_nvp("system_timestamp", system_timestamp),
+            cereal::make_nvp("line_counts", line_counts),
+            cereal::make_nvp("instance_id", instance_id),
+            cereal::make_nvp("instance_name", instance_name));
   }
 };
 } // namespace crossline_event_format
@@ -6145,9 +6165,18 @@ class cvedix_json_crossline_mqtt_broker_node
     : public cvedix_nodes::cvedix_json_enhanced_console_broker_node {
 private:
   std::function<void(const std::string &)> mqtt_publisher_;
-  std::string instance_id_;
+  std::string instance_id_;   // UUID thực sự của instance
+  std::string instance_name_; // Tên instance (từ req.name)
   std::string zone_id_;
   std::string zone_name_;
+  // Track counts per line: line_id -> count
+  std::map<std::string, int> line_counts_;
+  // Track line names: line_id -> line_name
+  std::map<std::string, std::string> line_names_;
+  // Track line info: channel -> (line_id, line_name)
+  std::map<int, std::pair<std::string, std::string>> channel_to_line_info_;
+  // Mutex for thread-safe access to counters
+  std::mutex counts_mutex_;
 
   virtual void
   format_msg(const std::shared_ptr<cvedix_objects::cvedix_frame_meta> &meta,
@@ -6164,9 +6193,18 @@ private:
       double frame_width = static_cast<double>(meta->frame.cols);
       double frame_height = static_cast<double>(meta->frame.rows);
 
+      // Track crossline event index to map to line channel
+      // Note: This assumes ba_results order matches line order, which may not
+      // always be accurate but is the best we can do without line index in
+      // ba_res
+      int crossline_event_index = 0;
       for (const auto &ba_res : meta->ba_results) {
         // Check if it's a crossline event
         if (ba_res->type == cvedix_objects::cvedix_ba_type::CROSSLINE) {
+          // Try to determine line_id from channel mapping
+          // Use crossline_event_index as channel (assuming ba_results order
+          // matches line order)
+          int channel = crossline_event_index;
 
           // Iterate over all targets involved in this crossline event
           for (int track_id : ba_res->involve_target_ids_in_frame) {
@@ -6250,8 +6288,42 @@ private:
             evt.zone_id = zone_id_;
             evt.zone_name = zone_name_;
 
+            // Determine line_id from channel mapping or fallback to zone_id
+            std::string line_id = zone_id_;
+            std::string line_name = zone_name_;
+
+            // Try to get line_id from channel mapping (if CrossingLines config
+            // was parsed)
+            {
+              std::lock_guard<std::mutex> lock(counts_mutex_);
+              auto it = channel_to_line_info_.find(channel);
+              if (it != channel_to_line_info_.end()) {
+                line_id = it->second.first;
+                line_name = it->second.second;
+              } else {
+                // Fallback: use zone_id or generate from channel
+                if (line_id.empty() || line_id == "default_zone") {
+                  line_id = "line_" + std::to_string(channel + 1);
+                  line_name = "Line " + std::to_string(channel + 1);
+                }
+              }
+            }
+            evt.line_id = line_id;
+
+            // Increment counter for this line
+            {
+              std::lock_guard<std::mutex> lock(counts_mutex_);
+              line_counts_[line_id]++;
+              // Store line name if not already stored
+              if (line_names_.find(line_id) == line_names_.end()) {
+                line_names_[line_id] = line_name.empty() ? line_id : line_name;
+              }
+            }
+
             event_msg.events.push_back(evt);
           }
+          // Increment crossline event index only for crossline events
+          crossline_event_index++;
         }
       }
 
@@ -6265,6 +6337,22 @@ private:
           meta->frame_index * 1000.0 / (meta->fps > 0 ? meta->fps : 30.0);
       event_msg.system_date = get_current_date_system();
       event_msg.system_timestamp = get_current_timestamp();
+      event_msg.instance_id = instance_id_;     // UUID thực sự
+      event_msg.instance_name = instance_name_; // Tên instance
+
+      // Add line counts summary
+      {
+        std::lock_guard<std::mutex> lock(counts_mutex_);
+        for (const auto &pair : line_counts_) {
+          crossline_event_format::line_count lc;
+          lc.line_id = pair.first;
+          lc.line_name = (line_names_.find(pair.first) != line_names_.end())
+                             ? line_names_[pair.first]
+                             : pair.first;
+          lc.count = pair.second;
+          event_msg.line_counts.push_back(lc);
+        }
+      }
 
       std::stringstream msg_stream;
       {
@@ -6325,11 +6413,51 @@ public:
   cvedix_json_crossline_mqtt_broker_node(
       std::string node_name,
       std::function<void(const std::string &)> mqtt_publisher,
-      std::string instance_id, std::string zone_id, std::string zone_name)
+      std::string instance_id, std::string instance_name, std::string zone_id,
+      std::string zone_name, const std::string &crossing_lines_json = "")
       : cvedix_nodes::cvedix_json_enhanced_console_broker_node(
             node_name, cvedix_nodes::cvedix_broke_for::NORMAL, 100, 500, false),
         mqtt_publisher_(mqtt_publisher), instance_id_(instance_id),
-        zone_id_(zone_id), zone_name_(zone_name) {}
+        instance_name_(instance_name), zone_id_(zone_id),
+        zone_name_(zone_name) {
+    // Parse CrossingLines config to build channel -> line_id mapping
+    if (!crossing_lines_json.empty()) {
+      try {
+        Json::Reader reader;
+        Json::Value parsedLines;
+        if (reader.parse(crossing_lines_json, parsedLines) &&
+            parsedLines.isArray()) {
+          for (Json::ArrayIndex i = 0; i < parsedLines.size(); ++i) {
+            const Json::Value &lineObj = parsedLines[i];
+            int channel = static_cast<int>(i);
+
+            // Get line_id (use id if available, otherwise generate from index)
+            std::string line_id;
+            if (lineObj.isMember("id") && lineObj["id"].isString() &&
+                !lineObj["id"].asString().empty()) {
+              line_id = lineObj["id"].asString();
+            } else {
+              line_id = "line_" + std::to_string(channel + 1);
+            }
+
+            // Get line_name (use name if available, otherwise use line_id)
+            std::string line_name;
+            if (lineObj.isMember("name") && lineObj["name"].isString() &&
+                !lineObj["name"].asString().empty()) {
+              line_name = lineObj["name"].asString();
+            } else {
+              line_name = "Line " + std::to_string(channel + 1);
+            }
+
+            channel_to_line_info_[channel] = std::make_pair(line_id, line_name);
+          }
+        }
+      } catch (...) {
+        // If parsing fails, channel_to_line_info_ will remain empty
+        // and code will fallback to zone_id
+      }
+    }
+  }
 };
 #endif
 
@@ -6690,12 +6818,14 @@ std::shared_ptr<cvedix_nodes::cvedix_node>
 PipelineBuilder::createJSONCrosslineMQTTBrokerNode(
     const std::string &nodeName,
     const std::map<std::string, std::string> &params,
-    const CreateInstanceRequest &req) {
+    const CreateInstanceRequest &req, const std::string &instanceId) {
   (void)params; // Parameters may be used in future implementations
 
   try {
-    // Get instance ID from request
-    std::string instance_id = req.name;
+    // instanceId is the actual UUID of the instance
+    // req.name is the display name of the instance
+    std::string instance_id = instanceId;
+    std::string instance_name = req.name.empty() ? instanceId : req.name;
 
     // Get zone configuration from additionalParams (with defaults)
     std::string zone_id = "default_zone";
@@ -6771,15 +6901,18 @@ PipelineBuilder::createJSONCrosslineMQTTBrokerNode(
     std::cerr << "[PipelineBuilder] Creating JSON Crossline MQTT broker node:"
               << std::endl;
     std::cerr << "  Name: '" << nodeName << "'" << std::endl;
-    std::cerr << "  Instance ID: '" << instance_id << "'" << std::endl;
+    std::cerr << "  Instance ID (UUID): '" << instance_id << "'" << std::endl;
+    std::cerr << "  Instance Name: '" << instance_name << "'" << std::endl;
     std::cerr << "  Zone ID: '" << zone_id << "'" << std::endl;
     std::cerr << "  Zone Name: '" << zone_name << "'" << std::endl;
     std::cerr << "  Broker: " << mqtt_broker << ":" << mqtt_port << std::endl;
     std::cerr << "  Topic: " << mqtt_topic << std::endl;
 
     // Create MQTT client using SDK (like in sample code)
-    std::string client_id = "edge_ai_api_crossline_" + nodeName + "_" +
-                            std::to_string(std::time(nullptr));
+    // Use instance_id (UUID) for client ID: edge_ai_api_{instance_id}
+    std::string client_id = "edge_ai_api_" + instance_id;
+    std::cerr << "[PipelineBuilder] [MQTT] Client ID: '" << client_id << "'"
+              << std::endl;
     auto mqtt_client = std::make_unique<cvedix_utils::cvedix_mqtt_client>(
         mqtt_broker, mqtt_port, client_id, 60);
     mqtt_client->set_auto_reconnect(true, 5000);
@@ -6823,9 +6956,18 @@ PipelineBuilder::createJSONCrosslineMQTTBrokerNode(
                 << std::endl;
     };
 
+    // Get CrossingLines config to pass to broker node
+    std::string crossing_lines_json = "";
+    auto crossingLinesIt = req.additionalParams.find("CrossingLines");
+    if (crossingLinesIt != req.additionalParams.end() &&
+        !crossingLinesIt->second.empty()) {
+      crossing_lines_json = crossingLinesIt->second;
+    }
+
     // Create crossline MQTT broker node
     auto node = std::make_shared<cvedix_json_crossline_mqtt_broker_node>(
-        nodeName, mqtt_publish_func, instance_id, zone_id, zone_name);
+        nodeName, mqtt_publish_func, instance_id, instance_name, zone_id,
+        zone_name, crossing_lines_json);
 
     std::cerr << "[PipelineBuilder] ✓ JSON Crossline MQTT broker node created "
                  "successfully"
