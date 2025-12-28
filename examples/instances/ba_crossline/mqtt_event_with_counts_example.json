@@ -1,0 +1,47 @@
+[
+  {
+    "events": [
+      {
+        "best_thumbnail": {
+          "confidence": 0.9553563594818115,
+          "image": "/9j/4AAQSkZJRgABAQAAAQABAAD/2wBDAAIBAQEBAQIBAQECAgICAgQDAgICAgUEBAMEBgUGBgYFBgYGBwkIBgcJBwYGCAsICQoKCgoKBggLDAsKDAkKCg",
+          "instance_id": "ba_crossline_file_mqtt",
+          "label": "cross line",
+          "system_date": "2025-12-28T03:49:10Z",
+          "tracks": [
+            {
+              "bbox": {
+                "x": 0.3502604166666667,
+                "y": 0.4236111111111111,
+                "width": 0.09635416666666667,
+                "height": 0.2847222222222222
+              },
+              "class_label": "truck",
+              "external_id": "crossline-event",
+              "id": "Tracker_24618",
+              "last_seen": 0,
+              "source_tracker_track_id": 24618
+            }
+          ]
+        },
+        "type": "crossline",
+        "zone_id": "default_zone",
+        "zone_name": "CrosslineZone",
+        "line_id": "default_zone"
+      }
+    ],
+    "frame_id": 34585,
+    "frame_time": 1383400.0,
+    "system_date": "Sun Dec 28 10:49:10 2025",
+    "system_timestamp": "1766893750712",
+    "instance_id": "8c6a1534-9dab-4a5a-b968-1d612d4c41a9",
+    "instance_name": "ba_crossline_file_mqtt",
+    "line_counts": [
+      {
+        "line_id": "default_zone",
+        "line_name": "CrosslineZone",
+        "count": 15
+      }
+    ]
+  }
+]
