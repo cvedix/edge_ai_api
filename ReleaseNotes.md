@@ -95,7 +95,7 @@
 - `GET /swagger` - Swagger UI interface
 - `GET /openapi.yaml` - OpenAPI specification
 
-Xem đầy đủ: [docs/API.md](docs/API.md)
+Xem đầy đủ: [docs/API_document](docs/API_document)
 
 ---
 
@@ -451,7 +451,7 @@ sudo ldconfig
 
 ---
 
-## 🤖 AI Processing
+## 🤖 AI Processing (in develop)
 - Xử lý ảnh/frame đơn (base64)
 - Priority-based queue & rate limiting
 - Theo dõi AI runtime status & metrics
@@ -490,7 +490,7 @@ sudo ldconfig
 
 ---
 
-## 🧩 Solution Management
+## 🧩 Solution Management (in develop)
 - Danh sách solution mặc định & custom
 - CRUD custom solution
 - Pipeline-based solution definition
@@ -505,7 +505,7 @@ sudo ldconfig
 
 ---
 
-## 🧱 Node & Pipeline
+## 🧱 Node & Pipeline (in develop)
 - Node template discovery
 - Pre-configured node pool
 - CRUD node (source, detector, processor, destination, broker)

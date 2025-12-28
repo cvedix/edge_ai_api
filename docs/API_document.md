@@ -1,113 +1,119 @@
 # Table of Contents
-
-## [Core API](#core-api)
-### [Health check endpoint](#health-check-endpoint)
-### [Version information](#get-version-information)
-### [System info](#get-system-hardware-information)
-### [System status](#get-system-status)
-### [Watchdog](#get-watchdog-status)
-### [Endpoints statistics](#get-endpoints-statistics)
-### [Metrics](#get-prometheus-format-metrics)
-
-## [Logs API](#logs-api)
-### [List all log files by category](#list-all-log-files-by-category)
-### [Get logs by category](#get-logs-by-category)
-### [Get logs by category and date](#get-logs-by-category-and-date)
-
-## [Config API](#config-api)
-### [Get system configuration](#get-system-configuration)
-### [Create or update configuration (merge)](#create-or-update-configuration-merge)
-### [Replace entire configuration](#replace-entire-configuration)
-### [Update configuration section (query parameter)](#update-configuration-section-query-parameter)
-### [Delete configuration section (query parameter)](#delete-configuration-section-query-parameter)
-### [Reset configuration to defaults](#reset-configuration-to-defaults)
-### [Get configuration section (path parameter)](#get-configuration-section-path-parameter)
-### [Update configuration section (path parameter)](#update-configuration-section-path-parameter)
-### [Delete configuration section (path parameter)](#delete-configuration-section-path-parameter)
-
-## [Instances API](#instances-api)
-### [Get instance status summary](#get-instance-status-summary)
-### [List all instances](#list-all-instances)
-### [Delete all instance](#delete-all-instance)
-### [Create a new AI instance](#create-a-new-ai-instance)
-### [Create a new AI instance (Quick)](#create-a-new-ai-instance-quick)
-### [Get instance details](#get-instance-details)
-### [Update instance information](#update-instance-information)
-### [Delete an instance](#delete-an-instance)
-### [Start an instance](#start-an-instance)
-### [Stop an instance](#stop-an-instance)
-### [Restart an instance](#restart-an-instance)
-### [Get instance output and processing results](#get-instance-output-and-processing-results)
-### [Get last frame from instance](#get-last-frame-from-instance)
-### [Get instance preview frame](#get-instance-preview-frame)
-### [Start multiple instances concurrently](#start-multiple-instances-concurrently)
-### [Stop multiple instances concurrently](#stop-multiple-instances-concurrently)
-### [Restart multiple instances concurrently](#restart-multiple-instances-concurrently)
-### [Set input source for an instance](#set-input-source-for-an-instance)
-### [Get instance configuration](#get-instance-configuration)
-### [Set config value at a specific path](#set-config-value-at-a-specific-path)
-### [Get instance statistics](#get-instance-statistics)
-### [Get instance classes](#get-instance-classes)
-### [Get stream output configuration](#get-stream-output-configuration)
-### [Configure stream/record output](#configure-streamrecord-output)
-
-## [Lines API](#lines-api)
-### [Get all crossing lines](#get-all-crossing-lines)
-### [Create a new crossing line](#create-a-new-crossing-line)
-### [Delete all crossing lines](#delete-all-crossing-lines)
-### [Get a specific crossing line](#get-a-specific-crossing-line)
-### [Update a specific crossing line](#update-a-specific-crossing-line)
-### [Delete a specific crossing line](#delete-a-specific-crossing-line)
-### [Batch update crossing lines](#batch-update-crossing-lines)
-
-## [Groups API](#groups-api)
-### [List all groups](#list-all-groups)
-### [Create a new group](#create-a-new-group)
-### [Get group details](#get-group-details)
-### [Update a group](#update-a-group)
-### [Delete a group](#delete-a-group)
-### [Get instances in a group](#get-instances-in-a-group)
-
-## [Models API](#models-api)
-### [Upload a model file](#upload-a-model-file)
-### [List uploaded model files](#list-uploaded-model-files)
-### [Rename a model file](#rename-a-model-file)
-### [Delete a model file](#delete-a-model-file)
-
-## [Video API](#video-api)
-### [Upload a video file](#upload-a-video-file)
-### [List uploaded video files](#list-uploaded-video-files)
-### [Rename a video file](#rename-a-video-file)
-### [Delete a video file](#delete-a-video-file)
-
-## [Fonts API](#fonts-api)
-### [Upload a font file](#upload-a-font-file)
-### [List uploaded font files](#list-uploaded-font-files)
-### [Rename a font file](#rename-a-font-file)
-
-## [Recognition API](#recognition-api)
-### [Recognize faces from uploaded image](#recognize-faces-from-uploaded-image)
-### [List face subjects](#list-face-subjects)
-### [Register face subjects](#register-face-subjects)
-### [Delete face subject by ID or subject name](#delete-face-subject-by-id-or-subject-name)
-### [Delete multiple face subjects](#delete-multiple-face-subjects)
-### [Delete all face subjects](#delete-all-face-subjects)
-### [Search appearance subject](#search-appearance-subject)
-
-## [Đang phát triển](#đang-phát-triển)
-### [Rename face subject](#rename-face-subject)
-### [Configure face database connection](#configure-face-database-connection)
-### [Get face database connection configuration](#get-face-database-connection-configuration)
-### [Delete face database connection configuration](#delete-face-database-connection-configuration)
+## [Core API](#core-api-1) 
+  ### [Health check endpoint](#health-check-endpoint-1)
+  ### [Get version information](#get-version-information-1)
+  ### [Get system hardware information](#get-system-hardware-information-1)
+  ### [Get system status](#get-system-status-1)
+  ### [Get watchdog status](#get-watchdog-status-1)
+  ### [Get endpoint statistics](#get-endpoint-statistics-1)
+  ### [Get Prometheus format metrics](#get-prometheus-format-metrics-1)
+## [Logs API](#logs-api-1)
+  ### [List all log files by category](#list-all-log-files-by-category-1)
+  ### [Get logs by category](#get-logs-by-category-1)
+  ### [Get logs by category and date](#get-logs-by-category-and-date-1)
+## [AI API](#ai-api-1)
+  ### [Process single image/frame](#process-single-imageframe-1)
+  ### [Process batch of images/frames](#process-batch-of-imagesframes-1)
+  ### [Get AI processing status](#get-ai-processing-status-1)
+  ### [Get AI processing metrics](#get-ai-processing-metrics-1)
+## [Config API](#config-api-1)
+  ### [Get system configuration](#get-system-configuration-1)
+  ### [Create or update configuration (merge)](#create-or-update-configuration-merge-1)
+  ### [Replace entire configuration](#replace-entire-configuration-1)
+  ### [Update configuration section (query parameter)](#update-configuration-section-query-parameter-1)
+  ### [Delete configuration section (query parameter)](#delete-configuration-section-query-parameter-1)
+  ### [Reset configuration to defaults](#reset-configuration-to-defaults-1)
+  ### [Get configuration section (path parameter)](#get-configuration-section-path-parameter-1)
+  ### [Update configuration section (path parameter)](#update-configuration-section-path-parameter-1)
+  ### [Delete configuration section (path parameter)](#delete-configuration-section-path-parameter-1)
+## [Instances API](#instances-api-1)
+  ### [Get instance status summary](#get-instance-status-summary-1)
+  ### [List all instances](#list-all-instances-1)
+  ### [Delete all instances](#delete-all-instances-1)
+  ### [Create a new AI instance](#create-a-new-ai-instance-1)
+  ### [Get instance details](#get-instance-details-1)
+  ### [Update instance information](#update-instance-information-1)
+  ### [Delete an instance](#delete-an-instance-1)
+  ### [Start an instance](#start-an-instance-1)
+  ### [Stop an instance](#stop-an-instance-1)
+  ### [Restart an instance](#restart-an-instance-1)
+  ### [Get instance output and processing results](#get-instance-output-and-processing-results-1)
+  ### [Get last frame from instance](#get-last-frame-from-instance-1)
+  ### [Start multiple instances concurrently](#start-multiple-instances-concurrently-1)
+  ### [Stop multiple instances concurrently](#stop-multiple-instances-concurrently-1)
+  ### [Restart multiple instances concurrently](#restart-multiple-instances-concurrently-1)
+  ### [Set input source for an instance](#set-input-source-for-an-instance-1)
+  ### [Get instance configuration](#get-instance-configuration-1)
+  ### [Set config value at a specific path](#set-config-value-at-a-specific-path-1)
+  ### [Get instance statistics](#get-instance-statistics-1)
+  ### [Get stream output configuration](#get-stream-output-configuration-1)
+  ### [Configure stream or record output](#configure-streamrecord-output)
+## [Lines API](#lines-api-1)
+  ### [Get all crossing lines](#get-all-crossing-lines-1)
+  ### [Create a new crossing line](#create-a-new-crossing-line-1)
+  ### [Delete all crossing lines](#delete-all-crossing-lines-1)
+  ### [Get a specific crossing line](#get-a-specific-crossing-line-1)
+  ### [Update a specific crossing line](#update-a-specific-crossing-line-1)
+  ### [Delete a specific crossing line](#delete-a-specific-crossing-line-1)
+## [Solutions API](#solutions-api-1)
+  ### [List all solutions](#list-all-solutions-1)
+  ### [Create a new solution](#create-a-new-solution-1)
+  ### [Get solution details](#get-solution-details-1)
+  ### [Update a solution](#update-a-solution-1)
+  ### [Delete a solution](#delete-a-solution-1)
+  ### [Get solution parameter schema](#get-solution-parameter-schema-1)
+  ### [Get example instance creation body](#get-example-instance-creation-body-1)
+## [Group API](#group-api-1)
+  ### [List all groups](#list-all-groups-1)
+  ### [Create a new group](#create-a-new-group-1)
+  ### [Get group details](#get-group-details-1)
+  ### [Update a group](#update-a-group-1)
+  ### [Delete a group](#delete-a-group-1)
+  ### [Get instances in a group](#get-instances-in-a-group-1)
+## [Models API](#models-api-1)
+  ### [Upload a model file](#upload-a-model-file-1)
+  ### [List uploaded model files](#list-uploaded-model-files-1)
+  ### [Rename a model file](#rename-a-model-file-1)
+  ### [Delete a model file](#delete-a-model-file-1)
+## [Video API](#video-api-1)
+  ### [Upload a video file](#upload-a-video-file-1)
+  ### [List uploaded video files](#list-uploaded-video-files-1)
+  ### [Rename a video file](#rename-a-video-file-1)
+  ### [Delete a video file](#delete-a-video-file-1)
+## [Fonts API](#fonts-api-1)
+  ### [Upload a font file](#upload-a-font-file-1)
+  ### [List uploaded font files](#list-uploaded-font-files-1)
+  ### [Rename a font file](#rename-a-font-file-1)
+## [Node API](#node-api-1)
+  ### [List all pre-configured nodes](#list-all-pre-configured-nodes-1)
+  ### [Create a new pre-configured node](#create-a-new-pre-configured-node-1)
+  ### [Get node details](#get-node-details-1)
+  ### [Update a node](#update-a-node-1)
+  ### [Delete a node](#delete-a-node-1)
+  ### [List all node templates](#list-all-node-templates-1)
+  ### [Get template details](#get-template-details-1)
+  ### [Get node pool statistics](#get-node-pool-statistics-1)
+## [Recognition API](#recognition-api-1)
+  ### [Recognize faces from uploaded image](#recognize-faces-from-uploaded-image-1)
+  ### [List face subjects](#list-face-subjects-1)
+  ### [Register face subjects](#register-face-subjects-1)
+  ### [Delete face subject by ID or subject name](#delete-face-subject-by-id-or-subject-name-1)
+  ### [Delete multiple face subjects](#delete-multiple-face-subjects-1)
+  ### [Delete all face subjects](#delete-all-face-subjects-1)
+  ### [Search appearance subject](#search-appearance-subject-1)
+  ### [Rename face subject](#rename-face-subject-1)
+  ### [Configure face database connection](#configure-face-database-connection-1)
+  ### [Get face database connection configuration](#get-face-database-connection-configuration-1)
+  ### [Delete face database connection configuration](#delete-face-database-connection-configuration-1)
 
 ## Core API
 ### Health check endpoint
 Returns the health status of the API service.       \
-API path: /v1/core/health
+API path: /v1/core/health                           
 
-**No parameter**
+**No parameter**                                    
 
-**No request body**
+**No request body**             
 
 **Request schema**
 ```
@@ -136,11 +142,11 @@ curl -X 'GET' \
 ```
 ### Get version information
 Returns version information about the API service.  \
-API path: /v1/core/version
+API path: /v1/core/version                          
 
-**No parameter**
+**No parameter**                                    
 
-**No request body**
+**No request body**                                 
 
 **Request schema**
 ```
@@ -161,11 +167,11 @@ curl -X 'GET' \
   ```
 ### Get system hardware information
 Returns detailed hardware information including CPU, GPU, RAM, Disk, Mainboard, OS, and Battery.  \
-API path: /v1/core/system/info
+API path: /v1/core/system/info                                                                    
 
-**No parameter**
+**No parameter**                                                                                  
 
-**No request body**
+**No request body**                                                                               
 
 **Request schema**
 ```
@@ -267,11 +273,11 @@ curl -X 'GET' \
   ```
 ### Get system status
 Returns current system status including CPU usage, RAM usage, load average, and uptime.   \
-API path: /v1/core/system/status
+API path: /v1/core/system/status                                                          
 
-**No parameter**
+**No parameter**                                                                          
 
-**No request body**
+**No request body**                                                                       
 
 **Request schema**
 ```
@@ -315,11 +321,11 @@ curl -X 'GET' \
   ```
 ### Get watchdog status
 Returns watchdog and health monitor statistics including instance health checks, restart counts, and monitoring information.                    \
-API path: /v1/core/watchdog
+API path: /v1/core/watchdog      
 
-**No parameter**
+**No parameter**                
 
-**No request body**
+**No request body**             
 
 **Request schema**
 ```
@@ -350,11 +356,11 @@ curl -X 'GET' \
   ```
 ### Get endpoint statistics
 Returns statistics for each API endpoint including request counts, response times, error rates, and other performance metrics.                            \
-API path: /v1/core/endpoint
+API path: /v1/core/endpoint         
 
-**No parameter**
+**No parameter**                    
 
-**No request body**
+**No request body**                 
 
 **Request schema**
 ```
@@ -370,13 +376,13 @@ curl -X 'GET' \
     "total_endpoints": 0
   }
   ```
-### Get endpoint statistics
+### Get Prometheus format metrics
 Returns system metrics in Prometheus format for monitoring and alerting. This endpoint is typically used by Prometheus scrapers.                           \
-API path: /v1/core/metrics
+API path: /v1/core/metrics          
 
-**No parameter**
+**No parameter**                    
 
-**No request body**
+**No request body**                 
 
 **Request schema**
 ```
@@ -395,11 +401,11 @@ curl -X 'GET' \
 ## Logs API
 ### List all log files by category
 Returns a list of all log files organized by category (api, instance, sdk_output, general). Each category contains an array of log files with their date, size, and path.     \
-API path: /v1/core/log
+API path: /v1/core/log                                  
 
-**No parameter**
+**No parameter**                                        
 
-**No request body**
+**No request body**                                     
 
 **Request schema**
 ```
@@ -453,17 +459,17 @@ curl -X 'GET' \
   ```
 ### Get logs by category
 Returns logs from a specific category with optional filtering.    \
-API path: /v1/core/log/{category}
+API path: /v1/core/log/{category}                                 
 
-**Parameter**
+**Parameter** 
 * *Categories*: {api, instance, sdk_output, general}
-* *Query Parameters*:
-  * `level`: Filter by log level (case-insensitive, e.g., INFO, ERROR, WARNING)
-  * `from`: Filter logs from timestamp (ISO 8601 format, e.g., 2024-01-01T00:00:00.000Z)
-  * `to`: Filter logs to timestamp (ISO 8601 format, e.g., 2024-01-01T23:59:59.999Z)
-  * `tail`: Get only the last N lines from the latest log file (integer)
+* *Query Parameters*: 
+  * `level`: Filter by log level (case-insensitive, e.g., INFO, ERROR, WARNING) 
+  * `from`: Filter logs from timestamp (ISO 8601 format, e.g., 2024-01-01T00:00:00.000Z) 
+  * `to`: Filter logs to timestamp (ISO 8601 format, e.g., 2024-01-01T23:59:59.999Z) 
+  * `tail`: Get only the last N lines from the latest log file (integer) 
 
-**No request body**
+**No request body**                                               
 
 **Request schema**
 ```
@@ -511,18 +517,18 @@ curl -X 'GET' \
   ```
 ### Get logs by category and date
 Returns logs from a specific category and date with optional filtering.     \
-API path: /v1/core/log/{category}/{date}
+API path: /v1/core/log/{category}/{date}                                    
 
-**Parameter**
+**Parameter** 
 * *Categories*: {api, instance, sdk_output, general}
-* *Date Format*: YYYY-MM-DD (e.g., 2024-01-01)
-* *Query Parameters*:
-  * `level`: Filter by log level (case-insensitive, e.g., INFO, ERROR, WARNING)
-  * `from`: Filter logs from timestamp (ISO 8601 format, e.g., 2024-01-01T00:00:00.000Z)
-  * `to`: Filter logs to timestamp (ISO 8601 format, e.g., 2024-01-01T23:59:59.999Z)
-  * `tail`: Get only the last N lines from the latest log file (integer)
+* *Date Format*: YYYY-MM-DD (e.g., 2024-01-01) 
+* *Query Parameters*: 
+  * `level`: Filter by log level (case-insensitive, e.g., INFO, ERROR, WARNING) 
+  * `from`: Filter logs from timestamp (ISO 8601 format, e.g., 2024-01-01T00:00:00.000Z) 
+  * `to`: Filter logs to timestamp (ISO 8601 format, e.g., 2024-01-01T23:59:59.999Z) 
+  * `tail`: Get only the last N lines from the latest log file (integer) 
 
-**No request body**
+**No request body**                                                         
 
 **Request schema**
 ```
@@ -568,10 +574,182 @@ curl -X 'GET' \
   }
   ```
 
+## AI API
+### Process single image/frame
+Processes a single image/frame through the AI processing pipeline. Supports priority-based queuing and rate limiting.            \
+API path: /v1/core/ai/process         
+
+**No parameter**                      
+
+**Request body**
+```
+{                                   
+  "image": "/9j/4AAQSkZJRg...",     
+  "config": "{\"model\": \"yolo\", \"threshold\": 0.5}", 
+  "priority": "medium" 
+}
+```
+**Request schema**
+```
+curl -X 'POST' \
+  'http://localhost:8080/v1/core/ai/process' \
+  -H 'accept: application/json' \
+  -H 'Content-Type: application/json' \
+  -d '{
+  "image": "/9j/4AAQSkZJRg...",
+  "config": "{\"model\": \"yolo\", \"threshold\": 0.5}",
+  "priority": "medium"
+}'
+```
+**Responses schema**
+* 200 - Processing job submitted successfully
+  ```
+  {
+    "job_id": "job_1234567890",
+    "status": "queued"
+  }
+  ```
+* 400 - Bad request (invalid JSON or missing required fields)
+  ```
+  {
+    "error": "Invalid request",
+    "message": "Request body must be valid JSON"
+  }
+  ```
+* 429 - Rate limit exceeded
+  ```
+  {
+    "error": "string",
+    "code": 0,
+    "message": "string"
+  }
+  ```
+* 500 - Server error
+  ```
+  {
+    "error": "string",
+    "code": 0,
+    "message": "string"
+  }
+  ```
+* 501 - Not implemented
+  ```
+  {
+    "error": "string",
+    "code": 0,
+    "message": "string"
+  }
+  ```
+### Process batch of images/frames
+Processes multiple images/frames in a batch through the AI processing pipeline. Currently returns 501 Not Implemented. \
+API path: /v1/core/ai/batch 
+
+**No parameter** 
+
+**Request body**
+```
+{                           
+  "images": [               
+    "string"                
+  ],                        
+  "config": "string"        
+}
+```
+**Request schema**
+```
+curl -X 'POST' \
+  'http://localhost:8080/v1/core/ai/batch' \
+  -H 'accept: application/json' \
+  -H 'Content-Type: application/json' \
+  -d '{
+  "images": [
+    "string"
+  ],
+  "config": "string"
+}'
+```
+**Responses schema**
+* 200 - Batch processing job submitted successfully
+  ```
+  {
+    "job_ids": [
+      "string"
+    ]
+  }
+  ```
+* 400 - Bad request
+  ```
+  {
+    "error": "Invalid request",
+    "message": "Request body must be valid JSON"
+  }
+  ```
+* 501 - Not implemented
+  ```
+  {
+    "error": "string",
+    "code": 0,
+    "message": "string"
+  }
+  ```
+### Get AI processing status
+Returns the current status of the AI processing system including queue size, queue max capacity, GPU availability, and other resource information. \
+API path: /v1/core/ai/status 
+
+**No parameter** 
+
+**No request body** 
+
+**Request schema**
+```
+curl -X 'GET' \
+  'http://localhost:8080/v1/core/ai/status' \
+  -H 'accept: application/json'
+```
+**Responses schema**
+* 200 - AI processing status
+  ```
+  {
+    "queue_size": 5,
+    "queue_max": 100,
+    "gpu_total": 2,
+    "gpu_available": 1
+  }
+  ```
+### Get AI processing metrics
+Returns detailed metrics about AI processing including performance statistics, cache statistics, and rate limiter information. \
+API path: /v1/core/ai/metrics 
+
+**No parameter** 
+
+**No request body** 
+
+**Request schema**
+```
+curl -X 'GET' \
+  'http://localhost:8080/v1/core/ai/metrics' \
+  -H 'accept: application/json'
+```
+**Responses schema**
+* 200 - AI processing metrics
+  ```
+  {
+    "cache": {
+      "size": 0,
+      "max_size": 0,
+      "hit_rate": 0
+    },
+    "rate_limiter": {
+      "total_keys": 0,
+      "active_keys": 0
+    }
+  }
+  ```
+
 ## Config API
 ### Get system configuration
 Returns system configuration. If path query parameter is provided, returns the specific configuration section. Otherwise, returns the complete system configuration. \
-API path: /v1/core/config
+API path: /v1/core/config 
 
 **Parameter**
 * *path* (string): Configuration path to get a specific section
@@ -632,7 +810,7 @@ curl -X 'GET' \
   ```
 ### Create or update configuration (merge)
 Updates the system configuration by merging the provided JSON with the existing configuration. Only the provided fields will be updated; other fields remain unchanged. The configuration is saved to the config file after update. \
-API path: /v1/core/config
+API path: /v1/core/config 
 
 **No parameter**
 
@@ -688,9 +866,9 @@ curl -X 'POST' \
 
 ### Replace entire configuration
 Replaces the entire system configuration with the provided JSON. All existing configuration will be replaced with the new values. The configuration is saved to the config file after replacement. \
-API path: /v1/core/config
+API path: /v1/core/config 
 
-**No parameter**
+**No parameter** 
 
 **Request body**
 ```
@@ -752,7 +930,7 @@ curl -X 'PUT' \
 ### Update configuration section (query parameter)
 Updates a specific section of the system configuration at the given path. \
 Only the provided fields in the section will be updated. The configuration is saved to the config file after update. \
-API path: /v1/core/config
+API path: /v1/core/config 
 
 **Parameter**
 * *path* (string): Configuration path using / or . as separators
@@ -888,7 +1066,7 @@ Returns a specific section of the system configuration at the given path. \
 API path: /v1/core/config/{path}
 
 **Parameter**
-* *path* (string): Configuration path using dots as separators.
+* *path* (string): Configuration path using dots as separators. 
   * Path Format: Use dots . as separators (e.g., system.max_running_instances). Forward slashes / with URL encoding (%2F) are NOT supported due to Drogon routing limitations. Recommended: Use query parameter instead: GET /v1/core/config?path=system/max_running_instances
   * Example paths: system.max_running_instances, system.web_server, gstreamer.decode_pipelines.auto
 
@@ -933,10 +1111,10 @@ curl -X 'GET' \
   ```
 ### Update configuration section (path parameter)
 Updates a specific section of the system configuration at the given path. \
-API path: /v1/core/config/{path}
+API path: /v1/core/config/{path}  
 
 **Parameter**
-* *path* (string): Configuration path using dots as separators.
+* *path* (string): Configuration path using dots as separators. 
   * Path Format: Use dots . as separators (e.g., system.max_running_instances). Forward slashes / with URL encoding (%2F) are NOT supported due to Drogon routing limitations. Recommended: Use query parameter instead: GET /v1/core/config?path=system/max_running_instances
   * Example paths: system.max_running_instances, system.web_server, gstreamer.decode_pipelines.auto
 
@@ -984,10 +1162,10 @@ curl -X 'PATCH' \
   ```
 ### Delete configuration section (path parameter)
 Delete a specific section of the system configuration at the given path. \
-API path: /v1/core/config/{path}
+API path: /v1/core/config/{path} 
 
 **Parameter**
-* *path* (string): Configuration path using dots as separators.
+* *path* (string): Configuration path using dots as separators. 
   * Path Format: Use dots . as separators (e.g., system.max_running_instances). Forward slashes / with URL encoding (%2F) are NOT supported due to Drogon routing limitations. Recommended: Use query parameter instead: GET /v1/core/config?path=system/max_running_instances
   * Example paths: system.max_running_instances, system.web_server, gstreamer.decode_pipelines.auto
 
@@ -1110,7 +1288,7 @@ curl -X 'GET' \
     "message": "string"
   }
   ```
-### Delete all instance
+### Delete all instances
 Deletes all instances in the system. This operation permanently removes all instances and stops their pipelines if running. \
 Behavior:
 * All instances are deleted concurrently for optimal performance
@@ -1314,80 +1492,6 @@ curl -X 'POST' \
     "message": "string"
   }
   ```
-### Create a new AI instance (Quick)
-Creates a new AI instance with simplified parameters. This endpoint automatically maps solution types to appropriate solution IDs and provides default values, making it easier to create instances without needing to know the exact solution configuration. \
-**Features:**
-* Simplified parameter format
-* Automatic solution type mapping
-* Default values for common parameters
-* Automatic path conversion (development to production paths)
-
-**Solution Type Mapping:**
-The endpoint automatically maps solution types (e.g., "face_detection", "ba_crossline") to appropriate solution IDs based on input and output types.
-
-**Request Format:**
-* `solutionType`: Solution type (e.g., "face_detection", "ba_crossline")
-* `inputType`: Input type ("file", "rtsp", etc.)
-* `outputType`: Output type ("file", "rtmp", etc.)
-* Other parameters similar to regular instance creation
-
-API path: /v1/core/instance/quick
-
-**No parameter**
-
-**Request body**
-```
-{
-  "name": "Quick Face Detection",
-  "solutionType": "face_detection",
-  "inputType": "file",
-  "outputType": "file",
-  "RTSP_URL": "rtsp://localhost:8554/stream",
-  "FILE_PATH": "/path/to/video.mp4"
-}
-```
-
-**Request schema**
-```
-curl -X 'POST' \
-  'http://localhost:8080/v1/core/instance/quick' \
-  -H 'accept: application/json' \
-  -H 'Content-Type: application/json' \
-  -d '{
-  "name": "Quick Face Detection",
-  "solutionType": "face_detection",
-  "inputType": "file",
-  "outputType": "file",
-  "FILE_PATH": "/path/to/video.mp4"
-}'
-```
-
-**Responses schema**
-* 200 - Instance created successfully
-  ```
-  {
-    "instanceId": "550e8400-e29b-41d4-a716-446655440000",
-    "displayName": "Quick Face Detection",
-    "solutionId": "face_detection_file",
-    "running": true,
-    "persistent": true
-  }
-  ```
-* 400 - Bad request (validation failed, invalid JSON, etc.)
-  ```
-  {
-    "error": "Invalid request",
-    "message": "Request body must be valid JSON"
-  }
-  ```
-* 500 - Internal server error
-  ```
-  {
-    "error": "string",
-    "code": 0,
-    "message": "string"
-  }
-  ```
 ### Get instance details
 Returns detailed information about a specific instance including full configuration, status, and runtime information. \
 The response includes:
@@ -1474,7 +1578,7 @@ Behavior:
 * If the instance is currently running, it will be automatically restarted to apply the changes
 * If the instance is not running, changes will take effect when the instance is started
 * The instance must exist and not be read-only
-* Only provided fields will be updated; other fields remain unchanged.
+* Only provided fields will be updated; other fields remain unchanged. 
 
 API path: /v1/core/instance/{instanceId}
 
@@ -1636,17 +1740,14 @@ curl -X 'DELETE' \
   -H 'accept: application/json'
 ```
 **Responses schema**
-* 202 - Instance deletion request accepted (processing in background)
+* 200 - Instance updated successfully
   ```
   {
     "success": true,
-    "message": "Instance deletion request accepted. Instance is being deleted in background. Check status using GET /v1/core/instance/{instanceId}",
-    "instanceId": "550e8400-e29b-41d4-a716-446655440000",
-    "status": "deleting"
+    "message": "string",
+    "instanceId": "string"
   }
   ```
-
-  **Note:** This endpoint returns 202 (Accepted) because the instance deletion operation is processed asynchronously in the background. If the instance is currently running, it will be stopped first, then deleted. This may take a few seconds. Use GET /v1/core/instance/{instanceId} to verify the instance has been deleted (will return 404 if successfully deleted).
 * 404 - Instance not found
   ```
   {
@@ -1692,7 +1793,7 @@ curl -X 'POST' \
   -d ''
 ```
 **Responses schema**
-* 202 - Instance start request accepted (processing in background)
+* 200 - Instance started successfully
   ```
   {
     "instanceId": "550e8400-e29b-41d4-a716-446655440000",
@@ -1702,7 +1803,7 @@ curl -X 'POST' \
     "solutionName": "Face Detection",
     "persistent": true,
     "loaded": true,
-    "running": false,
+    "running": true,
     "fps": 0,
     "version": "string",
     "frameRateLimit": 0,
@@ -1723,12 +1824,9 @@ curl -X 'POST' \
     "originator": {
       "address": "string"
     },
-    "message": "Instance start request accepted. Instance is starting in background. Check status using GET /v1/core/instance/{instanceId}",
-    "status": "starting"
+    "message": "string"
   }
   ```
-
-  **Note:** This endpoint returns 202 (Accepted) because the instance start operation is processed asynchronously in the background. The instance may take a few seconds to fully start. Use GET /v1/core/instance/{instanceId} to check the actual running status.
 * 400 - Failed to start instance
   ```
   {
@@ -1777,7 +1875,7 @@ curl -X 'POST' \
   -d ''
 ```
 **Responses schema**
-* 202 - Instance stop request accepted (processing in background)
+* 200 - Instance stopped successfully
   ```
   {
     "instanceId": "550e8400-e29b-41d4-a716-446655440000",
@@ -1808,12 +1906,9 @@ curl -X 'POST' \
     "originator": {
       "address": "string"
     },
-    "message": "Instance stop request accepted. Instance is stopping in background. Check status using GET /v1/core/instance/{instanceId}",
-    "status": "stopping"
+    "message": "string"
   }
   ```
-
-  **Note:** This endpoint returns 202 (Accepted) because the instance stop operation is processed asynchronously in the background. The instance may take a few seconds to fully stop and clean up resources. Use GET /v1/core/instance/{instanceId} to check the actual running status.
 * 400 - Failed to stop instance
   ```
   {
@@ -1866,7 +1961,7 @@ curl -X 'POST' \
   -d ''
 ```
 **Responses schema**
-* 202 - Instance restart request accepted (processing in background)
+* 200 - Instance restarted successfully
   ```
   {
     "instanceId": "550e8400-e29b-41d4-a716-446655440000",
@@ -1876,7 +1971,7 @@ curl -X 'POST' \
     "solutionName": "Face Detection",
     "persistent": true,
     "loaded": true,
-    "running": false,
+    "running": true,
     "fps": 0,
     "version": "string",
     "frameRateLimit": 0,
@@ -1897,12 +1992,9 @@ curl -X 'POST' \
     "originator": {
       "address": "string"
     },
-    "message": "Instance restart request accepted. Instance is restarting in background. Check status using GET /v1/core/instance/{instanceId}",
-    "status": "restarting"
+    "message": "string"
   }
   ```
-
-  **Note:** This endpoint returns 202 (Accepted) because the instance restart operation is processed asynchronously in the background. The instance will be stopped first (if running), then started again. This may take several seconds. Use GET /v1/core/instance/{instanceId} to check the actual running status.
 * 400 - Failed to restart instance
   ```
   {
@@ -2058,7 +2150,7 @@ curl -X 'GET' \
     "message": "string"
   }
   ```
-### Get last frame from instance
+### Get last frame from instance 
 Returns the last processed frame from a running instance. The frame is encoded as JPEG and returned as a base64-encoded string.
 Features:
 * Frame is captured from the pipeline after processing (includes OSD/detection overlays)
@@ -2069,7 +2161,7 @@ Important Notes:
 * Frame capture only works if the pipeline has an app_des_node
 * If pipeline doesn't have app_des_node, frame will be empty string
 * Instance must be running to have a frame
-* Frame is cached automatically each time pipeline processes a new frame.
+* Frame is cached automatically each time pipeline processes a new frame. 
 
 API path: /v1/core/instance/{instanceId}/frame
 
@@ -2105,75 +2197,6 @@ curl -X 'GET' \
   {
     "error": "Not found",
     "message": "Instance ID not found: string"
-  }
-  ```
-* 500 - Server error
-  ```
-  {
-    "error": "string",
-    "code": 0,
-    "message": "string"
-  }
-  ```
-### Get instance preview frame
-Returns a preview frame (screenshot) from a running instance. The frame is returned as a data URL (base64-encoded JPEG image). \
-**Features:**
-* Frame is captured from the pipeline after processing (includes OSD/detection overlays)
-* Frame is automatically cached when pipeline processes new frames
-* Frame cache is automatically cleaned up when instance stops or is deleted
-* Returns data URL format: `data:image/jpeg;base64,{base64_encoded_image}`
-
-**Difference from `/frame` endpoint:**
-* `/frame`: Returns raw base64-encoded JPEG string
-* `/preview`: Returns data URL format with metadata (available status, running status, timestamp)
-
-API path: /v1/core/instance/{instanceId}/preview
-
-**Parameter**
-* *instanceId* (string): Instance ID (UUID).
-
-**No request body**
-
-**Request schema**
-```
-curl -X 'GET' \
-  'http://localhost:8080/v1/core/instance/{instanceId}/preview' \
-  -H 'accept: application/json'
-```
-
-**Responses schema**
-* 200 - Preview frame retrieved successfully
-  * Frame available
-    ```
-    {
-      "imageUrl": "data:image/jpeg;base64,/9j/4AAQSkZJRgABAQAAAQ...",
-      "available": true,
-      "running": true,
-      "timestamp": 1705312345678
-    }
-    ```
-  * No frame available
-    ```
-    {
-      "imageUrl": "",
-      "available": false,
-      "running": false,
-      "message": "No frame available. Instance may not be running or no frames processed yet.",
-      "timestamp": 1705312345678
-    }
-    ```
-* 400 - Bad request (instance ID is empty)
-  ```
-  {
-    "error": "Bad request",
-    "message": "Instance ID is required"
-  }
-  ```
-* 404 - Instance not found
-  ```
-  {
-    "error": "Not found",
-    "message": "Instance not found: {instanceId}"
   }
   ```
 * 500 - Server error
@@ -2636,7 +2659,7 @@ Important Notes:
 * Statistics are calculated in real-time
 * Statistics reset to 0 when instance is restarted
 * Statistics are not persisted (only calculated when requested)
-* Instance must be running to get statistics
+* Instance must be running to get statistics 
 API path: /v1/core/instance/{instanceId}/statistics
 
 **Parameter**
@@ -2689,83 +2712,6 @@ curl -X 'GET' \
     "message": "string"
   }
   ```
-### Get instance classes
-Retrieves the available classes (labels) from the labels file configured for an instance. \
-The system reads classes from the file specified in `LABELS_PATH` parameter in the instance configuration. \
-**How it works:**
-1. Retrieves instance configuration
-2. Looks for `LABELS_PATH` in `AdditionalParams` (can be at root level or under `input` object)
-3. Reads the labels file line by line
-4. Returns array of class names
-
-**Labels File Format:**
-* One class name per line
-* Empty lines and lines starting with `#` are ignored
-* Whitespace is trimmed from each line
-
-API path: /v1/core/instance/{instanceId}/classes
-
-**Parameter**
-* *instanceId* (string): Instance ID (UUID).
-
-**No request body**
-
-**Request schema**
-```
-curl -X 'GET' \
-  'http://localhost:8080/v1/core/instance/{instanceId}/classes' \
-  -H 'accept: application/json'
-```
-
-**Responses schema**
-* 200 - Classes retrieved successfully
-  * With labels file configured
-    ```
-    {
-      "labelsPath": "/opt/models/coco_80classes.txt",
-      "classes": [
-        "person",
-        "bicycle",
-        "car",
-        "motorcycle",
-        "airplane",
-        "bus",
-        "train",
-        "truck",
-        "boat",
-        "traffic light"
-      ]
-    }
-    ```
-  * No labels file configured
-    ```
-    {
-      "labelsPath": "",
-      "classes": []
-    }
-    ```
-* 400 - Bad request (instance ID is empty)
-  ```
-  {
-    "error": "Bad request",
-    "message": "Instance ID is required"
-  }
-  ```
-* 404 - Instance not found or config not found
-  ```
-  {
-    "error": "Not found",
-    "message": "Instance not found: {instanceId}"
-  }
-  ```
-* 500 - Server error
-  ```
-  {
-    "error": "string",
-    "code": 0,
-    "message": "string"
-  }
-  ```
 ### Get stream output configuration
 Returns the current stream output configuration for an instance. This endpoint retrieves the stream output settings including whether it is enabled and the configured URI. \
 Response Format:
@@ -2775,7 +2721,7 @@ Response Format:
 The URI can be in one of the following formats:
 * RTMP: rtmp://host:port/path/stream_key
 * RTSP: rtsp://host:port/path/stream_key
-* HLS: hls://host:port/path/stream_key
+* HLS: hls://host:port/path/stream_key 
 
 API path: /v1/core/instance/{instanceId}/output/stream
 
@@ -2843,7 +2789,7 @@ Behavior:
 MediaMTX Setup:
 * For local streaming, ensure MediaMTX is installed and running: https://github.com/bluenviron/mediamtx
 * Default MediaMTX RTMP endpoint: rtmp://localhost:1935/live/stream
-* Default MediaMTX RTSP endpoint: `rtsp://localhost:8554/live/stream"
+* Default MediaMTX RTSP endpoint: `rtsp://localhost:8554/live/stream" 
 
 API path: /v1/core/instance/{instanceId}/output/stream
 
@@ -3331,137 +3277,8 @@ curl -X 'DELETE' \
     "message": "string"
   }
   ```
-### Batch update crossing lines
-Updates multiple crossing lines in a single request. This endpoint allows you to update all lines for an instance at once, which is more efficient than updating them one by one. \
-**Features:**
-* Update multiple lines in a single request
-* Automatic UUID generation for lines without IDs
-* Runtime update (no restart required if instance is running)
-* Automatic fallback to restart if runtime update fails
-* Validates all lines before applying changes
 
-**Request Format:**
-* `lines`: Array of line objects
-* Each line object should have: `id`, `coordinates` (or `start`/`end`), `classes`, `direction`, `color` (optional)
-
-**Behavior:**
-* If instance is running, lines are updated in real-time without restart
-* If runtime update fails, instance is automatically restarted
-* All lines are validated before applying changes
-* Missing line IDs are automatically generated
-
-API path: /v1/core/instance/{instanceId}/lines/batch
-
-**Parameter**
-* *instanceId* (string): The unique identifier of the instance.
-
-**Request body**
-```
-{
-  "lines": [
-    {
-      "id": "line-1",
-      "coordinates": [
-        {"x": 100, "y": 100},
-        {"x": 500, "y": 100}
-      ],
-      "classes": ["person", "car"],
-      "direction": "AtoB",
-      "color": [255, 0, 0]
-    },
-    {
-      "id": "line-2",
-      "start": {"x": 200, "y": 200},
-      "end": {"x": 600, "y": 200},
-      "classes": ["person"],
-      "direction": "BtoA"
-    }
-  ]
-}
-```
-
-**Request schema**
-```
-curl -X 'POST' \
-  'http://localhost:8080/v1/core/instance/{instanceId}/lines/batch' \
-  -H 'accept: application/json' \
-  -H 'Content-Type: application/json' \
-  -d '{
-  "lines": [
-    {
-      "id": "line-1",
-      "coordinates": [
-        {"x": 100, "y": 100},
-        {"x": 500, "y": 100}
-      ],
-      "classes": ["person", "car"],
-      "direction": "AtoB"
-    }
-  ]
-}'
-```
-
-**Responses schema**
-* 200 - Lines updated successfully
-  ```
-  {
-    "message": "Lines updated successfully",
-    "count": 2,
-    "lines": [
-      {
-        "id": "line-1",
-        "coordinates": [
-          {"x": 100, "y": 100},
-          {"x": 500, "y": 100}
-        ],
-        "classes": ["person", "car"],
-        "direction": "AtoB",
-        "color": [255, 0, 0]
-      },
-      {
-        "id": "line-2",
-        "coordinates": [
-          {"x": 200, "y": 200},
-          {"x": 600, "y": 200}
-        ],
-        "classes": ["person"],
-        "direction": "BtoA"
-      }
-    ]
-  }
-  ```
-* 400 - Bad request
-  * Missing or invalid lines array
-    ```
-    {
-      "error": "Bad request",
-      "message": "Field 'lines' must be an array"
-    }
-    ```
-  * Invalid line format
-    ```
-    {
-      "error": "Bad request",
-      "message": "Line at index 0: Missing coordinates or start/end"
-    }
-    ```
-* 404 - Instance not found
-  ```
-  {
-    "error": "Not found",
-    "message": "Instance not found: {instanceId}"
-  }
-  ```
-* 500 - Server error
-  ```
-  {
-    "error": "string",
-    "code": 0,
-    "message": "string"
-  }
-  ```
-
-## Groups API
+## Solution API
 ### List all solutions
 Returns a list of all available solutions with summary information including solution type and pipeline node count. \
 API path: /v1/core/solution
@@ -3784,7 +3601,7 @@ curl -X 'PUT' \
     "message": "string"
   }
   ```
-### Delete a solution
+### Delete a solution 
 Deletes a custom solution. Default solutions cannot be deleted. \
 API path: /v1/core/solution/{solutionId}
 
@@ -3833,7 +3650,7 @@ curl -X 'DELETE' \
 Returns the parameter schema required to create an instance with this solution. This includes:
 * Additional Parameters: Solution-specific parameters extracted from pipeline nodes (e.g., RTSP_URL, MODEL_PATH, FILE_PATH)
 * Standard Fields: Common instance creation fields (name, group, persistent, autoStart, etc.)
-* Parameters marked as required must be provided in the additionalParams object when creating an instance. Parameters with default values are optional.
+* Parameters marked as required must be provided in the additionalParams object when creating an instance. Parameters with default values are optional. 
 
 API path: /v1/core/solution/{solutionId}/parameters
 
@@ -4356,7 +4173,7 @@ Restrictions:
 Behavior:
 * Only provided fields will be updated
 * Other fields remain unchanged
-* Updated timestamp is automatically set
+* Updated timestamp is automatically set 
 
 API path: /v1/core/groups/{groupId}
 
@@ -4417,7 +4234,7 @@ curl -X 'PUT' \
     "message": "string"
   }
   ```
-### Delete a group
+### Delete a group 
 Deletes a group from the system. This operation permanently removes the group. \
 Prerequisites:
 * Group must exist
@@ -4670,7 +4487,7 @@ curl -X 'PUT' \
     "path": "string"
   }
   ```
-* 400 - Invalid request
+* 400 - Invalid request 
   ```
   {
     "error": "string",
@@ -5129,7 +4946,7 @@ curl -X 'PUT' \
   }
   ```
 
-## Recognition API
+## Node API
 ### List all pre-configured nodes
 Returns a list of all pre-configured nodes in the node pool. Can be filtered by availability status and category.  \
 API path: /v1/core/node
@@ -5685,7 +5502,7 @@ curl -X 'PUT' \
     "message": "string"
   }
   ```
-### Delete a node
+### Delete a node  
 Deletes a pre-configured node. Only nodes that are not currently in use can be deleted. \
 API path: /v1/core/node/{nodeId}
 
@@ -5944,42 +5761,20 @@ curl -X 'GET' \
 ## Recognition API
 ### Recognize faces from uploaded image
 Recognizes faces from an uploaded image. The image can be provided as base64-encoded data in a multipart/form-data request. Returns face detection results including bounding boxes, landmarks, recognized subjects, and execution times. \
-**How it works:**
-1. Detects all faces in the uploaded image
-2. Extracts face embeddings for each detected face
-3. Compares embeddings with all registered faces in the database
-4. Returns top N matches (based on prediction_count) with similarity scores
-5. Results are sorted by similarity (highest first)
-
-API path: /v1/recognition/recognize
+API path: /v1/recognition/recognize 
 
 **Parameters**
 * *limit* (integer): Maximum number of faces to recognize (0 = no limit). Recognizes the largest faces first. Default value : 0
-* *prediction_count* (integer): Number of predictions to return per face. Returns top N most similar subjects. Default value : 1
-* *det_prob_threshold* (float): Detection probability threshold (0.0 to 1.0). Adjust based on environment:
-  * 0.3-0.5: Well-lit environment, clear faces
-  * 0.5-0.7: Normal conditions (recommended)
-  * 0.7-0.9: Dark environment or blurry faces
-  Default value : 0.5
-* *face_plugins* (string): Face plugins to enable (comma-separated). Optional.
-* *status* (string): Status filter. Optional.
+* *prediction_count* (integer): Number of predictions to return per face. Default value : 1
+* *det_prob_threshold* (float): Detection probability threshold (0.0 to 1.0). Default value : 0.5
+* *face_plugins* (string): Face plugins to enable (comma-separated).
+* *status* (string): Status filter.
 * *detect_faces* (boolean): Whether to detect faces (true) or only recognize existing faces (false). Default value : true
 
 **Request body**
 * *file*: Image file as base64-encoded data or binary data.
-  * Supported formats: JPEG, JPG, PNG, BMP, GIF, ICO, TIFF, WebP
-  * Maximum file size: 5MB
-  * Can be sent as:
-    - Multipart/form-data: Upload file directly (recommended)
-    - Application/json: Base64-encoded image string
 
 **Request schema**
-```
-curl -X 'POST' \
-  'http://localhost:8080/v1/recognition/recognize?det_prob_threshold=0.5&prediction_count=3&limit=0' \
-  -H 'accept: application/json' \
-  -F 'file=@/path/to/test_image.jpg'
-```
 
 **Responses schema**
 * 200 - Face recognition results
@@ -6033,34 +5828,14 @@ curl -X 'POST' \
     ]
   }
   ```
-* 200 - Face recognition results (no faces detected)
+* 400 - Invalid request (missing file, invalid image format, etc.)
   ```
   {
-    "result": []
+    "error": "string",
+    "code": 0,
+    "message": "string"
   }
   ```
-* 400 - Invalid request
-  * Missing file
-    ```
-    {
-      "error": "Invalid request",
-      "message": "Missing required file parameter"
-    }
-    ```
-  * Invalid image format
-    ```
-    {
-      "error": "Invalid request",
-      "message": "Invalid image format or corrupted image data"
-    }
-    ```
-  * File too large
-    ```
-    {
-      "error": "Invalid request",
-      "message": "File size exceeds maximum limit of 5MB"
-    }
-    ```
 * 401 - Unauthorized (missing or invalid API key)
   ```
   {
@@ -6080,7 +5855,7 @@ curl -X 'POST' \
 ### List face subjects
 Retrieves a list of all saved face subjects with pagination support. You can filter by subject name or retrieve all subjects. \
 This endpoint returns paginated results with face information including image_id and subject name. \
-API path: /v1/recognition/faces
+API path: /v1/recognition/faces 
 
 **Parameters**
 * *page* (integer): Page number of examples to return. Used for pagination. Default value is 0
@@ -6130,22 +5905,11 @@ API path: /v1/recognition/faces
 ### Register face subjects
 Registers a face subject by storing the image. You can add as many images as you want to train the system. Images should contain only a single face. \
 The system will detect the face in the image and store the face features for recognition. \
-**Face Detection Validation:** The system uses a Face Detection Node to validate uploaded images. If no face is detected in the image, the registration will be rejected with a clear error message. The image must contain a clear, detectable face. \
-**How it works:**
-1. **Face Detection** (Face Detection Node) - Required: The system first detects faces in the uploaded image
-2. **Validation**: Checks if the image contains a detectable face
-3. **Rejection**: If no face is detected → Registration is rejected with error message requesting a different image
-4. **Confidence Check**: If face is detected but confidence is too low → Registration is rejected
-5. **Storage**: If face is detected with sufficient confidence → Face features are stored for recognition
+API path: /v1/recognition/faces 
 
-API path: /v1/recognition/faces
-
-**Parameters**
-* *subject* (string, required): Subject name to register (e.g., "john_doe", "subject1")
-* *det_prob_threshold* (float): Detection probability threshold (0.0 to 1.0). Default value : 0.5
-  * Lower values (0.2-0.3): More sensitive, detects faces in difficult conditions
-  * Medium values (0.5-0.7): Balanced detection (recommended)
-  * Higher values (0.7-0.9): Strict detection, only very clear faces
+**Parameeters**
+* *subject* (string): Subject name to register (e.g., "subject1")
+* *deb_prob_threshold* (float): Detection probability threshold (0.0 to 1.0). Default value : 0.5
 
 **Request body**
 * *file*: Image file to upload.
@@ -6153,54 +5917,26 @@ Image data can be sent in two formats:
   1. Multipart/form-data: Upload file directly (recommended for file uploads)
   2. Application/json: Send base64-encoded image string
 
-Supported image formats: JPEG, JPG, PNG, BMP, GIF, ICO, TIFF, WebP \
-Maximum file size: 5MB
+Supported image formats: JPEG, JPG, PNG, BMP, GIF, ICO, TIFF, WebP Maximum file size: 5MB 
 
 **Request schema**
-```
-curl -X 'POST' \
-  'http://localhost:8080/v1/recognition/faces?subject=john_doe&det_prob_threshold=0.5' \
-  -H 'accept: application/json' \
-  -F 'file=@/path/to/face_image.jpg'
-```
 
 **Responses schema**
 * 200 - Face subject registered successfully
   ```
   {
     "image_id": "6b135f5b-a365-4522-b1f1-4c9ac2dd0728",
-    "subject": "john_doe"
+    "subject": "subject1"
   }
   ```
-* 400 - Invalid request
-  * Missing subject parameter
-    ```
-    {
-      "error": "Invalid request",
-      "message": "Missing required query parameter: subject"
-    }
-    ```
-  * Invalid image format
-    ```
-    {
-      "error": "Invalid request",
-      "message": "Invalid image format or corrupted image data"
-    }
-    ```
-  * No face detected (Face Detection Node validation)
-    ```
-    {
-      "error": "Registration failed",
-      "message": "No face detected in the uploaded image. Please upload a different image that contains a clear, detectable face. The image must show a person's face clearly."
-    }
-    ```
-  * Face detected but low confidence
-    ```
-    {
-      "error": "Registration failed",
-      "message": "No face detected with sufficient confidence in the uploaded image. Please upload a different image with a clearer, more visible face."
-    }
-    ```
+* 400 - Invalid request (missing subject, invalid image format, etc.)
+  ```
+  {
+    "error": "string",
+    "code": 0,
+    "message": "string"
+  }
+  ```
 * 401 - Unauthorized (missing or invalid API key)
   ```
   {
@@ -6217,20 +5953,13 @@ curl -X 'POST' \
     "message": "string"
   }
   ```
-
-**Best Practices:**
-* ✅ Use images with clear, well-lit faces
-* ✅ Images should contain only one face
-* ✅ Face should occupy at least 30-40% of the image area
-* ❌ Avoid blurry, dark, or very small faces
-* ❌ Avoid images with multiple faces (only the first face will be registered)
 ### Delete face subject by ID or subject name
 Deletes a face subject by its image ID or subject name.
 * If the identifier is an image_id, only that specific face will be deleted.
 * If the identifier is a subject name, all faces associated with that subject will be deleted.
 
 The endpoint automatically detects whether the identifier is an image_id or subject name. If no face is found with the given identifier, a 404 error is returned.
-API path: /v1/recognition/faces/{image_id} \
+API path: /v1/core/recognition/faces/{image_id} \
 
 **Parameters**
 * *image_id* (string): Either the UUID of the face subject to be deleted, or the subject name. The endpoint will automatically detect the type of identifier. Example : 6b135f5b-a365-4522-b1f1-4c9ac2dd0728
@@ -6363,11 +6092,11 @@ Deletes all face subjects from the database. This operation is irreversible. All
 Warning: This endpoint will delete all registered faces. Use with caution. \
 API path: /v1/recognition/faces/all
 
-**No parameter**
+**No parameter** 
 
-**No request body**
+**No request body** 
 
-**Request schema**
+**Request schema** 
 ```
 curl -X 'DELETE' \
   'http://localhost:8080/v1/recognition/faces/all' \
@@ -6389,7 +6118,7 @@ curl -X 'DELETE' \
     "message": "string"
   }
   ```
-### Search appearance subject
+### Search appearance subject 
 Search for similar faces in the database given an input face image. Returns a list of matching faces sorted by similarity (highest first) above the specified threshold.
 How it works:
   1. Detects faces in the uploaded image
@@ -6514,105 +6243,40 @@ curl -X 'PUT' \
   ```
 ### Configure face database connection
 Configures the face database connection for MySQL or PostgreSQL. This endpoint allows you to configure a database connection to store face recognition data instead of using the default face_database.txt file. \
-**Database Support:**
+Database Support:
 * MySQL (default port: 3306)
 * PostgreSQL (default port: 5432)
 
-**Database Location Priority:**
-The system checks for face database in the following order:
-1. **Database connection** (if configured and enabled) - MySQL/PostgreSQL
-2. `FACE_DATABASE_PATH` environment variable
-3. `/opt/edge_ai_api/data/face_database.txt`
-4. `~/.local/share/edge_ai_api/face_database.txt`
-5. `./face_database.txt` (current directory)
-
-**Database Schema Requirements:**
-The system expects two tables in the database. These tables must be created manually before configuring the connection:
-
-**1. `face_libraries` table:**
-```sql
-CREATE TABLE IF NOT EXISTS face_libraries (
-    id INT AUTO_INCREMENT PRIMARY KEY,
-    image_id VARCHAR(36),
-    subject VARCHAR(255),
-    base64_image LONGTEXT,
-    embedding TEXT,
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    machine_id VARCHAR(255),
-    mac_address VARCHAR(255),
-    INDEX idx_image_id (image_id),
-    INDEX idx_subject (subject)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
-```
-
-**2. `face_log` table:**
-```sql
-CREATE TABLE IF NOT EXISTS face_log (
-    id INT AUTO_INCREMENT PRIMARY KEY,
-    request_type VARCHAR(50),
-    timestamp DATETIME,
-    client_ip VARCHAR(45),
-    request_body LONGTEXT,
-    response_body LONGTEXT,
-    response_code INT,
-    notes TEXT,
-    mac_address VARCHAR(255),
-    machine_id VARCHAR(255),
-    INDEX idx_timestamp (timestamp),
-    INDEX idx_request_type (request_type)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
-```
-
-**For PostgreSQL:**
-```sql
--- face_libraries table
-CREATE TABLE IF NOT EXISTS face_libraries (
-    id SERIAL PRIMARY KEY,
-    image_id VARCHAR(36),
-    subject VARCHAR(255),
-    base64_image TEXT,
-    embedding TEXT,
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    machine_id VARCHAR(255),
-    mac_address VARCHAR(255)
-);
-CREATE INDEX idx_image_id ON face_libraries(image_id);
-CREATE INDEX idx_subject ON face_libraries(subject);
-
--- face_log table
-CREATE TABLE IF NOT EXISTS face_log (
-    id SERIAL PRIMARY KEY,
-    request_type VARCHAR(50),
-    timestamp TIMESTAMP,
-    client_ip VARCHAR(45),
-    request_body TEXT,
-    response_body TEXT,
-    response_code INT,
-    notes TEXT,
-    mac_address VARCHAR(255),
-    machine_id VARCHAR(255)
-);
-CREATE INDEX idx_timestamp ON face_log(timestamp);
-CREATE INDEX idx_request_type ON face_log(request_type);
-```
-
-**Behavior:**
+Database Schema: The system expects two tables in the database:
+  1. `face_libraries` table:
+    * id (primary key, auto-increment)
+    * image_id (varchar 36) - Unique identifier for each face image
+    * subject (varchar 255) - Subject/name of the person
+    * base64_image (longtext) - Base64-encoded face image
+    * embedding (text) - Face embedding vector (comma-separated floats)
+    * created_at (timestamp) - Creation timestamp
+    * machine_id (varchar 255) - Machine identifier
+    * mac_address (varchar 255) - MAC address
+  2. `face_log` table: 
+    * id (primary key, auto-increment)
+    * request_type (varchar 50) - Type of request (recognize, register, etc.)
+    * timestamp (datetime) - Request timestamp
+    * client_ip (varchar 45) - Client IP address
+    * request_body (longtext) - Request body JSON
+    * response_body (longtext) - Response body JSON
+    * response_code (int) - HTTP response code
+    * notes (text) - Additional notes
+    * mac_address (varchar 255) - MAC address
+    * machine_id (varchar 255) - Machine identifier
+Behavior:
 * If database connection is configured and enabled, the system will use the database instead of face_database.txt
 * If enabled: false is sent, the database connection is disabled and the system falls back to face_database.txt
 * Configuration is persisted in config.json under the face_database section
 * The configuration takes effect immediately after being saved
-* The endpoint only configures the connection parameters, it does not create the database schema
-
-**Quick Setup Steps:**
-1. Create database and tables (see schema above)
-2. Create database user and grant permissions (if needed)
-3. Configure connection using this endpoint
-4. Verify configuration using GET endpoint
-5. Test by registering a face
-
+Note: The database tables must be created manually before using this endpoint. The endpoint only configures the connection parameters, it does not create the database schema.\
 API path: /v1/recognition/face-database/connection
 
-**No parameter**
+**No parameter** 
 
 **Request body**
 * MySQL configuration example
@@ -6646,36 +6310,6 @@ API path: /v1/recognition/face-database/connection
   ```
 **Request schema**
 ```
-# Configure MySQL connection
-curl -X 'POST' \
-  'http://localhost:8080/v1/recognition/face-database/connection' \
-  -H 'accept: application/json' \
-  -H 'Content-Type: application/json' \
-  -d '{
-  "type": "mysql",
-  "host": "localhost",
-  "port": 3306,
-  "database": "face_recognition",
-  "username": "face_user",
-  "password": "your_password",
-  "charset": "utf8mb4"
-}'
-
-# Configure PostgreSQL connection
-curl -X 'POST' \
-  'http://localhost:8080/v1/recognition/face-database/connection' \
-  -H 'accept: application/json' \
-  -H 'Content-Type: application/json' \
-  -d '{
-  "type": "postgresql",
-  "host": "localhost",
-  "port": 5432,
-  "database": "face_db",
-  "username": "face_user",
-  "password": "secure_password"
-}'
-
-# Disable database connection (use file)
 curl -X 'POST' \
   'http://localhost:8080/v1/recognition/face-database/connection' \
   -H 'accept: application/json' \
@@ -6709,28 +6343,13 @@ curl -X 'POST' \
       "default_file": "/opt/edge_ai_api/data/face_database.txt"
     }
     ```
-* 400 - Bad request
-  * Missing required fields
-    ```
-    {
-      "error": "Bad request",
-      "message": "Field 'type' (mysql/postgresql) is required"
-    }
-    ```
-  * Invalid database type
-    ```
-    {
-      "error": "Bad request",
-      "message": "Field 'type' must be either 'mysql' or 'postgresql'"
-    }
-    ```
-  * Missing host, database, username, or password
-    ```
-    {
-      "error": "Bad request",
-      "message": "Field 'host' is required"
-    }
-    ```
+* 400 - Bad request (missing required fields, invalid database type, etc.)
+  ```
+  {
+    "error": "Bad request",
+    "message": "Field 'type' (mysql/postgresql) is required"
+  }
+  ```
 * 500 - Server error (failed to save configuration, etc.)
   ```
   {
@@ -6837,16 +6456,3 @@ curl -X 'DELETE' \
     "message": "string"
   }
   ```
-
-## Đang phát triển
-
-Các API sau đây đang trong quá trình phát triển và có thể thay đổi trong tương lai:
-
-### AI API
-Các endpoint liên quan đến xử lý AI đang được phát triển.
-
-### Solution API
-Các endpoint liên quan đến quản lý solution đang được phát triển.
-
-### Node API
-Các endpoint liên quan đến quản lý node đang được phát triển.
