@@ -1633,7 +1633,46 @@ bool InstanceRegistry::stopInstance(const std::string &instanceId) {
       std::cerr << "[InstanceRegistry] [MP4Finalizer] Waiting for "
                    "file_des_node to close files..."
                 << std::endl;
-      std::this_thread::sleep_for(std::chrono::milliseconds(5000));
+      
+      // Wait longer and check file stability multiple times
+      // This ensures file is fully closed before attempting conversion
+      const int maxWaitAttempts = 6; // 6 attempts * 3 seconds = 18 seconds max
+      bool allFilesStable = false;
+      
+      for (int attempt = 1; attempt <= maxWaitAttempts; attempt++) {
+        std::this_thread::sleep_for(std::chrono::milliseconds(3000));
+        
+        // Check if all MP4 files in directory are stable
+        allFilesStable = true;
+        try {
+          for (const auto &entry : fs::directory_iterator(recordPath)) {
+            if (entry.is_regular_file() && entry.path().extension() == ".mp4") {
+              std::string filePath = entry.path().string();
+              if (MP4Finalizer::MP4Finalizer::isFileBeingWritten(filePath)) {
+                allFilesStable = false;
+                std::cerr << "[InstanceRegistry] [MP4Finalizer] File still being written (attempt " 
+                          << attempt << "/" << maxWaitAttempts << "): " 
+                          << fs::path(filePath).filename().string() << std::endl;
+                break;
+              }
+            }
+          }
+        } catch (const fs::filesystem_error &e) {
+          std::cerr << "[InstanceRegistry] [MP4Finalizer] Error checking files: " 
+                    << e.what() << std::endl;
+        }
+        
+        if (allFilesStable) {
+          std::cerr << "[InstanceRegistry] [MP4Finalizer] All files are stable after " 
+                    << (attempt * 3) << " seconds" << std::endl;
+          break;
+        }
+      }
+      
+      if (!allFilesStable) {
+        std::cerr << "[InstanceRegistry] [MP4Finalizer] ⚠ Some files may still be closing, "
+                  << "but proceeding with conversion anyway..." << std::endl;
+      }
 
       std::cerr
           << "[InstanceRegistry] [MP4Finalizer] Starting finalization for "

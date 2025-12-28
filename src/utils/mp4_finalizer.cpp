@@ -191,20 +191,31 @@ bool MP4Finalizer::finalizeFile(const std::string &filePath,
 
   // Wait for file to stabilize (increased timeout for stop instance scenario)
   // When instance stops, file_des_node may take longer to close the file
-  if (!waitForFileStable(filePath, 10000)) { // Increased from 5s to 10s
-    std::cerr << "[MP4Finalizer] File is still being written or timeout: "
-              << filePath << std::endl;
-    std::cerr << "[MP4Finalizer] Will retry conversion after additional wait..."
-              << std::endl;
-    
-    // Retry after additional wait (file might still be closing)
-    std::this_thread::sleep_for(std::chrono::milliseconds(3000));
-    if (!waitForFileStable(filePath, 10000)) {
-      std::cerr << "[MP4Finalizer] File still not stable after retry: "
-                << filePath << std::endl;
-      return false;
+  // Use longer timeout (30 seconds) and multiple retries
+  const int maxRetries = 3;
+  bool fileStable = false;
+  
+  for (int retry = 0; retry < maxRetries; retry++) {
+    if (waitForFileStable(filePath, 30000)) { // 30 seconds timeout per retry
+      fileStable = true;
+      break;
     }
-    std::cerr << "[MP4Finalizer] File is now stable, proceeding with conversion..."
+    
+    if (retry < maxRetries - 1) {
+      std::cerr << "[MP4Finalizer] File not stable yet (retry " << (retry + 1) 
+                << "/" << maxRetries << "), waiting 5 more seconds..." << std::endl;
+      std::this_thread::sleep_for(std::chrono::milliseconds(5000));
+    }
+  }
+  
+  if (!fileStable) {
+    std::cerr << "[MP4Finalizer] ⚠ File may still be closing after " 
+              << (maxRetries * 30) << " seconds, but attempting conversion anyway..."
+              << std::endl;
+    // Don't return false - try to convert anyway, as file might be closed
+    // but lsof might give false positive
+  } else {
+    std::cerr << "[MP4Finalizer] File is stable, proceeding with conversion..."
               << std::endl;
   }
 
