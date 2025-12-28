@@ -5435,7 +5435,7 @@ paths:
                 summary: Enable record output to local path
                 value:
                   enabled: true
-                  path: "/mnt/sb1/data"
+                  path: "/opt/edge_ai_api/record"
               enableLocalRTMP:
                 summary: Enable local RTMP stream
                 value:
@@ -7570,7 +7570,7 @@ components:
             The requested path to save output video MP4 files. Required when enabled is true and using record output mode.
             The path must be a directory that exists or can be created, and must have write permissions.
             Directory will be created automatically if it doesn't exist.
-          example: "/mnt/sb1/data"
+          example: "/opt/edge_ai_api/record"
         uri:
           type: string
           format: uri
