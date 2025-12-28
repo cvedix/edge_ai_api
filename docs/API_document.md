@@ -94,11 +94,6 @@
 ### [Delete all face subjects](#delete-all-face-subjects)
 ### [Search appearance subject](#search-appearance-subject)
 
-## [Đang phát triển](#đang-phát-triển)
-### [Rename face subject](#rename-face-subject)
-### [Configure face database connection](#configure-face-database-connection)
-### [Get face database connection configuration](#get-face-database-connection-configuration)
-### [Delete face database connection configuration](#delete-face-database-connection-configuration)
 
 ## Core API
 ### Health check endpoint
