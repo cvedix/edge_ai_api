@@ -224,6 +224,7 @@ curl -X DELETE http://localhost:8080/v1/core/instance/{instanceId}/lines/{lineId
 
 **Event structure:**
 - Xem `report_body_example.json` để biết cấu trúc chi tiết
+- Xem `mqtt_event_with_counts_example.json` để biết format mới với dữ liệu đếm
 
 **Event types:**
 - `crossline_enter`: Khi phương tiện đi qua line (từ một phía)
@@ -232,9 +233,51 @@ curl -X DELETE http://localhost:8080/v1/core/instance/{instanceId}/lines/{lineId
 **Expected event fields:**
 - `type`: "crossline_enter" hoặc "crossline_exit"
 - `label`: Mô tả event (ví dụ: "Vehicle crossed line")
+- `zone_id`: ID của zone/line
+- `zone_name`: Tên của zone/line
+- `line_id`: ID của line (tương tự zone_id)
 - `extra.track_id`: ID của track
 - `extra.class`: Loại phương tiện (car, truck, motorcycle, etc.)
 - `extra.current_entries`: Số lượng đếm được hiện tại
+
+**Dữ liệu đếm theo từng line (mới):**
+Mỗi MQTT event message giờ đây bao gồm thêm section `line_counts` hiển thị số lượng đã đếm được theo từng line:
+
+```json
+{
+  "events": [...],
+  "frame_id": 34585,
+  "frame_time": 1383400.0,
+  "system_date": "Sun Dec 28 10:49:10 2025",
+  "system_timestamp": "1766893750712",
+  "instance_id": "8c6a1534-9dab-4a5a-b968-1d612d4c41a9",
+  "instance_name": "ba_crossline_file_mqtt_only",
+  "line_counts": [
+    {
+      "line_id": "default_zone",
+      "line_name": "CrosslineZone",
+      "count": 15
+    },
+    {
+      "line_id": "line_2",
+      "line_name": "Exit Line",
+      "count": 8
+    }
+  ]
+}
+```
+
+**Lưu ý:**
+- Để đếm riêng biệt cho nhiều lines, cần cấu hình `ZONE_ID` khác nhau cho từng line
+- Số đếm được tích lũy từ khi instance bắt đầu chạy
+- Mỗi event trong `events` array cũng có field `line_id` để xác định line nào đã bị vượt qua
+- Field `instance_id`: UUID thực sự của instance (ví dụ: "8c6a1534-9dab-4a5a-b968-1d612d4c41a9")
+- Field `instance_name`: Tên instance (từ field `name` trong request, ví dụ: "ba_crossline_file_mqtt_only")
+
+**MQTT Client ID:**
+- MQTT Client ID được tự động set theo format: `edge_ai_api_{instance_id}`
+- Ví dụ: Nếu instance_id là `ba_crossline_file_mqtt`, Client ID sẽ là `edge_ai_api_ba_crossline_file_mqtt`
+- Điều này giúp dễ dàng nhận biết và quản lý các MQTT connections từ các instances khác nhau
 
 ### 3. Kiểm Tra Statistics
 

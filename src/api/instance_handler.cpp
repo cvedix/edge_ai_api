@@ -3016,9 +3016,28 @@ bool InstanceHandler::parseUpdateRequest(const Json::Value &json,
 
     // Backward compatibility: if no input/output sections, parse as flat
     // structure
+    // Also parse top-level keys (like CrossingLines) even when input/output
+    // sections exist
     if (!json["additionalParams"].isMember("input") &&
         !json["additionalParams"].isMember("output")) {
       for (const auto &key : json["additionalParams"].getMemberNames()) {
+        if (json["additionalParams"][key].isString()) {
+          std::string value = json["additionalParams"][key].asString();
+          // Trim RTMP URLs to prevent GStreamer pipeline errors
+          if (key == "RTMP_URL" || key == "RTMP_DES_URL") {
+            value = trim(value);
+          }
+          req.additionalParams[key] = value;
+        }
+      }
+    } else {
+      // Parse top-level keys in additionalParams (like CrossingLines) even when
+      // input/output exist
+      for (const auto &key : json["additionalParams"].getMemberNames()) {
+        // Skip input/output sections (already parsed above)
+        if (key == "input" || key == "output") {
+          continue;
+        }
         if (json["additionalParams"][key].isString()) {
           std::string value = json["additionalParams"][key].asString();
           // Trim RTMP URLs to prevent GStreamer pipeline errors
