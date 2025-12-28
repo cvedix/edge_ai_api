@@ -2282,15 +2282,61 @@ void InstanceHandler::configureStreamOutput(
               << duration.count() << "ms";
         }
 
-        // Return 204 No Content as specified
-        auto resp = HttpResponse::newHttpResponse();
-        resp->setStatusCode(k204NoContent);
-        resp->addHeader("Access-Control-Allow-Origin", "*");
-        resp->addHeader("Access-Control-Allow-Methods",
-                        "GET, POST, PUT, DELETE, OPTIONS");
-        resp->addHeader("Access-Control-Allow-Headers",
-                        "Content-Type, Authorization");
-        MetricsInterceptor::callWithMetrics(req, resp, std::move(callback));
+        // Get updated instance info to return current configuration
+        auto optInfo = instance_manager_->getInstance(instanceId);
+        if (!optInfo.has_value()) {
+          callback(createErrorResponse(500, "Internal server error",
+                                       "Failed to retrieve instance info"));
+          return;
+        }
+
+        const InstanceInfo &info = optInfo.value();
+
+        // Build response with current stream output configuration
+        Json::Value response;
+
+        // Get RTMP URL from instance (check both rtmpUrl field and
+        // additionalParams)
+        std::string streamUri;
+        if (!info.rtmpUrl.empty()) {
+          streamUri = info.rtmpUrl;
+        } else if (info.additionalParams.find("RTMP_URL") !=
+                   info.additionalParams.end()) {
+          streamUri = info.additionalParams.at("RTMP_URL");
+        }
+
+        // Get RECORD_PATH if exists (for record output mode)
+        std::string recordPath;
+        if (info.additionalParams.find("RECORD_PATH") !=
+            info.additionalParams.end()) {
+          recordPath = info.additionalParams.at("RECORD_PATH");
+        }
+
+        // Determine if stream output is enabled (has URI or RECORD_PATH)
+        bool enabled = !streamUri.empty() || !recordPath.empty();
+        response["enabled"] = enabled;
+
+        // Set URI if enabled (for stream output mode)
+        if (enabled) {
+          if (!streamUri.empty()) {
+            response["uri"] = streamUri;
+          } else {
+            response["uri"] = ""; // Empty URI when using record mode
+          }
+
+          // Set path if exists (for record output mode)
+          if (!recordPath.empty()) {
+            response["path"] = recordPath;
+          } else {
+            response["path"] = ""; // Empty path when using stream mode
+          }
+        } else {
+          response["uri"] = "";  // Empty string when disabled
+          response["path"] = ""; // Empty string when disabled
+        }
+
+        // Return 200 OK with current configuration
+        callback(createSuccessResponse(response));
       } else {
         auto end_time = std::chrono::steady_clock::now();
         auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(
@@ -2325,15 +2371,61 @@ void InstanceHandler::configureStreamOutput(
                     << duration.count() << "ms";
         }
 
-        // Return 204 No Content
-        auto resp = HttpResponse::newHttpResponse();
-        resp->setStatusCode(k204NoContent);
-        resp->addHeader("Access-Control-Allow-Origin", "*");
-        resp->addHeader("Access-Control-Allow-Methods",
-                        "GET, POST, PUT, DELETE, OPTIONS");
-        resp->addHeader("Access-Control-Allow-Headers",
-                        "Content-Type, Authorization");
-        MetricsInterceptor::callWithMetrics(req, resp, std::move(callback));
+        // Get updated instance info to return current configuration
+        auto optInfo = instance_manager_->getInstance(instanceId);
+        if (!optInfo.has_value()) {
+          callback(createErrorResponse(500, "Internal server error",
+                                       "Failed to retrieve instance info"));
+          return;
+        }
+
+        const InstanceInfo &info = optInfo.value();
+
+        // Build response with current stream output configuration
+        Json::Value response;
+
+        // Get RTMP URL from instance (check both rtmpUrl field and
+        // additionalParams)
+        std::string streamUri;
+        if (!info.rtmpUrl.empty()) {
+          streamUri = info.rtmpUrl;
+        } else if (info.additionalParams.find("RTMP_URL") !=
+                   info.additionalParams.end()) {
+          streamUri = info.additionalParams.at("RTMP_URL");
+        }
+
+        // Get RECORD_PATH if exists (for record output mode)
+        std::string recordPath;
+        if (info.additionalParams.find("RECORD_PATH") !=
+            info.additionalParams.end()) {
+          recordPath = info.additionalParams.at("RECORD_PATH");
+        }
+
+        // Determine if stream output is enabled (has URI or RECORD_PATH)
+        bool enabled = !streamUri.empty() || !recordPath.empty();
+        response["enabled"] = enabled;
+
+        // Set URI if enabled (for stream output mode)
+        if (enabled) {
+          if (!streamUri.empty()) {
+            response["uri"] = streamUri;
+          } else {
+            response["uri"] = ""; // Empty URI when using record mode
+          }
+
+          // Set path if exists (for record output mode)
+          if (!recordPath.empty()) {
+            response["path"] = recordPath;
+          } else {
+            response["path"] = ""; // Empty path when using stream mode
+          }
+        } else {
+          response["uri"] = "";  // Empty string when disabled
+          response["path"] = ""; // Empty string when disabled
+        }
+
+        // Return 200 OK with current configuration
+        callback(createSuccessResponse(response));
       } else {
         auto end_time = std::chrono::steady_clock::now();
         auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(
