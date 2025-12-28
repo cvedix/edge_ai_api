@@ -11,8 +11,6 @@ develop_doc/
 
 # Project specific
 task/
-sample/
-samples/
 cvedix_data/
 
 # Logs

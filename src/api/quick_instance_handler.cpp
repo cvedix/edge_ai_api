@@ -634,9 +634,16 @@ bool QuickInstanceHandler::parseQuickRequest(const Json::Value &json,
   }
 
   // Parse additional parameters (flat structure for backward compatibility)
+  // Also parse top-level keys in additionalParams (like CrossingLines) even
+  // when input/output sections exist
   if (json.isMember("additionalParams") &&
       json["additionalParams"].isObject()) {
     for (const auto &key : json["additionalParams"].getMemberNames()) {
+      // Skip input/output sections (already parsed above)
+      if (key == "input" || key == "output") {
+        continue;
+      }
+      // Parse string values (including CrossingLines JSON string)
       if (json["additionalParams"][key].isString()) {
         std::string value = json["additionalParams"][key].asString();
         // Convert path to production if needed
