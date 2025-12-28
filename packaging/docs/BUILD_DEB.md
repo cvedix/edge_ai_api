@@ -17,21 +17,15 @@ packaging/
 
 ## 🚀 Quick Start - Chỉ Cần Một Lệnh!
 
-Có 3 cách để build:
+Có 2 cách để build:
 
-**Option 1: Dùng Wrapper (Khuyến Nghị)**
-```bash
-# Từ project root
-./build_deb.sh
-```
-
-**Option 2: Dùng Đường Dẫn Đầy Đủ**
+**Option 1: Dùng Đường Dẫn Đầy Đủ**
 ```bash
 # Từ project root
 ./packaging/scripts/build_deb.sh
 ```
 
-**Option 3: Từ Thư Mục Packaging**
+**Option 2: Từ Thư Mục Packaging**
 ```bash
 cd packaging/scripts
 ./build_deb.sh
