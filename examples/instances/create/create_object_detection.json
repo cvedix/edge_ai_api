@@ -1,0 +1,24 @@
+{
+  "name": "object_detection_yolo",
+  "group": "object_detection",
+  "solution": "object_detection",
+  "persistent": true,
+  "autoStart": false,
+  "frameRateLimit": 15,
+  "metadataMode": true,
+  "statisticsMode": true,
+  "diagnosticsMode": false,
+  "debugMode": false,
+  "detectorMode": "SmartDetection",
+  "detectionSensitivity": "Medium",
+  "movementSensitivity": "Low",
+  "sensorModality": "RGB",
+  "inputOrientation": 0,
+  "inputPixelLimit": 2000000,
+  "additionalParams": {
+    "input": {
+      "RTSP_URL": "rtsp://localhost:8554/live/camera1",
+      "MODEL_PATH": "/usr/share/cvedix/cvedix_data/models/yolo/yolov8n.onnx"
+    }
+  }
+}

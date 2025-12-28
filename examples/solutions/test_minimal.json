@@ -1,0 +1,41 @@
+{
+    "solutionId": "test_minimal",
+    "solutionName": "Test Minimal Solution",
+    "solutionType": "face_detection",
+    "isDefault": false,
+    "pipeline": [
+        {
+            "nodeType": "file_src",
+            "nodeName": "file_src_{instanceId}",
+            "parameters": {
+                "file_path": "${FILE_PATH}",
+                "channel": "0",
+                "resize_ratio": "0.5"
+            }
+        },
+        {
+            "nodeType": "yunet_face_detector",
+            "nodeName": "face_detector_{instanceId}",
+            "parameters": {
+                "model_path": "${MODEL_PATH}",
+                "score_threshold": "0.5",
+                "nms_threshold": "0.4",
+                "top_k": "30"
+            }
+        },
+        {
+            "nodeType": "file_des",
+            "nodeName": "file_des_{instanceId}",
+            "parameters": {
+                "save_dir": "./output/{instanceId}",
+                "name_prefix": "minimal_test",
+                "osd": "false"
+            }
+        }
+    ],
+    "defaults": {
+        "detectorMode": "SmartDetection",
+        "detectionSensitivity": "0.5",
+        "sensorModality": "RGB"
+    }
+}

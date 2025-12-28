@@ -1,0 +1,325 @@
+#!/bin/bash
+# postinst script for edge-ai-api
+
+set -e
+
+PACKAGE_NAME="edge-ai-api"
+INSTALL_DIR="/opt/edge_ai_api"
+BIN_DIR="/usr/local/bin"
+LIB_DIR="/opt/edge_ai_api/lib"
+SERVICE_USER="edgeai"
+SERVICE_GROUP="edgeai"
+SERVICE_NAME="edge-ai-api"
+
+# Function to bundle libraries (libraries should already be bundled in package)
+bundle_libraries() {
+    echo "Setting up bundled libraries..."
+
+    # Create lib directory if it doesn't exist (should be created by package, but ensure it exists)
+    mkdir -p "$LIB_DIR"
+
+    # Check if libraries exist
+    if [ ! -d "$LIB_DIR" ] || [ -z "$(ls -A "$LIB_DIR" 2>/dev/null)" ]; then
+        echo "Warning: Library directory not found or empty at $LIB_DIR"
+        echo "This is normal if libraries are bundled elsewhere or not included in package."
+        # Don't fail installation, just warn
+        return 0
+    fi
+
+    # Create symlinks for .so files (ldconfig requires symlinks)
+    # For files like libdrogon.so.1.8.0, create libdrogon.so.1 -> libdrogon.so.1.8.0
+    # and libdrogon.so -> libdrogon.so.1
+    for lib_file in "$LIB_DIR"/*.so.*; do
+        if [ -f "$lib_file" ] && [ ! -L "$lib_file" ]; then
+            lib_base=$(basename "$lib_file")
+            # Extract base name (e.g., libdrogon.so.1.8.0 -> libdrogon.so.1)
+            lib_major="${lib_base%.*}"
+            # Extract base name without version (e.g., libdrogon.so.1 -> libdrogon.so)
+            lib_base_name="${lib_major%.*}"
+
+            # Create major version symlink (libdrogon.so.1 -> libdrogon.so.1.8.0)
+            if [ "$lib_major" != "$lib_base" ] && [ ! -L "$LIB_DIR/$lib_major" ]; then
+                ln -sf "$lib_base" "$LIB_DIR/$lib_major" 2>/dev/null || true
+            fi
+
+            # Create base symlink (libdrogon.so -> libdrogon.so.1)
+            if [ "$lib_base_name" != "$lib_major" ] && [ ! -L "$LIB_DIR/$lib_base_name" ]; then
+                ln -sf "$lib_major" "$LIB_DIR/$lib_base_name" 2>/dev/null || true
+            fi
+        fi
+    done
+
+    # Create ldconfig configuration
+    echo "$LIB_DIR" > /etc/ld.so.conf.d/edge-ai-api.conf
+    ldconfig 2>&1 | grep -v "is not a symbolic link" || true
+
+    echo "Libraries configured successfully."
+}
+
+# Create user and group
+if ! id "$SERVICE_USER" &>/dev/null; then
+    echo "Creating user $SERVICE_USER..."
+    adduser --system --group --home "$INSTALL_DIR" --no-create-home --shell /bin/false "$SERVICE_USER" || true
+fi
+
+# Create required directories (must exist before systemd sets up mount namespace)
+echo "Creating required directories..."
+
+# Load directory creation helper
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
+if [ -f "$PROJECT_ROOT/scripts/create_directories.sh" ]; then
+    echo "Creating application directories..."
+    "$PROJECT_ROOT/scripts/create_directories.sh" "$INSTALL_DIR" --full-permissions || {
+        echo "Warning: Failed to create directories with full permissions, trying without..."
+        "$PROJECT_ROOT/scripts/create_directories.sh" "$INSTALL_DIR" || {
+            echo "Error: Failed to create directories" >&2
+            exit 1
+        }
+    }
+elif [ -f "$PROJECT_ROOT/deploy/create_directories.sh" ]; then
+    # Fallback to old location for backward compatibility
+    source "$PROJECT_ROOT/deploy/create_directories.sh"
+    create_app_directories "$INSTALL_DIR" "$PROJECT_ROOT"
+else
+    # Fallback: create directories manually if helper not found
+    # NOTE: This list must match directories.conf
+    echo "Warning: create_directories.sh not found, using fallback"
+    mkdir -p "$INSTALL_DIR"/instances
+    mkdir -p "$INSTALL_DIR"/solutions
+    mkdir -p "$INSTALL_DIR"/groups
+    mkdir -p "$INSTALL_DIR"/nodes
+    mkdir -p "$INSTALL_DIR"/models
+    mkdir -p "$INSTALL_DIR"/videos
+    mkdir -p "$INSTALL_DIR"/fonts
+    mkdir -p "$INSTALL_DIR"/logs
+    mkdir -p "$INSTALL_DIR"/data
+    mkdir -p "$INSTALL_DIR"/config
+    mkdir -p "$INSTALL_DIR"/uploads
+    mkdir -p "$INSTALL_DIR"/lib
+    mkdir -p "$INSTALL_DIR"/run
+    mkdir -p "$INSTALL_DIR"/record
+fi
+
+# Set up directory permissions
+echo "Setting up directory permissions..."
+chown -R "$SERVICE_USER:$SERVICE_GROUP" "$INSTALL_DIR" 2>/dev/null || true
+chmod 755 "$INSTALL_DIR"
+
+# Apply permissions from directories.conf
+if [ -f "$PROJECT_ROOT/deploy/directories.conf" ]; then
+    source "$PROJECT_ROOT/deploy/directories.conf"
+    for dir_name in "${!APP_DIRECTORIES[@]}"; do
+        dir_path="$INSTALL_DIR/$dir_name"
+        dir_perms="${APP_DIRECTORIES[$dir_name]}"
+        if [ -d "$dir_path" ]; then
+            chmod "$dir_perms" "$dir_path" 2>/dev/null || true
+        fi
+    done
+else
+    # Fallback permissions (must match directories.conf)
+    chmod 750 "$INSTALL_DIR"/instances "$INSTALL_DIR"/solutions "$INSTALL_DIR"/groups \
+              "$INSTALL_DIR"/nodes "$INSTALL_DIR"/models "$INSTALL_DIR"/videos \
+              "$INSTALL_DIR"/fonts "$INSTALL_DIR"/logs "$INSTALL_DIR"/data \
+              "$INSTALL_DIR"/config "$INSTALL_DIR"/record 2>/dev/null || true
+    chmod 755 "$INSTALL_DIR"/uploads "$INSTALL_DIR"/lib "$INSTALL_DIR"/run 2>/dev/null || true
+fi
+
+# Note: Record directory (/opt/edge_ai_api/record) is now created automatically
+# by create_directories.sh script from directories.conf configuration
+
+# Bundle libraries
+bundle_libraries
+
+# Setup face database permissions
+echo "Setting up face database permissions..."
+DB_FILENAME="face_database.txt"
+PERMISSION_MODE="${PERMISSION_MODE:-standard}"  # "standard" (644) or "full" (666)
+
+# Function to setup database file
+setup_database_file() {
+    local db_path="$1"
+    local description="$2"
+
+    echo "Setting up: $description"
+    echo "  Path: $db_path"
+
+    # Create parent directory if needed
+    local parent_dir=$(dirname "$db_path")
+    if [ ! -d "$parent_dir" ]; then
+        mkdir -p "$parent_dir"
+        echo "  ✓ Created directory: $parent_dir"
+    fi
+
+    # Create database file if it doesn't exist
+    if [ ! -f "$db_path" ]; then
+        touch "$db_path"
+        echo "  ✓ Created file: $db_path"
+    fi
+
+    # Set ownership
+    chown "$SERVICE_USER:$SERVICE_GROUP" "$db_path" 2>/dev/null || true
+    chown -R "$SERVICE_USER:$SERVICE_GROUP" "$parent_dir" 2>/dev/null || true
+    echo "  ✓ Set ownership: $SERVICE_USER:$SERVICE_GROUP"
+
+    # Set permissions
+    if [ "$PERMISSION_MODE" = "full" ]; then
+        chmod 666 "$db_path" 2>/dev/null || true
+        chmod 777 "$parent_dir" 2>/dev/null || true
+        echo "  ✓ Set FULL permissions (666) for file"
+    else
+        chmod 644 "$db_path" 2>/dev/null || true
+        chmod 755 "$parent_dir" 2>/dev/null || true
+        echo "  ✓ Set STANDARD permissions (644) for file"
+    fi
+}
+
+# Setup database files at all possible locations
+# 1. Production path
+setup_database_file "$INSTALL_DIR/data/$DB_FILENAME" "Production path"
+
+# 2. User directory (if HOME is set and user exists)
+if id "$SERVICE_USER" &>/dev/null; then
+    USER_HOME=$(getent passwd "$SERVICE_USER" | cut -d: -f6)
+    if [ -n "$USER_HOME" ] && [ "$USER_HOME" != "/" ]; then
+        USER_DB_PATH="$USER_HOME/.local/share/edge_ai_api/$DB_FILENAME"
+        setup_database_file "$USER_DB_PATH" "User directory"
+    fi
+fi
+
+echo "Face database setup completed."
+
+# Create .env file if it doesn't exist
+if [ ! -f "$INSTALL_DIR/config/.env" ]; then
+    echo "Creating default .env file..."
+    cat > "$INSTALL_DIR/config/.env" <<EOF
+API_HOST=0.0.0.0
+API_PORT=8080
+LOG_LEVEL=INFO
+# Execution mode: subprocess (isolated workers) or in-process (legacy)
+# Subprocess mode provides better isolation, crash recovery, and hot reload
+EDGE_AI_EXECUTION_MODE=subprocess
+EOF
+    chown "$SERVICE_USER:$SERVICE_GROUP" "$INSTALL_DIR/config/.env"
+    chmod 640 "$INSTALL_DIR/config/.env"
+fi
+
+# Setup GStreamer plugin path (auto-detect)
+echo "Setting up GStreamer plugin path..."
+setup_gst_plugin_path() {
+    local env_file="$INSTALL_DIR/config/.env"
+    local plugin_path=""
+
+    # Method 1: Use pkg-config (most reliable)
+    if command -v pkg-config >/dev/null 2>&1; then
+        plugin_path=$(pkg-config --variable=pluginsdir gstreamer-1.0 2>/dev/null || echo "")
+        if [ -n "$plugin_path" ] && [ -d "$plugin_path" ]; then
+            echo "  ✓ Detected via pkg-config: $plugin_path"
+        else
+            plugin_path=""
+        fi
+    fi
+
+    # Method 2: Common paths for different architectures
+    if [ -z "$plugin_path" ]; then
+        local common_paths=(
+            "/usr/lib/x86_64-linux-gnu/gstreamer-1.0"
+            "/usr/lib/aarch64-linux-gnu/gstreamer-1.0"
+            "/usr/lib/arm-linux-gnueabihf/gstreamer-1.0"
+            "/usr/lib64/gstreamer-1.0"
+            "/usr/lib/gstreamer-1.0"
+            "/usr/local/lib/gstreamer-1.0"
+        )
+
+        for path in "${common_paths[@]}"; do
+            if [ -d "$path" ] && [ -f "$path/libgstcoreelements.so" ]; then
+                plugin_path="$path"
+                echo "  ✓ Detected via common path: $plugin_path"
+                break
+            fi
+        done
+    fi
+
+    # Method 3: Find by searching for libgstcoreelements.so
+    if [ -z "$plugin_path" ]; then
+        plugin_path=$(find /usr -name "libgstcoreelements.so" 2>/dev/null | head -1 | xargs dirname 2>/dev/null || echo "")
+        if [ -n "$plugin_path" ] && [ -d "$plugin_path" ]; then
+            echo "  ✓ Detected via find: $plugin_path"
+        else
+            plugin_path=""
+        fi
+    fi
+
+    # Update .env file if plugin path was found
+    if [ -n "$plugin_path" ]; then
+        if grep -q "^GST_PLUGIN_PATH=" "$env_file" 2>/dev/null; then
+            # Update existing
+            sed -i "s|^GST_PLUGIN_PATH=.*|GST_PLUGIN_PATH=$plugin_path|" "$env_file"
+            echo "  ✓ Updated GST_PLUGIN_PATH=$plugin_path"
+        else
+            # Add new
+            {
+                echo ""
+                echo "# GStreamer plugin path (auto-detected during installation)"
+                echo "GST_PLUGIN_PATH=$plugin_path"
+            } >> "$env_file"
+            echo "  ✓ Added GST_PLUGIN_PATH=$plugin_path"
+        fi
+        chown "$SERVICE_USER:$SERVICE_GROUP" "$env_file"
+        chmod 640 "$env_file"
+    else
+        echo "  ⚠ Could not detect GStreamer plugin path"
+        echo "  You can set it manually: sudo $INSTALL_DIR/scripts/utils.sh setup-gst-path"
+    fi
+}
+
+setup_gst_plugin_path
+
+# Verify executable and libraries
+if [ -f "$BIN_DIR/edge_ai_api" ]; then
+    echo "Verifying executable..."
+    # Check if executable can find libraries
+    if command -v ldd >/dev/null 2>&1; then
+        MISSING_LIBS=$(ldd "$BIN_DIR/edge_ai_api" 2>&1 | grep "not found" || true)
+        if [ -n "$MISSING_LIBS" ]; then
+            echo "Warning: Some libraries may be missing:"
+            echo "$MISSING_LIBS"
+        fi
+    fi
+
+    # Check RPATH
+    if command -v patchelf >/dev/null 2>&1; then
+        RPATH=$(patchelf --print-rpath "$BIN_DIR/edge_ai_api" 2>/dev/null || echo "")
+        echo "Executable RPATH: ${RPATH:-not set}"
+    fi
+fi
+
+# Enable and start systemd service
+if [ -f "/etc/systemd/system/${SERVICE_NAME}.service" ]; then
+    echo "Enabling systemd service..."
+    systemctl daemon-reload
+    systemctl enable "${SERVICE_NAME}.service" || true
+
+    echo "Starting systemd service..."
+    if systemctl start "${SERVICE_NAME}.service"; then
+        echo "Service started successfully."
+        sleep 1
+        if systemctl is-active --quiet "${SERVICE_NAME}.service"; then
+            echo "Service is running."
+        else
+            echo "Warning: Service was started but may not be running. Check status with: sudo systemctl status ${SERVICE_NAME}"
+        fi
+    else
+        echo "Warning: Failed to start service. Check status with: sudo systemctl status ${SERVICE_NAME}"
+    fi
+fi
+
+echo "Installation completed successfully!"
+echo ""
+echo "Service status:"
+echo "  sudo systemctl status ${SERVICE_NAME}"
+echo ""
+echo "To restart the service:"
+echo "  sudo systemctl restart ${SERVICE_NAME}"
+
+exit 0

@@ -1,0 +1,41 @@
+{
+    "solutionId": "test_face_detection",
+    "solutionName": "Test Face Detection Solution",
+    "solutionType": "face_detection",
+    "isDefault": false,
+    "pipeline": [
+        {
+            "nodeType": "file_src",
+            "nodeName": "file_src_{instanceId}",
+            "parameters": {
+                "file_path": "${FILE_PATH}",
+                "channel": "0",
+                "resize_ratio": "1.0"
+            }
+        },
+        {
+            "nodeType": "yunet_face_detector",
+            "nodeName": "face_detector_{instanceId}",
+            "parameters": {
+                "model_path": "${MODEL_PATH}",
+                "score_threshold": "${detectionSensitivity}",
+                "nms_threshold": "0.5",
+                "top_k": "50"
+            }
+        },
+        {
+            "nodeType": "file_des",
+            "nodeName": "file_des_{instanceId}",
+            "parameters": {
+                "save_dir": "./output/{instanceId}",
+                "name_prefix": "test_face_detection",
+                "osd": "true"
+            }
+        }
+    ],
+    "defaults": {
+        "detectorMode": "SmartDetection",
+        "detectionSensitivity": "0.7",
+        "sensorModality": "RGB"
+    }
+}

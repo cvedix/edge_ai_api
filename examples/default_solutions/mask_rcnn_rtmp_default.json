@@ -1,0 +1,54 @@
+{
+    "solutionId": "mask_rcnn_rtmp_default",
+    "solutionName": "MaskRCNN Detection with RTMP Streaming",
+    "solutionType": "segmentation",
+    "isDefault": false,
+    "pipeline": [
+        {
+            "nodeType": "file_src",
+            "nodeName": "file_src_{instanceId}",
+            "parameters": {
+                "file_path": "${FILE_PATH}",
+                "channel": "0",
+                "resize_ratio": "${RESIZE_RATIO}"
+            }
+        },
+        {
+            "nodeType": "mask_rcnn_detector",
+            "nodeName": "mask_rcnn_detector_{instanceId}",
+            "parameters": {
+                "model_path": "${MODEL_PATH}",
+                "model_config_path": "${MODEL_CONFIG_PATH}",
+                "labels_path": "${LABELS_PATH}",
+                "input_width": "${INPUT_WIDTH}",
+                "input_height": "${INPUT_HEIGHT}",
+                "score_threshold": "${SCORE_THRESHOLD}"
+            }
+        },
+        {
+            "nodeType": "osd_v3",
+            "nodeName": "osd_v3_{instanceId}",
+            "parameters": {
+                "font_path": "./cvedix_data/font/NotoSansCJKsc-Medium.otf"
+            }
+        },
+        {
+            "nodeType": "rtmp_des",
+            "nodeName": "rtmp_des_{instanceId}",
+            "parameters": {
+                "rtmp_url": "${RTMP_URL}",
+                "channel": "0"
+            }
+        }
+    ],
+    "defaults": {
+        "detectorMode": "SmartDetection",
+        "detectionSensitivity": "Medium",
+        "sensorModality": "RGB",
+        "RESIZE_RATIO": "1.0",
+        "INPUT_WIDTH": "416",
+        "INPUT_HEIGHT": "416",
+        "SCORE_THRESHOLD": "0.5",
+        "RTMP_URL": "rtmp://localhost:1935/live/mask_rcnn"
+    }
+}

@@ -1,0 +1,53 @@
+[Unit]
+Description=Edge AI API Server
+Documentation=https://github.com/cvedix/edge_ai_api
+After=network.target
+
+[Service]
+Type=simple
+User=edgeai
+Group=edgeai
+WorkingDirectory=/opt/edge_ai_api
+ExecStart=/usr/local/bin/edge_ai_api
+Restart=always
+RestartSec=10
+StandardOutput=journal
+StandardError=journal
+
+# Resource limits
+LimitNOFILE=65536
+MemoryMax=2G
+CPUQuota=200%
+
+# Security settings
+NoNewPrivileges=true
+PrivateTmp=true
+# Use 'true' instead of 'strict' to allow network binding
+ProtectSystem=true
+ProtectHome=true
+# Allow network access (required for binding ports)
+PrivateNetwork=false
+ReadWritePaths=/opt/edge_ai_api/logs /opt/edge_ai_api/data /opt/edge_ai_api/uploads /opt/edge_ai_api/instances /opt/edge_ai_api/record /opt/edge_ai_api/models /opt/edge_ai_api/videos /opt/edge_ai_api/fonts
+
+# Watchdog settings (systemd built-in watchdog)
+# NOTE: Disabled because application has its own watchdog implementation
+# If you want to use systemd watchdog, implement sd_notify() in the application
+# WatchdogSec=30
+# NotifyAccess=all
+
+# Environment variables
+# Load from .env file if exists, otherwise use defaults
+EnvironmentFile=-/opt/edge_ai_api/config/.env
+Environment="API_HOST=0.0.0.0"
+Environment="API_PORT=8080"
+# GStreamer plugin path (required for filesrc and other plugins)
+# Default: Debian/Ubuntu x86_64 path
+# Override: Set GST_PLUGIN_PATH in /opt/edge_ai_api/config/.env
+# To auto-detect: Run scripts/setup_gst_plugin_path.sh
+Environment="GST_PLUGIN_PATH=/usr/lib/x86_64-linux-gnu/gstreamer-1.0"
+# Disable problematic VA plugins that cause crashes on systems with broken GPU drivers
+# Set rank to NONE to prevent GStreamer from loading VA plugins
+Environment="GST_PLUGIN_FEATURE_RANK=va:NONE,vaapi:NONE,vaapidecode:NONE,vaapipostproc:NONE"
+
+[Install]
+WantedBy=multi-user.target

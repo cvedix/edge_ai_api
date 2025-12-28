@@ -1,0 +1,126 @@
+{
+  "examples": [
+    {
+      "description": "Set DisplayName (string)",
+      "path": "DisplayName",
+      "jsonValue": "\"face_detection_demo_1_updated\"",
+      "curl_command": "curl -X POST http://localhost:8848/v1/core/instance/1a484dc9-81f2-4f4d-a361-00056a6c24b8/config -H 'Content-Type: application/json' -d '{\"path\":\"DisplayName\",\"jsonValue\":\"\\\"face_detection_demo_1_updated\\\"\"}'"
+    },
+    {
+      "description": "Set Detector confidence threshold (number)",
+      "path": "Detector/conf_threshold",
+      "jsonValue": "0.5",
+      "curl_command": "curl -X POST http://localhost:8848/v1/core/instance/1a484dc9-81f2-4f4d-a361-00056a6c24b8/config -H 'Content-Type: application/json' -d '{\"path\":\"Detector/conf_threshold\",\"jsonValue\":\"0.5\"}'"
+    },
+    {
+      "description": "Set face confidence threshold (number)",
+      "path": "Detector/face_confidence_threshold",
+      "jsonValue": "0.2",
+      "curl_command": "curl -X POST http://localhost:8848/v1/core/instance/1a484dc9-81f2-4f4d-a361-00056a6c24b8/config -H 'Content-Type: application/json' -d '{\"path\":\"Detector/face_confidence_threshold\",\"jsonValue\":\"0.2\"}'"
+    },
+    {
+      "description": "Set person confidence threshold (number)",
+      "path": "Detector/person_confidence_threshold",
+      "jsonValue": "0.4",
+      "curl_command": "curl -X POST http://localhost:8848/v1/core/instance/1a484dc9-81f2-4f4d-a361-00056a6c24b8/config -H 'Content-Type: application/json' -d '{\"path\":\"Detector/person_confidence_threshold\",\"jsonValue\":\"0.4\"}'"
+    },
+    {
+      "description": "Set vehicle confidence threshold (number)",
+      "path": "Detector/vehicle_confidence_threshold",
+      "jsonValue": "0.4",
+      "curl_command": "curl -X POST http://localhost:8848/v1/core/instance/1a484dc9-81f2-4f4d-a361-00056a6c24b8/config -H 'Content-Type: application/json' -d '{\"path\":\"Detector/vehicle_confidence_threshold\",\"jsonValue\":\"0.4\"}'"
+    },
+    {
+      "description": "Set animal confidence threshold (number)",
+      "path": "Detector/animal_confidence_threshold",
+      "jsonValue": "0.4",
+      "curl_command": "curl -X POST http://localhost:8848/v1/core/instance/1a484dc9-81f2-4f4d-a361-00056a6c24b8/config -H 'Content-Type: application/json' -d '{\"path\":\"Detector/animal_confidence_threshold\",\"jsonValue\":\"0.4\"}'"
+    },
+    {
+      "description": "Set license plate confidence threshold (number)",
+      "path": "Detector/license_plate_confidence_threshold",
+      "jsonValue": "0.2",
+      "curl_command": "curl -X POST http://localhost:8848/v1/core/instance/1a484dc9-81f2-4f4d-a361-00056a6c24b8/config -H 'Content-Type: application/json' -d '{\"path\":\"Detector/license_plate_confidence_threshold\",\"jsonValue\":\"0.2\"}'"
+    },
+    {
+      "description": "Set sensitivity preset (string)",
+      "path": "Detector/current_sensitivity_preset",
+      "jsonValue": "\"High\"",
+      "curl_command": "curl -X POST http://localhost:8848/v1/core/instance/1a484dc9-81f2-4f4d-a361-00056a6c24b8/config -H 'Content-Type: application/json' -d '{\"path\":\"Detector/current_sensitivity_preset\",\"jsonValue\":\"\\\"High\\\"\"}'"
+    },
+    {
+      "description": "Set detector preset (string)",
+      "path": "Detector/current_preset",
+      "jsonValue": "\"FullRegionInference\"",
+      "curl_command": "curl -X POST http://localhost:8848/v1/core/instance/1a484dc9-81f2-4f4d-a361-00056a6c24b8/config -H 'Content-Type: application/json' -d '{\"path\":\"Detector/current_preset\",\"jsonValue\":\"\\\"FullRegionInference\\\"\"}'"
+    },
+    {
+      "description": "Set model file (string)",
+      "path": "Detector/model_file",
+      "jsonValue": "\"pva_det_mosaic_320\"",
+      "curl_command": "curl -X POST http://localhost:8848/v1/core/instance/1a484dc9-81f2-4f4d-a361-00056a6c24b8/config -H 'Content-Type: application/json' -d '{\"path\":\"Detector/model_file\",\"jsonValue\":\"\\\"pva_det_mosaic_320\\\"\"}'"
+    },
+    {
+      "description": "Set AutoStart (boolean)",
+      "path": "AutoStart",
+      "jsonValue": "false",
+      "curl_command": "curl -X POST http://localhost:8848/v1/core/instance/1a484dc9-81f2-4f4d-a361-00056a6c24b8/config -H 'Content-Type: application/json' -d '{\"path\":\"AutoStart\",\"jsonValue\":\"false\"}'"
+    },
+    {
+      "description": "Set RTSP handler enabled (nested boolean)",
+      "path": "Output/handlers/rtsp:--0.0.0.0:8554-stream1/enabled",
+      "jsonValue": "true",
+      "curl_command": "curl -X POST http://localhost:8848/v1/core/instance/1a484dc9-81f2-4f4d-a361-00056a6c24b8/config -H 'Content-Type: application/json' -d '{\"path\":\"Output/handlers/rtsp:--0.0.0.0:8554-stream1/enabled\",\"jsonValue\":\"true\"}'"
+    },
+    {
+      "description": "Set RTSP handler FPS (nested number)",
+      "path": "Output/handlers/rtsp:--0.0.0.0:8554-stream1/config/fps",
+      "jsonValue": "15",
+      "curl_command": "curl -X POST http://localhost:8848/v1/core/instance/1a484dc9-81f2-4f4d-a361-00056a6c24b8/config -H 'Content-Type: application/json' -d '{\"path\":\"Output/handlers/rtsp:--0.0.0.0:8554-stream1/config/fps\",\"jsonValue\":\"15\"}'"
+    },
+    {
+      "description": "Set frame rate limit (number)",
+      "path": "SolutionManager/frame_rate_limit",
+      "jsonValue": "20",
+      "curl_command": "curl -X POST http://localhost:8848/v1/core/instance/1a484dc9-81f2-4f4d-a361-00056a6c24b8/config -H 'Content-Type: application/json' -d '{\"path\":\"SolutionManager/frame_rate_limit\",\"jsonValue\":\"20\"}'"
+    },
+    {
+      "description": "Set recommended frame rate (number)",
+      "path": "SolutionManager/recommended_frame_rate",
+      "jsonValue": "10",
+      "curl_command": "curl -X POST http://localhost:8848/v1/core/instance/1a484dc9-81f2-4f4d-a361-00056a6c24b8/config -H 'Content-Type: application/json' -d '{\"path\":\"SolutionManager/recommended_frame_rate\",\"jsonValue\":\"10\"}'"
+    },
+    {
+      "description": "Set input pixel limit (number)",
+      "path": "SolutionManager/input_pixel_limit",
+      "jsonValue": "3000000",
+      "curl_command": "curl -X POST http://localhost:8848/v1/core/instance/1a484dc9-81f2-4f4d-a361-00056a6c24b8/config -H 'Content-Type: application/json' -d '{\"path\":\"SolutionManager/input_pixel_limit\",\"jsonValue\":\"3000000\"}'"
+    },
+    {
+      "description": "Set send metadata (boolean)",
+      "path": "SolutionManager/send_metadata",
+      "jsonValue": "true",
+      "curl_command": "curl -X POST http://localhost:8848/v1/core/instance/1a484dc9-81f2-4f4d-a361-00056a6c24b8/config -H 'Content-Type: application/json' -d '{\"path\":\"SolutionManager/send_metadata\",\"jsonValue\":\"true\"}'"
+    },
+    {
+      "description": "Set enable debug (boolean)",
+      "path": "SolutionManager/enable_debug",
+      "jsonValue": "true",
+      "curl_command": "curl -X POST http://localhost:8848/v1/core/instance/1a484dc9-81f2-4f4d-a361-00056a6c24b8/config -H 'Content-Type: application/json' -d '{\"path\":\"SolutionManager/enable_debug\",\"jsonValue\":\"true\"}'"
+    },
+    {
+      "description": "Set performance mode preset (string)",
+      "path": "PerformanceMode/current_preset",
+      "jsonValue": "\"Performance\"",
+      "curl_command": "curl -X POST http://localhost:8848/v1/core/instance/1a484dc9-81f2-4f4d-a361-00056a6c24b8/config -H 'Content-Type: application/json' -d '{\"path\":\"PerformanceMode/current_preset\",\"jsonValue\":\"\\\"Performance\\\"\"}'"
+    },
+    {
+      "description": "Set nested object - preset values (JSON object)",
+      "path": "Detector/preset_values/MosaicInference",
+      "jsonValue": "{\"Detector/model_file\":\"pva_det_mosaic_320\",\"Detector/conf_threshold\":0.4}",
+      "curl_command": "curl -X POST http://localhost:8848/v1/core/instance/1a484dc9-81f2-4f4d-a361-00056a6c24b8/config -H 'Content-Type: application/json' -d '{\"path\":\"Detector/preset_values/MosaicInference\",\"jsonValue\":\"{\\\"Detector/model_file\\\":\\\"pva_det_mosaic_320\\\",\\\"Detector/conf_threshold\\\":0.4}\"}'"
+    }
+  ],
+  "instance_id": "1a484dc9-81f2-4f4d-a361-00056a6c24b8",
+  "api_base": "http://localhost:8848/v1/core"
+}

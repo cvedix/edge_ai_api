@@ -1,0 +1,41 @@
+repos:
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v4.5.0
+    hooks:
+      - id: trailing-whitespace
+      - id: end-of-file-fixer
+      - id: check-yaml
+        exclude: openapi.yaml
+      - id: check-json
+      - id: check-added-large-files
+        args: ['--maxkb=1000']  # Cảnh báo file > 1MB
+      - id: check-merge-conflict  # Kiểm tra conflict markers
+      - id: check-symlinks        # Kiểm tra symlinks hỏng
+      - id: mixed-line-ending     # Kiểm tra line endings (LF/CRLF)
+        args: ['--fix=lf']
+
+  # C++ formatting
+  - repo: https://github.com/pre-commit/mirrors-clang-format
+    rev: v18.1.8
+    hooks:
+      - id: clang-format
+        types_or: [c++, c]
+        args: [--style=file]
+
+  # Shell script linting
+  - repo: https://github.com/shellcheck-py/shellcheck-py
+    rev: v0.9.0.6
+    hooks:
+      - id: shellcheck
+        args: ['-e', 'SC1090,SC1091,SC2034,SC2086,SC2155,SC2181,SC2206,SC2012,SC2162,SC2046']
+
+  # Chạy tests khi push
+  - repo: local
+    hooks:
+      - id: run-tests
+        name: Run C++ tests
+        entry: bash -c 'export LD_LIBRARY_PATH=$PWD/build/lib:$LD_LIBRARY_PATH && mkdir -p build && cd build && cmake .. && make -j$(nproc) && ctest --output-on-failure'
+        language: system
+        pass_filenames: false
+        always_run: true
+        stages: [pre-push]

@@ -1,0 +1,18 @@
+{
+  "name": "face_detection_basic_1",
+  "group": "face_detection",
+  "solution": "face_detection",
+  "persistent": false,
+  "autoStart": false,
+  "frameRateLimit": 30,
+  "metadataMode": true,
+  "statisticsMode": false,
+  "debugMode": false,
+  "detectionSensitivity": "Medium",
+  "additionalParams": {
+    "input": {
+      "RTSP_URL": "rtsp://localhost:8554/live/stream1",
+      "MODEL_PATH": "/usr/share/cvedix/cvedix_data/models/face/face_detection_yunet_2022mar.onnx"
+    }
+  }
+}

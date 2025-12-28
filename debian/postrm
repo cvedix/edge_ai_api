@@ -1,0 +1,19 @@
+#!/bin/bash
+# postrm script for edge-ai-api
+
+set -e
+
+LIB_DIR="/opt/edge_ai_api/lib"
+
+# Remove ldconfig configuration
+if [ -f "/etc/ld.so.conf.d/edge-ai-api.conf" ]; then
+    rm -f /etc/ld.so.conf.d/edge-ai-api.conf
+    ldconfig
+fi
+
+# Remove library directory if empty
+if [ -d "$LIB_DIR" ]; then
+    rmdir "$LIB_DIR" 2>/dev/null || true
+fi
+
+exit 0

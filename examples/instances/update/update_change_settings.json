@@ -1,0 +1,8 @@
+{
+  "frameRateLimit": 20,
+  "metadataMode": false,
+  "statisticsMode": true,
+  "debugMode": true,
+  "detectionSensitivity": "High",
+  "movementSensitivity": "Medium"
+}

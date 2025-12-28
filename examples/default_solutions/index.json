@@ -1,0 +1,142 @@
+{
+    "version": "1.0.0",
+    "description": "Danh sách các default solutions có sẵn để người dùng chọn và sử dụng",
+    "solutions": [
+        {
+            "id": "ba_crossline_default",
+            "file": "ba_crossline_default.json",
+            "name": "Behavior Analysis - Crossline Detection (Flexible Input/Output)",
+            "category": "behavior_analysis",
+            "description": "Behavior Analysis - Crossline Detection (Flexible Input/Output)",
+            "useCase": "Đếm người/đối tượng vượt qua đường, phân tích hành vi",
+            "difficulty": "advanced"
+        },
+        {
+            "id": "ba_crossline_mqtt_default",
+            "file": "ba_crossline_mqtt_default.json",
+            "name": "Behavior Analysis - Crossline with MQTT",
+            "category": "behavior_analysis",
+            "description": "Phát hiện đối tượng vượt qua đường line với MQTT event publishing",
+            "useCase": "Tích hợp với hệ thống IoT, gửi events qua MQTT",
+            "difficulty": "intermediate"
+        },
+        {
+            "id": "face_detection_default",
+            "file": "face_detection_default.json",
+            "name": "Face Detection Solution",
+            "category": "face_detection",
+            "description": "Face Detection Solution",
+            "useCase": "General purpose solution",
+            "difficulty": "intermediate"
+        },
+        {
+            "id": "face_detection_file_default",
+            "file": "face_detection_file_default.json",
+            "name": "Face Detection - File Source",
+            "category": "face_detection",
+            "description": "Face detection với file video làm input và lưu kết quả ra file",
+            "useCase": "Xử lý video file offline, phân tích batch",
+            "difficulty": "intermediate"
+        },
+        {
+            "id": "face_detection_rtmp_default",
+            "file": "face_detection_rtmp_default.json",
+            "name": "Face Detection - RTMP Streaming",
+            "category": "face_detection",
+            "description": "Face detection với file/RTSP input và stream kết quả qua RTMP",
+            "useCase": "Streaming kết quả detection lên server",
+            "difficulty": "intermediate"
+        },
+        {
+            "id": "face_detection_rtsp_default",
+            "file": "face_detection_rtsp_default.json",
+            "name": "Face Detection - RTSP Stream",
+            "category": "face_detection",
+            "description": "Face detection với RTSP stream làm input và lưu kết quả ra file",
+            "useCase": "Giám sát real-time từ camera IP",
+            "difficulty": "intermediate"
+        },
+        {
+            "id": "minimal_default",
+            "file": "minimal_default.json",
+            "name": "Minimal Solution",
+            "category": "face_detection",
+            "description": "Minimal Solution",
+            "useCase": "Test nhanh hoặc demo đơn giản",
+            "difficulty": "beginner"
+        },
+        {
+            "id": "rtsp_face_detection_default",
+            "file": "rtsp_face_detection_default.json",
+            "name": "RTSP Face Detection Solution",
+            "category": "face_detection",
+            "description": "RTSP Face Detection Solution",
+            "useCase": "Giám sát real-time từ camera IP",
+            "difficulty": "intermediate"
+        },
+        {
+            "id": "object_detection_yolo_default",
+            "file": "object_detection_yolo_default.json",
+            "name": "Object Detection - YOLO",
+            "category": "object_detection",
+            "description": "Object detection với YOLO model, hỗ trợ file/RTSP input và file/RTMP output",
+            "useCase": "General purpose solution",
+            "difficulty": "intermediate"
+        },
+        {
+            "id": "mask_rcnn_detection_default",
+            "file": "mask_rcnn_detection_default.json",
+            "name": "MaskRCNN Detection Solution",
+            "category": "segmentation",
+            "description": "MaskRCNN Detection Solution",
+            "useCase": "Phân đoạn instance và tạo mask cho từng đối tượng",
+            "difficulty": "advanced"
+        },
+        {
+            "id": "mask_rcnn_rtmp_default",
+            "file": "mask_rcnn_rtmp_default.json",
+            "name": "MaskRCNN Detection with RTMP Streaming",
+            "category": "segmentation",
+            "description": "MaskRCNN Detection with RTMP Streaming",
+            "useCase": "Streaming kết quả detection lên server",
+            "difficulty": "intermediate"
+        }
+    ],
+    "categories": {
+        "behavior_analysis": {
+            "name": "Behavior Analysis",
+            "description": "Các solution behavior analysis",
+            "solutions": [
+                "ba_crossline_default",
+                "ba_crossline_mqtt_default"
+            ]
+        },
+        "face_detection": {
+            "name": "Face Detection",
+            "description": "Các solution face detection",
+            "solutions": [
+                "face_detection_default",
+                "face_detection_file_default",
+                "face_detection_rtmp_default",
+                "face_detection_rtsp_default",
+                "minimal_default",
+                "rtsp_face_detection_default"
+            ]
+        },
+        "object_detection": {
+            "name": "Object Detection",
+            "description": "Các solution object detection",
+            "solutions": [
+                "object_detection_yolo_default"
+            ]
+        },
+        "segmentation": {
+            "name": "Segmentation",
+            "description": "Các solution segmentation",
+            "solutions": [
+                "mask_rcnn_detection_default",
+                "mask_rcnn_rtmp_default"
+            ]
+        }
+    }
+}

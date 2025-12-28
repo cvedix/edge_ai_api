@@ -1,0 +1,73 @@
+{
+  "solutionId": "ba_crossline_with_mqtt_fix",
+  "solutionName": "Behavior Analysis - Crossline Detection with MQTT",
+  "solutionType": "behavior_analysis",
+  "isDefault": false,
+  "pipeline": [
+    {
+      "nodeType": "file_src",
+      "nodeName": "file_src_{instanceId}",
+      "parameters": {
+        "file_path": "${FILE_PATH}",
+        "channel": "0",
+        "resize_ratio": "0.4"
+      }
+    },
+    {
+      "nodeType": "yolo_detector",
+      "nodeName": "yolo_detector_{instanceId}",
+      "parameters": {
+        "weights_path": "${WEIGHTS_PATH}",
+        "config_path": "${CONFIG_PATH}",
+        "labels_path": "${LABELS_PATH}"
+      }
+    },
+    {
+      "nodeType": "sort_track",
+      "nodeName": "sort_tracker_{instanceId}",
+      "parameters": {}
+    },
+    {
+      "nodeType": "ba_crossline",
+      "nodeName": "ba_crossline_{instanceId}",
+      "parameters": {
+        "line_channel": "0",
+        "line_start_x": "0",
+        "line_start_y": "250",
+        "line_end_x": "700",
+        "line_end_y": "220"
+      }
+    },
+    {
+      "nodeType": "json_crossline_mqtt_broker",
+      "nodeName": "json_crossline_mqtt_broker_{instanceId}",
+      "parameters": {}
+    },
+    {
+      "nodeType": "ba_crossline_osd",
+      "nodeName": "osd_{instanceId}",
+      "parameters": {}
+    },
+    {
+      "nodeType": "screen_des",
+      "nodeName": "screen_des_{instanceId}",
+      "parameters": {
+        "channel": "0",
+        "enabled": "${ENABLE_SCREEN_DES}"
+      }
+    },
+    {
+      "nodeType": "rtmp_des",
+      "nodeName": "rtmp_des_{instanceId}",
+      "parameters": {
+        "rtmp_url": "${RTMP_URL}",
+        "channel": "0"
+      }
+    }
+  ],
+  "defaults": {
+    "detectorMode": "SmartDetection",
+    "detectionSensitivity": "0.7",
+    "sensorModality": "RGB"
+  }
+}

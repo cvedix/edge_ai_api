@@ -1,0 +1,18 @@
+{
+  "name": "yolov8_detector_demo",
+  "group": "detection",
+  "solution": "trt_yolov8_detection",
+  "persistent": true,
+  "autoStart": true,
+  "detectionSensitivity": "Medium",
+  "additionalParams": {
+    "input": {
+      "RTSP_URL": "rtsp://localhost:8554/stream",
+      "MODEL_PATH": "./cvedix_data/models/trt/others/yolov8s_v8.5.engine",
+      "LABELS_PATH": "./cvedix_data/models/coco_80classes.txt"
+    },
+    "output": {
+      "RTMP_URL": "rtmp://localhost:1935/live/yolov8_detector"
+    }
+  }
+}
