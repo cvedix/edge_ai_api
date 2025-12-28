@@ -579,7 +579,7 @@ Toàn bộ danh sách API, request/response schema và ví dụ `curl` để **t
 **Công cụ test:**
 - Swagger UI - Giao diện web tương tác
 - Postman Collection - [EDGE_AI_API.postman_collection.json](EDGE_AI_API.postman_collection.json)
-- `curl` commands - Xem ví dụ trong [docs/API.md](docs/API.md)
+- `curl` commands - Xem ví dụ trong [docs/API_document.md](docs/API_document.md)
 
 
 
