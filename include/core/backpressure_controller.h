@@ -161,8 +161,14 @@ private:
   std::unordered_map<std::string, BackpressureStats> stats_;
 
   // Adaptive FPS parameters
-  static constexpr double MIN_FPS = 5.0;
-  static constexpr double MAX_FPS = 60.0;
+  // Note: MIN_FPS should be > 0 to avoid division by zero when calculating
+  // interval_ms Set to 12.0 to ensure minimum acceptable FPS (targeting 10-15
+  // FPS range) when backpressure occurs
+  static constexpr double MIN_FPS =
+      12.0; // Changed from 5.0 to maintain 10-15 FPS minimum
+  static constexpr double MAX_FPS =
+      120.0; // Increased from 60.0 to support high FPS processing for multiple
+             // instances
   static constexpr double FPS_REDUCTION_FACTOR =
       0.9; // Reduce by 10% when backpressure
   static constexpr double FPS_INCREASE_FACTOR =
