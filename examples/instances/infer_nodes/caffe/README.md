@@ -23,4 +23,3 @@ Thư mục này chứa các ví dụ sử dụng các inference nodes với Caff
 
 - OpenCV với DNN module hỗ trợ Caffe
 - Caffe model files
-

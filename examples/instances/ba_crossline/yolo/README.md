@@ -55,4 +55,3 @@ Sử dụng tham số `CrossingLines` để định nghĩa các đường line c
 ```json
 "CrossingLines": "[{\"id\":\"line1\",\"name\":\"Main Road\",\"coordinates\":[{\"x\":0,\"y\":250},{\"x\":700,\"y\":220}],\"direction\":\"Both\",\"classes\":[\"Vehicle\"],\"color\":[255,0,0,255]}]"
 ```
-

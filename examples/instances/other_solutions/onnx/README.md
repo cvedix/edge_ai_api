@@ -31,4 +31,3 @@ Thư mục này chứa các ví dụ sử dụng các solution khác với ONNX 
 - `EMAP_FILE_FOR_EMBEDDINGS`: Đường dẫn đến emap file
 - `FACE_SWAP_MODEL_PATH`: Đường dẫn đến face swap model
 - `SWAP_SOURCE_IMAGE`: Đường dẫn đến source face image
-

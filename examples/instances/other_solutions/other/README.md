@@ -25,4 +25,3 @@ Thư mục này chứa các ví dụ sử dụng các solution khác không thu�
 
 - Ollama server đã được cài đặt và chạy
 - Model đã được download trong Ollama
-

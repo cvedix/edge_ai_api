@@ -24,4 +24,3 @@ Thư mục này chứa các ví dụ sử dụng các inference nodes với Tens
 
 - TensorFlow library
 - Model files ở định dạng frozen graph
-

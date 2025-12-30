@@ -26,4 +26,3 @@ Thư mục này chứa các ví dụ sử dụng YOLO detector với OpenCV DNN.
 
 - OpenCV với DNN module
 - YOLO weights và config files
-

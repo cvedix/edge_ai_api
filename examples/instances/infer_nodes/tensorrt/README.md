@@ -30,4 +30,3 @@ Thư mục này chứa các ví dụ sử dụng các inference nodes với Tens
 - NVIDIA GPU với CUDA support
 - TensorRT library đã được cài đặt
 - CVEDIX_WITH_TRT flag được enable khi build
-

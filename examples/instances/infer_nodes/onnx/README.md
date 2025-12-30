@@ -25,4 +25,3 @@ Các ví dụ ONNX thường được tổ chức trong các solution cụ thể
 
 - ONNX Runtime hoặc OpenCV với DNN module hỗ trợ ONNX
 - ONNX model files
-

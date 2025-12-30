@@ -25,4 +25,3 @@ Thư mục này chứa các ví dụ sử dụng Mask R-CNN với các model Ten
 - `INPUT_HEIGHT`: Chiều cao input (default: 416)
 - `SCORE_THRESHOLD`: Ngưỡng score (default: 0.5)
 - `RESIZE_RATIO`: Tỷ lệ resize frame (0.0 - 1.0)
-

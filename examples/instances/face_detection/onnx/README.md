@@ -23,4 +23,3 @@ Thư mục này chứa các ví dụ sử dụng Face Detection với các model
 - `MODEL_PATH`: Đường dẫn đến model YuNet face detection (`.onnx`)
 - `SFACE_MODEL_PATH`: Đường dẫn đến model SFace recognition (`.onnx`)
 - `RESIZE_RATIO`: Tỷ lệ resize frame (0.0 - 1.0)
-

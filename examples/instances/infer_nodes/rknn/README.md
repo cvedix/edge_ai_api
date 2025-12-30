@@ -27,4 +27,3 @@ Thư mục này chứa các ví dụ sử dụng các inference nodes với RKNN
 - Rockchip NPU hardware
 - RKNN toolkit đã được cài đặt
 - CVEDIX_WITH_RKNN flag được enable khi build
-
