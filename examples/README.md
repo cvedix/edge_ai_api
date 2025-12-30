@@ -22,9 +22,7 @@ examples/
 │   ├── index.json    # Catalog danh sách solutions
 │   └── *.sh          # Helper scripts
 ├── instances/         # Example files và scripts cho instances
-│   ├── create/       # Examples để tạo instances
 │   ├── update/       # Examples để cập nhật instances
-│   ├── scripts/      # Utility scripts
 │   ├── tests/        # Test files
 │   ├── infer_nodes/  # Inference nodes examples
 │   └── example_*.json # Solution examples
@@ -34,10 +32,9 @@ examples/
 ## Thư mục con
 
 ### 📝 `instances/`
-Example files và scripts để làm việc với instances:
-- `create/` - Examples để tạo instances với basic solutions
+Example files để làm việc với instances:
+- `{solution}/{model_type}/` - Examples được tổ chức theo solution và model type
 - `update/` - Examples để cập nhật instances
-- `scripts/` - Utility scripts (check status, monitor, analyze logs, etc.)
 - `tests/` - Test files
 - `infer_nodes/` - Inference nodes examples
 - `example_*.json` - Solution examples ở root
@@ -98,7 +95,7 @@ curl -X POST http://localhost:8080/v1/core/instance \
 ```bash
 curl -X POST http://localhost:8080/v1/core/instance \
   -H "Content-Type: application/json" \
-  -d @instances/create/create_face_detection_basic.json
+  -d @instances/face_detection/onnx/test_rtsp_source.json
 ```
 
 ### 2. Tạo Instance với Solution Example
@@ -117,14 +114,14 @@ curl -X PUT http://localhost:8080/v1/core/instance/{instanceId} \
   -d @instances/update/update_change_rtsp_url.json
 ```
 
-### 4. Sử dụng Scripts
+### 4. Kiểm tra Instance Status
 
 ```bash
 # Check instance status
-./instances/scripts/check_instance_status.sh {instanceId}
+curl http://localhost:8080/v1/core/instance/{instanceId}
 
-# Monitor instance
-./instances/scripts/monitor_instance.sh {instanceId}
+# Get instance statistics
+curl http://localhost:8080/v1/core/instance/{instanceId}/statistics
 ```
 
 ## 📋 Manual Testing Guide - Hướng Dẫn Test Thủ Công
@@ -432,8 +429,8 @@ sleep 5
 # 6. Kiểm tra statistics
 curl http://localhost:8080/v1/core/instance/${INSTANCE_ID}/statistics
 
-# 7. Monitor instance (trong terminal riêng)
-./instances/scripts/monitor_instance.sh ${INSTANCE_ID}
+# 7. Monitor instance (kiểm tra status định kỳ)
+watch -n 2 "curl -s http://localhost:8080/v1/core/instance/${INSTANCE_ID} | jq '.status'"
 
 # 8. Stop instance
 curl -X POST http://localhost:8080/v1/core/instance/${INSTANCE_ID}/stop
@@ -537,7 +534,6 @@ mosquitto_sub -h localhost -t test -v
 
 1. **Model Paths**: Các đường dẫn model trong example files là ví dụ, cần cập nhật cho phù hợp với môi trường của bạn
 2. **API Endpoint**: Mặc định là `http://localhost:8080`, cần cập nhật nếu khác
-3. **Permissions**: Đảm bảo scripts có quyền thực thi: `chmod +x instances/scripts/*.sh`
 
 ## Tài liệu tham khảo
 
