@@ -3,7 +3,11 @@
 #include "core/logging_flags.h"
 #include "core/metrics_interceptor.h"
 #include "core/uuid_generator.h"
+#include "instances/inprocess_instance_manager.h"
 #include "instances/instance_manager.h"
+#include <map>
+#include <type_traits>
+#include <utility>
 #include <algorithm>
 #include <cctype>
 #include <chrono>
@@ -17,6 +21,66 @@
 #include <thread>
 
 IInstanceManager *LinesHandler::instance_manager_ = nullptr;
+
+namespace {
+
+template <typename T, typename = void>
+struct has_set_lines : std::false_type {};
+template <typename T>
+struct has_set_lines<
+    T, std::void_t<decltype(std::declval<T &>().set_lines(
+           std::declval<const std::map<int, cvedix_objects::cvedix_line> &>()))>>
+    : std::true_type {};
+
+template <typename T, typename = void>
+struct has_setLines : std::false_type {};
+template <typename T>
+struct has_setLines<
+    T, std::void_t<decltype(std::declval<T &>().setLines(
+           std::declval<const std::map<int, cvedix_objects::cvedix_line> &>()))>>
+    : std::true_type {};
+
+template <typename T, typename = void>
+struct has_update_lines : std::false_type {};
+template <typename T>
+struct has_update_lines<
+    T, std::void_t<decltype(std::declval<T &>().update_lines(
+           std::declval<const std::map<int, cvedix_objects::cvedix_line> &>()))>>
+    : std::true_type {};
+
+template <typename T, typename = void>
+struct has_updateLines : std::false_type {};
+template <typename T>
+struct has_updateLines<
+    T, std::void_t<decltype(std::declval<T &>().updateLines(
+           std::declval<const std::map<int, cvedix_objects::cvedix_line> &>()))>>
+    : std::true_type {};
+
+static bool applyLinesToCrosslineNode(
+    cvedix_nodes::cvedix_ba_crossline_node &node,
+    const std::map<int, cvedix_objects::cvedix_line> &lines,
+    std::string &error) {
+  if constexpr (has_set_lines<cvedix_nodes::cvedix_ba_crossline_node>::value) {
+    node.set_lines(lines);
+    return true;
+  } else if constexpr (has_setLines<cvedix_nodes::cvedix_ba_crossline_node>::value) {
+    node.setLines(lines);
+    return true;
+  } else if constexpr (has_update_lines<cvedix_nodes::cvedix_ba_crossline_node>::value) {
+    node.update_lines(lines);
+    return true;
+  } else if constexpr (has_updateLines<cvedix_nodes::cvedix_ba_crossline_node>::value) {
+    node.updateLines(lines);
+    return true;
+  } else {
+    error =
+        "CVEDIX SDK does not expose a runtime line update API for "
+        "cvedix_ba_crossline_node (no set_lines/setLines/update_lines/updateLines)";
+    return false;
+  }
+}
+
+} // namespace
 
 void LinesHandler::setInstanceManager(IInstanceManager *manager) {
   instance_manager_ = manager;
@@ -686,20 +750,17 @@ void LinesHandler::createLine(
       return;
     }
 
-    // Try runtime update first (without restart)
+    // Try runtime update (no restart policy)
     if (updateLinesRuntime(instanceId, linesArray)) {
       if (isApiLoggingEnabled()) {
         PLOG_INFO << "[API] POST /v1/core/instance/" << instanceId
                   << "/lines - Lines updated runtime without restart";
       }
-    } else {
-      // Fallback to restart if runtime update failed
-      if (isApiLoggingEnabled()) {
-        PLOG_WARNING
-            << "[API] POST /v1/core/instance/" << instanceId
-            << "/lines - Runtime update failed, falling back to restart";
-      }
-      restartInstanceForLineUpdate(instanceId);
+    } else if (isApiLoggingEnabled()) {
+      PLOG_WARNING
+          << "[API] POST /v1/core/instance/" << instanceId
+          << "/lines - Runtime update not available; changes will apply on next "
+             "pipeline rebuild/start (restart disabled by policy)";
     }
 
     auto end_time = std::chrono::steady_clock::now();
@@ -815,20 +876,17 @@ void LinesHandler::deleteAllLines(
       return;
     }
 
-    // Try runtime update first (without restart)
+    // Try runtime update (no restart policy)
     if (updateLinesRuntime(instanceId, emptyArray)) {
       if (isApiLoggingEnabled()) {
         PLOG_INFO << "[API] DELETE /v1/core/instance/" << instanceId
                   << "/lines - Lines updated runtime without restart";
       }
-    } else {
-      // Fallback to restart if runtime update failed
-      if (isApiLoggingEnabled()) {
-        PLOG_WARNING
-            << "[API] DELETE /v1/core/instance/" << instanceId
-            << "/lines - Runtime update failed, falling back to restart";
-      }
-      restartInstanceForLineUpdate(instanceId);
+    } else if (isApiLoggingEnabled()) {
+      PLOG_WARNING
+          << "[API] DELETE /v1/core/instance/" << instanceId
+          << "/lines - Runtime update not available; changes will apply on next "
+             "pipeline rebuild/start (restart disabled by policy)";
     }
 
     auto end_time = std::chrono::steady_clock::now();
@@ -1196,20 +1254,17 @@ void LinesHandler::updateLine(
       return;
     }
 
-    // Try runtime update first (without restart)
+    // Try runtime update (no restart policy)
     if (updateLinesRuntime(instanceId, linesArray)) {
       if (isApiLoggingEnabled()) {
         PLOG_INFO << "[API] PUT /v1/core/instance/" << instanceId << "/lines/"
                   << lineId << " - Lines updated runtime without restart";
       }
-    } else {
-      // Fallback to restart if runtime update failed
-      if (isApiLoggingEnabled()) {
-        PLOG_WARNING << "[API] PUT /v1/core/instance/" << instanceId
-                     << "/lines/" << lineId
-                     << " - Runtime update failed, falling back to restart";
-      }
-      restartInstanceForLineUpdate(instanceId);
+    } else if (isApiLoggingEnabled()) {
+      PLOG_WARNING << "[API] PUT /v1/core/instance/" << instanceId << "/lines/"
+                   << lineId
+                   << " - Runtime update not available; changes will apply on "
+                      "next pipeline rebuild/start (restart disabled by policy)";
     }
 
     // Find updated line to return
@@ -1364,21 +1419,18 @@ void LinesHandler::deleteLine(
       return;
     }
 
-    // Try runtime update first (without restart)
+    // Try runtime update (no restart policy)
     if (updateLinesRuntime(instanceId, newLinesArray)) {
       if (isApiLoggingEnabled()) {
         PLOG_INFO << "[API] DELETE /v1/core/instance/" << instanceId
                   << "/lines/" << lineId
                   << " - Lines updated runtime without restart";
       }
-    } else {
-      // Fallback to restart if runtime update failed
-      if (isApiLoggingEnabled()) {
-        PLOG_WARNING << "[API] DELETE /v1/core/instance/" << instanceId
-                     << "/lines/" << lineId
-                     << " - Runtime update failed, falling back to restart";
-      }
-      restartInstanceForLineUpdate(instanceId);
+    } else if (isApiLoggingEnabled()) {
+      PLOG_WARNING << "[API] DELETE /v1/core/instance/" << instanceId
+                   << "/lines/" << lineId
+                   << " - Runtime update not available; changes will apply on "
+                      "next pipeline rebuild/start (restart disabled by policy)";
     }
 
     auto end_time = std::chrono::steady_clock::now();
@@ -1588,20 +1640,17 @@ void LinesHandler::batchUpdateLines(
       return;
     }
 
-    // Try runtime update first (without restart)
+    // Try runtime update (no restart policy)
     if (updateLinesRuntime(instanceId, linesArray)) {
       if (isApiLoggingEnabled()) {
         PLOG_INFO << "[API] POST /v1/core/instance/" << instanceId
                   << "/lines/batch - Lines updated runtime without restart";
       }
-    } else {
-      // Fallback to restart if runtime update failed
-      if (isApiLoggingEnabled()) {
-        PLOG_WARNING << "[API] POST /v1/core/instance/" << instanceId
-                     << "/lines/batch - Runtime update failed, falling back to "
-                        "restart";
-      }
-      restartInstanceForLineUpdate(instanceId);
+    } else if (isApiLoggingEnabled()) {
+      PLOG_WARNING << "[API] POST /v1/core/instance/" << instanceId
+                   << "/lines/batch - Runtime update not available; changes "
+                      "will apply on next pipeline rebuild/start (restart "
+                      "disabled by policy)";
     }
 
     auto end_time = std::chrono::steady_clock::now();
@@ -1762,14 +1811,26 @@ LinesHandler::findBACrosslineNode(const std::string &instanceId) const {
     return nullptr;
   }
 
-  // In in-process mode, try to access nodes via InstanceRegistry
-  // This requires casting to InProcessInstanceManager to access registry
-  // For now, return nullptr and let updateLinesRuntime() handle via restart
-  // TODO: Add getInstanceNodes() to IInstanceManager interface if needed
-  if (isApiLoggingEnabled()) {
-    PLOG_DEBUG << "[API] findBACrosslineNode: Direct node access not "
-                  "available, will use restart fallback";
+  // In in-process mode, access nodes via InstanceRegistry (through adapter).
+  auto *inProc =
+      dynamic_cast<InProcessInstanceManager *>(instance_manager_);
+  if (!inProc) {
+    if (isApiLoggingEnabled()) {
+      PLOG_WARNING << "[API] findBACrosslineNode: In-process manager cast "
+                      "failed, fallback to restart";
+    }
+    return nullptr;
   }
+
+  auto nodes = inProc->getRegistry().getInstanceNodes(instanceId);
+  for (const auto &node : nodes) {
+    auto crosslineNode =
+        std::dynamic_pointer_cast<cvedix_nodes::cvedix_ba_crossline_node>(node);
+    if (crosslineNode) {
+      return crosslineNode;
+    }
+  }
+
   return nullptr;
 }
 
@@ -1879,7 +1940,14 @@ bool LinesHandler::updateLinesRuntime(const std::string &instanceId,
                  // next start
   }
 
-  // Find ba_crossline_node in pipeline
+  // Subprocess mode: UPDATE_INSTANCE already sent during saveLinesToConfig().
+  // Worker will attempt to apply CrossingLines to running pipeline without
+  // restart. No further action needed here.
+  if (instance_manager_->isSubprocessMode()) {
+    return true;
+  }
+
+  // In-process mode: try to update BA crossline node directly.
   auto baCrosslineNode = findBACrosslineNode(instanceId);
   if (!baCrosslineNode) {
     if (isApiLoggingEnabled()) {
@@ -1901,69 +1969,20 @@ bool LinesHandler::updateLinesRuntime(const std::string &instanceId,
     return false; // Fallback to restart
   }
 
-  // Try to update lines via SDK API
-  // NOTE: CVEDIX SDK's ba_crossline_node stores lines in member variable
-  // 'all_lines' We'll try to access and update it directly if possible
-  try {
-    // Attempt: Try to access all_lines member and update it directly
-    // Based on SDK header, ba_crossline_node has: std::map<int, cvedix_line>
-    // all_lines; We'll try to access it through public interface or friend
-    // class
-
-    // Since we don't have direct access to private members, we need to use
-    // restart However, we can verify that lines are correctly saved to config
-    // first
-
+  // Apply using SDK API if available.
+  std::string applyError;
+  if (!applyLinesToCrosslineNode(*baCrosslineNode, lines, applyError)) {
     if (isApiLoggingEnabled()) {
-      PLOG_INFO << "[API] updateLinesRuntime: Found ba_crossline_node, "
-                   "attempting to update "
-                << lines.size() << " line(s)";
-      PLOG_INFO << "[API] updateLinesRuntime: Lines parsed successfully, will "
-                   "apply via restart";
-      PLOG_INFO << "[API] updateLinesRuntime: Note - Direct runtime update "
-                   "requires SDK API access";
+      PLOG_WARNING << "[API] updateLinesRuntime: " << applyError
+                   << " - fallback to restart";
     }
-
-    // Verify lines were parsed correctly
-    if (lines.empty() && linesArray.isArray() && linesArray.size() == 0) {
-      // Empty array is valid (delete all lines)
-      if (isApiLoggingEnabled()) {
-        PLOG_INFO << "[API] updateLinesRuntime: Empty lines array - will clear "
-                     "all lines via restart";
-      }
-    } else if (lines.empty()) {
-      // Parse failed
-      if (isApiLoggingEnabled()) {
-        PLOG_WARNING << "[API] updateLinesRuntime: Failed to parse lines, "
-                        "fallback to restart";
-      }
-      return false;
-    }
-
-    // Since SDK doesn't expose runtime update API, we need to restart
-    // But we've verified that lines are correctly parsed and saved to config
-    // The restart will rebuild pipeline with new lines from
-    // additionalParams["CrossingLines"]
-    if (isApiLoggingEnabled()) {
-      PLOG_INFO << "[API] updateLinesRuntime: Lines configuration saved, "
-                   "restarting instance to apply changes";
-    }
-
-    // Return false to trigger fallback to restart
-    // This ensures lines are applied correctly through pipeline rebuild
     return false;
-
-  } catch (const std::exception &e) {
-    if (isApiLoggingEnabled()) {
-      PLOG_ERROR << "[API] updateLinesRuntime: Exception updating lines: "
-                 << e.what() << ", fallback to restart";
-    }
-    return false; // Fallback to restart
-  } catch (...) {
-    if (isApiLoggingEnabled()) {
-      PLOG_ERROR << "[API] updateLinesRuntime: Unknown exception updating "
-                    "lines, fallback to restart";
-    }
-    return false; // Fallback to restart
   }
+
+  if (isApiLoggingEnabled()) {
+    PLOG_INFO << "[API] updateLinesRuntime: Applied " << lines.size()
+              << " line(s) to ba_crossline_node without restart";
+  }
+
+  return true;
 }

@@ -6,6 +6,7 @@
 #include <chrono>
 #include <functional>
 #include <json/json.h>
+#include <map>
 #include <memory>
 #include <mutex>
 #include <opencv2/core.hpp>
@@ -149,6 +150,19 @@ private:
    * @brief Send WORKER_READY message to supervisor
    */
   void sendReadySignal();
+
+  /**
+   * @brief Try to apply CrossingLines update to the running pipeline without
+   * restarting (best-effort).
+   *
+   * Looks for `AdditionalParams.CrossingLines` in the config update. Expected
+   * format is a string that contains a JSON array of line objects.
+   *
+   * @return true if update was applied (or not needed because pipeline isn't
+   * running); false if no applicable update or failed to apply.
+   */
+  bool applyCrossingLinesRuntimeUpdate(const Json::Value &configUpdate,
+                                       std::string &error);
 
   /**
    * @brief Parse CreateInstanceRequest from JSON config
