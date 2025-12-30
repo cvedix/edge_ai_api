@@ -3,12 +3,19 @@
 #include "models/create_instance_request.h"
 #include "solutions/solution_registry.h"
 #include <cstring>
+#include <cvedix/nodes/ba/cvedix_ba_crossline_node.h>
 #include <cvedix/nodes/common/cvedix_node.h>
 #include <cvedix/nodes/src/cvedix_file_src_node.h>
 #include <cvedix/nodes/src/cvedix_rtsp_src_node.h>
+#include <cvedix/objects/shapes/cvedix_line.h>
+#include <cvedix/objects/shapes/cvedix_point.h>
 #include <getopt.h>
 #include <iostream>
+#include <optional>
 #include <opencv2/imgcodecs.hpp>
+#include <type_traits>
+#include <utility>
+#include <json/reader.h>
 #include <sstream>
 
 // Base64 encoding table
@@ -16,6 +23,122 @@ static const char base64_chars[] =
     "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
 
 namespace worker {
+
+namespace {
+
+template <typename T, typename = void>
+struct has_set_lines : std::false_type {};
+template <typename T>
+struct has_set_lines<
+    T, std::void_t<decltype(std::declval<T &>().set_lines(
+           std::declval<const std::map<int, cvedix_objects::cvedix_line> &>()))>>
+    : std::true_type {};
+
+template <typename T, typename = void>
+struct has_setLines : std::false_type {};
+template <typename T>
+struct has_setLines<
+    T, std::void_t<decltype(std::declval<T &>().setLines(
+           std::declval<const std::map<int, cvedix_objects::cvedix_line> &>()))>>
+    : std::true_type {};
+
+template <typename T, typename = void>
+struct has_update_lines : std::false_type {};
+template <typename T>
+struct has_update_lines<
+    T, std::void_t<decltype(std::declval<T &>().update_lines(
+           std::declval<const std::map<int, cvedix_objects::cvedix_line> &>()))>>
+    : std::true_type {};
+
+template <typename T, typename = void>
+struct has_updateLines : std::false_type {};
+template <typename T>
+struct has_updateLines<
+    T, std::void_t<decltype(std::declval<T &>().updateLines(
+           std::declval<const std::map<int, cvedix_objects::cvedix_line> &>()))>>
+    : std::true_type {};
+
+static bool applyLinesToCrosslineNode(
+    cvedix_nodes::cvedix_ba_crossline_node &node,
+    const std::map<int, cvedix_objects::cvedix_line> &lines,
+    std::string &error) {
+  // Best-effort: support multiple SDK API spellings if present.
+  if constexpr (has_set_lines<cvedix_nodes::cvedix_ba_crossline_node>::value) {
+    node.set_lines(lines);
+    return true;
+  } else if constexpr (has_setLines<cvedix_nodes::cvedix_ba_crossline_node>::value) {
+    node.setLines(lines);
+    return true;
+  } else if constexpr (has_update_lines<cvedix_nodes::cvedix_ba_crossline_node>::value) {
+    node.update_lines(lines);
+    return true;
+  } else if constexpr (has_updateLines<cvedix_nodes::cvedix_ba_crossline_node>::value) {
+    node.updateLines(lines);
+    return true;
+  } else {
+    error =
+        "CVEDIX SDK does not expose a runtime line update API for "
+        "cvedix_ba_crossline_node (no set_lines/setLines/update_lines/updateLines)";
+    return false;
+  }
+}
+
+static std::optional<std::map<int, cvedix_objects::cvedix_line>>
+parseCrossingLinesJsonString(const std::string &linesJsonStr,
+                             std::string &error) {
+  Json::Reader reader;
+  Json::Value parsedLines;
+  if (!reader.parse(linesJsonStr, parsedLines)) {
+    error = "Failed to parse CrossingLines JSON string";
+    return std::nullopt;
+  }
+  if (!parsedLines.isArray()) {
+    error = "CrossingLines parsed JSON is not an array";
+    return std::nullopt;
+  }
+
+  std::map<int, cvedix_objects::cvedix_line> lines;
+  for (Json::ArrayIndex i = 0; i < parsedLines.size(); ++i) {
+    const Json::Value &lineObj = parsedLines[i];
+    if (!lineObj.isObject()) {
+      continue;
+    }
+    if (!lineObj.isMember("coordinates") || !lineObj["coordinates"].isArray()) {
+      continue;
+    }
+    const Json::Value &coordinates = lineObj["coordinates"];
+    if (coordinates.size() < 2) {
+      continue;
+    }
+    const Json::Value &startCoord = coordinates[0];
+    const Json::Value &endCoord = coordinates[coordinates.size() - 1];
+    if (!startCoord.isObject() || !endCoord.isObject()) {
+      continue;
+    }
+    if (!startCoord.isMember("x") || !startCoord.isMember("y") ||
+        !endCoord.isMember("x") || !endCoord.isMember("y")) {
+      continue;
+    }
+    if (!startCoord["x"].isNumeric() || !startCoord["y"].isNumeric() ||
+        !endCoord["x"].isNumeric() || !endCoord["y"].isNumeric()) {
+      continue;
+    }
+
+    int start_x = startCoord["x"].asInt();
+    int start_y = startCoord["y"].asInt();
+    int end_x = endCoord["x"].asInt();
+    int end_y = endCoord["y"].asInt();
+
+    cvedix_objects::cvedix_point start(start_x, start_y);
+    cvedix_objects::cvedix_point end(end_x, end_y);
+    int channel = static_cast<int>(i);
+    lines[channel] = cvedix_objects::cvedix_line(start, end);
+  }
+
+  return lines;
+}
+
+} // namespace
 
 WorkerHandler::WorkerHandler(const std::string &instance_id,
                              const std::string &socket_path,
@@ -259,8 +382,76 @@ IPCMessage WorkerHandler::handleUpdateInstance(const IPCMessage &msg) {
     }
   }
 
+  // Best-effort: apply CrossingLines update to running pipeline without restart.
+  if (msg.payload.isMember("config")) {
+    std::string applyError;
+    (void)applyCrossingLinesRuntimeUpdate(msg.payload["config"], applyError);
+    if (!applyError.empty()) {
+      std::cerr << "[Worker:" << instance_id_
+                << "] CrossingLines runtime update warning: " << applyError
+                << std::endl;
+    }
+  }
+
   response.payload = createResponse(ResponseStatus::OK, "Instance updated");
   return response;
+}
+
+bool WorkerHandler::applyCrossingLinesRuntimeUpdate(const Json::Value &configUpdate,
+                                                    std::string &error) {
+  error.clear();
+
+  // If pipeline isn't running, we don't need runtime update; config will apply
+  // on next start/build.
+  if (!pipeline_running_) {
+    return true;
+  }
+
+  // Extract stringified JSON array from config update.
+  std::string linesJsonStr;
+  if (configUpdate.isMember("AdditionalParams") &&
+      configUpdate["AdditionalParams"].isObject() &&
+      configUpdate["AdditionalParams"].isMember("CrossingLines") &&
+      configUpdate["AdditionalParams"]["CrossingLines"].isString()) {
+    linesJsonStr = configUpdate["AdditionalParams"]["CrossingLines"].asString();
+  } else if (configUpdate.isMember("additionalParams") &&
+             configUpdate["additionalParams"].isObject() &&
+             configUpdate["additionalParams"].isMember("CrossingLines") &&
+             configUpdate["additionalParams"]["CrossingLines"].isString()) {
+    // Backward compatibility if caller uses camelCase.
+    linesJsonStr = configUpdate["additionalParams"]["CrossingLines"].asString();
+  } else {
+    return false; // no applicable update in this message
+  }
+
+  std::string parseError;
+  auto optLines = parseCrossingLinesJsonString(linesJsonStr, parseError);
+  if (!optLines.has_value()) {
+    error = parseError;
+    return false;
+  }
+
+  // Find BA crossline node in pipeline and apply.
+  for (const auto &nodeBase : pipeline_nodes_) {
+    auto crosslineNode =
+        std::dynamic_pointer_cast<cvedix_nodes::cvedix_ba_crossline_node>(
+            nodeBase);
+    if (!crosslineNode) {
+      continue;
+    }
+
+    if (!applyLinesToCrosslineNode(*crosslineNode, optLines.value(), error)) {
+      return false;
+    }
+
+    std::cout << "[Worker:" << instance_id_
+              << "] Applied CrossingLines runtime update ("
+              << optLines->size() << " line(s))" << std::endl;
+    return true;
+  }
+
+  error = "Running pipeline does not contain a cvedix_ba_crossline_node";
+  return false;
 }
 
 IPCMessage WorkerHandler::handleGetStatus(const IPCMessage & /*msg*/) {
