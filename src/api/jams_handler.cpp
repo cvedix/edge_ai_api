@@ -419,16 +419,96 @@ void JamsHandler::deleteAllJams(const HttpRequestPtr &req, std::function<void(co
   callback(createSuccessResponse(wrapper, 200));
 }
 
-void JamsHandler::getJam(const HttpRequestPtr &req, std::function<void(const HttpResponsePtr &)> &&callback) {
+void JamsHandler::getJam(
+    const HttpRequestPtr &req,
+    std::function<void(const HttpResponsePtr &)> &&callback) {
+  auto start_time = std::chrono::steady_clock::now();
+
   std::string instanceId = extractInstanceId(req);
   std::string jamId = extractJamId(req);
-  Json::Value jams = loadJamsFromConfig(instanceId);
-  for (const auto &j : jams) {
-    if (!j.isObject()) continue;
-    if (!j.isMember("id") || j["id"].asString() != jamId) continue;
-    return;
+
+  if (isApiLoggingEnabled()) {
+    PLOG_INFO << "[API] GET /v1/core/instance/" << instanceId << "/jams/"
+              << jamId << " - Get jam";
+    PLOG_DEBUG << "[API] Request from: " << req->getPeerAddr().toIpPort();
   }
-  callback(createErrorResponse(404, "not_found", "Jam zone not found"));
+
+  try {
+    if (instanceId.empty()) {
+      if (isApiLoggingEnabled()) {
+        PLOG_WARNING
+            << "[API] GET /v1/core/instance/{instanceId}/jams/{jamId} - "
+               "Error: Instance ID is empty";
+      }
+      callback(
+          createErrorResponse(400, "Bad request", "Instance ID is required"));
+      return;
+    }
+
+    if (jamId.empty()) {
+      if (isApiLoggingEnabled()) {
+        PLOG_WARNING << "[API] GET /v1/core/instance/" << instanceId
+                     << "/jams/{jamId} - Error: Jam ID is empty";
+      }
+      callback(createErrorResponse(400, "Bad request", "Jam ID is required"));
+      return;
+    }
+
+    Json::Value jamsArray = loadJamsFromConfig(instanceId);
+
+    for (const auto &jam : jamsArray) {
+      if (jam.isObject() && jam.isMember("id") && jam["id"].isString()) {
+        if (jam["id"].asString() == jamId) {
+          auto end_time = std::chrono::steady_clock::now();
+          auto duration =
+              std::chrono::duration_cast<std::chrono::milliseconds>(
+                  end_time - start_time);
+
+          if (isApiLoggingEnabled()) {
+            PLOG_INFO << "[API] GET /v1/core/instance/" << instanceId
+                      << "/jams/" << jamId << " - Success - "
+                      << duration.count() << "ms";
+          }
+
+          callback(createSuccessResponse(jam));
+          return;
+        }
+      }
+    }
+
+    auto end_time = std::chrono::steady_clock::now();
+    auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(
+        end_time - start_time);
+    if (isApiLoggingEnabled()) {
+      PLOG_WARNING << "[API] GET /v1/core/instance/" << instanceId << "/jams/"
+                   << jamId << " - Jam not found - " << duration.count()
+                   << "ms";
+    }
+    callback(
+        createErrorResponse(404, "Not found", "Jam not found: " + jamId));
+
+  } catch (const std::exception &e) {
+    auto end_time = std::chrono::steady_clock::now();
+    auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(
+        end_time - start_time);
+    if (isApiLoggingEnabled()) {
+      PLOG_ERROR << "[API] GET /v1/core/instance/" << instanceId << "/jams/"
+                 << jamId << " - Exception: " << e.what() << " - "
+                 << duration.count() << "ms";
+    }
+    callback(createErrorResponse(500, "Internal server error", e.what()));
+  } catch (...) {
+    auto end_time = std::chrono::steady_clock::now();
+    auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(
+        end_time - start_time);
+    if (isApiLoggingEnabled()) {
+      PLOG_ERROR << "[API] GET /v1/core/instance/" << instanceId << "/jams/"
+                 << jamId << " - Unknown exception - " << duration.count()
+                 << "ms";
+    }
+    callback(createErrorResponse(500, "Internal server error",
+                                 "Unknown error occurred"));
+  }
 }
 
 void JamsHandler::updateJam(const HttpRequestPtr &req, std::function<void(const HttpResponsePtr &)> &&callback) {
