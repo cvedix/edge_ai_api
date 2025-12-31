@@ -5669,6 +5669,325 @@ paths:
         '200':
           description: CORS preflight response
 
+  /v1/core/instance/{instanceId}/stops:
+    get:
+      summary: Get all stop zones
+      description: |
+        Returns all stop zones configured for a ba_stop instance.
+        Stop zones are used to detect objects that stop inside a defined ROI in the video stream.
+      operationId: getAllStops
+      tags:
+        - Stops
+      parameters:
+        - name: instanceId
+          in: path
+          required: true
+          schema:
+            type: string
+          description: The unique identifier of the instance
+          example: "a5204fc9-9a59-f80f-fb9f-bf3b42214943"
+      responses:
+        '200':
+          description: List of stop zones
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StopsResponse'
+        '404':
+          description: Instance not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+    post:
+      summary: Create one or more stop zones
+      description: |
+        Creates one or more stop zones for a ba_stop instance.
+
+        **Request Format:**
+        - Single zone: Send a single object (CreateStopRequest)
+        - Multiple zones: Send an array of objects [CreateStopRequest, ...]
+
+        **Real-time Update:** Stop zones require instance restart to apply changes.
+      operationId: createStop
+      tags:
+        - Stops
+      parameters:
+        - name: instanceId
+          in: path
+          required: true
+          schema:
+            type: string
+          description: The unique identifier of the instance
+          example: "a5204fc9-9a59-f80f-fb9f-bf3b42214943"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              oneOf:
+                - $ref: '#/components/schemas/CreateStopRequest'
+                - type: array
+                  items:
+                    $ref: '#/components/schemas/CreateStopRequest'
+            examples:
+              singleZone:
+                summary: Single stop zone (object)
+                value:
+                  name: "Stop Zone 1"
+                  roi:
+                    - x: 100.0
+                      y: 100.0
+                    - x: 200.0
+                      y: 100.0
+                    - x: 200.0
+                      y: 200.0
+                  minStopSeconds: 3
+                  classes: ["Vehicle"]
+              multipleZones:
+                summary: Multiple stop zones (array)
+                value:
+                  - name: "Stop Zone A"
+                    roi:
+                      - x: 0
+                        y: 0
+                      - x: 100
+                        y: 0
+                      - x: 100
+                        y: 100
+                    minStopSeconds: 3
+                    classes: ["Vehicle"]
+                  - name: "Stop Zone B"
+                    roi:
+                      - x: 50
+                        y: 50
+                      - x: 150
+                        y: 50
+                      - x: 150
+                        y: 150
+                    minStopSeconds: 5
+                    classes: ["Person"]
+      responses:
+        '201':
+          description: Zone(s) created successfully. Returns single zone object for single request, or object with metadata for array request.
+          content:
+            application/json:
+              schema:
+                oneOf:
+                  - $ref: '#/components/schemas/StopZone'
+                  - type: object
+                    properties:
+                      message:
+                        type: string
+                        example: "Stops created successfully"
+                      count:
+                        type: integer
+                        example: 2
+                      stops:
+                        type: array
+                        items:
+                          $ref: '#/components/schemas/StopZone'
+        '400':
+          description: Bad request (invalid coordinates or parameters)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: Instance not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+    delete:
+      summary: Delete all stop zones
+      description: |
+        Deletes all stop zones for a ba_stop instance.
+
+        **Real-time Update:** Changes require instance restart.
+      operationId: deleteAllStops
+      tags:
+        - Stops
+      parameters:
+        - name: instanceId
+          in: path
+          required: true
+          schema:
+            type: string
+          description: The unique identifier of the instance
+          example: "a5204fc9-9a59-f80f-fb9f-bf3b42214943"
+      responses:
+        '200':
+          description: All stops deleted successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                    example: "All stops deleted successfully"
+        '404':
+          description: Instance not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+    options:
+      summary: CORS preflight for stops endpoints
+      operationId: stopsOptions
+      tags:
+        - Stops
+      responses:
+        '200':
+          description: CORS preflight response
+
+  /v1/core/instance/{instanceId}/stops/{stopId}:
+    get:
+      summary: Get a specific stop zone
+      description: |
+        Returns a specific stop zone by ID for a ba_stop instance.
+      operationId: getStop
+      tags:
+        - Stops
+      parameters:
+        - name: instanceId
+          in: path
+          required: true
+          schema:
+            type: string
+          description: The unique identifier of the instance
+          example: "a5204fc9-9a59-f80f-fb9f-bf3b42214943"
+        - name: stopId
+          in: path
+          required: true
+          schema:
+            type: string
+          description: The unique identifier of the stop zone to retrieve
+          example: "b1234567-89ab-cdef-0123-456789abcdef"
+      responses:
+        '200':
+          description: Stop zone retrieved successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StopZone'
+        '404':
+          description: Instance or stop zone not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+    put:
+      summary: Update a specific stop zone
+      description: |
+        Updates a specific stop zone by ID for a ba_stop instance.
+
+        **Real-time Update:** Changes require instance restart.
+      operationId: updateStop
+      tags:
+        - Stops
+      parameters:
+        - name: instanceId
+          in: path
+          required: true
+          schema:
+            type: string
+          description: The unique identifier of the instance
+          example: "a5204fc9-9a59-f80f-fb9f-bf3b42214943"
+        - name: stopId
+          in: path
+          required: true
+          schema:
+            type: string
+          description: The unique identifier of the stop zone to update
+          example: "b1234567-89ab-cdef-0123-456789abcdef"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateStopRequest'
+    delete:
+      summary: Delete a specific stop zone
+      description: |
+        Deletes a specific stop zone by ID for a ba_stop instance.
+
+        **Real-time Update:** Changes require instance restart.
+      operationId: deleteStop
+      tags:
+        - Stops
+      parameters:
+        - name: instanceId
+          in: path
+          required: true
+          schema:
+            type: string
+          description: The unique identifier of the instance
+          example: "a5204fc9-9a59-f80f-fb9f-bf3b42214943"
+        - name: stopId
+          in: path
+          required: true
+          schema:
+            type: string
+          description: The unique identifier of the stop zone to delete
+          example: "b1234567-89ab-cdef-0123-456789abcdef"
+      responses:
+        '200':
+          description: Stop zone deleted successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                    example: "Stop deleted successfully"
+        '404':
+          description: Instance or stop zone not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+    options:
+      summary: CORS preflight for stops detail endpoint
+      operationId: stopOptions
+      tags:
+        - Stops
+      responses:
+        '200':
+          description: CORS preflight response
+
   /v1/core/instance/{instanceId}/lines/{lineId}:
     get:
       summary: Get a specific crossing line
@@ -7980,6 +8299,9 @@ components:
             - CrossingLines: (ba_crossline only) JSON string array of crossing lines configuration.
               Format: `[{"id":"uuid","name":"Line Name","coordinates":[{"x":0,"y":250},{"x":700,"y":220}],"direction":"Both","classes":["Vehicle"],"color":[255,0,0,255]}]`
               Supports multiple lines. Can be managed via `/v1/core/instance/{instanceId}/lines` API endpoints.
+            - StopZones: (ba_stop only) JSON string array of stop zone configurations for individual object stop detection.
+              Format: `[{"id":"uuid","name":"Zone 1","roi":[{"x":0,"y":0},{"x":100,"y":0},{"x":100,"y":100}],"minStopSeconds":3,"classes":["Vehicle"],"color":[255,0,0,255],"checkIntervalFrames":20,"checkMinHitFrames":50,"checkMaxDistance":5}]`
+              Supports multiple stop zones. Can be managed via `/v1/core/instance/{instanceId}/stops` API endpoints.
           additionalProperties:
             type: string
 
@@ -9310,6 +9632,142 @@ components:
           description: List of crossing lines
           items:
             $ref: '#/components/schemas/CrossingLine'
+
+    StopZone:
+      type: object
+      required:
+        - id
+        - roi
+      properties:
+        id:
+          type: string
+          description: Unique identifier of the stop zone
+          example: "b1234567-89ab-cdef-0123-456789abcdef"
+        name:
+          type: string
+          description: Human-readable name for the stop zone
+          example: "Stop Zone 1"
+        roi:
+          type: array
+          description: List of coordinate objects defining the ROI (minimum 3 points)
+          items:
+            $ref: '#/components/schemas/Coordinate'
+          minItems: 3
+          example:
+            - x: 100.0
+              y: 100.0
+            - x: 200.0
+              y: 100.0
+            - x: 200.0
+              y: 200.0
+        minStopSeconds:
+          type: number
+          description: Minimum seconds object must be stationary to consider a stop
+          example: 3
+        classes:
+          type: array
+          description: Object classes to consider for stop detection
+          items:
+            type: string
+            enum: ["Person", "Animal", "Vehicle", "Face", "Unknown"]
+          example: ["Vehicle"]
+        checkIntervalFrames:
+          type: integer
+          description: "Frames between stop checks (default: 20)"
+          default: 20
+          example: 20
+        checkMinHitFrames:
+          type: integer
+          description: "Consecutive frames object must be stationary to trigger a stop (default: 50)"
+          default: 50
+          example: 50
+        checkMaxDistance:
+          type: number
+          description: "Maximum pixel movement between frames to still be considered stationary (default: 5)"
+          default: 5
+          example: 5
+        color:
+          type: array
+          description: Zone color in RGBA format
+          items:
+            type: integer
+            minimum: 0
+            maximum: 255
+          minItems: 4
+          maxItems: 4
+          example: [255, 0, 0, 255]
+
+    CreateStopRequest:
+      type: object
+      required:
+        - roi
+      properties:
+        name:
+          type: string
+          description: Human-readable name for the stop zone
+          example: "Stop Zone 1"
+        roi:
+          type: array
+          description: List of coordinate objects defining the ROI (minimum 3 points)
+          items:
+            $ref: '#/components/schemas/Coordinate'
+          minItems: 3
+          example:
+            - x: 100.0
+              y: 100.0
+            - x: 200.0
+              y: 100.0
+            - x: 200.0
+              y: 200.0
+        minStopSeconds:
+          type: number
+          description: Minimum seconds object must be stationary to consider a stop
+          default: 3
+          example: 3
+        classes:
+          type: array
+          description: Object classes to consider for stop detection
+          items:
+            type: string
+            enum: ["Person", "Animal", "Vehicle", "Face", "Unknown"]
+          example: ["Vehicle"]
+        checkIntervalFrames:
+          type: integer
+          description: "Frames between stop checks (default: 20)"
+          default: 20
+          example: 20
+        checkMinHitFrames:
+          type: integer
+          description: "Consecutive frames object must be stationary to trigger a stop (default: 50)"
+          default: 50
+          example: 50
+        checkMaxDistance:
+          type: number
+          description: "Maximum pixel movement between frames to still be considered stationary (default: 5)"
+          default: 5
+          example: 5
+        color:
+          type: array
+          description: Zone color in RGBA format (default is red)
+          items:
+            type: integer
+            minimum: 0
+            maximum: 255
+          minItems: 4
+          maxItems: 4
+          default: [255, 0, 0, 255]
+          example: [255, 0, 0, 255]
+
+    StopsResponse:
+      type: object
+      required:
+        - stopZones
+      properties:
+        stopZones:
+          type: array
+          description: List of stop zones
+          items:
+            $ref: '#/components/schemas/StopZone'
 
     TemplateResponse:
       type: object

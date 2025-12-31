@@ -100,6 +100,7 @@ void SolutionRegistry::initializeDefaultSolutions() {
   registerFaceDetectionRTMPSolution(); // face_detection_rtmp
   registerObjectDetectionSolution();   // Add YOLO-based solution
   registerBACrosslineSolution(); // Add behavior analysis crossline solution
+  registerBAStopSolution(); // Add behavior analysis stop detection solution
 
   // Register new node-based solutions
   registerYOLOv11DetectionSolution();
@@ -119,6 +120,8 @@ void SolutionRegistry::initializeDefaultSolutions() {
   registerObjectDetectionYOLODefaultSolution(); // object_detection_yolo_default
   registerBACrosslineDefaultSolution();         // ba_crossline_default
   registerBACrosslineMQTTDefaultSolution();     // ba_crossline_mqtt_default
+  registerBAStopDefaultSolution();              // ba_stop_default
+  registerBAStopMQTTDefaultSolution();          // ba_stop_mqtt_default
 
 #ifdef CVEDIX_WITH_RKNN
   registerRKNNYOLOv11DetectionSolution();
@@ -421,6 +424,207 @@ void SolutionRegistry::registerBACrosslineSolution() {
   config.defaults["detectorMode"] = "SmartDetection";
   config.defaults["detectionSensitivity"] = "0.7";
   config.defaults["sensorModality"] = "RGB";
+
+  registerSolution(config);
+}
+
+void SolutionRegistry::registerBAStopSolution() {
+  SolutionConfig config;
+  config.solutionId = "ba_stop";
+  config.solutionName = "Behavior Analysis - Stop Detection";
+  config.solutionType = "behavior_analysis";
+  config.isDefault = true;
+
+  // File Source Node
+  SolutionConfig::NodeConfig fileSrc;
+  fileSrc.nodeType = "file_src";
+  fileSrc.nodeName = "file_src_{instanceId}";
+  fileSrc.parameters["file_path"] = "${FILE_PATH}";
+  fileSrc.parameters["channel"] = "0";
+  fileSrc.parameters["resize_ratio"] = "0.4";
+  config.pipeline.push_back(fileSrc);
+
+  // YOLO Detector Node
+  SolutionConfig::NodeConfig yoloDetector;
+  yoloDetector.nodeType = "yolo_detector";
+  yoloDetector.nodeName = "yolo_detector_{instanceId}";
+  yoloDetector.parameters["weights_path"] = "${WEIGHTS_PATH}";
+  yoloDetector.parameters["config_path"] = "${CONFIG_PATH}";
+  yoloDetector.parameters["labels_path"] = "${LABELS_PATH}";
+  config.pipeline.push_back(yoloDetector);
+
+  // SORT Tracker Node
+  SolutionConfig::NodeConfig sortTrack;
+  sortTrack.nodeType = "sort_track";
+  sortTrack.nodeName = "sort_tracker_{instanceId}";
+  config.pipeline.push_back(sortTrack);
+
+  // BA Stop Node
+  SolutionConfig::NodeConfig baStop;
+  baStop.nodeType = "ba_stop";
+  baStop.nodeName = "ba_stop_{instanceId}";
+  baStop.parameters["min_stop_seconds"] = "${MIN_STOP_SECONDS}";
+  config.pipeline.push_back(baStop);
+
+  // BA Stop OSD Node
+  SolutionConfig::NodeConfig baStopOSD;
+  baStopOSD.nodeType = "ba_stop_osd";
+  baStopOSD.nodeName = "osd_{instanceId}";
+  config.pipeline.push_back(baStopOSD);
+
+  // JSON MQTT Broker Node (optional)
+  SolutionConfig::NodeConfig jsonMqtt;
+  jsonMqtt.nodeType = "json_mqtt_broker";
+  jsonMqtt.nodeName = "json_mqtt_broker_{instanceId}";
+  config.pipeline.push_back(jsonMqtt);
+
+  // Screen Destination Node
+  SolutionConfig::NodeConfig screenDes;
+  screenDes.nodeType = "screen_des";
+  screenDes.nodeName = "screen_des_{instanceId}";
+  screenDes.parameters["channel"] = "0";
+  screenDes.parameters["enabled"] = "${ENABLE_SCREEN_DES}";
+  config.pipeline.push_back(screenDes);
+
+  // RTMP Destination Node
+  SolutionConfig::NodeConfig rtmpDes;
+  rtmpDes.nodeType = "rtmp_des";
+  rtmpDes.nodeName = "rtmp_des_{instanceId}";
+  rtmpDes.parameters["rtmp_url"] = "${RTMP_URL}";
+  rtmpDes.parameters["channel"] = "0";
+  config.pipeline.push_back(rtmpDes);
+
+  // Default configurations
+  config.defaults["detectorMode"] = "SmartDetection";
+  config.defaults["detectionSensitivity"] = "0.7";
+  config.defaults["sensorModality"] = "RGB";
+  config.defaults["MIN_STOP_SECONDS"] = "3";
+
+  registerSolution(config);
+}
+
+void SolutionRegistry::registerBAStopDefaultSolution() {
+  SolutionConfig config;
+  config.solutionId = "ba_stop_default";
+  config.solutionName = "Behavior Analysis - Stop Detection (Flexible Input/Output)";
+  config.solutionType = "behavior_analysis";
+  config.isDefault = false;
+
+  // file_src
+  SolutionConfig::NodeConfig fileSrc;
+  fileSrc.nodeType = "file_src";
+  fileSrc.nodeName = "file_src_{instanceId}";
+  fileSrc.parameters["file_path"] = "${FILE_PATH}";
+  fileSrc.parameters["channel"] = "0";
+  fileSrc.parameters["resize_ratio"] = "${RESIZE_RATIO}";
+  config.pipeline.push_back(fileSrc);
+
+  // yolo_detector
+  SolutionConfig::NodeConfig yoloDetector;
+  yoloDetector.nodeType = "yolo_detector";
+  yoloDetector.nodeName = "yolo_detector_{instanceId}";
+  yoloDetector.parameters["weights_path"] = "${WEIGHTS_PATH}";
+  yoloDetector.parameters["config_path"] = "${CONFIG_PATH}";
+  yoloDetector.parameters["labels_path"] = "${LABELS_PATH}";
+  config.pipeline.push_back(yoloDetector);
+
+  // sort_track
+  SolutionConfig::NodeConfig sortTrack;
+  sortTrack.nodeType = "sort_track";
+  sortTrack.nodeName = "sort_tracker_{instanceId}";
+  config.pipeline.push_back(sortTrack);
+
+  // ba_stop
+  SolutionConfig::NodeConfig baStop;
+  baStop.nodeType = "ba_stop";
+  baStop.nodeName = "ba_stop_{instanceId}";
+  baStop.parameters["min_stop_seconds"] = "${MIN_STOP_SECONDS}";
+  config.pipeline.push_back(baStop);
+
+  // json_mqtt_broker
+  SolutionConfig::NodeConfig jsonMqtt;
+  jsonMqtt.nodeType = "json_mqtt_broker";
+  jsonMqtt.nodeName = "json_mqtt_broker_{instanceId}";
+  config.pipeline.push_back(jsonMqtt);
+
+  // ba_stop_osd
+  SolutionConfig::NodeConfig baStopOSD;
+  baStopOSD.nodeType = "ba_stop_osd";
+  baStopOSD.nodeName = "osd_{instanceId}";
+  config.pipeline.push_back(baStopOSD);
+
+  // screen_des
+  SolutionConfig::NodeConfig screenDes;
+  screenDes.nodeType = "screen_des";
+  screenDes.nodeName = "screen_des_{instanceId}";
+  screenDes.parameters["channel"] = "0";
+  screenDes.parameters["enabled"] = "${ENABLE_SCREEN_DES}";
+  config.pipeline.push_back(screenDes);
+
+  // rtmp_des
+  SolutionConfig::NodeConfig rtmpDes;
+  rtmpDes.nodeType = "rtmp_des";
+  rtmpDes.nodeName = "rtmp_des_{instanceId}";
+  rtmpDes.parameters["rtmp_url"] = "${RTMP_URL}";
+  rtmpDes.parameters["channel"] = "0";
+  config.pipeline.push_back(rtmpDes);
+
+  config.defaults["MIN_STOP_SECONDS"] = "3";
+
+  registerSolution(config);
+}
+
+void SolutionRegistry::registerBAStopMQTTDefaultSolution() {
+  SolutionConfig config;
+  config.solutionId = "ba_stop_mqtt_default";
+  config.solutionName = "Behavior Analysis - Stop Detection with MQTT";
+  config.solutionType = "behavior_analysis";
+  config.isDefault = false;
+
+  // file_src
+  SolutionConfig::NodeConfig fileSrc;
+  fileSrc.nodeType = "file_src";
+  fileSrc.nodeName = "file_src_{instanceId}";
+  fileSrc.parameters["file_path"] = "${FILE_PATH}";
+  fileSrc.parameters["channel"] = "0";
+  fileSrc.parameters["resize_ratio"] = "${RESIZE_RATIO}";
+  config.pipeline.push_back(fileSrc);
+
+  // yolo_detector
+  SolutionConfig::NodeConfig yoloDetector;
+  yoloDetector.nodeType = "yolo_detector";
+  yoloDetector.nodeName = "yolo_detector_{instanceId}";
+  yoloDetector.parameters["weights_path"] = "${WEIGHTS_PATH}";
+  yoloDetector.parameters["config_path"] = "${CONFIG_PATH}";
+  yoloDetector.parameters["labels_path"] = "${LABELS_PATH}";
+  config.pipeline.push_back(yoloDetector);
+
+  // sort_track
+  SolutionConfig::NodeConfig sortTrack;
+  sortTrack.nodeType = "sort_track";
+  sortTrack.nodeName = "sort_tracker_{instanceId}";
+  config.pipeline.push_back(sortTrack);
+
+  // ba_stop
+  SolutionConfig::NodeConfig baStop2;
+  baStop2.nodeType = "ba_stop";
+  baStop2.nodeName = "ba_stop_{instanceId}";
+  baStop2.parameters["min_stop_seconds"] = "${MIN_STOP_SECONDS}";
+  config.pipeline.push_back(baStop2);
+
+  // json_mqtt_broker
+  SolutionConfig::NodeConfig jsonMqtt2;
+  jsonMqtt2.nodeType = "json_mqtt_broker";
+  jsonMqtt2.nodeName = "json_mqtt_broker_{instanceId}";
+  config.pipeline.push_back(jsonMqtt2);
+
+  // ba_stop_osd
+  SolutionConfig::NodeConfig baStopOSD2;
+  baStopOSD2.nodeType = "ba_stop_osd";
+  baStopOSD2.nodeName = "osd_{instanceId}";
+  config.pipeline.push_back(baStopOSD2);
+
+  config.defaults["MIN_STOP_SECONDS"] = "3";
 
   registerSolution(config);
 }

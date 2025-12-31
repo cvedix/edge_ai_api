@@ -21,6 +21,24 @@
             "difficulty": "intermediate"
         },
         {
+            "id": "ba_stop_default",
+            "file": "ba_stop_default.json",
+            "name": "Behavior Analysis - Stop Detection",
+            "category": "behavior_analysis",
+            "description": "Detect objects that stopped inside a defined ROI",
+            "useCase": "Detect stopped vehicles or loitering people",
+            "difficulty": "intermediate"
+        },
+        {
+            "id": "ba_stop_mqtt_default",
+            "file": "ba_stop_mqtt_default.json",
+            "name": "Behavior Analysis - Stop Detection with MQTT",
+            "category": "behavior_analysis",
+            "description": "Stop detection with MQTT event publishing",
+            "useCase": "Integration with IoT systems via MQTT events",
+            "difficulty": "intermediate"
+        },
+        {
             "id": "face_detection_default",
             "file": "face_detection_default.json",
             "name": "Face Detection Solution",
@@ -108,7 +126,9 @@
             "description": "Các solution behavior analysis",
             "solutions": [
                 "ba_crossline_default",
-                "ba_crossline_mqtt_default"
+                "ba_crossline_mqtt_default",
+                "ba_stop_default",
+                "ba_stop_mqtt_default"
             ]
         },
         "face_detection": {

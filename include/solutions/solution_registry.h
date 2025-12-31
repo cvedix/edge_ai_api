@@ -183,6 +183,21 @@ private:
    */
   void registerBACrosslineMQTTDefaultSolution();
 
+  /**
+   * @brief Register behavior analysis stop detection solution
+   */
+  void registerBAStopSolution();
+
+  /**
+   * @brief Register ba_stop_default solution
+   */
+  void registerBAStopDefaultSolution();
+
+  /**
+   * @brief Register ba_stop_mqtt_default solution
+   */
+  void registerBAStopMQTTDefaultSolution();
+
 #ifdef CVEDIX_WITH_RKNN
   /**
    * @brief Register RKNN YOLOv11 detection solution
