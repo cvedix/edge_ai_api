@@ -1,9 +1,9 @@
 {
-    "solutionId": "ba_stop_mqtt_default",
-    "solutionName": "Behavior Analysis - Stop Detection with MQTT",
+    "solutionId": "ba_jam_mqtt_default",
+    "solutionName": "Behavior Analysis - Jams Detection with MQTT",
     "solutionType": "behavior_analysis",
     "isDefault": false,
-    "description": "Phát hiện đối tượng dừng lại quá thời gian quy định với MQTT event publishing",
+    "description": "Phát hiện tình trạng kẹt xe với MQTT event publishing",
     "category": "behavior_analysis",
     "pipeline": [
         {
@@ -32,13 +32,14 @@
             "parameters": {}
         },
         {
-            "nodeType": "ba_stop",
-            "nodeName": "ba_stop_{instanceId}",
+            "nodeType": "ba_jam",
+            "nodeName": "ba_jam_{instanceId}",
             "parameters": {
-                "min_stop_seconds": "${MIN_STOP_SECONDS}",
                 "check_interval_frames": "${CHECK_INTERVAL_FRAMES}",
                 "check_min_hit_frames": "${CHECK_MIN_HIT_FRAMES}",
-                "check_max_distance": "${CHECK_MAX_DISTANCE}"
+                "check_max_distance": "${CHECK_MAX_DISTANCE}",
+                "check_min_stops": "${CHECK_MIN_STOPS}",
+                "check_notify_interval": "${CHECK_NOTIFY_INTERVAL}"
             }
         },
         {
@@ -47,7 +48,7 @@
             "parameters": {}
         },
         {
-            "nodeType": "ba_stop_osd",
+            "nodeType": "ba_jam_osd",
             "nodeName": "osd_{instanceId}",
             "parameters": {}
         },
@@ -56,7 +57,7 @@
             "nodeName": "file_des_{instanceId}",
             "parameters": {
                 "save_dir": "./output/{instanceId}",
-                "name_prefix": "ba_stop_mqtt",
+                "name_prefix": "ba_jam_mqtt",
                 "osd": "true"
             }
         }
@@ -72,10 +73,11 @@
         "WEIGHTS_PATH": "Đường dẫn YOLO weights file",
         "CONFIG_PATH": "Đường dẫn YOLO config file",
         "LABELS_PATH": "Đường dẫn labels file",
-        "MIN_STOP_SECONDS": "Số giây tối thiểu đối tượng dừng lại để phát hiện sự kiện",
-        "CHECK_INTERVAL_FRAMES": "Số khung hình giữa các lần kiểm tra dừng",
-        "CHECK_MIN_HIT_FRAMES": "Số khung hình tối thiểu để xác định đối tượng dừng",
-        "CHECK_MAX_DISTANCE": "Khoảng cách tối đa giữa các vị trí liên tiếp để coi là dừng"
+        "CHECK_INTERVAL_FRAMES": "Số khung hình giữa các lần kiểm tra kẹt xe",
+        "CHECK_MIN_HIT_FRAMES": "Số khung hình tối thiểu để xác định đối tượng kẹt xe",
+        "CHECK_MAX_DISTANCE": "Khoảng cách tối đa giữa các vị trí liên tiếp để coi là kẹt xe",
+        "CHECK_MIN_STOPS": "Số lần kẹt xe tối thiểu để phát hiện sự kiện",
+        "CHECK_NOTIFY_INTERVAL": "Khoảng thời gian giữa các lần thông báo sự kiện"
     },
     "optionalParams": {
         "RTSP_URL": "URL RTSP stream (thay thế FILE_PATH)",

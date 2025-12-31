@@ -5669,6 +5669,512 @@ paths:
         '200':
           description: CORS preflight response
 
+  /v1/core/instance/{instanceId}/lines/{lineId}:
+    get:
+      summary: Get a specific crossing line
+      description: |
+        Returns a specific crossing line by ID for a ba_crossline instance.
+      operationId: getLine
+      tags:
+        - Lines
+      parameters:
+        - name: instanceId
+          in: path
+          required: true
+          schema:
+            type: string
+          description: The unique identifier of the instance
+          example: "a5204fc9-9a59-f80f-fb9f-bf3b42214943"
+        - name: lineId
+          in: path
+          required: true
+          schema:
+            type: string
+          description: The unique identifier of the line to retrieve
+          example: "b1234567-89ab-cdef-0123-456789abcdef"
+      responses:
+        '200':
+          description: Line retrieved successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CrossingLine'
+        '404':
+          description: Instance or line not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+    put:
+      summary: Update a specific crossing line
+      description: |
+        Updates a specific crossing line by ID for a ba_crossline instance.
+        The line will be updated on the video stream and used for counting objects.
+
+        **Real-time Update:** The line is immediately applied to the running video stream without requiring instance restart.
+      operationId: updateLine
+      tags:
+        - Lines
+      parameters:
+        - name: instanceId
+          in: path
+          required: true
+          schema:
+            type: string
+          description: The unique identifier of the instance
+          example: "a5204fc9-9a59-f80f-fb9f-bf3b42214943"
+        - name: lineId
+          in: path
+          required: true
+          schema:
+            type: string
+          description: The unique identifier of the line to update
+          example: "b1234567-89ab-cdef-0123-456789abcdef"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateLineRequest'
+            examples:
+              updateLine:
+                summary: Update line coordinates and direction
+                value:
+                  name: "Updated Counting Line"
+                  coordinates:
+                    - x: 200.0
+                      y: 400.0
+                    - x: 700.0
+                      y: 400.0
+                  direction: "Up"
+                  classes: ["Person", "Vehicle"]
+                  color: [0, 255, 0, 255]
+      responses:
+        '200':
+          description: Line updated successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CrossingLine'
+        '400':
+          description: Bad request (invalid coordinates or parameters)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: Instance or line not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+    delete:
+      summary: Delete a specific crossing line
+      description: |
+        Deletes a specific crossing line by ID.
+
+        **Real-time Update:** The line is immediately removed from the running video stream without requiring instance restart.
+      operationId: deleteLine
+      tags:
+        - Lines
+      parameters:
+        - name: instanceId
+          in: path
+          required: true
+          schema:
+            type: string
+          description: The unique identifier of the instance
+          example: "a5204fc9-9a59-f80f-fb9f-bf3b42214943"
+        - name: lineId
+          in: path
+          required: true
+          schema:
+            type: string
+          description: The unique identifier of the line to delete
+          example: "b1234567-89ab-cdef-0123-456789abcdef"
+      responses:
+        '200':
+          description: Line deleted successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                    example: "Line deleted successfully"
+        '404':
+          description: Instance or line not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+    options:
+      summary: CORS preflight for line endpoints
+      operationId: lineOptions
+      tags:
+        - Lines
+      responses:
+        '200':
+          description: CORS preflight response
+
+  /v1/core/instance/{instanceId}/jams:
+    get:
+      summary: Get all jam zones
+      description: |
+        Returns all jam zones configured for a ba_jam instance. Jam zones define ROIs where traffic congestion detection is performed.
+      operationId: getAllJams
+      tags:
+        - Jams
+      parameters:
+        - name: instanceId
+          in: path
+          required: true
+          schema:
+            type: string
+          description: The unique identifier of the instance
+          example: "a5204fc9-9a59-f80f-fb9f-bf3b42214943"
+      responses:
+        '200':
+          description: List of jam zones
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/JamsResponse'
+        '404':
+          description: Instance not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+    post:
+      summary: Create one or more jam zones
+      description: |
+        Creates one or more jam zones for a ba_jam instance. Jam zones are used to detect traffic congestion within a specified ROI.
+
+        **Request Format:**
+        - Single zone: Send a single object (CreateJamRequest)
+        - Multiple zones: Send an array of objects [CreateJamRequest, ...]
+
+        **Real-time Update:** Zones are applied to the running instance when possible; otherwise, a restart will be triggered.
+      operationId: createJam
+      tags:
+        - Jams
+      parameters:
+        - name: instanceId
+          in: path
+          required: true
+          schema:
+            type: string
+          description: The unique identifier of the instance
+          example: "a5204fc9-9a59-f80f-fb9f-bf3b42214943"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              oneOf:
+                - $ref: '#/components/schemas/CreateJamRequest'
+                - type: array
+                  items:
+                    $ref: '#/components/schemas/CreateJamRequest'
+            examples:
+              singleJam:
+                summary: Single jam zone (object)
+                value:
+                  name: "Downtown Jam Zone"
+                  roi:
+                    - x: 0
+                      y: 100
+                    - x: 1920
+                      y: 100
+                    - x: 1920
+                      y: 400
+                    - x: 0
+                      y: 400
+                  min_vehicle_count: 5
+                  stopped_duration_ms: 5000
+                  vehicle_classes: ["car","truck","bus"]
+                  sensitivity: 0.6
+                  enabled: true
+              multipleJams:
+                summary: Multiple jam zones (array)
+                value:
+                  - name: "Downtown Jam Zone"
+                    roi:
+                      - x: 0
+                        y: 100
+                      - x: 1920
+                        y: 100
+                      - x: 1920
+                        y: 400
+                      - x: 0
+                        y: 400
+                    min_vehicle_count: 5
+                    stopped_duration_ms: 5000
+                    vehicle_classes: ["car","truck","bus"]
+                    sensitivity: 0.6
+                    enabled: true
+                  - name: "Uptown Jam Zone"
+                    roi:
+                      - x: 100
+                        y: 200
+                      - x: 500
+                        y: 200
+                      - x: 500
+                        y: 400
+                      - x: 100
+                        y: 400
+                    min_vehicle_count: 3
+                    stopped_duration_ms: 3000
+                    vehicle_classes: ["car"]
+                    sensitivity: 0.7
+                    enabled: true
+      responses:
+        '201':
+          description: Zone(s) created successfully. Returns single zone object for single request, or object with metadata for array request.
+          content:
+            application/json:
+              schema:
+                oneOf:
+                  - $ref: '#/components/schemas/JamZone'
+                  - $ref: '#/components/schemas/CreateJamsResponse'
+        '400':
+          description: Bad request (invalid ROI or parameters)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: Instance not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+    delete:
+      summary: Delete all jam zones
+      description: |
+        Deletes all jam zones for a ba_jam instance.
+
+        **Real-time Update:** Zones are removed from the running instance when possible; otherwise, a restart will be triggered.
+      operationId: deleteAllJams
+      tags:
+        - Jams
+      parameters:
+        - name: instanceId
+          in: path
+          required: true
+          schema:
+            type: string
+          description: The unique identifier of the instance
+          example: "a5204fc9-9a59-f80f-fb9f-bf3b42214943"
+      responses:
+        '200':
+          description: All zones deleted successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                    example: "All jam zones deleted successfully"
+        '404':
+          description: Instance not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+    options:
+      summary: CORS preflight for jams endpoints
+      operationId: jamsOptions
+      tags:
+        - Jams
+      responses:
+        '200':
+          description: CORS preflight response
+
+  /v1/core/instance/{instanceId}/jams/{jamId}:
+    get:
+      summary: Get a specific jam zone
+      description: |
+        Returns a specific jam zone by ID for a ba_jam instance.
+      operationId: getJam
+      tags:
+        - Jams
+      parameters:
+        - name: instanceId
+          in: path
+          required: true
+          schema:
+            type: string
+          description: The unique identifier of the instance
+          example: "a5204fc9-9a59-f80f-fb9f-bf3b42214943"
+        - name: jamId
+          in: path
+          required: true
+          schema:
+            type: string
+          description: The unique identifier of the jam zone to retrieve
+          example: "b1234567-89ab-cdef-0123-456789abcdef"
+      responses:
+        '200':
+          description: Jam zone retrieved successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/JamZone'
+        '404':
+          description: Instance or zone not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+    put:
+      summary: Update an existing jam zone
+      description: |
+        Updates an existing jam zone by ID. Partial updates are supported.
+      operationId: updateJam
+      tags:
+        - Jams
+      parameters:
+        - name: instanceId
+          in: path
+          required: true
+          schema:
+            type: string
+          description: The unique identifier of the instance
+          example: "a5204fc9-9a59-f80f-fb9f-bf3b42214943"
+        - name: jamId
+          in: path
+          required: true
+          schema:
+            type: string
+          description: The unique identifier of the jam zone to update
+          example: "b1234567-89ab-cdef-0123-456789abcdef"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateJamRequest'
+      responses:
+        '200':
+          description: Jam zone updated successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                    example: "Zone updated successfully"
+        '400':
+          description: Bad request (invalid ROI or parameters)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: Instance or zone not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+    delete:
+      summary: Delete a specific jam zone
+      description: |
+        Deletes a specific jam zone by ID.
+      operationId: deleteJam
+      tags:
+        - Jams
+      parameters:
+        - name: instanceId
+          in: path
+          required: true
+          schema:
+            type: string
+          description: The unique identifier of the instance
+          example: "a5204fc9-9a59-f80f-fb9f-bf3b42214943"
+        - name: jamId
+          in: path
+          required: true
+          schema:
+            type: string
+          description: The unique identifier of the jam zone to delete
+          example: "b1234567-89ab-cdef-0123-456789abcdef"
+      responses:
+        '200':
+          description: Jam zone deleted successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                    example: "Zone deleted successfully"
+        '404':
+          description: Instance or zone not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
   /v1/core/instance/{instanceId}/stops:
     get:
       summary: Get all stop zones
@@ -5984,512 +6490,6 @@ paths:
       operationId: stopOptions
       tags:
         - Stops
-      responses:
-        '200':
-          description: CORS preflight response
-
-  /v1/core/instance/{instanceId}/jams:
-    get:
-      summary: Get all jam zones
-      description: |
-        Returns all jam zones configured for a ba_jam instance. Jam zones define ROIs where traffic congestion detection is performed.
-      operationId: getAllJams
-      tags:
-        - Jams
-      parameters:
-        - name: instanceId
-          in: path
-          required: true
-          schema:
-            type: string
-          description: The unique identifier of the instance
-          example: "a5204fc9-9a59-f80f-fb9f-bf3b42214943"
-      responses:
-        '200':
-          description: List of jam zones
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/JamsResponse'
-        '404':
-          description: Instance not found
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
-        '500':
-          description: Internal server error
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
-    post:
-      summary: Create one or more jam zones
-      description: |
-        Creates one or more jam zones for a ba_jam instance. Jam zones are used to detect traffic congestion within a specified ROI.
-
-        **Request Format:**
-        - Single zone: Send a single object (CreateJamRequest)
-        - Multiple zones: Send an array of objects [CreateJamRequest, ...]
-
-        **Real-time Update:** Zones are applied to the running instance when possible; otherwise, a restart will be triggered.
-      operationId: createJam
-      tags:
-        - Jams
-      parameters:
-        - name: instanceId
-          in: path
-          required: true
-          schema:
-            type: string
-          description: The unique identifier of the instance
-          example: "a5204fc9-9a59-f80f-fb9f-bf3b42214943"
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              oneOf:
-                - $ref: '#/components/schemas/CreateJamRequest'
-                - type: array
-                  items:
-                    $ref: '#/components/schemas/CreateJamRequest'
-            examples:
-              singleJam:
-                summary: Single jam zone
-                value:
-                  name: "Downtown Jam Zone"
-                  roi:
-                    - x: 0
-                      y: 100
-                    - x: 1920
-                      y: 100
-                    - x: 1920
-                      y: 400
-                    - x: 0
-                      y: 400
-                  min_vehicle_count: 5
-                  stopped_duration_ms: 5000
-                  vehicle_classes: ["car","truck","bus"]
-                  sensitivity: 0.6
-                  enabled: true
-              multipleJams:
-                summary: Multiple jam zones
-                value:
-                  - name: "Downtown Jam Zone"
-                    roi:
-                      - x: 0
-                        y: 100
-                      - x: 1920
-                        y: 100
-                      - x: 1920
-                        y: 400
-                      - x: 0
-                        y: 400
-                    min_vehicle_count: 5
-                    stopped_duration_ms: 5000
-                    vehicle_classes: ["car","truck","bus"]
-                    sensitivity: 0.6
-                    enabled: true
-                  - name: "Uptown Jam Zone"
-                    roi:
-                      - x: 100
-                        y: 200
-                      - x: 500
-                        y: 200
-                      - x: 500
-                        y: 400
-                      - x: 100
-                        y: 400
-                    min_vehicle_count: 3
-                    stopped_duration_ms: 3000
-                    vehicle_classes: ["car"]
-                    sensitivity: 0.7
-                    enabled: true
-      responses:
-        '201':
-          description: Zone(s) created successfully. Returns single zone object for single request, or object with metadata for array request.
-          content:
-            application/json:
-              schema:
-                oneOf:
-                  - $ref: '#/components/schemas/JamZone'
-                  - $ref: '#/components/schemas/CreateJamsResponse'
-        '400':
-          description: Bad request (invalid ROI or parameters)
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
-        '404':
-          description: Instance not found
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
-        '500':
-          description: Internal server error
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
-    delete:
-      summary: Delete all jam zones
-      description: |
-        Deletes all jam zones for a ba_jam instance.
-
-        **Real-time Update:** Zones are removed from the running instance when possible; otherwise, a restart will be triggered.
-      operationId: deleteAllJams
-      tags:
-        - Jams
-      parameters:
-        - name: instanceId
-          in: path
-          required: true
-          schema:
-            type: string
-          description: The unique identifier of the instance
-          example: "a5204fc9-9a59-f80f-fb9f-bf3b42214943"
-      responses:
-        '200':
-          description: All zones deleted successfully
-          content:
-            application/json:
-              schema:
-                type: object
-                properties:
-                  message:
-                    type: string
-                    example: "All jam zones deleted successfully"
-        '404':
-          description: Instance not found
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
-        '500':
-          description: Internal server error
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
-    options:
-      summary: CORS preflight for jams endpoints
-      operationId: jamsOptions
-      tags:
-        - Jams
-      responses:
-        '200':
-          description: CORS preflight response
-
-  /v1/core/instance/{instanceId}/jams/{jamId}:
-    get:
-      summary: Get a specific jam zone
-      description: |
-        Returns a specific jam zone by ID for a ba_jam instance.
-      operationId: getJam
-      tags:
-        - Jams
-      parameters:
-        - name: instanceId
-          in: path
-          required: true
-          schema:
-            type: string
-          description: The unique identifier of the instance
-          example: "a5204fc9-9a59-f80f-fb9f-bf3b42214943"
-        - name: jamId
-          in: path
-          required: true
-          schema:
-            type: string
-          description: The unique identifier of the jam zone to retrieve
-          example: "b1234567-89ab-cdef-0123-456789abcdef"
-      responses:
-        '200':
-          description: Jam zone retrieved successfully
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/JamZone'
-        '404':
-          description: Instance or zone not found
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
-        '500':
-          description: Internal server error
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
-    put:
-      summary: Update an existing jam zone
-      description: |
-        Updates an existing jam zone by ID. Partial updates are supported.
-      operationId: updateJam
-      tags:
-        - Jams
-      parameters:
-        - name: instanceId
-          in: path
-          required: true
-          schema:
-            type: string
-          description: The unique identifier of the instance
-          example: "a5204fc9-9a59-f80f-fb9f-bf3b42214943"
-        - name: jamId
-          in: path
-          required: true
-          schema:
-            type: string
-          description: The unique identifier of the jam zone to update
-          example: "b1234567-89ab-cdef-0123-456789abcdef"
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: '#/components/schemas/CreateJamRequest'
-      responses:
-        '200':
-          description: Jam zone updated successfully
-          content:
-            application/json:
-              schema:
-                type: object
-                properties:
-                  message:
-                    type: string
-                    example: "Zone updated successfully"
-        '400':
-          description: Bad request (invalid ROI or parameters)
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
-        '404':
-          description: Instance or zone not found
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
-        '500':
-          description: Internal server error
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
-    delete:
-      summary: Delete a specific jam zone
-      description: |
-        Deletes a specific jam zone by ID.
-      operationId: deleteJam
-      tags:
-        - Jams
-      parameters:
-        - name: instanceId
-          in: path
-          required: true
-          schema:
-            type: string
-          description: The unique identifier of the instance
-          example: "a5204fc9-9a59-f80f-fb9f-bf3b42214943"
-        - name: jamId
-          in: path
-          required: true
-          schema:
-            type: string
-          description: The unique identifier of the jam zone to delete
-          example: "b1234567-89ab-cdef-0123-456789abcdef"
-      responses:
-        '200':
-          description: Jam zone deleted successfully
-          content:
-            application/json:
-              schema:
-                type: object
-                properties:
-                  message:
-                    type: string
-                    example: "Zone deleted successfully"
-        '404':
-          description: Instance or zone not found
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
-        '500':
-          description: Internal server error
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
-
-  /v1/core/instance/{instanceId}/lines/{lineId}:
-    get:
-      summary: Get a specific crossing line
-      description: |
-        Returns a specific crossing line by ID for a ba_crossline instance.
-      operationId: getLine
-      tags:
-        - Lines
-      parameters:
-        - name: instanceId
-          in: path
-          required: true
-          schema:
-            type: string
-          description: The unique identifier of the instance
-          example: "a5204fc9-9a59-f80f-fb9f-bf3b42214943"
-        - name: lineId
-          in: path
-          required: true
-          schema:
-            type: string
-          description: The unique identifier of the line to retrieve
-          example: "b1234567-89ab-cdef-0123-456789abcdef"
-      responses:
-        '200':
-          description: Line retrieved successfully
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/CrossingLine'
-        '404':
-          description: Instance or line not found
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
-        '500':
-          description: Internal server error
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
-    put:
-      summary: Update a specific crossing line
-      description: |
-        Updates a specific crossing line by ID for a ba_crossline instance.
-        The line will be updated on the video stream and used for counting objects.
-
-        **Real-time Update:** The line is immediately applied to the running video stream without requiring instance restart.
-      operationId: updateLine
-      tags:
-        - Lines
-      parameters:
-        - name: instanceId
-          in: path
-          required: true
-          schema:
-            type: string
-          description: The unique identifier of the instance
-          example: "a5204fc9-9a59-f80f-fb9f-bf3b42214943"
-        - name: lineId
-          in: path
-          required: true
-          schema:
-            type: string
-          description: The unique identifier of the line to update
-          example: "b1234567-89ab-cdef-0123-456789abcdef"
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: '#/components/schemas/CreateLineRequest'
-            examples:
-              updateLine:
-                summary: Update line coordinates and direction
-                value:
-                  name: "Updated Counting Line"
-                  coordinates:
-                    - x: 200.0
-                      y: 400.0
-                    - x: 700.0
-                      y: 400.0
-                  direction: "Up"
-                  classes: ["Person", "Vehicle"]
-                  color: [0, 255, 0, 255]
-      responses:
-        '200':
-          description: Line updated successfully
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/CrossingLine'
-        '400':
-          description: Bad request (invalid coordinates or parameters)
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
-        '404':
-          description: Instance or line not found
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
-        '500':
-          description: Internal server error
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
-    delete:
-      summary: Delete a specific crossing line
-      description: |
-        Deletes a specific crossing line by ID.
-
-        **Real-time Update:** The line is immediately removed from the running video stream without requiring instance restart.
-      operationId: deleteLine
-      tags:
-        - Lines
-      parameters:
-        - name: instanceId
-          in: path
-          required: true
-          schema:
-            type: string
-          description: The unique identifier of the instance
-          example: "a5204fc9-9a59-f80f-fb9f-bf3b42214943"
-        - name: lineId
-          in: path
-          required: true
-          schema:
-            type: string
-          description: The unique identifier of the line to delete
-          example: "b1234567-89ab-cdef-0123-456789abcdef"
-      responses:
-        '200':
-          description: Line deleted successfully
-          content:
-            application/json:
-              schema:
-                type: object
-                properties:
-                  message:
-                    type: string
-                    example: "Line deleted successfully"
-        '404':
-          description: Instance or line not found
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
-        '500':
-          description: Internal server error
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
-    options:
-      summary: CORS preflight for line endpoints
-      operationId: lineOptions
-      tags:
-        - Lines
       responses:
         '200':
           description: CORS preflight response
@@ -10363,6 +10363,10 @@ tags:
     description: AI instance management endpoints (create, list, start, stop, delete)
   - name: Lines
     description: Crossing lines management for ba_crossline instances (create, list, delete). Lines are drawn on video stream for object counting.
+  - name: Jams
+    description: Jam zones management for ba_jam instances (create, list, delete). Zones are defined on video stream for traffic jams detection.
+  - name: Stops
+    description: Stop zones management for ba_stop instances (create, list, delete). Zones are defined on video stream for stop objects detection.
   - name: Solutions
     description: Solution configuration management endpoints (create, list, update, delete)
   - name: Groups
