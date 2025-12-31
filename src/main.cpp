@@ -14,6 +14,7 @@
 #include "api/endpoints_handler.h"
 #include "api/group_handler.h"
 #include "api/lines_handler.h"
+#include "api/stops_handler.h"
 #include "api/jams_handler.h"
 #include "api/log_handler.h"
 #include "api/node_handler.h"
@@ -2500,6 +2501,9 @@ int main(int argc, char *argv[]) {
     // Register instance manager with lines handler (supports both InProcess and
     // Subprocess modes)
     LinesHandler::setInstanceManager(instanceManager.get());
+
+    // Register instance manager with stops handler (ba_stop)
+    StopsHandler::setInstanceManager(instanceManager.get());
 
     // Register instance manager with jams handler (ba_jam)
     JamsHandler::setInstanceManager(instanceManager.get());

@@ -189,6 +189,21 @@ private:
   void registerBACrosslineMQTTDefaultSolution();
 
   /**
+   * @brief Register behavior analysis stop detection solution
+   */
+  void registerBAStopSolution();
+
+  /**
+   * @brief Register ba_stop_default solution
+   */
+  void registerBAStopDefaultSolution();
+
+  /**
+   * @brief Register ba_stop_mqtt_default solution
+   */
+  void registerBAStopMQTTDefaultSolution();
+
+  /**
    * @brief Register ba_jam_default solution
    */
   void registerBAJamDefaultSolution();

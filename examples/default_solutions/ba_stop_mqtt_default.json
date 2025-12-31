@@ -1,0 +1,51 @@
+{
+    "solutionId": "ba_stop_mqtt_default",
+    "solutionName": "Behavior Analysis - Stop Detection with MQTT",
+    "solutionType": "behavior_analysis",
+    "isDefault": false,
+    "pipeline": [
+        {
+            "nodeType": "file_src",
+            "nodeName": "file_src_{instanceId}",
+            "parameters": {
+                "file_path": "${FILE_PATH}",
+                "channel": "0",
+                "resize_ratio": "${RESIZE_RATIO}"
+            }
+        },
+        {
+            "nodeType": "yolo_detector",
+            "nodeName": "yolo_detector_{instanceId}",
+            "parameters": {
+                "weights_path": "${WEIGHTS_PATH}",
+                "config_path": "${CONFIG_PATH}",
+                "labels_path": "${LABELS_PATH}"
+            }
+        },
+        {
+            "nodeType": "sort_track",
+            "nodeName": "sort_tracker_{instanceId}",
+            "parameters": {}
+        },
+        {
+            "nodeType": "ba_stop",
+            "nodeName": "ba_stop_{instanceId}",
+            "parameters": {
+                "min_stop_seconds": "${MIN_STOP_SECONDS}"
+            }
+        },
+        {
+            "nodeType": "json_mqtt_broker",
+            "nodeName": "json_mqtt_broker_{instanceId}",
+            "parameters": {}
+        },
+        {
+            "nodeType": "ba_stop_osd",
+            "nodeName": "osd_{instanceId}",
+            "parameters": {}
+        }
+    ],
+    "defaults": {
+        "MIN_STOP_SECONDS": "3"
+    }
+}

@@ -21,12 +21,30 @@
             "difficulty": "intermediate"
         },
         {
+            "id": "ba_stop_default",
+            "file": "ba_stop_default.json",
+            "name": "Behavior Analysis - Stop Detection",
+            "category": "behavior_analysis",
+            "description": "Detect objects that stopped inside a defined ROI",
+            "useCase": "Detect stopped vehicles or loitering people",
+            "difficulty": "intermediate"
+        },
+        {
+            "id": "ba_stop_mqtt_default",
+            "file": "ba_stop_mqtt_default.json",
+            "name": "Behavior Analysis - Stop Detection with MQTT",
+            "category": "behavior_analysis",
+            "description": "Stop detection with MQTT event publishing",
+            "useCase": "Integration with IoT systems via MQTT events",
+            "difficulty": "intermediate"
+        },
+        {
             "id": "ba_jam_default",
             "file": "ba_jam_default.json",
             "name": "Behavior Analysis - Traffic Jam (Default)",
             "category": "behavior_analysis",
-            "description": "Phát hiện ùn tắc giao thông trong vùng ROI",
-            "useCase": "Giám sát giao thông, phát hiện tắc nghẽn và gửi cảnh báo",
+            "description": "Detect traffic jams",
+            "useCase": "Detect traffic jams",
             "difficulty": "intermediate"
         },
         {
@@ -34,8 +52,8 @@
             "file": "ba_jam_default.json",
             "name": "Behavior Analysis - Traffic Jam (Default + MQTT)",
             "category": "behavior_analysis",
-            "description": "Phát hiện ùn tắc giao thông và xuất event qua MQTT",
-            "useCase": "Tích hợp hệ thống giám sát giao thông với MQTT",
+            "description": "Detect traffic jams and publish events via MQTT",
+            "useCase": "Integrate traffic monitoring systems with MQTT",
             "difficulty": "intermediate"
         },
         {
@@ -127,6 +145,8 @@
             "solutions": [
                 "ba_crossline_default",
                 "ba_crossline_mqtt_default",
+                "ba_stop_default",
+                "ba_stop_mqtt_default",
                 "ba_jam_default",
                 "ba_jam_mqtt_default"
             ]
