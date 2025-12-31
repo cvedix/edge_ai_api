@@ -21,6 +21,24 @@
             "difficulty": "intermediate"
         },
         {
+            "id": "ba_jam_default",
+            "file": "ba_jam_default.json",
+            "name": "Behavior Analysis - Traffic Jam (Default)",
+            "category": "behavior_analysis",
+            "description": "Phát hiện ùn tắc giao thông trong vùng ROI",
+            "useCase": "Giám sát giao thông, phát hiện tắc nghẽn và gửi cảnh báo",
+            "difficulty": "intermediate"
+        },
+        {
+            "id": "ba_jam_mqtt_default",
+            "file": "ba_jam_default.json",
+            "name": "Behavior Analysis - Traffic Jam (Default + MQTT)",
+            "category": "behavior_analysis",
+            "description": "Phát hiện ùn tắc giao thông và xuất event qua MQTT",
+            "useCase": "Tích hợp hệ thống giám sát giao thông với MQTT",
+            "difficulty": "intermediate"
+        },
+        {
             "id": "face_detection_default",
             "file": "face_detection_default.json",
             "name": "Face Detection Solution",
@@ -108,7 +126,9 @@
             "description": "Các solution behavior analysis",
             "solutions": [
                 "ba_crossline_default",
-                "ba_crossline_mqtt_default"
+                "ba_crossline_mqtt_default",
+                "ba_jam_default",
+                "ba_jam_mqtt_default"
             ]
         },
         "face_detection": {

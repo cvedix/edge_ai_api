@@ -100,6 +100,7 @@ void SolutionRegistry::initializeDefaultSolutions() {
   registerFaceDetectionRTMPSolution(); // face_detection_rtmp
   registerObjectDetectionSolution();   // Add YOLO-based solution
   registerBACrosslineSolution(); // Add behavior analysis crossline solution
+  registerBAJamSolution(); // Add behavior analysis traffic jam solution
 
   // Register new node-based solutions
   registerYOLOv11DetectionSolution();
@@ -119,6 +120,8 @@ void SolutionRegistry::initializeDefaultSolutions() {
   registerObjectDetectionYOLODefaultSolution(); // object_detection_yolo_default
   registerBACrosslineDefaultSolution();         // ba_crossline_default
   registerBACrosslineMQTTDefaultSolution();     // ba_crossline_mqtt_default
+  registerBAJamDefaultSolution();               // ba_jam_default
+  registerBAJamMQTTDefaultSolution();           // ba_jam_mqtt_default
 
 #ifdef CVEDIX_WITH_RKNN
   registerRKNNYOLOv11DetectionSolution();
@@ -423,6 +426,161 @@ void SolutionRegistry::registerBACrosslineSolution() {
   config.defaults["sensorModality"] = "RGB";
 
   registerSolution(config);
+}
+
+void SolutionRegistry::registerBAJamSolution() {
+  SolutionConfig config;
+  config.solutionId = "ba_jam";
+  config.solutionName = "Behavior Analysis - Traffic Jam Detection";
+  config.solutionType = "behavior_analysis";
+  config.isDefault = true;
+
+  // File Source Node
+  SolutionConfig::NodeConfig fileSrc;
+  fileSrc.nodeType = "file_src";
+  fileSrc.nodeName = "file_src_{instanceId}";
+  fileSrc.parameters["file_path"] = "${FILE_PATH}";
+  fileSrc.parameters["channel"] = "0";
+  fileSrc.parameters["resize_ratio"] = "0.4";
+  config.pipeline.push_back(fileSrc);
+
+  // YOLO Detector Node (vehicle detection)
+  SolutionConfig::NodeConfig yoloDetector;
+  yoloDetector.nodeType = "yolo_detector";
+  yoloDetector.nodeName = "yolo_detector_{instanceId}";
+  yoloDetector.parameters["weights_path"] = "${WEIGHTS_PATH}";
+  yoloDetector.parameters["config_path"] = "${CONFIG_PATH}";
+  yoloDetector.parameters["labels_path"] = "${LABELS_PATH}";
+  config.pipeline.push_back(yoloDetector);
+
+  // SORT Tracker Node
+  SolutionConfig::NodeConfig sortTrack;
+  sortTrack.nodeType = "sort_track";
+  sortTrack.nodeName = "sort_tracker_{instanceId}";
+  config.pipeline.push_back(sortTrack);
+
+  // BA Jam Node
+  SolutionConfig::NodeConfig baJam;
+  baJam.nodeType = "ba_jam";
+  baJam.nodeName = "ba_jam_{instanceId}";
+  // Example parameters: channel, sensitivity, JamZones JSON placeholder, detection tuning
+  baJam.parameters["channel"] = "0";
+  baJam.parameters["sensitivity"] = "0.6";
+  baJam.parameters["JamZones"] = "${JAM_ZONES_JSON}";
+  baJam.parameters["check_interval_frames"] = "20";
+  baJam.parameters["check_min_hit_frames"] = "50";
+  baJam.parameters["check_max_distance"] = "8";
+  baJam.parameters["check_min_stops"] = "8";
+  baJam.parameters["check_notify_interval"] = "10";
+  config.pipeline.push_back(baJam);
+
+  // BA Jam OSD Node
+  SolutionConfig::NodeConfig baJamOSD;
+  baJamOSD.nodeType = "ba_jam_osd";
+  baJamOSD.nodeName = "osd_{instanceId}";
+  config.pipeline.push_back(baJamOSD);
+
+  // Screen Destination Node (optional)
+  SolutionConfig::NodeConfig screenDes;
+  screenDes.nodeType = "screen_des";
+  screenDes.nodeName = "screen_des_{instanceId}";
+  screenDes.parameters["channel"] = "0";
+  screenDes.parameters["enabled"] = "${ENABLE_SCREEN_DES}";
+  config.pipeline.push_back(screenDes);
+
+  // RTMP Destination Node
+  SolutionConfig::NodeConfig rtmpDes;
+  rtmpDes.nodeType = "rtmp_des";
+  rtmpDes.nodeName = "rtmp_des_{instanceId}";
+  rtmpDes.parameters["rtmp_url"] = "${RTMP_DES_URL}";
+  rtmpDes.parameters["channel"] = "0";
+  config.pipeline.push_back(rtmpDes);
+
+  // Default configurations
+  config.defaults["detectorMode"] = "SmartDetection";
+  config.defaults["detectionSensitivity"] = "0.7";
+  config.defaults["sensorModality"] = "RGB";
+
+  registerSolution(config);
+}
+
+void SolutionRegistry::registerBAJamDefaultSolution() {
+  SolutionConfig config;
+  config.solutionId = "ba_jam_default";
+  config.solutionName = "Behavior Analysis - Traffic Jam (Default)";
+  config.solutionType = "behavior_analysis";
+  config.isDefault = true;
+
+  // File Source Node
+  SolutionConfig::NodeConfig fileSrc;
+  fileSrc.nodeType = "file_src";
+  fileSrc.nodeName = "file_src_{instanceId}";
+  fileSrc.parameters["file_path"] = "${FILE_PATH}";
+  fileSrc.parameters["channel"] = "0";
+  fileSrc.parameters["resize_ratio"] = "${RESIZE_RATIO}";
+  config.pipeline.push_back(fileSrc);
+
+  // YOLO Detector Node
+  SolutionConfig::NodeConfig yoloDetector;
+  yoloDetector.nodeType = "yolo_detector";
+  yoloDetector.nodeName = "yolo_detector_{instanceId}";
+  yoloDetector.parameters["weights_path"] = "${WEIGHTS_PATH}";
+  yoloDetector.parameters["config_path"] = "${CONFIG_PATH}";
+  yoloDetector.parameters["labels_path"] = "${LABELS_PATH}";
+  config.pipeline.push_back(yoloDetector);
+
+  // SORT Tracker Node
+  SolutionConfig::NodeConfig sortTrack;
+  sortTrack.nodeType = "sort_track";
+  sortTrack.nodeName = "sort_tracker_{instanceId}";
+  config.pipeline.push_back(sortTrack);
+
+  // BA Jam Node
+  SolutionConfig::NodeConfig baJam;
+  baJam.nodeType = "ba_jam";
+  baJam.nodeName = "ba_jam_{instanceId}";
+  baJam.parameters["channel"] = "0";
+  baJam.parameters["sensitivity"] = "0.6";
+  baJam.parameters["JamZones"] = "[]";
+  baJam.parameters["check_interval_frames"] = "20";
+  baJam.parameters["check_min_hit_frames"] = "50";
+  baJam.parameters["check_max_distance"] = "8";
+  baJam.parameters["check_min_stops"] = "8";
+  baJam.parameters["check_notify_interval"] = "10";
+  config.pipeline.push_back(baJam);
+
+  // JSON MQTT Broker Node for jam events
+  SolutionConfig::NodeConfig jsonMqtt;
+  jsonMqtt.nodeType = "json_crossline_mqtt_broker"; // reuse broker for simplicity
+  jsonMqtt.nodeName = "json_jam_mqtt_broker_{instanceId}";
+  config.pipeline.push_back(jsonMqtt);
+
+  // BA Jam OSD Node
+  SolutionConfig::NodeConfig baJamOSD;
+  baJamOSD.nodeType = "ba_jam_osd";
+  baJamOSD.nodeName = "osd_{instanceId}";
+  config.pipeline.push_back(baJamOSD);
+
+  // File Destination Node
+  SolutionConfig::NodeConfig fileDes;
+  fileDes.nodeType = "file_des";
+  fileDes.nodeName = "file_des_{instanceId}";
+  fileDes.parameters["save_dir"] = "./output/{instanceId}";
+  fileDes.parameters["name_prefix"] = "ba_jam";
+  fileDes.parameters["osd"] = "true";
+  config.pipeline.push_back(fileDes);
+
+  // Default configurations
+  config.defaults["detectorMode"] = "SmartDetection";
+  config.defaults["detectionSensitivity"] = "0.7";
+  config.defaults["sensorModality"] = "RGB";
+
+  registerSolution(config);
+}
+
+void SolutionRegistry::registerBAJamMQTTDefaultSolution() {
+  // For now, reuse the same pipeline as ba_jam_default (broker already included)
+  registerBAJamDefaultSolution();
 }
 
 void SolutionRegistry::registerYOLOv11DetectionSolution() {

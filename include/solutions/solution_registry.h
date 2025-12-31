@@ -114,6 +114,11 @@ private:
   void registerBACrosslineSolution();
 
   /**
+   * @brief Register behavior analysis traffic jam solution
+   */
+  void registerBAJamSolution();
+
+  /**
    * @brief Register YOLOv11 detection solution
    */
   void registerYOLOv11DetectionSolution();
@@ -182,6 +187,16 @@ private:
    * @brief Register ba_crossline_mqtt_default solution
    */
   void registerBACrosslineMQTTDefaultSolution();
+
+  /**
+   * @brief Register ba_jam_default solution
+   */
+  void registerBAJamDefaultSolution();
+
+  /**
+   * @brief Register ba_jam_mqtt_default solution
+   */
+  void registerBAJamMQTTDefaultSolution();
 
 #ifdef CVEDIX_WITH_RKNN
   /**

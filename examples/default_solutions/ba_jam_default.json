@@ -1,0 +1,60 @@
+{
+    "solutionId": "ba_jam_default",
+    "solutionName": "Behavior Analysis - Traffic Jam (Default)",
+    "solutionType": "behavior_analysis",
+    "isDefault": false,
+    "pipeline": [
+        {
+            "nodeType": "file_src",
+            "nodeName": "file_src_{instanceId}",
+            "parameters": {
+                "file_path": "${FILE_PATH}",
+                "channel": "0",
+                "resize_ratio": "${RESIZE_RATIO}"
+            }
+        },
+        {
+            "nodeType": "yolo_detector",
+            "nodeName": "yolo_detector_{instanceId}",
+            "parameters": {
+                "weights_path": "${WEIGHTS_PATH}",
+                "config_path": "${CONFIG_PATH}",
+                "labels_path": "${LABELS_PATH}"
+            }
+        },
+        {
+            "nodeType": "sort_track",
+            "nodeName": "sort_tracker_{instanceId}",
+            "parameters": {}
+        },
+        {
+            "nodeType": "ba_jam",
+            "nodeName": "ba_jam_{instanceId}",
+            "parameters": {
+                "channel": "0",
+                "sensitivity": "0.6",
+                "JamZones": "[]",
+                "check_interval_frames": "20",
+                "check_min_hit_frames": "50",
+                "check_max_distance": "8",
+                "check_min_stops": "8",
+                "check_notify_interval": "10"
+            }
+        },
+        {
+            "nodeType": "json_crossline_mqtt_broker",
+            "nodeName": "json_jam_mqtt_broker_{instanceId}",
+            "parameters": {}
+        },
+        {
+            "nodeType": "ba_jam_osd",
+            "nodeName": "osd_{instanceId}",
+            "parameters": {}
+        }
+    ],
+    "defaults": {
+        "detectorMode": "SmartDetection",
+        "detectionSensitivity": "0.7",
+        "sensorModality": "RGB"
+    }
+}

@@ -14,6 +14,7 @@
 #include "api/endpoints_handler.h"
 #include "api/group_handler.h"
 #include "api/lines_handler.h"
+#include "api/jams_handler.h"
 #include "api/log_handler.h"
 #include "api/node_handler.h"
 #include "api/recognition_handler.h"
@@ -2500,6 +2501,9 @@ int main(int argc, char *argv[]) {
     // Subprocess modes)
     LinesHandler::setInstanceManager(instanceManager.get());
 
+    // Register instance manager with jams handler (ba_jam)
+    JamsHandler::setInstanceManager(instanceManager.get());
+
     // Register instance manager with WebSocket controller
     AIWebSocketController::setInstanceManager(instanceManager.get());
 
@@ -2513,6 +2517,7 @@ int main(int argc, char *argv[]) {
     static GroupHandler groupHandler;
     static NodeHandler nodeHandler;
     static LinesHandler linesHandler;
+    static JamsHandler jamsHandler;
 
     // Initialize model upload handler with configurable directory
     // Priority: 1. MODELS_DIR env var, 2. /opt/edge_ai_api/models (with
