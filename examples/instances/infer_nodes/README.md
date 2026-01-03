@@ -6,13 +6,12 @@ Thư mục này chứa các example files cho các inference nodes được hỗ
 
 ### Thư mục gốc (`examples/instances/`)
 Chứa các example files cho các solution cơ bản đã được định nghĩa sẵn:
-- `create_face_detection_*.json` - Face detection với các nguồn khác nhau
-- `create_object_detection.json` - Object detection cơ bản
-- `create_thermal_detection.json` - Thermal detection
-- `create_minimal.json` - Minimal example
-- `example_face_detection_rtmp.json` - Example face detection với RTMP
+- `face_detection/onnx/*.json` - Face detection với các nguồn khác nhau (file, RTSP, RTMP, MQTT)
+- `ba_crossline/yolo/*.json` - Behavior analysis crossline
+- `mask_rcnn/tensorflow/*.json` - Mask R-CNN detection
+- `other_solutions/*.json` - Các solutions khác
 
-Các file này sử dụng các solution đã được đăng ký sẵn trong hệ thống.
+Các file này sử dụng các solution đã được đăng ký sẵn trong hệ thống và được tổ chức theo solution và model type.
 
 ### Thư mục này (`examples/instances/infer_nodes/`)
 Chứa các example files cho các inference nodes cụ thể:

@@ -1,9 +1,0 @@
-{
-  "name": "minimal_instance",
-  "solution": "face_detection",
-  "additionalParams": {
-    "input": {
-      "RTSP_URL": "rtsp://localhost:8554/live/stream"
-    }
-  }
-}

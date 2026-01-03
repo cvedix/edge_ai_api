@@ -643,28 +643,41 @@ InstanceRegistry::getInstance(const std::string &instanceId) const {
             auto elapsed_seconds_double =
                 std::chrono::duration<double>(now - tracker.start_time).count();
 
-            // Calculate actual processing FPS based on frames actually
-            // processed
-            uint64_t frames_processed_value =
-                tracker.frames_processed.load(std::memory_order_relaxed);
-            double actualProcessingFps = 0.0;
-            if (elapsed_seconds_double > 0.0 && frames_processed_value > 0) {
-              actualProcessingFps =
-                  static_cast<double>(frames_processed_value) /
-                  elapsed_seconds_double;
-            }
-
-            // Calculate current FPS: prefer actual processing FPS, then source
-            // FPS, then info.fps, then tracker.last_fps
+            // Calculate current FPS: PREFER FPS from backpressure controller
+            // (rolling window, more accurate) then fallback to average from
+            // start_time, then source FPS, then info.fps, then tracker.last_fps
             double currentFps = 0.0;
-            if (actualProcessingFps > 0.0) {
-              currentFps = std::round(actualProcessingFps);
-            } else if (sourceFps > 0.0) {
-              currentFps = std::round(sourceFps);
-            } else if (info.fps > 0.0) {
-              currentFps = std::round(info.fps);
+
+            // First priority: Use FPS from backpressure controller (real-time
+            // rolling window)
+            using namespace BackpressureController;
+            auto &backpressure =
+                BackpressureController::BackpressureController::getInstance();
+            double backpressureFps = backpressure.getCurrentFPS(instanceId);
+            if (backpressureFps > 0.0) {
+              currentFps = std::round(backpressureFps);
             } else {
-              currentFps = std::round(tracker.last_fps);
+              // Fallback: Calculate actual processing FPS based on frames
+              // actually processed This is less accurate as it averages from
+              // start_time (includes warm-up time)
+              uint64_t frames_processed_value =
+                  tracker.frames_processed.load(std::memory_order_relaxed);
+              double actualProcessingFps = 0.0;
+              if (elapsed_seconds_double > 0.0 && frames_processed_value > 0) {
+                actualProcessingFps =
+                    static_cast<double>(frames_processed_value) /
+                    elapsed_seconds_double;
+              }
+
+              if (actualProcessingFps > 0.0) {
+                currentFps = std::round(actualProcessingFps);
+              } else if (sourceFps > 0.0) {
+                currentFps = std::round(sourceFps);
+              } else if (info.fps > 0.0) {
+                currentFps = std::round(info.fps);
+              } else {
+                currentFps = std::round(tracker.last_fps);
+              }
             }
 
             // Update fps in the returned info
@@ -1633,15 +1646,15 @@ bool InstanceRegistry::stopInstance(const std::string &instanceId) {
       std::cerr << "[InstanceRegistry] [MP4Finalizer] Waiting for "
                    "file_des_node to close files..."
                 << std::endl;
-      
+
       // Wait longer and check file stability multiple times
       // This ensures file is fully closed before attempting conversion
       const int maxWaitAttempts = 6; // 6 attempts * 3 seconds = 18 seconds max
       bool allFilesStable = false;
-      
+
       for (int attempt = 1; attempt <= maxWaitAttempts; attempt++) {
         std::this_thread::sleep_for(std::chrono::milliseconds(3000));
-        
+
         // Check if all MP4 files in directory are stable
         allFilesStable = true;
         try {
@@ -1650,27 +1663,32 @@ bool InstanceRegistry::stopInstance(const std::string &instanceId) {
               std::string filePath = entry.path().string();
               if (MP4Finalizer::MP4Finalizer::isFileBeingWritten(filePath)) {
                 allFilesStable = false;
-                std::cerr << "[InstanceRegistry] [MP4Finalizer] File still being written (attempt " 
-                          << attempt << "/" << maxWaitAttempts << "): " 
-                          << fs::path(filePath).filename().string() << std::endl;
+                std::cerr << "[InstanceRegistry] [MP4Finalizer] File still "
+                             "being written (attempt "
+                          << attempt << "/" << maxWaitAttempts
+                          << "): " << fs::path(filePath).filename().string()
+                          << std::endl;
                 break;
               }
             }
           }
         } catch (const fs::filesystem_error &e) {
-          std::cerr << "[InstanceRegistry] [MP4Finalizer] Error checking files: " 
-                    << e.what() << std::endl;
+          std::cerr
+              << "[InstanceRegistry] [MP4Finalizer] Error checking files: "
+              << e.what() << std::endl;
         }
-        
+
         if (allFilesStable) {
-          std::cerr << "[InstanceRegistry] [MP4Finalizer] All files are stable after " 
-                    << (attempt * 3) << " seconds" << std::endl;
+          std::cerr
+              << "[InstanceRegistry] [MP4Finalizer] All files are stable after "
+              << (attempt * 3) << " seconds" << std::endl;
           break;
         }
       }
-      
+
       if (!allFilesStable) {
-        std::cerr << "[InstanceRegistry] [MP4Finalizer] ⚠ Some files may still be closing, "
+        std::cerr << "[InstanceRegistry] [MP4Finalizer] ⚠ Some files may still "
+                     "be closing, "
                   << "but proceeding with conversion anyway..." << std::endl;
       }
 
@@ -1831,28 +1849,41 @@ InstanceRegistry::getAllInstances() const {
             auto elapsed_seconds_double =
                 std::chrono::duration<double>(now - tracker.start_time).count();
 
-            // Calculate actual processing FPS based on frames actually
-            // processed
-            uint64_t frames_processed_value =
-                tracker.frames_processed.load(std::memory_order_relaxed);
-            double actualProcessingFps = 0.0;
-            if (elapsed_seconds_double > 0.0 && frames_processed_value > 0) {
-              actualProcessingFps =
-                  static_cast<double>(frames_processed_value) /
-                  elapsed_seconds_double;
-            }
-
-            // Calculate current FPS: prefer actual processing FPS, then source
-            // FPS, then info.fps, then tracker.last_fps
+            // Calculate current FPS: PREFER FPS from backpressure controller
+            // (rolling window, more accurate) then fallback to average from
+            // start_time, then source FPS, then info.fps, then tracker.last_fps
             double currentFps = 0.0;
-            if (actualProcessingFps > 0.0) {
-              currentFps = std::round(actualProcessingFps);
-            } else if (sourceFps > 0.0) {
-              currentFps = std::round(sourceFps);
-            } else if (info.fps > 0.0) {
-              currentFps = std::round(info.fps);
+
+            // First priority: Use FPS from backpressure controller (real-time
+            // rolling window)
+            using namespace BackpressureController;
+            auto &backpressure =
+                BackpressureController::BackpressureController::getInstance();
+            double backpressureFps = backpressure.getCurrentFPS(instanceId);
+            if (backpressureFps > 0.0) {
+              currentFps = std::round(backpressureFps);
             } else {
-              currentFps = std::round(tracker.last_fps);
+              // Fallback: Calculate actual processing FPS based on frames
+              // actually processed This is less accurate as it averages from
+              // start_time (includes warm-up time)
+              uint64_t frames_processed_value =
+                  tracker.frames_processed.load(std::memory_order_relaxed);
+              double actualProcessingFps = 0.0;
+              if (elapsed_seconds_double > 0.0 && frames_processed_value > 0) {
+                actualProcessingFps =
+                    static_cast<double>(frames_processed_value) /
+                    elapsed_seconds_double;
+              }
+
+              if (actualProcessingFps > 0.0) {
+                currentFps = std::round(actualProcessingFps);
+              } else if (sourceFps > 0.0) {
+                currentFps = std::round(sourceFps);
+              } else if (info.fps > 0.0) {
+                currentFps = std::round(info.fps);
+              } else {
+                currentFps = std::round(tracker.last_fps);
+              }
             }
 
             // Update fps in the result
@@ -2694,15 +2725,19 @@ bool InstanceRegistry::startPipeline(
       }
     }
 
-    // Clamp FPS to valid range (5-60 FPS)
-    maxFPS = std::max(5.0, std::min(60.0, maxFPS));
+    // Clamp FPS to valid range (12-120 FPS) - synchronized with
+    // BackpressureController MIN_FPS = 12.0, MAX_FPS = 120.0 to support high
+    // FPS processing for multiple instances
+    maxFPS = std::max(12.0, std::min(120.0, maxFPS));
 
     // Configure with DROP_NEWEST policy (keep latest frame, drop old ones)
     // This prevents queue backlog while maintaining current state
-    controller.configure(instanceId,
-                         BackpressureController::DropPolicy::DROP_NEWEST,
-                         maxFPS, // FPS from user or auto-detected
-                         10);    // Max queue size warning threshold
+    // Increased queue size from 10 to 20 for better buffering with multiple
+    // instances
+    controller.configure(
+        instanceId, BackpressureController::DropPolicy::DROP_NEWEST,
+        maxFPS, // FPS from user or auto-detected
+        20); // Max queue size warning threshold (increased for multi-instance)
 
     std::cerr << "[InstanceRegistry] ✓ Backpressure control configured: "
               << maxFPS << " FPS max" << std::endl;
@@ -4902,33 +4937,51 @@ InstanceRegistry::getInstanceStatistics(const std::string &instanceId) {
   auto elapsed_seconds_double =
       std::chrono::duration<double>(now - tracker.start_time).count();
 
-  // Calculate actual processing FPS based on frames actually processed
-  // PHASE 2: Use atomic load for reading counter
+  // Calculate current FPS: PREFER FPS from backpressure controller (rolling
+  // window, more accurate) then fallback to average from start_time, then
+  // source FPS, then info.fps, then tracker.last_fps PHASE 2: Use atomic load
+  // for reading counter
   uint64_t frames_processed_value =
       tracker.frames_processed.load(std::memory_order_relaxed);
-  double actualProcessingFps = 0.0;
-  if (elapsed_seconds_double > 0.0 && frames_processed_value > 0) {
-    actualProcessingFps =
-        static_cast<double>(frames_processed_value) / elapsed_seconds_double;
-  }
 
-  // Calculate current FPS: prefer actual processing FPS, then source FPS, then
-  // info.fps, then tracker.last_fps
   double currentFps = 0.0;
-  if (actualProcessingFps > 0.0) {
-    currentFps = std::round(actualProcessingFps);
-    tracker.last_fps = currentFps;
-    tracker.last_fps_update = now;
-  } else if (sourceFps > 0.0) {
-    currentFps = std::round(sourceFps);
-    tracker.last_fps = currentFps;
-    tracker.last_fps_update = now;
-  } else if (info.fps > 0.0) {
-    currentFps = std::round(info.fps);
+
+  // First priority: Use FPS from backpressure controller (real-time rolling
+  // window - more accurate) This reflects current performance, not average from
+  // start_time
+  using namespace BackpressureController;
+  auto &backpressure =
+      BackpressureController::BackpressureController::getInstance();
+  double backpressureFps = backpressure.getCurrentFPS(instanceId);
+  if (backpressureFps > 0.0) {
+    currentFps = std::round(backpressureFps);
     tracker.last_fps = currentFps;
     tracker.last_fps_update = now;
   } else {
-    currentFps = std::round(tracker.last_fps);
+    // Fallback: Calculate actual processing FPS based on frames actually
+    // processed This is less accurate as it averages from start_time (includes
+    // warm-up time)
+    double actualProcessingFps = 0.0;
+    if (elapsed_seconds_double > 0.0 && frames_processed_value > 0) {
+      actualProcessingFps =
+          static_cast<double>(frames_processed_value) / elapsed_seconds_double;
+    }
+
+    if (actualProcessingFps > 0.0) {
+      currentFps = std::round(actualProcessingFps);
+      tracker.last_fps = currentFps;
+      tracker.last_fps_update = now;
+    } else if (sourceFps > 0.0) {
+      currentFps = std::round(sourceFps);
+      tracker.last_fps = currentFps;
+      tracker.last_fps_update = now;
+    } else if (info.fps > 0.0) {
+      currentFps = std::round(info.fps);
+      tracker.last_fps = currentFps;
+      tracker.last_fps_update = now;
+    } else {
+      currentFps = std::round(tracker.last_fps);
+    }
   }
 
   // Calculate frames_processed: use actual frames processed if available,
@@ -5280,7 +5333,10 @@ void InstanceRegistry::setupQueueSizeTrackingHook(
                 // PHASE 3: Record queue full event for backpressure control (no
                 // lock needed - singleton) Check if queue is getting full
                 // (threshold: 80% of typical max)
-                const size_t queue_warning_threshold = 8; // Warn at 8 frames
+                // Increased from 8 to 16 to match increased queue size (20) for
+                // multi-instance performance
+                const size_t queue_warning_threshold =
+                    16; // Warn at 16 frames (80% of 20)
                 if (queue_size >= static_cast<int>(queue_warning_threshold)) {
                   using namespace BackpressureController;
                   auto &backpressure = BackpressureController::

@@ -320,8 +320,8 @@ IPCMessage WorkerHandler::handleGetLastFrame(const IPCMessage & /*msg*/) {
   data["instance_id"] = instance_id_;
 
   std::lock_guard<std::mutex> lock(frame_mutex_);
-  if (has_frame_ && !last_frame_.empty()) {
-    data["frame"] = encodeFrameToBase64(last_frame_);
+  if (has_frame_ && last_frame_ && !last_frame_->empty()) {
+    data["frame"] = encodeFrameToBase64(*last_frame_);
     data["has_frame"] = true;
   } else {
     data["frame"] = "";
@@ -468,6 +468,7 @@ bool WorkerHandler::startPipeline() {
     last_fps_update_ = start_time_;
     frames_processed_.store(0);
     dropped_frames_.store(0);
+    current_fps_.store(0.0); // Reset FPS
 
     std::cout << "[Worker:" << instance_id_ << "] Pipeline started"
               << std::endl;
@@ -526,19 +527,37 @@ void WorkerHandler::setupFrameCaptureHook() {
 }
 
 void WorkerHandler::updateFrameCache(const cv::Mat &frame) {
-  std::lock_guard<std::mutex> lock(frame_mutex_);
-  last_frame_ = frame.clone();
-  has_frame_ = true;
+  // OPTIMIZATION: Use shared_ptr instead of clone() to avoid expensive memory
+  // copy This eliminates ~6MB copy per frame update, significantly improving
+  // FPS for multiple instances Create shared_ptr outside lock to minimize lock
+  // hold time
+  auto frame_ptr = std::make_shared<cv::Mat>(frame);
+
+  {
+    std::lock_guard<std::mutex> lock(frame_mutex_);
+    last_frame_ = frame_ptr; // Shared ownership - no copy!
+    has_frame_ = true;
+  }
+  // Lock released immediately after pointer assignment
+
   frames_processed_.fetch_add(1);
 
-  // Update FPS calculation
+  // Update FPS calculation using rolling window (similar to
+  // backpressure_controller) This calculates FPS based on frames processed in
+  // the last 1 second
+  static thread_local uint64_t frame_count_since_update = 0;
   auto now = std::chrono::steady_clock::now();
   auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(
                      now - last_fps_update_)
                      .count();
-  if (elapsed >= 1000) {
-    // Calculate FPS over the last second
-    // This is a simplified calculation
+
+  frame_count_since_update++;
+
+  if (elapsed >= 1000) { // Update FPS every second
+    // Calculate FPS: frames in last second / elapsed time
+    double fps = (frame_count_since_update * 1000.0) / elapsed;
+    current_fps_.store(std::round(fps), std::memory_order_relaxed);
+    frame_count_since_update = 0;
     last_fps_update_ = now;
   }
 

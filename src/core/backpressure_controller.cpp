@@ -107,9 +107,10 @@ void BackpressureController::recordFrameProcessed(
   auto &counter = adaptive_update_counter[instanceId];
   counter++;
 
-  // Only call updateAdaptiveFPS every 30 frames (~1 second at 30 FPS)
-  // This reduces lock contention significantly
-  if (counter >= 30) {
+  // Only call updateAdaptiveFPS every 60 frames (~1 second at 60 FPS, ~0.5s at
+  // 120 FPS) This reduces lock contention significantly while maintaining
+  // responsiveness Increased from 30 to 60 to handle higher FPS better
+  if (counter >= 60) {
     counter = 0;
     updateAdaptiveFPS(instanceId);
   }

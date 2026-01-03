@@ -94,9 +94,12 @@ private:
   std::string resolution_;
   std::string source_resolution_;
 
-  // Frame cache
+  // Frame cache - use shared_ptr to avoid expensive clone() operations
+  // This optimization eliminates ~6MB memory copy per frame update
+  // Similar to InstanceRegistry optimization for better multi-instance
+  // performance
   mutable std::mutex frame_mutex_;
-  cv::Mat last_frame_;
+  std::shared_ptr<cv::Mat> last_frame_; // Changed from cv::Mat to shared_ptr
   bool has_frame_ = false;
 
   /**

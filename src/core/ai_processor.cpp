@@ -128,9 +128,25 @@ void AIProcessor::processingLoop() {
         }
       }
 
-      // Small sleep to prevent 100% CPU usage
-      // Adjust based on your frame rate requirements
-      std::this_thread::sleep_for(std::chrono::milliseconds(1));
+      // Adaptive sleep: Only sleep if processing is too fast
+      // Calculate target sleep time based on target FPS (if available)
+      // For high FPS scenarios, let OS scheduler handle CPU usage instead of
+      // fixed sleep This removes artificial bottleneck and allows higher
+      // throughput
+      auto processing_time =
+          std::chrono::duration_cast<std::chrono::microseconds>(frame_end -
+                                                                frame_start)
+              .count();
+
+      // Only sleep if processing is very fast (< 1ms) to prevent busy-waiting
+      // For normal processing times, OS scheduler will handle CPU sharing
+      if (processing_time < 1000) { // Less than 1ms processing time
+        std::this_thread::sleep_for(
+            std::chrono::microseconds(100)); // Minimal yield
+      } else {
+        // For longer processing, yield to other threads without fixed delay
+        std::this_thread::yield();
+      }
 
     } catch (const std::exception &e) {
       {
