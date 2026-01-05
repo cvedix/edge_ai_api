@@ -73,7 +73,8 @@ protected:
     // Create instance via instance manager
     CreateInstanceRequest req;
     req.name = "test_ba_stop_instance";
-    req.solution = "ba_stop";
+    // Leave solution empty to avoid building runtime pipeline in unit tests
+    req.solution = "";
     req.group = "test";
     req.autoStart = false;
 
@@ -153,6 +154,7 @@ TEST_F(StopsHandlerTest, GetAllStopsEmpty) {
   ASSERT_NE(json, nullptr);
   EXPECT_TRUE(json->isMember("stopZones"));
   EXPECT_TRUE((*json)["stopZones"].isArray());
+  EXPECT_EQ((*json)["stopZones"].size(), 0);
 }
 
 // Test POST /v1/core/instance/{instanceId}/stops - Create stop
@@ -172,9 +174,7 @@ TEST_F(StopsHandlerTest, CreateStop) {
   Json::Value p3; p3["x"] = 10; p3["y"] = 10;
   roi.append(p1); roi.append(p2); roi.append(p3);
   body["roi"] = roi;
-  Json::Value classes(Json::arrayValue);
-  classes.append("Vehicle");
-  body["classes"] = classes;
+
 
   req->setBody(body.toStyledString());
   req->addHeader("Content-Type", "application/json");
@@ -233,6 +233,43 @@ TEST_F(StopsHandlerTest, CreateStopInvalidROI) {
   EXPECT_EQ(response->statusCode(), k400BadRequest);
 }
 
+// Test POST with unsupported parameters (classes/color) should be rejected
+TEST_F(StopsHandlerTest, CreateStopRejectsUnsupportedParams) {
+  if (instance_id_.empty()) {
+    GTEST_SKIP() << "Test instance not created, skipping test";
+  }
+
+  auto req = HttpRequest::newHttpRequest();
+  req->setPath("/v1/core/instance/" + instance_id_ + "/stops");
+  req->setMethod(Post);
+
+  Json::Value body;
+  Json::Value roi(Json::arrayValue);
+  Json::Value p1; p1["x"] = 0; p1["y"] = 0;
+  Json::Value p2; p2["x"] = 10; p2["y"] = 0;
+  Json::Value p3; p3["x"] = 10; p3["y"] = 10;
+  roi.append(p1); roi.append(p2); roi.append(p3);
+  body["roi"] = roi;
+  Json::Value classes(Json::arrayValue);
+  classes.append("Vehicle");
+  body["classes"] = classes;
+
+  req->setBody(body.toStyledString());
+
+  HttpResponsePtr response;
+  bool callbackCalled = false;
+
+  handler_->createStop(req, [&](const HttpResponsePtr &resp) {
+    callbackCalled = true;
+    response = resp;
+  });
+
+  std::this_thread::sleep_for(std::chrono::milliseconds(100));
+
+  ASSERT_TRUE(callbackCalled);
+  ASSERT_NE(response, nullptr);
+  EXPECT_EQ(response->statusCode(), k400BadRequest);
+}
 // Test create -> get by id
 TEST_F(StopsHandlerTest, GetStopById) {
   if (instance_id_.empty()) {
@@ -373,7 +410,7 @@ TEST_F(StopsHandlerTest, UpdateStop) {
   req->setMethod(Put);
 
   Json::Value updateBody;
-  updateBody["minStopSeconds"] = 5;
+  updateBody["min_stop_seconds"] = 5;
 
   req->setBody(updateBody.toStyledString());
 
@@ -477,6 +514,7 @@ TEST_F(StopsHandlerTest, BatchUpdateStops) {
   }
 
   req->setBody(arr.toStyledString());
+  req->addHeader("Content-Type", "application/json");
 
   HttpResponsePtr response;
   bool callbackCalled = false;
@@ -498,6 +536,46 @@ TEST_F(StopsHandlerTest, BatchUpdateStops) {
   EXPECT_EQ((*json)["count"].asInt(), 2);
 }
 
+// Test batch update rejects unsupported parameters
+TEST_F(StopsHandlerTest, BatchUpdateRejectsUnsupportedParams) {
+  if (instance_id_.empty()) {
+    GTEST_SKIP() << "Test instance not created, skipping test";
+  }
+
+  auto req = HttpRequest::newHttpRequest();
+  req->setPath("/v1/core/instance/" + instance_id_ + "/stops/batch");
+  req->setMethod(Post);
+
+  Json::Value arr(Json::arrayValue);
+
+  Json::Value s;
+  Json::Value roi(Json::arrayValue);
+  Json::Value p1; p1["x"] = 0; p1["y"] = 0;
+  Json::Value p2; p2["x"] = 10; p2["y"] = 0;
+  Json::Value p3; p3["x"] = 10; p3["y"] = 10;
+  roi.append(p1); roi.append(p2); roi.append(p3);
+  s["roi"] = roi;
+  Json::Value classes(Json::arrayValue); classes.append("Vehicle");
+  s["classes"] = classes;
+  arr.append(s);
+
+  req->setBody(arr.toStyledString());
+  req->addHeader("Content-Type", "application/json");
+
+  HttpResponsePtr response;
+  bool callbackCalled = false;
+
+  handler_->batchUpdateStops(req, [&](const HttpResponsePtr &resp) {
+    callbackCalled = true;
+    response = resp;
+  });
+
+  std::this_thread::sleep_for(std::chrono::milliseconds(200));
+
+  ASSERT_TRUE(callbackCalled);
+  ASSERT_NE(response, nullptr);
+  EXPECT_EQ(response->statusCode(), k400BadRequest);
+}
 // Test delete all stops
 TEST_F(StopsHandlerTest, DeleteAllStops) {
   if (instance_id_.empty()) {

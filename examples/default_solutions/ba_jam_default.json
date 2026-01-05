@@ -32,13 +32,11 @@
             "nodeName": "ba_jam_{instanceId}",
             "parameters": {
                 "channel": "0",
-                "sensitivity": "0.6",
-                "JamZones": "[]",
-                "check_interval_frames": "20",
-                "check_min_hit_frames": "50",
-                "check_max_distance": "8",
-                "check_min_stops": "8",
-                "check_notify_interval": "10"
+                "check_interval_frames": "${CHECK_INTERVAL_FRAMES}",
+                "check_min_hit_frames": "${CHECK_MIN_HIT_FRAMES}",
+                "check_max_distance": "${CHECK_MAX_DISTANCE}",
+                "check_min_stops": "${CHECK_MIN_STOPS}",
+                "check_notify_interval": "${CHECK_NOTIFY_INTERVAL}"
             }
         },
         {
@@ -50,11 +48,32 @@
             "nodeType": "ba_jam_osd",
             "nodeName": "osd_{instanceId}",
             "parameters": {}
+        },
+        {
+            "nodeType": "screen_des",
+            "nodeName": "screen_des_{instanceId}",
+            "parameters": {
+                "channel": "0",
+                "enabled": "${ENABLE_SCREEN_DES}"
+            }
+        },
+        {
+            "nodeType": "rtmp_des",
+            "nodeName": "rtmp_des_{instanceId}",
+            "parameters": {
+                "rtmp_url": "${RTMP_URL}",
+                "channel": "0"
+            }
         }
     ],
     "defaults": {
         "detectorMode": "SmartDetection",
         "detectionSensitivity": "0.7",
-        "sensorModality": "RGB"
+        "sensorModality": "RGB",
+        "CHECK_INTERVAL_FRAMES": "20",
+        "CHECK_MIN_HIT_FRAMES": "50",
+        "CHECK_MAX_DISTANCE": "8",
+        "CHECK_MIN_STOPS": "8",
+        "CHECK_NOTIFY_INTERVAL": "10"
     }
 }

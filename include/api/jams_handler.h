@@ -4,6 +4,8 @@
 #include <json/json.h>
 #include <memory>
 #include <string>
+#include <cvedix/nodes/ba/cvedix_ba_jam_node.h>
+#include <cvedix/objects/shapes/cvedix_point.h>
 
 using namespace drogon;
 
@@ -65,13 +67,15 @@ private:
   bool validateClasses(const Json::Value &classes, std::string &error) const;
 
   bool restartInstanceForJamUpdate(const std::string &instanceId) const;
-  std::shared_ptr<void> findBAJamNode(const std::string &instanceId) const;
+  std::shared_ptr<cvedix_nodes::cvedix_ba_jam_node>
+  findBAJamNode(const std::string &instanceId) const;
 
   Json::Value parseJamsFromJson(const Json::Value &jamsArray) const;
 
   // Validate jam parameters for a single jam object. Returns true if valid and fills
   // `error` with a short description when invalid.
   bool validateJamParameters(const Json::Value &jam, std::string &error) const;
+
 
   bool updateJamsRuntime(const std::string &instanceId, const Json::Value &jamsArray) const;
 };

@@ -153,8 +153,7 @@ TEST_F(JamsHandlerTest, GetAllJamsEmpty) {
   ASSERT_NE(json, nullptr);
   EXPECT_TRUE(json->isMember("jamZones"));
   EXPECT_TRUE((*json)["jamZones"].isArray());
-  EXPECT_EQ((*json)["jamZones"].size(), 0);
-}
+  EXPECT_EQ((*json)["jamZones"].size(), 0);}
 
 // Test POST /v1/core/instance/{instanceId}/jams - Create jam
 TEST_F(JamsHandlerTest, CreateJam) {
@@ -174,10 +173,11 @@ TEST_F(JamsHandlerTest, CreateJam) {
   Json::Value p3; p3["x"] = 1920; p3["y"] = 400;
   roi.append(p1); roi.append(p2); roi.append(p3);
   body["roi"] = roi;
-  body["min_vehicle_count"] = 3;
-  body["stopped_duration_ms"] = 3000;
-  body["vehicle_classes"] = Json::Value(Json::arrayValue);
-  body["vehicle_classes"].append("car");
+  body["check_interval_frames"] = 20;
+  body["check_min_hit_frames"] = 50;
+  body["check_max_distance"] = 8;
+  body["check_min_stops"] = 8;
+  body["check_notify_interval"] = 10;
 
   req->setBody(body.toStyledString());
   req->addHeader("Content-Type", "application/json");
@@ -200,6 +200,16 @@ TEST_F(JamsHandlerTest, CreateJam) {
   ASSERT_NE(json, nullptr);
   EXPECT_TRUE(json->isMember("id"));
   EXPECT_TRUE(json->isMember("roi"));
+  EXPECT_TRUE(json->isMember("check_interval_frames"));
+  EXPECT_EQ((*json)["check_interval_frames"].asInt(), 20);
+  EXPECT_TRUE(json->isMember("check_min_hit_frames"));
+  EXPECT_EQ((*json)["check_min_hit_frames"].asInt(), 50);
+  EXPECT_TRUE(json->isMember("check_max_distance"));
+  EXPECT_EQ((*json)["check_max_distance"].asInt(), 8);
+  EXPECT_TRUE(json->isMember("check_min_stops"));
+  EXPECT_EQ((*json)["check_min_stops"].asInt(), 8);
+  EXPECT_TRUE(json->isMember("check_notify_interval"));
+  EXPECT_EQ((*json)["check_notify_interval"].asInt(), 10);
 }
 
 // Test POST /v1/core/instance/{instanceId}/jams - Create multiple jam zones

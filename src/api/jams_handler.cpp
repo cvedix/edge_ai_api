@@ -4,6 +4,8 @@
 #include "core/metrics_interceptor.h"
 #include "core/uuid_generator.h"
 #include "instances/instance_manager.h"
+#include <cvedix/nodes/ba/cvedix_ba_jam_node.h>
+#include "solutions/solution_registry.h"
 #include <algorithm>
 #include <drogon/HttpResponse.h>
 #include <json/reader.h>
@@ -213,10 +215,29 @@ bool JamsHandler::restartInstanceForJamUpdate(const std::string &instanceId) con
   return true;
 }
 
-std::shared_ptr<void> JamsHandler::findBAJamNode(const std::string &instanceId) const {
-  // Attempt to locate running ba_jam node in pipeline. SDK-specific access
-  // is not available here. Return nullptr to indicate not found / not supported.
-  (void)instanceId;
+
+std::shared_ptr<cvedix_nodes::cvedix_ba_jam_node>
+JamsHandler::findBAJamNode(const std::string &instanceId) const {
+  // Note: In subprocess mode, nodes are not directly accessible. This will
+  // return nullptr and let updateJamsRuntime() fallback to restart.
+  if (!instance_manager_) {
+    return nullptr;
+  }
+
+  if (instance_manager_->isSubprocessMode()) {
+    if (isApiLoggingEnabled()) {
+      PLOG_DEBUG << "[API] findBAJamNode: Subprocess mode - nodes not directly accessible";
+    }
+    return nullptr;
+  }
+  // In in-process mode, try to access nodes via InstanceRegistry
+  // This requires casting to InProcessInstanceManager to access registry
+  // For now, return nullptr and let updateLinesRuntime() handle via restart
+  // TODO: Add getInstanceNodes() to IInstanceManager interface if needed
+  if (isApiLoggingEnabled()) {
+    PLOG_DEBUG << "[API] findBAJamNode: Direct node access not "
+                  "available, will use restart fallback";
+  }
   return nullptr;
 }
 
@@ -230,29 +251,32 @@ bool JamsHandler::validateJamParameters(const Json::Value &jam, std::string &err
     if (!validateClasses(jam["vehicle_classes"], error)) return false;
   }
 
-  // min_vehicle_count (optional, must be >= 1)
-  if (jam.isMember("min_vehicle_count")) {
-    if (!jam["min_vehicle_count"].isInt() || jam["min_vehicle_count"].asInt() < 1) {
-      error = "min_vehicle_count must be an integer >= 1"; return false;
+  // Detection tuning parameters (optional)
+  if (jam.isMember("check_interval_frames")) {
+    if (!jam["check_interval_frames"].isInt() || jam["check_interval_frames"].asInt() < 1) {
+      error = "check_interval_frames must be an integer >= 1"; return false;
     }
   }
-
-  // stopped_duration_ms (optional, must be >= 0)
-  if (jam.isMember("stopped_duration_ms")) {
-    if (!jam["stopped_duration_ms"].isInt() || jam["stopped_duration_ms"].asInt() < 0) {
-      error = "stopped_duration_ms must be an integer >= 0"; return false;
+  if (jam.isMember("check_min_hit_frames")) {
+    if (!jam["check_min_hit_frames"].isInt() || jam["check_min_hit_frames"].asInt() < 1) {
+      error = "check_min_hit_frames must be an integer >= 1"; return false;
     }
   }
-
-  // sensitivity (optional, 0.0 - 1.0)
-  if (jam.isMember("sensitivity")) {
-    if (!jam["sensitivity"].isNumeric()) { error = "sensitivity must be numeric between 0.0 and 1.0"; return false; }
-    double s = jam["sensitivity"].asDouble();
-    if (s < 0.0 || s > 1.0) { error = "sensitivity must be between 0.0 and 1.0"; return false; }
+  if (jam.isMember("check_max_distance")) {
+    if (!jam["check_max_distance"].isInt() || jam["check_max_distance"].asInt() < 0) {
+      error = "check_max_distance must be an integer >= 0"; return false;
+    }
   }
-
-  // enabled (optional, boolean)
-  if (jam.isMember("enabled") && !jam["enabled"].isBool()) { error = "enabled must be boolean"; return false; }
+  if (jam.isMember("check_min_stops")) {
+    if (!jam["check_min_stops"].isInt() || jam["check_min_stops"].asInt() < 1) {
+      error = "check_min_stops must be an integer >= 1"; return false;
+    }
+  }
+  if (jam.isMember("check_notify_interval")) {
+    if (!jam["check_notify_interval"].isInt() || jam["check_notify_interval"].asInt() < 0) {
+      error = "check_notify_interval must be an integer >= 0"; return false;
+    }
+  }
 
   return true;
 }
@@ -305,6 +329,8 @@ bool JamsHandler::updateJamsRuntime(const std::string &instanceId, const Json::V
   if (isApiLoggingEnabled()) PLOG_INFO << "[API] updateJamsRuntime: ba_jam runtime update not implemented, falling back to restart";
   return false;
 }
+
+
 
 void JamsHandler::getAllJams(const HttpRequestPtr &req, std::function<void(const HttpResponsePtr &)> &&callback) {
   auto start_time = std::chrono::steady_clock::now();
@@ -419,16 +445,96 @@ void JamsHandler::deleteAllJams(const HttpRequestPtr &req, std::function<void(co
   callback(createSuccessResponse(wrapper, 200));
 }
 
-void JamsHandler::getJam(const HttpRequestPtr &req, std::function<void(const HttpResponsePtr &)> &&callback) {
+void JamsHandler::getJam(
+    const HttpRequestPtr &req,
+    std::function<void(const HttpResponsePtr &)> &&callback) {
+  auto start_time = std::chrono::steady_clock::now();
+
   std::string instanceId = extractInstanceId(req);
   std::string jamId = extractJamId(req);
-  Json::Value jams = loadJamsFromConfig(instanceId);
-  for (const auto &j : jams) {
-    if (!j.isObject()) continue;
-    if (!j.isMember("id") || j["id"].asString() != jamId) continue;
-    return;
+
+  if (isApiLoggingEnabled()) {
+    PLOG_INFO << "[API] GET /v1/core/instance/" << instanceId << "/jams/"
+              << jamId << " - Get jam";
+    PLOG_DEBUG << "[API] Request from: " << req->getPeerAddr().toIpPort();
   }
-  callback(createErrorResponse(404, "not_found", "Jam zone not found"));
+
+  try {
+    if (instanceId.empty()) {
+      if (isApiLoggingEnabled()) {
+        PLOG_WARNING
+            << "[API] GET /v1/core/instance/{instanceId}/jams/{jamId} - "
+               "Error: Instance ID is empty";
+      }
+      callback(
+          createErrorResponse(400, "Bad request", "Instance ID is required"));
+      return;
+    }
+
+    if (jamId.empty()) {
+      if (isApiLoggingEnabled()) {
+        PLOG_WARNING << "[API] GET /v1/core/instance/" << instanceId
+                     << "/jams/{jamId} - Error: Jam ID is empty";
+      }
+      callback(createErrorResponse(400, "Bad request", "Jam ID is required"));
+      return;
+    }
+
+    Json::Value jamsArray = loadJamsFromConfig(instanceId);
+
+    for (const auto &jam : jamsArray) {
+      if (jam.isObject() && jam.isMember("id") && jam["id"].isString()) {
+        if (jam["id"].asString() == jamId) {
+          auto end_time = std::chrono::steady_clock::now();
+          auto duration =
+              std::chrono::duration_cast<std::chrono::milliseconds>(
+                  end_time - start_time);
+
+          if (isApiLoggingEnabled()) {
+            PLOG_INFO << "[API] GET /v1/core/instance/" << instanceId
+                      << "/jams/" << jamId << " - Success - "
+                      << duration.count() << "ms";
+          }
+
+          callback(createSuccessResponse(jam));
+          return;
+        }
+      }
+    }
+
+    auto end_time = std::chrono::steady_clock::now();
+    auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(
+        end_time - start_time);
+    if (isApiLoggingEnabled()) {
+      PLOG_WARNING << "[API] GET /v1/core/instance/" << instanceId << "/jams/"
+                   << jamId << " - Jam not found - " << duration.count()
+                   << "ms";
+    }
+    callback(
+        createErrorResponse(404, "Not found", "Jam not found: " + jamId));
+
+  } catch (const std::exception &e) {
+    auto end_time = std::chrono::steady_clock::now();
+    auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(
+        end_time - start_time);
+    if (isApiLoggingEnabled()) {
+      PLOG_ERROR << "[API] GET /v1/core/instance/" << instanceId << "/jams/"
+                 << jamId << " - Exception: " << e.what() << " - "
+                 << duration.count() << "ms";
+    }
+    callback(createErrorResponse(500, "Internal server error", e.what()));
+  } catch (...) {
+    auto end_time = std::chrono::steady_clock::now();
+    auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(
+        end_time - start_time);
+    if (isApiLoggingEnabled()) {
+      PLOG_ERROR << "[API] GET /v1/core/instance/" << instanceId << "/jams/"
+                 << jamId << " - Unknown exception - " << duration.count()
+                 << "ms";
+    }
+    callback(createErrorResponse(500, "Internal server error",
+                                 "Unknown error occurred"));
+  }
 }
 
 void JamsHandler::updateJam(const HttpRequestPtr &req, std::function<void(const HttpResponsePtr &)> &&callback) {

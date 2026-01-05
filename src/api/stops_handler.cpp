@@ -13,6 +13,7 @@
 #include <thread>
 #include <cvedix/nodes/ba/cvedix_ba_stop_node.h>
 #include <cvedix/objects/shapes/cvedix_point.h>
+#include "solutions/solution_registry.h"
 
 IInstanceManager *StopsHandler::instance_manager_ = nullptr;
 
@@ -208,38 +209,7 @@ bool StopsHandler::validateROI(const Json::Value &roi, std::string &error) const
   return true;
 }
 
-bool StopsHandler::validateClasses(const Json::Value &classes, std::string &error) const {
-  if (!classes.isArray()) {
-    error = "Classes must be an array";
-    return false;
-  }
 
-  static const std::vector<std::string> allowedClasses = {
-      "Person", "Animal", "Vehicle", "Face", "Unknown"};
-
-  for (const auto &cls : classes) {
-    if (!cls.isString()) {
-      error = "Each class must be a string";
-      return false;
-    }
-
-    std::string classStr = cls.asString();
-    bool found = false;
-    for (const auto &allowed : allowedClasses) {
-      if (classStr == allowed) {
-        found = true;
-        break;
-      }
-    }
-
-    if (!found) {
-      error = "Invalid class: " + classStr + ". Allowed values: Person, Animal, Vehicle, Face, Unknown";
-      return false;
-    }
-  }
-
-  return true;
-}
 
 bool StopsHandler::validateStopParameters(const Json::Value &stop, std::string &error) const {
   // minStopSeconds (camelCase) or min_stop_seconds (snake_case)
@@ -358,6 +328,8 @@ bool StopsHandler::restartInstanceForStopUpdate(const std::string &instanceId) c
   return true;
 }
 
+
+
 std::shared_ptr<cvedix_nodes::cvedix_ba_stop_node>
 StopsHandler::findBAStopNode(const std::string &instanceId) const {
   // Note: In subprocess mode, nodes are not directly accessible. This will
@@ -373,9 +345,13 @@ StopsHandler::findBAStopNode(const std::string &instanceId) const {
     return nullptr;
   }
 
-  // In-process direct access not implemented - use restart fallback
+  // In in-process mode, try to access nodes via InstanceRegistry
+  // This requires casting to InProcessInstanceManager to access registry
+  // For now, return nullptr and let updateLinesRuntime() handle via restart
+  // TODO: Add getInstanceNodes() to IInstanceManager interface if needed
   if (isApiLoggingEnabled()) {
-    PLOG_DEBUG << "[API] findBAStopNode: Direct node access not available, will use restart fallback";
+    PLOG_DEBUG << "[API] findBAStopNode: Direct node access not "
+                  "available, will use restart fallback";
   }
   return nullptr;
 }
@@ -637,12 +613,10 @@ void StopsHandler::createStop(
           return;
         }
 
-        if (stop.isMember("classes")) {
-          std::string err;
-          if (!validateClasses(stop["classes"], err)) {
-            callback(createErrorResponse(400, "Bad request", "Invalid 'classes' array"));
-            return;
-          }
+        // 'classes' and 'color' parameters are not supported for stop zones
+        if (stop.isMember("classes") || stop.isMember("color")) {
+          callback(createErrorResponse(400, "Bad request", "Unsupported parameter(s): 'classes' and/or 'color'"));
+          return;
         }
 
         // Validate optional numeric parameters
@@ -668,12 +642,10 @@ void StopsHandler::createStop(
         return;
       }
 
-      if (stop.isMember("classes")) {
-        std::string err;
-        if (!validateClasses(stop["classes"], err)) {
-          callback(createErrorResponse(400, "Bad request", "Invalid 'classes' array"));
-          return;
-        }
+      // 'classes' and 'color' parameters are not supported for stop zones
+      if (stop.isMember("classes") || stop.isMember("color")) {
+        callback(createErrorResponse(400, "Bad request", "Unsupported parameter(s): 'classes' and/or 'color'"));
+        return;
       }
 
       {
@@ -699,14 +671,17 @@ void StopsHandler::createStop(
       return;
     }
 
+    // Reload stops to get generated IDs
+    Json::Value savedStops = loadStopsFromConfig(instanceId);
+
     // Try updating runtime; fallback to restart
-    if (!updateStopsRuntime(instanceId, existingStops)) {
+    if (!updateStopsRuntime(instanceId, savedStops)) {
       restartInstanceForStopUpdate(instanceId);
     }
 
     // If single object request, return the created object with generated id
     if (!isArrayRequest) {
-      const Json::Value &created = existingStops[existingStops.size() - 1];
+      const Json::Value &created = savedStops[savedStops.size() - 1];
       callback(createSuccessResponse(created, 201));
       return;
     }
@@ -715,7 +690,7 @@ void StopsHandler::createStop(
     Json::Value result;
     result["message"] = "Stops created successfully";
     result["count"] = (int)stopsToAdd.size();
-    result["stops"] = stopsToAdd;
+    result["stops"] = savedStops;
     callback(createSuccessResponse(result, 201));
 
   } catch (const std::exception &e) {
@@ -946,12 +921,10 @@ void StopsHandler::updateStop(
           }
         }
 
-        if (stop.isMember("classes")) {
-          std::string error;
-          if (!validateClasses(stop["classes"], error)) {
-            callback(createErrorResponse(400, "Bad request", error));
-            return;
-          }
+        // 'classes' and 'color' parameters are not supported for stop zones
+        if (stop.isMember("classes") || stop.isMember("color")) {
+          callback(createErrorResponse(400, "Bad request", "Unsupported parameter(s): 'classes' and/or 'color'"));
+          return;
         }
 
         // Validate numeric params if present on merged stop
@@ -1140,22 +1113,24 @@ void StopsHandler::batchUpdateStops(
         return;
       }
 
-      if (!stop.isMember("roi") || !validateROI(stop["roi"], *new std::string())) {
+      std::string roiErr;
+      if (!stop.isMember("roi") || !validateROI(stop["roi"], roiErr)) {
         callback(createErrorResponse(400, "Bad request", "Each stop must contain a valid 'roi' array with at least 3 points"));
         return;
       }
 
-      {
-        std::string err;
-        if (!validateStopParameters(stop, err)) {
-          callback(createErrorResponse(400, "Bad request", err));
-          return;
-        }
+      // 'classes' and 'color' parameters are not supported for stop zones
+      if (stop.isMember("classes") || stop.isMember("color")) {
+        callback(createErrorResponse(400, "Bad request", "Unsupported parameter(s): 'classes' and/or 'color'"));
+        return;
       }
 
-      if (stop.isMember("classes") && !validateClasses(stop["classes"], *new std::string())) {
-        callback(createErrorResponse(400, "Bad request", "Invalid 'classes' array"));
-        return;
+      {
+        std::string paramErr;
+        if (!validateStopParameters(stop, paramErr)) {
+          callback(createErrorResponse(400, "Bad request", paramErr));
+          return;
+        }
       }
 
       newStops.append(stop);

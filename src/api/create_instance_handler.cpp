@@ -526,6 +526,18 @@ bool CreateInstanceHandler::parseRequest(const Json::Value &json,
         json["SFACE_MODEL_NAME"].asString();
   }
 
+  // Detection tuning parameters must be specified per-zone (JamZones/StopZones) and not as instance-level additionalParams
+  const std::vector<std::string> forbiddenKeys = {
+      "check_interval_frames", "check_min_hit_frames", "check_max_distance",
+      "check_min_stops", "check_notify_interval", "min_stop_seconds"};
+  for (const auto &k : forbiddenKeys) {
+    auto it = req.additionalParams.find(k);
+    if (it != req.additionalParams.end() && !it->second.empty()) {
+      error = "Invalid additionalParam: " + k + " must not be provided at instance level; specify per zone in JamZones or StopZones";
+      return false;
+    }
+  }
+
   return true;
 }
 

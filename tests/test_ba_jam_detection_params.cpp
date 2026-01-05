@@ -79,15 +79,9 @@ TEST_F(BaJamParamsTest, CreateInstanceWithValidBaJamParams) {
   body["autoStart"] = false;
   // Leave solution empty to avoid building pipeline in unit test
   body["solution"] = "";
-  Json::Value additional;
-  additional["check_interval_frames"] = "20";
-  additional["check_min_hit_frames"] = "50";
-  additional["check_max_distance"] = "8";
-  additional["check_min_stops"] = "8";
-  additional["check_notify_interval"] = "10";
-  body["additionalParams"] = additional;
 
   req->setBody(body.toStyledString());
+  req->addHeader("Content-Type", "application/json");
 
   HttpResponsePtr response;
   bool callbackCalled = false;
@@ -126,10 +120,12 @@ TEST_F(BaJamParamsTest, CreateInstanceWithInvalidBaJamParam) {
   body["autoStart"] = false;
   body["solution"] = "";
   Json::Value additional;
-  additional["check_interval_frames"] = "not-an-int";
+  // Instance-level detection parameters are forbidden; must be specified per-zone
+  additional["check_interval_frames"] = "20";
   body["additionalParams"] = additional;
 
   req->setBody(body.toStyledString());
+  req->addHeader("Content-Type", "application/json");
 
   HttpResponsePtr response;
   bool callbackCalled = false;

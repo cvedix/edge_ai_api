@@ -119,6 +119,11 @@ private:
   void registerBAJamSolution();
 
   /**
+   * @brief Register behavior analysis stop detection solution
+   */
+  void registerBAStopSolution();
+
+  /**
    * @brief Register YOLOv11 detection solution
    */
   void registerYOLOv11DetectionSolution();
@@ -189,9 +194,14 @@ private:
   void registerBACrosslineMQTTDefaultSolution();
 
   /**
-   * @brief Register behavior analysis stop detection solution
+   * @brief Register ba_jam_default solution
    */
-  void registerBAStopSolution();
+  void registerBAJamDefaultSolution();
+
+  /**
+   * @brief Register ba_jam_mqtt_default solution
+   */
+  void registerBAJamMQTTDefaultSolution();
 
   /**
    * @brief Register ba_stop_default solution
@@ -202,16 +212,6 @@ private:
    * @brief Register ba_stop_mqtt_default solution
    */
   void registerBAStopMQTTDefaultSolution();
-
-  /**
-   * @brief Register ba_jam_default solution
-   */
-  void registerBAJamDefaultSolution();
-
-  /**
-   * @brief Register ba_jam_mqtt_default solution
-   */
-  void registerBAJamMQTTDefaultSolution();
 
 #ifdef CVEDIX_WITH_RKNN
   /**

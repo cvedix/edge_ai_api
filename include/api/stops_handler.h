@@ -81,10 +81,10 @@ private:
                          const Json::Value &stops) const;
 
   bool validateROI(const Json::Value &roi, std::string &error) const;
-  bool validateClasses(const Json::Value &classes, std::string &error) const;
   bool validateStopParameters(const Json::Value &stop, std::string &error) const;
 
   bool restartInstanceForStopUpdate(const std::string &instanceId) const;
+
 
   std::shared_ptr<cvedix_nodes::cvedix_ba_stop_node>
   findBAStopNode(const std::string &instanceId) const;
