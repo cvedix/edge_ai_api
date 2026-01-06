@@ -64,13 +64,12 @@ private:
   bool saveJamsToConfig(const std::string &instanceId, const Json::Value &jams) const;
 
   bool validateROI(const Json::Value &roi, std::string &error) const;
-  bool validateClasses(const Json::Value &classes, std::string &error) const;
 
   bool restartInstanceForJamUpdate(const std::string &instanceId) const;
   std::shared_ptr<cvedix_nodes::cvedix_ba_jam_node>
   findBAJamNode(const std::string &instanceId) const;
 
-  Json::Value parseJamsFromJson(const Json::Value &jamsArray) const;
+  std::map<int, std::vector<cvedix_objects::cvedix_point>> parseJamsFromJson(const Json::Value &jamsArray) const;
 
   // Validate jam parameters for a single jam object. Returns true if valid and fills
   // `error` with a short description when invalid.

@@ -31,6 +31,7 @@
             "nodeType": "ba_stop",
             "nodeName": "ba_stop_{instanceId}",
             "parameters": {
+                "region_channel": "0",
                 "min_stop_seconds": "${MIN_STOP_SECONDS}",
                 "check_interval_frames": "${CHECK_INTERVAL_FRAMES}",
                 "check_min_hit_frames": "${CHECK_MIN_HIT_FRAMES}",

@@ -174,7 +174,7 @@ TEST_F(StopsHandlerTest, CreateStop) {
   Json::Value p3; p3["x"] = 10; p3["y"] = 10;
   roi.append(p1); roi.append(p2); roi.append(p3);
   body["roi"] = roi;
-
+  body["name"] = "Test Stop Zone";
 
   req->setBody(body.toStyledString());
   req->addHeader("Content-Type", "application/json");
@@ -197,6 +197,8 @@ TEST_F(StopsHandlerTest, CreateStop) {
   ASSERT_NE(json, nullptr);
   EXPECT_TRUE(json->isMember("id"));
   EXPECT_TRUE(json->isMember("roi"));
+  EXPECT_TRUE(json->isMember("name"));
+  EXPECT_EQ((*json)["name"].asString(), "Test Stop Zone");
 }
 
 // Test POST invalid ROI
@@ -380,6 +382,7 @@ TEST_F(StopsHandlerTest, UpdateStop) {
   Json::Value p3; p3["x"] = 10; p3["y"] = 10;
   roi.append(p1); roi.append(p2); roi.append(p3);
   body["roi"] = roi;
+  body["name"] = "Initial Stop Name";
 
   createReq->setBody(body.toStyledString());
 
@@ -411,6 +414,7 @@ TEST_F(StopsHandlerTest, UpdateStop) {
 
   Json::Value updateBody;
   updateBody["min_stop_seconds"] = 5;
+  updateBody["name"] = "Updated Stop Name";
 
   req->setBody(updateBody.toStyledString());
 
@@ -427,6 +431,22 @@ TEST_F(StopsHandlerTest, UpdateStop) {
   ASSERT_TRUE(callbackCalled);
   ASSERT_NE(response, nullptr);
   EXPECT_EQ(response->statusCode(), k200OK);
+
+  // Verify updated name via GET
+  auto getReq = HttpRequest::newHttpRequest();
+  getReq->setPath("/v1/core/instance/" + instance_id_ + "/stops/" + stop_id);
+  getReq->setMethod(Get);
+  HttpResponsePtr getResp;
+  bool getCalled = false;
+  handler_->getStop(getReq, [&](const HttpResponsePtr &resp) { getCalled = true; getResp = resp; });
+  std::this_thread::sleep_for(std::chrono::milliseconds(100));
+  ASSERT_TRUE(getCalled);
+  ASSERT_NE(getResp, nullptr);
+  EXPECT_EQ(getResp->statusCode(), k200OK);
+  auto getJson = getResp->getJsonObject();
+  ASSERT_NE(getJson, nullptr);
+  EXPECT_TRUE(getJson->isMember("name"));
+  EXPECT_EQ((*getJson)["name"].asString(), "Updated Stop Name");
 }
 
 // Test delete stop
@@ -510,6 +530,7 @@ TEST_F(StopsHandlerTest, BatchUpdateStops) {
     Json::Value p3; p3["x"] = 10; p3["y"] = 10;
     roi.append(p1); roi.append(p2); roi.append(p3);
     s["roi"] = roi;
+    s["name"] = "Batch Stop " + std::to_string(i+1);
     arr.append(s);
   }
 

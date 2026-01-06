@@ -466,9 +466,7 @@ void SolutionRegistry::registerBAStopSolution() {
   SolutionConfig::NodeConfig baStop;
   baStop.nodeType = "ba_stop";
   baStop.nodeName = "ba_stop_{instanceId}";
-  // Example: require an object to be stopped for 3 seconds and a sample StopZones array
-  baStop.parameters["min_stop_seconds"] = "3";
-  baStop.parameters["StopZones"] = "[{\"id\":\"a6e6270f-5662-42af-bc45-59b7131f7a5d\",\"roi\":[{\"x\":0,\"y\":0},{\"x\":10,\"y\":0},{\"x\":10,\"y\":10}]}]";
+  baStop.parameters["StopZones"] = "[{\"id\":\"a6e6270f-5662-42af-bc45-59b7131f7a5d\",\"name\":\"Stop Zone 1\",\"roi\":[{\"x\":0,\"y\":0},{\"x\":10,\"y\":0},{\"x\":10,\"y\":10}]}]";
   config.pipeline.push_back(baStop);
 
   // BA Stop OSD Node
@@ -544,9 +542,6 @@ void SolutionRegistry::registerBAJamSolution() {
   SolutionConfig::NodeConfig baJam;
   baJam.nodeType = "ba_jam";
   baJam.nodeName = "ba_jam_{instanceId}";
-  // Example parameters: channel, sensitivity, JamZones sample
-  baJam.parameters["channel"] = "0";
-  baJam.parameters["sensitivity"] = "0.6";
   baJam.parameters["JamZones"] = "[{\"id\":\"eff3827d-0154-45ce-bb36-dfbf34ab0ae0\",\"name\":\"Downtown Jam Zone\",\"roi\":[{\"x\":0,\"y\":100},{\"x\":1920,\"y\":100},{\"x\":1920,\"y\":400},{\"x\":0,\"y\":400}],\"enabled\":true,\"check_interval_frames\":20,\"check_min_hit_frames\":50,\"check_max_distance\":8,\"check_min_stops\":8,\"check_notify_interval\":10}]";
   config.pipeline.push_back(baJam);
 

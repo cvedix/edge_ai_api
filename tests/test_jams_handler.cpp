@@ -210,6 +210,8 @@ TEST_F(JamsHandlerTest, CreateJam) {
   EXPECT_EQ((*json)["check_min_stops"].asInt(), 8);
   EXPECT_TRUE(json->isMember("check_notify_interval"));
   EXPECT_EQ((*json)["check_notify_interval"].asInt(), 10);
+  EXPECT_TRUE(json->isMember("name"));
+  EXPECT_EQ((*json)["name"].asString(), "Test Jam Zone");
 }
 
 // Test POST /v1/core/instance/{instanceId}/jams - Create multiple jam zones
@@ -374,6 +376,22 @@ TEST_F(JamsHandlerTest, GetUpdateDeleteJam) {
   ASSERT_TRUE(updateCalled);
   ASSERT_NE(updateResp, nullptr);
   EXPECT_EQ(updateResp->statusCode(), k200OK);
+
+  // Verify updated name via GET
+  auto verifyReq = HttpRequest::newHttpRequest();
+  verifyReq->setPath("/v1/core/instance/" + instance_id_ + "/jams/" + jam_id);
+  verifyReq->setMethod(Get);
+  HttpResponsePtr verifyResp;
+  bool verifyCalled = false;
+  handler_->getJam(verifyReq, [&](const HttpResponsePtr &resp) { verifyCalled = true; verifyResp = resp; });
+  std::this_thread::sleep_for(std::chrono::milliseconds(100));
+  ASSERT_TRUE(verifyCalled);
+  ASSERT_NE(verifyResp, nullptr);
+  EXPECT_EQ(verifyResp->statusCode(), k200OK);
+  auto verifyJson = verifyResp->getJsonObject();
+  ASSERT_NE(verifyJson, nullptr);
+  EXPECT_TRUE(verifyJson->isMember("name"));
+  EXPECT_EQ((*verifyJson)["name"].asString(), "Updated Jam Name");
 
   // Delete jam
   auto delReq = HttpRequest::newHttpRequest();
