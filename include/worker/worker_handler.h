@@ -1,5 +1,6 @@
 #pragma once
 
+#include "worker/config_file_watcher.h"
 #include "worker/ipc_protocol.h"
 #include "worker/unix_socket.h"
 #include <atomic>
@@ -78,11 +79,20 @@ private:
   // Dependencies (initialized in worker process)
   std::unique_ptr<PipelineBuilder> pipeline_builder_;
 
+  // Config file watcher for automatic reload
+  std::unique_ptr<ConfigFileWatcher> config_watcher_;
+  std::string config_file_path_;
+
   // Pipeline state
   std::vector<std::shared_ptr<cvedix_nodes::cvedix_node>> pipeline_nodes_;
   bool pipeline_running_ = false;
   std::string current_state_ = "stopped";
   std::string last_error_;
+
+  // Hot swap pipeline for zero downtime
+  std::vector<std::shared_ptr<cvedix_nodes::cvedix_node>> new_pipeline_nodes_;
+  std::atomic<bool> building_new_pipeline_{false};
+  std::mutex pipeline_swap_mutex_;
 
   // Statistics
   std::atomic<uint64_t> frames_processed_{0};
@@ -172,6 +182,58 @@ private:
    * @brief Encode frame to base64 JPEG
    */
   std::string encodeFrameToBase64(const cv::Mat &frame, int quality = 85) const;
+
+  /**
+   * @brief Handle config file change (called by ConfigFileWatcher)
+   */
+  void onConfigFileChanged(const std::string &configPath);
+
+  /**
+   * @brief Load config from file
+   */
+  bool loadConfigFromFile(const std::string &configPath);
+
+  /**
+   * @brief Start config file watcher
+   */
+  void startConfigWatcher();
+
+  /**
+   * @brief Stop config file watcher
+   */
+  void stopConfigWatcher();
+
+  /**
+   * @brief Hot swap pipeline - pre-build new pipeline and swap seamlessly
+   * @param newConfig New configuration to build pipeline with
+   * @return true if successful
+   */
+  bool hotSwapPipeline(const Json::Value &newConfig);
+
+  /**
+   * @brief Pre-build pipeline in background (for hot swap)
+   * @param newConfig New configuration
+   * @return true if successful
+   */
+  bool preBuildPipeline(const Json::Value &newConfig);
+
+  /**
+   * @brief Check if config changes require pipeline rebuild
+   * @param oldConfig Old configuration
+   * @param newConfig New configuration
+   * @return true if rebuild is needed
+   */
+  bool checkIfNeedsRebuild(const Json::Value &oldConfig,
+                           const Json::Value &newConfig) const;
+
+  /**
+   * @brief Apply config changes to running pipeline without rebuild
+   * @param oldConfig Old configuration
+   * @param newConfig New configuration
+   * @return true if successful
+   */
+  bool applyConfigToPipeline(const Json::Value &oldConfig,
+                             const Json::Value &newConfig);
 };
 
 /**

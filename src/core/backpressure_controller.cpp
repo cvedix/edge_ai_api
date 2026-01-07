@@ -42,6 +42,28 @@ bool BackpressureController::shouldDropFrame(const std::string &instanceId) {
     }
     config = &configIt->second;
 
+    // PHASE 1: Check queue size first (queue-based dropping)
+    // This allows dropping frames when queue is full even if FPS limit not
+    // reached
+    auto statsIt = stats_.find(instanceId);
+    if (statsIt != stats_.end()) {
+      size_t current_queue_size =
+          statsIt->second.current_queue_size.load(std::memory_order_relaxed);
+      size_t max_queue_size = config->max_queue_size;
+
+      // Drop frame if queue is >= 80% full (prevent queue overflow)
+      // This allows keeping high FPS but dropping frames when queue gets full
+      const double queue_drop_threshold = 0.8; // 80% of max queue size
+      size_t drop_threshold =
+          static_cast<size_t>(max_queue_size * queue_drop_threshold);
+
+      if (current_queue_size >= drop_threshold) {
+        // Queue is getting full - drop this frame to prevent overflow
+        return true;
+      }
+    }
+
+    // PHASE 2: Check FPS limiting (time-based dropping)
     // Read atomic values while holding shared lock (safe)
     // The lock ensures config pointer is valid
     auto now = std::chrono::steady_clock::now();
@@ -131,6 +153,12 @@ void BackpressureController::recordQueueFull(const std::string &instanceId) {
   updateAdaptiveFPS(instanceId);
 }
 
+void BackpressureController::updateQueueSize(const std::string &instanceId,
+                                             size_t queue_size) {
+  auto &stats = stats_[instanceId];
+  stats.current_queue_size.store(queue_size, std::memory_order_relaxed);
+}
+
 double
 BackpressureController::getCurrentFPS(const std::string &instanceId) const {
   auto it = stats_.find(instanceId);
@@ -175,6 +203,8 @@ BackpressureController::getStats(const std::string &instanceId) const {
     snapshot.target_fps = stats.target_fps.load(std::memory_order_relaxed);
     snapshot.backpressure_detected =
         stats.backpressure_detected.load(std::memory_order_relaxed);
+    snapshot.current_queue_size =
+        stats.current_queue_size.load(std::memory_order_relaxed);
     snapshot.last_drop_time = stats.last_drop_time;
     snapshot.last_processed_time = stats.last_processed_time;
     return snapshot;
@@ -269,6 +299,25 @@ void BackpressureController::updateAdaptiveFPS(const std::string &instanceId) {
                                          std::memory_order_relaxed);
     }
   }
+}
+
+void BackpressureController::updateQueueSizeConfig(
+    const std::string &instanceId, size_t new_queue_size) {
+  std::unique_lock<std::shared_mutex> config_lock(config_mutex_);
+  auto configIt = configs_.find(instanceId);
+  if (configIt != configs_.end()) {
+    configIt->second.max_queue_size = new_queue_size;
+  }
+}
+
+size_t
+BackpressureController::getMaxQueueSize(const std::string &instanceId) const {
+  std::shared_lock<std::shared_mutex> read_lock(config_mutex_);
+  auto configIt = configs_.find(instanceId);
+  if (configIt != configs_.end()) {
+    return configIt->second.max_queue_size;
+  }
+  return 20; // Default
 }
 
 } // namespace BackpressureController

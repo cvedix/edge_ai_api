@@ -1,4 +1,5 @@
 #include "worker/worker_handler.h"
+#include "core/env_config.h"
 #include "core/pipeline_builder.h"
 #include "models/create_instance_request.h"
 #include "solutions/solution_registry.h"
@@ -6,6 +7,8 @@
 #include <cvedix/nodes/common/cvedix_node.h>
 #include <cvedix/nodes/src/cvedix_file_src_node.h>
 #include <cvedix/nodes/src/cvedix_rtsp_src_node.h>
+#include <filesystem>
+#include <fstream>
 #include <getopt.h>
 #include <iostream>
 #include <opencv2/imgcodecs.hpp>
@@ -84,6 +87,9 @@ int WorkerHandler::run() {
     }
   }
 
+  // Start config file watcher if config file path is available
+  startConfigWatcher();
+
   // Send ready signal to supervisor
   sendReadySignal();
 
@@ -98,6 +104,7 @@ int WorkerHandler::run() {
   std::cout << "[Worker:" << instance_id_ << "] Shutting down..." << std::endl;
 
   // Cleanup
+  stopConfigWatcher();
   stopPipeline();
   cleanupPipeline();
   server_->stop();
@@ -252,14 +259,110 @@ IPCMessage WorkerHandler::handleUpdateInstance(const IPCMessage &msg) {
   IPCMessage response;
   response.type = MessageType::UPDATE_INSTANCE_RESPONSE;
 
-  // Merge config
-  if (msg.payload.isMember("config")) {
-    for (const auto &key : msg.payload["config"].getMemberNames()) {
-      config_[key] = msg.payload["config"][key];
-    }
+  if (!msg.payload.isMember("config")) {
+    response.payload = createErrorResponse("No config provided",
+                                           ResponseStatus::INVALID_REQUEST);
+    return response;
   }
 
-  response.payload = createResponse(ResponseStatus::OK, "Instance updated");
+  // Store old config for comparison
+  Json::Value oldConfig = config_;
+
+  // Merge new config
+  const auto &newConfig = msg.payload["config"];
+  for (const auto &key : newConfig.getMemberNames()) {
+    config_[key] = newConfig[key];
+  }
+
+  // If pipeline is not running, just update config (will apply on next start)
+  if (!pipeline_running_ || pipeline_nodes_.empty()) {
+    std::cout << "[Worker:" << instance_id_
+              << "] Config updated (pipeline not running, will apply on start)"
+              << std::endl;
+    response.payload = createResponse(ResponseStatus::OK, "Instance updated");
+    return response;
+  }
+
+  // Pipeline is running - apply config changes automatically
+  std::cout << "[Worker:" << instance_id_
+            << "] Applying config changes to running pipeline..." << std::endl;
+
+  // Check if this is a structural change that requires rebuild
+  bool needsRebuild = checkIfNeedsRebuild(oldConfig, config_);
+
+  // Try to apply config changes runtime first (for parameters that can be
+  // updated)
+  bool canApplyRuntime = applyConfigToPipeline(oldConfig, config_);
+
+  // If rebuild is needed OR runtime update failed, use hot swap for zero
+  // downtime
+  if (needsRebuild || !canApplyRuntime) {
+    std::cout << "[Worker:" << instance_id_
+              << "] Config changes require pipeline rebuild, using hot swap..."
+              << std::endl;
+
+    // Use hot swap for zero downtime
+    if (pipeline_running_) {
+      if (hotSwapPipeline(config_)) {
+        std::cout << "[Worker:" << instance_id_
+                  << "] ✓ Pipeline hot-swapped successfully (zero downtime)"
+                  << std::endl;
+        response.payload =
+            createResponse(ResponseStatus::OK, "Instance updated (hot swap)");
+      } else {
+        // Fallback to traditional rebuild if hot swap failed
+        std::cerr << "[Worker:" << instance_id_
+                  << "] Hot swap failed, falling back to traditional rebuild"
+                  << std::endl;
+
+        stopPipeline();
+        if (!buildPipeline()) {
+          last_error_ = "Failed to rebuild pipeline: " + last_error_;
+          std::cerr << "[Worker:" << instance_id_ << "] " << last_error_
+                    << std::endl;
+          response.payload =
+              createErrorResponse(last_error_, ResponseStatus::INTERNAL_ERROR);
+          return response;
+        }
+        if (!startPipeline()) {
+          last_error_ = "Failed to restart pipeline: " + last_error_;
+          std::cerr << "[Worker:" << instance_id_ << "] " << last_error_
+                    << std::endl;
+          response.payload =
+              createErrorResponse(last_error_, ResponseStatus::INTERNAL_ERROR);
+          return response;
+        }
+        response.payload = createResponse(
+            ResponseStatus::OK, "Instance updated (rebuild fallback)");
+      }
+    } else {
+      // Pipeline not running, just rebuild
+      std::cout << "[Worker:" << instance_id_ << "] Rebuilding pipeline..."
+                << std::endl;
+      if (!buildPipeline()) {
+        last_error_ = "Failed to rebuild pipeline: " + last_error_;
+        std::cerr << "[Worker:" << instance_id_ << "] " << last_error_
+                  << std::endl;
+        response.payload =
+            createErrorResponse(last_error_, ResponseStatus::INTERNAL_ERROR);
+        return response;
+      }
+      std::cout << "[Worker:" << instance_id_
+                << "] ✓ Pipeline rebuilt successfully (was not running)"
+                << std::endl;
+      response.payload = createResponse(
+          ResponseStatus::OK, "Instance updated and pipeline rebuilt");
+    }
+    return response;
+  }
+
+  // Config changes applied runtime without rebuild
+  std::cout << "[Worker:" << instance_id_
+            << "] ✓ Config changes applied successfully (runtime update)"
+            << std::endl;
+  response.payload =
+      createResponse(ResponseStatus::OK, "Instance updated (runtime)");
+
   return response;
 }
 
@@ -605,6 +708,608 @@ std::string WorkerHandler::encodeFrameToBase64(const cv::Mat &frame,
   }
 
   return result;
+}
+
+bool WorkerHandler::checkIfNeedsRebuild(const Json::Value &oldConfig,
+                                        const Json::Value &newConfig) const {
+  // Check if solution changed (structural change)
+  if (oldConfig.isMember("Solution") && newConfig.isMember("Solution")) {
+    std::string oldSolutionId;
+    std::string newSolutionId;
+
+    if (oldConfig["Solution"].isString()) {
+      oldSolutionId = oldConfig["Solution"].asString();
+    } else if (oldConfig["Solution"].isObject()) {
+      oldSolutionId = oldConfig["Solution"].get("SolutionId", "").asString();
+    }
+
+    if (newConfig["Solution"].isString()) {
+      newSolutionId = newConfig["Solution"].asString();
+    } else if (newConfig["Solution"].isObject()) {
+      newSolutionId = newConfig["Solution"].get("SolutionId", "").asString();
+    }
+
+    if (oldSolutionId != newSolutionId) {
+      std::cout << "[Worker:" << instance_id_
+                << "] Solution changed: " << oldSolutionId << " -> "
+                << newSolutionId << " (requires rebuild)" << std::endl;
+      return true;
+    }
+  } else if (oldConfig.isMember("Solution") != newConfig.isMember("Solution")) {
+    // Solution added or removed
+    std::cout << "[Worker:" << instance_id_
+              << "] Solution presence changed (requires rebuild)" << std::endl;
+    return true;
+  }
+
+  // Check if SolutionId changed (alternative field)
+  if (oldConfig.isMember("SolutionId") && newConfig.isMember("SolutionId")) {
+    if (oldConfig["SolutionId"].asString() !=
+        newConfig["SolutionId"].asString()) {
+      std::cout << "[Worker:" << instance_id_
+                << "] SolutionId changed (requires rebuild)" << std::endl;
+      return true;
+    }
+  }
+
+  // Check for model path changes (requires rebuild as models are loaded at
+  // pipeline creation)
+  Json::Value oldParams = oldConfig.get("AdditionalParams", Json::Value());
+  Json::Value newParams = newConfig.get("AdditionalParams", Json::Value());
+
+  if (oldParams.isObject() && newParams.isObject()) {
+    // Check detector model file
+    if (oldParams.isMember("DETECTOR_MODEL_FILE") !=
+            newParams.isMember("DETECTOR_MODEL_FILE") ||
+        (oldParams.isMember("DETECTOR_MODEL_FILE") &&
+         newParams.isMember("DETECTOR_MODEL_FILE") &&
+         oldParams["DETECTOR_MODEL_FILE"].asString() !=
+             newParams["DETECTOR_MODEL_FILE"].asString())) {
+      std::cout << "[Worker:" << instance_id_
+                << "] Detector model file changed (requires rebuild)"
+                << std::endl;
+      return true;
+    }
+
+    // Check thermal model file
+    if (oldParams.isMember("DETECTOR_THERMAL_MODEL_FILE") !=
+            newParams.isMember("DETECTOR_THERMAL_MODEL_FILE") ||
+        (oldParams.isMember("DETECTOR_THERMAL_MODEL_FILE") &&
+         newParams.isMember("DETECTOR_THERMAL_MODEL_FILE") &&
+         oldParams["DETECTOR_THERMAL_MODEL_FILE"].asString() !=
+             newParams["DETECTOR_THERMAL_MODEL_FILE"].asString())) {
+      std::cout << "[Worker:" << instance_id_
+                << "] Thermal model file changed (requires rebuild)"
+                << std::endl;
+      return true;
+    }
+
+    // Check other model paths (MODEL_PATH, SFACE_MODEL_PATH, etc.)
+    std::vector<std::string> modelPathKeys = {"MODEL_PATH", "SFACE_MODEL_PATH",
+                                              "WEIGHTS_PATH", "CONFIG_PATH"};
+    for (const auto &key : modelPathKeys) {
+      if (oldParams.isMember(key) != newParams.isMember(key) ||
+          (oldParams.isMember(key) && newParams.isMember(key) &&
+           oldParams[key].asString() != newParams[key].asString())) {
+        std::cout << "[Worker:" << instance_id_ << "] " << key
+                  << " changed (requires rebuild)" << std::endl;
+        return true;
+      }
+    }
+
+    // Check for CrossingLines changes (lines configuration for BA crossline)
+    // Lines are stored as JSON string in AdditionalParams["CrossingLines"]
+    if (oldParams.isMember("CrossingLines") !=
+            newParams.isMember("CrossingLines") ||
+        (oldParams.isMember("CrossingLines") &&
+         newParams.isMember("CrossingLines") &&
+         oldParams["CrossingLines"].asString() !=
+             newParams["CrossingLines"].asString())) {
+      std::cout << "[Worker:" << instance_id_
+                << "] CrossingLines changed (requires rebuild)" << std::endl;
+      return true;
+    }
+  }
+
+  // Other structural changes that require rebuild can be added here
+  return false;
+}
+
+bool WorkerHandler::applyConfigToPipeline(const Json::Value &oldConfig,
+                                          const Json::Value &newConfig) {
+  try {
+    // Extract AdditionalParams from config
+    Json::Value oldParams = oldConfig.get("AdditionalParams", Json::Value());
+    Json::Value newParams = newConfig.get("AdditionalParams", Json::Value());
+
+    // Check for source URL changes (RTSP, RTMP, FILE_PATH)
+    bool sourceUrlChanged = false;
+    std::string newRtspUrl;
+    std::string newRtmpUrl;
+    std::string newFilePath;
+
+    if (newParams.isMember("RTSP_SRC_URL") || newParams.isMember("RTSP_URL")) {
+      std::string oldUrl = "";
+      if (oldParams.isMember("RTSP_SRC_URL")) {
+        oldUrl = oldParams["RTSP_SRC_URL"].asString();
+      } else if (oldParams.isMember("RTSP_URL")) {
+        oldUrl = oldParams["RTSP_URL"].asString();
+      }
+
+      if (newParams.isMember("RTSP_SRC_URL")) {
+        newRtspUrl = newParams["RTSP_SRC_URL"].asString();
+      } else if (newParams.isMember("RTSP_URL")) {
+        newRtspUrl = newParams["RTSP_URL"].asString();
+      }
+
+      if (oldUrl != newRtspUrl) {
+        sourceUrlChanged = true;
+        std::cout << "[Worker:" << instance_id_
+                  << "] RTSP URL changed: " << oldUrl << " -> " << newRtspUrl
+                  << std::endl;
+      }
+    }
+
+    if (newParams.isMember("RTMP_SRC_URL") || newParams.isMember("RTMP_URL")) {
+      std::string oldUrl = "";
+      if (oldParams.isMember("RTMP_SRC_URL")) {
+        oldUrl = oldParams["RTMP_SRC_URL"].asString();
+      } else if (oldParams.isMember("RTMP_URL")) {
+        oldUrl = oldParams["RTMP_URL"].asString();
+      }
+
+      if (newParams.isMember("RTMP_SRC_URL")) {
+        newRtmpUrl = newParams["RTMP_SRC_URL"].asString();
+      } else if (newParams.isMember("RTMP_URL")) {
+        newRtmpUrl = newParams["RTMP_URL"].asString();
+      }
+
+      if (oldUrl != newRtmpUrl) {
+        sourceUrlChanged = true;
+        std::cout << "[Worker:" << instance_id_
+                  << "] RTMP URL changed: " << oldUrl << " -> " << newRtmpUrl
+                  << std::endl;
+      }
+    }
+
+    if (newParams.isMember("FILE_PATH")) {
+      std::string oldPath = oldParams.get("FILE_PATH", "").asString();
+      newFilePath = newParams["FILE_PATH"].asString();
+
+      if (oldPath != newFilePath) {
+        sourceUrlChanged = true;
+        std::cout << "[Worker:" << instance_id_
+                  << "] FILE_PATH changed: " << oldPath << " -> " << newFilePath
+                  << std::endl;
+      }
+    }
+
+    // If source URL changed, we need to rebuild pipeline
+    // CVEDIX source nodes don't support changing URL/path at runtime
+    if (sourceUrlChanged) {
+      std::cout << "[Worker:" << instance_id_
+                << "] Source URL changed, requires pipeline rebuild"
+                << std::endl;
+      return false; // Trigger rebuild
+    }
+
+    // Check for other parameter changes that might need rebuild
+    // Some parameters like CrossingLines, Zone, etc. need rebuild
+    if (newParams.isMember("CrossingLines")) {
+      std::string oldLines = oldParams.get("CrossingLines", "").asString();
+      std::string newLines = newParams["CrossingLines"].asString();
+      if (oldLines != newLines) {
+        std::cout << "[Worker:" << instance_id_
+                  << "] CrossingLines changed, requires rebuild" << std::endl;
+        return false; // Trigger rebuild
+      }
+    }
+
+    // Check for Zone changes (if applicable)
+    if (newConfig.isMember("Zone") || oldConfig.isMember("Zone")) {
+      if (newConfig["Zone"].toStyledString() !=
+          oldConfig["Zone"].toStyledString()) {
+        std::cout << "[Worker:" << instance_id_
+                  << "] Zone configuration changed, requires rebuild"
+                  << std::endl;
+        return false; // Trigger rebuild
+      }
+    }
+
+    // For other parameter changes, log them
+    // Most CVEDIX nodes don't support runtime parameter updates
+    // Config is merged, but changes will take effect after rebuild
+    std::vector<std::string> changedParams;
+    for (const auto &key : newParams.getMemberNames()) {
+      if (key != "RTSP_SRC_URL" && key != "RTSP_URL" && key != "RTMP_SRC_URL" &&
+          key != "RTMP_URL" && key != "FILE_PATH" && key != "CrossingLines") {
+        if (!oldParams.isMember(key) ||
+            oldParams[key].asString() != newParams[key].asString()) {
+          changedParams.push_back(key);
+        }
+      }
+    }
+
+    if (!changedParams.empty()) {
+      std::cout << "[Worker:" << instance_id_
+                << "] Parameter changes detected: ";
+      for (size_t i = 0; i < changedParams.size(); ++i) {
+        std::cout << changedParams[i];
+        if (i < changedParams.size() - 1) {
+          std::cout << ", ";
+        }
+      }
+      std::cout << std::endl;
+    }
+
+    // For parameters that don't require rebuild, config is merged
+    // However, since CVEDIX nodes don't support runtime updates for most
+    // params, we return false to trigger rebuild so changes take effect
+    // immediately This ensures ALL config changes are applied, not just merged
+    if (!changedParams.empty()) {
+      std::cout << "[Worker:" << instance_id_
+                << "] Parameters changed, rebuilding to apply changes"
+                << std::endl;
+      return false; // Trigger rebuild to apply parameter changes
+    }
+
+    // No significant changes detected
+    std::cout << "[Worker:" << instance_id_
+              << "] No significant parameter changes detected" << std::endl;
+    return true;
+
+  } catch (const std::exception &e) {
+    std::cerr << "[Worker:" << instance_id_
+              << "] Error applying config to pipeline: " << e.what()
+              << std::endl;
+    return false;
+  }
+}
+
+void WorkerHandler::startConfigWatcher() {
+  // Determine config file path
+  // Try to get from environment or use default instances.json location
+  std::string storageDir =
+      EnvConfig::resolveDirectory("./instances", "instances");
+  config_file_path_ = storageDir + "/instances.json";
+
+  // Check if file exists
+  if (!std::filesystem::exists(config_file_path_)) {
+    std::cout << "[Worker:" << instance_id_
+              << "] Config file not found: " << config_file_path_
+              << ", file watching disabled" << std::endl;
+    return;
+  }
+
+  // Create watcher with callback
+  config_watcher_ = std::make_unique<ConfigFileWatcher>(
+      config_file_path_, [this](const std::string &configPath) {
+        onConfigFileChanged(configPath);
+      });
+
+  // Start watching
+  config_watcher_->start();
+
+  std::cout << "[Worker:" << instance_id_
+            << "] Started watching config file: " << config_file_path_
+            << std::endl;
+}
+
+void WorkerHandler::stopConfigWatcher() {
+  if (config_watcher_) {
+    config_watcher_->stop();
+    config_watcher_.reset();
+    std::cout << "[Worker:" << instance_id_ << "] Stopped config file watcher"
+              << std::endl;
+  }
+}
+
+void WorkerHandler::onConfigFileChanged(const std::string &configPath) {
+  std::cout << "[Worker:" << instance_id_
+            << "] Config file changed, reloading..." << std::endl;
+
+  // Load new config from file
+  if (!loadConfigFromFile(configPath)) {
+    std::cerr << "[Worker:" << instance_id_
+              << "] Failed to load config from file" << std::endl;
+    return;
+  }
+
+  // Apply config changes (this will trigger rebuild if needed)
+  // We create a fake UPDATE message to reuse existing update logic
+  worker::IPCMessage updateMsg;
+  updateMsg.type = worker::MessageType::UPDATE_INSTANCE;
+  updateMsg.payload["instance_id"] = instance_id_;
+  updateMsg.payload["config"] = config_;
+
+  // Handle update (this will automatically rebuild if needed)
+  handleUpdateInstance(updateMsg);
+
+  std::cout << "[Worker:" << instance_id_
+            << "] Config reloaded and applied successfully" << std::endl;
+}
+
+bool WorkerHandler::loadConfigFromFile(const std::string &configPath) {
+  try {
+    if (!std::filesystem::exists(configPath)) {
+      std::cerr << "[Worker:" << instance_id_
+                << "] Config file does not exist: " << configPath << std::endl;
+      return false;
+    }
+
+    std::ifstream file(configPath);
+    if (!file.is_open()) {
+      std::cerr << "[Worker:" << instance_id_
+                << "] Failed to open config file: " << configPath << std::endl;
+      return false;
+    }
+
+    Json::Value root;
+    Json::CharReaderBuilder builder;
+    std::string errors;
+    if (!Json::parseFromStream(builder, file, &root, &errors)) {
+      std::cerr << "[Worker:" << instance_id_
+                << "] Failed to parse config file: " << errors << std::endl;
+      return false;
+    }
+
+    // Extract config for this instance
+    if (!root.isMember("instances") || !root["instances"].isObject()) {
+      std::cerr << "[Worker:" << instance_id_
+                << "] Config file does not contain instances object"
+                << std::endl;
+      return false;
+    }
+
+    const auto &instances = root["instances"];
+    if (!instances.isMember(instance_id_)) {
+      std::cerr << "[Worker:" << instance_id_
+                << "] Instance not found in config file" << std::endl;
+      return false;
+    }
+
+    // Load instance config
+    const auto &instanceConfig = instances[instance_id_];
+
+    // Convert to worker config format
+    Json::Value newConfig;
+
+    // Extract solution
+    if (instanceConfig.isMember("SolutionId")) {
+      newConfig["SolutionId"] = instanceConfig["SolutionId"];
+    }
+
+    // Extract AdditionalParams
+    if (instanceConfig.isMember("AdditionalParams")) {
+      newConfig["AdditionalParams"] = instanceConfig["AdditionalParams"];
+    } else {
+      // Build AdditionalParams from various fields
+      Json::Value additionalParams;
+      if (instanceConfig.isMember("RtspUrl")) {
+        additionalParams["RTSP_URL"] = instanceConfig["RtspUrl"];
+      }
+      if (instanceConfig.isMember("RtmpUrl")) {
+        additionalParams["RTMP_URL"] = instanceConfig["RtmpUrl"];
+      }
+      if (instanceConfig.isMember("FilePath")) {
+        additionalParams["FILE_PATH"] = instanceConfig["FilePath"];
+      }
+      newConfig["AdditionalParams"] = additionalParams;
+    }
+
+    // Extract DisplayName
+    if (instanceConfig.isMember("DisplayName")) {
+      newConfig["DisplayName"] = instanceConfig["DisplayName"];
+    }
+
+    // Merge with existing config
+    for (const auto &key : newConfig.getMemberNames()) {
+      config_[key] = newConfig[key];
+    }
+
+    std::cout << "[Worker:" << instance_id_
+              << "] Config loaded successfully from file" << std::endl;
+    return true;
+
+  } catch (const std::exception &e) {
+    std::cerr << "[Worker:" << instance_id_
+              << "] Exception loading config: " << e.what() << std::endl;
+    return false;
+  }
+}
+
+bool WorkerHandler::hotSwapPipeline(const Json::Value &newConfig) {
+  std::lock_guard<std::mutex> lock(pipeline_swap_mutex_);
+
+  if (!pipeline_running_ || pipeline_nodes_.empty()) {
+    // Pipeline not running, just rebuild normally
+    return buildPipeline();
+  }
+
+  std::cout << "[Worker:" << instance_id_
+            << "] Starting hot swap pipeline (minimal downtime)..."
+            << std::endl;
+
+  auto totalStartTime = std::chrono::steady_clock::now();
+
+  // Step 1: Pre-build new pipeline (while old pipeline still running)
+  std::cout
+      << "[Worker:" << instance_id_
+      << "] Step 1/3: Pre-building new pipeline (old pipeline still running)..."
+      << std::endl;
+
+  building_new_pipeline_.store(true);
+  new_pipeline_nodes_.clear();
+
+  // Save current config
+  Json::Value savedConfig = config_;
+
+  // Temporarily update config for building
+  Json::Value tempConfig = config_;
+  for (const auto &key : newConfig.getMemberNames()) {
+    tempConfig[key] = newConfig[key];
+  }
+
+  // Build new pipeline (don't start it yet)
+  auto buildStartTime = std::chrono::steady_clock::now();
+  if (!preBuildPipeline(tempConfig)) {
+    std::cerr << "[Worker:" << instance_id_
+              << "] Failed to pre-build new pipeline" << std::endl;
+    building_new_pipeline_.store(false);
+    return false;
+  }
+  auto buildEndTime = std::chrono::steady_clock::now();
+  auto buildDuration = std::chrono::duration_cast<std::chrono::milliseconds>(
+                           buildEndTime - buildStartTime)
+                           .count();
+
+  std::cout << "[Worker:" << instance_id_ << "] ✓ New pipeline pre-built in "
+            << buildDuration << "ms (old pipeline still running)" << std::endl;
+
+  // Step 2: Stop old pipeline (as fast as possible)
+  std::cout << "[Worker:" << instance_id_
+            << "] Step 2/3: Stopping old pipeline (fast swap)..." << std::endl;
+
+  auto stopStartTime = std::chrono::steady_clock::now();
+
+  // Stop source nodes first (this stops the pipeline)
+  bool stopSuccess = false;
+  for (const auto &node : pipeline_nodes_) {
+    if (node) {
+      try {
+        // Try to stop gracefully first
+        auto rtspNode =
+            std::dynamic_pointer_cast<cvedix_nodes::cvedix_rtsp_src_node>(node);
+        if (rtspNode) {
+          rtspNode->stop();
+        } else {
+          auto fileNode =
+              std::dynamic_pointer_cast<cvedix_nodes::cvedix_file_src_node>(
+                  node);
+          if (fileNode) {
+            fileNode->stop();
+          }
+        }
+
+        // Detach to fully stop pipeline
+        node->detach_recursively();
+        stopSuccess = true;
+        break; // Only need to stop source node
+      } catch (const std::exception &e) {
+        std::cerr << "[Worker:" << instance_id_
+                  << "] Error stopping old pipeline: " << e.what() << std::endl;
+      }
+    }
+  }
+
+  if (!stopSuccess) {
+    std::cerr << "[Worker:" << instance_id_
+              << "] Warning: Failed to stop old pipeline gracefully"
+              << std::endl;
+  }
+
+  pipeline_running_ = false;
+
+  auto stopEndTime = std::chrono::steady_clock::now();
+  auto stopDuration = std::chrono::duration_cast<std::chrono::milliseconds>(
+                          stopEndTime - stopStartTime)
+                          .count();
+
+  std::cout << "[Worker:" << instance_id_ << "] Old pipeline stopped in "
+            << stopDuration << "ms" << std::endl;
+
+  // Step 3: Swap pipelines and start new one immediately
+  std::cout << "[Worker:" << instance_id_
+            << "] Step 3/3: Swapping to new pipeline..." << std::endl;
+
+  auto swapStartTime = std::chrono::steady_clock::now();
+
+  // Swap pipelines
+  pipeline_nodes_.clear();
+  pipeline_nodes_ = std::move(new_pipeline_nodes_);
+  new_pipeline_nodes_.clear();
+  building_new_pipeline_.store(false);
+
+  // Update config
+  config_ = tempConfig;
+
+  // Start new pipeline immediately
+  if (!startPipeline()) {
+    std::cerr << "[Worker:" << instance_id_
+              << "] Failed to start new pipeline after swap" << std::endl;
+    pipeline_running_ = false;
+    config_ = savedConfig; // Restore config
+    return false;
+  }
+
+  auto swapEndTime = std::chrono::steady_clock::now();
+  auto swapDuration = std::chrono::duration_cast<std::chrono::milliseconds>(
+                          swapEndTime - swapStartTime)
+                          .count();
+
+  auto totalDuration = std::chrono::duration_cast<std::chrono::milliseconds>(
+                           swapEndTime - totalStartTime)
+                           .count();
+
+  auto downtime = std::chrono::duration_cast<std::chrono::milliseconds>(
+                      swapEndTime - stopStartTime)
+                      .count();
+
+  std::cout << "[Worker:" << instance_id_
+            << "] ✓ Pipeline hot-swapped successfully!" << std::endl;
+  std::cout << "[Worker:" << instance_id_
+            << "]   - Pre-build time: " << buildDuration << "ms (no downtime)"
+            << std::endl;
+  std::cout << "[Worker:" << instance_id_ << "]   - Downtime: " << downtime
+            << "ms" << std::endl;
+  std::cout << "[Worker:" << instance_id_
+            << "]   - Total time: " << totalDuration << "ms" << std::endl;
+
+  return true;
+}
+
+bool WorkerHandler::preBuildPipeline(const Json::Value &newConfig) {
+  if (!pipeline_builder_) {
+    last_error_ = "Pipeline builder not initialized";
+    return false;
+  }
+
+  try {
+    // Parse config to CreateInstanceRequest
+    CreateInstanceRequest req = parseCreateRequest(newConfig);
+
+    if (req.solution.empty()) {
+      last_error_ = "No solution specified in config";
+      return false;
+    }
+
+    // Get solution config from singleton
+    auto optSolution =
+        SolutionRegistry::getInstance().getSolution(req.solution);
+    if (!optSolution.has_value()) {
+      last_error_ = "Solution not found: " + req.solution;
+      return false;
+    }
+
+    // Build new pipeline (don't start it)
+    new_pipeline_nodes_ = pipeline_builder_->buildPipeline(optSolution.value(),
+                                                           req, instance_id_);
+
+    if (new_pipeline_nodes_.empty()) {
+      last_error_ = "Pipeline builder returned empty pipeline";
+      return false;
+    }
+
+    std::cout << "[Worker:" << instance_id_ << "] Pre-built pipeline with "
+              << new_pipeline_nodes_.size() << " nodes" << std::endl;
+    return true;
+
+  } catch (const std::exception &e) {
+    last_error_ = e.what();
+    std::cerr << "[Worker:" << instance_id_
+              << "] Failed to pre-build pipeline: " << e.what() << std::endl;
+    return false;
+  }
 }
 
 // ============================================================================

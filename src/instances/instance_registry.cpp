@@ -1,4 +1,5 @@
 #include "instances/instance_registry.h"
+#include "core/adaptive_queue_size_manager.h"
 #include "core/backpressure_controller.h"
 #include "core/logger.h"
 #include "core/logging_flags.h"
@@ -2699,29 +2700,47 @@ bool InstanceRegistry::startPipeline(
 
     // If user didn't provide FPS, auto-detect based on model type
     if (!userFPSProvided) {
-      // Detect if pipeline contains slow nodes (Mask RCNN, OpenPose, etc.)
-      // These models are computationally expensive and need lower FPS
+      // Detect if pipeline contains slow nodes (Mask RCNN, OpenPose, Face
+      // Detector, etc.) These models are computationally expensive and need
+      // lower FPS
       bool hasSlowModel = false;
+      bool hasFaceDetector = false;
       for (const auto &node : nodes) {
         auto maskRCNNNode = std::dynamic_pointer_cast<
             cvedix_nodes::cvedix_mask_rcnn_detector_node>(node);
         auto openPoseNode = std::dynamic_pointer_cast<
             cvedix_nodes::cvedix_openpose_detector_node>(node);
+        auto faceDetectorNode = std::dynamic_pointer_cast<
+            cvedix_nodes::cvedix_yunet_face_detector_node>(node);
         if (maskRCNNNode || openPoseNode) {
           hasSlowModel = true;
           break;
         }
+        if (faceDetectorNode) {
+          hasFaceDetector = true;
+        }
       }
 
-      // Use lower FPS for slow models to prevent queue overflow
-      maxFPS = hasSlowModel
-                   ? 10.0
-                   : 30.0; // 10 FPS for Mask RCNN/OpenPose, 30 FPS for others
+      // Use lower FPS for very slow models, but keep high FPS for face detector
+      // Face detector will use frame dropping based on queue size instead of
+      // FPS limiting Very slow models (Mask RCNN/OpenPose): 10 FPS Others
+      // (including face detector): 30 FPS with queue-based dropping
+      if (hasSlowModel) {
+        maxFPS = 10.0; // Very slow models
+      } else {
+        maxFPS =
+            30.0; // Normal models and face detector - use queue-based dropping
+      }
 
       if (hasSlowModel) {
         std::cerr << "[InstanceRegistry] ⚠ Detected slow model (Mask "
                      "RCNN/OpenPose) - using reduced FPS: "
                   << maxFPS << " FPS to prevent queue overflow" << std::endl;
+      } else if (hasFaceDetector) {
+        std::cerr
+            << "[InstanceRegistry] ⚠ Detected face detector - using 30 FPS "
+               "with queue-based frame dropping to prevent queue overflow"
+            << std::endl;
       }
     }
 
@@ -2732,12 +2751,19 @@ bool InstanceRegistry::startPipeline(
 
     // Configure with DROP_NEWEST policy (keep latest frame, drop old ones)
     // This prevents queue backlog while maintaining current state
-    // Increased queue size from 10 to 20 for better buffering with multiple
-    // instances
+    // Use adaptive queue size manager for dynamic queue sizing based on system
+    // status
+    using namespace AdaptiveQueueSize;
+    auto &adaptiveQueue = AdaptiveQueueSizeManager::getInstance();
+
+    // Get recommended queue size based on system status
+    size_t recommended_queue_size =
+        adaptiveQueue.getRecommendedQueueSize(instanceId);
+
     controller.configure(
         instanceId, BackpressureController::DropPolicy::DROP_NEWEST,
-        maxFPS, // FPS from user or auto-detected
-        20); // Max queue size warning threshold (increased for multi-instance)
+        maxFPS,                  // FPS from user or auto-detected
+        recommended_queue_size); // Dynamic queue size based on system status
 
     std::cerr << "[InstanceRegistry] ✓ Backpressure control configured: "
               << maxFPS << " FPS max" << std::endl;
@@ -5078,6 +5104,46 @@ InstanceRegistry::getInstanceStatistics(const std::string &instanceId) {
     stats.input_queue_size = static_cast<int64_t>(tracker.max_queue_size_seen);
   }
 
+  // Update adaptive queue size manager with instance metrics
+  using namespace AdaptiveQueueSize;
+  auto &adaptiveQueue = AdaptiveQueueSizeManager::getInstance();
+  if (adaptiveQueue.isEnabled()) {
+    InstanceMetrics inst_metrics;
+    inst_metrics.current_latency_ms = stats.latency;
+    inst_metrics.processing_fps = currentFps;
+    inst_metrics.source_fps = sourceFps > 0.0 ? sourceFps : currentFps;
+    inst_metrics.current_queue_size =
+        static_cast<size_t>(stats.input_queue_size);
+
+    // Calculate queue full frequency (simplified - use queue full count from
+    // backpressure)
+    using namespace BackpressureController;
+    auto &backpressure =
+        BackpressureController::BackpressureController::getInstance();
+    auto backpressureStats = backpressure.getStats(instanceId);
+    // Estimate queue full frequency (events per second)
+    // This is a simplified calculation - in production, track over time window
+    inst_metrics.queue_full_frequency =
+        backpressureStats.queue_full_count > 0 ? 1.0 : 0.0;
+
+    adaptiveQueue.updateInstanceMetrics(instanceId, inst_metrics);
+
+    // Check if queue size should be updated
+    size_t recommended_size = adaptiveQueue.getRecommendedQueueSize(instanceId);
+    size_t current_max_size = backpressure.getMaxQueueSize(instanceId);
+
+    if (recommended_size != current_max_size) {
+      // Update queue size in backpressure controller
+      backpressure.updateQueueSizeConfig(instanceId, recommended_size);
+
+      if (isInstanceLoggingEnabled()) {
+        PLOG_INFO << "[InstanceRegistry] Updated queue size for instance "
+                  << instanceId << ": " << current_max_size << " -> "
+                  << recommended_size;
+      }
+    }
+  }
+
   return stats;
 }
 
@@ -5330,17 +5396,22 @@ void InstanceRegistry::setupQueueSizeTrackingHook(
                   tracker.max_queue_size_seen = static_cast<size_t>(queue_size);
                 }
 
-                // PHASE 3: Record queue full event for backpressure control (no
-                // lock needed - singleton) Check if queue is getting full
-                // (threshold: 80% of typical max)
-                // Increased from 8 to 16 to match increased queue size (20) for
-                // multi-instance performance
+                // PHASE 3: Update queue size in backpressure controller for
+                // queue-based frame dropping (no lock needed - singleton)
+                using namespace BackpressureController;
+                auto &backpressure = BackpressureController::
+                    BackpressureController::getInstance();
+                backpressure.updateQueueSize(
+                    instanceId,
+                    static_cast<size_t>(
+                        queue_size)); // Thread-safe, no lock needed
+
+                // Record queue full event if queue is getting full (threshold:
+                // 80% of typical max) Increased from 8 to 16 to match increased
+                // queue size (20) for multi-instance performance
                 const size_t queue_warning_threshold =
                     16; // Warn at 16 frames (80% of 20)
                 if (queue_size >= static_cast<int>(queue_warning_threshold)) {
-                  using namespace BackpressureController;
-                  auto &backpressure = BackpressureController::
-                      BackpressureController::getInstance();
                   backpressure.recordQueueFull(
                       instanceId); // Thread-safe, no lock needed
                 }

@@ -36,6 +36,8 @@ struct BackpressureStats {
   std::atomic<double> current_fps{0.0};
   std::atomic<double> target_fps{30.0};
   std::atomic<bool> backpressure_detected{false};
+  std::atomic<size_t> current_queue_size{
+      0}; // Current queue size for queue-based dropping
   std::chrono::steady_clock::time_point last_drop_time;
   std::chrono::steady_clock::time_point last_processed_time;
 };
@@ -81,6 +83,13 @@ public:
   void recordQueueFull(const std::string &instanceId);
 
   /**
+   * @brief Update current queue size for an instance
+   * @param instanceId Instance ID
+   * @param queue_size Current queue size
+   */
+  void updateQueueSize(const std::string &instanceId, size_t queue_size);
+
+  /**
    * @brief Get current FPS for instance
    */
   double getCurrentFPS(const std::string &instanceId) const;
@@ -105,6 +114,7 @@ public:
     double current_fps;
     double target_fps;
     bool backpressure_detected;
+    size_t current_queue_size;
     std::chrono::steady_clock::time_point last_drop_time;
     std::chrono::steady_clock::time_point last_processed_time;
   };
@@ -120,6 +130,21 @@ public:
    * @brief Update adaptive FPS based on backpressure
    */
   void updateAdaptiveFPS(const std::string &instanceId);
+
+  /**
+   * @brief Update queue size for an instance (for dynamic queue sizing)
+   * @param instanceId Instance ID
+   * @param new_queue_size New queue size
+   */
+  void updateQueueSizeConfig(const std::string &instanceId,
+                             size_t new_queue_size);
+
+  /**
+   * @brief Get current max queue size for instance
+   * @param instanceId Instance ID
+   * @return Current max queue size
+   */
+  size_t getMaxQueueSize(const std::string &instanceId) const;
 
 private:
   BackpressureController() = default;

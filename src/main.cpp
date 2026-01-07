@@ -3591,14 +3591,26 @@ int main(int argc, char *argv[]) {
     // Try to find available port before starting Drogon
     // Drogon's addListener doesn't throw - it fails at run() time
     // So we check port availability manually first
-    auto isPortAvailable = [](const std::string &host, int port) -> bool {
+    // Note: When SO_REUSEPORT is enabled, multiple sockets can bind to the same
+    // port So we need to handle both cases
+    auto isPortAvailable = [enable_reuse_port](const std::string &host,
+                                               int port) -> bool {
       int sock = socket(AF_INET, SOCK_STREAM, 0);
       if (sock < 0)
         return false;
 
-      // Allow reuse
+      // Always allow address reuse to handle TIME_WAIT sockets
       int opt = 1;
       setsockopt(sock, SOL_SOCKET, SO_REUSEADDR, &opt, sizeof(opt));
+
+      // If SO_REUSEPORT is enabled, also set it for port availability check
+      // This allows checking if port is available when SO_REUSEPORT will be
+      // used
+      if (enable_reuse_port) {
+#ifdef SO_REUSEPORT
+        setsockopt(sock, SOL_SOCKET, SO_REUSEPORT, &opt, sizeof(opt));
+#endif
+      }
 
       struct sockaddr_in addr;
       memset(&addr, 0, sizeof(addr));
@@ -3640,11 +3652,10 @@ int main(int argc, char *argv[]) {
     }
 
     // Now add listener with the available port
-    if (enable_reuse_port) {
-      app.addListener(host, port, false, "", "");
-    } else {
-      app.addListener(host, port, false, "", "");
-    }
+    // Note: Drogon framework handles SO_REUSEPORT internally based on thread
+    // pool We just need to call addListener once - Drogon will create multiple
+    // listeners if needed for load balancing when using multiple threads
+    app.addListener(host, port, false, "", "");
 
     PLOG_INFO << "[Server] Starting HTTP server on " << host << ":" << port;
     PLOG_INFO << "[Server] Access http://" << host << ":" << port

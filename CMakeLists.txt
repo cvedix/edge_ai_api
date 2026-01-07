@@ -1166,6 +1166,7 @@ message(STATUS "✓ Edge AI Core library configured")
 set(WORKER_SOURCES
     src/worker/edge_ai_worker.cpp
     src/worker/worker_handler.cpp
+    src/worker/config_file_watcher.cpp
     src/worker/ipc_protocol.cpp
     src/worker/unix_socket.cpp
 )

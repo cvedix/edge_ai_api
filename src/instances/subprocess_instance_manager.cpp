@@ -1,7 +1,9 @@
 #include "instances/subprocess_instance_manager.h"
 #include "core/uuid_generator.h"
 #include "models/solution_config.h"
+#include <chrono>
 #include <iostream>
+#include <thread>
 
 SubprocessInstanceManager::SubprocessInstanceManager(
     SolutionRegistry &solutionRegistry, InstanceStorage &instanceStorage,
@@ -136,6 +138,71 @@ bool SubprocessInstanceManager::startInstance(const std::string &instanceId,
   if (response.type == worker::MessageType::START_INSTANCE_RESPONSE &&
       response.payload.get("success", false).asBool()) {
 
+    // Verify instance is actually running by querying status
+    // Wait a bit for pipeline to start (up to 3 seconds with retries)
+    const int maxRetries = 6;
+    const int retryDelayMs = 500;
+    bool verified = false;
+
+    for (int retry = 0; retry < maxRetries; retry++) {
+      // Query instance status
+      worker::IPCMessage statusMsg;
+      statusMsg.type = worker::MessageType::GET_INSTANCE_STATUS;
+      statusMsg.payload["instance_id"] = instanceId;
+
+      auto statusResponse = supervisor_->sendToWorker(instanceId, statusMsg);
+
+      if (statusResponse.type ==
+          worker::MessageType::GET_INSTANCE_STATUS_RESPONSE) {
+        if (statusResponse.payload.isMember("data")) {
+          const auto &data = statusResponse.payload["data"];
+          bool running = data.get("running", false).asBool();
+
+          if (running) {
+            verified = true;
+            std::cout << "[SubprocessInstanceManager] ✓ Verified instance "
+                      << instanceId << " is running (retry " << (retry + 1)
+                      << "/" << maxRetries << ")" << std::endl;
+            break;
+          } else {
+            // Check if there's an error
+            if (data.isMember("last_error") &&
+                !data["last_error"].asString().empty()) {
+              std::cerr << "[SubprocessInstanceManager] Instance " << instanceId
+                        << " start failed with error: "
+                        << data["last_error"].asString() << std::endl;
+              // Update local state to reflect failure
+              {
+                std::lock_guard<std::mutex> lock(instances_mutex_);
+                if (instances_.count(instanceId)) {
+                  instances_[instanceId].running = false;
+                }
+              }
+              return false;
+            }
+          }
+        }
+      }
+
+      // Wait before retry
+      if (retry < maxRetries - 1) {
+        std::this_thread::sleep_for(std::chrono::milliseconds(retryDelayMs));
+      }
+    }
+
+    if (!verified) {
+      std::cerr << "[SubprocessInstanceManager] ✗ Failed to verify instance "
+                << instanceId << " is running after start command" << std::endl;
+      // Update local state to reflect failure
+      {
+        std::lock_guard<std::mutex> lock(instances_mutex_);
+        if (instances_.count(instanceId)) {
+          instances_[instanceId].running = false;
+        }
+      }
+      return false;
+    }
+
     // Update local state
     {
       std::lock_guard<std::mutex> lock(instances_mutex_);
@@ -144,8 +211,8 @@ bool SubprocessInstanceManager::startInstance(const std::string &instanceId,
       }
     }
 
-    std::cout << "[SubprocessInstanceManager] Started instance: " << instanceId
-              << std::endl;
+    std::cout << "[SubprocessInstanceManager] ✓ Started and verified instance: "
+              << instanceId << std::endl;
     return true;
   }
 
@@ -207,8 +274,55 @@ bool SubprocessInstanceManager::updateInstance(const std::string &instanceId,
 
   auto response = supervisor_->sendToWorker(instanceId, msg);
 
-  return response.type == worker::MessageType::UPDATE_INSTANCE_RESPONSE &&
-         response.payload.get("success", false).asBool();
+  if (response.type != worker::MessageType::UPDATE_INSTANCE_RESPONSE) {
+    std::cerr
+        << "[SubprocessInstanceManager] Invalid response type for update: "
+        << static_cast<int>(response.type) << std::endl;
+    return false;
+  }
+
+  bool success = response.payload.get("success", false).asBool();
+
+  if (success) {
+    // Update local cache with new config
+    std::lock_guard<std::mutex> lock(instances_mutex_);
+    auto it = instances_.find(instanceId);
+    if (it != instances_.end()) {
+      // Update instance info from config if possible
+      // Note: Full config merge is handled by worker, we just update local
+      // cache
+      if (configJson.isMember("DisplayName")) {
+        it->second.displayName = configJson["DisplayName"].asString();
+      }
+      if (configJson.isMember("AdditionalParams")) {
+        const auto &params = configJson["AdditionalParams"];
+        if (params.isObject()) {
+          for (const auto &key : params.getMemberNames()) {
+            it->second.additionalParams[key] = params[key].asString();
+          }
+          // Update URLs from AdditionalParams
+          if (it->second.additionalParams.count("RTSP_URL")) {
+            it->second.rtspUrl = it->second.additionalParams.at("RTSP_URL");
+          }
+          if (it->second.additionalParams.count("RTMP_URL")) {
+            it->second.rtmpUrl = it->second.additionalParams.at("RTMP_URL");
+          }
+          if (it->second.additionalParams.count("FILE_PATH")) {
+            it->second.filePath = it->second.additionalParams.at("FILE_PATH");
+          }
+        }
+      }
+    }
+    std::cout << "[SubprocessInstanceManager] Updated instance: " << instanceId
+              << std::endl;
+  } else {
+    std::string error =
+        response.payload.get("error", "Unknown error").asString();
+    std::cerr << "[SubprocessInstanceManager] Failed to update instance "
+              << instanceId << ": " << error << std::endl;
+  }
+
+  return success;
 }
 
 std::optional<InstanceInfo>

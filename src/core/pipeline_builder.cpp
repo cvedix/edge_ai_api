@@ -171,6 +171,86 @@ selectDecoderFromPriority(const std::string &defaultDecoder) {
   }
 }
 
+// Helper function to log GPU availability
+static void logGPUAvailability() {
+  std::cerr << "[PipelineBuilder] ========================================"
+            << std::endl;
+  std::cerr << "[PipelineBuilder] Checking GPU availability for inference..."
+            << std::endl;
+
+  bool hasGPU = false;
+
+  // Check NVIDIA GPU
+  if (PlatformDetector::isNVIDIA()) {
+    std::cerr << "[PipelineBuilder] ✓ NVIDIA GPU detected" << std::endl;
+    std::cerr << "[PipelineBuilder]   → TensorRT devices (tensorrt.1, "
+                 "tensorrt.2) may be available"
+              << std::endl;
+    hasGPU = true;
+  }
+
+  // Check Intel GPU
+  if (PlatformDetector::isVAAPI()) {
+    std::cerr << "[PipelineBuilder] ✓ Intel GPU (VAAPI) detected" << std::endl;
+    hasGPU = true;
+  }
+
+  if (PlatformDetector::isMSDK()) {
+    std::cerr << "[PipelineBuilder] ✓ Intel GPU (MSDK) detected" << std::endl;
+    hasGPU = true;
+  }
+
+  // Check Jetson
+  if (PlatformDetector::isJetson()) {
+    std::cerr << "[PipelineBuilder] ✓ NVIDIA Jetson detected" << std::endl;
+    std::cerr << "[PipelineBuilder]   → TensorRT devices may be available"
+              << std::endl;
+    hasGPU = true;
+  }
+
+  if (!hasGPU) {
+    std::cerr << "[PipelineBuilder] ⚠ No GPU detected - inference will use CPU"
+              << std::endl;
+    std::cerr << "[PipelineBuilder]   → CPU inference is slower and may cause "
+                 "queue overflow"
+              << std::endl;
+    std::cerr << "[PipelineBuilder]   → Consider using frame dropping (already "
+                 "enabled) or reducing FPS"
+              << std::endl;
+  } else {
+    std::cerr << "[PipelineBuilder] ✓ GPU detected - check config.json "
+                 "auto_device_list to ensure GPU is prioritized"
+              << std::endl;
+    std::cerr << "[PipelineBuilder]   → GPU devices should be listed before "
+                 "CPU in auto_device_list"
+              << std::endl;
+  }
+
+  // Check auto_device_list configuration
+  try {
+    auto &systemConfig = SystemConfig::getInstance();
+    auto deviceList = systemConfig.getAutoDeviceList();
+    if (!deviceList.empty()) {
+      std::cerr << "[PipelineBuilder] Current auto_device_list (first 5): ";
+      size_t count = 0;
+      for (const auto &device : deviceList) {
+        if (count++ < 5) {
+          std::cerr << device << " ";
+        }
+      }
+      std::cerr << "..." << std::endl;
+      std::cerr << "[PipelineBuilder] TIP: Ensure GPU devices (openvino.GPU, "
+                   "tensorrt.1, etc.) are listed before CPU"
+                << std::endl;
+    }
+  } catch (...) {
+    // Ignore errors
+  }
+
+  std::cerr << "[PipelineBuilder] ========================================"
+            << std::endl;
+}
+
 // Helper function to get GStreamer pipeline from config
 // Note: Currently not used but available for future integration
 [[maybe_unused]] static std::string getGStreamerPipelineForPlatform() {
@@ -2492,15 +2572,28 @@ PipelineBuilder::createFaceDetectorNode(
     std::cerr << "  Top K: " << topK << std::endl;
 
     // Create the YuNet face detector node
+    // Log GPU availability before creating node
+    logGPUAvailability();
+
     std::shared_ptr<cvedix_nodes::cvedix_yunet_face_detector_node> node;
     try {
       std::cerr << "[PipelineBuilder] Calling cvedix_yunet_face_detector_node "
                    "constructor..."
                 << std::endl;
+      std::cerr << "[PipelineBuilder] NOTE: Device selection is handled by "
+                   "CVEDIX SDK based on auto_device_list in config.json"
+                << std::endl;
+      std::cerr << "[PipelineBuilder] NOTE: Check CVEDIX SDK logs to see which "
+                   "device is selected"
+                << std::endl;
       node = std::make_shared<cvedix_nodes::cvedix_yunet_face_detector_node>(
           nodeName, modelPath, scoreThreshold, nmsThreshold, topK);
       std::cerr
           << "[PipelineBuilder] ✓ YuNet face detector node created successfully"
+          << std::endl;
+      std::cerr
+          << "[PipelineBuilder] TIP: If queue full errors occur, check if "
+             "GPU is being used (check nvidia-smi or GPU monitoring)"
           << std::endl;
       if (!fs::exists(modelFilePath)) {
         std::cerr << "[PipelineBuilder] ⚠ WARNING: Model file was not found, "

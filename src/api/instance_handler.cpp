@@ -581,45 +581,107 @@ void InstanceHandler::startInstance(
       return;
     }
 
-    // Start instance
-    // OPTIMIZED: Run startInstance() in detached thread to avoid blocking API
-    // thread and other instances This allows multiple instances to start
-    // concurrently without blocking each other The instance will start in
-    // background, and status can be checked via GET /v1/core/instance/{id}
-    std::thread startThread([this, instanceId]() {
-      try {
-        instance_manager_->startInstance(instanceId);
-      } catch (const std::exception &e) {
-        std::cerr << "[InstanceHandler] Exception starting instance "
-                  << instanceId << ": " << e.what() << std::endl;
-      } catch (...) {
-        std::cerr << "[InstanceHandler] Unknown exception starting instance "
-                  << instanceId << std::endl;
-      }
-    });
-    startThread.detach(); // Detach thread - instance starts in background
+    // Start instance and wait for it to actually start successfully
+    // This ensures API returns success only when instance is actually running
+    bool startSuccess = false;
+    std::string errorMessage;
 
-    // Return immediately - instance is starting in background
-    // Client can check status using GET /v1/core/instance/{id}
+    try {
+      // Run startInstance() in async to avoid blocking API thread too long
+      // But wait for result to ensure instance actually started
+      auto future =
+          std::async(std::launch::async, [this, instanceId]() -> bool {
+            try {
+              return instance_manager_->startInstance(instanceId);
+            } catch (const std::exception &e) {
+              std::cerr << "[InstanceHandler] Exception starting instance "
+                        << instanceId << ": " << e.what() << std::endl;
+              return false;
+            } catch (...) {
+              std::cerr
+                  << "[InstanceHandler] Unknown exception starting instance "
+                  << instanceId << std::endl;
+              return false;
+            }
+          });
+
+      // Wait for start to complete (with timeout: 10 seconds)
+      auto status = future.wait_for(std::chrono::seconds(10));
+      if (status == std::future_status::timeout) {
+        if (isApiLoggingEnabled()) {
+          PLOG_WARNING
+              << "[API] POST /v1/core/instance/" << instanceId
+              << "/start - Timeout waiting for instance to start (10s)";
+        }
+        callback(
+            createErrorResponse(504, "Gateway Timeout",
+                                "Instance start operation timed out. "
+                                "Instance may still be starting. "
+                                "Check status using GET /v1/core/instance/" +
+                                    instanceId));
+        return;
+      } else if (status == std::future_status::ready) {
+        startSuccess = future.get();
+      }
+    } catch (const std::exception &e) {
+      errorMessage = e.what();
+      if (isApiLoggingEnabled()) {
+        PLOG_ERROR << "[API] POST /v1/core/instance/" << instanceId
+                   << "/start - Exception: " << e.what();
+      }
+    } catch (...) {
+      errorMessage = "Unknown error occurred";
+      if (isApiLoggingEnabled()) {
+        PLOG_ERROR << "[API] POST /v1/core/instance/" << instanceId
+                   << "/start - Unknown exception";
+      }
+    }
+
+    // Get instance info to return
     auto optInfo = instance_manager_->getInstance(instanceId);
-    if (optInfo.has_value()) {
-      auto end_time = std::chrono::steady_clock::now();
-      auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(
-          end_time - start_time);
+    if (!optInfo.has_value()) {
+      callback(createErrorResponse(404, "Not found", "Instance not found"));
+      return;
+    }
+
+    auto end_time = std::chrono::steady_clock::now();
+    auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(
+        end_time - start_time);
+
+    if (startSuccess) {
+      // Verify instance is actually running
+      if (!optInfo.value().running) {
+        if (isApiLoggingEnabled()) {
+          PLOG_WARNING
+              << "[API] POST /v1/core/instance/" << instanceId
+              << "/start - Start reported success but instance is not running";
+        }
+        callback(
+            createErrorResponse(500, "Internal server error",
+                                "Instance start reported success but instance "
+                                "is not running. Please check logs."));
+        return;
+      }
+
       if (isApiLoggingEnabled()) {
         PLOG_INFO << "[API] POST /v1/core/instance/" << instanceId
-                  << "/start - Accepted (async) - " << duration.count() << "ms";
+                  << "/start - Success (verified running) - "
+                  << duration.count() << "ms";
       }
       Json::Value response = instanceInfoToJson(optInfo.value());
-      response["message"] = "Instance start request accepted. Instance is "
-                            "starting in background. "
-                            "Check status using GET /v1/core/instance/" +
-                            instanceId;
-      response["status"] = "starting"; // Indicate that instance is starting
-      callback(createSuccessResponse(
-          response, 202)); // 202 Accepted - request accepted but not completed
+      response["message"] = "Instance started successfully and is running";
+      response["status"] = "running";
+      callback(createSuccessResponse(response));
     } else {
-      callback(createErrorResponse(404, "Not found", "Instance not found"));
+      if (isApiLoggingEnabled()) {
+        PLOG_ERROR << "[API] POST /v1/core/instance/" << instanceId
+                   << "/start - Failed - " << duration.count() << "ms";
+      }
+      std::string errorMsg =
+          errorMessage.empty()
+              ? "Failed to start instance. Check logs for details."
+              : errorMessage;
+      callback(createErrorResponse(500, "Internal server error", errorMsg));
     }
     return;
 
