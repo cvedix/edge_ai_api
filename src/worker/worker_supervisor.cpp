@@ -225,8 +225,30 @@ IPCMessage WorkerSupervisor::sendToWorker(const std::string &instance_id,
   }
 
   setWorkerState(worker, WorkerState::BUSY);
-  IPCMessage response = worker.client->sendAndReceive(msg, timeout_ms);
-  setWorkerState(worker, WorkerState::READY);
+  
+  // Use try-catch to ensure worker state is always restored to READY
+  // even if sendAndReceive throws exception or times out
+  IPCMessage response;
+  try {
+    response = worker.client->sendAndReceive(msg, timeout_ms);
+    setWorkerState(worker, WorkerState::READY);
+  } catch (const std::exception &e) {
+    // Restore worker state to READY even on exception
+    setWorkerState(worker, WorkerState::READY);
+    // Return error response
+    response.type = MessageType::ERROR_RESPONSE;
+    response.payload = createErrorResponse(
+        "IPC communication error: " + std::string(e.what()),
+        ResponseStatus::ERROR);
+  } catch (...) {
+    // Restore worker state to READY even on unknown exception
+    setWorkerState(worker, WorkerState::READY);
+    // Return error response
+    response.type = MessageType::ERROR_RESPONSE;
+    response.payload = createErrorResponse(
+        "Unknown IPC communication error",
+        ResponseStatus::ERROR);
+  }
 
   return response;
 }

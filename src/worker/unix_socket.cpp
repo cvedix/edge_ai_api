@@ -1,4 +1,6 @@
 #include "worker/unix_socket.h"
+#include "core/timeout_constants.h"
+#include <chrono>
 #include <cstdlib>
 #include <cstring>
 #include <fcntl.h>
@@ -7,6 +9,7 @@
 #include <poll.h>
 #include <sys/socket.h>
 #include <sys/un.h>
+#include <thread>
 #include <unistd.h>
 
 namespace worker {
@@ -82,8 +85,37 @@ void UnixSocketServer::stop() {
     server_fd_ = -1;
   }
 
+  // Wait for accept thread - it should exit quickly when server_fd_ is closed
+  // poll() will return immediately, and accept() will fail, breaking the loop
   if (accept_thread_.joinable()) {
-    accept_thread_.join();
+    // Accept loop should exit quickly after server_fd_ is closed
+    // poll() has 1 second timeout, so thread should exit within ~1 second
+    // Use configurable shutdown timeout
+    auto timeout = TimeoutConstants::getShutdownTimeout();
+    
+    auto start_time = std::chrono::steady_clock::now();
+    while (accept_thread_.joinable()) {
+      auto elapsed = std::chrono::steady_clock::now() - start_time;
+      
+      if (elapsed >= timeout) {
+        std::cerr << "[Worker] Accept thread join timeout ("
+                  << timeout.count() << "ms), detaching..." << std::endl;
+        accept_thread_.detach();
+        break;
+      }
+      
+      // Try join with small sleep - accept loop checks running_ flag every 1s
+      // So thread should exit within ~1 second after server_fd_ is closed
+      std::this_thread::sleep_for(std::chrono::milliseconds(100));
+      if (!accept_thread_.joinable()) {
+        break;
+      }
+    }
+    
+    // Final attempt to join if still joinable
+    if (accept_thread_.joinable()) {
+      accept_thread_.join();
+    }
   }
 
   cleanupSocket(socket_path_);
@@ -256,6 +288,8 @@ IPCMessage UnixSocketClient::sendAndReceive(const IPCMessage &msg,
     return error;
   }
 
+  auto start_time = std::chrono::steady_clock::now();
+
   // Send
   std::string data = msg.serialize();
   if (!sendRaw(data)) {
@@ -265,12 +299,25 @@ IPCMessage UnixSocketClient::sendAndReceive(const IPCMessage &msg,
     return error;
   }
 
-  // Receive header
-  std::string header_data = receiveRaw(MessageHeader::HEADER_SIZE, timeout_ms);
+  // Calculate remaining timeout after send
+  auto elapsed_after_send = std::chrono::duration_cast<std::chrono::milliseconds>(
+                                std::chrono::steady_clock::now() - start_time)
+                                .count();
+  int remaining_timeout = timeout_ms - static_cast<int>(elapsed_after_send);
+  
+  if (remaining_timeout <= 0) {
+    IPCMessage error;
+    error.type = MessageType::ERROR_RESPONSE;
+    error.payload = createErrorResponse("Send timeout");
+    return error;
+  }
+
+  // Receive header with remaining timeout
+  std::string header_data = receiveRaw(MessageHeader::HEADER_SIZE, remaining_timeout);
   if (header_data.empty()) {
     IPCMessage error;
     error.type = MessageType::ERROR_RESPONSE;
-    error.payload = createErrorResponse("Receive timeout");
+    error.payload = createErrorResponse("Receive header timeout");
     return error;
   }
 
@@ -283,10 +330,23 @@ IPCMessage UnixSocketClient::sendAndReceive(const IPCMessage &msg,
     return error;
   }
 
-  // Receive payload
+  // Calculate remaining timeout after receiving header
+  auto elapsed_after_header = std::chrono::duration_cast<std::chrono::milliseconds>(
+                                  std::chrono::steady_clock::now() - start_time)
+                                  .count();
+  remaining_timeout = timeout_ms - static_cast<int>(elapsed_after_header);
+  
+  if (remaining_timeout <= 0) {
+    IPCMessage error;
+    error.type = MessageType::ERROR_RESPONSE;
+    error.payload = createErrorResponse("Receive header timeout");
+    return error;
+  }
+
+  // Receive payload with remaining timeout
   std::string payload_data;
   if (header.payload_size > 0) {
-    payload_data = receiveRaw(header.payload_size, timeout_ms);
+    payload_data = receiveRaw(header.payload_size, remaining_timeout);
     if (payload_data.empty()) {
       IPCMessage error;
       error.type = MessageType::ERROR_RESPONSE;
@@ -378,20 +438,54 @@ bool UnixSocketClient::sendRaw(const std::string &data) {
 std::string UnixSocketClient::receiveRaw(size_t expected_size, int timeout_ms) {
   std::string result(expected_size, '\0');
   size_t total_received = 0;
+  
+  auto start_time = std::chrono::steady_clock::now();
 
   while (total_received < expected_size) {
+    // Calculate remaining timeout
+    auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(
+                       std::chrono::steady_clock::now() - start_time)
+                       .count();
+    int remaining_timeout = timeout_ms - static_cast<int>(elapsed);
+    
+    if (remaining_timeout <= 0) {
+      // Total timeout exceeded
+      return "";
+    }
+
     struct pollfd pfd;
     pfd.fd = socket_fd_;
     pfd.events = POLLIN;
 
-    int ret = poll(&pfd, 1, timeout_ms);
+    // Use remaining timeout, but cap at reasonable value to avoid blocking too long
+    int poll_timeout = std::min(remaining_timeout, 1000); // Max 1 second per poll
+    
+    int ret = poll(&pfd, 1, poll_timeout);
     if (ret <= 0) {
-      return "";
+      // Check if total timeout exceeded
+      elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(
+                    std::chrono::steady_clock::now() - start_time)
+                    .count();
+      if (elapsed >= timeout_ms) {
+        return "";
+      }
+      // Continue if poll timeout but total timeout not exceeded
+      continue;
     }
 
     ssize_t received = recv(socket_fd_, &result[total_received],
                             expected_size - total_received, 0);
     if (received <= 0) {
+      if (received == 0) {
+        // Connection closed
+        return "";
+      }
+      // Error - check errno
+      if (errno == EAGAIN || errno == EWOULDBLOCK) {
+        // Would block - continue polling
+        continue;
+      }
+      // Other error
       return "";
     }
     total_received += received;

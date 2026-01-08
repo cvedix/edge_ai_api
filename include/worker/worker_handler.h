@@ -5,6 +5,7 @@
 #include "worker/unix_socket.h"
 #include <atomic>
 #include <chrono>
+#include <condition_variable>
 #include <functional>
 #include <json/json.h>
 #include <memory>
@@ -85,14 +86,29 @@ private:
 
   // Pipeline state
   std::vector<std::shared_ptr<cvedix_nodes::cvedix_node>> pipeline_nodes_;
-  bool pipeline_running_ = false;
+  std::atomic<bool> pipeline_running_{false};
+  
+  // State management - use separate mutex for state to avoid blocking
+  // GET_STATISTICS/GET_STATUS when pipeline is starting/stopping
+  std::mutex state_mutex_;  // Separate mutex for state variables
   std::string current_state_ = "stopped";
   std::string last_error_;
-
+  
   // Hot swap pipeline for zero downtime
   std::vector<std::shared_ptr<cvedix_nodes::cvedix_node>> new_pipeline_nodes_;
   std::atomic<bool> building_new_pipeline_{false};
   std::mutex pipeline_swap_mutex_;
+
+  // Background thread for starting pipeline (to avoid blocking IPC server)
+  std::thread start_pipeline_thread_;
+  std::atomic<bool> starting_pipeline_{false};
+  std::mutex start_pipeline_mutex_;
+  std::condition_variable start_pipeline_cv_; // Signal when start pipeline completes
+
+  // Pipeline stopping state
+  std::atomic<bool> stopping_pipeline_{false};
+  std::mutex stop_pipeline_mutex_;
+  std::condition_variable stop_pipeline_cv_; // Signal when pipeline stop completes
 
   // Statistics
   std::atomic<uint64_t> frames_processed_{0};
@@ -147,6 +163,11 @@ private:
    * @return true if successful
    */
   bool startPipeline();
+
+  /**
+   * @brief Start the pipeline in background thread (non-blocking)
+   */
+  void startPipelineAsync();
 
   /**
    * @brief Stop the pipeline
