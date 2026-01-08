@@ -3,6 +3,7 @@
 #include "core/backpressure_controller.h"
 #include "core/logger.h"
 #include "core/logging_flags.h"
+#include "core/timeout_constants.h"
 #include "core/uuid_generator.h"
 #include "models/update_instance_request.h"
 #include "utils/mp4_directory_watcher.h"
@@ -596,8 +597,23 @@ bool InstanceRegistry::deleteInstance(const std::string &instanceId) {
 
 std::optional<InstanceInfo>
 InstanceRegistry::getInstance(const std::string &instanceId) const {
-  std::unique_lock<std::shared_timed_mutex> lock(
-      mutex_); // Exclusive lock for write operations
+  // CRITICAL: Use timeout to prevent blocking if mutex is locked by another operation
+  // This prevents API calls from hanging indefinitely
+  // Note: We use unique_lock because we may update FPS in the returned info
+  std::unique_lock<std::shared_timed_mutex> lock(mutex_, std::defer_lock);
+
+  // Try to acquire lock with timeout (configurable via REGISTRY_MUTEX_TIMEOUT_MS)
+  if (!lock.try_lock_for(TimeoutConstants::getRegistryMutexTimeout())) {
+    std::cerr << "[InstanceRegistry] WARNING: getInstance() timeout - "
+                 "mutex is locked, returning nullopt"
+              << std::endl;
+    if (isInstanceLoggingEnabled()) {
+      PLOG_WARNING << "[InstanceRegistry] getInstance() timeout after "
+                      "2000ms - mutex may be locked by another operation";
+    }
+    return std::nullopt; // Return nullopt to prevent blocking
+  }
+
   auto it = instances_.find(instanceId);
   if (it != instances_.end()) {
     InstanceInfo info = it->second;
@@ -1739,9 +1755,9 @@ std::vector<std::string> InstanceRegistry::listInstances() const {
   // handler or other critical paths
   std::shared_lock<std::shared_timed_mutex> lock(mutex_, std::defer_lock);
 
-  // Try to acquire lock with timeout (1000ms)
+  // Try to acquire lock with timeout (configurable via REGISTRY_MUTEX_TIMEOUT_MS)
   // If we can't get the lock quickly, return empty vector to prevent deadlock
-  if (!lock.try_lock_for(std::chrono::milliseconds(1000))) {
+  if (!lock.try_lock_for(TimeoutConstants::getRegistryMutexTimeout())) {
     std::cerr << "[InstanceRegistry] WARNING: listInstances() timeout - mutex "
                  "is locked, returning empty vector"
               << std::endl;
@@ -1766,8 +1782,8 @@ int InstanceRegistry::getInstanceCount() const {
   // held by other operations
   std::shared_lock<std::shared_timed_mutex> lock(mutex_, std::defer_lock);
 
-  // Try to acquire lock with timeout (1000ms)
-  if (!lock.try_lock_for(std::chrono::milliseconds(1000))) {
+  // Try to acquire lock with timeout (configurable via REGISTRY_MUTEX_TIMEOUT_MS)
+  if (!lock.try_lock_for(TimeoutConstants::getRegistryMutexTimeout())) {
     std::cerr << "[InstanceRegistry] WARNING: getInstanceCount() timeout - "
                  "mutex is locked, returning 0"
               << std::endl;
@@ -1904,8 +1920,10 @@ bool InstanceRegistry::hasInstance(const std::string &instanceId) const {
   std::shared_lock<std::shared_timed_mutex> lock(
       mutex_, std::defer_lock); // Read lock - allows concurrent readers
 
-  // Try to acquire lock with timeout (500ms) - fail fast
-  if (!lock.try_lock_for(std::chrono::milliseconds(500))) {
+  // Try to acquire lock with timeout (configurable via REGISTRY_MUTEX_TIMEOUT_MS)
+  // Note: This is a quick check, but we use same timeout as other read operations
+  // for consistency
+  if (!lock.try_lock_for(TimeoutConstants::getRegistryMutexTimeout())) {
     std::cerr << "[InstanceRegistry] WARNING: hasInstance() timeout - mutex is "
                  "locked, returning false"
               << std::endl;
@@ -3331,7 +3349,11 @@ void InstanceRegistry::stopPipeline(
                   << std::endl;
         // Give it time to flush buffers before we stop source
         // This helps reduce GStreamer warnings during cleanup
-        std::this_thread::sleep_for(std::chrono::milliseconds(200));
+        // During shutdown, use shorter timeout to exit faster
+        auto sleep_time = isDeletion
+                              ? TimeoutConstants::getRtmpPrepareTimeoutDeletion()
+                              : TimeoutConstants::getRtmpPrepareTimeout();
+        std::this_thread::sleep_for(sleep_time);
         std::cerr << "[InstanceRegistry] ✓ RTMP destination node prepared"
                   << std::endl;
       }
@@ -3341,12 +3363,13 @@ void InstanceRegistry::stopPipeline(
     // This helps reduce GStreamer warnings during cleanup and prevent
     // segmentation faults FIXED: Increased wait time to ensure elements are
     // properly set to NULL state before dispose
+    // During shutdown (isDeletion), use shorter timeout to exit faster
     if (isDeletion) {
       std::cerr
-          << "[InstanceRegistry] Waiting for destination nodes to finalize..."
+          << "[InstanceRegistry] Waiting for destination nodes to finalize (shutdown mode - shorter timeout)..."
           << std::endl;
       std::this_thread::sleep_for(
-          std::chrono::milliseconds(500)); // Increased from 300ms to 500ms
+          TimeoutConstants::getDestinationFinalizeTimeoutDeletion());
     }
 
     // Now stop the source node (typically the first node)
@@ -3408,11 +3431,14 @@ void InstanceRegistry::stopPipeline(
               }
             });
 
-            // Wait max 200ms for stop() to complete
+            // Wait max 200ms for stop() to complete (or 50ms during shutdown)
             // RTSP retry loops can block stop(), so use short timeout and
             // immediately detach
-            auto stopStatus =
-                stopFuture.wait_for(std::chrono::milliseconds(200));
+            // During shutdown, use even shorter timeout to exit faster
+            auto stopTimeout = isDeletion
+                                   ? TimeoutConstants::getRtspStopTimeoutDeletion()
+                                   : TimeoutConstants::getRtspStopTimeout();
+            auto stopStatus = stopFuture.wait_for(stopTimeout);
             if (stopStatus == std::future_status::timeout) {
               std::cerr << "[InstanceRegistry] ⚠ RTSP stop() timeout (200ms) - "
                            "retry loop may be blocking"
@@ -3868,8 +3894,20 @@ bool InstanceRegistry::hasRTMPOutput(const std::string &instanceId) const {
   // CRITICAL: Use shared_lock for read-only operations to allow concurrent
   // readers This prevents deadlock when multiple threads read instance data
   // simultaneously
-  std::shared_lock<std::shared_timed_mutex> lock(
-      mutex_); // Shared lock for read operations
+  // CRITICAL: Use timeout to prevent blocking if mutex is locked
+  std::shared_lock<std::shared_timed_mutex> lock(mutex_, std::defer_lock);
+
+  // Try to acquire lock with timeout (2000ms)
+  if (!lock.try_lock_for(std::chrono::milliseconds(2000))) {
+    std::cerr << "[InstanceRegistry] WARNING: hasRTMPOutput() timeout - "
+                 "mutex is locked, returning false"
+              << std::endl;
+    if (isInstanceLoggingEnabled()) {
+      PLOG_WARNING << "[InstanceRegistry] hasRTMPOutput() timeout after "
+                      "2000ms - mutex may be locked by another operation";
+    }
+    return false; // Return false to prevent blocking
+  }
 
   // Check if instance exists
   auto instanceIt = instances_.find(instanceId);
@@ -3908,8 +3946,20 @@ bool InstanceRegistry::hasRTMPOutput(const std::string &instanceId) const {
 
 std::vector<std::shared_ptr<cvedix_nodes::cvedix_node>>
 InstanceRegistry::getSourceNodesFromRunningInstances() const {
-  std::shared_lock<std::shared_timed_mutex> lock(
-      mutex_); // Read lock - allows concurrent readers
+  // CRITICAL: Use timeout to prevent blocking if mutex is locked
+  std::shared_lock<std::shared_timed_mutex> lock(mutex_, std::defer_lock);
+
+  // Try to acquire lock with timeout (2000ms)
+  if (!lock.try_lock_for(std::chrono::milliseconds(2000))) {
+    std::cerr << "[InstanceRegistry] WARNING: getSourceNodesFromRunningInstances() timeout - "
+                 "mutex is locked, returning empty vector"
+              << std::endl;
+    if (isInstanceLoggingEnabled()) {
+      PLOG_WARNING << "[InstanceRegistry] getSourceNodesFromRunningInstances() timeout after "
+                      "2000ms - mutex may be locked by another operation";
+    }
+    return {}; // Return empty vector to prevent blocking
+  }
 
   std::vector<std::shared_ptr<cvedix_nodes::cvedix_node>> sourceNodes;
 
@@ -3948,8 +3998,20 @@ InstanceRegistry::getSourceNodesFromRunningInstances() const {
 
 std::vector<std::shared_ptr<cvedix_nodes::cvedix_node>>
 InstanceRegistry::getInstanceNodes(const std::string &instanceId) const {
-  std::shared_lock<std::shared_timed_mutex> lock(
-      mutex_); // Read lock - allows concurrent readers
+  // CRITICAL: Use timeout to prevent blocking if mutex is locked
+  std::shared_lock<std::shared_timed_mutex> lock(mutex_, std::defer_lock);
+
+  // Try to acquire lock with timeout (2000ms)
+  if (!lock.try_lock_for(std::chrono::milliseconds(2000))) {
+    std::cerr << "[InstanceRegistry] WARNING: getInstanceNodes() timeout - "
+                 "mutex is locked, returning empty vector"
+              << std::endl;
+    if (isInstanceLoggingEnabled()) {
+      PLOG_WARNING << "[InstanceRegistry] getInstanceNodes() timeout after "
+                      "2000ms - mutex may be locked by another operation";
+    }
+    return {}; // Return empty vector to prevent blocking
+  }
 
   // Get pipeline for this instance
   auto pipelineIt = pipelines_.find(instanceId);
@@ -4822,8 +4884,20 @@ Json::Value
 InstanceRegistry::getInstanceConfig(const std::string &instanceId) const {
   // CRITICAL: Use shared_lock for read-only operations to allow concurrent
   // readers
-  std::shared_lock<std::shared_timed_mutex> lock(
-      mutex_); // Shared lock for read operations
+  // CRITICAL: Use timeout to prevent blocking if mutex is locked
+  std::shared_lock<std::shared_timed_mutex> lock(mutex_, std::defer_lock);
+
+  // Try to acquire lock with timeout (configurable via REGISTRY_MUTEX_TIMEOUT_MS)
+  if (!lock.try_lock_for(TimeoutConstants::getRegistryMutexTimeout())) {
+    std::cerr << "[InstanceRegistry] WARNING: getInstanceConfig() timeout - "
+                 "mutex is locked, returning empty config"
+              << std::endl;
+    if (isInstanceLoggingEnabled()) {
+      PLOG_WARNING << "[InstanceRegistry] getInstanceConfig() timeout after "
+                      "2000ms - mutex may be locked by another operation";
+    }
+    return Json::Value(Json::objectValue); // Return empty object to prevent blocking
+  }
 
   auto it = instances_.find(instanceId);
   if (it == instances_.end()) {
@@ -4872,7 +4946,21 @@ static std::string base64_encode(const unsigned char *data, size_t length) {
 
 std::optional<InstanceStatistics>
 InstanceRegistry::getInstanceStatistics(const std::string &instanceId) {
-  std::unique_lock<std::shared_timed_mutex> lock(mutex_);
+  // CRITICAL: Use timeout to prevent blocking if mutex is locked by another operation
+  // This prevents API calls from hanging indefinitely
+  std::unique_lock<std::shared_timed_mutex> lock(mutex_, std::defer_lock);
+
+  // Try to acquire lock with timeout (configurable via REGISTRY_MUTEX_TIMEOUT_MS)
+  if (!lock.try_lock_for(TimeoutConstants::getRegistryMutexTimeout())) {
+    std::cerr << "[InstanceRegistry] WARNING: getInstanceStatistics() timeout - "
+                 "mutex is locked, returning nullopt"
+              << std::endl;
+    if (isInstanceLoggingEnabled()) {
+      PLOG_WARNING << "[InstanceRegistry] getInstanceStatistics() timeout after "
+                      "2000ms - mutex may be locked by another operation";
+    }
+    return std::nullopt; // Return nullopt to prevent blocking
+  }
 
   // Check if instance exists and is running
   auto instanceIt = instances_.find(instanceId);
@@ -5150,9 +5238,22 @@ InstanceRegistry::getInstanceStatistics(const std::string &instanceId) {
 std::string
 InstanceRegistry::getLastFrame(const std::string &instanceId) const {
   // PHASE 1 OPTIMIZATION: Get shared_ptr copy quickly, release lock
+  // CRITICAL: Use timeout to prevent blocking if mutex is locked
   FramePtr frame_ptr;
   {
-    std::lock_guard<std::mutex> lock(frame_cache_mutex_);
+    std::unique_lock<std::timed_mutex> lock(frame_cache_mutex_, std::defer_lock);
+
+    // Try to acquire lock with timeout (configurable via FRAME_CACHE_MUTEX_TIMEOUT_MS)
+    if (!lock.try_lock_for(TimeoutConstants::getFrameCacheMutexTimeout())) {
+      std::cerr << "[InstanceRegistry] WARNING: getLastFrame() timeout - "
+                   "frame_cache_mutex_ is locked, returning empty string"
+                << std::endl;
+      if (isInstanceLoggingEnabled()) {
+        PLOG_WARNING << "[InstanceRegistry] getLastFrame() timeout after "
+                        "1000ms - mutex may be locked by another operation";
+      }
+      return ""; // Return empty string to prevent blocking
+    }
 
     auto it = frame_caches_.find(instanceId);
     if (it == frame_caches_.end() || !it->second.has_frame ||
@@ -5184,8 +5285,10 @@ void InstanceRegistry::updateFrameCache(const std::string &instanceId,
 
   // PHASE 1 OPTIMIZATION: Lock only for pointer swap, not during copy
   // This reduces lock contention significantly
+  // Note: updateFrameCache is called from frame processing thread, so we use blocking lock
+  // (no timeout needed as this is internal operation, not API call)
   {
-    std::lock_guard<std::mutex> lock(frame_cache_mutex_);
+    std::lock_guard<std::timed_mutex> lock(frame_cache_mutex_);
     FrameCache &cache = frame_caches_[instanceId];
     cache.frame = frame_ptr; // Shared ownership - no copy!
     cache.timestamp = std::chrono::steady_clock::now();

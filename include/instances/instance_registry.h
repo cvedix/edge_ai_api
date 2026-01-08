@@ -283,8 +283,8 @@ private:
   };
 
   mutable std::unordered_map<std::string, FrameCache> frame_caches_;
-  mutable std::mutex
-      frame_cache_mutex_; // Separate mutex for frame cache to avoid deadlock
+  mutable std::timed_mutex
+      frame_cache_mutex_; // Separate mutex for frame cache to avoid deadlock (timed_mutex to support timeout)
 
   /**
    * @brief Update frame cache for an instance
