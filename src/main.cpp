@@ -33,6 +33,7 @@
 #include "core/node_storage.h"
 #include "core/pipeline_builder.h"
 #include "core/request_middleware.h"
+#include "core/timeout_constants.h"
 #include "core/watchdog.h"
 #include "fonts/font_upload_handler.h"
 #include "groups/group_registry.h"
@@ -541,19 +542,22 @@ void signalHandler(int signal) {
         }
       }).detach();
 
-      // Start shutdown timer thread - force exit after 100ms if still running
-      // RTSP retry loops may prevent graceful shutdown, so use very short
-      // timeout CRITICAL: This thread MUST run and force exit, even if
-      // instances are blocking
+      // Start shutdown timer thread - force exit after configurable timeout
+      // (default: 500ms) if still running
+      // RTSP retry loops may prevent graceful shutdown, but we need enough time
+      // for stopInstance() to complete
+      // CRITICAL: This thread MUST run and force exit, even if instances are blocking
       std::thread([]() {
-        // Use very short timeout - RTSP retry loops can block indefinitely
-        // 100ms is enough to attempt cleanup, but we force exit quickly
-        std::this_thread::sleep_for(std::chrono::milliseconds(100));
+        // Use configurable timeout (default: 500ms) - allows stopInstance() to
+        // complete but still forces exit if RTSP retry loops block indefinitely
+        auto shutdownTimeout = TimeoutConstants::getShutdownTimeout();
+        std::this_thread::sleep_for(shutdownTimeout);
 
         // Force exit regardless of shutdown state - RTSP retry loops prevent
         // cleanup
         PLOG_WARNING << "Shutdown timeout reached - forcing exit";
-        std::cerr << "[CRITICAL] Shutdown timeout (100ms) - KILLING PROCESS NOW"
+        std::cerr << "[CRITICAL] Shutdown timeout ("
+                  << TimeoutConstants::getShutdownTimeoutMs() << "ms) - KILLING PROCESS NOW"
                   << std::endl;
         std::cerr << "[CRITICAL] RTSP retry loops prevented graceful shutdown "
                      "- forcing exit"

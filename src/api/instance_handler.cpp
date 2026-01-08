@@ -3,6 +3,7 @@
 #include "core/logger.h"
 #include "core/logging_flags.h"
 #include "core/metrics_interceptor.h"
+#include "core/timeout_constants.h"
 #include "instances/instance_info.h"
 #include "instances/instance_manager.h"
 #include "models/update_instance_request.h"
@@ -466,12 +467,16 @@ void InstanceHandler::getInstance(
                        }
                      });
 
-      // Wait with timeout (1 second) to prevent hanging
-      auto status = future.wait_for(std::chrono::seconds(1));
+      // Wait with timeout (configurable, default: registry timeout + 500ms buffer)
+      // This ensures API wrapper timeout >= registry timeout to allow registry to
+      // complete or timeout first
+      auto timeout = TimeoutConstants::getApiWrapperTimeout();
+      auto status = future.wait_for(timeout);
       if (status == std::future_status::timeout) {
         if (isApiLoggingEnabled()) {
           PLOG_WARNING << "[API] GET /v1/core/instance/" << instanceId
-                       << " - Timeout getting instance (1s)";
+                       << " - Timeout getting instance ("
+                       << timeout.count() << "ms)";
         }
         callback(createErrorResponse(
             503, "Service Unavailable",
@@ -637,9 +642,82 @@ void InstanceHandler::startInstance(
       }
     }
 
-    // Get instance info to return
-    auto optInfo = instance_manager_->getInstance(instanceId);
+    // Get instance info to return (with timeout protection)
+    std::optional<InstanceInfo> optInfo;
+    try {
+      auto future =
+          std::async(std::launch::async,
+                     [this, instanceId]() -> std::optional<InstanceInfo> {
+                       try {
+                         if (instance_manager_) {
+                           return instance_manager_->getInstance(instanceId);
+                         }
+                         return std::nullopt;
+                       } catch (...) {
+                         return std::nullopt;
+                       }
+                     });
+
+      auto timeout = TimeoutConstants::getApiWrapperTimeout();
+      auto status = future.wait_for(timeout);
+      if (status == std::future_status::timeout) {
+        if (isApiLoggingEnabled()) {
+          PLOG_WARNING << "[API] POST /v1/core/instance/" << instanceId
+                       << "/start - Timeout getting instance info ("
+                       << timeout.count() << "ms)";
+        }
+        // Even if we can't get instance info, return success if start succeeded
+        if (startSuccess) {
+          callback(createErrorResponse(
+              200, "Instance started",
+              "Instance started successfully but unable to verify status. Please check using GET /v1/core/instance/" +
+                  instanceId));
+          return;
+        }
+        callback(createErrorResponse(
+            503, "Service Unavailable",
+            "Instance registry is busy. Please try again later."));
+        return;
+      } else if (status == std::future_status::ready) {
+        try {
+          optInfo = future.get();
+        } catch (...) {
+          // If start succeeded, return partial success
+          if (startSuccess) {
+            callback(createErrorResponse(
+                200, "Instance started",
+                "Instance started successfully but unable to verify status. Please check using GET /v1/core/instance/" +
+                    instanceId));
+            return;
+          }
+          callback(createErrorResponse(500, "Internal server error",
+                                       "Failed to get instance info"));
+          return;
+        }
+      }
+    } catch (...) {
+      // If start succeeded, return partial success
+      if (startSuccess) {
+        callback(createErrorResponse(
+            200, "Instance started",
+            "Instance started successfully but unable to verify status. Please check using GET /v1/core/instance/" +
+                instanceId));
+        return;
+      }
+      callback(createErrorResponse(500, "Internal server error",
+                                   "Failed to get instance info"));
+      return;
+    }
+
     if (!optInfo.has_value()) {
+      if (startSuccess) {
+        // Start succeeded but can't get instance info - return partial success
+        callback(createErrorResponse(
+            200, "Instance started",
+            "Instance started successfully but unable to verify status. Please check using GET /v1/core/instance/" +
+                instanceId));
+        return;
+      }
       callback(createErrorResponse(404, "Not found", "Instance not found"));
       return;
     }
@@ -1470,8 +1548,56 @@ void InstanceHandler::getStatistics(
       return;
     }
 
-    // Get statistics
-    auto optStats = instance_manager_->getInstanceStatistics(instanceId);
+    // Get statistics with timeout protection
+    // CRITICAL: getInstanceStatistics() can block for up to 5 seconds (IPC timeout)
+    // We need async + timeout to prevent API from hanging
+    std::optional<InstanceStatistics> optStats;
+    try {
+      auto future = std::async(
+          std::launch::async,
+          [this, instanceId]() -> std::optional<InstanceStatistics> {
+            try {
+              if (instance_manager_) {
+                return instance_manager_->getInstanceStatistics(instanceId);
+              }
+              return std::nullopt;
+            } catch (...) {
+              return std::nullopt;
+            }
+          });
+
+      // Wait with timeout: IPC_API_TIMEOUT_MS (default 5s) + 500ms buffer
+      auto timeoutMs = TimeoutConstants::getIpcApiTimeoutMs() + 500;
+      auto timeout = std::chrono::milliseconds(timeoutMs);
+      auto status = future.wait_for(timeout);
+      if (status == std::future_status::timeout) {
+        if (isApiLoggingEnabled()) {
+          PLOG_WARNING << "[API] GET /v1/core/instance/" << instanceId
+                       << "/statistics - Timeout getting statistics ("
+                       << timeoutMs << "ms)";
+        }
+        std::cerr << "[InstanceHandler] WARNING: getInstanceStatistics() timeout "
+                     "after "
+                  << timeoutMs << "ms - worker may be busy or hung" << std::endl;
+        callback(createErrorResponse(
+            504, "Gateway Timeout",
+            "Statistics request timed out. Worker may be busy. Please try again later."));
+        return;
+      } else if (status == std::future_status::ready) {
+        try {
+          optStats = future.get();
+        } catch (...) {
+          callback(createErrorResponse(500, "Internal server error",
+                                       "Failed to get statistics"));
+          return;
+        }
+      }
+    } catch (...) {
+      callback(createErrorResponse(500, "Internal server error",
+                                   "Failed to get statistics"));
+      return;
+    }
+
     if (!optStats.has_value()) {
       auto end_time = std::chrono::steady_clock::now();
       auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(
