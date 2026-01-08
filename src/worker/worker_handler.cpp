@@ -1,18 +1,24 @@
 #include "worker/worker_handler.h"
 #include "core/env_config.h"
 #include "core/pipeline_builder.h"
+#include "core/timeout_constants.h"
 #include "models/create_instance_request.h"
 #include "solutions/solution_registry.h"
 #include <cstring>
 #include <cvedix/nodes/common/cvedix_node.h>
 #include <cvedix/nodes/src/cvedix_file_src_node.h>
 #include <cvedix/nodes/src/cvedix_rtsp_src_node.h>
+#include <cvedix/nodes/des/cvedix_app_des_node.h>
+#include <cvedix/objects/cvedix_frame_meta.h>
+#include <cvedix/objects/cvedix_meta.h>
 #include <filesystem>
 #include <fstream>
+#include <future>
 #include <getopt.h>
 #include <iostream>
 #include <opencv2/imgcodecs.hpp>
 #include <sstream>
+#include <thread>
 
 // Base64 encoding table
 static const char base64_chars[] =
@@ -29,6 +35,38 @@ WorkerHandler::WorkerHandler(const std::string &instance_id,
 }
 
 WorkerHandler::~WorkerHandler() {
+  // Request shutdown first
+  shutdown_requested_.store(true);
+
+  // Wait for start pipeline thread to finish if running
+  // Use condition variable to wait for completion naturally
+  if (starting_pipeline_.load()) {
+    if (start_pipeline_thread_.joinable()) {
+      std::unique_lock<std::mutex> lock(start_pipeline_mutex_);
+      // Wait for start pipeline to complete with configurable timeout
+      // This allows operation to finish naturally but prevents infinite blocking
+      auto shutdownTimeout = TimeoutConstants::getShutdownTimeout();
+      if (start_pipeline_cv_.wait_for(lock, shutdownTimeout,
+                                       [this] { return !starting_pipeline_.load(); })) {
+        // Start pipeline completed successfully
+        lock.unlock();
+        if (start_pipeline_thread_.joinable()) {
+          start_pipeline_thread_.join();
+        }
+      } else {
+        // Timeout - detach thread to allow cleanup to continue
+        lock.unlock();
+        std::cerr << "[Worker:" << instance_id_
+                  << "] Warning: Start pipeline thread timeout ("
+                  << shutdownTimeout.count()
+                  << "ms), detaching..." << std::endl;
+        if (start_pipeline_thread_.joinable()) {
+          start_pipeline_thread_.detach();
+        }
+      }
+    }
+  }
+
   cleanupPipeline();
   if (server_) {
     server_->stop();
@@ -103,11 +141,67 @@ int WorkerHandler::run() {
 
   std::cout << "[Worker:" << instance_id_ << "] Shutting down..." << std::endl;
 
-  // Cleanup
+  // Wait for start pipeline thread to finish if running
+  // Use condition variable to wait for completion naturally
+  if (starting_pipeline_.load()) {
+    if (start_pipeline_thread_.joinable()) {
+      std::cout << "[Worker:" << instance_id_
+                << "] Waiting for start pipeline thread to finish..."
+                << std::endl;
+      std::unique_lock<std::mutex> lock(start_pipeline_mutex_);
+      // Wait for start pipeline to complete with configurable timeout
+      auto shutdownTimeout = TimeoutConstants::getShutdownTimeout();
+      if (start_pipeline_cv_.wait_for(lock, shutdownTimeout,
+                                       [this] { return !starting_pipeline_.load(); })) {
+        // Start pipeline completed successfully
+        lock.unlock();
+        if (start_pipeline_thread_.joinable()) {
+          start_pipeline_thread_.join();
+        }
+      } else {
+        // Timeout - detach thread to allow cleanup to continue
+        lock.unlock();
+        std::cerr << "[Worker:" << instance_id_
+                  << "] Warning: Start pipeline thread timeout ("
+                  << shutdownTimeout.count()
+                  << "ms), detaching..." << std::endl;
+        if (start_pipeline_thread_.joinable()) {
+          start_pipeline_thread_.detach();
+        }
+      }
+    }
+  }
+
+  // Cleanup - wait for each step to complete naturally
+  std::cout << "[Worker:" << instance_id_ << "] Stopping config watcher..."
+            << std::endl;
   stopConfigWatcher();
-  stopPipeline();
+
+  std::cout << "[Worker:" << instance_id_ << "] Stopping pipeline..."
+            << std::endl;
+  stopPipeline(); // Will signal condition variable when complete
+  
+  // Wait for pipeline to fully stop
+  {
+    std::unique_lock<std::mutex> lock(stop_pipeline_mutex_);
+    auto shutdownTimeout = TimeoutConstants::getShutdownTimeout();
+    if (stop_pipeline_cv_.wait_for(lock, shutdownTimeout,
+                                    [this] { return !stopping_pipeline_.load() && !pipeline_running_.load(); })) {
+      // Pipeline stopped successfully
+    } else {
+      std::cerr << "[Worker:" << instance_id_
+                << "] Warning: Pipeline stop timeout ("
+                << shutdownTimeout.count() << "ms), continuing..." << std::endl;
+    }
+  }
+
   cleanupPipeline();
-  server_->stop();
+
+  std::cout << "[Worker:" << instance_id_ << "] Stopping IPC server..."
+            << std::endl;
+  if (server_) {
+    server_->stop();
+  }
 
   std::cout << "[Worker:" << instance_id_ << "] Exited cleanly" << std::endl;
   return 0;
@@ -150,8 +244,17 @@ IPCMessage WorkerHandler::handleMessage(const IPCMessage &msg) {
 IPCMessage WorkerHandler::handlePing(const IPCMessage & /*msg*/) {
   IPCMessage response;
   response.type = MessageType::PONG;
+  
+  // Use separate state_mutex_ to avoid blocking PING when pipeline
+  // starting/stopping operations are holding start_pipeline_mutex_
+  std::string state_copy;
+  {
+    std::lock_guard<std::mutex> lock(state_mutex_);
+    state_copy = current_state_;
+  }
+  
   response.payload["instance_id"] = instance_id_;
-  response.payload["state"] = current_state_;
+  response.payload["state"] = state_copy;
   response.payload["uptime_ms"] = static_cast<Json::Int64>(
       std::chrono::duration_cast<std::chrono::milliseconds>(
           std::chrono::steady_clock::now() - start_time_)
@@ -213,29 +316,72 @@ IPCMessage WorkerHandler::handleDeleteInstance(const IPCMessage & /*msg*/) {
 }
 
 IPCMessage WorkerHandler::handleStartInstance(const IPCMessage & /*msg*/) {
+  std::cout << "[Worker:" << instance_id_ << "] Received START_INSTANCE request" << std::endl;
+  
   IPCMessage response;
   response.type = MessageType::START_INSTANCE_RESPONSE;
 
   if (pipeline_nodes_.empty()) {
+    std::cout << "[Worker:" << instance_id_ << "] START_INSTANCE: No pipeline configured" << std::endl;
     response.payload = createErrorResponse("No pipeline configured",
                                            ResponseStatus::NOT_FOUND);
     return response;
   }
 
-  if (pipeline_running_) {
+  // Use start_pipeline_mutex_ to atomically check pipeline state and
+  // starting_pipeline_ flag to prevent race conditions when multiple
+  // START_INSTANCE requests come in simultaneously
+  // CRITICAL: Keep lock scope minimal to avoid blocking GET_STATISTICS
+  bool already_running = false;
+  bool already_starting = false;
+  {
+    std::lock_guard<std::mutex> lock(start_pipeline_mutex_);
+    
+    // Check if pipeline is already running
+    already_running = pipeline_running_.load();
+    if (already_running) {
+      std::cout << "[Worker:" << instance_id_ << "] START_INSTANCE: Pipeline already running, returning error" << std::endl;
+      // Release lock immediately before creating response
+    } else {
+      // Check if already starting (must check within same lock)
+      already_starting = starting_pipeline_.load();
+      if (already_starting) {
+        std::cout << "[Worker:" << instance_id_ << "] START_INSTANCE: Pipeline already starting, returning error" << std::endl;
+        // Release lock immediately before creating response
+      } else {
+        // Mark as starting
+        starting_pipeline_.store(true);
+        std::cout << "[Worker:" << instance_id_ << "] START_INSTANCE: Starting pipeline async" << std::endl;
+      }
+    }
+  } // Lock released here - critical to avoid blocking other requests
+  
+  // Handle error cases after releasing lock
+  if (already_running) {
     response.payload = createErrorResponse("Pipeline already running",
                                            ResponseStatus::ALREADY_EXISTS);
     return response;
   }
-
-  if (!startPipeline()) {
-    response.payload =
-        createErrorResponse("Failed to start pipeline: " + last_error_,
-                            ResponseStatus::INTERNAL_ERROR);
+  
+  if (already_starting) {
+    response.payload = createErrorResponse("Pipeline is already starting",
+                                          ResponseStatus::ALREADY_EXISTS);
     return response;
   }
+  
+  // Update state separately using state_mutex_ (quick operation, won't block)
+  {
+    std::lock_guard<std::mutex> lock(state_mutex_);
+    current_state_ = "starting";
+  }
 
-  response.payload = createResponse(ResponseStatus::OK, "Instance started");
+  // Start pipeline in background thread to avoid blocking IPC server
+  // This allows GET_STATISTICS and GET_LAST_FRAME requests to be processed
+  // even while pipeline is starting
+  startPipelineAsync();
+
+  response.payload = createResponse(ResponseStatus::OK, "Instance starting");
+  std::cout << "[Worker:" << instance_id_ << "] START_INSTANCE: Response sent, pipeline starting in background" << std::endl;
   return response;
 }
 
@@ -243,7 +389,7 @@ IPCMessage WorkerHandler::handleStopInstance(const IPCMessage & /*msg*/) {
   IPCMessage response;
   response.type = MessageType::STOP_INSTANCE_RESPONSE;
 
-  if (!pipeline_running_) {
+  if (!pipeline_running_.load()) {
     response.payload =
         createErrorResponse("Pipeline not running", ResponseStatus::NOT_FOUND);
     return response;
@@ -275,7 +421,7 @@ IPCMessage WorkerHandler::handleUpdateInstance(const IPCMessage &msg) {
   }
 
   // If pipeline is not running, just update config (will apply on next start)
-  if (!pipeline_running_ || pipeline_nodes_.empty()) {
+  if (!pipeline_running_.load() || pipeline_nodes_.empty()) {
     std::cout << "[Worker:" << instance_id_
               << "] Config updated (pipeline not running, will apply on start)"
               << std::endl;
@@ -294,15 +440,15 @@ IPCMessage WorkerHandler::handleUpdateInstance(const IPCMessage &msg) {
   // updated)
   bool canApplyRuntime = applyConfigToPipeline(oldConfig, config_);
 
-  // If rebuild is needed OR runtime update failed, use hot swap for zero
-  // downtime
-  if (needsRebuild || !canApplyRuntime) {
-    std::cout << "[Worker:" << instance_id_
-              << "] Config changes require pipeline rebuild, using hot swap..."
-              << std::endl;
+    // If rebuild is needed OR runtime update failed, use hot swap for zero
+    // downtime
+    if (needsRebuild || !canApplyRuntime) {
+      std::cout << "[Worker:" << instance_id_
+                << "] Config changes require pipeline rebuild, using hot swap..."
+                << std::endl;
 
-    // Use hot swap for zero downtime
-    if (pipeline_running_) {
+      // Use hot swap for zero downtime
+      if (pipeline_running_.load()) {
       if (hotSwapPipeline(config_)) {
         std::cout << "[Worker:" << instance_id_
                   << "] ✓ Pipeline hot-swapped successfully (zero downtime)"
@@ -370,13 +516,23 @@ IPCMessage WorkerHandler::handleGetStatus(const IPCMessage & /*msg*/) {
   IPCMessage response;
   response.type = MessageType::GET_INSTANCE_STATUS_RESPONSE;
 
+  // Use separate state_mutex_ to avoid blocking GET_STATUS when pipeline
+  // starting/stopping operations are holding start_pipeline_mutex_
+  std::string state_copy;
+  std::string error_copy;
+  {
+    std::lock_guard<std::mutex> lock(state_mutex_);
+    state_copy = current_state_;
+    error_copy = last_error_;
+  }
+
   Json::Value data;
   data["instance_id"] = instance_id_;
-  data["state"] = current_state_;
-  data["running"] = pipeline_running_;
+  data["state"] = state_copy;
+  data["running"] = pipeline_running_.load();
   data["has_pipeline"] = !pipeline_nodes_.empty();
-  if (!last_error_.empty()) {
-    data["last_error"] = last_error_;
+  if (!error_copy.empty()) {
+    data["last_error"] = error_copy;
   }
 
   response.payload = createResponse(ResponseStatus::OK, "", data);
@@ -384,6 +540,8 @@ IPCMessage WorkerHandler::handleGetStatus(const IPCMessage & /*msg*/) {
 }
 
 IPCMessage WorkerHandler::handleGetStatistics(const IPCMessage & /*msg*/) {
+  std::cout << "[Worker:" << instance_id_ << "] Received GET_STATISTICS request" << std::endl;
+  
   IPCMessage response;
   response.type = MessageType::GET_STATISTICS_RESPONSE;
 
@@ -394,6 +552,16 @@ IPCMessage WorkerHandler::handleGetStatistics(const IPCMessage & /*msg*/) {
   auto start_unix = std::chrono::duration_cast<std::chrono::seconds>(
                         std::chrono::system_clock::now().time_since_epoch())
                         .count();
+
+  // Use separate state_mutex_ to avoid blocking GET_STATISTICS when pipeline
+  // starting/stopping operations are holding start_pipeline_mutex_
+  std::string state_copy;
+  {
+    std::cout << "[Worker:" << instance_id_ << "] GET_STATISTICS: Acquiring state_mutex_" << std::endl;
+    std::lock_guard<std::mutex> lock(state_mutex_);
+    state_copy = current_state_;
+    std::cout << "[Worker:" << instance_id_ << "] GET_STATISTICS: Got state: " << state_copy << std::endl;
+  }
 
   Json::Value data;
   data["instance_id"] = instance_id_;
@@ -409,7 +577,7 @@ IPCMessage WorkerHandler::handleGetStatistics(const IPCMessage & /*msg*/) {
   data["resolution"] = resolution_;
   data["source_resolution"] = source_resolution_;
   data["format"] = "BGR";
-  data["state"] = current_state_;
+  data["state"] = state_copy;
 
   response.payload = createResponse(ResponseStatus::OK, "", data);
   return response;
@@ -515,7 +683,10 @@ bool WorkerHandler::buildPipeline() {
       return false;
     }
 
-    current_state_ = "created";
+    {
+      std::lock_guard<std::mutex> lock(state_mutex_);
+      current_state_ = "created";
+    }
     std::cout << "[Worker:" << instance_id_ << "] Pipeline built with "
               << pipeline_nodes_.size() << " nodes" << std::endl;
     return true;
@@ -529,6 +700,12 @@ bool WorkerHandler::buildPipeline() {
 }
 
 bool WorkerHandler::startPipeline() {
+  // Check if shutdown was requested
+  if (shutdown_requested_.load()) {
+    last_error_ = "Shutdown requested, cannot start pipeline";
+    return false;
+  }
+
   if (pipeline_nodes_.empty()) {
     last_error_ = "No pipeline to start";
     return false;
@@ -538,6 +715,11 @@ bool WorkerHandler::startPipeline() {
             << std::endl;
 
   try {
+    // CRITICAL: Setup frame capture hook BEFORE starting pipeline
+    // This ensures we capture all frames from the beginning
+    // Hook must be setup before source node starts to avoid missing initial frames
+    setupFrameCaptureHook();
+
     // Find and start source node (first node in pipeline)
     // Try RTSP source first
     auto rtspNode =
@@ -546,6 +728,13 @@ bool WorkerHandler::startPipeline() {
     if (rtspNode) {
       std::cout << "[Worker:" << instance_id_ << "] Starting RTSP source node"
                 << std::endl;
+      
+      // Check shutdown flag before starting (which may block)
+      if (shutdown_requested_.load()) {
+        last_error_ = "Shutdown requested before starting source node";
+        return false;
+      }
+      
       rtspNode->start();
     } else {
       // Try file source
@@ -555,6 +744,13 @@ bool WorkerHandler::startPipeline() {
       if (fileNode) {
         std::cout << "[Worker:" << instance_id_ << "] Starting file source node"
                   << std::endl;
+        
+        // Check shutdown flag before starting (which may block)
+        if (shutdown_requested_.load()) {
+          last_error_ = "Shutdown requested before starting source node";
+          return false;
+        }
+        
         fileNode->start();
       } else {
         last_error_ = "No supported source node found in pipeline";
@@ -562,33 +758,102 @@ bool WorkerHandler::startPipeline() {
       }
     }
 
-    // Setup frame capture hook for statistics
-    setupFrameCaptureHook();
-
-    pipeline_running_ = true;
-    current_state_ = "running";
-    start_time_ = std::chrono::steady_clock::now();
-    last_fps_update_ = start_time_;
-    frames_processed_.store(0);
-    dropped_frames_.store(0);
-    current_fps_.store(0.0); // Reset FPS
+    {
+      std::lock_guard<std::mutex> lock(start_pipeline_mutex_);
+      pipeline_running_.store(true);
+      start_time_ = std::chrono::steady_clock::now();
+      last_fps_update_ = start_time_;
+      frames_processed_.store(0);
+      dropped_frames_.store(0);
+      current_fps_.store(0.0); // Reset FPS
+    }
+    
+    // Update state separately using state_mutex_ (quick operation, won't block)
+    {
+      std::lock_guard<std::mutex> lock(state_mutex_);
+      current_state_ = "running";
+    }
 
     std::cout << "[Worker:" << instance_id_ << "] Pipeline started"
               << std::endl;
     return true;
 
   } catch (const std::exception &e) {
-    last_error_ = e.what();
+    {
+      std::lock_guard<std::mutex> lock(state_mutex_);
+      last_error_ = e.what();
+      current_state_ = "stopped";
+    }
     std::cerr << "[Worker:" << instance_id_
               << "] Failed to start pipeline: " << e.what() << std::endl;
     return false;
   }
 }
 
-void WorkerHandler::stopPipeline() {
-  if (!pipeline_running_) {
+void WorkerHandler::startPipelineAsync() {
+  // Note: starting_pipeline_ is already set to true by handleStartInstance
+  // before this function is called, so we don't need to set it again here
+
+  // Check if shutdown was requested
+  if (shutdown_requested_.load()) {
+    {
+      std::lock_guard<std::mutex> lock(start_pipeline_mutex_);
+      starting_pipeline_.store(false);
+    }
+    {
+      std::lock_guard<std::mutex> lock(state_mutex_);
+      current_state_ = "stopped";
+    }
+    start_pipeline_cv_.notify_all();
     return;
   }
+
+  // Start pipeline in background thread
+  start_pipeline_thread_ = std::thread([this]() {
+    try {
+      // Check shutdown flag before starting pipeline
+      if (shutdown_requested_.load()) {
+        {
+          std::lock_guard<std::mutex> lock(start_pipeline_mutex_);
+          starting_pipeline_.store(false);
+        }
+        start_pipeline_cv_.notify_all(); // Notify waiters
+        return;
+      }
+
+      bool success = startPipeline();
+      {
+        std::lock_guard<std::mutex> lock(start_pipeline_mutex_);
+        starting_pipeline_.store(false);
+      }
+      if (!success) {
+        std::lock_guard<std::mutex> lock(state_mutex_);
+        current_state_ = "stopped";
+      }
+      start_pipeline_cv_.notify_all(); // Notify waiters that start completed
+    } catch (const std::exception &e) {
+      {
+        std::lock_guard<std::mutex> lock(start_pipeline_mutex_);
+        starting_pipeline_.store(false);
+      }
+      {
+        std::lock_guard<std::mutex> lock(state_mutex_);
+        last_error_ = "Exception in startPipeline: " + std::string(e.what());
+        current_state_ = "stopped";
+      }
+      std::cerr << "[Worker:" << instance_id_ << "] " << last_error_
+                << std::endl;
+      start_pipeline_cv_.notify_all(); // Notify waiters even on error
+    }
+  });
+}
+
+void WorkerHandler::stopPipeline() {
+  if (!pipeline_running_.load()) {
+    return;
+  }
+
+  stopping_pipeline_.store(true);
 
   std::cout << "[Worker:" << instance_id_ << "] Stopping pipeline..."
             << std::endl;
@@ -597,9 +862,119 @@ void WorkerHandler::stopPipeline() {
     // Stop source nodes first
     for (const auto &node : pipeline_nodes_) {
       if (node) {
-        // Detach recursively to stop the pipeline
-        node->detach_recursively();
-        break;
+        // Check shutdown flag before stopping
+        if (shutdown_requested_.load()) {
+          std::cerr << "[Worker:" << instance_id_
+                    << "] Shutdown requested, force detaching pipeline..."
+                    << std::endl;
+          // Force detach if shutdown is requested
+          try {
+            node->detach_recursively();
+          } catch (...) {
+            // Ignore errors during force detach
+          }
+          break;
+        }
+
+        // Try to stop gracefully first
+        try {
+          auto rtspNode =
+              std::dynamic_pointer_cast<cvedix_nodes::cvedix_rtsp_src_node>(node);
+          if (rtspNode) {
+            // Use configurable timeout for RTSP stop
+            auto stopTimeout = shutdown_requested_.load() 
+                ? TimeoutConstants::getRtspStopTimeoutDeletion()
+                : TimeoutConstants::getRtspStopTimeout();
+            
+            auto stopFuture = std::async(std::launch::async, [rtspNode]() {
+              try {
+                rtspNode->stop();
+                return true;
+              } catch (...) {
+                return false;
+              }
+            });
+
+            auto stopStatus = stopFuture.wait_for(stopTimeout);
+            if (stopStatus == std::future_status::timeout) {
+              std::cerr << "[Worker:" << instance_id_
+                        << "] Stop timeout (" << stopTimeout.count()
+                        << "ms), using detach..." << std::endl;
+            } else if (stopStatus == std::future_status::ready) {
+              stopFuture.get();
+            }
+          } else {
+            auto fileNode =
+                std::dynamic_pointer_cast<cvedix_nodes::cvedix_file_src_node>(node);
+            if (fileNode) {
+              // Use configurable timeout for file stop
+              auto stopTimeout = shutdown_requested_.load()
+                  ? TimeoutConstants::getRtspStopTimeoutDeletion()
+                  : TimeoutConstants::getRtspStopTimeout();
+              
+              auto stopFuture = std::async(std::launch::async, [fileNode]() {
+                try {
+                  fileNode->stop();
+                  return true;
+                } catch (...) {
+                  return false;
+                }
+              });
+
+              auto stopStatus = stopFuture.wait_for(stopTimeout);
+              if (stopStatus == std::future_status::timeout) {
+                std::cerr << "[Worker:" << instance_id_
+                          << "] Stop timeout (" << stopTimeout.count()
+                          << "ms), using detach..." << std::endl;
+              } else if (stopStatus == std::future_status::ready) {
+                stopFuture.get();
+              }
+            }
+          }
+
+          // Check shutdown flag again before detaching
+          if (shutdown_requested_.load()) {
+            std::cerr << "[Worker:" << instance_id_
+                      << "] Shutdown requested during stop, force detaching..."
+                      << std::endl;
+          }
+
+          // Detach recursively - wait for it to complete naturally
+          // Use configurable timeout as fallback
+          auto detachTimeout = shutdown_requested_.load()
+              ? TimeoutConstants::getDestinationFinalizeTimeoutDeletion()
+              : TimeoutConstants::getDestinationFinalizeTimeout();
+          
+          auto detachFuture = std::async(std::launch::async, [node]() {
+            try {
+              node->detach_recursively();
+              return true;
+            } catch (...) {
+              return false;
+            }
+          });
+
+          auto detachStatus = detachFuture.wait_for(detachTimeout);
+          if (detachStatus == std::future_status::timeout) {
+            std::cerr << "[Worker:" << instance_id_
+                      << "] Detach timeout (" << detachTimeout.count()
+                      << "ms), pipeline cleanup may be incomplete"
+                      << std::endl;
+          } else if (detachStatus == std::future_status::ready) {
+            detachFuture.get();
+          }
+        } catch (const std::exception &e) {
+          std::cerr << "[Worker:" << instance_id_
+                    << "] Exception during stop: " << e.what() << std::endl;
+          // Try force detach as fallback
+          try {
+            node->detach_recursively();
+          } catch (...) {
+            // Ignore errors during force detach
+          }
+        }
+
+        break; // Only need to stop source node
       }
     }
   } catch (const std::exception &e) {
@@ -607,15 +982,32 @@ void WorkerHandler::stopPipeline() {
               << "] Error stopping pipeline: " << e.what() << std::endl;
   }
 
-  pipeline_running_ = false;
-  current_state_ = "stopped";
+  {
+    std::lock_guard<std::mutex> lock(start_pipeline_mutex_);
+    pipeline_running_.store(false);
+  }
+  
+  {
+    std::lock_guard<std::mutex> lock(state_mutex_);
+    current_state_ = "stopped";
+  }
+  
+  {
+    std::lock_guard<std::mutex> lock(stop_pipeline_mutex_);
+    stopping_pipeline_.store(false);
+  }
+  stop_pipeline_cv_.notify_all(); // Notify waiters that stop completed
+
   std::cout << "[Worker:" << instance_id_ << "] Pipeline stopped" << std::endl;
 }
 
 void WorkerHandler::cleanupPipeline() {
   stopPipeline();
   pipeline_nodes_.clear();
-  current_state_ = "stopped";
+  {
+    std::lock_guard<std::mutex> lock(state_mutex_);
+    current_state_ = "stopped";
+  }
 }
 
 void WorkerHandler::sendReadySignal() {
@@ -624,9 +1016,121 @@ void WorkerHandler::sendReadySignal() {
 }
 
 void WorkerHandler::setupFrameCaptureHook() {
-  // TODO: Setup hooks on pipeline nodes to capture frames and statistics
-  // This would involve finding the appropriate node (e.g., OSD or DES node)
-  // and setting up a callback to capture frames
+  std::cout << "[Worker:" << instance_id_ << "] Setting up frame capture hook..."
+            << std::endl;
+
+  if (pipeline_nodes_.empty()) {
+    std::cerr << "[Worker:" << instance_id_
+              << "] ⚠ Warning: No pipeline nodes to setup frame capture hook"
+              << std::endl;
+    return;
+  }
+
+  std::cout << "[Worker:" << instance_id_
+            << "] Searching for app_des_node in " << pipeline_nodes_.size()
+            << " pipeline nodes..." << std::endl;
+
+  // Find the app_des_node (best for capturing frames)
+  std::shared_ptr<cvedix_nodes::cvedix_app_des_node> appDesNode;
+
+  // Search backwards from the end to find app_des_node
+  for (auto it = pipeline_nodes_.rbegin(); it != pipeline_nodes_.rend(); ++it) {
+    auto node = *it;
+    if (node) {
+      appDesNode =
+          std::dynamic_pointer_cast<cvedix_nodes::cvedix_app_des_node>(node);
+      if (appDesNode) {
+        std::cout << "[Worker:" << instance_id_
+                  << "] ✓ Found app_des_node in pipeline" << std::endl;
+        break;
+      }
+    }
+  }
+
+  // Setup hook on app_des_node if found
+  if (appDesNode) {
+    std::cout << "[Worker:" << instance_id_
+              << "] Configuring frame capture hook on app_des_node..."
+              << std::endl;
+
+    appDesNode->set_app_des_result_hooker(
+        [this](std::string /*node_name*/,
+               std::shared_ptr<cvedix_objects::cvedix_meta> meta) {
+          try {
+            if (!meta) {
+              return;
+            }
+
+            if (meta->meta_type == cvedix_objects::cvedix_meta_type::FRAME) {
+              auto frame_meta =
+                  std::dynamic_pointer_cast<cvedix_objects::cvedix_frame_meta>(
+                      meta);
+              if (!frame_meta) {
+                return;
+              }
+
+              // Prefer OSD frame (processed with overlays), fallback to original frame
+              const cv::Mat *frameToCache = nullptr;
+              if (!frame_meta->osd_frame.empty()) {
+                frameToCache = &frame_meta->osd_frame;
+              } else if (!frame_meta->frame.empty()) {
+                frameToCache = &frame_meta->frame;
+              }
+
+              if (frameToCache && !frameToCache->empty()) {
+                // Log first few frames for debugging
+                static thread_local uint64_t frame_count = 0;
+                frame_count++;
+                if (frame_count <= 3) {
+                  std::cout << "[Worker:" << instance_id_
+                            << "] Frame capture hook called, frame #" << frame_count
+                            << " (size: " << frameToCache->cols << "x"
+                            << frameToCache->rows << ")" << std::endl;
+                }
+                updateFrameCache(*frameToCache);
+              }
+            }
+          } catch (const std::exception &e) {
+            // Throttle exception logging to avoid performance impact
+            static thread_local uint64_t exception_count = 0;
+            exception_count++;
+
+            // Only log every 100th exception
+            if (exception_count % 100 == 1) {
+              std::cerr << "[Worker:" << instance_id_
+                        << "] [ERROR] Exception in frame capture hook (count: "
+                        << exception_count << "): " << e.what() << std::endl;
+            }
+          } catch (...) {
+            static thread_local uint64_t unknown_exception_count = 0;
+            unknown_exception_count++;
+
+            if (unknown_exception_count % 100 == 1) {
+              std::cerr << "[Worker:" << instance_id_
+                        << "] [ERROR] Unknown exception in frame capture hook "
+                           "(count: "
+                        << unknown_exception_count << ")" << std::endl;
+            }
+          }
+        });
+
+    std::cout << "[Worker:" << instance_id_
+              << "] ✓ Frame capture hook setup completed successfully"
+              << std::endl;
+    return;
+  }
+
+  // If no app_des_node found, log warning
+  std::cerr << "[Worker:" << instance_id_
+            << "] ⚠ Warning: No app_des_node found in pipeline" << std::endl;
+  std::cerr << "[Worker:" << instance_id_
+            << "] Frame capture will not be available. "
+               "Consider adding app_des_node to pipeline."
+            << std::endl;
+  std::cerr << "[Worker:" << instance_id_
+            << "] Pipeline should have app_des_node automatically added by "
+               "PipelineBuilder, but it wasn't found."
+            << std::endl;
 }
 
 void WorkerHandler::updateFrameCache(const cv::Mat &frame) {
@@ -1121,7 +1625,7 @@ bool WorkerHandler::loadConfigFromFile(const std::string &configPath) {
 bool WorkerHandler::hotSwapPipeline(const Json::Value &newConfig) {
   std::lock_guard<std::mutex> lock(pipeline_swap_mutex_);
 
-  if (!pipeline_running_ || pipeline_nodes_.empty()) {
+  if (!pipeline_running_.load() || pipeline_nodes_.empty()) {
     // Pipeline not running, just rebuild normally
     return buildPipeline();
   }
@@ -1208,7 +1712,10 @@ bool WorkerHandler::hotSwapPipeline(const Json::Value &newConfig) {
               << std::endl;
   }
 
-  pipeline_running_ = false;
+  {
+    std::lock_guard<std::mutex> lock(start_pipeline_mutex_);
+    pipeline_running_.store(false);
+  }
 
   auto stopEndTime = std::chrono::steady_clock::now();
   auto stopDuration = std::chrono::duration_cast<std::chrono::milliseconds>(
@@ -1237,15 +1744,15 @@ bool WorkerHandler::hotSwapPipeline(const Json::Value &newConfig) {
   if (!startPipeline()) {
     std::cerr << "[Worker:" << instance_id_
               << "] Failed to start new pipeline after swap" << std::endl;
-    pipeline_running_ = false;
+    {
+      std::lock_guard<std::mutex> lock(start_pipeline_mutex_);
+      pipeline_running_.store(false);
+    }
     config_ = savedConfig; // Restore config
     return false;
   }
 
   auto swapEndTime = std::chrono::steady_clock::now();
-  auto swapDuration = std::chrono::duration_cast<std::chrono::milliseconds>(
-                          swapEndTime - swapStartTime)
-                          .count();
 
   auto totalDuration = std::chrono::duration_cast<std::chrono::milliseconds>(
                            swapEndTime - totalStartTime)
