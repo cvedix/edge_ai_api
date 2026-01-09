@@ -1,7 +1,7 @@
 #pragma once
 
-#include <chrono>
 #include "core/env_config.h"
+#include <chrono>
 
 /**
  * @brief Timeout constants for various operations
@@ -21,7 +21,8 @@ inline int getRegistryMutexTimeoutMs() {
 // Should be >= registry timeout + buffer (e.g., registry + 500ms)
 inline int getApiWrapperTimeoutMs() {
   int registryTimeout = getRegistryMutexTimeoutMs();
-  int apiTimeout = EnvConfig::getInt("API_WRAPPER_TIMEOUT_MS", registryTimeout + 500, 500, 60000);
+  int apiTimeout = EnvConfig::getInt("API_WRAPPER_TIMEOUT_MS",
+                                     registryTimeout + 500, 500, 60000);
   // Ensure API timeout is always >= registry timeout
   return std::max(apiTimeout, registryTimeout + 100);
 }
@@ -44,6 +45,12 @@ inline int getIpcStatusTimeoutMs() {
 // Frame cache mutex timeout
 inline int getFrameCacheMutexTimeoutMs() {
   return EnvConfig::getInt("FRAME_CACHE_MUTEX_TIMEOUT_MS", 1000, 100, 10000);
+}
+
+// Maximum age for a cached frame to be considered valid (in seconds)
+// Frames older than this will be rejected as stale
+inline int getMaxFrameAgeSeconds() {
+  return EnvConfig::getInt("MAX_FRAME_AGE_SECONDS", 10, 1, 60);
 }
 
 // Worker state mutex timeout (for GET_STATISTICS/GET_STATUS operations)
@@ -74,7 +81,8 @@ inline int getDestinationFinalizeTimeoutMs() {
 
 // Destination node finalize timeout during deletion/shutdown
 inline int getDestinationFinalizeTimeoutDeletionMs() {
-  return EnvConfig::getInt("DESTINATION_FINALIZE_TIMEOUT_DELETION_MS", 100, 50, 1000);
+  return EnvConfig::getInt("DESTINATION_FINALIZE_TIMEOUT_DELETION_MS", 100, 50,
+                           1000);
 }
 
 // RTMP destination node prepare timeout during normal operation
@@ -145,4 +153,3 @@ inline std::chrono::milliseconds getRtmpPrepareTimeoutDeletion() {
 }
 
 } // namespace TimeoutConstants
-

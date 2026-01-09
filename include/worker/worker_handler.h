@@ -10,8 +10,8 @@
 #include <json/json.h>
 #include <memory>
 #include <mutex>
-#include <shared_mutex>
 #include <opencv2/core.hpp>
+#include <shared_mutex>
 #include <string>
 
 // Forward declarations for CVEDIX types
@@ -88,14 +88,15 @@ private:
   // Pipeline state
   std::vector<std::shared_ptr<cvedix_nodes::cvedix_node>> pipeline_nodes_;
   std::atomic<bool> pipeline_running_{false};
-  
+
   // State management - use shared_mutex to allow concurrent reads
   // (GET_STATISTICS/GET_STATUS) while writes (state updates) are exclusive
-  // This ensures GET_STATISTICS never blocks, even when pipeline is starting/stopping
-  mutable std::shared_mutex state_mutex_;  // Shared mutex for concurrent reads
+  // This ensures GET_STATISTICS never blocks, even when pipeline is
+  // starting/stopping
+  mutable std::shared_mutex state_mutex_; // Shared mutex for concurrent reads
   std::string current_state_ = "stopped";
   std::string last_error_;
-  
+
   // Hot swap pipeline for zero downtime
   std::vector<std::shared_ptr<cvedix_nodes::cvedix_node>> new_pipeline_nodes_;
   std::atomic<bool> building_new_pipeline_{false};
@@ -105,12 +106,14 @@ private:
   std::thread start_pipeline_thread_;
   std::atomic<bool> starting_pipeline_{false};
   std::mutex start_pipeline_mutex_;
-  std::condition_variable start_pipeline_cv_; // Signal when start pipeline completes
+  std::condition_variable
+      start_pipeline_cv_; // Signal when start pipeline completes
 
   // Pipeline stopping state
   std::atomic<bool> stopping_pipeline_{false};
   std::mutex stop_pipeline_mutex_;
-  std::condition_variable stop_pipeline_cv_; // Signal when pipeline stop completes
+  std::condition_variable
+      stop_pipeline_cv_; // Signal when pipeline stop completes
 
   // Statistics
   std::atomic<uint64_t> frames_processed_{0};
@@ -129,6 +132,8 @@ private:
   mutable std::mutex frame_mutex_;
   std::shared_ptr<cv::Mat> last_frame_; // Changed from cv::Mat to shared_ptr
   bool has_frame_ = false;
+  std::chrono::steady_clock::time_point
+      last_frame_timestamp_; // Track when frame was last updated
 
   /**
    * @brief Initialize dependencies (solution registry, pipeline builder)
