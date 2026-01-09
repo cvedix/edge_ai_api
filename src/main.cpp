@@ -2527,6 +2527,7 @@ int main(int argc, char *argv[]) {
     static NodeHandler nodeHandler;
     static LinesHandler linesHandler;
     static JamsHandler jamsHandler;
+    static StopsHandler stopsHandler;
 
     // Initialize model upload handler with configurable directory
     // Priority: 1. MODELS_DIR env var, 2. /opt/edge_ai_api/models (with
