@@ -7739,6 +7739,8 @@ paths:
         - `face_osd_v2` - Face OSD v2
         - `ba_crossline` - BA Crossline
         - `ba_crossline_osd` - BA Crossline OSD
+        - `ba_jam` - BA Jam
+        - `ba_jam_osd` - BA Jam OSD
         - `classifier` - Classifier
         - `lane_detector` - Lane Detector
         - `restoration` - Restoration
@@ -9237,7 +9239,8 @@ components:
                   rknn_yolov8_detector, rknn_yolov11_detector, rknn_face_detector, ppocr_text_detector,
                   face_swap, insight_face_recognition, mllm_analyser
 
-                  **Processor:** sface_feature_encoder, sort_track, face_osd_v2, ba_crossline, ba_crossline_osd, classifier,
+                  **Processor:** sface_feature_encoder, sort_track, face_osd_v2, ba_crossline, ba_crossline_osd,
+                  ba_jam, ba_jam_osd, classifier,
                   lane_detector, restoration, trt_vehicle_feature_encoder, trt_vehicle_color_classifier,
                   trt_vehicle_type_classifier, trt_vehicle_scanner
 

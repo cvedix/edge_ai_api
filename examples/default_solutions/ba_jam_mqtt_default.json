@@ -16,12 +16,10 @@
             }
         },
         {
-            "nodeType": "yolo_detector",
-            "nodeName": "yolo_detector_{instanceId}",
+            "nodeType": "trt_vehicle_detector",
+            "nodeName": "vehicle_detector_{instanceId}",
             "parameters": {
-                "weights_path": "${WEIGHTS_PATH}",
-                "config_path": "${CONFIG_PATH}",
-                "labels_path": "${LABELS_PATH}",
+                "trt_path": "${TRT_PATH}",
                 "score_threshold": "${detectionSensitivity}",
                 "nms_threshold": "0.4"
             }

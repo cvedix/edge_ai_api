@@ -1,0 +1,19 @@
+{
+  "name": "ba_stop_demo_rtmp",
+  "group": "demo",
+  "solution": "ba_stop",
+  "autoStart": false,
+  "additionalParams": {
+    "input": {
+      "FILE_PATH": "/home/cvedix/project/edge_ai_api/cvedix_data/test_video/vehicle.mp4",
+      "WEIGHTS_PATH": "/home/cvedix/project/edge_ai_api/cvedix_data/models/det_cls/yolov3-tiny-2022-0721_best.weights",
+      "CONFIG_PATH": "/home/cvedix/project/edge_ai_api/cvedix_data/models/det_cls/yolov3-tiny-2022-0721.cfg",
+      "LABELS_PATH": "/home/cvedix/project/edge_ai_api/cvedix_data/models/det_cls/yolov3_tiny_5classes.txt"
+    },
+    "output": {
+      "RTMP_URL": "rtmp://localhost:1935/live/ba_stop_demo",
+      "ENABLE_SCREEN_DES": "false"
+    },
+    "StopLines": "[{\"id\":\"stop1\",\"name\":\"Entrance Stop\",\"coordinates\":[{\"x\":200,\"y\":350},{\"x\":900,\"y\":350}],\"min_frames_stopped\":20}]"
+  }
+}

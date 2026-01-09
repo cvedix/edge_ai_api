@@ -190,12 +190,25 @@ private:
                         const CreateInstanceRequest &req);
 
   /**
+   * @brief Create BA jam node
+   */
+  std::shared_ptr<cvedix_nodes::cvedix_node>
+  createBAJamNode(const std::string &nodeName,
+                  const std::map<std::string, std::string> &params,
+                  const CreateInstanceRequest &req);
+
+  /**
    * @brief Create BA crossline OSD node
    */
   std::shared_ptr<cvedix_nodes::cvedix_node>
   createBACrosslineOSDNode(const std::string &nodeName,
                            const std::map<std::string, std::string> &params);
-
+  /**
+   * @brief Create BA jam OSD node
+   */
+  std::shared_ptr<cvedix_nodes::cvedix_node>
+  createBAJamOSDNode(const std::string &nodeName,
+                     const std::map<std::string, std::string> &params);
   // ========== Broker Nodes ==========
 
   /**
@@ -231,6 +244,24 @@ private:
       const std::string &nodeName,
       const std::map<std::string, std::string> &params,
       const CreateInstanceRequest &req, const std::string &instanceId);
+
+  /**
+   * @brief Create JSON Jam MQTT broker node (custom formatting for
+   * ba_jam)
+   */
+  std::shared_ptr<cvedix_nodes::cvedix_node> createJSONJamMQTTBrokerNode(
+      const std::string &nodeName,
+      const std::map<std::string, std::string> &params,
+      const CreateInstanceRequest &req, const std::string &instanceId);
+  /**
+   * @brief Create JSON Stop MQTT broker node (custom formatting for
+   * ba_stop)
+   */
+  std::shared_ptr<cvedix_nodes::cvedix_node> createJSONStopMQTTBrokerNode(
+      const std::string &nodeName,
+      const std::map<std::string, std::string> &params,
+      const CreateInstanceRequest &req, const std::string &instanceId);
+
 
   /**
    * @brief Create JSON Kafka broker node

@@ -41,6 +41,7 @@ set(TEST_SOURCES
     test_jams_handler.cpp
     test_stops_handler.cpp
     test_ba_jam_detection_params.cpp
+    test_ba_jam_pipeline.cpp
     # test_ai_handler.cpp  # Commented out: requires C++20 for counting_semaphore, but project uses C++17
     test_main.cpp
 )

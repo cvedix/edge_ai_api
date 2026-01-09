@@ -1,0 +1,40 @@
+{
+  "name": "ba_jam_rtsp_rtmp_mqtt_test",
+  "group": "test",
+  "solution": "ba_jam",
+  "persistent": false,
+  "autoStart": false,
+  "detectionSensitivity": "Medium",
+  "additionalParams": {
+    "input": {
+      "RTSP_SRC_URL": "rtsp://localhost:8554/mystream",
+      "TRT_PATH": "../../cvedix_data/models/vehicle/vehicle_v8.5.trt",
+      "JAM_REGION_X_1": "20",
+      "JAM_REGION_Y_1": "360",
+      "JAM_REGION_X_2": "400",
+      "JAM_REGION_Y_2": "250",
+      "JAM_REGION_X_3": "535",
+      "JAM_REGION_Y_3": "250",
+      "JAM_REGION_X_4": "555",
+      "JAM_REGION_Y_4": "560",
+      "JAM_REGION_X_5": "30",
+      "JAM_REGION_Y_5": "550",
+      "RESIZE_RATIO": "1.0",
+      "GST_DECODER_NAME": "avdec_h264",
+      "SKIP_INTERVAL": "0",
+      "CODEC_TYPE": "h264"
+    },
+    "output": {
+      "RTMP_URL": "rtmp://localhost:1935/live/ba_jam_stream",
+      "ENABLE_SCREEN_DES": "false",
+      "BROKE_FOR": "NORMAL",
+      "MQTT_BROKER_URL": "localhost",
+      "MQTT_PORT": "1883",
+      "MQTT_TOPIC": "ba_jam/events",
+      "MQTT_USERNAME": "",
+      "MQTT_PASSWORD": "",
+      "MQTT_RATE_LIMIT_MS": "2000"
+    },
+    "JamZones": "[{\"id\":\"zone1\",\"name\":\"Front Lane\",\"coordinates\":[{\"x\":100,\"y\":300},{\"x\":700,\"y\":300},{\"x\":700,\"y\":400},{\"x\":100,\"y\":400}],\"min_frames_stopped\":30}]"
+  }
+}

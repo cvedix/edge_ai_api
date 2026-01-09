@@ -24,6 +24,18 @@ examples/instances/
 │   ├── test_rtsp_source_rtmp_only.json
 │   ├── test_rtmp_output_only.json
 │   └── report_body_example.json
+├── ba_jam/                      # Behavior Analysis Jam instances
+│   ├── README.md
+│   ├── example_ba_jam_rtmp.json
+│   ├── example_ba_jam_file_mqtt.json
+│   ├── test_rtsp_source_rtmp_mqtt.json
+│   └── report_body_example.json
+├── ba_stop/                     # Behavior Analysis Stop Line instances
+│   ├── README.md
+│   ├── example_ba_stop_rtmp.json
+│   ├── example_ba_stop_file_mqtt.json
+│   ├── test_rtsp_source_rtmp_mqtt.json
+│   └── report_body_example.json
 ├── mask_rcnn/                   # MaskRCNN instances
 │   ├── README.md
 │   ├── test_file_source.json
@@ -69,7 +81,33 @@ examples/instances/
 
 **Xem:** [ba_crossline/README.md](./ba_crossline/README.md)
 
-### 3. MaskRCNN (`mask_rcnn/`)
+### 3. Behavior Analysis Jam (`ba_jam/`)
+
+**Solutions:**
+- `ba_jam`: Phát hiện "jam" (vehicle stopped) trong các zone định nghĩa
+
+**Tính năng:**
+- Phát hiện phương tiện dừng lâu trong zone
+- Tracking với SORT
+- MQTT events khi phát hiện jam
+- RTMP streaming (tùy chọn)
+
+**Xem:** [ba_jam/README.md](./ba_jam/README.md)
+
+### 4. Behavior Analysis Stop Line (`ba_stop/`)
+
+**Solutions:**
+- `ba_stop`: Phát hiện dừng (stop) tại các stop-line định nghĩa
+
+**Tính năng:**
+- Phát hiện phương tiện dừng tại stop-line
+- Tracking với SORT
+- MQTT events khi phát hiện stop
+- RTMP streaming (tùy chọn)
+
+**Xem:** [ba_stop/README.md](./ba_stop/README.md)
+
+### 5. MaskRCNN (`mask_rcnn/`)
 
 **Solutions:**
 - `mask_rcnn_detection`: File source + instance segmentation
