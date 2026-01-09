@@ -175,6 +175,86 @@ selectDecoderFromPriority(const std::string &defaultDecoder) {
   }
 }
 
+// Helper function to log GPU availability
+static void logGPUAvailability() {
+  std::cerr << "[PipelineBuilder] ========================================"
+            << std::endl;
+  std::cerr << "[PipelineBuilder] Checking GPU availability for inference..."
+            << std::endl;
+
+  bool hasGPU = false;
+
+  // Check NVIDIA GPU
+  if (PlatformDetector::isNVIDIA()) {
+    std::cerr << "[PipelineBuilder] ✓ NVIDIA GPU detected" << std::endl;
+    std::cerr << "[PipelineBuilder]   → TensorRT devices (tensorrt.1, "
+                 "tensorrt.2) may be available"
+              << std::endl;
+    hasGPU = true;
+  }
+
+  // Check Intel GPU
+  if (PlatformDetector::isVAAPI()) {
+    std::cerr << "[PipelineBuilder] ✓ Intel GPU (VAAPI) detected" << std::endl;
+    hasGPU = true;
+  }
+
+  if (PlatformDetector::isMSDK()) {
+    std::cerr << "[PipelineBuilder] ✓ Intel GPU (MSDK) detected" << std::endl;
+    hasGPU = true;
+  }
+
+  // Check Jetson
+  if (PlatformDetector::isJetson()) {
+    std::cerr << "[PipelineBuilder] ✓ NVIDIA Jetson detected" << std::endl;
+    std::cerr << "[PipelineBuilder]   → TensorRT devices may be available"
+              << std::endl;
+    hasGPU = true;
+  }
+
+  if (!hasGPU) {
+    std::cerr << "[PipelineBuilder] ⚠ No GPU detected - inference will use CPU"
+              << std::endl;
+    std::cerr << "[PipelineBuilder]   → CPU inference is slower and may cause "
+                 "queue overflow"
+              << std::endl;
+    std::cerr << "[PipelineBuilder]   → Consider using frame dropping (already "
+                 "enabled) or reducing FPS"
+              << std::endl;
+  } else {
+    std::cerr << "[PipelineBuilder] ✓ GPU detected - check config.json "
+                 "auto_device_list to ensure GPU is prioritized"
+              << std::endl;
+    std::cerr << "[PipelineBuilder]   → GPU devices should be listed before "
+                 "CPU in auto_device_list"
+              << std::endl;
+  }
+
+  // Check auto_device_list configuration
+  try {
+    auto &systemConfig = SystemConfig::getInstance();
+    auto deviceList = systemConfig.getAutoDeviceList();
+    if (!deviceList.empty()) {
+      std::cerr << "[PipelineBuilder] Current auto_device_list (first 5): ";
+      size_t count = 0;
+      for (const auto &device : deviceList) {
+        if (count++ < 5) {
+          std::cerr << device << " ";
+        }
+      }
+      std::cerr << "..." << std::endl;
+      std::cerr << "[PipelineBuilder] TIP: Ensure GPU devices (openvino.GPU, "
+                   "tensorrt.1, etc.) are listed before CPU"
+                << std::endl;
+    }
+  } catch (...) {
+    // Ignore errors
+  }
+
+  std::cerr << "[PipelineBuilder] ========================================"
+            << std::endl;
+}
+
 // Helper function to get GStreamer pipeline from config
 // Note: Currently not used but available for future integration
 [[maybe_unused]] static std::string getGStreamerPipelineForPlatform() {
@@ -422,9 +502,9 @@ PipelineBuilder::buildPipeline(const SolutionConfig &solution,
                              nodeConfig.nodeType == "rtmp_des" ||
                              nodeConfig.nodeType == "screen_des");
 
-          // Special handling for BA OSD nodes: attach to their respective BA node
-          // This is critical - OSD node must attach to BA node (crossline/jam/stop)
-          // to get zone/line metadata for drawing
+          // Special handling for BA OSD nodes: attach to their respective BA
+          // node This is critical - OSD node must attach to BA node
+          // (crossline/jam/stop) to get zone/line metadata for drawing
           std::shared_ptr<cvedix_nodes::cvedix_node> attachTarget = nullptr;
           if (nodeConfig.nodeType == "ba_crossline_osd" ||
               nodeConfig.nodeType == "ba_jam_osd" ||
@@ -442,16 +522,21 @@ PipelineBuilder::buildPipeline(const SolutionConfig &solution,
             for (int i = static_cast<int>(nodes.size()) - 1; i >= 0; --i) {
               if (nodeTypes[i] == targetBAType) {
                 attachTarget = nodes[i];
-                std::cerr << "[PipelineBuilder] Attaching " << nodeConfig.nodeType
-                          << " node to " << targetBAType << " node "
-                          << "(required to get zones/lines for drawing)" << std::endl;
+                std::cerr << "[PipelineBuilder] Attaching "
+                          << nodeConfig.nodeType << " node to " << targetBAType
+                          << " node "
+                          << "(required to get zones/lines for drawing)"
+                          << std::endl;
                 break;
               }
             }
             if (!attachTarget) {
-              std::cerr << "[PipelineBuilder] ⚠ WARNING: " << nodeConfig.nodeType
-                        << " node created but " << targetBAType << " node not found! "
-                        << "OSD will attach to previous node but may not receive metadata." << std::endl;
+              std::cerr << "[PipelineBuilder] ⚠ WARNING: "
+                        << nodeConfig.nodeType << " node created but "
+                        << targetBAType << " node not found! "
+                        << "OSD will attach to previous node but may not "
+                           "receive metadata."
+                        << std::endl;
             }
           }
 
@@ -671,16 +756,19 @@ PipelineBuilder::buildPipeline(const SolutionConfig &solution,
 
       auto appDesNode = createAppDesNode(appDesNodeName, appDesParams);
       if (appDesNode) {
-        // Find the last non-DES node to attach app_des_node to
-        // DES nodes (like rtmp_des, file_des) cannot have next nodes
-        // So we need to attach app_des_node to the node before the last DES
-        // node
+        // CRITICAL FIX: Find OSD node FIRST to ensure we get processed frames
+        // Priority 1: Find OSD node (guarantees processed frames with overlays)
+        // Priority 2: If no OSD node, find last non-DES node as fallback
         std::shared_ptr<cvedix_nodes::cvedix_node> attachTarget = nullptr;
+        std::shared_ptr<cvedix_nodes::cvedix_node> fallbackTarget = nullptr;
 
-        // Search backwards to find the last non-DES node
+        // First pass: Find OSD node (highest priority for processed frames)
         for (auto it = nodes.rbegin(); it != nodes.rend(); ++it) {
           auto node = *it;
-          // Check if it's a DES node
+          if (!node)
+            continue;
+
+          // Check if it's a DES node (skip DES nodes)
           bool isDesNode =
               std::dynamic_pointer_cast<cvedix_nodes::cvedix_rtmp_des_node>(
                   node) != nullptr ||
@@ -689,25 +777,82 @@ PipelineBuilder::buildPipeline(const SolutionConfig &solution,
               std::dynamic_pointer_cast<cvedix_nodes::cvedix_app_des_node>(
                   node) != nullptr;
 
-          if (!isDesNode) {
-            attachTarget = node;
-            std::cerr << "[PipelineBuilder] Found non-DES node to attach "
-                         "app_des_node: "
-                      << typeid(*node).name() << std::endl;
-            break;
+          if (isDesNode) {
+            continue; // Skip DES nodes
           }
+
+          // Check if this is an OSD node
+          bool isOSDNode =
+              std::dynamic_pointer_cast<cvedix_nodes::cvedix_face_osd_node_v2>(
+                  node) != nullptr ||
+              std::dynamic_pointer_cast<cvedix_nodes::cvedix_osd_node_v3>(
+                  node) != nullptr ||
+              std::dynamic_pointer_cast<
+                  cvedix_nodes::cvedix_ba_crossline_osd_node>(node) != nullptr;
+
+          if (isOSDNode) {
+            attachTarget = node;
+            std::cerr
+                << "[PipelineBuilder] ✓ Found OSD node to attach app_des_node: "
+                << typeid(*node).name() << std::endl;
+            std::cerr << "[PipelineBuilder] ✓ app_des_node will receive "
+                         "PROCESSED frames with overlays"
+                      << std::endl;
+            break; // Found OSD node, use it
+          }
+
+          // Store last non-DES node as fallback (if not found yet)
+          if (!fallbackTarget) {
+            fallbackTarget = node;
+          }
+        }
+
+        // If no OSD node found, use fallback (last non-DES node)
+        if (!attachTarget && fallbackTarget) {
+          attachTarget = fallbackTarget;
+          std::cerr << "[PipelineBuilder] ⚠ No OSD node found, using fallback: "
+                    << typeid(*fallbackTarget).name() << std::endl;
+          std::cerr << "[PipelineBuilder] ⚠ WARNING: app_des_node attached to "
+                       "non-OSD node. "
+                    << "Frame may not be processed (no overlays)." << std::endl;
         }
 
         if (attachTarget) {
           // Attach app_des_node to the same node as the last DES node
+          bool isOSDTarget =
+              std::dynamic_pointer_cast<cvedix_nodes::cvedix_face_osd_node_v2>(
+                  attachTarget) != nullptr ||
+              std::dynamic_pointer_cast<cvedix_nodes::cvedix_osd_node_v3>(
+                  attachTarget) != nullptr ||
+              std::dynamic_pointer_cast<
+                  cvedix_nodes::cvedix_ba_crossline_osd_node>(attachTarget) !=
+                  nullptr;
+
           appDesNode->attach_to({attachTarget});
           nodes.push_back(appDesNode);
           std::cerr << "[PipelineBuilder] ✓ app_des_node added successfully "
                        "for frame capture"
                     << std::endl;
+          std::cerr
+              << "[PipelineBuilder] DEBUG: app_des_node attached to: "
+              << typeid(*attachTarget).name()
+              << (isOSDTarget
+                      ? " [OSD NODE - will receive processed frames]"
+                      : " [NON-OSD NODE - will receive unprocessed frames]")
+              << std::endl;
           std::cerr << "[PipelineBuilder] NOTE: app_des_node attached to same "
                        "source as other DES nodes (parallel connection)"
                     << std::endl;
+
+          if (!isOSDTarget) {
+            std::cerr << "[PipelineBuilder] ⚠ CRITICAL WARNING: app_des_node "
+                         "is NOT attached to OSD node! "
+                      << "This means getLastFrame API will return unprocessed "
+                         "frames. "
+                      << "Please check pipeline configuration to ensure OSD "
+                         "node exists and is properly connected."
+                      << std::endl;
+          }
         } else {
           std::cerr << "[PipelineBuilder] ⚠ Warning: Could not find suitable "
                        "node to attach app_des_node"
@@ -749,7 +894,8 @@ PipelineBuilder::buildPipeline(const SolutionConfig &solution,
   // Helper function to find the appropriate node for attaching broker/output
   // nodes For ba_crossline: attach broker to ba_crossline node Otherwise: find
   // last non-DES node (excluding app_des)
-  auto findAttachTargetForBrokerCrossline = [&nodes, &nodeTypes](bool isCrosslineBroker)
+  auto findAttachTargetForBrokerCrossline = [&nodes,
+                                             &nodeTypes](bool isCrosslineBroker)
       -> std::shared_ptr<cvedix_nodes::cvedix_node> {
     if (isCrosslineBroker) {
       // For crossline broker, find ba_crossline node specifically
@@ -779,8 +925,9 @@ PipelineBuilder::buildPipeline(const SolutionConfig &solution,
   // Helper function to find the appropriate node for attaching broker/output
   // nodes For ba_jam: attach broker to ba_jam node Otherwise: find
   // last non-DES node (excluding app_des)
-  auto findAttachTargetForBrokerJam = [&nodes, &nodeTypes](bool isJamBroker)
-      -> std::shared_ptr<cvedix_nodes::cvedix_node> {
+  auto findAttachTargetForBrokerJam =
+      [&nodes, &nodeTypes](
+          bool isJamBroker) -> std::shared_ptr<cvedix_nodes::cvedix_node> {
     if (isJamBroker) {
       // For jam broker, find ba_jam node specifically
       for (size_t i = 0; i < nodeTypes.size(); ++i) {
@@ -809,8 +956,9 @@ PipelineBuilder::buildPipeline(const SolutionConfig &solution,
   // Helper function to find the appropriate node for attaching broker/output
   // nodes For ba_stop: attach broker to ba_stop node Otherwise: find
   // last non-DES node (excluding app_des)
-  auto findAttachTargetForBrokerStop = [&nodes, &nodeTypes](bool isStopBroker)
-      -> std::shared_ptr<cvedix_nodes::cvedix_node> {
+  auto findAttachTargetForBrokerStop =
+      [&nodes, &nodeTypes](
+          bool isStopBroker) -> std::shared_ptr<cvedix_nodes::cvedix_node> {
     if (isStopBroker) {
       // For stop broker, find ba_stop node specifically
       for (size_t i = 0; i < nodeTypes.size(); ++i) {
@@ -1131,7 +1279,8 @@ PipelineBuilder::buildPipeline(const SolutionConfig &solution,
         // Check if pipeline has OSD node (face_osd_v2, osd_v3,
         // ba_crossline_osd)
         bool hasOSDNode = hasNodeType("face_osd_v2") || hasNodeType("osd_v3") ||
-                          hasNodeType("ba_crossline_osd") || hasNodeType("ba_jam_osd") ||
+                          hasNodeType("ba_crossline_osd") ||
+                          hasNodeType("ba_jam_osd") ||
                           hasNodeType("ba_stop_osd");
 
         // If no OSD node, auto-add face_osd_v2 node for face detection
@@ -2004,8 +2153,8 @@ PipelineBuilder::createNode(const SolutionConfig::NodeConfig &nodeConfig,
       return createBACrosslineNode(nodeName, params, req);
     } else if (nodeConfig.nodeType == "ba_jam") {
       return createBAJamNode(nodeName, params, req);
-    // } else if (nodeConfig.nodeType == "ba_stop") {
-    //   return createBAJamNode(nodeName, params, req);
+      // } else if (nodeConfig.nodeType == "ba_stop") {
+      //   return createBAJamNode(nodeName, params, req);
     }
     // OSD nodes
     else if (nodeConfig.nodeType == "face_osd_v2") {
@@ -2016,8 +2165,8 @@ PipelineBuilder::createNode(const SolutionConfig::NodeConfig &nodeConfig,
       return createBACrosslineOSDNode(nodeName, params);
     } else if (nodeConfig.nodeType == "ba_jam_osd") {
       return createBAJamOSDNode(nodeName, params);
-    // } else if (nodeConfig.nodeType == "ba_stop_osd") {
-    //   return createBAStopOSDNode(nodeName, params);
+      // } else if (nodeConfig.nodeType == "ba_stop_osd") {
+      //   return createBAStopOSDNode(nodeName, params);
     }
     // Broker nodes
     else if (nodeConfig.nodeType == "json_console_broker") {
@@ -2728,15 +2877,28 @@ PipelineBuilder::createFaceDetectorNode(
     std::cerr << "  Top K: " << topK << std::endl;
 
     // Create the YuNet face detector node
+    // Log GPU availability before creating node
+    logGPUAvailability();
+
     std::shared_ptr<cvedix_nodes::cvedix_yunet_face_detector_node> node;
     try {
       std::cerr << "[PipelineBuilder] Calling cvedix_yunet_face_detector_node "
                    "constructor..."
                 << std::endl;
+      std::cerr << "[PipelineBuilder] NOTE: Device selection is handled by "
+                   "CVEDIX SDK based on auto_device_list in config.json"
+                << std::endl;
+      std::cerr << "[PipelineBuilder] NOTE: Check CVEDIX SDK logs to see which "
+                   "device is selected"
+                << std::endl;
       node = std::make_shared<cvedix_nodes::cvedix_yunet_face_detector_node>(
           nodeName, modelPath, scoreThreshold, nmsThreshold, topK);
       std::cerr
           << "[PipelineBuilder] ✓ YuNet face detector node created successfully"
+          << std::endl;
+      std::cerr
+          << "[PipelineBuilder] TIP: If queue full errors occur, check if "
+             "GPU is being used (check nvidia-smi or GPU monitoring)"
           << std::endl;
       if (!fs::exists(modelFilePath)) {
         std::cerr << "[PipelineBuilder] ⚠ WARNING: Model file was not found, "
@@ -3989,8 +4151,7 @@ PipelineBuilder::createBACrosslineNode(
   }
 }
 
-std::shared_ptr<cvedix_nodes::cvedix_node>
-PipelineBuilder::createBAJamNode(
+std::shared_ptr<cvedix_nodes::cvedix_node> PipelineBuilder::createBAJamNode(
     const std::string &nodeName,
     const std::map<std::string, std::string> &params,
     const CreateInstanceRequest &req) {
@@ -4005,8 +4166,7 @@ PipelineBuilder::createBAJamNode(
 
     // Priority 1: Check Jams from API (stored in additionalParams)
     auto jamZoneIt = req.additionalParams.find("Jams");
-    if (jamZoneIt != req.additionalParams.end() &&
-        !jamZoneIt->second.empty()) {
+    if (jamZoneIt != req.additionalParams.end() && !jamZoneIt->second.empty()) {
       try {
         // Parse JSON string to JSON array
         Json::Reader reader;
@@ -4017,8 +4177,7 @@ PipelineBuilder::createBAJamNode(
           for (Json::ArrayIndex i = 0; i < parsedJams.size(); ++i) {
             const Json::Value &jamObj = parsedJams[i];
             // Check if jam has coordinates
-            if (!jamObj.isMember("roi") ||
-                !jamObj["roi"].isArray()) {
+            if (!jamObj.isMember("roi") || !jamObj["roi"].isArray()) {
               std::cerr << "[PipelineBuilder] WARNING: Jam at index " << i
                         << " missing or invalid 'coordinates' field, skipping"
                         << std::endl;
@@ -4035,24 +4194,25 @@ PipelineBuilder::createBAJamNode(
 
             for (const auto &pt : roi) {
 
-                if (!pt.isMember("x") || !pt.isMember("y")) { 
-                  std::cerr << "[PipelineBuilder] WARNING: Point at index " << i
-                            << " has invalid coordinate format, skipping"
-                            << std::endl;
-                  continue;
-                }
-
-                if (!pt["x"].isNumeric() || !pt["y"].isNumeric()) { 
-                  std::cerr << "[PipelineBuilder] WARNING: Point at index " << i
-                            << " must be number, skipping"
-                            << std::endl;
-                  continue;
-                }
+              if (!pt.isMember("x") || !pt.isMember("y")) {
+                std::cerr << "[PipelineBuilder] WARNING: Point at index " << i
+                          << " has invalid coordinate format, skipping"
+                          << std::endl;
+                continue;
               }
+
+              if (!pt["x"].isNumeric() || !pt["y"].isNumeric()) {
+                std::cerr << "[PipelineBuilder] WARNING: Point at index " << i
+                          << " must be number, skipping" << std::endl;
+                continue;
+              }
+            }
             std::vector<cvedix_objects::cvedix_point> roiPoints;
             bool ok = true;
             for (const auto &coord : jamObj["roi"]) {
-              if (!coord.isObject() || !coord.isMember("x") || !coord.isMember("y") || !coord["x"].isNumeric() || !coord["y"].isNumeric()) {
+              if (!coord.isObject() || !coord.isMember("x") ||
+                  !coord.isMember("y") || !coord["x"].isNumeric() ||
+                  !coord["y"].isNumeric()) {
                 ok = false;
                 break;
               }
@@ -4062,9 +4222,10 @@ PipelineBuilder::createBAJamNode(
               roiPoints.push_back(p);
             }
             if (!ok || roiPoints.empty()) {
-                std::cerr << "[API] parseJamsFromJson: Invalid ROI at index " << i << " - skipping";
+              std::cerr << "[API] parseJamsFromJson: Invalid ROI at index " << i
+                        << " - skipping";
               continue;
-              }
+            }
             // Use array index as channel (0, 1, 2, ...)
             int channel = static_cast<int>(i);
             jams[channel] = std::move(roiPoints);
@@ -4076,16 +4237,15 @@ PipelineBuilder::createBAJamNode(
                       << " jam(s) from Jams API" << std::endl;
           }
         } else {
-          std::cerr
-              << "[PipelineBuilder] WARNING: Failed to parse Jams "
-                 "JSON or not an array, falling back to solution config"
-              << std::endl;
+          std::cerr << "[PipelineBuilder] WARNING: Failed to parse Jams "
+                       "JSON or not an array, falling back to solution config"
+                    << std::endl;
         }
       } catch (const std::exception &e) {
-        std::cerr
-            << "[PipelineBuilder] WARNING: Exception parsing Jams "
-               "JSON: "
-            << e.what() << ", falling back to solution config" << std::endl;
+        std::cerr << "[PipelineBuilder] WARNING: Exception parsing Jams "
+                     "JSON: "
+                  << e.what() << ", falling back to solution config"
+                  << std::endl;
       }
     }
 
@@ -4152,8 +4312,8 @@ PipelineBuilder::createBAJamNode(
     std::cerr << "  Jams configured for " << jams.size() << " channel(s)"
               << std::endl;
 
-    auto node = std::make_shared<cvedix_nodes::cvedix_ba_jam_node>(
-        nodeName, jams);
+    auto node =
+        std::make_shared<cvedix_nodes::cvedix_ba_jam_node>(nodeName, jams);
     std::cerr << "[PipelineBuilder] ✓ BA jam node created successfully"
               << std::endl;
     std::cerr << "[PipelineBuilder]   Jams will be passed to OSD node via "
@@ -4164,8 +4324,8 @@ PipelineBuilder::createBAJamNode(
         << std::endl;
     return node;
   } catch (const std::exception &e) {
-    std::cerr << "[PipelineBuilder] Exception in createBAJamNode: "
-              << e.what() << std::endl;
+    std::cerr << "[PipelineBuilder] Exception in createBAJamNode: " << e.what()
+              << std::endl;
     throw;
   }
 }
@@ -4351,8 +4511,7 @@ PipelineBuilder::createBACrosslineOSDNode(
   }
 }
 
-std::shared_ptr<cvedix_nodes::cvedix_node>
-PipelineBuilder::createBAJamOSDNode(
+std::shared_ptr<cvedix_nodes::cvedix_node> PipelineBuilder::createBAJamOSDNode(
     const std::string &nodeName,
     const std::map<std::string, std::string> &params) {
 
@@ -4361,8 +4520,7 @@ PipelineBuilder::createBAJamOSDNode(
       throw std::invalid_argument("Node name cannot be empty");
     }
 
-    std::cerr << "[PipelineBuilder] Creating BA jam OSD node:"
-              << std::endl;
+    std::cerr << "[PipelineBuilder] Creating BA jam OSD node:" << std::endl;
     std::cerr << "  Name: '" << nodeName << "'" << std::endl;
     std::cerr << "  Note: OSD node will automatically get lines from "
                  "ba_jam_node via pipeline metadata"
@@ -4370,9 +4528,8 @@ PipelineBuilder::createBAJamOSDNode(
 
     auto node =
         std::make_shared<cvedix_nodes::cvedix_ba_jam_osd_node>(nodeName);
-    std::cerr
-        << "[PipelineBuilder] ✓ BA jam OSD node created successfully"
-        << std::endl;
+    std::cerr << "[PipelineBuilder] ✓ BA jam OSD node created successfully"
+              << std::endl;
     std::cerr << "[PipelineBuilder]   OSD node will draw lines on video frames "
                  "from ba_jam_node"
               << std::endl;
@@ -6911,9 +7068,7 @@ public:
 };
 
 // ========== Helper Functions for Jam MQTT Broker ==========
-namespace {
-
-} // namespace
+namespace {} // namespace
 
 // Event format structures for Jam MQTT
 namespace jam_event_format {
@@ -7311,9 +7466,7 @@ public:
     }
   }
 };
-namespace {
-
-} // namespace
+namespace {} // namespace
 
 // Event format structures for Jam MQTT
 namespace stop_event_format {
@@ -8399,9 +8552,8 @@ PipelineBuilder::createJSONJamMQTTBrokerNode(
               << mqtt_topic << "'" << std::endl;
     return node;
   } catch (const std::exception &e) {
-    std::cerr
-        << "[PipelineBuilder] Exception in createJSONJamMQTTBrokerNode: "
-        << e.what() << std::endl;
+    std::cerr << "[PipelineBuilder] Exception in createJSONJamMQTTBrokerNode: "
+              << e.what() << std::endl;
     throw;
   }
 }
@@ -8569,9 +8721,8 @@ PipelineBuilder::createJSONStopMQTTBrokerNode(
               << mqtt_topic << "'" << std::endl;
     return node;
   } catch (const std::exception &e) {
-    std::cerr
-        << "[PipelineBuilder] Exception in createJSONStopMQTTBrokerNode: "
-        << e.what() << std::endl;
+    std::cerr << "[PipelineBuilder] Exception in createJSONStopMQTTBrokerNode: "
+              << e.what() << std::endl;
     throw;
   }
 }

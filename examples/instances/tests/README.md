@@ -5,7 +5,6 @@ Thư mục này chứa các test files và examples để test API functionality
 ## Các Files
 
 - `test_set_config_examples.json` - Test examples cho set config API
-- `test_output_api.sh` - Script test output API (trong thư mục scripts)
 
 ## Cách sử dụng
 

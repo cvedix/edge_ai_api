@@ -1,14 +1,17 @@
 #pragma once
 
+#include "worker/config_file_watcher.h"
 #include "worker/ipc_protocol.h"
 #include "worker/unix_socket.h"
 #include <atomic>
 #include <chrono>
+#include <condition_variable>
 #include <functional>
 #include <json/json.h>
 #include <memory>
 #include <mutex>
 #include <opencv2/core.hpp>
+#include <shared_mutex>
 #include <string>
 
 // Forward declarations for CVEDIX types
@@ -78,11 +81,39 @@ private:
   // Dependencies (initialized in worker process)
   std::unique_ptr<PipelineBuilder> pipeline_builder_;
 
+  // Config file watcher for automatic reload
+  std::unique_ptr<ConfigFileWatcher> config_watcher_;
+  std::string config_file_path_;
+
   // Pipeline state
   std::vector<std::shared_ptr<cvedix_nodes::cvedix_node>> pipeline_nodes_;
-  bool pipeline_running_ = false;
+  std::atomic<bool> pipeline_running_{false};
+
+  // State management - use shared_mutex to allow concurrent reads
+  // (GET_STATISTICS/GET_STATUS) while writes (state updates) are exclusive
+  // This ensures GET_STATISTICS never blocks, even when pipeline is
+  // starting/stopping
+  mutable std::shared_mutex state_mutex_; // Shared mutex for concurrent reads
   std::string current_state_ = "stopped";
   std::string last_error_;
+
+  // Hot swap pipeline for zero downtime
+  std::vector<std::shared_ptr<cvedix_nodes::cvedix_node>> new_pipeline_nodes_;
+  std::atomic<bool> building_new_pipeline_{false};
+  std::mutex pipeline_swap_mutex_;
+
+  // Background thread for starting pipeline (to avoid blocking IPC server)
+  std::thread start_pipeline_thread_;
+  std::atomic<bool> starting_pipeline_{false};
+  std::mutex start_pipeline_mutex_;
+  std::condition_variable
+      start_pipeline_cv_; // Signal when start pipeline completes
+
+  // Pipeline stopping state
+  std::atomic<bool> stopping_pipeline_{false};
+  std::mutex stop_pipeline_mutex_;
+  std::condition_variable
+      stop_pipeline_cv_; // Signal when pipeline stop completes
 
   // Statistics
   std::atomic<uint64_t> frames_processed_{0};
@@ -94,10 +125,15 @@ private:
   std::string resolution_;
   std::string source_resolution_;
 
-  // Frame cache
+  // Frame cache - use shared_ptr to avoid expensive clone() operations
+  // This optimization eliminates ~6MB memory copy per frame update
+  // Similar to InstanceRegistry optimization for better multi-instance
+  // performance
   mutable std::mutex frame_mutex_;
-  cv::Mat last_frame_;
+  std::shared_ptr<cv::Mat> last_frame_; // Changed from cv::Mat to shared_ptr
   bool has_frame_ = false;
+  std::chrono::steady_clock::time_point
+      last_frame_timestamp_; // Track when frame was last updated
 
   /**
    * @brief Initialize dependencies (solution registry, pipeline builder)
@@ -136,7 +172,17 @@ private:
   bool startPipeline();
 
   /**
-   * @brief Stop the pipeline
+   * @brief Start the pipeline in background thread (non-blocking)
+   */
+  void startPipelineAsync();
+
+  /**
+   * @brief Stop the pipeline in background thread (non-blocking)
+   */
+  void stopPipelineAsync();
+
+  /**
+   * @brief Stop the pipeline (blocking)
    */
   void stopPipeline();
 
@@ -161,6 +207,11 @@ private:
   void setupFrameCaptureHook();
 
   /**
+   * @brief Setup queue size tracking hook for statistics
+   */
+  void setupQueueSizeTrackingHook();
+
+  /**
    * @brief Update frame cache
    */
   void updateFrameCache(const cv::Mat &frame);
@@ -169,6 +220,58 @@ private:
    * @brief Encode frame to base64 JPEG
    */
   std::string encodeFrameToBase64(const cv::Mat &frame, int quality = 85) const;
+
+  /**
+   * @brief Handle config file change (called by ConfigFileWatcher)
+   */
+  void onConfigFileChanged(const std::string &configPath);
+
+  /**
+   * @brief Load config from file
+   */
+  bool loadConfigFromFile(const std::string &configPath);
+
+  /**
+   * @brief Start config file watcher
+   */
+  void startConfigWatcher();
+
+  /**
+   * @brief Stop config file watcher
+   */
+  void stopConfigWatcher();
+
+  /**
+   * @brief Hot swap pipeline - pre-build new pipeline and swap seamlessly
+   * @param newConfig New configuration to build pipeline with
+   * @return true if successful
+   */
+  bool hotSwapPipeline(const Json::Value &newConfig);
+
+  /**
+   * @brief Pre-build pipeline in background (for hot swap)
+   * @param newConfig New configuration
+   * @return true if successful
+   */
+  bool preBuildPipeline(const Json::Value &newConfig);
+
+  /**
+   * @brief Check if config changes require pipeline rebuild
+   * @param oldConfig Old configuration
+   * @param newConfig New configuration
+   * @return true if rebuild is needed
+   */
+  bool checkIfNeedsRebuild(const Json::Value &oldConfig,
+                           const Json::Value &newConfig) const;
+
+  /**
+   * @brief Apply config changes to running pipeline without rebuild
+   * @param oldConfig Old configuration
+   * @param newConfig New configuration
+   * @return true if successful
+   */
+  bool applyConfigToPipeline(const Json::Value &oldConfig,
+                             const Json::Value &newConfig);
 };
 
 /**
