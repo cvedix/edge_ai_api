@@ -1,0 +1,19 @@
+{
+  "name": "mask_rcnn_demo",
+  "group": "segmentation",
+  "solution": "mask_rcnn_detection",
+  "persistent": true,
+  "autoStart": true,
+  "detectionSensitivity": "Medium",
+  "additionalParams": {
+    "input": {
+      "FILE_PATH": "./cvedix_data/test_video/object.mp4",
+      "MODEL_PATH": "./cvedix_data/models/mask_rcnn/mask_rcnn_inception_v2_coco.pb",
+      "MODEL_CONFIG_PATH": "./cvedix_data/models/mask_rcnn/mask_rcnn_inception_v2_coco.pbtxt",
+      "LABELS_PATH": "./cvedix_data/models/coco_80classes.txt",
+      "INPUT_WIDTH": "416",
+      "INPUT_HEIGHT": "416",
+      "SCORE_THRESHOLD": "0.5"
+    }
+  }
+}
