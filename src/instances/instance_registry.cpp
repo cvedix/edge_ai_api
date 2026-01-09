@@ -21,6 +21,9 @@
 #include <cvedix/nodes/infers/cvedix_openpose_detector_node.h>
 #include <cvedix/nodes/infers/cvedix_sface_feature_encoder_node.h>
 #include <cvedix/nodes/infers/cvedix_yunet_face_detector_node.h>
+#include <cvedix/nodes/osd/cvedix_ba_crossline_osd_node.h>
+#include <cvedix/nodes/osd/cvedix_face_osd_node_v2.h>
+#include <cvedix/nodes/osd/cvedix_osd_node_v3.h>
 #include <cvedix/nodes/src/cvedix_file_src_node.h>
 #include <cvedix/nodes/src/cvedix_rtmp_src_node.h>
 #include <cvedix/nodes/src/cvedix_rtsp_src_node.h>
@@ -5336,6 +5339,9 @@ InstanceRegistry::getInstanceStatistics(const std::string &instanceId) {
 
 std::string
 InstanceRegistry::getLastFrame(const std::string &instanceId) const {
+  std::cout << "[InstanceRegistry] getLastFrame() called for instance: " 
+            << instanceId << std::endl;
+
   // PHASE 1 OPTIMIZATION: Get shared_ptr copy quickly, release lock
   // CRITICAL: Use timeout to prevent blocking if mutex is locked
   FramePtr frame_ptr;
@@ -5355,27 +5361,69 @@ InstanceRegistry::getLastFrame(const std::string &instanceId) const {
     }
 
     auto it = frame_caches_.find(instanceId);
-    if (it == frame_caches_.end() || !it->second.has_frame ||
-        !it->second.frame) {
+    if (it == frame_caches_.end()) {
+      std::cout << "[InstanceRegistry] getLastFrame() - No cache entry found for instance: " 
+                << instanceId << std::endl;
       return ""; // No frame cached
     }
 
+    const FrameCache &cache = it->second;
+    std::cout << "[InstanceRegistry] getLastFrame() - Cache entry found: has_frame=" 
+              << cache.has_frame << ", frame_ptr=" << (cache.frame ? "valid" : "null") << std::endl;
+
+    if (!cache.has_frame || !cache.frame) {
+      std::cout << "[InstanceRegistry] getLastFrame() - Cache entry exists but no frame available" << std::endl;
+      return ""; // No frame cached
+    }
+
+    // Log frame info
+    if (cache.frame && !cache.frame->empty()) {
+      std::cout << "[InstanceRegistry] getLastFrame() - Frame found in cache: size=" 
+                << cache.frame->cols << "x" << cache.frame->rows 
+                << ", channels=" << cache.frame->channels()
+                << ", type=" << cache.frame->type() << std::endl;
+    }
+
     // Get shared_ptr copy (reference counting, no copy of Mat data)
-    frame_ptr = it->second.frame;
+    frame_ptr = cache.frame;
   }
   // Lock released - frame_ptr keeps frame alive via reference counting
 
   // Encode frame to base64 (frame_ptr dereferences to cv::Mat&)
   if (!frame_ptr || frame_ptr->empty()) {
+    std::cout << "[InstanceRegistry] getLastFrame() - Frame pointer is null or empty" << std::endl;
     return "";
   }
-  return encodeFrameToBase64(*frame_ptr, 85); // Default quality 85%
+
+  std::cout << "[InstanceRegistry] getLastFrame() - Encoding frame to base64, quality=85" << std::endl;
+  std::string encoded = encodeFrameToBase64(*frame_ptr, 85); // Default quality 85%
+  std::cout << "[InstanceRegistry] getLastFrame() - Frame encoded: size=" 
+            << encoded.length() << " chars (base64)" << std::endl;
+  
+  return encoded;
 }
 
 void InstanceRegistry::updateFrameCache(const std::string &instanceId,
                                         const cv::Mat &frame) {
   if (frame.empty()) {
+    static thread_local std::unordered_map<std::string, uint64_t> empty_frame_count;
+    empty_frame_count[instanceId]++;
+    if (empty_frame_count[instanceId] <= 3) {
+      std::cout << "[InstanceRegistry] updateFrameCache() - WARNING: Received empty frame for instance " 
+                << instanceId << " (count: " << empty_frame_count[instanceId] << ")" << std::endl;
+    }
     return;
+  }
+
+  // DEBUG: Log frame update (first few times)
+  static thread_local std::unordered_map<std::string, uint64_t> update_count;
+  update_count[instanceId]++;
+  if (update_count[instanceId] <= 5 || update_count[instanceId] % 100 == 0) {
+    std::cout << "[InstanceRegistry] updateFrameCache() - Updating cache for instance " << instanceId
+              << " (update #" << update_count[instanceId] << "): "
+              << "size=" << frame.cols << "x" << frame.rows
+              << ", channels=" << frame.channels()
+              << ", type=" << frame.type() << std::endl;
   }
 
   // PHASE 1 OPTIMIZATION: Create shared_ptr OUTSIDE lock to minimize lock hold
@@ -5436,8 +5484,10 @@ void InstanceRegistry::setupFrameCaptureHook(
 
   // Find the last node (OSD or destination node)
   // Try to find app_des_node first (best for capturing frames)
+  // Also find OSD node as fallback to get processed frames
   std::shared_ptr<cvedix_nodes::cvedix_app_des_node> appDesNode;
   std::shared_ptr<cvedix_nodes::cvedix_rtmp_des_node> rtmpDesNode;
+  std::shared_ptr<cvedix_nodes::cvedix_node> osdNode;
 
   // Search backwards from the end to find destination or OSD node
   for (auto it = nodes.rbegin(); it != nodes.rend(); ++it) {
@@ -5448,7 +5498,7 @@ void InstanceRegistry::setupFrameCaptureHook(
       appDesNode =
           std::dynamic_pointer_cast<cvedix_nodes::cvedix_app_des_node>(node);
       if (appDesNode) {
-        break;
+        // Don't break - continue to find OSD node
       }
     }
 
@@ -5457,10 +5507,26 @@ void InstanceRegistry::setupFrameCaptureHook(
       rtmpDesNode =
           std::dynamic_pointer_cast<cvedix_nodes::cvedix_rtmp_des_node>(node);
     }
+
+    // Find OSD node (for fallback hook)
+    if (!osdNode) {
+      bool isOSDNode =
+          std::dynamic_pointer_cast<
+              cvedix_nodes::cvedix_face_osd_node_v2>(node) != nullptr ||
+          std::dynamic_pointer_cast<cvedix_nodes::cvedix_osd_node_v3>(
+              node) != nullptr ||
+          std::dynamic_pointer_cast<
+              cvedix_nodes::cvedix_ba_crossline_osd_node>(node) != nullptr;
+      if (isOSDNode) {
+        osdNode = node;
+      }
+    }
   }
 
   // Setup hook on app_des_node if found
   if (appDesNode) {
+    std::cout << "[InstanceRegistry] Setting up frame capture hook on app_des_node for instance " 
+              << instanceId << std::endl;
     appDesNode->set_app_des_result_hooker(
         [this, instanceId](std::string /*node_name*/,
                            std::shared_ptr<cvedix_objects::cvedix_meta> meta) {
@@ -5561,18 +5627,93 @@ void InstanceRegistry::setupFrameCaptureHook(
               // PHASE 3: Record frame processed for backpressure tracking
               backpressure.recordFrameProcessed(instanceId);
 
+              // DEBUG: Log frame_meta details
+              static thread_local std::unordered_map<std::string, uint64_t> frame_capture_count;
+              frame_capture_count[instanceId]++;
+              uint64_t capture_count = frame_capture_count[instanceId];
+              
+              bool has_osd_frame = !frame_meta->osd_frame.empty();
+              bool has_original_frame = !frame_meta->frame.empty();
+              
+              if (capture_count <= 5 || capture_count % 100 == 0) {
+                std::cout << "[InstanceRegistry] Frame capture hook #" << capture_count 
+                          << " for instance " << instanceId
+                          << " - osd_frame: " << (has_osd_frame ? "available" : "empty")
+                          << (has_osd_frame ? (" (" + std::to_string(frame_meta->osd_frame.cols) + "x" + std::to_string(frame_meta->osd_frame.rows) + ")") : "")
+                          << ", original frame: " << (has_original_frame ? "available" : "empty")
+                          << (has_original_frame ? (" (" + std::to_string(frame_meta->frame.cols) + "x" + std::to_string(frame_meta->frame.rows) + ")") : "") << std::endl;
+              }
+
               // PHASE 1 OPTIMIZATION: Prefer OSD frame (processed with
               // overlays), fallback to original frame Use reference to avoid
               // unnecessary copy before updateFrameCache
+              // FIX: Always prefer processed frame (osd_frame) - this is the frame after all processing
               const cv::Mat *frameToCache = nullptr;
+              bool using_processed_frame = false;
+              
+              // CRITICAL: Check osd_frame first (frame with AI processing overlays)
               if (!frame_meta->osd_frame.empty()) {
                 frameToCache = &frame_meta->osd_frame;
+                using_processed_frame = true;
+                if (capture_count <= 5) {
+                  std::cout << "[InstanceRegistry] Frame capture hook #" << capture_count 
+                            << " for instance " << instanceId
+                            << " - Using PROCESSED frame (osd_frame): " 
+                            << frame_meta->osd_frame.cols << "x" << frame_meta->osd_frame.rows << std::endl;
+                }
               } else if (!frame_meta->frame.empty()) {
+                // CRITICAL: Use frame_meta->frame - this IS the processed frame from OSD node
+                // PipelineBuilder attaches app_des_node AFTER OSD node, so frame_meta->frame
+                // contains the frame AFTER OSD processing (with AI overlays)
+                // The only reason osd_frame is empty is because OSD node only creates osd_frame
+                // for RTMP node, not for app_des_node. But frame_meta->frame is still the processed frame.
                 frameToCache = &frame_meta->frame;
+                using_processed_frame = true; // This IS the processed frame from OSD node
+                
+                // Log warning if using frame (may or may not be processed)
+                static thread_local std::unordered_map<std::string, bool> logged_warning;
+                if (!logged_warning[instanceId]) {
+                  std::cerr << "[InstanceRegistry] ⚠ WARNING: osd_frame is empty for instance " 
+                            << instanceId << ", using frame_meta->frame instead. "
+                            << "This frame may be processed (if app_des_node is after OSD node) "
+                            << "or unprocessed (if app_des_node is before OSD node). "
+                            << "Please verify pipeline configuration." << std::endl;
+                  std::cerr << "[InstanceRegistry] Possible causes:" << std::endl;
+                  std::cerr << "[InstanceRegistry]   1. OSD node only creates osd_frame for RTMP node (known limitation)" << std::endl;
+                  std::cerr << "[InstanceRegistry]   2. app_des_node is attached before OSD node in pipeline" << std::endl;
+                  std::cerr << "[InstanceRegistry]   3. OSD node is not in pipeline" << std::endl;
+                  logged_warning[instanceId] = true;
+                }
+                if (capture_count <= 5) {
+                  std::cout << "[InstanceRegistry] Frame capture hook #" << capture_count 
+                            << " for instance " << instanceId
+                            << " - Using frame_meta->frame (osd_frame unavailable): " 
+                            << frame_meta->frame.cols << "x" << frame_meta->frame.rows << std::endl;
+                }
+              } else {
+                if (capture_count <= 5) {
+                  std::cout << "[InstanceRegistry] Frame capture hook #" << capture_count 
+                            << " for instance " << instanceId
+                            << " - ERROR: Both osd_frame and original frame are empty!" << std::endl;
+                }
               }
 
               if (frameToCache && !frameToCache->empty()) {
+                if (capture_count <= 5) {
+                  std::cout << "[InstanceRegistry] Updating frame cache for instance " << instanceId
+                            << ": type=" << (using_processed_frame ? "processed (osd_frame)" : "original (frame)")
+                            << ", size=" << frameToCache->cols << "x" << frameToCache->rows << std::endl;
+                }
                 updateFrameCache(instanceId, *frameToCache);
+                
+                // Log frame type for debugging (first few frames only)
+                static thread_local std::unordered_map<std::string, uint64_t> frame_type_log_count;
+                frame_type_log_count[instanceId]++;
+                if (frame_type_log_count[instanceId] <= 3) {
+                  std::cout << "[InstanceRegistry] Frame cached for instance " << instanceId
+                            << ": type=" << (using_processed_frame ? "processed (osd_frame)" : "original (frame)")
+                            << ", size=" << frameToCache->cols << "x" << frameToCache->rows << std::endl;
+                }
 
                 // CRITICAL: Update RTSP activity when we receive frames
                 // This is the only reliable way to know RTSP is actually
@@ -5613,16 +5754,23 @@ void InstanceRegistry::setupFrameCaptureHook(
     std::cerr << "[InstanceRegistry] ✓ Frame capture hook setup completed for "
                  "instance: "
               << instanceId << std::endl;
-    return;
   }
 
+  // NOTE: OSD node hook is not needed because:
+  // 1. app_des_node is attached AFTER OSD node (by PipelineBuilder)
+  // 2. When app_des_node receives frame from OSD node, frame_meta->frame already contains processed frame
+  // 3. The issue is that osd_frame is only created for RTMP node, not for app_des_node
+  // 4. So we use frame_meta->frame from app_des_node, which IS the processed frame from OSD node
+
   // If no app_des_node found, log warning
-  std::cerr << "[InstanceRegistry] ⚠ Warning: No app_des_node found in "
-               "pipeline for instance: "
-            << instanceId << std::endl;
-  std::cerr << "[InstanceRegistry] Frame capture will not be available. "
-               "Consider adding app_des_node to pipeline."
-            << std::endl;
+  if (!appDesNode) {
+    std::cerr << "[InstanceRegistry] ⚠ Warning: No app_des_node found in "
+                 "pipeline for instance: "
+              << instanceId << std::endl;
+    std::cerr << "[InstanceRegistry] Frame capture will not be available. "
+                 "Consider adding app_des_node to pipeline."
+              << std::endl;
+  }
 }
 
 void InstanceRegistry::setupQueueSizeTrackingHook(

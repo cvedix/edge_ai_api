@@ -768,6 +768,8 @@ IPCMessage WorkerHandler::handleGetStatistics(const IPCMessage & /*msg*/) {
 }
 
 IPCMessage WorkerHandler::handleGetLastFrame(const IPCMessage & /*msg*/) {
+  std::cout << "[Worker:" << instance_id_ << "] handleGetLastFrame() called" << std::endl;
+
   IPCMessage response;
   response.type = MessageType::GET_LAST_FRAME_RESPONSE;
 
@@ -775,15 +777,40 @@ IPCMessage WorkerHandler::handleGetLastFrame(const IPCMessage & /*msg*/) {
   data["instance_id"] = instance_id_;
 
   std::lock_guard<std::mutex> lock(frame_mutex_);
+  
+  std::cout << "[Worker:" << instance_id_ << "] handleGetLastFrame() - Frame cache state: "
+            << "has_frame_=" << has_frame_ 
+            << ", last_frame_=" << (last_frame_ ? "valid" : "null") << std::endl;
+
   if (has_frame_ && last_frame_ && !last_frame_->empty()) {
-    data["frame"] = encodeFrameToBase64(*last_frame_);
+    std::cout << "[Worker:" << instance_id_ << "] handleGetLastFrame() - Frame available: "
+              << "size=" << last_frame_->cols << "x" << last_frame_->rows
+              << ", channels=" << last_frame_->channels()
+              << ", type=" << last_frame_->type() << std::endl;
+    
+    std::cout << "[Worker:" << instance_id_ << "] handleGetLastFrame() - Encoding frame to base64..." << std::endl;
+    std::string encoded = encodeFrameToBase64(*last_frame_);
+    data["frame"] = encoded;
     data["has_frame"] = true;
+    
+    std::cout << "[Worker:" << instance_id_ << "] handleGetLastFrame() - Frame encoded: "
+              << "size=" << encoded.length() << " chars (base64)" << std::endl;
   } else {
+    std::cout << "[Worker:" << instance_id_ << "] handleGetLastFrame() - No frame available" << std::endl;
+    if (!has_frame_) {
+      std::cout << "[Worker:" << instance_id_ << "] handleGetLastFrame() - Reason: has_frame_=false" << std::endl;
+    } else if (!last_frame_) {
+      std::cout << "[Worker:" << instance_id_ << "] handleGetLastFrame() - Reason: last_frame_ is null" << std::endl;
+    } else if (last_frame_->empty()) {
+      std::cout << "[Worker:" << instance_id_ << "] handleGetLastFrame() - Reason: last_frame_ is empty" << std::endl;
+    }
     data["frame"] = "";
     data["has_frame"] = false;
   }
 
   response.payload = createResponse(ResponseStatus::OK, "", data);
+  std::cout << "[Worker:" << instance_id_ << "] handleGetLastFrame() - Response prepared: "
+            << "has_frame=" << data["has_frame"].asBool() << std::endl;
   return response;
 }
 
@@ -1318,22 +1345,73 @@ void WorkerHandler::setupFrameCaptureHook() {
                 return;
               }
 
+              // DEBUG: Log frame_meta details
+              static thread_local uint64_t frame_count = 0;
+              frame_count++;
+              
+              bool has_osd_frame = !frame_meta->osd_frame.empty();
+              bool has_original_frame = !frame_meta->frame.empty();
+              
+              if (frame_count <= 5 || frame_count % 100 == 0) {
+                std::cout << "[Worker:" << instance_id_ << "] Frame capture hook #" << frame_count 
+                          << " - osd_frame: " << (has_osd_frame ? "available" : "empty")
+                          << " (" << (has_osd_frame ? std::to_string(frame_meta->osd_frame.cols) + "x" + std::to_string(frame_meta->osd_frame.rows) : "0x0") << ")"
+                          << ", original frame: " << (has_original_frame ? "available" : "empty")
+                          << " (" << (has_original_frame ? std::to_string(frame_meta->frame.cols) + "x" + std::to_string(frame_meta->frame.rows) : "0x0") << ")" << std::endl;
+              }
+
               // Prefer OSD frame (processed with overlays), fallback to original frame
+              // FIX: Always prefer processed frame (osd_frame) - this is the frame after all processing
               const cv::Mat *frameToCache = nullptr;
+              bool using_processed_frame = false;
+              
+              // CRITICAL: Check osd_frame first (frame with AI processing overlays)
               if (!frame_meta->osd_frame.empty()) {
                 frameToCache = &frame_meta->osd_frame;
+                using_processed_frame = true;
+                if (frame_count <= 5) {
+                  std::cout << "[Worker:" << instance_id_ << "] Frame capture hook #" << frame_count 
+                            << " - Using PROCESSED frame (osd_frame): " 
+                            << frame_meta->osd_frame.cols << "x" << frame_meta->osd_frame.rows << std::endl;
+                }
               } else if (!frame_meta->frame.empty()) {
+                // CRITICAL: Use frame_meta->frame - this IS the processed frame from OSD node
+                // PipelineBuilder attaches app_des_node AFTER OSD node, so frame_meta->frame
+                // contains the frame AFTER OSD processing (with AI overlays)
+                // The only reason osd_frame is empty is because OSD node only creates osd_frame
+                // for RTMP node, not for app_des_node. But frame_meta->frame is still the processed frame.
                 frameToCache = &frame_meta->frame;
+                using_processed_frame = true; // This IS the processed frame from OSD node
+                
+                // Log warning if using frame (may or may not be processed)
+                static thread_local bool logged_warning = false;
+                if (!logged_warning) {
+                  std::cerr << "[Worker:" << instance_id_
+                            << "] WARNING: osd_frame is empty, using frame_meta->frame instead. "
+                            << "This frame may be processed (if app_des_node is after OSD node) "
+                            << "or unprocessed (if app_des_node is before OSD node). "
+                            << "Please verify pipeline configuration." << std::endl;
+                  logged_warning = true;
+                }
+                if (frame_count <= 5) {
+                  std::cout << "[Worker:" << instance_id_ << "] Frame capture hook #" << frame_count 
+                            << " - Using frame_meta->frame (osd_frame unavailable): " 
+                            << frame_meta->frame.cols << "x" << frame_meta->frame.rows << std::endl;
+                }
+              } else {
+                if (frame_count <= 5) {
+                  std::cout << "[Worker:" << instance_id_ << "] Frame capture hook #" << frame_count 
+                            << " - ERROR: Both osd_frame and original frame are empty!" << std::endl;
+                }
               }
 
               if (frameToCache && !frameToCache->empty()) {
                 // Log first few frames and periodic updates for debugging
-                static thread_local uint64_t frame_count = 0;
-                frame_count++;
                 if (frame_count <= 10 || frame_count % 100 == 0) {
                   std::cout << "[Worker:" << instance_id_
                             << "] Frame capture hook called, frame #" << frame_count
-                            << " (size: " << frameToCache->cols << "x"
+                            << " (type: " << (using_processed_frame ? "processed (osd_frame)" : "original (frame)")
+                            << ", size: " << frameToCache->cols << "x"
                             << frameToCache->rows << ")" << std::endl;
                 }
                 updateFrameCache(*frameToCache);
