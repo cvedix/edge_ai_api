@@ -731,12 +731,19 @@ PipelineBuilder::buildPipeline(const SolutionConfig &solution,
 
       auto appDesNode = createAppDesNode(appDesNodeName, appDesParams);
       if (appDesNode) {
-        // Find the last non-DES node to attach app_des_node to
-        // DES nodes (like rtmp_des, file_des) cannot have next nodes
-        // So we need to attach app_des_node to the node before the last DES
-        // node
+        // FIX: Find OSD node first (to get processed frames with overlays)
+        // If OSD node exists, attach app_des_node to OSD node
+        // Otherwise, attach to last non-DES node
         std::shared_ptr<cvedix_nodes::cvedix_node> attachTarget = nullptr;
 
+        // REVERT to original simple logic from commit 18acf2fbc5b36c5cbe0027fd0ee1c6da352ef627
+        // Find the last non-DES node to attach app_des_node to
+        // DES nodes (like rtmp_des, file_des) cannot have next nodes
+        // So we need to attach app_des_node to the node before the last DES node
+        // NOTE: If pipeline structure is detector -> OSD -> RTMP,
+        // then "last non-DES node" will be OSD node, so app_des_node will
+        // receive processed frames with overlays automatically
+        
         // Search backwards to find the last non-DES node
         for (auto it = nodes.rbegin(); it != nodes.rend(); ++it) {
           auto node = *it;
@@ -751,23 +758,54 @@ PipelineBuilder::buildPipeline(const SolutionConfig &solution,
 
           if (!isDesNode) {
             attachTarget = node;
-            std::cerr << "[PipelineBuilder] Found non-DES node to attach "
-                         "app_des_node: "
+            // Check if this is an OSD node (for logging)
+            bool isOSDNode =
+                std::dynamic_pointer_cast<
+                    cvedix_nodes::cvedix_face_osd_node_v2>(node) != nullptr ||
+                std::dynamic_pointer_cast<cvedix_nodes::cvedix_osd_node_v3>(
+                    node) != nullptr ||
+                std::dynamic_pointer_cast<
+                    cvedix_nodes::cvedix_ba_crossline_osd_node>(node) != nullptr;
+            
+            std::cerr << "[PipelineBuilder] Found " 
+                      << (isOSDNode ? "OSD node" : "non-DES node")
+                      << " to attach app_des_node: "
                       << typeid(*node).name() << std::endl;
+            if (isOSDNode) {
+              std::cerr << "[PipelineBuilder] ✓ app_des_node will receive processed frames with overlays" << std::endl;
+            }
             break;
           }
         }
 
         if (attachTarget) {
           // Attach app_des_node to the same node as the last DES node
+          bool isOSDTarget = 
+              std::dynamic_pointer_cast<
+                  cvedix_nodes::cvedix_face_osd_node_v2>(attachTarget) != nullptr ||
+              std::dynamic_pointer_cast<cvedix_nodes::cvedix_osd_node_v3>(
+                  attachTarget) != nullptr ||
+              std::dynamic_pointer_cast<
+                  cvedix_nodes::cvedix_ba_crossline_osd_node>(attachTarget) != nullptr;
+          
           appDesNode->attach_to({attachTarget});
           nodes.push_back(appDesNode);
           std::cerr << "[PipelineBuilder] ✓ app_des_node added successfully "
                        "for frame capture"
                     << std::endl;
+          std::cerr << "[PipelineBuilder] DEBUG: app_des_node attached to: " 
+                    << typeid(*attachTarget).name() 
+                    << (isOSDTarget ? " [OSD NODE - will receive processed frames]" : " [NON-OSD NODE - will receive unprocessed frames]")
+                    << std::endl;
           std::cerr << "[PipelineBuilder] NOTE: app_des_node attached to same "
                        "source as other DES nodes (parallel connection)"
                     << std::endl;
+          
+          if (!isOSDTarget) {
+            std::cerr << "[PipelineBuilder] ⚠ CRITICAL WARNING: app_des_node is NOT attached to OSD node! "
+                      << "This means getLastFrame API will return unprocessed frames. "
+                      << "Please check pipeline configuration to ensure OSD node exists and is properly connected." << std::endl;
+          }
         } else {
           std::cerr << "[PipelineBuilder] ⚠ Warning: Could not find suitable "
                        "node to attach app_des_node"

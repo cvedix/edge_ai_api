@@ -1801,8 +1801,28 @@ void InstanceHandler::getLastFrame(
 
     const InstanceInfo &info = optInfo.value();
 
+    // DEBUG: Log instance state before getting frame
+    if (isApiLoggingEnabled()) {
+      PLOG_DEBUG << "[API] GET /v1/core/instance/" << instanceId
+                 << "/frame - Instance state: running=" << info.running
+                 << ", loaded=" << info.loaded;
+    }
+
     // Get last frame (empty string if no frame cached)
     std::string frameBase64 = instance_manager_->getLastFrame(instanceId);
+
+    // DEBUG: Log frame retrieval result
+    if (isApiLoggingEnabled()) {
+      if (frameBase64.empty()) {
+        PLOG_DEBUG << "[API] GET /v1/core/instance/" << instanceId
+                   << "/frame - No frame cached (empty result)";
+      } else {
+        PLOG_DEBUG << "[API] GET /v1/core/instance/" << instanceId
+                   << "/frame - Frame retrieved: size=" << frameBase64.length()
+                   << " chars (base64), estimated image size="
+                   << (frameBase64.length() * 3 / 4) << " bytes";
+      }
+    }
 
     // Build JSON response
     Json::Value response;

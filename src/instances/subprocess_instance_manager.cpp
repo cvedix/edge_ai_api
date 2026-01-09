@@ -987,21 +987,37 @@ SubprocessInstanceManager::getLastFrame(const std::string &instanceId) const {
   // and accepts both READY and BUSY states, so frame can be retrieved
   // even while pipeline is starting or other operations are in progress
 
+  std::cout << "[SubprocessInstanceManager] getLastFrame() called for instance: " 
+            << instanceId << std::endl;
+
   // Send GET_LAST_FRAME command to worker
   // Use configurable timeout for API calls (default: 5 seconds)
   worker::IPCMessage msg;
   msg.type = worker::MessageType::GET_LAST_FRAME;
   msg.payload["instance_id"] = instanceId;
 
+  std::cout << "[SubprocessInstanceManager] Sending GET_LAST_FRAME IPC message to worker for instance: " 
+            << instanceId << std::endl;
+
   auto response = const_cast<worker::WorkerSupervisor *>(supervisor_.get())
                       ->sendToWorker(instanceId, msg,
                                      TimeoutConstants::getIpcApiTimeoutMs());
 
+  std::cout << "[SubprocessInstanceManager] Received response from worker for instance: " 
+            << instanceId << ", response type: " << static_cast<int>(response.type) << std::endl;
+
   if (response.type == worker::MessageType::GET_LAST_FRAME_RESPONSE &&
       response.payload.get("success", false).asBool()) {
-    return response.payload["data"].get("frame", "").asString();
+    std::string frameBase64 = response.payload["data"].get("frame", "").asString();
+    bool hasFrame = response.payload["data"].get("has_frame", false).asBool();
+    
+    std::cout << "[SubprocessInstanceManager] Worker response: success=true, has_frame=" 
+              << hasFrame << ", frame_size=" << frameBase64.length() << " chars" << std::endl;
+    
+    return frameBase64;
   }
 
+  std::cout << "[SubprocessInstanceManager] Worker response: success=false or invalid response type" << std::endl;
   return "";
 }
 
