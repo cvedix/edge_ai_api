@@ -198,6 +198,14 @@ private:
                   const CreateInstanceRequest &req);
 
   /**
+   * @brief Create BA stop node
+   */
+  std::shared_ptr<cvedix_nodes::cvedix_node>
+  createBAStopNode(const std::string &nodeName,
+                   const std::map<std::string, std::string> &params,
+                   const CreateInstanceRequest &req);
+
+  /**
    * @brief Create BA crossline OSD node
    */
   std::shared_ptr<cvedix_nodes::cvedix_node>
@@ -209,6 +217,12 @@ private:
   std::shared_ptr<cvedix_nodes::cvedix_node>
   createBAJamOSDNode(const std::string &nodeName,
                      const std::map<std::string, std::string> &params);
+  /**
+   * @brief Create BA stop OSD node
+   */
+  std::shared_ptr<cvedix_nodes::cvedix_node>
+  createBAStopOSDNode(const std::string &nodeName,
+                      const std::map<std::string, std::string> &params);
   // ========== Broker Nodes ==========
 
   /**

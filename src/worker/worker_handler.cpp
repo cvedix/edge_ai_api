@@ -9,6 +9,8 @@
 #include <cvedix/nodes/des/cvedix_app_des_node.h>
 #include <cvedix/nodes/des/cvedix_rtmp_des_node.h>
 #include <cvedix/nodes/osd/cvedix_ba_crossline_osd_node.h>
+#include <cvedix/nodes/osd/cvedix_ba_jam_osd_node.h>
+#include <cvedix/nodes/osd/cvedix_ba_stop_osd_node.h>
 #include <cvedix/nodes/osd/cvedix_face_osd_node_v2.h>
 #include <cvedix/nodes/osd/cvedix_osd_node_v3.h>
 #include <cvedix/nodes/src/cvedix_file_src_node.h>
@@ -1418,6 +1420,10 @@ void WorkerHandler::setupFrameCaptureHook() {
           std::dynamic_pointer_cast<cvedix_nodes::cvedix_osd_node_v3>(node) !=
               nullptr ||
           std::dynamic_pointer_cast<cvedix_nodes::cvedix_ba_crossline_osd_node>(
+              node) != nullptr ||
+          std::dynamic_pointer_cast<cvedix_nodes::cvedix_ba_jam_osd_node>(
+              node) != nullptr ||
+          std::dynamic_pointer_cast<cvedix_nodes::cvedix_ba_stop_osd_node>(
               node) != nullptr;
       if (isOSDNode) {
         hasOSDNode = true;

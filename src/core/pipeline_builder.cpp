@@ -30,6 +30,7 @@
 #include <cvedix/objects/shapes/cvedix_size.h>
 #include <cvedix/utils/cvedix_utils.h>
 #include <json/reader.h>
+#include <json/value.h>
 #include <opencv2/core.hpp> // For cv::Exception
 
 // TensorRT Inference Nodes
@@ -456,6 +457,214 @@ PipelineBuilder::buildPipeline(const SolutionConfig &solution,
   std::vector<std::shared_ptr<cvedix_nodes::cvedix_node>> nodes;
   std::vector<std::string> nodeTypes; // Track node types for connection logic
 
+  // Check for multiple video sources (FILE_PATHS or RTSP_URLS array)
+  std::vector<std::shared_ptr<cvedix_nodes::cvedix_node>> multipleSourceNodes;
+  bool hasMultipleSources = false;
+  bool hasCustomSourceNodes = false; // Track if we created source nodes from FILE_PATHS/RTSP_URLS (even single)
+  std::string multipleSourceType = ""; // "file_src" or "rtsp_src"
+  
+  // Check FILE_PATHS first
+  auto filePathsIt = req.additionalParams.find("FILE_PATHS");
+  if (filePathsIt != req.additionalParams.end() && !filePathsIt->second.empty()) {
+    try {
+      Json::Value filePathsJson;
+      Json::Reader reader;
+      if (reader.parse(filePathsIt->second, filePathsJson) && filePathsJson.isArray() && filePathsJson.size() >= 1) {
+        hasMultipleSources = (filePathsJson.size() > 1);
+        hasCustomSourceNodes = true; // Mark that we created source nodes from FILE_PATHS
+        multipleSourceType = "file_src";
+        std::cerr << "[PipelineBuilder] Detected FILE_PATHS array with " << filePathsJson.size() << " video source(s)" << std::endl;
+        
+        // Create multiple file_src nodes
+        for (Json::ArrayIndex i = 0; i < filePathsJson.size(); ++i) {
+          std::string filePath;
+          int channel = static_cast<int>(i);
+          float resizeRatio = 0.4f; // Default
+          
+          if (filePathsJson[i].isString()) {
+            // Simple format: ["path1", "path2"]
+            filePath = filePathsJson[i].asString();
+          } else if (filePathsJson[i].isObject()) {
+            // Advanced format: [{"file_path": "path1", "channel": 0, "resize_ratio": 0.5}, ...]
+            if (filePathsJson[i].isMember("file_path")) {
+              filePath = filePathsJson[i]["file_path"].asString();
+            }
+            if (filePathsJson[i].isMember("channel")) {
+              channel = filePathsJson[i]["channel"].asInt();
+            }
+            if (filePathsJson[i].isMember("resize_ratio")) {
+              resizeRatio = filePathsJson[i]["resize_ratio"].asFloat();
+            }
+          }
+          
+          if (!filePath.empty()) {
+            // Auto-detect input type (RTSP, RTMP, or file)
+            std::string inputType = detectInputType(filePath);
+            
+            if (inputType == "rtsp") {
+              // Auto-detect RTSP source from FILE_PATHS
+              std::string nodeName = "rtsp_src_" + instanceId + "_" + std::to_string(channel);
+              std::cerr << "[PipelineBuilder] Auto-detected RTSP source from FILE_PATHS[" << i << "]" << std::endl;
+              std::cerr << "[PipelineBuilder] Creating RTSP source node " << (i + 1) << "/" << filePathsJson.size() 
+                        << ": channel=" << channel << ", url='" << filePath << "', resize_ratio=" << resizeRatio << std::endl;
+              
+              // Default RTSP parameters
+              std::string gstDecoderName = "avdec_h264";
+              int skipInterval = 0;
+              std::string codecType = "h264";
+              
+              // Check if advanced format provides decoder info
+              if (filePathsJson[i].isObject()) {
+                if (filePathsJson[i].isMember("gst_decoder_name")) {
+                  gstDecoderName = filePathsJson[i]["gst_decoder_name"].asString();
+                }
+                if (filePathsJson[i].isMember("skip_interval")) {
+                  skipInterval = filePathsJson[i]["skip_interval"].asInt();
+                }
+                if (filePathsJson[i].isMember("codec_type")) {
+                  codecType = filePathsJson[i]["codec_type"].asString();
+                }
+              }
+              
+              auto rtspSrcNode = std::make_shared<cvedix_nodes::cvedix_rtsp_src_node>(
+                  nodeName, channel, filePath, resizeRatio, gstDecoderName, skipInterval, codecType);
+              multipleSourceNodes.push_back(rtspSrcNode);
+              nodes.push_back(rtspSrcNode);
+              nodeTypes.push_back("rtsp_src");
+            } else if (inputType == "rtmp") {
+              // Auto-detect RTMP source from FILE_PATHS
+              std::string nodeName = "rtmp_src_" + instanceId + "_" + std::to_string(channel);
+              std::cerr << "[PipelineBuilder] Auto-detected RTMP source from FILE_PATHS[" << i << "]" << std::endl;
+              std::cerr << "[PipelineBuilder] Creating RTMP source node " << (i + 1) << "/" << filePathsJson.size() 
+                        << ": channel=" << channel << ", url='" << filePath << "', resize_ratio=" << resizeRatio << std::endl;
+              
+              // Default RTMP parameters
+              std::string gstDecoderName = "avdec_h264";
+              int skipInterval = 0;
+              
+              // Check if advanced format provides decoder info
+              if (filePathsJson[i].isObject()) {
+                if (filePathsJson[i].isMember("gst_decoder_name")) {
+                  gstDecoderName = filePathsJson[i]["gst_decoder_name"].asString();
+                }
+                if (filePathsJson[i].isMember("skip_interval")) {
+                  skipInterval = filePathsJson[i]["skip_interval"].asInt();
+                }
+              }
+              
+              auto rtmpSrcNode = std::make_shared<cvedix_nodes::cvedix_rtmp_src_node>(
+                  nodeName, channel, filePath, resizeRatio, gstDecoderName, skipInterval);
+              multipleSourceNodes.push_back(rtmpSrcNode);
+              nodes.push_back(rtmpSrcNode);
+              nodeTypes.push_back("rtmp_src");
+            } else {
+              // Regular file source
+              std::string nodeName = "file_src_" + instanceId + "_" + std::to_string(channel);
+              std::cerr << "[PipelineBuilder] Creating file source node " << (i + 1) << "/" << filePathsJson.size() 
+                        << ": channel=" << channel << ", path='" << filePath << "', resize_ratio=" << resizeRatio << std::endl;
+              
+              auto fileSrcNode = std::make_shared<cvedix_nodes::cvedix_file_src_node>(
+                  nodeName, channel, filePath, resizeRatio);
+              multipleSourceNodes.push_back(fileSrcNode);
+              nodes.push_back(fileSrcNode);
+              nodeTypes.push_back("file_src");
+            }
+          }
+        }
+        
+        // Count different source types
+        int rtspCount = 0, rtmpCount = 0, fileCount = 0;
+        for (const auto &type : nodeTypes) {
+          if (type == "rtsp_src") rtspCount++;
+          else if (type == "rtmp_src") rtmpCount++;
+          else if (type == "file_src") fileCount++;
+        }
+        
+        std::cerr << "[PipelineBuilder] ✓ Created " << multipleSourceNodes.size() << " source node(s) for multi-channel processing:";
+        if (rtspCount > 0) std::cerr << " " << rtspCount << " RTSP";
+        if (rtmpCount > 0) std::cerr << " " << rtmpCount << " RTMP";
+        if (fileCount > 0) std::cerr << " " << fileCount << " file";
+        std::cerr << std::endl;
+      }
+    } catch (const std::exception &e) {
+      std::cerr << "[PipelineBuilder] Warning: Failed to parse FILE_PATHS: " << e.what() 
+                << ", falling back to single source" << std::endl;
+      hasMultipleSources = false;
+    }
+  }
+  
+  // Check RTSP_URLS if FILE_PATHS not found
+  if (!hasMultipleSources) {
+    auto rtspUrlsIt = req.additionalParams.find("RTSP_URLS");
+    if (rtspUrlsIt != req.additionalParams.end() && !rtspUrlsIt->second.empty()) {
+      try {
+        Json::Value rtspUrlsJson;
+        Json::Reader reader;
+        if (reader.parse(rtspUrlsIt->second, rtspUrlsJson) && rtspUrlsJson.isArray() && rtspUrlsJson.size() >= 1) {
+          hasMultipleSources = (rtspUrlsJson.size() > 1);
+          hasCustomSourceNodes = true; // Mark that we created source nodes from RTSP_URLS
+          multipleSourceType = "rtsp_src";
+          std::cerr << "[PipelineBuilder] Detected RTSP_URLS array with " << rtspUrlsJson.size() << " RTSP stream(s)" << std::endl;
+          
+          // Create multiple rtsp_src nodes
+          for (Json::ArrayIndex i = 0; i < rtspUrlsJson.size(); ++i) {
+            std::string rtspUrl;
+            int channel = static_cast<int>(i);
+            float resizeRatio = 0.6f; // Default for RTSP
+            std::string gstDecoderName = "avdec_h264"; // Default
+            int skipInterval = 0;
+            std::string codecType = "h264";
+            
+            if (rtspUrlsJson[i].isString()) {
+              // Simple format: ["rtsp://url1", "rtsp://url2"]
+              rtspUrl = rtspUrlsJson[i].asString();
+            } else if (rtspUrlsJson[i].isObject()) {
+              // Advanced format: [{"rtsp_url": "rtsp://url1", "channel": 0, "resize_ratio": 0.6, ...}, ...]
+              if (rtspUrlsJson[i].isMember("rtsp_url")) {
+                rtspUrl = rtspUrlsJson[i]["rtsp_url"].asString();
+              } else if (rtspUrlsJson[i].isMember("url")) {
+                rtspUrl = rtspUrlsJson[i]["url"].asString();
+              }
+              if (rtspUrlsJson[i].isMember("channel")) {
+                channel = rtspUrlsJson[i]["channel"].asInt();
+              }
+              if (rtspUrlsJson[i].isMember("resize_ratio")) {
+                resizeRatio = rtspUrlsJson[i]["resize_ratio"].asFloat();
+              }
+              if (rtspUrlsJson[i].isMember("gst_decoder_name")) {
+                gstDecoderName = rtspUrlsJson[i]["gst_decoder_name"].asString();
+              }
+              if (rtspUrlsJson[i].isMember("skip_interval")) {
+                skipInterval = rtspUrlsJson[i]["skip_interval"].asInt();
+              }
+              if (rtspUrlsJson[i].isMember("codec_type")) {
+                codecType = rtspUrlsJson[i]["codec_type"].asString();
+              }
+            }
+            
+            if (!rtspUrl.empty()) {
+              std::string nodeName = "rtsp_src_" + instanceId + "_" + std::to_string(channel);
+              std::cerr << "[PipelineBuilder] Creating RTSP source node " << (i + 1) << "/" << rtspUrlsJson.size() 
+                        << ": channel=" << channel << ", url='" << rtspUrl << "', resize_ratio=" << resizeRatio << std::endl;
+              
+              auto rtspSrcNode = std::make_shared<cvedix_nodes::cvedix_rtsp_src_node>(
+                  nodeName, channel, rtspUrl, resizeRatio, gstDecoderName, skipInterval, codecType);
+              multipleSourceNodes.push_back(rtspSrcNode);
+              nodes.push_back(rtspSrcNode);
+              nodeTypes.push_back("rtsp_src");
+            }
+          }
+          
+          std::cerr << "[PipelineBuilder] ✓ Created " << multipleSourceNodes.size() << " RTSP source nodes for multi-channel processing" << std::endl;
+        }
+      } catch (const std::exception &e) {
+        std::cerr << "[PipelineBuilder] Warning: Failed to parse RTSP_URLS: " << e.what() 
+                  << ", falling back to single source" << std::endl;
+        hasMultipleSources = false;
+      }
+    }
+  }
+
   // Check if pipeline has OSD node (for RTMP node OSD auto-enable logic)
   bool hasOSDNode = false;
   for (const auto &nodeConfig : solution.pipeline) {
@@ -489,12 +698,36 @@ PipelineBuilder::buildPipeline(const SolutionConfig &solution,
         }
       }
 
+      // Skip source node creation if we already have multiple source nodes
+      // Skip source nodes from solution config if we already created custom source nodes
+      if (hasCustomSourceNodes && (nodeConfig.nodeType == "file_src" || nodeConfig.nodeType == "rtsp_src")) {
+        std::cerr << "[PipelineBuilder] Skipping " << nodeConfig.nodeType << " node from solution config (using " 
+                  << (multipleSourceType == "file_src" ? "FILE_PATHS" : "RTSP_URLS") << " array instead)" << std::endl;
+        continue;
+      }
+      
       auto node = createNode(modifiedNodeConfig, req, instanceId);
       if (node) {
         nodes.push_back(node);
         nodeTypes.push_back(nodeConfig.nodeType);
 
-        // Connect to previous node
+        // Connect to previous node(s)
+        // For nodes that should attach to multiple sources (detector, tracker), attach to all source nodes
+        if (hasMultipleSources && !multipleSourceNodes.empty()) {
+          // Check if this node should attach to all sources (detector, tracker, etc.)
+          if (nodeConfig.nodeType == "yolo_detector" || 
+              nodeConfig.nodeType == "trt_vehicle_detector" ||
+              nodeConfig.nodeType == "sort_track" ||
+              nodeConfig.nodeType == "sort_tracker") {
+            // Attach to all source nodes
+            node->attach_to(multipleSourceNodes);
+            std::cerr << "[PipelineBuilder] Attached " << nodeConfig.nodeType 
+                      << " to " << multipleSourceNodes.size() << " " << multipleSourceType << " nodes" << std::endl;
+            continue; // Skip normal connection logic
+          }
+        }
+        
+        // Normal connection logic
         // attach_to() expects a vector of shared_ptr, not a raw pointer
         if (nodes.size() > 1) {
           // Check if current node is a destination node
@@ -788,7 +1021,11 @@ PipelineBuilder::buildPipeline(const SolutionConfig &solution,
               std::dynamic_pointer_cast<cvedix_nodes::cvedix_osd_node_v3>(
                   node) != nullptr ||
               std::dynamic_pointer_cast<
-                  cvedix_nodes::cvedix_ba_crossline_osd_node>(node) != nullptr;
+                  cvedix_nodes::cvedix_ba_crossline_osd_node>(node) != nullptr ||
+              std::dynamic_pointer_cast<
+                  cvedix_nodes::cvedix_ba_jam_osd_node>(node) != nullptr ||
+              std::dynamic_pointer_cast<
+                  cvedix_nodes::cvedix_ba_stop_osd_node>(node) != nullptr;
 
           if (isOSDNode) {
             attachTarget = node;
@@ -1867,6 +2104,11 @@ PipelineBuilder::createNode(const SolutionConfig::NodeConfig &nodeConfig,
       }
 
       if (!rtspUrl.empty()) {
+        // Check if RTMP_URL also provided (potential conflict)
+        if (!rtmpUrl.empty()) {
+          std::cerr << "[PipelineBuilder] ⚠ WARNING: Both RTSP_URL and RTMP_URL are provided." << std::endl;
+          std::cerr << "[PipelineBuilder] ⚠ Using RTSP_URL (priority). RTMP_URL will be ignored for input." << std::endl;
+        }
         // Check if FILE_PATH also contains RTSP URL (potential conflict)
         auto filePathIt = req.additionalParams.find("FILE_PATH");
         if (filePathIt != req.additionalParams.end() &&
@@ -2153,8 +2395,8 @@ PipelineBuilder::createNode(const SolutionConfig::NodeConfig &nodeConfig,
       return createBACrosslineNode(nodeName, params, req);
     } else if (nodeConfig.nodeType == "ba_jam") {
       return createBAJamNode(nodeName, params, req);
-      // } else if (nodeConfig.nodeType == "ba_stop") {
-      //   return createBAJamNode(nodeName, params, req);
+    } else if (nodeConfig.nodeType == "ba_stop") {
+      return createBAStopNode(nodeName, params, req);
     }
     // OSD nodes
     else if (nodeConfig.nodeType == "face_osd_v2") {
@@ -2165,8 +2407,8 @@ PipelineBuilder::createNode(const SolutionConfig::NodeConfig &nodeConfig,
       return createBACrosslineOSDNode(nodeName, params);
     } else if (nodeConfig.nodeType == "ba_jam_osd") {
       return createBAJamOSDNode(nodeName, params);
-      // } else if (nodeConfig.nodeType == "ba_stop_osd") {
-      //   return createBAStopOSDNode(nodeName, params);
+    } else if (nodeConfig.nodeType == "ba_stop_osd") {
+      return createBAStopOSDNode(nodeName, params);
     }
     // Broker nodes
     else if (nodeConfig.nodeType == "json_console_broker") {
@@ -4165,7 +4407,11 @@ std::shared_ptr<cvedix_nodes::cvedix_node> PipelineBuilder::createBAJamNode(
     bool jamsParsed = false;
 
     // Priority 1: Check Jams from API (stored in additionalParams)
-    auto jamZoneIt = req.additionalParams.find("Jams");
+    // Support both "Jams" and "JamZones" for backward compatibility
+    auto jamZoneIt = req.additionalParams.find("JamZones");
+    if (jamZoneIt == req.additionalParams.end() || jamZoneIt->second.empty()) {
+      jamZoneIt = req.additionalParams.find("Jams");
+    }
     if (jamZoneIt != req.additionalParams.end() && !jamZoneIt->second.empty()) {
       try {
         // Parse JSON string to JSON array
@@ -4325,6 +4571,171 @@ std::shared_ptr<cvedix_nodes::cvedix_node> PipelineBuilder::createBAJamNode(
     return node;
   } catch (const std::exception &e) {
     std::cerr << "[PipelineBuilder] Exception in createBAJamNode: " << e.what()
+              << std::endl;
+    throw;
+  }
+}
+
+std::shared_ptr<cvedix_nodes::cvedix_node> PipelineBuilder::createBAStopNode(
+    const std::string &nodeName,
+    const std::map<std::string, std::string> &params,
+    const CreateInstanceRequest &req) {
+
+  try {
+    if (nodeName.empty()) {
+      throw std::invalid_argument("Node name cannot be empty");
+    }
+
+    std::map<int, std::vector<cvedix_objects::cvedix_point>> stops;
+    bool stopsParsed = false;
+
+    // Priority 1: Check StopZones from API (stored in additionalParams)
+    // Support both "Stops" and "StopZones" for backward compatibility
+    auto stopZoneIt = req.additionalParams.find("StopZones");
+    if (stopZoneIt == req.additionalParams.end() || stopZoneIt->second.empty()) {
+      stopZoneIt = req.additionalParams.find("Stops");
+    }
+    if (stopZoneIt != req.additionalParams.end() && !stopZoneIt->second.empty()) {
+      try {
+        // Parse JSON string to JSON array
+        Json::Reader reader;
+        Json::Value parsedStops;
+        if (reader.parse(stopZoneIt->second, parsedStops) &&
+            parsedStops.isArray()) {
+          // Iterate through stops array
+          for (Json::ArrayIndex i = 0; i < parsedStops.size(); ++i) {
+            const Json::Value &stopObj = parsedStops[i];
+            // Check if stop has roi
+            if (!stopObj.isMember("roi") || !stopObj["roi"].isArray()) {
+              std::cerr << "[PipelineBuilder] WARNING: Stop at index " << i
+                        << " missing or invalid 'roi' field, skipping"
+                        << std::endl;
+              continue;
+            }
+
+            const Json::Value &roi = stopObj["roi"];
+            if (roi.size() < 3) {
+              std::cerr << "[PipelineBuilder] WARNING: Stop at index " << i
+                        << " has less than 3 coordinates, skipping"
+                        << std::endl;
+              continue;
+            }
+
+            std::vector<cvedix_objects::cvedix_point> roiPoints;
+            bool ok = true;
+            for (const auto &coord : stopObj["roi"]) {
+              if (!coord.isObject() || !coord.isMember("x") ||
+                  !coord.isMember("y") || !coord["x"].isNumeric() ||
+                  !coord["y"].isNumeric()) {
+                ok = false;
+                break;
+              }
+              cvedix_objects::cvedix_point p;
+              p.x = static_cast<int>(coord["x"].asDouble());
+              p.y = static_cast<int>(coord["y"].asDouble());
+              roiPoints.push_back(p);
+            }
+            if (!ok || roiPoints.empty()) {
+              std::cerr << "[PipelineBuilder] WARNING: Invalid ROI at index " << i
+                        << " - skipping" << std::endl;
+              continue;
+            }
+            // Use array index as channel (0, 1, 2, ...)
+            // Or use channel from stopObj if provided
+            int channel = static_cast<int>(i);
+            if (stopObj.isMember("channel") && stopObj["channel"].isNumeric()) {
+              channel = stopObj["channel"].asInt();
+            }
+            stops[channel] = std::move(roiPoints);
+            stopsParsed = true;
+          }
+
+          if (stopsParsed) {
+            std::cerr << "[PipelineBuilder] ✓ Parsed " << stops.size()
+                      << " stop zone(s) from StopZones API" << std::endl;
+          }
+        } else {
+          std::cerr << "[PipelineBuilder] WARNING: Failed to parse StopZones "
+                       "JSON or not an array, falling back to solution config"
+                    << std::endl;
+        }
+      } catch (const std::exception &e) {
+        std::cerr << "[PipelineBuilder] WARNING: Exception parsing StopZones "
+                     "JSON: "
+                  << e.what() << ", falling back to solution config"
+                  << std::endl;
+      }
+    }
+
+    // Priority 2: Fallback to solution config parameters if no stops from API
+    if (!stopsParsed) {
+      // Check if we have stop parameters from solution config
+      // For ba_stop, we typically use StopZones JSON in params
+      if (params.count("StopZones") && !params.at("StopZones").empty()) {
+        try {
+          Json::Reader reader;
+          Json::Value parsedStops;
+          if (reader.parse(params.at("StopZones"), parsedStops) &&
+              parsedStops.isArray()) {
+            for (Json::ArrayIndex i = 0; i < parsedStops.size(); ++i) {
+              const Json::Value &stopObj = parsedStops[i];
+              if (!stopObj.isMember("roi") || !stopObj["roi"].isArray()) {
+                continue;
+              }
+              std::vector<cvedix_objects::cvedix_point> roiPoints;
+              for (const auto &coord : stopObj["roi"]) {
+                if (coord.isObject() && coord.isMember("x") &&
+                    coord.isMember("y") && coord["x"].isNumeric() &&
+                    coord["y"].isNumeric()) {
+                  cvedix_objects::cvedix_point p;
+                  p.x = static_cast<int>(coord["x"].asDouble());
+                  p.y = static_cast<int>(coord["y"].asDouble());
+                  roiPoints.push_back(p);
+                }
+              }
+              if (!roiPoints.empty()) {
+                int channel = static_cast<int>(i);
+                if (stopObj.isMember("channel") && stopObj["channel"].isNumeric()) {
+                  channel = stopObj["channel"].asInt();
+                }
+                stops[channel] = std::move(roiPoints);
+                stopsParsed = true;
+              }
+            }
+          }
+        } catch (const std::exception &e) {
+          std::cerr << "[PipelineBuilder] Warning: Failed to parse StopZones "
+                       "from solution config: "
+                    << e.what() << std::endl;
+        }
+      }
+
+      if (!stopsParsed) {
+        std::cerr << "[PipelineBuilder] No valid stop zone configuration found. "
+                     "BA stop node will be created without stop zones. "
+                     "Stop zones can be added later via API."
+                  << std::endl;
+      }
+    }
+
+    std::cerr << "[PipelineBuilder] Creating BA stop node:" << std::endl;
+    std::cerr << "  Name: '" << nodeName << "'" << std::endl;
+    std::cerr << "  Stop zones configured for " << stops.size() << " channel(s)"
+              << std::endl;
+
+    auto node =
+        std::make_shared<cvedix_nodes::cvedix_ba_stop_node>(nodeName, stops);
+    std::cerr << "[PipelineBuilder] ✓ BA stop node created successfully"
+              << std::endl;
+    std::cerr << "[PipelineBuilder]   Stop zones will be passed to OSD node via "
+                 "pipeline metadata"
+              << std::endl;
+    std::cerr
+        << "[PipelineBuilder]   OSD node will draw these stop zones on video frames"
+        << std::endl;
+    return node;
+  } catch (const std::exception &e) {
+    std::cerr << "[PipelineBuilder] Exception in createBAStopNode: " << e.what()
               << std::endl;
     throw;
   }
@@ -4536,6 +4947,36 @@ std::shared_ptr<cvedix_nodes::cvedix_node> PipelineBuilder::createBAJamOSDNode(
     return node;
   } catch (const std::exception &e) {
     std::cerr << "[PipelineBuilder] Exception in createBAJamOSDNode: "
+              << e.what() << std::endl;
+    throw;
+  }
+}
+
+std::shared_ptr<cvedix_nodes::cvedix_node> PipelineBuilder::createBAStopOSDNode(
+    const std::string &nodeName,
+    const std::map<std::string, std::string> &params) {
+
+  try {
+    if (nodeName.empty()) {
+      throw std::invalid_argument("Node name cannot be empty");
+    }
+
+    std::cerr << "[PipelineBuilder] Creating BA stop OSD node:" << std::endl;
+    std::cerr << "  Name: '" << nodeName << "'" << std::endl;
+    std::cerr << "  Note: OSD node will automatically get stop zones from "
+                 "ba_stop_node via pipeline metadata"
+              << std::endl;
+
+    auto node =
+        std::make_shared<cvedix_nodes::cvedix_ba_stop_osd_node>(nodeName);
+    std::cerr << "[PipelineBuilder] ✓ BA stop OSD node created successfully"
+              << std::endl;
+    std::cerr << "[PipelineBuilder]   OSD node will draw stop zones on video frames "
+                 "from ba_stop_node"
+              << std::endl;
+    return node;
+  } catch (const std::exception &e) {
+    std::cerr << "[PipelineBuilder] Exception in createBAStopOSDNode: "
               << e.what() << std::endl;
     throw;
   }
