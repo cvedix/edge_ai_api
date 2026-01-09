@@ -6,9 +6,13 @@
 #include "solutions/solution_registry.h"
 #include <cstring>
 #include <cvedix/nodes/common/cvedix_node.h>
+#include <cvedix/nodes/des/cvedix_app_des_node.h>
+#include <cvedix/nodes/des/cvedix_rtmp_des_node.h>
+#include <cvedix/nodes/osd/cvedix_ba_crossline_osd_node.h>
+#include <cvedix/nodes/osd/cvedix_face_osd_node_v2.h>
+#include <cvedix/nodes/osd/cvedix_osd_node_v3.h>
 #include <cvedix/nodes/src/cvedix_file_src_node.h>
 #include <cvedix/nodes/src/cvedix_rtsp_src_node.h>
-#include <cvedix/nodes/des/cvedix_app_des_node.h>
 #include <cvedix/objects/cvedix_frame_meta.h>
 #include <cvedix/objects/cvedix_meta.h>
 #include <filesystem>
@@ -44,10 +48,12 @@ WorkerHandler::~WorkerHandler() {
     if (start_pipeline_thread_.joinable()) {
       std::unique_lock<std::mutex> lock(start_pipeline_mutex_);
       // Wait for start pipeline to complete with configurable timeout
-      // This allows operation to finish naturally but prevents infinite blocking
+      // This allows operation to finish naturally but prevents infinite
+      // blocking
       auto shutdownTimeout = TimeoutConstants::getShutdownTimeout();
-      if (start_pipeline_cv_.wait_for(lock, shutdownTimeout,
-                                       [this] { return !starting_pipeline_.load(); })) {
+      if (start_pipeline_cv_.wait_for(lock, shutdownTimeout, [this] {
+            return !starting_pipeline_.load();
+          })) {
         // Start pipeline completed successfully
         lock.unlock();
         if (start_pipeline_thread_.joinable()) {
@@ -58,8 +64,8 @@ WorkerHandler::~WorkerHandler() {
         lock.unlock();
         std::cerr << "[Worker:" << instance_id_
                   << "] Warning: Start pipeline thread timeout ("
-                  << shutdownTimeout.count()
-                  << "ms), detaching..." << std::endl;
+                  << shutdownTimeout.count() << "ms), detaching..."
+                  << std::endl;
         if (start_pipeline_thread_.joinable()) {
           start_pipeline_thread_.detach();
         }
@@ -151,8 +157,9 @@ int WorkerHandler::run() {
       std::unique_lock<std::mutex> lock(start_pipeline_mutex_);
       // Wait for start pipeline to complete with configurable timeout
       auto shutdownTimeout = TimeoutConstants::getShutdownTimeout();
-      if (start_pipeline_cv_.wait_for(lock, shutdownTimeout,
-                                       [this] { return !starting_pipeline_.load(); })) {
+      if (start_pipeline_cv_.wait_for(lock, shutdownTimeout, [this] {
+            return !starting_pipeline_.load();
+          })) {
         // Start pipeline completed successfully
         lock.unlock();
         if (start_pipeline_thread_.joinable()) {
@@ -163,8 +170,8 @@ int WorkerHandler::run() {
         lock.unlock();
         std::cerr << "[Worker:" << instance_id_
                   << "] Warning: Start pipeline thread timeout ("
-                  << shutdownTimeout.count()
-                  << "ms), detaching..." << std::endl;
+                  << shutdownTimeout.count() << "ms), detaching..."
+                  << std::endl;
         if (start_pipeline_thread_.joinable()) {
           start_pipeline_thread_.detach();
         }
@@ -180,13 +187,14 @@ int WorkerHandler::run() {
   std::cout << "[Worker:" << instance_id_ << "] Stopping pipeline..."
             << std::endl;
   stopPipeline(); // Will signal condition variable when complete
-  
+
   // Wait for pipeline to fully stop
   {
     std::unique_lock<std::mutex> lock(stop_pipeline_mutex_);
     auto shutdownTimeout = TimeoutConstants::getShutdownTimeout();
-    if (stop_pipeline_cv_.wait_for(lock, shutdownTimeout,
-                                    [this] { return !stopping_pipeline_.load() && !pipeline_running_.load(); })) {
+    if (stop_pipeline_cv_.wait_for(lock, shutdownTimeout, [this] {
+          return !stopping_pipeline_.load() && !pipeline_running_.load();
+        })) {
       // Pipeline stopped successfully
     } else {
       std::cerr << "[Worker:" << instance_id_
@@ -244,7 +252,7 @@ IPCMessage WorkerHandler::handleMessage(const IPCMessage &msg) {
 IPCMessage WorkerHandler::handlePing(const IPCMessage & /*msg*/) {
   IPCMessage response;
   response.type = MessageType::PONG;
-  
+
   // Use shared_lock to allow concurrent reads - never blocks other readers
   // Writers (state updates) still get exclusive access
   std::string state_copy;
@@ -252,7 +260,7 @@ IPCMessage WorkerHandler::handlePing(const IPCMessage & /*msg*/) {
     std::shared_lock<std::shared_mutex> lock(state_mutex_);
     state_copy = current_state_;
   }
-  
+
   response.payload["instance_id"] = instance_id_;
   response.payload["state"] = state_copy;
   response.payload["uptime_ms"] = static_cast<Json::Int64>(
@@ -316,13 +324,15 @@ IPCMessage WorkerHandler::handleDeleteInstance(const IPCMessage & /*msg*/) {
 }
 
 IPCMessage WorkerHandler::handleStartInstance(const IPCMessage & /*msg*/) {
-  std::cout << "[Worker:" << instance_id_ << "] Received START_INSTANCE request" << std::endl;
-  
+  std::cout << "[Worker:" << instance_id_ << "] Received START_INSTANCE request"
+            << std::endl;
+
   IPCMessage response;
   response.type = MessageType::START_INSTANCE_RESPONSE;
 
   if (pipeline_nodes_.empty()) {
-    std::cout << "[Worker:" << instance_id_ << "] START_INSTANCE: No pipeline configured" << std::endl;
+    std::cout << "[Worker:" << instance_id_
+              << "] START_INSTANCE: No pipeline configured" << std::endl;
     response.payload = createErrorResponse("No pipeline configured",
                                            ResponseStatus::NOT_FOUND);
     return response;
@@ -336,39 +346,45 @@ IPCMessage WorkerHandler::handleStartInstance(const IPCMessage & /*msg*/) {
   bool already_starting = false;
   {
     std::lock_guard<std::mutex> lock(start_pipeline_mutex_);
-    
+
     // Check if pipeline is already running
     already_running = pipeline_running_.load();
     if (already_running) {
-      std::cout << "[Worker:" << instance_id_ << "] START_INSTANCE: Pipeline already running, returning error" << std::endl;
+      std::cout << "[Worker:" << instance_id_
+                << "] START_INSTANCE: Pipeline already running, returning error"
+                << std::endl;
       // Release lock immediately before creating response
     } else {
       // Check if already starting (must check within same lock)
       already_starting = starting_pipeline_.load();
       if (already_starting) {
-        std::cout << "[Worker:" << instance_id_ << "] START_INSTANCE: Pipeline already starting, returning error" << std::endl;
+        std::cout
+            << "[Worker:" << instance_id_
+            << "] START_INSTANCE: Pipeline already starting, returning error"
+            << std::endl;
         // Release lock immediately before creating response
       } else {
         // Mark as starting
         starting_pipeline_.store(true);
-        std::cout << "[Worker:" << instance_id_ << "] START_INSTANCE: Starting pipeline async" << std::endl;
+        std::cout << "[Worker:" << instance_id_
+                  << "] START_INSTANCE: Starting pipeline async" << std::endl;
       }
     }
   } // Lock released here - critical to avoid blocking other requests
-  
+
   // Handle error cases after releasing lock
   if (already_running) {
     response.payload = createErrorResponse("Pipeline already running",
                                            ResponseStatus::ALREADY_EXISTS);
     return response;
   }
-  
+
   if (already_starting) {
     response.payload = createErrorResponse("Pipeline is already starting",
-                                          ResponseStatus::ALREADY_EXISTS);
+                                           ResponseStatus::ALREADY_EXISTS);
     return response;
   }
-  
+
   // Update state with exclusive lock (blocks readers only briefly)
   {
     std::lock_guard<std::shared_mutex> lock(state_mutex_);
@@ -381,13 +397,17 @@ IPCMessage WorkerHandler::handleStartInstance(const IPCMessage & /*msg*/) {
   startPipelineAsync();
 
   response.payload = createResponse(ResponseStatus::OK, "Instance starting");
-  std::cout << "[Worker:" << instance_id_ << "] START_INSTANCE: Response sent, pipeline starting in background" << std::endl;
+  std::cout
+      << "[Worker:" << instance_id_
+      << "] START_INSTANCE: Response sent, pipeline starting in background"
+      << std::endl;
   return response;
 }
 
 IPCMessage WorkerHandler::handleStopInstance(const IPCMessage & /*msg*/) {
-  std::cout << "[Worker:" << instance_id_ << "] Received STOP_INSTANCE request" << std::endl;
-  
+  std::cout << "[Worker:" << instance_id_ << "] Received STOP_INSTANCE request"
+            << std::endl;
+
   IPCMessage response;
   response.type = MessageType::STOP_INSTANCE_RESPONSE;
 
@@ -401,7 +421,8 @@ IPCMessage WorkerHandler::handleStopInstance(const IPCMessage & /*msg*/) {
       already_stopping = stopping_pipeline_.load();
       if (!already_stopping) {
         stopping_pipeline_.store(true);
-        std::cout << "[Worker:" << instance_id_ << "] STOP_INSTANCE: Stopping pipeline async" << std::endl;
+        std::cout << "[Worker:" << instance_id_
+                  << "] STOP_INSTANCE: Stopping pipeline async" << std::endl;
       }
     }
   } // Lock released here - critical to avoid blocking other requests
@@ -414,7 +435,7 @@ IPCMessage WorkerHandler::handleStopInstance(const IPCMessage & /*msg*/) {
 
   if (already_stopping) {
     response.payload = createErrorResponse("Pipeline is already stopping",
-                                          ResponseStatus::ALREADY_EXISTS);
+                                           ResponseStatus::ALREADY_EXISTS);
     return response;
   }
 
@@ -430,7 +451,9 @@ IPCMessage WorkerHandler::handleStopInstance(const IPCMessage & /*msg*/) {
   stopPipelineAsync();
 
   response.payload = createResponse(ResponseStatus::OK, "Instance stopping");
-  std::cout << "[Worker:" << instance_id_ << "] STOP_INSTANCE: Response sent, pipeline stopping in background" << std::endl;
+  std::cout << "[Worker:" << instance_id_
+            << "] STOP_INSTANCE: Response sent, pipeline stopping in background"
+            << std::endl;
   return response;
 }
 
@@ -473,15 +496,15 @@ IPCMessage WorkerHandler::handleUpdateInstance(const IPCMessage &msg) {
   // updated)
   bool canApplyRuntime = applyConfigToPipeline(oldConfig, config_);
 
-    // If rebuild is needed OR runtime update failed, use hot swap for zero
-    // downtime
-    if (needsRebuild || !canApplyRuntime) {
-      std::cout << "[Worker:" << instance_id_
-                << "] Config changes require pipeline rebuild, using hot swap..."
-                << std::endl;
+  // If rebuild is needed OR runtime update failed, use hot swap for zero
+  // downtime
+  if (needsRebuild || !canApplyRuntime) {
+    std::cout << "[Worker:" << instance_id_
+              << "] Config changes require pipeline rebuild, using hot swap..."
+              << std::endl;
 
-      // Use hot swap for zero downtime
-      if (pipeline_running_.load()) {
+    // Use hot swap for zero downtime
+    if (pipeline_running_.load()) {
       if (hotSwapPipeline(config_)) {
         std::cout << "[Worker:" << instance_id_
                   << "] ✓ Pipeline hot-swapped successfully (zero downtime)"
@@ -574,17 +597,22 @@ IPCMessage WorkerHandler::handleGetStatus(const IPCMessage & /*msg*/) {
 
 IPCMessage WorkerHandler::handleGetStatistics(const IPCMessage & /*msg*/) {
   auto handle_start = std::chrono::steady_clock::now();
-  std::cout << "[Worker:" << instance_id_ << "] ===== handleGetStatistics START =====" << std::endl;
-  std::cout << "[Worker:" << instance_id_ << "] Received GET_STATISTICS request" << std::endl;
-  
+  std::cout << "[Worker:" << instance_id_
+            << "] ===== handleGetStatistics START =====" << std::endl;
+  std::cout << "[Worker:" << instance_id_ << "] Received GET_STATISTICS request"
+            << std::endl;
+
   IPCMessage response;
   response.type = MessageType::GET_STATISTICS_RESPONSE;
 
   // CRITICAL: Check if pipeline is running before returning statistics
   // Statistics are only meaningful when pipeline is actively processing frames
   if (!pipeline_running_.load()) {
-    std::cout << "[Worker:" << instance_id_ << "] GET_STATISTICS: Pipeline not running, returning error" << std::endl;
-    response.payload = createErrorResponse("Pipeline not running", ResponseStatus::NOT_FOUND);
+    std::cout << "[Worker:" << instance_id_
+              << "] GET_STATISTICS: Pipeline not running, returning error"
+              << std::endl;
+    response.payload =
+        createErrorResponse("Pipeline not running", ResponseStatus::NOT_FOUND);
     return response;
   }
 
@@ -606,50 +634,56 @@ IPCMessage WorkerHandler::handleGetStatistics(const IPCMessage & /*msg*/) {
   }
 
   // Get source framerate and resolution from source node (if available)
-  // CRITICAL: Use timeout protection to prevent blocking when source node is busy
-  // This prevents API from hanging when pipeline is overloaded (queue full)
+  // CRITICAL: Use timeout protection to prevent blocking when source node is
+  // busy This prevents API from hanging when pipeline is overloaded (queue
+  // full)
   double source_fps = 0.0;
   std::string source_res = "";
-  
+
   // Try to get source node - pipeline_nodes_ is read-only here, safe to access
   if (!pipeline_nodes_.empty()) {
     try {
       auto sourceNode = pipeline_nodes_[0];
       if (sourceNode) {
         auto rtspNode =
-            std::dynamic_pointer_cast<cvedix_nodes::cvedix_rtsp_src_node>(sourceNode);
+            std::dynamic_pointer_cast<cvedix_nodes::cvedix_rtsp_src_node>(
+                sourceNode);
         auto fileNode =
-            std::dynamic_pointer_cast<cvedix_nodes::cvedix_file_src_node>(sourceNode);
+            std::dynamic_pointer_cast<cvedix_nodes::cvedix_file_src_node>(
+                sourceNode);
 
         // Use async with timeout to prevent blocking when source node is busy
         // Timeout: 100ms (fast enough for API response, prevents hanging)
         const auto source_info_timeout = std::chrono::milliseconds(100);
-        
+
         if (rtspNode) {
           // Get source framerate and resolution from RTSP node with timeout
-          auto sourceInfoFuture = std::async(std::launch::async, [rtspNode]() -> std::pair<int, std::pair<int, int>> {
-            try {
-              int fps = rtspNode->get_original_fps();
-              int width = rtspNode->get_original_width();
-              int height = rtspNode->get_original_height();
-              return std::make_pair(fps, std::make_pair(width, height));
-            } catch (...) {
-              return std::make_pair(0, std::make_pair(0, 0));
-            }
-          });
-          
+          auto sourceInfoFuture = std::async(
+              std::launch::async,
+              [rtspNode]() -> std::pair<int, std::pair<int, int>> {
+                try {
+                  int fps = rtspNode->get_original_fps();
+                  int width = rtspNode->get_original_width();
+                  int height = rtspNode->get_original_height();
+                  return std::make_pair(fps, std::make_pair(width, height));
+                } catch (...) {
+                  return std::make_pair(0, std::make_pair(0, 0));
+                }
+              });
+
           auto status = sourceInfoFuture.wait_for(source_info_timeout);
           if (status == std::future_status::ready) {
             try {
               auto [fps_int, dimensions] = sourceInfoFuture.get();
               auto [width, height] = dimensions;
-              
+
               if (fps_int > 0) {
                 source_fps = static_cast<double>(fps_int);
               }
-              
+
               if (width > 0 && height > 0) {
-                source_res = std::to_string(width) + "x" + std::to_string(height);
+                source_res =
+                    std::to_string(width) + "x" + std::to_string(height);
                 // Update member variable for next time
                 {
                   std::lock_guard<std::shared_mutex> lock(state_mutex_);
@@ -666,29 +700,32 @@ IPCMessage WorkerHandler::handleGetStatistics(const IPCMessage & /*msg*/) {
         } else if (fileNode) {
           // File source inherits from cvedix_src_node, so it has
           // get_original_fps/width/height methods
-          auto sourceInfoFuture = std::async(std::launch::async, [fileNode]() -> std::pair<int, std::pair<int, int>> {
-            try {
-              int fps = fileNode->get_original_fps();
-              int width = fileNode->get_original_width();
-              int height = fileNode->get_original_height();
-              return std::make_pair(fps, std::make_pair(width, height));
-            } catch (...) {
-              return std::make_pair(0, std::make_pair(0, 0));
-            }
-          });
-          
+          auto sourceInfoFuture = std::async(
+              std::launch::async,
+              [fileNode]() -> std::pair<int, std::pair<int, int>> {
+                try {
+                  int fps = fileNode->get_original_fps();
+                  int width = fileNode->get_original_width();
+                  int height = fileNode->get_original_height();
+                  return std::make_pair(fps, std::make_pair(width, height));
+                } catch (...) {
+                  return std::make_pair(0, std::make_pair(0, 0));
+                }
+              });
+
           auto status = sourceInfoFuture.wait_for(source_info_timeout);
           if (status == std::future_status::ready) {
             try {
               auto [fps_int, dimensions] = sourceInfoFuture.get();
               auto [width, height] = dimensions;
-              
+
               if (fps_int > 0) {
                 source_fps = static_cast<double>(fps_int);
               }
-              
+
               if (width > 0 && height > 0) {
-                source_res = std::to_string(width) + "x" + std::to_string(height);
+                source_res =
+                    std::to_string(width) + "x" + std::to_string(height);
                 // Update member variable for next time
                 {
                   std::lock_guard<std::shared_mutex> lock(state_mutex_);
@@ -706,7 +743,8 @@ IPCMessage WorkerHandler::handleGetStatistics(const IPCMessage & /*msg*/) {
       }
     } catch (const std::exception &e) {
       // If APIs are not available or throw exceptions, use defaults
-      std::cerr << "[Worker:" << instance_id_ << "] Error getting source info: " << e.what() << std::endl;
+      std::cerr << "[Worker:" << instance_id_
+                << "] Error getting source info: " << e.what() << std::endl;
     } catch (...) {
       // Ignore unknown exceptions
     }
@@ -728,19 +766,18 @@ IPCMessage WorkerHandler::handleGetStatistics(const IPCMessage & /*msg*/) {
   // Log statistics summary for debugging
   auto handle_end = std::chrono::steady_clock::now();
   auto handle_duration = std::chrono::duration_cast<std::chrono::milliseconds>(
-      handle_end - handle_start).count();
+                             handle_end - handle_start)
+                             .count();
   std::cout << "[Worker:" << instance_id_ << "] GET_STATISTICS: "
             << "frames_processed=" << frames_processed_value
             << ", current_fps=" << current_fps_value
             << ", source_fps=" << source_fps
-            << ", queue_size=" << queue_size_.load()
-            << ", state=" << state_copy
+            << ", queue_size=" << queue_size_.load() << ", state=" << state_copy
             << " (duration: " << handle_duration << "ms)" << std::endl;
 
   Json::Value data;
   data["instance_id"] = instance_id_;
-  data["frames_processed"] =
-      static_cast<Json::UInt64>(frames_processed_value);
+  data["frames_processed"] = static_cast<Json::UInt64>(frames_processed_value);
   data["dropped_frames_count"] =
       static_cast<Json::UInt64>(dropped_frames_.load());
   data["start_time"] = static_cast<Json::Int64>(start_unix - uptime);
@@ -749,16 +786,21 @@ IPCMessage WorkerHandler::handleGetStatistics(const IPCMessage & /*msg*/) {
   data["latency"] = latency;
   data["input_queue_size"] = static_cast<Json::UInt64>(queue_size_.load());
   data["resolution"] = resolution_.empty() ? source_res : resolution_;
-  data["source_resolution"] = source_res.empty() ? source_resolution_ : source_res;
+  data["source_resolution"] =
+      source_res.empty() ? source_resolution_ : source_res;
   data["format"] = "BGR";
   data["state"] = state_copy;
-  
-  // Add diagnostic info when statistics are empty (pipeline running but no frames processed yet)
+
+  // Add diagnostic info when statistics are empty (pipeline running but no
+  // frames processed yet)
   if (frames_processed_value == 0 && current_fps_value == 0.0) {
-    data["diagnostic"] = "Pipeline is running but no frames have been processed yet. "
-                         "This may be normal if the instance just started or the source is not providing frames.";
-    std::cout << "[Worker:" << instance_id_ << "] GET_STATISTICS: Warning - No frames processed yet. "
-              << "Pipeline state: " << state_copy 
+    data["diagnostic"] =
+        "Pipeline is running but no frames have been processed yet. "
+        "This may be normal if the instance just started or the source is not "
+        "providing frames.";
+    std::cout << "[Worker:" << instance_id_
+              << "] GET_STATISTICS: Warning - No frames processed yet. "
+              << "Pipeline state: " << state_copy
               << ", Queue size: " << queue_size_.load()
               << ", Uptime: " << uptime << " seconds" << std::endl;
   }
@@ -768,7 +810,8 @@ IPCMessage WorkerHandler::handleGetStatistics(const IPCMessage & /*msg*/) {
 }
 
 IPCMessage WorkerHandler::handleGetLastFrame(const IPCMessage & /*msg*/) {
-  std::cout << "[Worker:" << instance_id_ << "] handleGetLastFrame() called" << std::endl;
+  std::cout << "[Worker:" << instance_id_ << "] handleGetLastFrame() called"
+            << std::endl;
 
   IPCMessage response;
   response.type = MessageType::GET_LAST_FRAME_RESPONSE;
@@ -777,39 +820,72 @@ IPCMessage WorkerHandler::handleGetLastFrame(const IPCMessage & /*msg*/) {
   data["instance_id"] = instance_id_;
 
   std::lock_guard<std::mutex> lock(frame_mutex_);
-  
-  std::cout << "[Worker:" << instance_id_ << "] handleGetLastFrame() - Frame cache state: "
-            << "has_frame_=" << has_frame_ 
-            << ", last_frame_=" << (last_frame_ ? "valid" : "null") << std::endl;
+
+  std::cout << "[Worker:" << instance_id_
+            << "] handleGetLastFrame() - Frame cache state: "
+            << "has_frame_=" << has_frame_
+            << ", last_frame_=" << (last_frame_ ? "valid" : "null")
+            << std::endl;
 
   if (has_frame_ && last_frame_ && !last_frame_->empty()) {
-    std::cout << "[Worker:" << instance_id_ << "] handleGetLastFrame() - Frame available: "
-              << "size=" << last_frame_->cols << "x" << last_frame_->rows
-              << ", channels=" << last_frame_->channels()
-              << ", type=" << last_frame_->type() << std::endl;
-    
-    std::cout << "[Worker:" << instance_id_ << "] handleGetLastFrame() - Encoding frame to base64..." << std::endl;
-    std::string encoded = encodeFrameToBase64(*last_frame_);
-    data["frame"] = encoded;
-    data["has_frame"] = true;
-    
-    std::cout << "[Worker:" << instance_id_ << "] handleGetLastFrame() - Frame encoded: "
-              << "size=" << encoded.length() << " chars (base64)" << std::endl;
+    // Check if frame is stale (older than configured threshold)
+    // This ensures we only return recent frames from active video streams
+    auto now = std::chrono::steady_clock::now();
+    auto frame_age = std::chrono::duration_cast<std::chrono::seconds>(
+        now - last_frame_timestamp_);
+    const int MAX_FRAME_AGE_SECONDS = TimeoutConstants::getMaxFrameAgeSeconds();
+
+    if (frame_age.count() > MAX_FRAME_AGE_SECONDS) {
+      std::cout << "[Worker:" << instance_id_
+                << "] handleGetLastFrame() - Frame is stale (age: "
+                << frame_age.count()
+                << " seconds, max: " << MAX_FRAME_AGE_SECONDS
+                << " seconds), returning empty" << std::endl;
+      data["frame"] = "";
+      data["has_frame"] = false;
+    } else {
+      std::cout << "[Worker:" << instance_id_
+                << "] handleGetLastFrame() - Frame available: "
+                << "size=" << last_frame_->cols << "x" << last_frame_->rows
+                << ", channels=" << last_frame_->channels()
+                << ", type=" << last_frame_->type()
+                << ", age=" << frame_age.count() << " seconds" << std::endl;
+
+      std::cout << "[Worker:" << instance_id_
+                << "] handleGetLastFrame() - Encoding frame to base64..."
+                << std::endl;
+      std::string encoded = encodeFrameToBase64(*last_frame_);
+      data["frame"] = encoded;
+      data["has_frame"] = true;
+
+      std::cout << "[Worker:" << instance_id_
+                << "] handleGetLastFrame() - Frame encoded: "
+                << "size=" << encoded.length() << " chars (base64)"
+                << std::endl;
+    }
   } else {
-    std::cout << "[Worker:" << instance_id_ << "] handleGetLastFrame() - No frame available" << std::endl;
+    std::cout << "[Worker:" << instance_id_
+              << "] handleGetLastFrame() - No frame available" << std::endl;
     if (!has_frame_) {
-      std::cout << "[Worker:" << instance_id_ << "] handleGetLastFrame() - Reason: has_frame_=false" << std::endl;
+      std::cout << "[Worker:" << instance_id_
+                << "] handleGetLastFrame() - Reason: has_frame_=false"
+                << std::endl;
     } else if (!last_frame_) {
-      std::cout << "[Worker:" << instance_id_ << "] handleGetLastFrame() - Reason: last_frame_ is null" << std::endl;
+      std::cout << "[Worker:" << instance_id_
+                << "] handleGetLastFrame() - Reason: last_frame_ is null"
+                << std::endl;
     } else if (last_frame_->empty()) {
-      std::cout << "[Worker:" << instance_id_ << "] handleGetLastFrame() - Reason: last_frame_ is empty" << std::endl;
+      std::cout << "[Worker:" << instance_id_
+                << "] handleGetLastFrame() - Reason: last_frame_ is empty"
+                << std::endl;
     }
     data["frame"] = "";
     data["has_frame"] = false;
   }
 
   response.payload = createResponse(ResponseStatus::OK, "", data);
-  std::cout << "[Worker:" << instance_id_ << "] handleGetLastFrame() - Response prepared: "
+  std::cout << "[Worker:" << instance_id_
+            << "] handleGetLastFrame() - Response prepared: "
             << "has_frame=" << data["has_frame"].asBool() << std::endl;
   return response;
 }
@@ -928,9 +1004,10 @@ bool WorkerHandler::startPipeline() {
   try {
     // CRITICAL: Setup frame capture hook BEFORE starting pipeline
     // This ensures we capture all frames from the beginning
-    // Hook must be setup before source node starts to avoid missing initial frames
+    // Hook must be setup before source node starts to avoid missing initial
+    // frames
     setupFrameCaptureHook();
-    
+
     // Setup queue size tracking hook to monitor input queue size
     setupQueueSizeTrackingHook();
 
@@ -942,13 +1019,13 @@ bool WorkerHandler::startPipeline() {
     if (rtspNode) {
       std::cout << "[Worker:" << instance_id_ << "] Starting RTSP source node"
                 << std::endl;
-      
+
       // Check shutdown flag before starting (which may block)
       if (shutdown_requested_.load()) {
         last_error_ = "Shutdown requested before starting source node";
         return false;
       }
-      
+
       rtspNode->start();
     } else {
       // Try file source
@@ -958,13 +1035,13 @@ bool WorkerHandler::startPipeline() {
       if (fileNode) {
         std::cout << "[Worker:" << instance_id_ << "] Starting file source node"
                   << std::endl;
-        
+
         // Check shutdown flag before starting (which may block)
         if (shutdown_requested_.load()) {
           last_error_ = "Shutdown requested before starting source node";
           return false;
         }
-        
+
         fileNode->start();
       } else {
         last_error_ = "No supported source node found in pipeline";
@@ -981,7 +1058,7 @@ bool WorkerHandler::startPipeline() {
       dropped_frames_.store(0);
       current_fps_.store(0.0); // Reset FPS
     }
-    
+
     // Update state separately using state_mutex_ (quick operation, won't block)
     {
       std::lock_guard<std::shared_mutex> lock(state_mutex_);
@@ -1155,13 +1232,15 @@ void WorkerHandler::stopPipeline() {
         // Try to stop gracefully first
         try {
           auto rtspNode =
-              std::dynamic_pointer_cast<cvedix_nodes::cvedix_rtsp_src_node>(node);
+              std::dynamic_pointer_cast<cvedix_nodes::cvedix_rtsp_src_node>(
+                  node);
           if (rtspNode) {
             // Use configurable timeout for RTSP stop
-            auto stopTimeout = shutdown_requested_.load() 
-                ? TimeoutConstants::getRtspStopTimeoutDeletion()
-                : TimeoutConstants::getRtspStopTimeout();
-            
+            auto stopTimeout =
+                shutdown_requested_.load()
+                    ? TimeoutConstants::getRtspStopTimeoutDeletion()
+                    : TimeoutConstants::getRtspStopTimeout();
+
             auto stopFuture = std::async(std::launch::async, [rtspNode]() {
               try {
                 rtspNode->stop();
@@ -1173,21 +1252,23 @@ void WorkerHandler::stopPipeline() {
 
             auto stopStatus = stopFuture.wait_for(stopTimeout);
             if (stopStatus == std::future_status::timeout) {
-              std::cerr << "[Worker:" << instance_id_
-                        << "] Stop timeout (" << stopTimeout.count()
-                        << "ms), using detach..." << std::endl;
+              std::cerr << "[Worker:" << instance_id_ << "] Stop timeout ("
+                        << stopTimeout.count() << "ms), using detach..."
+                        << std::endl;
             } else if (stopStatus == std::future_status::ready) {
               stopFuture.get();
             }
           } else {
             auto fileNode =
-                std::dynamic_pointer_cast<cvedix_nodes::cvedix_file_src_node>(node);
+                std::dynamic_pointer_cast<cvedix_nodes::cvedix_file_src_node>(
+                    node);
             if (fileNode) {
               // Use configurable timeout for file stop
-              auto stopTimeout = shutdown_requested_.load()
-                  ? TimeoutConstants::getRtspStopTimeoutDeletion()
-                  : TimeoutConstants::getRtspStopTimeout();
-              
+              auto stopTimeout =
+                  shutdown_requested_.load()
+                      ? TimeoutConstants::getRtspStopTimeoutDeletion()
+                      : TimeoutConstants::getRtspStopTimeout();
+
               auto stopFuture = std::async(std::launch::async, [fileNode]() {
                 try {
                   fileNode->stop();
@@ -1199,9 +1280,9 @@ void WorkerHandler::stopPipeline() {
 
               auto stopStatus = stopFuture.wait_for(stopTimeout);
               if (stopStatus == std::future_status::timeout) {
-                std::cerr << "[Worker:" << instance_id_
-                          << "] Stop timeout (" << stopTimeout.count()
-                          << "ms), using detach..." << std::endl;
+                std::cerr << "[Worker:" << instance_id_ << "] Stop timeout ("
+                          << stopTimeout.count() << "ms), using detach..."
+                          << std::endl;
               } else if (stopStatus == std::future_status::ready) {
                 stopFuture.get();
               }
@@ -1217,10 +1298,11 @@ void WorkerHandler::stopPipeline() {
 
           // Detach recursively - wait for it to complete naturally
           // Use configurable timeout as fallback
-          auto detachTimeout = shutdown_requested_.load()
-              ? TimeoutConstants::getDestinationFinalizeTimeoutDeletion()
-              : TimeoutConstants::getDestinationFinalizeTimeout();
-          
+          auto detachTimeout =
+              shutdown_requested_.load()
+                  ? TimeoutConstants::getDestinationFinalizeTimeoutDeletion()
+                  : TimeoutConstants::getDestinationFinalizeTimeout();
+
           auto detachFuture = std::async(std::launch::async, [node]() {
             try {
               node->detach_recursively();
@@ -1232,10 +1314,9 @@ void WorkerHandler::stopPipeline() {
 
           auto detachStatus = detachFuture.wait_for(detachTimeout);
           if (detachStatus == std::future_status::timeout) {
-            std::cerr << "[Worker:" << instance_id_
-                      << "] Detach timeout (" << detachTimeout.count()
-                      << "ms), pipeline cleanup may be incomplete"
-                      << std::endl;
+            std::cerr << "[Worker:" << instance_id_ << "] Detach timeout ("
+                      << detachTimeout.count()
+                      << "ms), pipeline cleanup may be incomplete" << std::endl;
           } else if (detachStatus == std::future_status::ready) {
             detachFuture.get();
           }
@@ -1262,12 +1343,12 @@ void WorkerHandler::stopPipeline() {
     std::lock_guard<std::mutex> lock(start_pipeline_mutex_);
     pipeline_running_.store(false);
   }
-  
+
   {
     std::lock_guard<std::shared_mutex> lock(state_mutex_);
     current_state_ = "stopped";
   }
-  
+
   {
     std::lock_guard<std::mutex> lock(stop_pipeline_mutex_);
     stopping_pipeline_.store(false);
@@ -1292,8 +1373,8 @@ void WorkerHandler::sendReadySignal() {
 }
 
 void WorkerHandler::setupFrameCaptureHook() {
-  std::cout << "[Worker:" << instance_id_ << "] Setting up frame capture hook..."
-            << std::endl;
+  std::cout << "[Worker:" << instance_id_
+            << "] Setting up frame capture hook..." << std::endl;
 
   if (pipeline_nodes_.empty()) {
     std::cerr << "[Worker:" << instance_id_
@@ -1302,23 +1383,47 @@ void WorkerHandler::setupFrameCaptureHook() {
     return;
   }
 
-  std::cout << "[Worker:" << instance_id_
-            << "] Searching for app_des_node in " << pipeline_nodes_.size()
-            << " pipeline nodes..." << std::endl;
+  std::cout << "[Worker:" << instance_id_ << "] Searching for app_des_node in "
+            << pipeline_nodes_.size() << " pipeline nodes..." << std::endl;
 
-  // Find the app_des_node (best for capturing frames)
+  // Find app_des_node and check if pipeline has OSD node
+  // CRITICAL: We need to verify that app_des_node is attached after OSD node
+  // to ensure we get processed frames
   std::shared_ptr<cvedix_nodes::cvedix_app_des_node> appDesNode;
+  bool hasOSDNode = false;
 
-  // Search backwards from the end to find app_des_node
+  // Search through ALL nodes to find app_des_node and check for OSD node
+  // IMPORTANT: Don't stop early - need to check all nodes to find OSD node
   for (auto it = pipeline_nodes_.rbegin(); it != pipeline_nodes_.rend(); ++it) {
     auto node = *it;
-    if (node) {
+    if (!node) {
+      continue;
+    }
+
+    // Find app_des_node
+    if (!appDesNode) {
       appDesNode =
           std::dynamic_pointer_cast<cvedix_nodes::cvedix_app_des_node>(node);
       if (appDesNode) {
         std::cout << "[Worker:" << instance_id_
                   << "] ✓ Found app_des_node in pipeline" << std::endl;
-        break;
+      }
+    }
+
+    // Check if pipeline has OSD node (check ALL nodes, don't stop early)
+    if (!hasOSDNode) {
+      bool isOSDNode =
+          std::dynamic_pointer_cast<cvedix_nodes::cvedix_face_osd_node_v2>(
+              node) != nullptr ||
+          std::dynamic_pointer_cast<cvedix_nodes::cvedix_osd_node_v3>(node) !=
+              nullptr ||
+          std::dynamic_pointer_cast<cvedix_nodes::cvedix_ba_crossline_osd_node>(
+              node) != nullptr;
+      if (isOSDNode) {
+        hasOSDNode = true;
+        std::cout << "[Worker:" << instance_id_
+                  << "] ✓ Found OSD node in pipeline: " << typeid(*node).name()
+                  << std::endl;
       }
     }
   }
@@ -1326,147 +1431,170 @@ void WorkerHandler::setupFrameCaptureHook() {
   // Setup hook on app_des_node if found
   if (appDesNode) {
     std::cout << "[Worker:" << instance_id_
-              << "] Configuring frame capture hook on app_des_node..."
-              << std::endl;
+              << "] Configuring frame capture hook on app_des_node"
+              << " (OSD node in pipeline: " << (hasOSDNode ? "yes" : "no")
+              << ")" << std::endl;
 
-    appDesNode->set_app_des_result_hooker(
-        [this](std::string /*node_name*/,
-               std::shared_ptr<cvedix_objects::cvedix_meta> meta) {
-          try {
-            if (!meta) {
-              return;
-            }
+    appDesNode->set_app_des_result_hooker([this, hasOSDNode](
+                                              std::string /*node_name*/,
+                                              std::shared_ptr<
+                                                  cvedix_objects::cvedix_meta>
+                                                  meta) {
+      try {
+        if (!meta) {
+          return;
+        }
 
-            if (meta->meta_type == cvedix_objects::cvedix_meta_type::FRAME) {
-              auto frame_meta =
-                  std::dynamic_pointer_cast<cvedix_objects::cvedix_frame_meta>(
-                      meta);
-              if (!frame_meta) {
-                return;
-              }
+        if (meta->meta_type == cvedix_objects::cvedix_meta_type::FRAME) {
+          auto frame_meta =
+              std::dynamic_pointer_cast<cvedix_objects::cvedix_frame_meta>(
+                  meta);
+          if (!frame_meta) {
+            return;
+          }
 
-              // DEBUG: Log frame_meta details
-              static thread_local uint64_t frame_count = 0;
-              frame_count++;
-              
-              bool has_osd_frame = !frame_meta->osd_frame.empty();
-              bool has_original_frame = !frame_meta->frame.empty();
-              
-              if (frame_count <= 5 || frame_count % 100 == 0) {
-                std::cout << "[Worker:" << instance_id_ << "] Frame capture hook #" << frame_count 
-                          << " - osd_frame: " << (has_osd_frame ? "available" : "empty")
-                          << " (" << (has_osd_frame ? std::to_string(frame_meta->osd_frame.cols) + "x" + std::to_string(frame_meta->osd_frame.rows) : "0x0") << ")"
-                          << ", original frame: " << (has_original_frame ? "available" : "empty")
-                          << " (" << (has_original_frame ? std::to_string(frame_meta->frame.cols) + "x" + std::to_string(frame_meta->frame.rows) : "0x0") << ")" << std::endl;
-              }
+          // DEBUG: Log frame_meta details
+          static thread_local uint64_t frame_count = 0;
+          frame_count++;
 
-              // Prefer OSD frame (processed with overlays), fallback to original frame
-              // FIX: Always prefer processed frame (osd_frame) - this is the frame after all processing
-              const cv::Mat *frameToCache = nullptr;
-              bool using_processed_frame = false;
-              
-              // CRITICAL: Check osd_frame first (frame with AI processing overlays)
-              if (!frame_meta->osd_frame.empty()) {
-                frameToCache = &frame_meta->osd_frame;
-                using_processed_frame = true;
-                if (frame_count <= 5) {
-                  std::cout << "[Worker:" << instance_id_ << "] Frame capture hook #" << frame_count 
-                            << " - Using PROCESSED frame (osd_frame): " 
-                            << frame_meta->osd_frame.cols << "x" << frame_meta->osd_frame.rows << std::endl;
-                }
-              } else if (!frame_meta->frame.empty()) {
-                // CRITICAL: Use frame_meta->frame - this IS the processed frame from OSD node
-                // PipelineBuilder attaches app_des_node AFTER OSD node, so frame_meta->frame
-                // contains the frame AFTER OSD processing (with AI overlays)
-                // The only reason osd_frame is empty is because OSD node only creates osd_frame
-                // for RTMP node, not for app_des_node. But frame_meta->frame is still the processed frame.
-                frameToCache = &frame_meta->frame;
-                using_processed_frame = true; // This IS the processed frame from OSD node
-                
-                // Log warning if using frame (may or may not be processed)
-                static thread_local bool logged_warning = false;
-                if (!logged_warning) {
-                  std::cerr << "[Worker:" << instance_id_
-                            << "] WARNING: osd_frame is empty, using frame_meta->frame instead. "
-                            << "This frame may be processed (if app_des_node is after OSD node) "
-                            << "or unprocessed (if app_des_node is before OSD node). "
-                            << "Please verify pipeline configuration." << std::endl;
-                  logged_warning = true;
-                }
-                if (frame_count <= 5) {
-                  std::cout << "[Worker:" << instance_id_ << "] Frame capture hook #" << frame_count 
-                            << " - Using frame_meta->frame (osd_frame unavailable): " 
-                            << frame_meta->frame.cols << "x" << frame_meta->frame.rows << std::endl;
-                }
-              } else {
-                if (frame_count <= 5) {
-                  std::cout << "[Worker:" << instance_id_ << "] Frame capture hook #" << frame_count 
-                            << " - ERROR: Both osd_frame and original frame are empty!" << std::endl;
-                }
-              }
+          bool has_osd_frame = !frame_meta->osd_frame.empty();
+          bool has_original_frame = !frame_meta->frame.empty();
 
-              if (frameToCache && !frameToCache->empty()) {
-                // Log first few frames and periodic updates for debugging
-                if (frame_count <= 10 || frame_count % 100 == 0) {
-                  std::cout << "[Worker:" << instance_id_
-                            << "] Frame capture hook called, frame #" << frame_count
-                            << " (type: " << (using_processed_frame ? "processed (osd_frame)" : "original (frame)")
-                            << ", size: " << frameToCache->cols << "x"
-                            << frameToCache->rows << ")" << std::endl;
-                }
-                updateFrameCache(*frameToCache);
-              } else {
-                // Log if we get empty frames (shouldn't happen but helps debug)
-                static thread_local uint64_t empty_frame_count = 0;
-                empty_frame_count++;
-                if (empty_frame_count <= 3) {
-                  std::cout << "[Worker:" << instance_id_
-                            << "] Frame capture hook received empty frame (count: "
-                            << empty_frame_count << ")" << std::endl;
-                }
-              }
-            }
-          } catch (const std::exception &e) {
-            // Throttle exception logging to avoid performance impact
-            static thread_local uint64_t exception_count = 0;
-            exception_count++;
+          if (frame_count <= 5 || frame_count % 100 == 0) {
+            std::cout << "[Worker:" << instance_id_ << "] Frame capture hook #"
+                      << frame_count << " - osd_frame: "
+                      << (has_osd_frame ? "available" : "empty") << " ("
+                      << (has_osd_frame
+                              ? std::to_string(frame_meta->osd_frame.cols) +
+                                    "x" +
+                                    std::to_string(frame_meta->osd_frame.rows)
+                              : "0x0")
+                      << ")"
+                      << ", original frame: "
+                      << (has_original_frame ? "available" : "empty") << " ("
+                      << (has_original_frame
+                              ? std::to_string(frame_meta->frame.cols) + "x" +
+                                    std::to_string(frame_meta->frame.rows)
+                              : "0x0")
+                      << ")" << std::endl;
+          }
 
-            // Only log every 100th exception
-            if (exception_count % 100 == 1) {
-              std::cerr << "[Worker:" << instance_id_
-                        << "] [ERROR] Exception in frame capture hook (count: "
-                        << exception_count << "): " << e.what() << std::endl;
-            }
-          } catch (...) {
-            static thread_local uint64_t unknown_exception_count = 0;
-            unknown_exception_count++;
+          // CRITICAL: Only cache frames that are guaranteed to be processed
+          // PipelineBuilder ensures app_des_node is attached to OSD node (if
+          // exists) This guarantees frame_meta->frame is processed when
+          // hasOSDNode is true
+          const cv::Mat *frameToCache = nullptr;
 
-            if (unknown_exception_count % 100 == 1) {
-              std::cerr << "[Worker:" << instance_id_
-                        << "] [ERROR] Unknown exception in frame capture hook "
-                           "(count: "
-                        << unknown_exception_count << ")" << std::endl;
+          // Priority 1: Use osd_frame if available (always processed with AI
+          // overlays)
+          if (!frame_meta->osd_frame.empty()) {
+            frameToCache = &frame_meta->osd_frame;
+            if (frame_count <= 5) {
+              std::cout << "[Worker:" << instance_id_
+                        << "] Frame capture hook #" << frame_count
+                        << " - Using PROCESSED osd_frame (with overlays): "
+                        << frame_meta->osd_frame.cols << "x"
+                        << frame_meta->osd_frame.rows << std::endl;
             }
           }
-        });
+          // Priority 2: Use frame_meta->frame if OSD node exists
+          // PipelineBuilder attaches app_des_node to OSD node, so
+          // frame_meta->frame is processed This works even if osd_frame is
+          // empty (OSD node processed frame but didn't populate osd_frame)
+          else if (hasOSDNode && !frame_meta->frame.empty()) {
+            frameToCache = &frame_meta->frame;
+            if (frame_count <= 5) {
+              std::cout
+                  << "[Worker:" << instance_id_ << "] Frame capture hook #"
+                  << frame_count
+                  << " - Using frame_meta->frame (from OSD node, PROCESSED): "
+                  << frame_meta->frame.cols << "x" << frame_meta->frame.rows
+                  << std::endl;
+            }
+          } else {
+            // Skip caching if no OSD node (frame may be unprocessed)
+            static thread_local bool logged_warning = false;
+            if (!logged_warning) {
+              if (!hasOSDNode) {
+                std::cerr
+                    << "[Worker:" << instance_id_
+                    << "] ⚠ WARNING: Pipeline has no OSD node. Skipping frame "
+                       "cache to avoid returning unprocessed frames."
+                    << std::endl;
+              } else {
+                std::cerr << "[Worker:" << instance_id_
+                          << "] ⚠ WARNING: Both osd_frame and "
+                             "frame_meta->frame are empty"
+                          << std::endl;
+              }
+              logged_warning = true;
+            }
+            if (frame_count <= 5) {
+              std::cout << "[Worker:" << instance_id_
+                        << "] Frame capture hook #" << frame_count
+                        << " - SKIPPING: "
+                        << (!hasOSDNode ? "No OSD node in pipeline"
+                                        : "Both frames empty")
+                        << std::endl;
+            }
+          }
+
+          if (frameToCache && !frameToCache->empty()) {
+            updateFrameCache(*frameToCache);
+          } else {
+            // Log if we get empty frames (shouldn't happen but helps debug)
+            static thread_local uint64_t empty_frame_count = 0;
+            empty_frame_count++;
+            if (empty_frame_count <= 3) {
+              std::cout << "[Worker:" << instance_id_
+                        << "] Frame capture hook received empty frame (count: "
+                        << empty_frame_count << ")" << std::endl;
+            }
+          }
+        }
+      } catch (const std::exception &e) {
+        // Throttle exception logging to avoid performance impact
+        static thread_local uint64_t exception_count = 0;
+        exception_count++;
+
+        // Only log every 100th exception
+        if (exception_count % 100 == 1) {
+          std::cerr << "[Worker:" << instance_id_
+                    << "] [ERROR] Exception in frame capture hook (count: "
+                    << exception_count << "): " << e.what() << std::endl;
+        }
+      } catch (...) {
+        static thread_local uint64_t unknown_exception_count = 0;
+        unknown_exception_count++;
+
+        if (unknown_exception_count % 100 == 1) {
+          std::cerr << "[Worker:" << instance_id_
+                    << "] [ERROR] Unknown exception in frame capture hook "
+                       "(count: "
+                    << unknown_exception_count << ")" << std::endl;
+        }
+      }
+    });
 
     std::cout << "[Worker:" << instance_id_
-              << "] ✓ Frame capture hook setup completed successfully"
+              << "] ✓ Frame capture hook setup completed on app_des_node"
               << std::endl;
     return;
   }
 
   // If no app_des_node found, log warning
-  std::cerr << "[Worker:" << instance_id_
-            << "] ⚠ Warning: No app_des_node found in pipeline" << std::endl;
-  std::cerr << "[Worker:" << instance_id_
-            << "] Frame capture will not be available. "
-               "Consider adding app_des_node to pipeline."
-            << std::endl;
-  std::cerr << "[Worker:" << instance_id_
-            << "] Pipeline should have app_des_node automatically added by "
-               "PipelineBuilder, but it wasn't found."
-            << std::endl;
+  if (!appDesNode) {
+    std::cerr << "[Worker:" << instance_id_
+              << "] ⚠ Warning: No app_des_node found in pipeline" << std::endl;
+    std::cerr << "[Worker:" << instance_id_
+              << "] Frame capture will not be available. "
+                 "Consider adding app_des_node to pipeline."
+              << std::endl;
+    std::cerr << "[Worker:" << instance_id_
+              << "] Pipeline should have app_des_node automatically added by "
+                 "PipelineBuilder, but it wasn't found."
+              << std::endl;
+  }
 }
 
 void WorkerHandler::setupQueueSizeTrackingHook() {
@@ -1520,11 +1648,13 @@ void WorkerHandler::updateFrameCache(const cv::Mat &frame) {
   // FPS for multiple instances Create shared_ptr outside lock to minimize lock
   // hold time
   auto frame_ptr = std::make_shared<cv::Mat>(frame);
+  auto now = std::chrono::steady_clock::now();
 
   {
     std::lock_guard<std::mutex> lock(frame_mutex_);
     last_frame_ = frame_ptr; // Shared ownership - no copy!
     has_frame_ = true;
+    last_frame_timestamp_ = now; // Update timestamp when frame is cached
   }
   // Lock released immediately after pointer assignment
 
@@ -1534,7 +1664,6 @@ void WorkerHandler::updateFrameCache(const cv::Mat &frame) {
   // backpressure_controller) This calculates FPS based on frames processed in
   // the last 1 second
   static thread_local uint64_t frame_count_since_update = 0;
-  auto now = std::chrono::steady_clock::now();
   auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(
                      now - last_fps_update_)
                      .count();

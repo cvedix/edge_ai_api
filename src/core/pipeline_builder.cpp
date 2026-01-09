@@ -731,23 +731,19 @@ PipelineBuilder::buildPipeline(const SolutionConfig &solution,
 
       auto appDesNode = createAppDesNode(appDesNodeName, appDesParams);
       if (appDesNode) {
-        // FIX: Find OSD node first (to get processed frames with overlays)
-        // If OSD node exists, attach app_des_node to OSD node
-        // Otherwise, attach to last non-DES node
+        // CRITICAL FIX: Find OSD node FIRST to ensure we get processed frames
+        // Priority 1: Find OSD node (guarantees processed frames with overlays)
+        // Priority 2: If no OSD node, find last non-DES node as fallback
         std::shared_ptr<cvedix_nodes::cvedix_node> attachTarget = nullptr;
+        std::shared_ptr<cvedix_nodes::cvedix_node> fallbackTarget = nullptr;
 
-        // REVERT to original simple logic from commit 18acf2fbc5b36c5cbe0027fd0ee1c6da352ef627
-        // Find the last non-DES node to attach app_des_node to
-        // DES nodes (like rtmp_des, file_des) cannot have next nodes
-        // So we need to attach app_des_node to the node before the last DES node
-        // NOTE: If pipeline structure is detector -> OSD -> RTMP,
-        // then "last non-DES node" will be OSD node, so app_des_node will
-        // receive processed frames with overlays automatically
-        
-        // Search backwards to find the last non-DES node
+        // First pass: Find OSD node (highest priority for processed frames)
         for (auto it = nodes.rbegin(); it != nodes.rend(); ++it) {
           auto node = *it;
-          // Check if it's a DES node
+          if (!node)
+            continue;
+
+          // Check if it's a DES node (skip DES nodes)
           bool isDesNode =
               std::dynamic_pointer_cast<cvedix_nodes::cvedix_rtmp_des_node>(
                   node) != nullptr ||
@@ -756,55 +752,81 @@ PipelineBuilder::buildPipeline(const SolutionConfig &solution,
               std::dynamic_pointer_cast<cvedix_nodes::cvedix_app_des_node>(
                   node) != nullptr;
 
-          if (!isDesNode) {
-            attachTarget = node;
-            // Check if this is an OSD node (for logging)
-            bool isOSDNode =
-                std::dynamic_pointer_cast<
-                    cvedix_nodes::cvedix_face_osd_node_v2>(node) != nullptr ||
-                std::dynamic_pointer_cast<cvedix_nodes::cvedix_osd_node_v3>(
-                    node) != nullptr ||
-                std::dynamic_pointer_cast<
-                    cvedix_nodes::cvedix_ba_crossline_osd_node>(node) != nullptr;
-            
-            std::cerr << "[PipelineBuilder] Found " 
-                      << (isOSDNode ? "OSD node" : "non-DES node")
-                      << " to attach app_des_node: "
-                      << typeid(*node).name() << std::endl;
-            if (isOSDNode) {
-              std::cerr << "[PipelineBuilder] ✓ app_des_node will receive processed frames with overlays" << std::endl;
-            }
-            break;
+          if (isDesNode) {
+            continue; // Skip DES nodes
           }
+
+          // Check if this is an OSD node
+          bool isOSDNode =
+              std::dynamic_pointer_cast<cvedix_nodes::cvedix_face_osd_node_v2>(
+                  node) != nullptr ||
+              std::dynamic_pointer_cast<cvedix_nodes::cvedix_osd_node_v3>(
+                  node) != nullptr ||
+              std::dynamic_pointer_cast<
+                  cvedix_nodes::cvedix_ba_crossline_osd_node>(node) != nullptr;
+
+          if (isOSDNode) {
+            attachTarget = node;
+            std::cerr
+                << "[PipelineBuilder] ✓ Found OSD node to attach app_des_node: "
+                << typeid(*node).name() << std::endl;
+            std::cerr << "[PipelineBuilder] ✓ app_des_node will receive "
+                         "PROCESSED frames with overlays"
+                      << std::endl;
+            break; // Found OSD node, use it
+          }
+
+          // Store last non-DES node as fallback (if not found yet)
+          if (!fallbackTarget) {
+            fallbackTarget = node;
+          }
+        }
+
+        // If no OSD node found, use fallback (last non-DES node)
+        if (!attachTarget && fallbackTarget) {
+          attachTarget = fallbackTarget;
+          std::cerr << "[PipelineBuilder] ⚠ No OSD node found, using fallback: "
+                    << typeid(*fallbackTarget).name() << std::endl;
+          std::cerr << "[PipelineBuilder] ⚠ WARNING: app_des_node attached to "
+                       "non-OSD node. "
+                    << "Frame may not be processed (no overlays)." << std::endl;
         }
 
         if (attachTarget) {
           // Attach app_des_node to the same node as the last DES node
-          bool isOSDTarget = 
-              std::dynamic_pointer_cast<
-                  cvedix_nodes::cvedix_face_osd_node_v2>(attachTarget) != nullptr ||
+          bool isOSDTarget =
+              std::dynamic_pointer_cast<cvedix_nodes::cvedix_face_osd_node_v2>(
+                  attachTarget) != nullptr ||
               std::dynamic_pointer_cast<cvedix_nodes::cvedix_osd_node_v3>(
                   attachTarget) != nullptr ||
               std::dynamic_pointer_cast<
-                  cvedix_nodes::cvedix_ba_crossline_osd_node>(attachTarget) != nullptr;
-          
+                  cvedix_nodes::cvedix_ba_crossline_osd_node>(attachTarget) !=
+                  nullptr;
+
           appDesNode->attach_to({attachTarget});
           nodes.push_back(appDesNode);
           std::cerr << "[PipelineBuilder] ✓ app_des_node added successfully "
                        "for frame capture"
                     << std::endl;
-          std::cerr << "[PipelineBuilder] DEBUG: app_des_node attached to: " 
-                    << typeid(*attachTarget).name() 
-                    << (isOSDTarget ? " [OSD NODE - will receive processed frames]" : " [NON-OSD NODE - will receive unprocessed frames]")
-                    << std::endl;
+          std::cerr
+              << "[PipelineBuilder] DEBUG: app_des_node attached to: "
+              << typeid(*attachTarget).name()
+              << (isOSDTarget
+                      ? " [OSD NODE - will receive processed frames]"
+                      : " [NON-OSD NODE - will receive unprocessed frames]")
+              << std::endl;
           std::cerr << "[PipelineBuilder] NOTE: app_des_node attached to same "
                        "source as other DES nodes (parallel connection)"
                     << std::endl;
-          
+
           if (!isOSDTarget) {
-            std::cerr << "[PipelineBuilder] ⚠ CRITICAL WARNING: app_des_node is NOT attached to OSD node! "
-                      << "This means getLastFrame API will return unprocessed frames. "
-                      << "Please check pipeline configuration to ensure OSD node exists and is properly connected." << std::endl;
+            std::cerr << "[PipelineBuilder] ⚠ CRITICAL WARNING: app_des_node "
+                         "is NOT attached to OSD node! "
+                      << "This means getLastFrame API will return unprocessed "
+                         "frames. "
+                      << "Please check pipeline configuration to ensure OSD "
+                         "node exists and is properly connected."
+                      << std::endl;
           }
         } else {
           std::cerr << "[PipelineBuilder] ⚠ Warning: Could not find suitable "
