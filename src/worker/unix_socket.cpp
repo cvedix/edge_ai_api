@@ -92,18 +92,18 @@ void UnixSocketServer::stop() {
     // poll() has 1 second timeout, so thread should exit within ~1 second
     // Use configurable shutdown timeout
     auto timeout = TimeoutConstants::getShutdownTimeout();
-    
+
     auto start_time = std::chrono::steady_clock::now();
     while (accept_thread_.joinable()) {
       auto elapsed = std::chrono::steady_clock::now() - start_time;
-      
+
       if (elapsed >= timeout) {
-        std::cerr << "[Worker] Accept thread join timeout ("
-                  << timeout.count() << "ms), detaching..." << std::endl;
+        std::cerr << "[Worker] Accept thread join timeout (" << timeout.count()
+                  << "ms), detaching..." << std::endl;
         accept_thread_.detach();
         break;
       }
-      
+
       // Try join with small sleep - accept loop checks running_ flag every 1s
       // So thread should exit within ~1 second after server_fd_ is closed
       std::this_thread::sleep_for(std::chrono::milliseconds(100));
@@ -111,7 +111,7 @@ void UnixSocketServer::stop() {
         break;
       }
     }
-    
+
     // Final attempt to join if still joinable
     if (accept_thread_.joinable()) {
       accept_thread_.join();
@@ -152,20 +152,20 @@ void UnixSocketServer::handleClient(int client_fd) {
   // 1. recv() with poll() timeout prevents infinite blocking
   // 2. send() blocking is OK since response is small and client is waiting
   // 3. Client uses blocking socket, so this matches client expectations
-  
+
   while (running_.load()) {
     // Read header with timeout using poll()
     char header_buf[MessageHeader::HEADER_SIZE];
     ssize_t n = 0;
     size_t total_received = 0;
-    
+
     // Use poll() to wait for data with timeout (1 second)
     // This allows us to check running_ flag periodically
     while (total_received < MessageHeader::HEADER_SIZE && running_.load()) {
       struct pollfd pfd;
       pfd.fd = client_fd;
       pfd.events = POLLIN;
-      
+
       int ret = poll(&pfd, 1, 1000); // 1 second timeout
       if (ret <= 0) {
         if (ret == 0) {
@@ -176,10 +176,11 @@ void UnixSocketServer::handleClient(int client_fd) {
         close(client_fd);
         return;
       }
-      
-      // recv() with MSG_WAITALL is safe here because poll() confirmed data is available
-      // But we use regular recv() and loop to handle partial reads gracefully
-      n = recv(client_fd, header_buf + total_received, 
+
+      // recv() with MSG_WAITALL is safe here because poll() confirmed data is
+      // available But we use regular recv() and loop to handle partial reads
+      // gracefully
+      n = recv(client_fd, header_buf + total_received,
                MessageHeader::HEADER_SIZE - total_received, 0);
       if (n < 0) {
         // Error - connection closed or error
@@ -193,7 +194,7 @@ void UnixSocketServer::handleClient(int client_fd) {
       }
       total_received += n;
     }
-    
+
     if (!running_.load() || total_received < MessageHeader::HEADER_SIZE) {
       break;
     }
@@ -212,7 +213,7 @@ void UnixSocketServer::handleClient(int client_fd) {
         struct pollfd pfd;
         pfd.fd = client_fd;
         pfd.events = POLLIN;
-        
+
         int ret = poll(&pfd, 1, 1000); // 1 second timeout
         if (ret <= 0) {
           if (ret == 0) {
@@ -221,8 +222,8 @@ void UnixSocketServer::handleClient(int client_fd) {
           close(client_fd);
           return;
         }
-        
-        n = recv(client_fd, &payload_buf[total_received], 
+
+        n = recv(client_fd, &payload_buf[total_received],
                  header.payload_size - total_received, 0);
         if (n < 0) {
           // Error
@@ -236,7 +237,7 @@ void UnixSocketServer::handleClient(int client_fd) {
         }
         total_received += n;
       }
-      
+
       if (!running_.load() || total_received < header.payload_size) {
         break;
       }
@@ -252,57 +253,74 @@ void UnixSocketServer::handleClient(int client_fd) {
     }
 
     std::cout << "[Worker] ===== IPC REQUEST RECEIVED =====" << std::endl;
-    std::cout << "[Worker] Message type: " << static_cast<int>(request.type) << std::endl;
-    std::cout << "[Worker] Payload size: " << request.payload.toStyledString().size() << " bytes" << std::endl;
+    std::cout << "[Worker] Message type: " << static_cast<int>(request.type)
+              << std::endl;
+    std::cout << "[Worker] Payload size: "
+              << request.payload.toStyledString().size() << " bytes"
+              << std::endl;
 
     // Handle message
     auto handle_start = std::chrono::steady_clock::now();
     std::cout << "[Worker] Calling handler_()..." << std::endl;
     IPCMessage response = handler_(request);
     auto handle_end = std::chrono::steady_clock::now();
-    auto handle_duration = std::chrono::duration_cast<std::chrono::milliseconds>(handle_end - handle_start).count();
-    std::cout << "[Worker] handler_() completed in " << handle_duration << "ms" << std::endl;
-    std::cout << "[Worker] Response type: " << static_cast<int>(response.type) << std::endl;
+    auto handle_duration =
+        std::chrono::duration_cast<std::chrono::milliseconds>(handle_end -
+                                                              handle_start)
+            .count();
+    std::cout << "[Worker] handler_() completed in " << handle_duration << "ms"
+              << std::endl;
+    std::cout << "[Worker] Response type: " << static_cast<int>(response.type)
+              << std::endl;
 
     // Send response - use blocking send() since client is waiting
     // Response is typically small (< 10KB), so blocking is safe
     std::cout << "[Worker] Serializing response..." << std::endl;
     std::string response_data = response.serialize();
-    std::cout << "[Worker] Response serialized, size: " << response_data.size() << " bytes" << std::endl;
+    std::cout << "[Worker] Response serialized, size: " << response_data.size()
+              << " bytes" << std::endl;
     ssize_t total_sent = 0;
     size_t total_size = response_data.size();
-    
-    std::cout << "[Worker] Sending response, total size: " << total_size << " bytes" << std::endl;
+
+    std::cout << "[Worker] Sending response, total size: " << total_size
+              << " bytes" << std::endl;
     auto send_start = std::chrono::steady_clock::now();
-    
+
     // Send all data - blocking is OK here since response is small
     while (total_sent < static_cast<ssize_t>(total_size) && running_.load()) {
-      ssize_t sent = send(client_fd, response_data.data() + total_sent, 
+      ssize_t sent = send(client_fd, response_data.data() + total_sent,
                           total_size - total_sent, MSG_NOSIGNAL);
       if (sent < 0) {
         // Error sending
-        std::cerr << "[Worker] ERROR: Failed to send response: " << strerror(errno) << std::endl;
+        std::cerr << "[Worker] ERROR: Failed to send response: "
+                  << strerror(errno) << std::endl;
         break;
       }
       if (sent == 0) {
         // Connection closed
-        std::cerr << "[Worker] ERROR: Connection closed while sending response" << std::endl;
+        std::cerr << "[Worker] ERROR: Connection closed while sending response"
+                  << std::endl;
         break;
       }
       total_sent += sent;
-      std::cout << "[Worker] Sent " << total_sent << "/" << total_size << " bytes" << std::endl;
+      std::cout << "[Worker] Sent " << total_sent << "/" << total_size
+                << " bytes" << std::endl;
     }
-    
+
     auto send_end = std::chrono::steady_clock::now();
-    auto send_duration = std::chrono::duration_cast<std::chrono::milliseconds>(send_end - send_start).count();
-    
+    auto send_duration = std::chrono::duration_cast<std::chrono::milliseconds>(
+                             send_end - send_start)
+                             .count();
+
     if (total_sent != static_cast<ssize_t>(total_size)) {
-      std::cerr << "[Worker] ERROR: Failed to send response completely (" 
-                << total_sent << "/" << total_size << " bytes) in " << send_duration << "ms" << std::endl;
+      std::cerr << "[Worker] ERROR: Failed to send response completely ("
+                << total_sent << "/" << total_size << " bytes) in "
+                << send_duration << "ms" << std::endl;
       break;
     }
-    
-    std::cout << "[Worker] Response sent completely in " << send_duration << "ms" << std::endl;
+
+    std::cout << "[Worker] Response sent completely in " << send_duration
+              << "ms" << std::endl;
     std::cout << "[Worker] ===== IPC REQUEST HANDLED =====" << std::endl;
   }
 
@@ -413,11 +431,12 @@ IPCMessage UnixSocketClient::sendAndReceive(const IPCMessage &msg,
   }
 
   // Calculate remaining timeout after send
-  auto elapsed_after_send = std::chrono::duration_cast<std::chrono::milliseconds>(
-                                std::chrono::steady_clock::now() - start_time)
-                                .count();
+  auto elapsed_after_send =
+      std::chrono::duration_cast<std::chrono::milliseconds>(
+          std::chrono::steady_clock::now() - start_time)
+          .count();
   int remaining_timeout = timeout_ms - static_cast<int>(elapsed_after_send);
-  
+
   if (remaining_timeout <= 0) {
     IPCMessage error;
     error.type = MessageType::ERROR_RESPONSE;
@@ -426,7 +445,8 @@ IPCMessage UnixSocketClient::sendAndReceive(const IPCMessage &msg,
   }
 
   // Receive header with remaining timeout
-  std::string header_data = receiveRaw(MessageHeader::HEADER_SIZE, remaining_timeout);
+  std::string header_data =
+      receiveRaw(MessageHeader::HEADER_SIZE, remaining_timeout);
   if (header_data.empty()) {
     IPCMessage error;
     error.type = MessageType::ERROR_RESPONSE;
@@ -444,11 +464,12 @@ IPCMessage UnixSocketClient::sendAndReceive(const IPCMessage &msg,
   }
 
   // Calculate remaining timeout after receiving header
-  auto elapsed_after_header = std::chrono::duration_cast<std::chrono::milliseconds>(
-                                  std::chrono::steady_clock::now() - start_time)
-                                  .count();
+  auto elapsed_after_header =
+      std::chrono::duration_cast<std::chrono::milliseconds>(
+          std::chrono::steady_clock::now() - start_time)
+          .count();
   remaining_timeout = timeout_ms - static_cast<int>(elapsed_after_header);
-  
+
   if (remaining_timeout <= 0) {
     IPCMessage error;
     error.type = MessageType::ERROR_RESPONSE;
@@ -551,7 +572,7 @@ bool UnixSocketClient::sendRaw(const std::string &data) {
 std::string UnixSocketClient::receiveRaw(size_t expected_size, int timeout_ms) {
   std::string result(expected_size, '\0');
   size_t total_received = 0;
-  
+
   auto start_time = std::chrono::steady_clock::now();
 
   while (total_received < expected_size) {
@@ -560,7 +581,7 @@ std::string UnixSocketClient::receiveRaw(size_t expected_size, int timeout_ms) {
                        std::chrono::steady_clock::now() - start_time)
                        .count();
     int remaining_timeout = timeout_ms - static_cast<int>(elapsed);
-    
+
     if (remaining_timeout <= 0) {
       // Total timeout exceeded
       return "";
@@ -570,9 +591,11 @@ std::string UnixSocketClient::receiveRaw(size_t expected_size, int timeout_ms) {
     pfd.fd = socket_fd_;
     pfd.events = POLLIN;
 
-    // Use remaining timeout, but cap at reasonable value to avoid blocking too long
-    int poll_timeout = std::min(remaining_timeout, 1000); // Max 1 second per poll
-    
+    // Use remaining timeout, but cap at reasonable value to avoid blocking too
+    // long
+    int poll_timeout =
+        std::min(remaining_timeout, 1000); // Max 1 second per poll
+
     int ret = poll(&pfd, 1, poll_timeout);
     if (ret <= 0) {
       // Check if total timeout exceeded

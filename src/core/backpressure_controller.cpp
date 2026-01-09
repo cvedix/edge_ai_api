@@ -41,7 +41,7 @@ bool BackpressureController::shouldDropFrame(const std::string &instanceId) {
       return false; // Not configured, don't drop
     }
     config = &configIt->second;
-    
+
     // Lock stats for read access
     std::shared_lock<std::shared_mutex> stats_lock(stats_mutex_);
 
@@ -111,8 +111,8 @@ void BackpressureController::recordFrameProcessed(
 
     // Update current FPS (simple moving average)
     // Calculate FPS based on time since last processed frame
-    static thread_local std::unordered_map<std::string,
-                                           std::chrono::steady_clock::time_point>
+    static thread_local std::unordered_map<
+        std::string, std::chrono::steady_clock::time_point>
         last_fps_update;
     static thread_local std::unordered_map<std::string, uint64_t>
         frame_count_since_update;
@@ -139,8 +139,8 @@ void BackpressureController::recordFrameProcessed(
     auto &counter = adaptive_update_counter[instanceId];
     counter++;
 
-    // Only call updateAdaptiveFPS every 60 frames (~1 second at 60 FPS, ~0.5s at
-    // 120 FPS) This reduces lock contention significantly while maintaining
+    // Only call updateAdaptiveFPS every 60 frames (~1 second at 60 FPS, ~0.5s
+    // at 120 FPS) This reduces lock contention significantly while maintaining
     // responsiveness Increased from 30 to 60 to handle higher FPS better
     if (counter >= 60) {
       counter = 0;

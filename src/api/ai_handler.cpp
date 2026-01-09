@@ -467,16 +467,16 @@ void InstanceHandler::getInstance(
                        }
                      });
 
-      // Wait with timeout (configurable, default: registry timeout + 500ms buffer)
-      // This ensures API wrapper timeout >= registry timeout to allow registry to
-      // complete or timeout first
+      // Wait with timeout (configurable, default: registry timeout + 500ms
+      // buffer) This ensures API wrapper timeout >= registry timeout to allow
+      // registry to complete or timeout first
       auto timeout = TimeoutConstants::getApiWrapperTimeout();
       auto status = future.wait_for(timeout);
       if (status == std::future_status::timeout) {
         if (isApiLoggingEnabled()) {
           PLOG_WARNING << "[API] GET /v1/core/instance/" << instanceId
-                       << " - Timeout getting instance ("
-                       << timeout.count() << "ms)";
+                       << " - Timeout getting instance (" << timeout.count()
+                       << "ms)";
         }
         callback(createErrorResponse(
             503, "Service Unavailable",
@@ -614,11 +614,11 @@ void InstanceHandler::startInstance(
       auto status = future.wait_for(std::chrono::seconds(10));
       if (status == std::future_status::timeout) {
         if (isApiLoggingEnabled()) {
-          PLOG_WARNING
-              << "[API] POST /v1/core/instance/" << instanceId
-              << "/start - Timeout waiting for instance to start (10s), checking instance status...";
+          PLOG_WARNING << "[API] POST /v1/core/instance/" << instanceId
+                       << "/start - Timeout waiting for instance to start "
+                          "(10s), checking instance status...";
         }
-        
+
         // Check if instance actually started successfully despite timeout
         // This handles the case where startInstance() takes longer than timeout
         // but the instance is already running
@@ -626,17 +626,17 @@ void InstanceHandler::startInstance(
         if (optInfo.has_value() && optInfo.value().running) {
           // Instance is actually running, treat as success
           if (isApiLoggingEnabled()) {
-            PLOG_INFO
-                << "[API] POST /v1/core/instance/" << instanceId
-                << "/start - Timeout occurred but instance is running, returning success";
+            PLOG_INFO << "[API] POST /v1/core/instance/" << instanceId
+                      << "/start - Timeout occurred but instance is running, "
+                         "returning success";
           }
           startSuccess = true;
         } else {
           // Instance is not running, return timeout error
           if (isApiLoggingEnabled()) {
-            PLOG_WARNING
-                << "[API] POST /v1/core/instance/" << instanceId
-                << "/start - Timeout waiting for instance to start (10s) and instance is not running";
+            PLOG_WARNING << "[API] POST /v1/core/instance/" << instanceId
+                         << "/start - Timeout waiting for instance to start "
+                            "(10s) and instance is not running";
           }
           callback(
               createErrorResponse(504, "Gateway Timeout",

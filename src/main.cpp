@@ -546,7 +546,8 @@ void signalHandler(int signal) {
       // (default: 500ms) if still running
       // RTSP retry loops may prevent graceful shutdown, but we need enough time
       // for stopInstance() to complete
-      // CRITICAL: This thread MUST run and force exit, even if instances are blocking
+      // CRITICAL: This thread MUST run and force exit, even if instances are
+      // blocking
       std::thread([]() {
         // Use configurable timeout (default: 500ms) - allows stopInstance() to
         // complete but still forces exit if RTSP retry loops block indefinitely
@@ -557,8 +558,8 @@ void signalHandler(int signal) {
         // cleanup
         PLOG_WARNING << "Shutdown timeout reached - forcing exit";
         std::cerr << "[CRITICAL] Shutdown timeout ("
-                  << TimeoutConstants::getShutdownTimeoutMs() << "ms) - KILLING PROCESS NOW"
-                  << std::endl;
+                  << TimeoutConstants::getShutdownTimeoutMs()
+                  << "ms) - KILLING PROCESS NOW" << std::endl;
         std::cerr << "[CRITICAL] RTSP retry loops prevented graceful shutdown "
                      "- forcing exit"
                   << std::endl;

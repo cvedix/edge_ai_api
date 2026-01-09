@@ -11,12 +11,12 @@
  * Contains real-time statistics about instance performance and processing.
  */
 struct InstanceStatistics {
-  uint64_t frames_processed = 0;     // Frames actually processed
-  uint64_t frames_incoming = 0;      // All frames from source (including dropped)
-  double source_framerate = 0.0;     // FPS from source
-  double current_framerate = 0.0;    // Current processing FPS
-  double latency = 0.0;              // Average latency in milliseconds
-  int64_t start_time = 0;            // Unix timestamp (seconds)
+  uint64_t frames_processed = 0;  // Frames actually processed
+  uint64_t frames_incoming = 0;   // All frames from source (including dropped)
+  double source_framerate = 0.0;  // FPS from source
+  double current_framerate = 0.0; // Current processing FPS
+  double latency = 0.0;           // Average latency in milliseconds
+  int64_t start_time = 0;         // Unix timestamp (seconds)
   size_t input_queue_size = 0;
   uint64_t dropped_frames_count = 0; // Frames dropped
   std::string resolution;            // e.g., "1280x720"
