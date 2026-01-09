@@ -146,27 +146,98 @@ void UnixSocketServer::acceptLoop() {
 }
 
 void UnixSocketServer::handleClient(int client_fd) {
+  // CRITICAL: Use poll() with timeout for recv() to prevent blocking
+  // But keep socket blocking for send() to ensure complete transmission
+  // This is safe because:
+  // 1. recv() with poll() timeout prevents infinite blocking
+  // 2. send() blocking is OK since response is small and client is waiting
+  // 3. Client uses blocking socket, so this matches client expectations
+  
   while (running_.load()) {
-    // Read header
+    // Read header with timeout using poll()
     char header_buf[MessageHeader::HEADER_SIZE];
-    ssize_t n =
-        recv(client_fd, header_buf, MessageHeader::HEADER_SIZE, MSG_WAITALL);
-    if (n <= 0) {
+    ssize_t n = 0;
+    size_t total_received = 0;
+    
+    // Use poll() to wait for data with timeout (1 second)
+    // This allows us to check running_ flag periodically
+    while (total_received < MessageHeader::HEADER_SIZE && running_.load()) {
+      struct pollfd pfd;
+      pfd.fd = client_fd;
+      pfd.events = POLLIN;
+      
+      int ret = poll(&pfd, 1, 1000); // 1 second timeout
+      if (ret <= 0) {
+        if (ret == 0) {
+          // Timeout - continue loop to check running_ flag
+          continue;
+        }
+        // Error or connection closed
+        close(client_fd);
+        return;
+      }
+      
+      // recv() with MSG_WAITALL is safe here because poll() confirmed data is available
+      // But we use regular recv() and loop to handle partial reads gracefully
+      n = recv(client_fd, header_buf + total_received, 
+               MessageHeader::HEADER_SIZE - total_received, 0);
+      if (n < 0) {
+        // Error - connection closed or error
+        close(client_fd);
+        return;
+      }
+      if (n == 0) {
+        // Connection closed
+        close(client_fd);
+        return;
+      }
+      total_received += n;
+    }
+    
+    if (!running_.load() || total_received < MessageHeader::HEADER_SIZE) {
       break;
     }
 
     MessageHeader header;
-    if (!MessageHeader::deserialize(header_buf, n, header)) {
+    if (!MessageHeader::deserialize(header_buf, total_received, header)) {
       std::cerr << "[Worker] Invalid message header" << std::endl;
       break;
     }
 
-    // Read payload
+    // Read payload with timeout
     std::string payload_buf(header.payload_size, '\0');
     if (header.payload_size > 0) {
-      n = recv(client_fd, &payload_buf[0], header.payload_size, MSG_WAITALL);
-      if (n != static_cast<ssize_t>(header.payload_size)) {
-        std::cerr << "[Worker] Failed to read payload" << std::endl;
+      total_received = 0;
+      while (total_received < header.payload_size && running_.load()) {
+        struct pollfd pfd;
+        pfd.fd = client_fd;
+        pfd.events = POLLIN;
+        
+        int ret = poll(&pfd, 1, 1000); // 1 second timeout
+        if (ret <= 0) {
+          if (ret == 0) {
+            continue; // Timeout - check running_ flag
+          }
+          close(client_fd);
+          return;
+        }
+        
+        n = recv(client_fd, &payload_buf[total_received], 
+                 header.payload_size - total_received, 0);
+        if (n < 0) {
+          // Error
+          close(client_fd);
+          return;
+        }
+        if (n == 0) {
+          // Connection closed
+          close(client_fd);
+          return;
+        }
+        total_received += n;
+      }
+      
+      if (!running_.load() || total_received < header.payload_size) {
         break;
       }
     }
@@ -180,17 +251,59 @@ void UnixSocketServer::handleClient(int client_fd) {
       continue;
     }
 
-    // Handle message
-    IPCMessage response = handler_(request);
+    std::cout << "[Worker] ===== IPC REQUEST RECEIVED =====" << std::endl;
+    std::cout << "[Worker] Message type: " << static_cast<int>(request.type) << std::endl;
+    std::cout << "[Worker] Payload size: " << request.payload.toStyledString().size() << " bytes" << std::endl;
 
-    // Send response
+    // Handle message
+    auto handle_start = std::chrono::steady_clock::now();
+    std::cout << "[Worker] Calling handler_()..." << std::endl;
+    IPCMessage response = handler_(request);
+    auto handle_end = std::chrono::steady_clock::now();
+    auto handle_duration = std::chrono::duration_cast<std::chrono::milliseconds>(handle_end - handle_start).count();
+    std::cout << "[Worker] handler_() completed in " << handle_duration << "ms" << std::endl;
+    std::cout << "[Worker] Response type: " << static_cast<int>(response.type) << std::endl;
+
+    // Send response - use blocking send() since client is waiting
+    // Response is typically small (< 10KB), so blocking is safe
+    std::cout << "[Worker] Serializing response..." << std::endl;
     std::string response_data = response.serialize();
-    ssize_t sent =
-        send(client_fd, response_data.data(), response_data.size(), 0);
-    if (sent != static_cast<ssize_t>(response_data.size())) {
-      std::cerr << "[Worker] Failed to send response" << std::endl;
+    std::cout << "[Worker] Response serialized, size: " << response_data.size() << " bytes" << std::endl;
+    ssize_t total_sent = 0;
+    size_t total_size = response_data.size();
+    
+    std::cout << "[Worker] Sending response, total size: " << total_size << " bytes" << std::endl;
+    auto send_start = std::chrono::steady_clock::now();
+    
+    // Send all data - blocking is OK here since response is small
+    while (total_sent < static_cast<ssize_t>(total_size) && running_.load()) {
+      ssize_t sent = send(client_fd, response_data.data() + total_sent, 
+                          total_size - total_sent, MSG_NOSIGNAL);
+      if (sent < 0) {
+        // Error sending
+        std::cerr << "[Worker] ERROR: Failed to send response: " << strerror(errno) << std::endl;
+        break;
+      }
+      if (sent == 0) {
+        // Connection closed
+        std::cerr << "[Worker] ERROR: Connection closed while sending response" << std::endl;
+        break;
+      }
+      total_sent += sent;
+      std::cout << "[Worker] Sent " << total_sent << "/" << total_size << " bytes" << std::endl;
+    }
+    
+    auto send_end = std::chrono::steady_clock::now();
+    auto send_duration = std::chrono::duration_cast<std::chrono::milliseconds>(send_end - send_start).count();
+    
+    if (total_sent != static_cast<ssize_t>(total_size)) {
+      std::cerr << "[Worker] ERROR: Failed to send response completely (" 
+                << total_sent << "/" << total_size << " bytes) in " << send_duration << "ms" << std::endl;
       break;
     }
+    
+    std::cout << "[Worker] Response sent completely in " << send_duration << "ms" << std::endl;
+    std::cout << "[Worker] ===== IPC REQUEST HANDLED =====" << std::endl;
   }
 
   close(client_fd);

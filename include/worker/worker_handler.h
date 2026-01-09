@@ -10,6 +10,7 @@
 #include <json/json.h>
 #include <memory>
 #include <mutex>
+#include <shared_mutex>
 #include <opencv2/core.hpp>
 #include <string>
 
@@ -88,9 +89,10 @@ private:
   std::vector<std::shared_ptr<cvedix_nodes::cvedix_node>> pipeline_nodes_;
   std::atomic<bool> pipeline_running_{false};
   
-  // State management - use separate mutex for state to avoid blocking
-  // GET_STATISTICS/GET_STATUS when pipeline is starting/stopping
-  std::mutex state_mutex_;  // Separate mutex for state variables
+  // State management - use shared_mutex to allow concurrent reads
+  // (GET_STATISTICS/GET_STATUS) while writes (state updates) are exclusive
+  // This ensures GET_STATISTICS never blocks, even when pipeline is starting/stopping
+  mutable std::shared_mutex state_mutex_;  // Shared mutex for concurrent reads
   std::string current_state_ = "stopped";
   std::string last_error_;
   
@@ -170,7 +172,12 @@ private:
   void startPipelineAsync();
 
   /**
-   * @brief Stop the pipeline
+   * @brief Stop the pipeline in background thread (non-blocking)
+   */
+  void stopPipelineAsync();
+
+  /**
+   * @brief Stop the pipeline (blocking)
    */
   void stopPipeline();
 
@@ -193,6 +200,11 @@ private:
    * @brief Setup frame capture hook for statistics
    */
   void setupFrameCaptureHook();
+
+  /**
+   * @brief Setup queue size tracking hook for statistics
+   */
+  void setupQueueSizeTrackingHook();
 
   /**
    * @brief Update frame cache

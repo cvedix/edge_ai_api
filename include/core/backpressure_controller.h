@@ -180,7 +180,7 @@ private:
     }
   };
 
-  mutable std::mutex mutex_;               // For configuration changes
+  mutable std::shared_mutex stats_mutex_;  // For concurrent stats reads
   mutable std::shared_mutex config_mutex_; // For concurrent config reads
   std::unordered_map<std::string, InstanceConfig> configs_;
   std::unordered_map<std::string, BackpressureStats> stats_;

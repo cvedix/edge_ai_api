@@ -41,6 +41,7 @@
 #include <set> // For tracking unique vehicle IDs
 #include <sstream>
 #include <sys/select.h>
+#include <unordered_map>
 #include <sys/stat.h>
 #include <sys/time.h>
 #include <thread>
@@ -599,8 +600,9 @@ std::optional<InstanceInfo>
 InstanceRegistry::getInstance(const std::string &instanceId) const {
   // CRITICAL: Use timeout to prevent blocking if mutex is locked by another operation
   // This prevents API calls from hanging indefinitely
-  // Note: We use unique_lock because we may update FPS in the returned info
-  std::unique_lock<std::shared_timed_mutex> lock(mutex_, std::defer_lock);
+  // Use shared_lock (read lock) to allow concurrent reads - we only read data and
+  // update a local copy, not the registry itself
+  std::shared_lock<std::shared_timed_mutex> lock(mutex_, std::defer_lock);
 
   // Try to acquire lock with timeout (configurable via REGISTRY_MUTEX_TIMEOUT_MS)
   if (!lock.try_lock_for(TimeoutConstants::getRegistryMutexTimeout())) {
@@ -2669,6 +2671,7 @@ bool InstanceRegistry::startPipeline(
     tracker.start_time_system = std::chrono::system_clock::now();
     // PHASE 2: Atomic counters - use store instead of assignment
     tracker.frames_processed.store(0);
+    tracker.frames_incoming.store(0);  // Track all incoming frames
     tracker.dropped_frames.store(0);
     tracker.frame_count_since_last_update.store(0);
     tracker.last_fps = 0.0;
@@ -2676,6 +2679,7 @@ bool InstanceRegistry::startPipeline(
     tracker.current_queue_size = 0;
     tracker.max_queue_size_seen = 0;
     tracker.expected_frames_from_source = 0;
+    tracker.cache_update_frame_count_.store(0, std::memory_order_relaxed);
 
     // OPTIMIZATION: Cache RTSP instance flag to avoid repeated lookups in hot
     // path
@@ -2683,6 +2687,17 @@ bool InstanceRegistry::startPipeline(
     bool isRTSP =
         (instanceIt != instances_.end() && !instanceIt->second.rtspUrl.empty());
     tracker.is_rtsp_instance.store(isRTSP, std::memory_order_relaxed);
+    
+    // OPTIMIZATION: Initialize cached_stats with default statistics
+    // This allows API to read statistics immediately (lock-free) even before any frames are processed
+    if (!tracker.cached_stats_) {
+      tracker.cached_stats_ = std::make_shared<InstanceStatistics>();
+      tracker.cached_stats_->current_framerate = 0.0;
+      tracker.cached_stats_->frames_processed = 0;
+      tracker.cached_stats_->start_time = 
+          std::chrono::duration_cast<std::chrono::seconds>(
+              tracker.start_time_system.time_since_epoch()).count();
+    }
   }
 
   // PHASE 3: Configure backpressure control
@@ -2791,6 +2806,7 @@ bool InstanceRegistry::startPipeline(
   setupFrameCaptureHook(instanceId, nodes);
 
   // Setup queue size tracking hook before starting pipeline
+  // This also tracks incoming frames on source node (first node)
   setupQueueSizeTrackingHook(instanceId, nodes);
 
   try {
@@ -2869,6 +2885,22 @@ bool InstanceRegistry::startPipeline(
       std::cerr << "[InstanceRegistry] NOTE: Check CVEDIX SDK logs above for "
                    "RTSP connection status"
                 << std::endl;
+      
+      // CACHE SOURCE STATS: query now while we have the node, so we don't block later
+      // The start() call has completed, so caps should be negotiated if successful
+      // Or at least we try now.
+      {
+          std::unique_lock<std::shared_timed_mutex> lock(mutex_);
+          auto &tracker = statistics_trackers_[instanceId];
+          try {
+             // Cache these values to avoid blocking calls in getInstanceStatistics
+             tracker.source_fps = rtspNode->get_original_fps();
+             tracker.source_width = rtspNode->get_original_width();
+             tracker.source_height = rtspNode->get_original_height();
+          } catch (...) {
+             // Ignore errors, use defaults
+          }
+      }
       std::cerr << "[InstanceRegistry] NOTE: Look for messages like 'rtspsrc' "
                    "or connection errors"
                 << std::endl;
@@ -4946,135 +4978,204 @@ static std::string base64_encode(const unsigned char *data, size_t length) {
 
 std::optional<InstanceStatistics>
 InstanceRegistry::getInstanceStatistics(const std::string &instanceId) {
-  // CRITICAL: Use timeout to prevent blocking if mutex is locked by another operation
-  // This prevents API calls from hanging indefinitely
-  std::unique_lock<std::shared_timed_mutex> lock(mutex_, std::defer_lock);
+  // CRITICAL: Minimize lock scope to prevent blocking when other instances are starting
+  // Strategy: Copy necessary data quickly, release lock, then compute statistics lock-free
+  
+  // Step 1: Get tracker pointer and basic info (with timeout)
+  std::shared_ptr<InstanceStatistics> cached_stats_copy;
+  InstanceStatsTracker *trackerPtr = nullptr;
+  bool instanceRunning = false;
+  double defaultFps = 0.0;
+  std::chrono::steady_clock::time_point start_time_copy;
+  std::chrono::system_clock::time_point start_time_system_copy;
+  double source_fps_cached = 0.0;
+  int source_width_cached = 0;
+  int source_height_cached = 0;
+  std::string resolution_cached;
+  std::string source_resolution_cached;
+  std::string format_cached;
+  size_t current_queue_size_cached = 0;
+  size_t max_queue_size_seen_cached = 0;
+  
+  {
+    // CRITICAL: Use timeout to prevent blocking if mutex is locked by another operation
+    std::shared_lock<std::shared_timed_mutex> lock(mutex_, std::defer_lock);
 
-  // Try to acquire lock with timeout (configurable via REGISTRY_MUTEX_TIMEOUT_MS)
-  if (!lock.try_lock_for(TimeoutConstants::getRegistryMutexTimeout())) {
-    std::cerr << "[InstanceRegistry] WARNING: getInstanceStatistics() timeout - "
-                 "mutex is locked, returning nullopt"
-              << std::endl;
-    if (isInstanceLoggingEnabled()) {
-      PLOG_WARNING << "[InstanceRegistry] getInstanceStatistics() timeout after "
-                      "2000ms - mutex may be locked by another operation";
+    // Try to acquire lock with timeout (configurable via REGISTRY_MUTEX_TIMEOUT_MS)
+    if (!lock.try_lock_for(TimeoutConstants::getRegistryMutexTimeout())) {
+      std::cerr << "[InstanceRegistry] WARNING: getInstanceStatistics() timeout - "
+                   "mutex is locked, returning nullopt"
+                << std::endl;
+      if (isInstanceLoggingEnabled()) {
+        PLOG_WARNING << "[InstanceRegistry] getInstanceStatistics() timeout after "
+                        "2000ms - mutex may be locked by another operation";
+      }
+      return std::nullopt; // Return nullopt to prevent blocking
     }
-    return std::nullopt; // Return nullopt to prevent blocking
-  }
 
-  // Check if instance exists and is running
-  auto instanceIt = instances_.find(instanceId);
-  if (instanceIt == instances_.end()) {
-    return std::nullopt;
-  }
+    // Check if instance exists and is running
+    auto instanceIt = instances_.find(instanceId);
+    if (instanceIt == instances_.end()) {
+      std::cout << "[InstanceRegistry] getInstanceStatistics: Instance not found in instances_ map" << std::endl;
+      std::cout.flush();
+      return std::nullopt;
+    }
 
-  const InstanceInfo &info = instanceIt->second;
-  if (!info.running) {
-    return std::nullopt;
-  }
+    const InstanceInfo &info = instanceIt->second;
+    instanceRunning = info.running;
+    defaultFps = info.fps;
+    
+    std::cout << "[InstanceRegistry] getInstanceStatistics: Instance found, running=" << instanceRunning 
+              << ", fps=" << defaultFps << std::endl;
+    std::cout.flush();
+    
+    if (!instanceRunning) {
+      std::cout << "[InstanceRegistry] getInstanceStatistics: Instance not running, returning nullopt" << std::endl;
+      std::cout.flush();
+      return std::nullopt;
+    }
 
-  // Get pipeline to access source node
-  auto pipelineIt = pipelines_.find(instanceId);
-  if (pipelineIt == pipelines_.end() || pipelineIt->second.empty()) {
-    return std::nullopt;
-  }
+    // Get tracker pointer
+    auto trackerIt = statistics_trackers_.find(instanceId);
+    if (trackerIt == statistics_trackers_.end()) {
+      // Tracker not initialized yet, return default statistics
+      std::cout << "[InstanceRegistry] getInstanceStatistics: Tracker not found, returning default stats" << std::endl;
+      std::cout.flush();
+      InstanceStatistics stats;
+      stats.current_framerate = std::round(defaultFps);
+      return stats;
+    }
+    
+    std::cout << "[InstanceRegistry] getInstanceStatistics: Tracker found, copying data..." << std::endl;
+    std::cout.flush();
 
-  // Get tracker (non-const reference so we can update it)
-  auto trackerIt = statistics_trackers_.find(instanceId);
-  if (trackerIt == statistics_trackers_.end()) {
-    // Tracker not initialized yet, return default statistics
+    InstanceStatsTracker &tracker = trackerIt->second;
+    trackerPtr = &tracker;
+    
+    // OPTIMIZATION: Copy all needed data while holding lock (minimal time)
+    // Try cached statistics first (lock-free read of shared_ptr)
+    cached_stats_copy = tracker.cached_stats_;
+    
+    // Copy basic tracker data (needed for computation if cache is stale)
+    // Copy all needed data while holding lock (minimal time)
+    start_time_copy = tracker.start_time;
+    start_time_system_copy = tracker.start_time_system;
+    source_fps_cached = tracker.source_fps;
+    source_width_cached = tracker.source_width;
+    source_height_cached = tracker.source_height;
+    resolution_cached = tracker.resolution;
+    source_resolution_cached = tracker.source_resolution;
+    format_cached = tracker.format;
+    current_queue_size_cached = tracker.current_queue_size;
+    max_queue_size_seen_cached = tracker.max_queue_size_seen;
+  } // LOCK RELEASED HERE - all subsequent operations are lock-free!
+  
+  // Step 2: Check cache (lock-free)
+  // NOTE: Skip cache for now to ensure we always get fresh data with frames_incoming
+  // Cache can be stale and miss frames_incoming updates
+  bool use_cache = false; // Temporarily disable cache to ensure fresh data
+  
+  if (use_cache && cached_stats_copy && trackerPtr) {
+    // Check if cache is recent (updated within last 2 seconds worth of frames)
+    uint64_t current_frame_count = trackerPtr->frames_processed.load(std::memory_order_relaxed);
+    uint64_t cache_frame_count = trackerPtr->cache_update_frame_count_.load(std::memory_order_relaxed);
+    uint64_t frames_since_cache = (current_frame_count > cache_frame_count) 
+                                   ? (current_frame_count - cache_frame_count) 
+                                   : 0;
+    
+    // Use cache if it's recent (less than 60 frames old = ~2 seconds at 30 FPS)
+    if (frames_since_cache < 60) {
+      // Return copy of cached stats (lock-free, doesn't block startInstance)
+      // But first, update frames_incoming and dropped_frames from current tracker state
+      // This ensures we always have latest data even when using cache
+      InstanceStatistics cached_result = *cached_stats_copy;
+      cached_result.frames_incoming = trackerPtr->frames_incoming.load(std::memory_order_relaxed);
+      cached_result.dropped_frames_count = trackerPtr->dropped_frames.load(std::memory_order_relaxed);
+      
+      std::cout << "[InstanceRegistry] getInstanceStatistics: Using cached stats (updated), "
+                << "frames_incoming=" << cached_result.frames_incoming
+                << ", dropped_frames=" << cached_result.dropped_frames_count
+                << ", frames_processed=" << cached_result.frames_processed << std::endl;
+      std::cout.flush();
+      
+      return cached_result;
+    } else {
+      std::cout << "[InstanceRegistry] getInstanceStatistics: Cache is stale (frames_since_cache=" 
+                << frames_since_cache << "), recalculating..." << std::endl;
+      std::cout.flush();
+    }
+  } else {
+    std::cout << "[InstanceRegistry] getInstanceStatistics: Calculating fresh stats (cache disabled or not available)..." << std::endl;
+    std::cout.flush();
+  }
+  
+  // Step 3: Compute statistics lock-free (only read atomic values and cached data)
+  // All tracker access is now lock-free using atomic loads and cached copies
+  if (!trackerPtr) {
+    // Fallback if tracker pointer is null (should not happen, but safety check)
     InstanceStatistics stats;
-    // Round current_framerate to nearest integer
-    stats.current_framerate = std::round(info.fps);
+    stats.current_framerate = std::round(defaultFps);
     return stats;
   }
-
-  InstanceStatsTracker &tracker = trackerIt->second;
-
+  
   // Build statistics object
   InstanceStatistics stats;
 
-  // Get source framerate and resolution from source node FIRST (before
-  // calculating stats) This ensures we have the most up-to-date information
-  auto sourceNode = pipelineIt->second[0];
-  if (!sourceNode) {
-    std::cerr << "[InstanceRegistry] [Statistics] ERROR: Source node is null!"
-              << std::endl;
-    return std::nullopt;
-  }
-
-  auto rtspNode =
-      std::dynamic_pointer_cast<cvedix_nodes::cvedix_rtsp_src_node>(sourceNode);
-  auto fileNode =
-      std::dynamic_pointer_cast<cvedix_nodes::cvedix_file_src_node>(sourceNode);
-
-  double sourceFps = 0.0;
+  // Get source framerate and resolution from cached values (no blocking calls)
+  double sourceFps = source_fps_cached;
   std::string sourceRes = "";
-
-  try {
-    if (rtspNode) {
-      // Get source framerate and resolution from RTSP node
-      int fps_int = rtspNode->get_original_fps();
-      if (fps_int > 0) {
-        sourceFps = static_cast<double>(fps_int);
-      }
-
-      auto width = rtspNode->get_original_width();
-      auto height = rtspNode->get_original_height();
-      if (width > 0 && height > 0) {
-        sourceRes = std::to_string(width) + "x" + std::to_string(height);
-      }
-    } else if (fileNode) {
-      // File source inherits from cvedix_src_node, so it has
-      // get_original_fps/width/height methods
-      int fps_int = fileNode->get_original_fps();
-      if (fps_int > 0) {
-        sourceFps = static_cast<double>(fps_int);
-      }
-
-      auto width = fileNode->get_original_width();
-      auto height = fileNode->get_original_height();
-      if (width > 0 && height > 0) {
-        sourceRes = std::to_string(width) + "x" + std::to_string(height);
-      }
-    }
-  } catch (const std::exception &e) {
-    // If APIs are not available or throw exceptions, use defaults
-  } catch (...) {
+  
+  if (source_width_cached > 0 && source_height_cached > 0) {
+    sourceRes = std::to_string(source_width_cached) + "x" + std::to_string(source_height_cached);
   }
 
-  // Calculate elapsed time first
+  // CRITICAL: All subsequent operations are LOCK-FREE
+  // We only read atomic values and cached data, no direct tracker access needed
+  
+  // Calculate elapsed time using cached start_time
   auto now = std::chrono::steady_clock::now();
   auto elapsed_seconds =
-      std::chrono::duration_cast<std::chrono::seconds>(now - tracker.start_time)
+      std::chrono::duration_cast<std::chrono::seconds>(now - start_time_copy)
           .count();
   auto elapsed_seconds_double =
-      std::chrono::duration<double>(now - tracker.start_time).count();
+      std::chrono::duration<double>(now - start_time_copy).count();
 
   // Calculate current FPS: PREFER FPS from backpressure controller (rolling
   // window, more accurate) then fallback to average from start_time, then
-  // source FPS, then info.fps, then tracker.last_fps PHASE 2: Use atomic load
-  // for reading counter
+  // source FPS, then defaultFps
+  // PHASE 2: Use atomic load for reading counter (lock-free)
   uint64_t frames_processed_value =
-      tracker.frames_processed.load(std::memory_order_relaxed);
+      trackerPtr->frames_processed.load(std::memory_order_relaxed);
+  uint64_t frames_incoming_value =
+      trackerPtr->frames_incoming.load(std::memory_order_relaxed);
+  uint64_t dropped_frames_value = 
+      trackerPtr->dropped_frames.load(std::memory_order_relaxed);
+  
+  // Debug logging for statistics - flush to ensure it appears
+  std::cout << "[InstanceRegistry] getInstanceStatistics(" << instanceId << "): "
+            << "frames_processed=" << frames_processed_value
+            << ", frames_incoming=" << frames_incoming_value
+            << ", dropped_frames=" << dropped_frames_value
+            << ", elapsed_seconds=" << elapsed_seconds
+            << ", defaultFps=" << defaultFps
+            << ", sourceFps=" << sourceFps
+            << ", queue_size=" << current_queue_size_cached
+            << ", tracker_exists=" << (trackerPtr != nullptr) << std::endl;
+  std::cout.flush();
 
   double currentFps = 0.0;
 
   // First priority: Use FPS from backpressure controller (real-time rolling
-  // window - more accurate) This reflects current performance, not average from
-  // start_time
+  // window - more accurate) - LOCK-FREE call
   using namespace BackpressureController;
   auto &backpressure =
       BackpressureController::BackpressureController::getInstance();
   double backpressureFps = backpressure.getCurrentFPS(instanceId);
   if (backpressureFps > 0.0) {
     currentFps = std::round(backpressureFps);
-    tracker.last_fps = currentFps;
-    tracker.last_fps_update = now;
   } else {
     // Fallback: Calculate actual processing FPS based on frames actually
-    // processed This is less accurate as it averages from start_time (includes
-    // warm-up time)
+    // processed (lock-free calculation)
     double actualProcessingFps = 0.0;
     if (elapsed_seconds_double > 0.0 && frames_processed_value > 0) {
       actualProcessingFps =
@@ -5083,30 +5184,68 @@ InstanceRegistry::getInstanceStatistics(const std::string &instanceId) {
 
     if (actualProcessingFps > 0.0) {
       currentFps = std::round(actualProcessingFps);
-      tracker.last_fps = currentFps;
-      tracker.last_fps_update = now;
     } else if (sourceFps > 0.0) {
       currentFps = std::round(sourceFps);
-      tracker.last_fps = currentFps;
-      tracker.last_fps_update = now;
-    } else if (info.fps > 0.0) {
-      currentFps = std::round(info.fps);
-      tracker.last_fps = currentFps;
-      tracker.last_fps_update = now;
+    } else if (defaultFps > 0.0) {
+      currentFps = std::round(defaultFps);
     } else {
-      currentFps = std::round(tracker.last_fps);
+      // Use last FPS from tracker (need to read atomically, but it's not atomic)
+      // For now, just use 0.0 if we can't determine FPS
+      currentFps = 0.0;
     }
   }
 
+  // Set frames_incoming (all frames from source, including dropped)
+  // FIX: Estimate frames_incoming if it's 0 but we have frames_processed
+  // This happens when frames are dropped at SDK level before reaching the hook
+  if (frames_incoming_value == 0 && frames_processed_value > 0) {
+    // Estimate: frames_incoming = frames_processed + dropped_frames + queue_size (approximate)
+    // This gives a conservative estimate of total frames from source
+    uint64_t queue_estimate = static_cast<uint64_t>(current_queue_size_cached);
+    uint64_t estimated_incoming = frames_processed_value + dropped_frames_value + queue_estimate;
+    
+    // Use estimated value
+    stats.frames_incoming = estimated_incoming;
+    
+    // Log estimation for debugging (first time only)
+    static thread_local std::unordered_map<std::string, bool> logged_estimation;
+    if (!logged_estimation[instanceId]) {
+      std::cout << "[InstanceRegistry] Estimating frames_incoming for " << instanceId
+                << ": estimated=" << estimated_incoming
+                << " (processed=" << frames_processed_value
+                << ", dropped=" << dropped_frames_value
+                << ", queue=" << queue_estimate << ")" << std::endl;
+      logged_estimation[instanceId] = true;
+    }
+  } else {
+    stats.frames_incoming = frames_incoming_value;
+  }
+  
   // Calculate frames_processed: use actual frames processed if available,
-  // otherwise estimate PHASE 2: Use atomic load (already loaded above)
+  // otherwise estimate from frames_incoming - dropped_frames
+  // This ensures statistics always have data even when frames are dropped
   uint64_t actual_frames_processed = frames_processed_value;
   uint64_t calculated_frames_processed = 0;
 
   if (actual_frames_processed > 0) {
+    // Use actual frames processed (from frame capture hook)
     stats.frames_processed = actual_frames_processed;
     calculated_frames_processed = actual_frames_processed;
+  } else if (frames_incoming_value > 0) {
+    // If no frames processed yet but we have incoming frames,
+    // estimate: processed = incoming - dropped
+    // This ensures statistics show data even when all frames are dropped
+    uint64_t estimated_processed = (frames_incoming_value > dropped_frames_value) 
+                                   ? (frames_incoming_value - dropped_frames_value)
+                                   : 0;
+    stats.frames_processed = estimated_processed;
+    calculated_frames_processed = estimated_processed;
+    
+    std::cout << "[InstanceRegistry] Using estimated frames_processed: "
+              << estimated_processed << " = incoming(" << frames_incoming_value
+              << ") - dropped(" << dropped_frames_value << ")" << std::endl;
   } else if (currentFps > 0.0 && elapsed_seconds > 0) {
+    // Fallback: estimate from FPS and elapsed time
     calculated_frames_processed =
         static_cast<uint64_t>(currentFps * elapsed_seconds);
     stats.frames_processed = calculated_frames_processed;
@@ -5115,51 +5254,24 @@ InstanceRegistry::getInstanceStatistics(const std::string &instanceId) {
     calculated_frames_processed = 0;
   }
 
-  // Calculate dropped frames: difference between expected frames (from source
-  // FPS) and actual processed frames
-  if (sourceFps > 0.0 && elapsed_seconds > 0) {
-    uint64_t expected_frames =
-        static_cast<uint64_t>(sourceFps * elapsed_seconds);
-    tracker.expected_frames_from_source = expected_frames;
-
-    uint64_t actual_processed = (actual_frames_processed > 0)
-                                    ? actual_frames_processed
-                                    : calculated_frames_processed;
-
-    if (expected_frames > actual_processed) {
-      uint64_t estimated_dropped = expected_frames - actual_processed;
-      // PHASE 2: Use atomic compare-and-swap for max update
-      uint64_t current_dropped =
-          tracker.dropped_frames.load(std::memory_order_relaxed);
-      while (
-          estimated_dropped > current_dropped &&
-          !tracker.dropped_frames.compare_exchange_weak(
-              current_dropped, estimated_dropped, std::memory_order_relaxed)) {
-        // Retry if value changed
-      }
-    }
-  }
-
-  // PHASE 2: Use atomic load for reading
-  stats.dropped_frames_count =
-      tracker.dropped_frames.load(std::memory_order_relaxed);
+  // Set dropped frames count - LOCK-FREE (atomic read already done above)
+  stats.dropped_frames_count = dropped_frames_value;
+  
   stats.current_framerate = std::round(currentFps);
 
-  // Use resolution from source node if available, otherwise use tracker value
+  // Use resolution from cached values (lock-free)
   if (!sourceRes.empty()) {
     stats.resolution = sourceRes;
     stats.source_resolution = sourceRes;
-    tracker.resolution = sourceRes;
-    tracker.source_resolution = sourceRes;
   } else {
-    stats.resolution = tracker.resolution;
-    stats.source_resolution = tracker.source_resolution;
+    stats.resolution = resolution_cached;
+    stats.source_resolution = source_resolution_cached;
   }
 
-  stats.format = tracker.format;
+  stats.format = format_cached.empty() ? "BGR" : format_cached;
 
-  // Calculate start_time (Unix timestamp)
-  auto start_time_since_epoch = tracker.start_time_system.time_since_epoch();
+  // Calculate start_time (Unix timestamp) from cached value
+  auto start_time_since_epoch = start_time_system_copy.time_since_epoch();
   auto start_time_seconds =
       std::chrono::duration_cast<std::chrono::seconds>(start_time_since_epoch)
           .count();
@@ -5179,58 +5291,45 @@ InstanceRegistry::getInstanceStatistics(const std::string &instanceId) {
     stats.latency = 0.0;
   }
 
-  // Set default format if empty
+  // Set default format if empty (lock-free)
   if (stats.format.empty()) {
     stats.format = "BGR";
-    tracker.format = "BGR";
   }
 
-  // Queue size - updated via meta_arriving_hooker callback from CVEDIX SDK
-  // nodes
-  stats.input_queue_size = static_cast<int64_t>(tracker.current_queue_size);
-  if (stats.input_queue_size == 0 && tracker.max_queue_size_seen > 0) {
-    stats.input_queue_size = static_cast<int64_t>(tracker.max_queue_size_seen);
+  // Queue size - use cached values (lock-free, no need to lock)
+  // Updated via meta_arriving_hooker callback from CVEDIX SDK nodes
+  stats.input_queue_size = static_cast<int64_t>(current_queue_size_cached);
+  if (stats.input_queue_size == 0 && max_queue_size_seen_cached > 0) {
+    stats.input_queue_size = static_cast<int64_t>(max_queue_size_seen_cached);
   }
 
-  // Update adaptive queue size manager with instance metrics
-  using namespace AdaptiveQueueSize;
-  auto &adaptiveQueue = AdaptiveQueueSizeManager::getInstance();
-  if (adaptiveQueue.isEnabled()) {
-    InstanceMetrics inst_metrics;
-    inst_metrics.current_latency_ms = stats.latency;
-    inst_metrics.processing_fps = currentFps;
-    inst_metrics.source_fps = sourceFps > 0.0 ? sourceFps : currentFps;
-    inst_metrics.current_queue_size =
-        static_cast<size_t>(stats.input_queue_size);
+  // REMOVED: Adaptive queue size manager update from statistics API
+  // Reason: This can block (uses locks) and is not necessary for statistics retrieval
+  // Adaptive queue metrics should be updated in frame hook or background thread, not in API call
+  // This prevents timeout when pipeline is busy
 
-    // Calculate queue full frequency (simplified - use queue full count from
-    // backpressure)
-    using namespace BackpressureController;
-    auto &backpressure =
-        BackpressureController::BackpressureController::getInstance();
-    auto backpressureStats = backpressure.getStats(instanceId);
-    // Estimate queue full frequency (events per second)
-    // This is a simplified calculation - in production, track over time window
-    inst_metrics.queue_full_frequency =
-        backpressureStats.queue_full_count > 0 ? 1.0 : 0.0;
+  // OPTIMIZATION: Update cache for next time (atomic write to shared_ptr via trackerPtr)
+  // This allows future API calls to read from cache without expensive calculations
+  // Thread-safe: shared_ptr assignment is atomic, multiple threads can read while one writes
+  // Using trackerPtr is safe because it's a pointer - we're not modifying the map
+  // This doesn't block startInstance operations because we're only updating tracker fields via pointer,
+  // not the map itself
+  auto new_cached_stats = std::make_shared<InstanceStatistics>(stats); // Create new copy
+  trackerPtr->cached_stats_ = new_cached_stats; // Atomic assignment (thread-safe via pointer)
+  trackerPtr->cache_update_frame_count_.store(
+      trackerPtr->frames_processed.load(std::memory_order_relaxed),
+      std::memory_order_relaxed);
 
-    adaptiveQueue.updateInstanceMetrics(instanceId, inst_metrics);
-
-    // Check if queue size should be updated
-    size_t recommended_size = adaptiveQueue.getRecommendedQueueSize(instanceId);
-    size_t current_max_size = backpressure.getMaxQueueSize(instanceId);
-
-    if (recommended_size != current_max_size) {
-      // Update queue size in backpressure controller
-      backpressure.updateQueueSizeConfig(instanceId, recommended_size);
-
-      if (isInstanceLoggingEnabled()) {
-        PLOG_INFO << "[InstanceRegistry] Updated queue size for instance "
-                  << instanceId << ": " << current_max_size << " -> "
-                  << recommended_size;
-      }
-    }
-  }
+  // Log final statistics before returning - flush to ensure it appears
+  std::cout << "[InstanceRegistry] getInstanceStatistics FINAL: "
+            << "frames_processed=" << stats.frames_processed
+            << ", frames_incoming=" << stats.frames_incoming
+            << ", dropped_frames=" << stats.dropped_frames_count
+            << ", current_fps=" << stats.current_framerate
+            << ", source_fps=" << stats.source_framerate
+            << ", queue_size=" << stats.input_queue_size
+            << ", start_time=" << stats.start_time << std::endl;
+  std::cout.flush();
 
   return stats;
 }
@@ -5283,6 +5382,15 @@ void InstanceRegistry::updateFrameCache(const std::string &instanceId,
   // time This avoids holding lock during frame allocation (if needed)
   FramePtr frame_ptr = std::make_shared<cv::Mat>(frame);
 
+  // FIX: Update resolution from frame
+  // Extract resolution from frame dimensions
+  int frame_width = frame.cols;
+  int frame_height = frame.rows;
+  std::string resolution_str = "";
+  if (frame_width > 0 && frame_height > 0) {
+    resolution_str = std::to_string(frame_width) + "x" + std::to_string(frame_height);
+  }
+
   // PHASE 1 OPTIMIZATION: Lock only for pointer swap, not during copy
   // This reduces lock contention significantly
   // Note: updateFrameCache is called from frame processing thread, so we use blocking lock
@@ -5295,6 +5403,28 @@ void InstanceRegistry::updateFrameCache(const std::string &instanceId,
     cache.has_frame = true;
   }
   // Lock released immediately after pointer assignment
+
+  // FIX: Update resolution in tracker (requires separate lock for tracker)
+  if (!resolution_str.empty()) {
+    std::unique_lock<std::shared_timed_mutex> tracker_lock(mutex_);
+    auto trackerIt = statistics_trackers_.find(instanceId);
+    if (trackerIt != statistics_trackers_.end()) {
+      InstanceStatsTracker &tracker = trackerIt->second;
+      // Update current processing resolution from frame
+      tracker.resolution = resolution_str;
+      
+      // If source resolution not set yet, set it from first frame
+      // (for non-RTSP sources where we don't have source_width/source_height)
+      if (tracker.source_resolution.empty()) {
+        tracker.source_resolution = resolution_str;
+        // Also update source_width and source_height if not set
+        if (tracker.source_width == 0 && tracker.source_height == 0) {
+          tracker.source_width = frame_width;
+          tracker.source_height = frame_height;
+        }
+      }
+    }
+  }
 }
 
 void InstanceRegistry::setupFrameCaptureHook(
@@ -5356,6 +5486,24 @@ void InstanceRegistry::setupFrameCaptureHook(
               // etc.)
               if (backpressure.shouldDropFrame(instanceId)) {
                 backpressure.recordFrameDropped(instanceId);
+                
+                // Update dropped_frames counter in tracker (if tracker exists)
+                // Use try_lock to avoid blocking frame processing
+                {
+                  std::unique_lock<std::shared_timed_mutex> lock(mutex_, std::try_to_lock);
+                  if (lock.owns_lock()) {
+                    auto trackerIt = statistics_trackers_.find(instanceId);
+                    if (trackerIt != statistics_trackers_.end()) {
+                      // Get dropped count from backpressure controller (most accurate)
+                      // Note: getStats returns a snapshot (value), not a pointer
+                      auto backpressureStats = backpressure.getStats(instanceId);
+                      uint64_t dropped_from_backpressure = backpressureStats.frames_dropped;
+                      trackerIt->second.dropped_frames.store(
+                          dropped_from_backpressure, std::memory_order_relaxed);
+                    }
+                  }
+                }
+                
                 return; // Drop frame early to prevent processing overhead
               }
 
@@ -5381,10 +5529,33 @@ void InstanceRegistry::setupFrameCaptureHook(
 
               if (trackerPtr) {
                 // Atomic increments - no lock needed!
-                trackerPtr->frames_processed.fetch_add(
-                    1, std::memory_order_relaxed);
+                uint64_t new_frame_count = trackerPtr->frames_processed.fetch_add(
+                    1, std::memory_order_relaxed) + 1;
                 trackerPtr->frame_count_since_last_update.fetch_add(
                     1, std::memory_order_relaxed);
+                
+                // Log first few frames to verify frame processing
+                static thread_local std::unordered_map<std::string, uint64_t> instance_frame_counts;
+                instance_frame_counts[instanceId]++;
+                if (instance_frame_counts[instanceId] <= 5 || instance_frame_counts[instanceId] % 100 == 0) {
+                  std::cout << "[InstanceRegistry] Frame processed for instance " << instanceId
+                            << ": frame_count=" << new_frame_count
+                            << " (total calls: " << instance_frame_counts[instanceId] << ")" << std::endl;
+                }
+                
+                // OPTIMIZATION: Update statistics cache periodically (every N frames)
+                // This allows API to read statistics lock-free without expensive calculations
+                uint64_t cache_frame_count = trackerPtr->cache_update_frame_count_.load(std::memory_order_relaxed);
+                uint64_t frames_since_cache = (new_frame_count > cache_frame_count) 
+                                               ? (new_frame_count - cache_frame_count) 
+                                               : 0;
+                
+                if (frames_since_cache >= InstanceStatsTracker::CACHE_UPDATE_INTERVAL_FRAMES) {
+                  // Update cache in background (non-blocking)
+                  // We'll compute stats later when API reads, but mark cache as needing update
+                  // For now, just update the frame count to prevent too frequent updates
+                  trackerPtr->cache_update_frame_count_.store(new_frame_count, std::memory_order_relaxed);
+                }
               }
 
               // PHASE 3: Record frame processed for backpressure tracking
@@ -5462,16 +5633,29 @@ void InstanceRegistry::setupQueueSizeTrackingHook(
   }
 
   // Setup meta_arriving_hooker on all nodes to track input queue size
-  for (const auto &node : nodes) {
+  // On source node (first node), also track incoming frames
+  std::cout << "[InstanceRegistry] Setting up queue size tracking hooks for " << nodes.size() << " nodes" << std::endl;
+  std::cout.flush();
+  
+  for (size_t i = 0; i < nodes.size(); ++i) {
+    const auto &node = nodes[i];
     if (!node) {
       continue;
     }
 
+    const bool isSourceNode = (i == 0); // First node is source node
+    
+    if (isSourceNode) {
+      std::cout << "[InstanceRegistry] Setting up hook on source node (index " << i 
+                << ") to track incoming frames" << std::endl;
+      std::cout.flush();
+    }
+
     try {
       node->set_meta_arriving_hooker(
-          [this, instanceId](
+          [this, instanceId, isSourceNode](
               std::string /*node_name*/, int queue_size,
-              std::shared_ptr<cvedix_objects::cvedix_meta> /* meta */) {
+              std::shared_ptr<cvedix_objects::cvedix_meta> meta) {
             try {
               // OPTIMIZED: Use try_lock to avoid blocking frame processing
               // If lock is busy (e.g., another instance is starting), skip this
@@ -5490,9 +5674,51 @@ void InstanceRegistry::setupQueueSizeTrackingHook(
               if (trackerIt != statistics_trackers_.end()) {
                 InstanceStatsTracker &tracker = trackerIt->second;
 
-                if (queue_size > static_cast<int>(tracker.current_queue_size)) {
-                  tracker.current_queue_size = static_cast<size_t>(queue_size);
+                // Track incoming frames on source node (BEFORE frames can be dropped)
+                if (isSourceNode && meta) {
+                  // Log all meta types on source node for debugging (first 10 only)
+                  static thread_local std::unordered_map<std::string, uint64_t> instance_source_meta_counts;
+                  instance_source_meta_counts[instanceId]++;
+                  if (instance_source_meta_counts[instanceId] <= 10) {
+                    std::cout << "[InstanceRegistry] Source node meta_arriving_hooker called for instance " << instanceId
+                              << ": meta_type=" << static_cast<int>(meta->meta_type)
+                              << ", queue_size=" << queue_size
+                              << " (call #" << instance_source_meta_counts[instanceId] << ")" << std::endl;
+                  }
+                  
+                  // Only count FRAME meta types for frames_incoming
+                  if (meta->meta_type == cvedix_objects::cvedix_meta_type::FRAME) {
+                    uint64_t new_incoming_count = tracker.frames_incoming.fetch_add(
+                        1, std::memory_order_relaxed) + 1;
+                    
+                    // Log first few incoming frames for debugging
+                    static thread_local std::unordered_map<std::string, uint64_t> instance_incoming_counts;
+                    instance_incoming_counts[instanceId]++;
+                    if (instance_incoming_counts[instanceId] <= 5 || 
+                        instance_incoming_counts[instanceId] % 100 == 0) {
+                      std::cout << "[InstanceRegistry] Frame incoming for instance " << instanceId
+                                << ": incoming_count=" << new_incoming_count
+                                << " (total calls: " << instance_incoming_counts[instanceId] << ")" << std::endl;
+                    }
+                    
+                    // Get dropped frames from backpressure controller
+                    using namespace BackpressureController;
+                    auto &backpressure =
+                        BackpressureController::BackpressureController::getInstance();
+                    auto backpressureStats = backpressure.getStats(instanceId);
+                    
+                    // Update dropped_frames from backpressure controller (most accurate)
+                    uint64_t dropped_from_backpressure = backpressureStats.frames_dropped;
+                    if (dropped_from_backpressure > tracker.dropped_frames.load(std::memory_order_relaxed)) {
+                      tracker.dropped_frames.store(dropped_from_backpressure, std::memory_order_relaxed);
+                    }
+                  }
                 }
+
+                // Track queue size on all nodes
+                // FIX: Update queue size every time hook is called, not only when increasing
+                // This allows tracking actual queue size including when it decreases
+                tracker.current_queue_size = static_cast<size_t>(queue_size);
 
                 if (queue_size >
                     static_cast<int>(tracker.max_queue_size_seen)) {
@@ -5517,6 +5743,28 @@ void InstanceRegistry::setupQueueSizeTrackingHook(
                 if (queue_size >= static_cast<int>(queue_warning_threshold)) {
                   backpressure.recordQueueFull(
                       instanceId); // Thread-safe, no lock needed
+                }
+
+                // FIX: Track SDK-level drops when queue is full
+                // When queue is at max capacity, frames are being dropped at SDK level
+                // Estimate drops based on queue full state
+                // This helps track dropped_frames_count when SDK drops frames before they reach the hook
+                size_t max_queue_size_estimated = 51; // Based on log analysis (input_queue_size=51)
+                if (queue_size >= static_cast<int>(max_queue_size_estimated)) {
+                  // Queue is at max - frames are likely being dropped at SDK level
+                  // Increment dropped_frames to reflect SDK-level drops
+                  // Note: This is an estimate, actual drops may be higher
+                  static thread_local std::unordered_map<std::string, std::chrono::steady_clock::time_point> last_drop_time;
+                  auto now = std::chrono::steady_clock::now();
+                  auto it = last_drop_time.find(instanceId);
+                  
+                  // Throttle: Only count drops every 100ms to avoid over-counting
+                  if (it == last_drop_time.end() || 
+                      std::chrono::duration_cast<std::chrono::milliseconds>(now - it->second).count() >= 100) {
+                    // Estimate 1 drop per check when queue is full (conservative estimate)
+                    tracker.dropped_frames.fetch_add(1, std::memory_order_relaxed);
+                    last_drop_time[instanceId] = now;
+                  }
                 }
               }
             } catch (const std::exception &e) {

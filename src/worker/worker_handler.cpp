@@ -245,11 +245,11 @@ IPCMessage WorkerHandler::handlePing(const IPCMessage & /*msg*/) {
   IPCMessage response;
   response.type = MessageType::PONG;
   
-  // Use separate state_mutex_ to avoid blocking PING when pipeline
-  // starting/stopping operations are holding start_pipeline_mutex_
+  // Use shared_lock to allow concurrent reads - never blocks other readers
+  // Writers (state updates) still get exclusive access
   std::string state_copy;
   {
-    std::lock_guard<std::mutex> lock(state_mutex_);
+    std::shared_lock<std::shared_mutex> lock(state_mutex_);
     state_copy = current_state_;
   }
   
@@ -369,9 +369,9 @@ IPCMessage WorkerHandler::handleStartInstance(const IPCMessage & /*msg*/) {
     return response;
   }
   
-  // Update state separately using state_mutex_ (quick operation, won't block)
+  // Update state with exclusive lock (blocks readers only briefly)
   {
-    std::lock_guard<std::mutex> lock(state_mutex_);
+    std::lock_guard<std::shared_mutex> lock(state_mutex_);
     current_state_ = "starting";
   }
 
@@ -386,18 +386,51 @@ IPCMessage WorkerHandler::handleStartInstance(const IPCMessage & /*msg*/) {
 }
 
 IPCMessage WorkerHandler::handleStopInstance(const IPCMessage & /*msg*/) {
+  std::cout << "[Worker:" << instance_id_ << "] Received STOP_INSTANCE request" << std::endl;
+  
   IPCMessage response;
   response.type = MessageType::STOP_INSTANCE_RESPONSE;
 
-  if (!pipeline_running_.load()) {
+  // Check if already stopping or not running
+  bool already_stopping = false;
+  bool not_running = false;
+  {
+    std::lock_guard<std::mutex> lock(stop_pipeline_mutex_);
+    not_running = !pipeline_running_.load();
+    if (!not_running) {
+      already_stopping = stopping_pipeline_.load();
+      if (!already_stopping) {
+        stopping_pipeline_.store(true);
+        std::cout << "[Worker:" << instance_id_ << "] STOP_INSTANCE: Stopping pipeline async" << std::endl;
+      }
+    }
+  } // Lock released here - critical to avoid blocking other requests
+
+  if (not_running) {
     response.payload =
         createErrorResponse("Pipeline not running", ResponseStatus::NOT_FOUND);
     return response;
   }
 
-  stopPipeline();
+  if (already_stopping) {
+    response.payload = createErrorResponse("Pipeline is already stopping",
+                                          ResponseStatus::ALREADY_EXISTS);
+    return response;
+  }
 
-  response.payload = createResponse(ResponseStatus::OK, "Instance stopped");
+  // Update state with exclusive lock (blocks readers only briefly)
+  {
+    std::lock_guard<std::shared_mutex> lock(state_mutex_);
+    current_state_ = "stopping";
+  }
+
+  // Stop pipeline in background thread to avoid blocking IPC server
+  // This allows GET_STATISTICS and GET_LAST_FRAME requests to be processed
+  // even while pipeline is stopping
+  stopPipelineAsync();
+
+  response.payload = createResponse(ResponseStatus::OK, "Instance stopping");
+  std::cout << "[Worker:" << instance_id_ << "] STOP_INSTANCE: Response sent, pipeline stopping in background" << std::endl;
   return response;
 }
 
@@ -516,12 +549,12 @@ IPCMessage WorkerHandler::handleGetStatus(const IPCMessage & /*msg*/) {
   IPCMessage response;
   response.type = MessageType::GET_INSTANCE_STATUS_RESPONSE;
 
-  // Use separate state_mutex_ to avoid blocking GET_STATUS when pipeline
-  // starting/stopping operations are holding start_pipeline_mutex_
+  // Use shared_lock to allow concurrent reads - never blocks other readers
+  // Writers (state updates) still get exclusive access
   std::string state_copy;
   std::string error_copy;
   {
-    std::lock_guard<std::mutex> lock(state_mutex_);
+    std::shared_lock<std::shared_mutex> lock(state_mutex_);
     state_copy = current_state_;
     error_copy = last_error_;
   }
@@ -540,10 +573,20 @@ IPCMessage WorkerHandler::handleGetStatus(const IPCMessage & /*msg*/) {
 }
 
 IPCMessage WorkerHandler::handleGetStatistics(const IPCMessage & /*msg*/) {
+  auto handle_start = std::chrono::steady_clock::now();
+  std::cout << "[Worker:" << instance_id_ << "] ===== handleGetStatistics START =====" << std::endl;
   std::cout << "[Worker:" << instance_id_ << "] Received GET_STATISTICS request" << std::endl;
   
   IPCMessage response;
   response.type = MessageType::GET_STATISTICS_RESPONSE;
+
+  // CRITICAL: Check if pipeline is running before returning statistics
+  // Statistics are only meaningful when pipeline is actively processing frames
+  if (!pipeline_running_.load()) {
+    std::cout << "[Worker:" << instance_id_ << "] GET_STATISTICS: Pipeline not running, returning error" << std::endl;
+    response.payload = createErrorResponse("Pipeline not running", ResponseStatus::NOT_FOUND);
+    return response;
+  }
 
   auto now = std::chrono::steady_clock::now();
   auto uptime =
@@ -553,31 +596,172 @@ IPCMessage WorkerHandler::handleGetStatistics(const IPCMessage & /*msg*/) {
                         std::chrono::system_clock::now().time_since_epoch())
                         .count();
 
-  // Use separate state_mutex_ to avoid blocking GET_STATISTICS when pipeline
-  // starting/stopping operations are holding start_pipeline_mutex_
+  // Use shared_lock to allow concurrent reads - never blocks other readers
+  // Multiple GET_STATISTICS requests can run simultaneously
+  // Writers (state updates) still get exclusive access
   std::string state_copy;
   {
-    std::cout << "[Worker:" << instance_id_ << "] GET_STATISTICS: Acquiring state_mutex_" << std::endl;
-    std::lock_guard<std::mutex> lock(state_mutex_);
+    std::shared_lock<std::shared_mutex> lock(state_mutex_);
     state_copy = current_state_;
-    std::cout << "[Worker:" << instance_id_ << "] GET_STATISTICS: Got state: " << state_copy << std::endl;
   }
+
+  // Get source framerate and resolution from source node (if available)
+  // CRITICAL: Use timeout protection to prevent blocking when source node is busy
+  // This prevents API from hanging when pipeline is overloaded (queue full)
+  double source_fps = 0.0;
+  std::string source_res = "";
+  
+  // Try to get source node - pipeline_nodes_ is read-only here, safe to access
+  if (!pipeline_nodes_.empty()) {
+    try {
+      auto sourceNode = pipeline_nodes_[0];
+      if (sourceNode) {
+        auto rtspNode =
+            std::dynamic_pointer_cast<cvedix_nodes::cvedix_rtsp_src_node>(sourceNode);
+        auto fileNode =
+            std::dynamic_pointer_cast<cvedix_nodes::cvedix_file_src_node>(sourceNode);
+
+        // Use async with timeout to prevent blocking when source node is busy
+        // Timeout: 100ms (fast enough for API response, prevents hanging)
+        const auto source_info_timeout = std::chrono::milliseconds(100);
+        
+        if (rtspNode) {
+          // Get source framerate and resolution from RTSP node with timeout
+          auto sourceInfoFuture = std::async(std::launch::async, [rtspNode]() -> std::pair<int, std::pair<int, int>> {
+            try {
+              int fps = rtspNode->get_original_fps();
+              int width = rtspNode->get_original_width();
+              int height = rtspNode->get_original_height();
+              return std::make_pair(fps, std::make_pair(width, height));
+            } catch (...) {
+              return std::make_pair(0, std::make_pair(0, 0));
+            }
+          });
+          
+          auto status = sourceInfoFuture.wait_for(source_info_timeout);
+          if (status == std::future_status::ready) {
+            try {
+              auto [fps_int, dimensions] = sourceInfoFuture.get();
+              auto [width, height] = dimensions;
+              
+              if (fps_int > 0) {
+                source_fps = static_cast<double>(fps_int);
+              }
+              
+              if (width > 0 && height > 0) {
+                source_res = std::to_string(width) + "x" + std::to_string(height);
+                // Update member variable for next time
+                {
+                  std::lock_guard<std::shared_mutex> lock(state_mutex_);
+                  source_resolution_ = source_res;
+                }
+              }
+            } catch (...) {
+              // Ignore exceptions from get()
+            }
+          } else {
+            // Timeout - use cached values or defaults
+            // This prevents API from hanging when source node is busy
+          }
+        } else if (fileNode) {
+          // File source inherits from cvedix_src_node, so it has
+          // get_original_fps/width/height methods
+          auto sourceInfoFuture = std::async(std::launch::async, [fileNode]() -> std::pair<int, std::pair<int, int>> {
+            try {
+              int fps = fileNode->get_original_fps();
+              int width = fileNode->get_original_width();
+              int height = fileNode->get_original_height();
+              return std::make_pair(fps, std::make_pair(width, height));
+            } catch (...) {
+              return std::make_pair(0, std::make_pair(0, 0));
+            }
+          });
+          
+          auto status = sourceInfoFuture.wait_for(source_info_timeout);
+          if (status == std::future_status::ready) {
+            try {
+              auto [fps_int, dimensions] = sourceInfoFuture.get();
+              auto [width, height] = dimensions;
+              
+              if (fps_int > 0) {
+                source_fps = static_cast<double>(fps_int);
+              }
+              
+              if (width > 0 && height > 0) {
+                source_res = std::to_string(width) + "x" + std::to_string(height);
+                // Update member variable for next time
+                {
+                  std::lock_guard<std::shared_mutex> lock(state_mutex_);
+                  source_resolution_ = source_res;
+                }
+              }
+            } catch (...) {
+              // Ignore exceptions from get()
+            }
+          } else {
+            // Timeout - use cached values or defaults
+            // This prevents API from hanging when source node is busy
+          }
+        }
+      }
+    } catch (const std::exception &e) {
+      // If APIs are not available or throw exceptions, use defaults
+      std::cerr << "[Worker:" << instance_id_ << "] Error getting source info: " << e.what() << std::endl;
+    } catch (...) {
+      // Ignore unknown exceptions
+    }
+  }
+
+  // Use source_resolution_ member if source_res is empty (fallback)
+  if (source_res.empty() && !source_resolution_.empty()) {
+    source_res = source_resolution_;
+  }
+
+  // Calculate latency (average time per frame in milliseconds)
+  double current_fps_value = current_fps_.load();
+  double latency = 0.0;
+  uint64_t frames_processed_value = frames_processed_.load();
+  if (frames_processed_value > 0 && current_fps_value > 0.0) {
+    latency = std::round(1000.0 / current_fps_value);
+  }
+
+  // Log statistics summary for debugging
+  auto handle_end = std::chrono::steady_clock::now();
+  auto handle_duration = std::chrono::duration_cast<std::chrono::milliseconds>(
+      handle_end - handle_start).count();
+  std::cout << "[Worker:" << instance_id_ << "] GET_STATISTICS: "
+            << "frames_processed=" << frames_processed_value
+            << ", current_fps=" << current_fps_value
+            << ", source_fps=" << source_fps
+            << ", queue_size=" << queue_size_.load()
+            << ", state=" << state_copy
+            << " (duration: " << handle_duration << "ms)" << std::endl;
 
   Json::Value data;
   data["instance_id"] = instance_id_;
   data["frames_processed"] =
-      static_cast<Json::UInt64>(frames_processed_.load());
+      static_cast<Json::UInt64>(frames_processed_value);
   data["dropped_frames_count"] =
       static_cast<Json::UInt64>(dropped_frames_.load());
   data["start_time"] = static_cast<Json::Int64>(start_unix - uptime);
-  data["current_framerate"] = current_fps_.load();
-  data["source_framerate"] = 0.0; // TODO: Get from source node
-  data["latency"] = 0.0;          // TODO: Calculate actual latency
+  data["current_framerate"] = current_fps_value;
+  data["source_framerate"] = source_fps > 0.0 ? source_fps : current_fps_value;
+  data["latency"] = latency;
   data["input_queue_size"] = static_cast<Json::UInt64>(queue_size_.load());
-  data["resolution"] = resolution_;
-  data["source_resolution"] = source_resolution_;
+  data["resolution"] = resolution_.empty() ? source_res : resolution_;
+  data["source_resolution"] = source_res.empty() ? source_resolution_ : source_res;
   data["format"] = "BGR";
   data["state"] = state_copy;
+  
+  // Add diagnostic info when statistics are empty (pipeline running but no frames processed yet)
+  if (frames_processed_value == 0 && current_fps_value == 0.0) {
+    data["diagnostic"] = "Pipeline is running but no frames have been processed yet. "
+                         "This may be normal if the instance just started or the source is not providing frames.";
+    std::cout << "[Worker:" << instance_id_ << "] GET_STATISTICS: Warning - No frames processed yet. "
+              << "Pipeline state: " << state_copy 
+              << ", Queue size: " << queue_size_.load()
+              << ", Uptime: " << uptime << " seconds" << std::endl;
+  }
 
   response.payload = createResponse(ResponseStatus::OK, "", data);
   return response;
@@ -684,7 +868,7 @@ bool WorkerHandler::buildPipeline() {
     }
 
     {
-      std::lock_guard<std::mutex> lock(state_mutex_);
+      std::lock_guard<std::shared_mutex> lock(state_mutex_);
       current_state_ = "created";
     }
     std::cout << "[Worker:" << instance_id_ << "] Pipeline built with "
@@ -719,6 +903,9 @@ bool WorkerHandler::startPipeline() {
     // This ensures we capture all frames from the beginning
     // Hook must be setup before source node starts to avoid missing initial frames
     setupFrameCaptureHook();
+    
+    // Setup queue size tracking hook to monitor input queue size
+    setupQueueSizeTrackingHook();
 
     // Find and start source node (first node in pipeline)
     // Try RTSP source first
@@ -770,7 +957,7 @@ bool WorkerHandler::startPipeline() {
     
     // Update state separately using state_mutex_ (quick operation, won't block)
     {
-      std::lock_guard<std::mutex> lock(state_mutex_);
+      std::lock_guard<std::shared_mutex> lock(state_mutex_);
       current_state_ = "running";
     }
 
@@ -780,7 +967,7 @@ bool WorkerHandler::startPipeline() {
 
   } catch (const std::exception &e) {
     {
-      std::lock_guard<std::mutex> lock(state_mutex_);
+      std::lock_guard<std::shared_mutex> lock(state_mutex_);
       last_error_ = e.what();
       current_state_ = "stopped";
     }
@@ -801,7 +988,7 @@ void WorkerHandler::startPipelineAsync() {
       starting_pipeline_.store(false);
     }
     {
-      std::lock_guard<std::mutex> lock(state_mutex_);
+      std::lock_guard<std::shared_mutex> lock(state_mutex_);
       current_state_ = "stopped";
     }
     start_pipeline_cv_.notify_all();
@@ -827,7 +1014,7 @@ void WorkerHandler::startPipelineAsync() {
         starting_pipeline_.store(false);
       }
       if (!success) {
-        std::lock_guard<std::mutex> lock(state_mutex_);
+        std::lock_guard<std::shared_mutex> lock(state_mutex_);
         current_state_ = "stopped";
       }
       start_pipeline_cv_.notify_all(); // Notify waiters that start completed
@@ -837,7 +1024,7 @@ void WorkerHandler::startPipelineAsync() {
         starting_pipeline_.store(false);
       }
       {
-        std::lock_guard<std::mutex> lock(state_mutex_);
+        std::lock_guard<std::shared_mutex> lock(state_mutex_);
         last_error_ = "Exception in startPipeline: " + std::string(e.what());
         current_state_ = "stopped";
       }
@@ -848,12 +1035,74 @@ void WorkerHandler::startPipelineAsync() {
   });
 }
 
-void WorkerHandler::stopPipeline() {
-  if (!pipeline_running_.load()) {
+void WorkerHandler::stopPipelineAsync() {
+  // Note: stopping_pipeline_ is already set to true by handleStopInstance
+  // before this function is called, so we don't need to set it again here
+
+  // Check if shutdown was requested
+  if (shutdown_requested_.load()) {
+    {
+      std::lock_guard<std::mutex> lock(stop_pipeline_mutex_);
+      stopping_pipeline_.store(false);
+    }
+    {
+      std::lock_guard<std::shared_mutex> lock(state_mutex_);
+      current_state_ = "stopped";
+    }
+    stop_pipeline_cv_.notify_all();
     return;
   }
 
-  stopping_pipeline_.store(true);
+  // Stop pipeline in background thread
+  std::thread stop_thread([this]() {
+    try {
+      // Check shutdown flag before stopping pipeline
+      if (shutdown_requested_.load()) {
+        {
+          std::lock_guard<std::mutex> lock(stop_pipeline_mutex_);
+          stopping_pipeline_.store(false);
+        }
+        {
+          std::lock_guard<std::shared_mutex> lock(state_mutex_);
+          current_state_ = "stopped";
+        }
+        stop_pipeline_cv_.notify_all(); // Notify waiters
+        return;
+      }
+
+      // Call stopPipeline() which will handle all the stopping logic
+      // Note: stopping_pipeline_ is already true, stopPipeline() will handle
+      // setting it to false and signaling condition variable when done
+      stopPipeline();
+    } catch (const std::exception &e) {
+      {
+        std::lock_guard<std::mutex> lock(stop_pipeline_mutex_);
+        stopping_pipeline_.store(false);
+      }
+      {
+        std::lock_guard<std::shared_mutex> lock(state_mutex_);
+        last_error_ = "Exception in stopPipeline: " + std::string(e.what());
+        current_state_ = "stopped";
+      }
+      std::cerr << "[Worker:" << instance_id_ << "] " << last_error_
+                << std::endl;
+      stop_pipeline_cv_.notify_all(); // Notify waiters even on error
+    }
+  });
+  stop_thread.detach(); // Detach thread - stop runs in background
+}
+
+void WorkerHandler::stopPipeline() {
+  if (!pipeline_running_.load()) {
+    {
+      std::lock_guard<std::mutex> lock(stop_pipeline_mutex_);
+      stopping_pipeline_.store(false);
+    }
+    stop_pipeline_cv_.notify_all();
+    return;
+  }
+
+  // Note: stopping_pipeline_ should already be set to true by caller
 
   std::cout << "[Worker:" << instance_id_ << "] Stopping pipeline..."
             << std::endl;
@@ -988,7 +1237,7 @@ void WorkerHandler::stopPipeline() {
   }
   
   {
-    std::lock_guard<std::mutex> lock(state_mutex_);
+    std::lock_guard<std::shared_mutex> lock(state_mutex_);
     current_state_ = "stopped";
   }
   
@@ -1005,7 +1254,7 @@ void WorkerHandler::cleanupPipeline() {
   stopPipeline();
   pipeline_nodes_.clear();
   {
-    std::lock_guard<std::mutex> lock(state_mutex_);
+    std::lock_guard<std::shared_mutex> lock(state_mutex_);
     current_state_ = "stopped";
   }
 }
@@ -1078,16 +1327,25 @@ void WorkerHandler::setupFrameCaptureHook() {
               }
 
               if (frameToCache && !frameToCache->empty()) {
-                // Log first few frames for debugging
+                // Log first few frames and periodic updates for debugging
                 static thread_local uint64_t frame_count = 0;
                 frame_count++;
-                if (frame_count <= 3) {
+                if (frame_count <= 10 || frame_count % 100 == 0) {
                   std::cout << "[Worker:" << instance_id_
                             << "] Frame capture hook called, frame #" << frame_count
                             << " (size: " << frameToCache->cols << "x"
                             << frameToCache->rows << ")" << std::endl;
                 }
                 updateFrameCache(*frameToCache);
+              } else {
+                // Log if we get empty frames (shouldn't happen but helps debug)
+                static thread_local uint64_t empty_frame_count = 0;
+                empty_frame_count++;
+                if (empty_frame_count <= 3) {
+                  std::cout << "[Worker:" << instance_id_
+                            << "] Frame capture hook received empty frame (count: "
+                            << empty_frame_count << ")" << std::endl;
+                }
               }
             }
           } catch (const std::exception &e) {
@@ -1131,6 +1389,51 @@ void WorkerHandler::setupFrameCaptureHook() {
             << "] Pipeline should have app_des_node automatically added by "
                "PipelineBuilder, but it wasn't found."
             << std::endl;
+}
+
+void WorkerHandler::setupQueueSizeTrackingHook() {
+  if (pipeline_nodes_.empty()) {
+    return;
+  }
+
+  // Setup meta_arriving_hooker on all nodes to track input queue size
+  for (const auto &node : pipeline_nodes_) {
+    if (!node) {
+      continue;
+    }
+
+    try {
+      node->set_meta_arriving_hooker(
+          [this](std::string /*node_name*/, int queue_size,
+                 std::shared_ptr<cvedix_objects::cvedix_meta> /* meta */) {
+            try {
+              // Update queue_size_ atomically (thread-safe)
+              // Track maximum queue size seen
+              size_t current_size = queue_size_.load();
+              if (queue_size > static_cast<int>(current_size)) {
+                queue_size_.store(static_cast<size_t>(queue_size),
+                                  std::memory_order_relaxed);
+              }
+            } catch (const std::exception &e) {
+              // Throttle exception logging to avoid performance impact
+              static thread_local uint64_t exception_count = 0;
+              exception_count++;
+              if (exception_count % 100 == 1) {
+                std::cerr << "[Worker:" << instance_id_
+                          << "] [ERROR] Exception in queue size tracking hook "
+                             "(count: "
+                          << exception_count << "): " << e.what() << std::endl;
+              }
+            } catch (...) {
+              // Ignore unknown exceptions
+            }
+          });
+    } catch (const std::exception &e) {
+      // Some nodes might not support hooks, ignore silently
+    } catch (...) {
+      // Ignore unknown exceptions
+    }
+  }
 }
 
 void WorkerHandler::updateFrameCache(const cv::Mat &frame) {

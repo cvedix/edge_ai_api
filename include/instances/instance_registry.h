@@ -247,8 +247,9 @@ private:
         start_time_system; // For Unix timestamp
 
     // PHASE 2: Atomic counters - no lock needed for increments
-    std::atomic<uint64_t> frames_processed{0};
-    std::atomic<uint64_t> dropped_frames{0};
+    std::atomic<uint64_t> frames_processed{0};    // Frames actually processed (from frame capture hook)
+    std::atomic<uint64_t> frames_incoming{0};     // All frames from source (including dropped)
+    std::atomic<uint64_t> dropped_frames{0};      // Frames dropped (queue full, backpressure, etc.)
     std::atomic<uint64_t> frame_count_since_last_update{0};
 
     // OPTIMIZATION: Cache RTSP instance flag to avoid repeated lookups
@@ -266,6 +267,18 @@ private:
         0; // Current queue size (from last hook callback)
     uint64_t expected_frames_from_source =
         0; // Expected frames based on source FPS
+    
+    // Cached source statistics to avoid blocking SDK calls
+    double source_fps = 0.0;
+    int source_width = 0;
+    int source_height = 0;
+    
+    // OPTIMIZATION: Pre-computed statistics cache for lock-free reads
+    // Updated periodically in frame hook (every N frames) to avoid blocking API calls
+    // API can read from this cache without any locks or expensive calculations
+    mutable std::shared_ptr<InstanceStatistics> cached_stats_;
+    mutable std::atomic<uint64_t> cache_update_frame_count_{0}; // Track when cache was last updated
+    static constexpr uint64_t CACHE_UPDATE_INTERVAL_FRAMES = 30; // Update cache every 30 frames (~1 second at 30 FPS)
   };
 
   mutable std::unordered_map<std::string, InstanceStatsTracker>
@@ -304,6 +317,7 @@ private:
 
   /**
    * @brief Setup queue size tracking hook for pipeline nodes
+   * Also tracks incoming frames on source node (first node)
    * @param instanceId Instance ID
    * @param nodes Pipeline nodes
    */

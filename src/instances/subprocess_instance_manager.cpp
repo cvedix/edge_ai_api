@@ -340,9 +340,13 @@ bool SubprocessInstanceManager::startInstance(const std::string &instanceId,
 }
 
 bool SubprocessInstanceManager::stopInstance(const std::string &instanceId) {
-  if (!supervisor_->isWorkerReady(instanceId)) {
+  // Check worker state - accept both READY and BUSY states
+  // BUSY is OK because worker can handle multiple commands
+  auto workerState = supervisor_->getWorkerState(instanceId);
+  if (workerState != worker::WorkerState::READY && 
+      workerState != worker::WorkerState::BUSY) {
     std::cerr << "[SubprocessInstanceManager] Worker not ready: " << instanceId
-              << std::endl;
+              << " (state: " << static_cast<int>(workerState) << ")" << std::endl;
     return false;
   }
 
@@ -378,9 +382,13 @@ bool SubprocessInstanceManager::stopInstance(const std::string &instanceId) {
 
 bool SubprocessInstanceManager::updateInstance(const std::string &instanceId,
                                                const Json::Value &configJson) {
-  if (!supervisor_->isWorkerReady(instanceId)) {
+  // Check worker state - accept both READY and BUSY states
+  // BUSY is OK because worker can handle multiple commands
+  auto workerState = supervisor_->getWorkerState(instanceId);
+  if (workerState != worker::WorkerState::READY && 
+      workerState != worker::WorkerState::BUSY) {
     std::cerr << "[SubprocessInstanceManager] Worker not ready: " << instanceId
-              << std::endl;
+              << " (state: " << static_cast<int>(workerState) << ")" << std::endl;
     return false;
   }
 
@@ -599,14 +607,50 @@ int SubprocessInstanceManager::getInstanceCount() const {
 std::optional<InstanceStatistics>
 SubprocessInstanceManager::getInstanceStatistics(
     const std::string &instanceId) {
+  // Flush output immediately to ensure logs appear
+  std::cout.flush();
+  std::cerr.flush();
+  
+  std::cout << "[SubprocessInstanceManager] ===== getInstanceStatistics START =====" << std::endl;
+  std::cout << "[SubprocessInstanceManager] Thread ID: " << std::this_thread::get_id() << std::endl;
+  std::cout << "[SubprocessInstanceManager] Instance ID: " << instanceId << std::endl;
+  std::cout.flush();
+  
   // Check worker state first - if worker exists and is running, we can get statistics
   // even if instance is not in local cache (e.g., cache was cleared but worker is still running)
+  std::cout << "[SubprocessInstanceManager] About to call supervisor_->getWorkerState()..." << std::endl;
+  std::cout.flush();
+  auto getState_start = std::chrono::steady_clock::now();
   auto workerState = supervisor_->getWorkerState(instanceId);
+  auto getState_end = std::chrono::steady_clock::now();
+  auto getState_duration = std::chrono::duration_cast<std::chrono::milliseconds>(getState_end - getState_start).count();
   
-  std::cout << "[SubprocessInstanceManager] getInstanceStatistics for " << instanceId
-            << " - worker state: " << static_cast<int>(workerState) << std::endl;
+  std::cout << "[SubprocessInstanceManager] getWorkerState() completed in " << getState_duration << "ms" << std::endl;
+  std::cout << "[SubprocessInstanceManager] Worker state: " << static_cast<int>(workerState) << std::endl;
   
-  // Check if instance exists in cache or storage
+  // If worker doesn't exist at all, check if instance exists in cache/storage
+  // If worker exists and is running, we can proceed even without instance in cache
+  if (workerState == worker::WorkerState::STOPPED) {
+    // Worker doesn't exist - check if instance exists in cache or storage
+    bool instanceExists = false;
+    {
+      std::lock_guard<std::mutex> lock(instances_mutex_);
+      instanceExists = instances_.find(instanceId) != instances_.end();
+    }
+    
+    if (!instanceExists) {
+      auto optStoredInfo = instance_storage_.loadInstance(instanceId);
+      instanceExists = optStoredInfo.has_value();
+    }
+    
+    if (!instanceExists) {
+      std::cerr << "[SubprocessInstanceManager] Instance not found: " << instanceId
+                << " (not in cache or storage, and worker doesn't exist)" << std::endl;
+      return std::nullopt;
+    }
+  }
+  
+  // Check if instance exists in cache or storage (for restoring running flag later)
   bool instanceExists = false;
   bool instanceRunning = false;
   {
@@ -629,12 +673,6 @@ SubprocessInstanceManager::getInstanceStatistics(
       std::cout << "[SubprocessInstanceManager] Instance found in storage, running: " 
                 << instanceRunning << std::endl;
     }
-  }
-  
-  if (!instanceExists) {
-    std::cerr << "[SubprocessInstanceManager] Instance not found: " << instanceId
-              << " (not in cache or storage)" << std::endl;
-    return std::nullopt;
   }
   
   // If worker is STOPPED or CRASHED, but instance exists and was running
@@ -766,18 +804,37 @@ SubprocessInstanceManager::getInstanceStatistics(
                   << " from storage to cache" << std::endl;
       } else {
         // Create minimal instance info from worker
+        // First, try to get actual status from worker to determine if instance is running
+        bool isRunning = false;
+        try {
+          worker::IPCMessage statusMsg;
+          statusMsg.type = worker::MessageType::GET_INSTANCE_STATUS;
+          statusMsg.payload["instance_id"] = instanceId;
+          auto statusResponse = supervisor_->sendToWorker(
+              instanceId, statusMsg, TimeoutConstants::getIpcStatusTimeoutMs());
+          if (statusResponse.type == worker::MessageType::GET_INSTANCE_STATUS_RESPONSE) {
+            if (statusResponse.payload.isMember("data")) {
+              const auto &data = statusResponse.payload["data"];
+              isRunning = data.get("running", false).asBool();
+            }
+          }
+        } catch (...) {
+          // If we can't get status, assume running if worker is READY/BUSY
+          isRunning = (workerState == worker::WorkerState::READY || 
+                      workerState == worker::WorkerState::BUSY);
+        }
+        
         InstanceInfo info;
         info.instanceId = instanceId;
         info.displayName = instanceId;
-        info.running = (workerState == worker::WorkerState::READY || 
-                       workerState == worker::WorkerState::BUSY);
+        info.running = isRunning;
         info.loaded = true;
         info.autoStart = false;
         info.persistent = false;
         info.startTime = std::chrono::steady_clock::now();
         instances_[instanceId] = info;
         std::cout << "[SubprocessInstanceManager] Created minimal instance entry for "
-                  << instanceId << std::endl;
+                  << instanceId << " (running: " << (isRunning ? "true" : "false") << ")" << std::endl;
       }
     }
   }
@@ -793,13 +850,19 @@ SubprocessInstanceManager::getInstanceStatistics(
   msg.payload["instance_id"] = instanceId;
 
   auto timeoutMs = TimeoutConstants::getIpcApiTimeoutMs();
-  std::cout << "[SubprocessInstanceManager] Sending GET_STATISTICS to worker "
-            << instanceId << " (timeout: " << timeoutMs << "ms)" << std::endl;
+  std::cout << "[SubprocessInstanceManager] ===== SENDING GET_STATISTICS TO WORKER =====" << std::endl;
+  std::cout << "[SubprocessInstanceManager] Instance ID: " << instanceId << std::endl;
+  std::cout << "[SubprocessInstanceManager] Timeout: " << timeoutMs << "ms" << std::endl;
+  std::cout << "[SubprocessInstanceManager] Calling supervisor_->sendToWorker()..." << std::endl;
   
+  auto send_start = std::chrono::steady_clock::now();
   auto response = supervisor_->sendToWorker(instanceId, msg, timeoutMs);
-
-  std::cout << "[SubprocessInstanceManager] Received response from worker "
-            << instanceId << ", type: " << static_cast<int>(response.type)
+  auto send_end = std::chrono::steady_clock::now();
+  auto send_duration = std::chrono::duration_cast<std::chrono::milliseconds>(send_end - send_start).count();
+  
+  std::cout << "[SubprocessInstanceManager] ===== RECEIVED RESPONSE FROM WORKER =====" << std::endl;
+  std::cout << "[SubprocessInstanceManager] Duration: " << send_duration << "ms" << std::endl;
+  std::cout << "[SubprocessInstanceManager] Response type: " << static_cast<int>(response.type) 
             << " (expected: " << static_cast<int>(worker::MessageType::GET_STATISTICS_RESPONSE) << ")" << std::endl;
 
   // Debug logging for better troubleshooting
@@ -1121,16 +1184,25 @@ void SubprocessInstanceManager::onWorkerStateChange(
 
   switch (newState) {
   case worker::WorkerState::READY:
+    // READY means worker is ready to accept commands, NOT that instance stopped
+    // Don't modify running flag here - it's managed by startInstance/stopInstance
     it->second.loaded = true;
-    it->second.running = false;
+    break;
+  case worker::WorkerState::BUSY:
+    // BUSY means worker is processing a command
+    // Don't modify running flag here either
     break;
   case worker::WorkerState::CRASHED:
     it->second.running = false;
+    it->second.loaded = false;
     it->second.retryLimitReached = true;
     break;
   case worker::WorkerState::STOPPED:
     it->second.running = false;
     it->second.loaded = false;
+    break;
+  case worker::WorkerState::STOPPING:
+    // Don't modify running flag - instance might still be running during stop
     break;
   default:
     break;

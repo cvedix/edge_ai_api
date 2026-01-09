@@ -46,6 +46,12 @@ inline int getFrameCacheMutexTimeoutMs() {
   return EnvConfig::getInt("FRAME_CACHE_MUTEX_TIMEOUT_MS", 1000, 100, 10000);
 }
 
+// Worker state mutex timeout (for GET_STATISTICS/GET_STATUS operations)
+// Should be very short since state reads should be quick
+inline int getWorkerStateMutexTimeoutMs() {
+  return EnvConfig::getInt("WORKER_STATE_MUTEX_TIMEOUT_MS", 100, 50, 1000);
+}
+
 // Shutdown timeout - total time before force exit
 inline int getShutdownTimeoutMs() {
   return EnvConfig::getInt("SHUTDOWN_TIMEOUT_MS", 500, 100, 5000);
@@ -104,6 +110,10 @@ inline std::chrono::milliseconds getIpcStatusTimeout() {
 
 inline std::chrono::milliseconds getFrameCacheMutexTimeout() {
   return std::chrono::milliseconds(getFrameCacheMutexTimeoutMs());
+}
+
+inline std::chrono::milliseconds getWorkerStateMutexTimeout() {
+  return std::chrono::milliseconds(getWorkerStateMutexTimeoutMs());
 }
 
 inline std::chrono::milliseconds getShutdownTimeout() {
