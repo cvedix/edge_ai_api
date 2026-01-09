@@ -89,8 +89,9 @@ private:
   std::unique_ptr<worker::WorkerSupervisor> supervisor_;
 
   // Local cache of instance info (synced with workers)
+  // Both mutex and map are mutable to allow cache updates in const methods
   mutable std::mutex instances_mutex_;
-  std::unordered_map<std::string, InstanceInfo> instances_;
+  mutable std::unordered_map<std::string, InstanceInfo> instances_;
 
   /**
    * @brief Build config JSON from CreateInstanceRequest

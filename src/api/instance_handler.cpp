@@ -3,6 +3,7 @@
 #include "core/logger.h"
 #include "core/logging_flags.h"
 #include "core/metrics_interceptor.h"
+#include "core/timeout_constants.h"
 #include "instances/instance_info.h"
 #include "instances/instance_manager.h"
 #include "models/update_instance_request.h"
@@ -20,6 +21,7 @@
 #include <optional>
 #include <sstream>
 #include <thread>
+#include <typeinfo>
 #include <unordered_map>
 #include <vector>
 namespace fs = std::filesystem;
@@ -466,12 +468,16 @@ void InstanceHandler::getInstance(
                        }
                      });
 
-      // Wait with timeout (1 second) to prevent hanging
-      auto status = future.wait_for(std::chrono::seconds(1));
+      // Wait with timeout (configurable, default: registry timeout + 500ms
+      // buffer) This ensures API wrapper timeout >= registry timeout to allow
+      // registry to complete or timeout first
+      auto timeout = TimeoutConstants::getApiWrapperTimeout();
+      auto status = future.wait_for(timeout);
       if (status == std::future_status::timeout) {
         if (isApiLoggingEnabled()) {
           PLOG_WARNING << "[API] GET /v1/core/instance/" << instanceId
-                       << " - Timeout getting instance (1s)";
+                       << " - Timeout getting instance (" << timeout.count()
+                       << "ms)";
         }
         callback(createErrorResponse(
             503, "Service Unavailable",
@@ -581,45 +587,184 @@ void InstanceHandler::startInstance(
       return;
     }
 
-    // Start instance
-    // OPTIMIZED: Run startInstance() in detached thread to avoid blocking API
-    // thread and other instances This allows multiple instances to start
-    // concurrently without blocking each other The instance will start in
-    // background, and status can be checked via GET /v1/core/instance/{id}
-    std::thread startThread([this, instanceId]() {
-      try {
-        instance_manager_->startInstance(instanceId);
-      } catch (const std::exception &e) {
-        std::cerr << "[InstanceHandler] Exception starting instance "
-                  << instanceId << ": " << e.what() << std::endl;
-      } catch (...) {
-        std::cerr << "[InstanceHandler] Unknown exception starting instance "
-                  << instanceId << std::endl;
-      }
-    });
-    startThread.detach(); // Detach thread - instance starts in background
+    // Start instance and wait for it to actually start successfully
+    // This ensures API returns success only when instance is actually running
+    bool startSuccess = false;
+    std::string errorMessage;
 
-    // Return immediately - instance is starting in background
-    // Client can check status using GET /v1/core/instance/{id}
-    auto optInfo = instance_manager_->getInstance(instanceId);
-    if (optInfo.has_value()) {
-      auto end_time = std::chrono::steady_clock::now();
-      auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(
-          end_time - start_time);
+    try {
+      // Run startInstance() in async to avoid blocking API thread too long
+      // But wait for result to ensure instance actually started
+      auto future =
+          std::async(std::launch::async, [this, instanceId]() -> bool {
+            try {
+              return instance_manager_->startInstance(instanceId);
+            } catch (const std::exception &e) {
+              std::cerr << "[InstanceHandler] Exception starting instance "
+                        << instanceId << ": " << e.what() << std::endl;
+              return false;
+            } catch (...) {
+              std::cerr
+                  << "[InstanceHandler] Unknown exception starting instance "
+                  << instanceId << std::endl;
+              return false;
+            }
+          });
+
+      // Wait for start to complete (with timeout: 10 seconds)
+      auto status = future.wait_for(std::chrono::seconds(10));
+      if (status == std::future_status::timeout) {
+        if (isApiLoggingEnabled()) {
+          PLOG_WARNING
+              << "[API] POST /v1/core/instance/" << instanceId
+              << "/start - Timeout waiting for instance to start (10s)";
+        }
+        callback(
+            createErrorResponse(504, "Gateway Timeout",
+                                "Instance start operation timed out. "
+                                "Instance may still be starting. "
+                                "Check status using GET /v1/core/instance/" +
+                                    instanceId));
+        return;
+      } else if (status == std::future_status::ready) {
+        startSuccess = future.get();
+      }
+    } catch (const std::exception &e) {
+      errorMessage = e.what();
+      if (isApiLoggingEnabled()) {
+        PLOG_ERROR << "[API] POST /v1/core/instance/" << instanceId
+                   << "/start - Exception: " << e.what();
+      }
+    } catch (...) {
+      errorMessage = "Unknown error occurred";
+      if (isApiLoggingEnabled()) {
+        PLOG_ERROR << "[API] POST /v1/core/instance/" << instanceId
+                   << "/start - Unknown exception";
+      }
+    }
+
+    // Get instance info to return (with timeout protection)
+    std::optional<InstanceInfo> optInfo;
+    try {
+      auto future =
+          std::async(std::launch::async,
+                     [this, instanceId]() -> std::optional<InstanceInfo> {
+                       try {
+                         if (instance_manager_) {
+                           return instance_manager_->getInstance(instanceId);
+                         }
+                         return std::nullopt;
+                       } catch (...) {
+                         return std::nullopt;
+                       }
+                     });
+
+      auto timeout = TimeoutConstants::getApiWrapperTimeout();
+      auto status = future.wait_for(timeout);
+      if (status == std::future_status::timeout) {
+        if (isApiLoggingEnabled()) {
+          PLOG_WARNING << "[API] POST /v1/core/instance/" << instanceId
+                       << "/start - Timeout getting instance info ("
+                       << timeout.count() << "ms)";
+        }
+        // Even if we can't get instance info, return success if start succeeded
+        if (startSuccess) {
+          callback(createErrorResponse(
+              200, "Instance started",
+              "Instance started successfully but unable to verify status. "
+              "Please check using GET /v1/core/instance/" +
+                  instanceId));
+          return;
+        }
+        callback(createErrorResponse(
+            503, "Service Unavailable",
+            "Instance registry is busy. Please try again later."));
+        return;
+      } else if (status == std::future_status::ready) {
+        try {
+          optInfo = future.get();
+        } catch (...) {
+          // If start succeeded, return partial success
+          if (startSuccess) {
+            callback(createErrorResponse(
+                200, "Instance started",
+                "Instance started successfully but unable to verify status. "
+                "Please check using GET /v1/core/instance/" +
+                    instanceId));
+            return;
+          }
+          callback(createErrorResponse(500, "Internal server error",
+                                       "Failed to get instance info"));
+          return;
+        }
+      }
+    } catch (...) {
+      // If start succeeded, return partial success
+      if (startSuccess) {
+        callback(createErrorResponse(
+            200, "Instance started",
+            "Instance started successfully but unable to verify status. Please "
+            "check using GET /v1/core/instance/" +
+                instanceId));
+        return;
+      }
+      callback(createErrorResponse(500, "Internal server error",
+                                   "Failed to get instance info"));
+      return;
+    }
+
+    if (!optInfo.has_value()) {
+      if (startSuccess) {
+        // Start succeeded but can't get instance info - return partial success
+        callback(createErrorResponse(
+            200, "Instance started",
+            "Instance started successfully but unable to verify status. Please "
+            "check using GET /v1/core/instance/" +
+                instanceId));
+        return;
+      }
+      callback(createErrorResponse(404, "Not found", "Instance not found"));
+      return;
+    }
+
+    auto end_time = std::chrono::steady_clock::now();
+    auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(
+        end_time - start_time);
+
+    if (startSuccess) {
+      // Verify instance is actually running
+      if (!optInfo.value().running) {
+        if (isApiLoggingEnabled()) {
+          PLOG_WARNING
+              << "[API] POST /v1/core/instance/" << instanceId
+              << "/start - Start reported success but instance is not running";
+        }
+        callback(
+            createErrorResponse(500, "Internal server error",
+                                "Instance start reported success but instance "
+                                "is not running. Please check logs."));
+        return;
+      }
+
       if (isApiLoggingEnabled()) {
         PLOG_INFO << "[API] POST /v1/core/instance/" << instanceId
-                  << "/start - Accepted (async) - " << duration.count() << "ms";
+                  << "/start - Success (verified running) - "
+                  << duration.count() << "ms";
       }
       Json::Value response = instanceInfoToJson(optInfo.value());
-      response["message"] = "Instance start request accepted. Instance is "
-                            "starting in background. "
-                            "Check status using GET /v1/core/instance/" +
-                            instanceId;
-      response["status"] = "starting"; // Indicate that instance is starting
-      callback(createSuccessResponse(
-          response, 202)); // 202 Accepted - request accepted but not completed
+      response["message"] = "Instance started successfully and is running";
+      response["status"] = "running";
+      callback(createSuccessResponse(response));
     } else {
-      callback(createErrorResponse(404, "Not found", "Instance not found"));
+      if (isApiLoggingEnabled()) {
+        PLOG_ERROR << "[API] POST /v1/core/instance/" << instanceId
+                   << "/start - Failed - " << duration.count() << "ms";
+      }
+      std::string errorMsg =
+          errorMessage.empty()
+              ? "Failed to start instance. Check logs for details."
+              : errorMessage;
+      callback(createErrorResponse(500, "Internal server error", errorMsg));
     }
     return;
 
@@ -1380,6 +1525,12 @@ void InstanceHandler::getStatistics(
   // Get instance ID from path parameter
   std::string instanceId = extractInstanceId(req);
 
+  std::cout << "[InstanceHandler] ===== GET_STATISTICS API CALL START ====="
+            << std::endl;
+  std::cout << "[InstanceHandler] Instance ID: " << instanceId << std::endl;
+  std::cout << "[InstanceHandler] Request from: "
+            << req->getPeerAddr().toIpPort() << std::endl;
+
   if (isApiLoggingEnabled()) {
     PLOG_INFO << "[API] GET /v1/core/instance/" << instanceId
               << "/statistics - Get instance statistics";
@@ -1408,8 +1559,185 @@ void InstanceHandler::getStatistics(
       return;
     }
 
-    // Get statistics
-    auto optStats = instance_manager_->getInstanceStatistics(instanceId);
+    // Get statistics with timeout protection
+    // CRITICAL: getInstanceStatistics() can block for up to 5 seconds (IPC
+    // timeout) We need async + timeout to prevent API from hanging
+    std::cout << "[InstanceHandler] Calling "
+                 "instance_manager_->getInstanceStatistics() async..."
+              << std::endl;
+    std::optional<InstanceStatistics> optStats;
+    try {
+      std::cout << "[InstanceHandler] Creating async future..." << std::endl;
+      auto future = std::async(
+          std::launch::async,
+          [this, instanceId]() -> std::optional<InstanceStatistics> {
+            std::cout << "[InstanceHandler] [ASYNC THREAD] ===== ASYNC THREAD "
+                         "STARTED ====="
+                      << std::endl;
+            std::cout << "[InstanceHandler] [ASYNC THREAD] Thread ID: "
+                      << std::this_thread::get_id() << std::endl;
+            std::cout << "[InstanceHandler] [ASYNC THREAD] Starting "
+                         "getInstanceStatistics() for "
+                      << instanceId << std::endl;
+            try {
+              if (!instance_manager_) {
+                std::cerr << "[InstanceHandler] [ASYNC THREAD] ERROR: "
+                             "instance_manager_ is null!"
+                          << std::endl;
+                return std::nullopt;
+              }
+              std::cout << "[InstanceHandler] [ASYNC THREAD] instance_manager_ "
+                           "is valid, calling getInstanceStatistics()..."
+                        << std::endl;
+              std::cout << "[InstanceHandler] [ASYNC THREAD] About to call: "
+                           "instance_manager_->getInstanceStatistics("
+                        << instanceId << ")" << std::endl;
+              std::cout
+                  << "[InstanceHandler] [ASYNC THREAD] instance_manager_ type: "
+                  << typeid(*instance_manager_).name() << std::endl;
+
+              // Flush output to ensure logs appear
+              std::cout.flush();
+              std::cerr.flush();
+
+              std::cout << "[InstanceHandler] [ASYNC THREAD] Calling "
+                           "getInstanceStatistics() NOW..."
+                        << std::endl;
+              std::cout.flush();
+
+              // Wrap in try-catch to catch any exception during function call
+              std::optional<InstanceStatistics> result;
+
+              // Add a marker right before the call to see if we reach here
+              std::cout << "[InstanceHandler] [ASYNC THREAD] ===== ABOUT TO "
+                           "CALL getInstanceStatistics() ===== "
+                        << std::endl;
+              std::cout.flush();
+
+              // Force a small delay to ensure log appears
+              std::this_thread::sleep_for(std::chrono::milliseconds(10));
+
+              try {
+                std::cout << "[InstanceHandler] [ASYNC THREAD] Entering try "
+                             "block, calling getInstanceStatistics()..."
+                          << std::endl;
+                std::cout.flush();
+
+                auto call_start = std::chrono::steady_clock::now();
+                std::cout << "[InstanceHandler] [ASYNC THREAD] Call start time "
+                             "recorded, making virtual function call..."
+                          << std::endl;
+                std::cout.flush();
+
+                // This is the actual call - if it blocks, we won't see logs
+                // after this
+                result = instance_manager_->getInstanceStatistics(instanceId);
+
+                auto call_end = std::chrono::steady_clock::now();
+                auto call_duration =
+                    std::chrono::duration_cast<std::chrono::milliseconds>(
+                        call_end - call_start)
+                        .count();
+                std::cout << "[InstanceHandler] [ASYNC THREAD] "
+                             "getInstanceStatistics() returned after "
+                          << call_duration << "ms!" << std::endl;
+                std::cout.flush();
+              } catch (const std::exception &e) {
+                std::cerr << "[InstanceHandler] [ASYNC THREAD] EXCEPTION "
+                             "during getInstanceStatistics() call: "
+                          << e.what() << std::endl;
+                std::cerr << "[InstanceHandler] [ASYNC THREAD] Exception type: "
+                          << typeid(e).name() << std::endl;
+                std::cerr.flush();
+                return std::nullopt;
+              } catch (...) {
+                std::cerr << "[InstanceHandler] [ASYNC THREAD] UNKNOWN "
+                             "EXCEPTION during getInstanceStatistics() call"
+                          << std::endl;
+                std::cerr.flush();
+                return std::nullopt;
+              }
+
+              std::cout << "[InstanceHandler] [ASYNC THREAD] Result has_value: "
+                        << result.has_value() << std::endl;
+              std::cout << "[InstanceHandler] [ASYNC THREAD] ===== ASYNC "
+                           "THREAD COMPLETED ====="
+                        << std::endl;
+              return result;
+            } catch (const std::exception &e) {
+              std::cerr << "[InstanceHandler] [ASYNC THREAD] EXCEPTION in "
+                           "getInstanceStatistics: "
+                        << e.what() << std::endl;
+              std::cerr << "[InstanceHandler] [ASYNC THREAD] Exception type: "
+                        << typeid(e).name() << std::endl;
+              return std::nullopt;
+            } catch (...) {
+              std::cerr << "[InstanceHandler] [ASYNC THREAD] UNKNOWN EXCEPTION "
+                           "in getInstanceStatistics"
+                        << std::endl;
+              return std::nullopt;
+            }
+          });
+      std::cout
+          << "[InstanceHandler] Async future created, waiting for result..."
+          << std::endl;
+
+      // Wait with timeout: IPC_API_TIMEOUT_MS (default 5s) + 500ms buffer
+      auto timeoutMs = TimeoutConstants::getIpcApiTimeoutMs() + 500;
+      auto timeout = std::chrono::milliseconds(timeoutMs);
+      std::cout << "[InstanceHandler] Waiting for async result with timeout: "
+                << timeoutMs << "ms" << std::endl;
+      auto status = future.wait_for(timeout);
+      std::cout << "[InstanceHandler] Future status: "
+                << (status == std::future_status::ready     ? "READY"
+                    : status == std::future_status::timeout ? "TIMEOUT"
+                                                            : "DEFERRED")
+                << std::endl;
+      if (status == std::future_status::timeout) {
+        std::cerr << "[InstanceHandler] TIMEOUT waiting for "
+                     "getInstanceStatistics() after "
+                  << timeoutMs << "ms" << std::endl;
+        if (isApiLoggingEnabled()) {
+          PLOG_WARNING << "[API] GET /v1/core/instance/" << instanceId
+                       << "/statistics - Timeout getting statistics ("
+                       << timeoutMs << "ms)";
+        }
+        std::cerr
+            << "[InstanceHandler] WARNING: getInstanceStatistics() timeout "
+               "after "
+            << timeoutMs << "ms - worker may be busy or hung" << std::endl;
+        callback(createErrorResponse(504, "Gateway Timeout",
+                                     "Statistics request timed out. Worker may "
+                                     "be busy. Please try again later."));
+        return;
+      } else if (status == std::future_status::ready) {
+        try {
+          std::cout << "[InstanceHandler] Getting result from future..."
+                    << std::endl;
+          optStats = future.get();
+          std::cout << "[InstanceHandler] Got result, has_value: "
+                    << optStats.has_value() << std::endl;
+        } catch (const std::exception &e) {
+          std::cerr << "[InstanceHandler] Exception getting future result: "
+                    << e.what() << std::endl;
+          callback(createErrorResponse(500, "Internal server error",
+                                       "Failed to get statistics"));
+          return;
+        } catch (...) {
+          std::cerr
+              << "[InstanceHandler] Unknown exception getting future result"
+              << std::endl;
+          callback(createErrorResponse(500, "Internal server error",
+                                       "Failed to get statistics"));
+          return;
+        }
+      }
+    } catch (...) {
+      callback(createErrorResponse(500, "Internal server error",
+                                   "Failed to get statistics"));
+      return;
+    }
+
     if (!optStats.has_value()) {
       auto end_time = std::chrono::steady_clock::now();
       auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(
@@ -1427,6 +1755,21 @@ void InstanceHandler::getStatistics(
 
     // Build JSON response
     Json::Value response = optStats.value().toJson();
+
+    // Log response content for debugging
+    std::cout << "[InstanceHandler] Statistics response JSON: "
+              << response.toStyledString() << std::endl;
+    std::cout << "[InstanceHandler] Statistics response - frames_processed: "
+              << response["frames_processed"].asInt64()
+              << ", frames_incoming: " << response["frames_incoming"].asInt64()
+              << ", dropped_frames: "
+              << response["dropped_frames_count"].asInt64()
+              << ", current_fps: " << response["current_framerate"].asDouble()
+              << ", source_fps: " << response["source_framerate"].asDouble()
+              << ", queue_size: " << response["input_queue_size"].asInt64()
+              << ", start_time: " << response["start_time"].asInt64()
+              << std::endl;
+    std::cout.flush();
 
     auto end_time = std::chrono::steady_clock::now();
     auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(
@@ -1522,8 +1865,28 @@ void InstanceHandler::getLastFrame(
 
     const InstanceInfo &info = optInfo.value();
 
+    // DEBUG: Log instance state before getting frame
+    if (isApiLoggingEnabled()) {
+      PLOG_DEBUG << "[API] GET /v1/core/instance/" << instanceId
+                 << "/frame - Instance state: running=" << info.running
+                 << ", loaded=" << info.loaded;
+    }
+
     // Get last frame (empty string if no frame cached)
     std::string frameBase64 = instance_manager_->getLastFrame(instanceId);
+
+    // DEBUG: Log frame retrieval result
+    if (isApiLoggingEnabled()) {
+      if (frameBase64.empty()) {
+        PLOG_DEBUG << "[API] GET /v1/core/instance/" << instanceId
+                   << "/frame - No frame cached (empty result)";
+      } else {
+        PLOG_DEBUG << "[API] GET /v1/core/instance/" << instanceId
+                   << "/frame - Frame retrieved: size=" << frameBase64.length()
+                   << " chars (base64), estimated image size="
+                   << (frameBase64.length() * 3 / 4) << " bytes";
+      }
+    }
 
     // Build JSON response
     Json::Value response;

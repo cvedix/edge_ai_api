@@ -36,6 +36,8 @@ struct BackpressureStats {
   std::atomic<double> current_fps{0.0};
   std::atomic<double> target_fps{30.0};
   std::atomic<bool> backpressure_detected{false};
+  std::atomic<size_t> current_queue_size{
+      0}; // Current queue size for queue-based dropping
   std::chrono::steady_clock::time_point last_drop_time;
   std::chrono::steady_clock::time_point last_processed_time;
 };
@@ -81,6 +83,13 @@ public:
   void recordQueueFull(const std::string &instanceId);
 
   /**
+   * @brief Update current queue size for an instance
+   * @param instanceId Instance ID
+   * @param queue_size Current queue size
+   */
+  void updateQueueSize(const std::string &instanceId, size_t queue_size);
+
+  /**
    * @brief Get current FPS for instance
    */
   double getCurrentFPS(const std::string &instanceId) const;
@@ -105,6 +114,7 @@ public:
     double current_fps;
     double target_fps;
     bool backpressure_detected;
+    size_t current_queue_size;
     std::chrono::steady_clock::time_point last_drop_time;
     std::chrono::steady_clock::time_point last_processed_time;
   };
@@ -120,6 +130,21 @@ public:
    * @brief Update adaptive FPS based on backpressure
    */
   void updateAdaptiveFPS(const std::string &instanceId);
+
+  /**
+   * @brief Update queue size for an instance (for dynamic queue sizing)
+   * @param instanceId Instance ID
+   * @param new_queue_size New queue size
+   */
+  void updateQueueSizeConfig(const std::string &instanceId,
+                             size_t new_queue_size);
+
+  /**
+   * @brief Get current max queue size for instance
+   * @param instanceId Instance ID
+   * @return Current max queue size
+   */
+  size_t getMaxQueueSize(const std::string &instanceId) const;
 
 private:
   BackpressureController() = default;
@@ -155,14 +180,20 @@ private:
     }
   };
 
-  mutable std::mutex mutex_;               // For configuration changes
+  mutable std::shared_mutex stats_mutex_;  // For concurrent stats reads
   mutable std::shared_mutex config_mutex_; // For concurrent config reads
   std::unordered_map<std::string, InstanceConfig> configs_;
   std::unordered_map<std::string, BackpressureStats> stats_;
 
   // Adaptive FPS parameters
-  static constexpr double MIN_FPS = 5.0;
-  static constexpr double MAX_FPS = 60.0;
+  // Note: MIN_FPS should be > 0 to avoid division by zero when calculating
+  // interval_ms Set to 12.0 to ensure minimum acceptable FPS (targeting 10-15
+  // FPS range) when backpressure occurs
+  static constexpr double MIN_FPS =
+      12.0; // Changed from 5.0 to maintain 10-15 FPS minimum
+  static constexpr double MAX_FPS =
+      120.0; // Increased from 60.0 to support high FPS processing for multiple
+             // instances
   static constexpr double FPS_REDUCTION_FACTOR =
       0.9; // Reduce by 10% when backpressure
   static constexpr double FPS_INCREASE_FACTOR =

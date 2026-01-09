@@ -31,7 +31,8 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 
 # Configuration
-VERSION="2025.0.1.3-Beta"
+# Note: Version should match CMakeLists.txt PROJECT_VERSION
+VERSION="2025.0.1.1"
 ARCH="amd64"
 CLEAN_BUILD=false
 SKIP_BUILD=false
