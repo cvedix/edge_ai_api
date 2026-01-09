@@ -37,37 +37,138 @@ File/RTSP Source → YOLO Detector → SORT Tracker → BA Jam → MQTT Broker �
 - `RTMP_URL`: RTMP streaming URL (nếu có)
 - `JamZones`: JSON string định nghĩa các zone để phát hiện jam (ví dụ bên dưới)
 
-### 📐 Ví dụ `JamZones` (AdditionalParams)
+### 📐 Cấu Hình Jam Zones
+
+Có **2 cách** để cấu hình jam zones:
+
+#### Cách 1: Sử dụng `JamZones` (Format Mới - Khuyến Nghị) ✅
+
+Sử dụng `JamZones` trong `additionalParams` để định nghĩa nhiều zones với đầy đủ thông tin:
 
 ```json
 {
   "additionalParams": {
-    "JamZones": "[{\"id\":\"zone1\",\"name\":\"Front Lane\",\"coordinates\":[{\"x\":100,\"y\":300},{\"x\":700,\"y\":300},{\"x\":700,\"y\":400},{\"x\":100,\"y\":400}],\"min_frames_stopped\": 30}]"
+    "JamZones": "[{\"id\":\"zone1\",\"name\":\"Front Lane\",\"roi\":[{\"x\":100,\"y\":300},{\"x\":700,\"y\":300},{\"x\":700,\"y\":400},{\"x\":100,\"y\":400}],\"checkMinStops\":30,\"checkMaxDistance\":5}]"
   }
 }
 ```
 
-**Ghi chú:**
-- `coordinates`: Array các điểm để vẽ polygon (ít nhất 3 điểm)
-- `min_frames_stopped`: số frame liên tiếp để coi là jam (ví dụ: 30 frames)
+**Ưu điểm:**
+- ✅ Hỗ trợ nhiều zones (multiple zones)
+- ✅ Có thể quản lý qua API (`/v1/core/instance/{instanceId}/jams`)
+- ✅ Hỗ trợ đầy đủ: name, roi, checkMinStops, checkMaxDistance, checkIntervalFrames, checkNotifyInterval
+- ✅ Real-time update (restart instance để apply)
+
+**Format chi tiết:**
+- `id`: UUID của zone (tự động generate khi tạo qua API)
+- `name`: Tên mô tả zone (optional)
+- `roi`: Array các điểm polygon `[{"x": 100, "y": 300}, {"x": 700, "y": 300}, ...]` (tối thiểu 3 điểm)
+- `checkMinStops`: Số frame tối thiểu để coi là jam (mặc định: 30)
+- `checkMaxDistance`: Khoảng cách tối đa để coi là dừng (mặc định: 5)
+- `checkIntervalFrames`: Số frame giữa các lần kiểm tra (mặc định: 10)
+- `checkNotifyInterval`: Số frame giữa các lần gửi notification (mặc định: 0 - gửi mỗi lần phát hiện)
+
+**Ví dụ với nhiều zones:**
+```json
+{
+  "JamZones": "[{\"id\":\"zone1\",\"name\":\"Entrance Zone\",\"roi\":[{\"x\":100,\"y\":300},{\"x\":700,\"y\":300},{\"x\":700,\"y\":400},{\"x\":100,\"y\":400}],\"checkMinStops\":30},{\"id\":\"zone2\",\"name\":\"Exit Zone\",\"roi\":[{\"x\":200,\"y\":500},{\"x\":800,\"y\":500},{\"x\":800,\"y\":600},{\"x\":200,\"y\":600}],\"checkMinStops\":20}]"
+}
+```
+
+#### Cách 2: Sử dụng Legacy Format (Format Cũ)
+
+Format cũ chỉ hỗ trợ 1 zone và không thể quản lý qua API.
 
 ## 📝 Manual Testing Guide
 
-1. Tạo instance (ví dụ file source + MQTT)
+### 1. Tạo Instance
+
 ```bash
 curl -X POST http://localhost:8080/v1/core/instance \
   -H "Content-Type: application/json" \
   -d @example_ba_jam_file_mqtt.json
 ```
-2. Start instance
+
+### 2. Start Instance
+
 ```bash
 curl -X POST http://localhost:8080/v1/core/instance/{instanceId}/start
 ```
-3. Subscribe MQTT để nhận events
+
+### 3. Quản Lý Jam Zones Qua API
+
+Sau khi tạo instance, bạn có thể quản lý jam zones qua API:
+
+```bash
+# Lấy tất cả jam zones
+curl http://localhost:8080/v1/core/instance/{instanceId}/jams
+
+# Lấy một jam zone cụ thể
+curl http://localhost:8080/v1/core/instance/{instanceId}/jams/{jamId}
+
+# Tạo jam zone mới
+curl -X POST http://localhost:8080/v1/core/instance/{instanceId}/jams \
+  -H "Content-Type: application/json" \
+  -d '{
+    "name": "New Jam Zone",
+    "roi": [{"x": 100, "y": 300}, {"x": 700, "y": 300}, {"x": 700, "y": 400}, {"x": 100, "y": 400}],
+    "checkMinStops": 30,
+    "checkMaxDistance": 5,
+    "checkIntervalFrames": 10
+  }'
+
+# Tạo nhiều jam zones cùng lúc
+curl -X POST http://localhost:8080/v1/core/instance/{instanceId}/jams \
+  -H "Content-Type: application/json" \
+  -d '[
+    {
+      "name": "Zone 1",
+      "roi": [{"x": 100, "y": 300}, {"x": 700, "y": 300}, {"x": 700, "y": 400}, {"x": 100, "y": 400}],
+      "checkMinStops": 30
+    },
+    {
+      "name": "Zone 2",
+      "roi": [{"x": 200, "y": 500}, {"x": 800, "y": 500}, {"x": 800, "y": 600}, {"x": 200, "y": 600}],
+      "checkMinStops": 20
+    }
+  ]'
+
+# Cập nhật jam zone
+curl -X PUT http://localhost:8080/v1/core/instance/{instanceId}/jams/{jamId} \
+  -H "Content-Type: application/json" \
+  -d '{
+    "name": "Updated Zone",
+    "roi": [{"x": 150, "y": 350}, {"x": 750, "y": 350}, {"x": 750, "y": 450}, {"x": 150, "y": 450}],
+    "checkMinStops": 25
+  }'
+
+# Xóa một jam zone
+curl -X DELETE http://localhost:8080/v1/core/instance/{instanceId}/jams/{jamId}
+
+# Xóa tất cả jam zones
+curl -X DELETE http://localhost:8080/v1/core/instance/{instanceId}/jams
+
+# Batch update nhiều zones
+curl -X POST http://localhost:8080/v1/core/instance/{instanceId}/jams/batch \
+  -H "Content-Type: application/json" \
+  -d '[
+    {"id": "zone1", "name": "Updated Zone 1", "roi": [...]},
+    {"id": "zone2", "name": "Updated Zone 2", "roi": [...]}
+  ]'
+```
+
+**Lưu ý:** 
+- Khi thêm/sửa/xóa jam zones, instance sẽ tự động restart để áp dụng thay đổi
+- Các thay đổi được lưu vào config và sẽ được áp dụng khi instance restart
+
+### 4. Subscribe MQTT để nhận events
+
 ```bash
 mosquitto_sub -h localhost -t ba_jam/events -v
 ```
-4. Kiểm tra statistics
+
+### 5. Kiểm tra statistics
+
 ```bash
 curl http://localhost:8080/v1/core/instance/{instanceId}/statistics
 ```

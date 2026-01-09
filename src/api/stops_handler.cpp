@@ -4,6 +4,7 @@
 #include "core/metrics_interceptor.h"
 #include "core/uuid_generator.h"
 #include "instances/instance_manager.h"
+#include "instances/inprocess_instance_manager.h"
 #include <algorithm>
 #include <chrono>
 #include <drogon/HttpResponse.h>
@@ -1181,14 +1182,50 @@ StopsHandler::findBAStopNode(const std::string &instanceId) const {
   }
 
   // In in-process mode, try to access nodes via InstanceRegistry
-  // This requires casting to InProcessInstanceManager to access registry
-  // For now, return nullptr and let updateStopsRuntime() handle via restart
-  // TODO: Add getInstanceNodes() to IInstanceManager interface if needed
-  if (isApiLoggingEnabled()) {
-    PLOG_DEBUG << "[API] findBAStopNode: Direct node access not "
-                  "available, will use restart fallback";
+  try {
+    // Cast to InProcessInstanceManager to access registry
+    auto *inProcessManager = dynamic_cast<InProcessInstanceManager *>(instance_manager_);
+    if (!inProcessManager) {
+      if (isApiLoggingEnabled()) {
+        PLOG_DEBUG << "[API] findBAStopNode: Cannot cast to InProcessInstanceManager";
+      }
+      return nullptr;
+    }
+
+    // Get nodes from registry
+    auto &registry = inProcessManager->getRegistry();
+    auto nodes = registry.getInstanceNodes(instanceId);
+    
+    if (nodes.empty()) {
+      if (isApiLoggingEnabled()) {
+        PLOG_DEBUG << "[API] findBAStopNode: No nodes found for instance " << instanceId;
+      }
+      return nullptr;
+    }
+
+    // Search for ba_stop_node in pipeline
+    for (const auto &node : nodes) {
+      if (!node) continue;
+      
+      auto stopNode = std::dynamic_pointer_cast<cvedix_nodes::cvedix_ba_stop_node>(node);
+      if (stopNode) {
+        if (isApiLoggingEnabled()) {
+          PLOG_DEBUG << "[API] findBAStopNode: Found ba_stop_node for instance " << instanceId;
+        }
+        return stopNode;
+      }
+    }
+
+    if (isApiLoggingEnabled()) {
+      PLOG_DEBUG << "[API] findBAStopNode: ba_stop_node not found in pipeline for instance " << instanceId;
+    }
+    return nullptr;
+  } catch (const std::exception &e) {
+    if (isApiLoggingEnabled()) {
+      PLOG_WARNING << "[API] findBAStopNode: Exception accessing nodes: " << e.what();
+    }
+    return nullptr;
   }
-  return nullptr;
 }
 
 std::map<int, std::vector<cvedix_objects::cvedix_point>>
@@ -1289,15 +1326,39 @@ bool StopsHandler::updateStopsRuntime(const std::string &instanceId,
   }
 
   // Try to update stops via SDK API
+  // NOTE: CVEDIX SDK's ba_stop_node doesn't expose public methods to update
+  // regions at runtime. Regions are set during node construction.
+  // We need to restart the instance to apply changes, which will rebuild
+  // the pipeline with new stop zones from additionalParams["StopZones"]
   try {
     if (isApiLoggingEnabled()) {
-      PLOG_INFO << "[API] updateStopsRuntime: Found ba_stop_node, attempting to update " << stops.size() << " stop zone(s)";
-      PLOG_INFO << "[API] updateStopsRuntime: Note - Direct runtime update requires SDK API access";
+      PLOG_INFO << "[API] updateStopsRuntime: Found ba_stop_node for instance " << instanceId;
+      PLOG_INFO << "[API] updateStopsRuntime: Parsed " << stops.size() << " stop zone(s) from JSON";
+      PLOG_INFO << "[API] updateStopsRuntime: SDK doesn't support direct runtime update of stop zones";
+      PLOG_INFO << "[API] updateStopsRuntime: Configuration saved, will restart instance to apply changes";
     }
 
-    // SDK does not expose setters in header; fallback to restart
+    // Verify stops were parsed correctly
+    if (stops.empty() && stopsArray.isArray() && stopsArray.size() == 0) {
+      // Empty array is valid (delete all stops)
+      if (isApiLoggingEnabled()) {
+        PLOG_INFO << "[API] updateStopsRuntime: Empty stops array - will clear all stop zones via restart";
+      }
+    } else if (stops.empty()) {
+      // Parse failed
+      if (isApiLoggingEnabled()) {
+        PLOG_WARNING << "[API] updateStopsRuntime: Failed to parse stops, fallback to restart";
+      }
+      return false;
+    }
+
+    // Since SDK doesn't expose runtime update API, we need to restart
+    // But we've verified that stops are correctly parsed and saved to config
+    // The restart will rebuild pipeline with new stops from
+    // additionalParams["StopZones"]
     if (isApiLoggingEnabled()) {
-      PLOG_INFO << "[API] updateStopsRuntime: Stops configuration saved, restarting instance to apply changes";
+      PLOG_INFO << "[API] updateStopsRuntime: Stop zones configuration saved successfully";
+      PLOG_INFO << "[API] updateStopsRuntime: Instance restart will be triggered to apply changes";
     }
 
     return false; // Trigger restart fallback

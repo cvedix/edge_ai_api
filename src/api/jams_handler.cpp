@@ -4,6 +4,7 @@
 #include "core/metrics_interceptor.h"
 #include "core/uuid_generator.h"
 #include "instances/instance_manager.h"
+#include "instances/inprocess_instance_manager.h"
 #include <cvedix/nodes/ba/cvedix_ba_jam_node.h>
 #include "solutions/solution_registry.h"
 #include <algorithm>
@@ -1227,15 +1228,52 @@ JamsHandler::findBAJamNode(const std::string &instanceId) const {
     }
     return nullptr;
   }
+
   // In in-process mode, try to access nodes via InstanceRegistry
-  // This requires casting to InProcessInstanceManager to access registry
-  // For now, return nullptr and let updateJamsRuntime() handle via restart
-  // TODO: Add getInstanceNodes() to IInstanceManager interface if needed
-  if (isApiLoggingEnabled()) {
-    PLOG_DEBUG << "[API] findBAJamNode: Direct node access not "
-                  "available, will use restart fallback";
+  try {
+    // Cast to InProcessInstanceManager to access registry
+    auto *inProcessManager = dynamic_cast<InProcessInstanceManager *>(instance_manager_);
+    if (!inProcessManager) {
+      if (isApiLoggingEnabled()) {
+        PLOG_DEBUG << "[API] findBAJamNode: Cannot cast to InProcessInstanceManager";
+      }
+      return nullptr;
+    }
+
+    // Get nodes from registry
+    auto &registry = inProcessManager->getRegistry();
+    auto nodes = registry.getInstanceNodes(instanceId);
+    
+    if (nodes.empty()) {
+      if (isApiLoggingEnabled()) {
+        PLOG_DEBUG << "[API] findBAJamNode: No nodes found for instance " << instanceId;
+      }
+      return nullptr;
+    }
+
+    // Search for ba_jam_node in pipeline
+    for (const auto &node : nodes) {
+      if (!node) continue;
+      
+      auto jamNode = std::dynamic_pointer_cast<cvedix_nodes::cvedix_ba_jam_node>(node);
+      if (jamNode) {
+        if (isApiLoggingEnabled()) {
+          PLOG_DEBUG << "[API] findBAJamNode: Found ba_jam_node for instance " << instanceId;
+        }
+        return jamNode;
+      }
+    }
+
+    if (isApiLoggingEnabled()) {
+      PLOG_DEBUG << "[API] findBAJamNode: ba_jam_node not found in pipeline for instance " << instanceId;
+    }
+    return nullptr;
+  } catch (const std::exception &e) {
+    if (isApiLoggingEnabled()) {
+      PLOG_WARNING << "[API] findBAJamNode: Exception accessing nodes: " << e.what();
+    }
+    return nullptr;
   }
-  return nullptr;
 }
 
 std::map<int, std::vector<cvedix_objects::cvedix_point>>
@@ -1343,40 +1381,28 @@ bool JamsHandler::updateJamsRuntime(const std::string &instanceId, const Json::V
   }
 
   // Try to update jams via SDK API
-  // NOTE: CVEDIX SDK's ba_jam_node stores jams in member variable
-  // 'all_jams' We'll try to access and update it directly if possible
+  // NOTE: CVEDIX SDK's ba_jam_node doesn't expose public methods to update
+  // regions at runtime. Regions are set during node construction.
+  // We need to restart the instance to apply changes, which will rebuild
+  // the pipeline with new jam zones from additionalParams["JamZones"]
   try {
-    // Attempt: Try to access all_jams member and update it directly
-    // Based on SDK header, ba_jam_node has: std::map<int, cvedix_point>
-    // all_jams; We'll try to access it through public interface or friend
-    // class
-
-    // Since we don't have direct access to private members, we need to use
-    // restart However, we can verify that jams are correctly saved to config
-    // first
-
     if (isApiLoggingEnabled()) {
-      PLOG_INFO << "[API] updateJamsRuntime: Found ba_jam_node, "
-                   "attempting to update "
-                << jams.size() << " jam(s)";
-      PLOG_INFO << "[API] updateJamsRuntime: Jams parsed successfully, will "
-                   "apply via restart";
-      PLOG_INFO << "[API] updateJamsRuntime: Note - Direct runtime update "
-                   "requires SDK API access";
+      PLOG_INFO << "[API] updateJamsRuntime: Found ba_jam_node for instance " << instanceId;
+      PLOG_INFO << "[API] updateJamsRuntime: Parsed " << jams.size() << " jam zone(s) from JSON";
+      PLOG_INFO << "[API] updateJamsRuntime: SDK doesn't support direct runtime update of jam zones";
+      PLOG_INFO << "[API] updateJamsRuntime: Configuration saved, will restart instance to apply changes";
     }
 
     // Verify jams were parsed correctly
     if (jams.empty() && jamsArray.isArray() && jamsArray.size() == 0) {
       // Empty array is valid (delete all jams)
       if (isApiLoggingEnabled()) {
-        PLOG_INFO << "[API] updateJamsRuntime: Empty jams array - will clear "
-                     "all jams via restart";
+        PLOG_INFO << "[API] updateJamsRuntime: Empty jams array - will clear all jam zones via restart";
       }
     } else if (jams.empty()) {
       // Parse failed
       if (isApiLoggingEnabled()) {
-        PLOG_WARNING << "[API] updateJamsRuntime: Failed to parse jams, "
-                        "fallback to restart";
+        PLOG_WARNING << "[API] updateJamsRuntime: Failed to parse jams, fallback to restart";
       }
       return false;
     }
@@ -1384,10 +1410,10 @@ bool JamsHandler::updateJamsRuntime(const std::string &instanceId, const Json::V
     // Since SDK doesn't expose runtime update API, we need to restart
     // But we've verified that jams are correctly parsed and saved to config
     // The restart will rebuild pipeline with new jams from
-    // additionalParams["Jams"]
+    // additionalParams["JamZones"]
     if (isApiLoggingEnabled()) {
-      PLOG_INFO << "[API] updateJamsRuntime: Jams configuration saved, "
-                   "restarting instance to apply changes";
+      PLOG_INFO << "[API] updateJamsRuntime: Jam zones configuration saved successfully";
+      PLOG_INFO << "[API] updateJamsRuntime: Instance restart will be triggered to apply changes";
     }
 
     // Return false to trigger fallback to restart
