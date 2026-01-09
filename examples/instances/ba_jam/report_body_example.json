@@ -1,0 +1,21 @@
+{
+  "events": [
+    {
+      "type": "jam_detected",
+      "label": "Jam Detected",
+      "zone_id": "zone1",
+      "zone_name": "Front Lane",
+      "extra": {
+        "track_id": 123,
+        "class": "Vehicle",
+        "duration_frames": 45
+      }
+    }
+  ],
+  "frame_id": 34585,
+  "frame_time": 1383400.0,
+  "system_date": "Sun Dec 28 10:49:10 2025",
+  "system_timestamp": "1766893750712",
+  "instance_id": "example_ba_jam_instance",
+  "instance_name": "ba_jam_demo_rtmp"
+}

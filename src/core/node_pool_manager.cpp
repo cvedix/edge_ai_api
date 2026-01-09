@@ -268,6 +268,42 @@ void NodePoolManager::initializeDefaultTemplates() {
   baCrosslineOSD.isPreConfigured = true; // No parameters needed
   templates_[baCrosslineOSD.templateId] = baCrosslineOSD;
 
+  // BA Jam
+  NodeTemplate baJam;
+  baJam.templateId = "ba_jam_template";
+  baJam.nodeType = "ba_jam";
+  baJam.displayName = "BA Jam";
+  baJam.description = "Behavior analysis - jam detection";
+  baJam.category = "processor";
+  baJam.defaultParameters["jam_channel"] = "0";
+  baJam.defaultParameters["jam_region_x_1"] = "20";
+  baJam.defaultParameters["jam_region_y_1"] = "360";
+  baJam.defaultParameters["jam_region_x_2"] = "400";
+  baJam.defaultParameters["jam_region_y_2"] = "250";
+  baJam.defaultParameters["jam_region_x_3"] = "535";
+  baJam.defaultParameters["jam_region_y_3"] = "250";
+  baJam.defaultParameters["jam_region_x_4"] = "555";
+  baJam.defaultParameters["jam_region_y_4"] = "560";
+  baJam.defaultParameters["jam_region_x_5"] = "30";
+  baJam.defaultParameters["jam_region_y_5"] = "550";
+  baJam.requiredParameters = {};
+  baJam.optionalParameters = {"jam_channel", "jam_region_x_1",
+                              "jam_region_y_1", "jam_region_x_2", "jam_region_y_2",
+                              "jam_region_x_3", "jam_region_y_3", "jam_region_x_4", "jam_region_y_4",
+                              "jam_region_x_5", "jam_region_y_5"};
+  baJam.isPreConfigured = true;
+  templates_[baJam.templateId] = baJam;
+
+  // BA Jam OSD
+  NodeTemplate baJamOSD;
+  baJamOSD.templateId = "ba_jam_osd_template";
+  baJamOSD.nodeType = "ba_jam_osd";
+  baJamOSD.displayName = "BA Jam OSD";
+  baJamOSD.description = "Overlay jam detection results";
+  baJamOSD.category = "processor";
+  baJamOSD.isPreConfigured = true; // No parameters needed
+  templates_[baJamOSD.templateId] = baJamOSD;
+
   // Classifier
   NodeTemplate classifier;
   classifier.templateId = "classifier_template";

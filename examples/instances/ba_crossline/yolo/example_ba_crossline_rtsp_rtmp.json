@@ -16,7 +16,7 @@
       "CODEC_TYPE": "h264"
     },
     "output": {
-      "RTMP_DES_URL": "rtmp://localhost:1935/live/sang_camera_demo_1",
+      "RTMP_DES_URL": "rtmp://anhoidong.datacenter.cvedix.com:1935/live/tri_test",
       "ENABLE_SCREEN_DES": "false"
     }
   }

@@ -1,0 +1,21 @@
+{
+  "events": [
+    {
+      "type": "stop_detected",
+      "label": "Stop Detected",
+      "line_id": "stop1",
+      "line_name": "Entrance Stop",
+      "extra": {
+        "track_id": 99,
+        "class": "Vehicle",
+        "duration_frames": 25
+      }
+    }
+  ],
+  "frame_id": 12345,
+  "frame_time": 998800.0,
+  "system_date": "Sun Dec 28 10:49:10 2025",
+  "system_timestamp": "1766893750712",
+  "instance_id": "example_ba_stop_instance",
+  "instance_name": "ba_stop_demo_rtmp"
+}
