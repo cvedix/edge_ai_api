@@ -1,0 +1,20 @@
+{
+  "name": "xml_socket_broker_demo",
+  "group": "broker",
+  "solution": "face_detection_with_xml_socket_broker",
+  "persistent": true,
+  "autoStart": true,
+  "detectionSensitivity": "Medium",
+  "additionalParams": {
+    "input": {
+      "FILE_PATH": "./cvedix_data/test_video/face.mp4",
+      "MODEL_PATH": "./cvedix_data/models/face/face_detection_yunet_2022mar.onnx",
+      "SFACE_MODEL_PATH": "./cvedix_data/models/face/face_recognition_sface_2021dec.onnx",
+      "XML_SOCKET_IP": "127.0.0.1",
+      "XML_SOCKET_PORT": "8080"
+    },
+    "output": {
+      "BROKE_FOR": "FACE"
+    }
+  }
+}

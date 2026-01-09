@@ -1,0 +1,19 @@
+{
+  "name": "face_detection_demo_1",
+  "group": "demo",
+  "solution": "face_detection",
+  "persistent": true,
+  "autoStart": false,
+  "detectionSensitivity": "Low",
+  "additionalParams": {
+    "input": {
+      "FILE_PATH": "/opt/edge_ai_api/videos/face.mp4",
+      "MODEL_PATH": "/opt/edge_ai_api/models/face_detection_yunet_2022mar.onnx",
+      "SFACE_MODEL_PATH": "/opt/edge_ai_api/models/face_recognition_sface_2021dec.onnx",
+      "RESIZE_RATIO": "1.0"
+    },
+    "output": {
+      "RTMP_URL": "rtmp://localhost:1935/live/camera_demo_1"
+    }
+  }
+}
