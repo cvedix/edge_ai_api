@@ -279,6 +279,7 @@ set(SOURCES
     src/core/ai_processor.cpp
     src/core/ai_watchdog.cpp
     src/core/backpressure_controller.cpp
+    src/core/adaptive_queue_size_manager.cpp
     src/instances/instance_registry.cpp
     src/instances/queue_monitor.cpp
     src/instances/inprocess_instance_manager.cpp
@@ -1166,6 +1167,7 @@ message(STATUS "✓ Edge AI Core library configured")
 set(WORKER_SOURCES
     src/worker/edge_ai_worker.cpp
     src/worker/worker_handler.cpp
+    src/worker/config_file_watcher.cpp
     src/worker/ipc_protocol.cpp
     src/worker/unix_socket.cpp
 )

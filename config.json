@@ -1,13 +1,13 @@
 {
   "auto_device_list": [
+    "tensorrt.1",
+    "tensorrt.2",
+    "openvino.GPU",
     "hailo.auto",
     "blaize.auto",
-    "tensorrt.1",
     "rknn.auto",
-    "tensorrt.2",
     "cavalry",
     "openvino.VPU",
-    "openvino.GPU",
     "openvino.CPU",
     "snpe.dsp",
     "snpe.aip",

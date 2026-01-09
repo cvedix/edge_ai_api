@@ -10,6 +10,7 @@ bottleneck_analysis/
 develop_doc/
 
 # Project specific
+cvedix_data/
 
 # Logs
 *.log
