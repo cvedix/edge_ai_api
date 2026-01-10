@@ -1,4 +1,5 @@
 #include "api/instance_handler.h"
+#include "instances/uri_parser.h"
 #include "core/env_config.h"
 #include "core/logger.h"
 #include "core/logging_flags.h"
@@ -2232,6 +2233,190 @@ void InstanceHandler::setInstanceInput(
   }
 }
 
+void InstanceHandler::getInstanceInput(
+    const HttpRequestPtr &req,
+    std::function<void(const HttpResponsePtr &)> &&callback) {
+
+  auto start_time = std::chrono::steady_clock::now();
+
+  if (isApiLoggingEnabled()) {
+    PLOG_INFO
+        << "[API] GET /v1/core/instance/{instanceId}/input - Get input source";
+    PLOG_DEBUG << "[API] Request from: " << req->getPeerAddr().toIpPort();
+  }
+
+  try {
+    // Check if registry is set
+    if (!instance_manager_) {
+      if (isApiLoggingEnabled()) {
+        PLOG_ERROR << "[API] GET /v1/core/instance/{instanceId}/input - "
+                      "Error: Instance registry not initialized";
+      }
+      callback(createErrorResponse(500, "Internal server error",
+                                   "Instance registry not initialized"));
+      return;
+    }
+
+    // Get instance ID from path parameter
+    std::string instanceId = extractInstanceId(req);
+
+    if (instanceId.empty()) {
+      if (isApiLoggingEnabled()) {
+        PLOG_WARNING << "[API] GET /v1/core/instance/{instanceId}/input - "
+                        "Error: Instance ID is empty";
+      }
+      callback(
+          createErrorResponse(400, "Bad request", "Instance ID is required"));
+      return;
+    }
+
+    // Check if instance exists
+    auto optInfo = instance_manager_->getInstance(instanceId);
+    if (!optInfo.has_value()) {
+      auto end_time = std::chrono::steady_clock::now();
+      auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(
+          end_time - start_time);
+      if (isApiLoggingEnabled()) {
+        PLOG_WARNING << "[API] GET /v1/core/instance/" << instanceId
+                     << "/input - Instance not found - " << duration.count()
+                     << "ms";
+      }
+      callback(createErrorResponse(404, "Instance not found",
+                                   "Instance not found: " + instanceId));
+      return;
+    }
+
+    const InstanceInfo &info = optInfo.value();
+
+    // Get instance config to extract Input section
+    Json::Value config = instance_manager_->getInstanceConfig(instanceId);
+    
+    // Build response
+    Json::Value response(Json::objectValue);
+    
+    // Try to get input from config first
+    if (config.isMember("Input") && config["Input"].isObject()) {
+      const Json::Value &input = config["Input"];
+      if (input.isMember("uri") && input["uri"].isString()) {
+        std::string uri = input["uri"].asString();
+        
+        // Extract type from URI
+        std::string type = "Manual";
+        if (uri.find("rtspsrc") != std::string::npos || 
+            uri.find("rtsp://") != std::string::npos) {
+          type = "RTSP";
+        } else if (uri.find("hls://") != std::string::npos || 
+                   uri.find("hls_src") != std::string::npos) {
+          type = "HLS";
+        }
+        
+        // Extract clean URI (remove gstreamer pipeline parts)
+        std::string cleanUri = uri;
+        
+        // For RTSP: extract location=... part
+        if (uri.find("rtspsrc location=") != std::string::npos) {
+          size_t start = uri.find("location=") + 9;
+          size_t end = uri.find(" ", start);
+          if (end == std::string::npos) end = uri.find("!", start);
+          if (end != std::string::npos) {
+            cleanUri = uri.substr(start, end - start);
+          }
+        } else if (uri.find("rtsp://") != std::string::npos) {
+          // Direct RTSP URL
+          size_t start = uri.find("rtsp://");
+          size_t end = uri.find(" ", start);
+          if (end == std::string::npos) end = uri.find("!", start);
+          if (end != std::string::npos) {
+            cleanUri = uri.substr(start, end - start);
+          }
+        }
+        
+        response["type"] = type;
+        response["uri"] = cleanUri;
+        
+        // Extract username/password if available in additionalParams
+        if (info.additionalParams.find("RTSP_USERNAME") != 
+            info.additionalParams.end()) {
+          response["username"] = info.additionalParams.at("RTSP_USERNAME");
+        }
+        if (info.additionalParams.find("RTSP_PASSWORD") != 
+            info.additionalParams.end()) {
+          response["password"] = info.additionalParams.at("RTSP_PASSWORD");
+        }
+      }
+    }
+    
+    // If not found in config, try additionalParams (for flexible solutions)
+    if (!response.isMember("uri") || response["uri"].asString().empty()) {
+      // Check RTSP_SRC_URL
+      if (info.additionalParams.find("RTSP_SRC_URL") != 
+          info.additionalParams.end()) {
+        std::string rtspUrl = info.additionalParams.at("RTSP_SRC_URL");
+        if (!rtspUrl.empty()) {
+          response["type"] = "RTSP";
+          response["uri"] = rtspUrl;
+        }
+      }
+      // Check RTMP_SRC_URL
+      else if (info.additionalParams.find("RTMP_SRC_URL") != 
+               info.additionalParams.end()) {
+        std::string rtmpUrl = info.additionalParams.at("RTMP_SRC_URL");
+        if (!rtmpUrl.empty()) {
+          response["type"] = "RTMP";
+          response["uri"] = rtmpUrl;
+        }
+      }
+      // Check RTSP_URL (alternative)
+      else if (info.additionalParams.find("RTSP_URL") != 
+               info.additionalParams.end()) {
+        std::string rtspUrl = info.additionalParams.at("RTSP_URL");
+        if (!rtspUrl.empty()) {
+          response["type"] = "RTSP";
+          response["uri"] = rtspUrl;
+        }
+      }
+    }
+    
+    // If still no URI found, return default empty response
+    if (!response.isMember("uri") || response["uri"].asString().empty()) {
+      response["type"] = "";
+      response["uri"] = "";
+    }
+
+    auto end_time = std::chrono::steady_clock::now();
+    auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(
+        end_time - start_time);
+    if (isApiLoggingEnabled()) {
+      PLOG_INFO << "[API] GET /v1/core/instance/" << instanceId
+                << "/input - Success - " << duration.count() << "ms";
+    }
+
+    callback(createSuccessResponse(response));
+
+  } catch (const std::exception &e) {
+    auto end_time = std::chrono::steady_clock::now();
+    auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(
+        end_time - start_time);
+    if (isApiLoggingEnabled()) {
+      PLOG_ERROR
+          << "[API] GET /v1/core/instance/{instanceId}/input - Exception: "
+          << e.what() << " - " << duration.count() << "ms";
+    }
+    callback(createErrorResponse(500, "Internal server error", e.what()));
+  } catch (...) {
+    auto end_time = std::chrono::steady_clock::now();
+    auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(
+        end_time - start_time);
+    if (isApiLoggingEnabled()) {
+      PLOG_ERROR << "[API] GET /v1/core/instance/{instanceId}/input - Unknown "
+                    "exception - "
+                 << duration.count() << "ms";
+    }
+    callback(createErrorResponse(500, "Internal server error",
+                                 "Unknown error occurred"));
+  }
+}
+
 void InstanceHandler::getStreamOutput(
     const HttpRequestPtr &req,
     std::function<void(const HttpResponsePtr &)> &&callback) {
@@ -3286,35 +3471,9 @@ bool InstanceHandler::parseUpdateRequest(const Json::Value &json,
     const Json::Value &input = json["Input"];
     if (input.isMember("uri") && input["uri"].isString()) {
       std::string uri = input["uri"].asString();
-      // Extract RTSP URL from GStreamer URI - support both old format (uri=)
-      // and new format (location=)
-      size_t rtspPos = uri.find("location=");
-      if (rtspPos != std::string::npos) {
-        // New format: rtspsrc location=...
-        size_t start = rtspPos + 9;
-        size_t end = uri.find(" ", start);
-        if (end == std::string::npos) {
-          end = uri.find(" !", start);
-        }
-        if (end == std::string::npos) {
-          end = uri.length();
-        }
-        req.additionalParams["RTSP_URL"] = uri.substr(start, end - start);
-      } else {
-        // Old format: gstreamer:///urisourcebin uri=...
-        rtspPos = uri.find("uri=");
-        if (rtspPos != std::string::npos) {
-          size_t start = rtspPos + 4;
-          size_t end = uri.find(" !", start);
-          if (end == std::string::npos) {
-            end = uri.length();
-          }
-          req.additionalParams["RTSP_URL"] = uri.substr(start, end - start);
-        } else if (uri.find("://") == std::string::npos) {
-          // Direct file path
-          req.additionalParams["FILE_PATH"] = uri;
-        }
-      }
+      // Use utility function to parse Input.uri and populate additionalParams
+      // This supports all input types: RTSP, RTMP, HLS, HTTP, UDP, file path
+      InstanceUriParser::parseInputUriToAdditionalParams(uri, req.additionalParams);
     }
     if (input.isMember("media_type") && input["media_type"].isString()) {
       req.additionalParams["INPUT_MEDIA_TYPE"] = input["media_type"].asString();
@@ -3455,6 +3614,8 @@ bool InstanceHandler::parseUpdateRequest(const Json::Value &json,
     if (json["additionalParams"].isMember("output") &&
         json["additionalParams"]["output"].isObject()) {
       // New structure: parse output section
+      // IMPORTANT: Output params should NOT be used for input
+      // RTMP_URL in output should be stored as RTMP_DES_URL to avoid confusion with input
       for (const auto &key :
            json["additionalParams"]["output"].getMemberNames()) {
         if (json["additionalParams"]["output"][key].isString()) {
@@ -3463,8 +3624,15 @@ bool InstanceHandler::parseUpdateRequest(const Json::Value &json,
           // Trim RTMP URLs to prevent GStreamer pipeline errors
           if (key == "RTMP_URL" || key == "RTMP_DES_URL") {
             value = trim(value);
+            // If RTMP_URL is in output section, store as RTMP_DES_URL to avoid confusion with input
+            if (key == "RTMP_URL") {
+              req.additionalParams["RTMP_DES_URL"] = value;
+            } else {
+              req.additionalParams[key] = value;
+            }
+          } else {
+            req.additionalParams[key] = value;
           }
-          req.additionalParams[key] = value;
         }
       }
     }

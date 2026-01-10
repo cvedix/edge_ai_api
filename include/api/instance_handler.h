@@ -78,6 +78,8 @@ public:
                 "/v1/core/instance/batch/restart", Post);
   ADD_METHOD_TO(InstanceHandler::setInstanceInput,
                 "/v1/core/instance/{instanceId}/input", Post);
+  ADD_METHOD_TO(InstanceHandler::getInstanceInput,
+                "/v1/core/instance/{instanceId}/input", Get);
   ADD_METHOD_TO(InstanceHandler::getConfig,
                 "/v1/core/instance/{instanceId}/config", Get);
   ADD_METHOD_TO(InstanceHandler::setConfig,
@@ -233,6 +235,14 @@ public:
    */
   void
   setInstanceInput(const HttpRequestPtr &req,
+                   std::function<void(const HttpResponsePtr &)> &&callback);
+
+  /**
+   * @brief Handle GET /v1/core/instance/{instanceId}/input
+   * Gets current input source configuration for an instance
+   */
+  void
+  getInstanceInput(const HttpRequestPtr &req,
                    std::function<void(const HttpResponsePtr &)> &&callback);
 
   /**

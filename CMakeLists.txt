@@ -293,6 +293,7 @@ set(SOURCES
     src/utils/mp4_finalizer.cpp
     src/utils/mp4_directory_watcher.cpp
     src/instances/instance_storage.cpp
+    src/instances/uri_parser.cpp
     src/solutions/solution_storage.cpp
     src/groups/group_storage.cpp
     src/core/node_pool_manager.cpp

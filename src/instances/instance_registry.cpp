@@ -2461,20 +2461,60 @@ InstanceRegistry::createInstanceInfo(const std::string &instanceId,
   // RESIZE_RATIO, etc.)
   info.additionalParams = req.additionalParams;
 
-  // Extract RTSP URL from request - check RTSP_SRC_URL first, then RTSP_URL
-  // This should be done BEFORE generating RTSP from RTMP to avoid overriding
-  // user's input
-  auto rtspSrcIt = req.additionalParams.find("RTSP_SRC_URL");
-  if (rtspSrcIt != req.additionalParams.end() && !rtspSrcIt->second.empty()) {
-    info.rtspUrl = rtspSrcIt->second;
-  } else {
+  // Extract RTSP URL from request - check FILE_PATHS first, then RTSP_SRC_URL, then RTSP_URL
+  // FILE_PATHS has highest priority as it's the user's explicit input source specification
+  // This should be done BEFORE generating RTSP from RTMP to avoid overriding user's input
+  bool rtspUrlSet = false;
+  
+  // Priority 1: Check FILE_PATHS (user's explicit input source)
+  auto filePathsIt = req.additionalParams.find("FILE_PATHS");
+  if (filePathsIt != req.additionalParams.end() && !filePathsIt->second.empty()) {
+    std::string filePathsStr = filePathsIt->second;
+    // Parse JSON string array: "[\"rtsp://...\", ...]"
+    try {
+      Json::Value filePathsJson;
+      Json::Reader reader;
+      if (reader.parse(filePathsStr, filePathsJson) && filePathsJson.isArray() && 
+          filePathsJson.size() > 0 && filePathsJson[0].isString()) {
+        std::string firstUrl = filePathsJson[0].asString();
+        std::string lowerUrl = firstUrl;
+        std::transform(lowerUrl.begin(), lowerUrl.end(), lowerUrl.begin(), ::tolower);
+        
+        // If it's an RTSP URL, use it
+        if (lowerUrl.find("rtsp://") == 0 || lowerUrl.find("rtsps://") == 0) {
+          info.rtspUrl = firstUrl;
+          rtspUrlSet = true;
+          std::cerr << "[InstanceRegistry] Extracted RTSP URL from FILE_PATHS: " 
+                    << firstUrl << std::endl;
+        }
+      }
+    } catch (const std::exception &e) {
+      std::cerr << "[InstanceRegistry] Failed to parse FILE_PATHS: " 
+                << e.what() << std::endl;
+    }
+  }
+  
+  // Priority 2: Check RTSP_SRC_URL
+  if (!rtspUrlSet) {
+    auto rtspSrcIt = req.additionalParams.find("RTSP_SRC_URL");
+    if (rtspSrcIt != req.additionalParams.end() && !rtspSrcIt->second.empty()) {
+      info.rtspUrl = rtspSrcIt->second;
+      rtspUrlSet = true;
+    }
+  }
+  
+  // Priority 3: Check RTSP_URL
+  if (!rtspUrlSet) {
     auto rtspIt = req.additionalParams.find("RTSP_URL");
     if (rtspIt != req.additionalParams.end() && !rtspIt->second.empty()) {
       info.rtspUrl = rtspIt->second;
+      rtspUrlSet = true;
     }
   }
 
-  // Extract RTMP URL from request - check RTMP_DES_URL first, then RTMP_URL
+  // Extract RTMP URL from request - ONLY for OUTPUT
+  // IMPORTANT: RTMP_URL/RTMP_DES_URL in output section should NOT be used for input
+  // Only RTMP_SRC_URL (or RTMP_URL in input section) should be used for input
   // Helper function to trim whitespace
   auto trim = [](const std::string &str) -> std::string {
     if (str.empty())
@@ -2486,25 +2526,45 @@ InstanceRegistry::createInstanceInfo(const std::string &instanceId,
     return str.substr(first, (last - first + 1));
   };
 
+  // Extract RTMP URL for OUTPUT (not for input)
+  // Check RTMP_DES_URL first (explicit output), then RTMP_URL (but only if not from input)
   auto rtmpDesIt = req.additionalParams.find("RTMP_DES_URL");
   if (rtmpDesIt != req.additionalParams.end() && !rtmpDesIt->second.empty()) {
     info.rtmpUrl = trim(rtmpDesIt->second);
   } else {
-    auto rtmpIt = req.additionalParams.find("RTMP_URL");
-    if (rtmpIt != req.additionalParams.end() && !rtmpIt->second.empty()) {
-      info.rtmpUrl = trim(rtmpIt->second);
+    // Only use RTMP_URL for output if RTMP_SRC_URL is not present (meaning RTMP_URL is for output)
+    // If RTMP_SRC_URL exists, RTMP_URL should be ignored for input conversion
+    auto rtmpSrcIt = req.additionalParams.find("RTMP_SRC_URL");
+    if (rtmpSrcIt == req.additionalParams.end() || rtmpSrcIt->second.empty()) {
+      // No RTMP_SRC_URL, so RTMP_URL might be for output (backward compatibility)
+      auto rtmpIt = req.additionalParams.find("RTMP_URL");
+      if (rtmpIt != req.additionalParams.end() && !rtmpIt->second.empty()) {
+        info.rtmpUrl = trim(rtmpIt->second);
+      }
     }
+    // If RTMP_SRC_URL exists, we don't use RTMP_URL for output (it's ambiguous)
   }
 
-  // Only generate RTSP URL from RTMP URL if RTSP URL is not already set
-  // This prevents overriding user's RTSP_SRC_URL
-  if (info.rtspUrl.empty() && !info.rtmpUrl.empty()) {
+  // Extract RTMP_SRC_URL for INPUT (if provided)
+  // This is the explicit input RTMP URL
+  auto rtmpSrcIt = req.additionalParams.find("RTMP_SRC_URL");
+  std::string rtmpSrcUrl = "";
+  if (rtmpSrcIt != req.additionalParams.end() && !rtmpSrcIt->second.empty()) {
+    rtmpSrcUrl = trim(rtmpSrcIt->second);
+  }
+
+  // Only generate RTSP URL from RTMP URL if:
+  // 1. RTSP URL is not already set (from FILE_PATHS, RTSP_SRC_URL, or RTSP_URL)
+  // 2. RTMP_SRC_URL is provided (explicit input RTMP URL)
+  // This prevents using RTMP_URL from output section for input
+  if (info.rtspUrl.empty() && !rtmpSrcUrl.empty()) {
+    // Use RTMP_SRC_URL for input conversion
+    std::string rtmpUrl = rtmpSrcUrl;
 
     // Generate RTSP URL from RTMP URL
     // Pattern: rtmp://host:1935/live/stream_key ->
     // rtsp://host:8554/live/stream_key_0 RTMP node automatically adds "_0"
     // suffix to stream key
-    std::string rtmpUrl = info.rtmpUrl;
 
     // Replace RTMP protocol and port with RTSP
     size_t protocolPos = rtmpUrl.find("rtmp://");

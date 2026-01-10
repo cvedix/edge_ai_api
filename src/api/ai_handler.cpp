@@ -1,4 +1,5 @@
 #include "api/instance_handler.h"
+#include "instances/uri_parser.h"
 #include "core/env_config.h"
 #include "core/logger.h"
 #include "core/logging_flags.h"
@@ -3011,35 +3012,9 @@ bool InstanceHandler::parseUpdateRequest(const Json::Value &json,
     const Json::Value &input = json["Input"];
     if (input.isMember("uri") && input["uri"].isString()) {
       std::string uri = input["uri"].asString();
-      // Extract RTSP URL from GStreamer URI - support both old format (uri=)
-      // and new format (location=)
-      size_t rtspPos = uri.find("location=");
-      if (rtspPos != std::string::npos) {
-        // New format: rtspsrc location=...
-        size_t start = rtspPos + 9;
-        size_t end = uri.find(" ", start);
-        if (end == std::string::npos) {
-          end = uri.find(" !", start);
-        }
-        if (end == std::string::npos) {
-          end = uri.length();
-        }
-        req.additionalParams["RTSP_URL"] = uri.substr(start, end - start);
-      } else {
-        // Old format: gstreamer:///urisourcebin uri=...
-        rtspPos = uri.find("uri=");
-        if (rtspPos != std::string::npos) {
-          size_t start = rtspPos + 4;
-          size_t end = uri.find(" !", start);
-          if (end == std::string::npos) {
-            end = uri.length();
-          }
-          req.additionalParams["RTSP_URL"] = uri.substr(start, end - start);
-        } else if (uri.find("://") == std::string::npos) {
-          // Direct file path
-          req.additionalParams["FILE_PATH"] = uri;
-        }
-      }
+      // Use utility function to parse Input.uri and populate additionalParams
+      // This supports all input types: RTSP, RTMP, HLS, HTTP, UDP, file path
+      InstanceUriParser::parseInputUriToAdditionalParams(uri, req.additionalParams);
     }
     if (input.isMember("media_type") && input["media_type"].isString()) {
       req.additionalParams["INPUT_MEDIA_TYPE"] = input["media_type"].asString();
@@ -3180,6 +3155,8 @@ bool InstanceHandler::parseUpdateRequest(const Json::Value &json,
     if (json["additionalParams"].isMember("output") &&
         json["additionalParams"]["output"].isObject()) {
       // New structure: parse output section
+      // IMPORTANT: Output params should NOT be used for input
+      // RTMP_URL in output should be stored as RTMP_DES_URL to avoid confusion with input
       for (const auto &key :
            json["additionalParams"]["output"].getMemberNames()) {
         if (json["additionalParams"]["output"][key].isString()) {
@@ -3188,8 +3165,15 @@ bool InstanceHandler::parseUpdateRequest(const Json::Value &json,
           // Trim RTMP URLs to prevent GStreamer pipeline errors
           if (key == "RTMP_URL" || key == "RTMP_DES_URL") {
             value = trim(value);
+            // If RTMP_URL is in output section, store as RTMP_DES_URL to avoid confusion with input
+            if (key == "RTMP_URL") {
+              req.additionalParams["RTMP_DES_URL"] = value;
+            } else {
+              req.additionalParams[key] = value;
+            }
+          } else {
+            req.additionalParams[key] = value;
           }
-          req.additionalParams[key] = value;
         }
       }
     }

@@ -114,6 +114,8 @@ static bool parseUpdateRequestFromJson(const Json::Value &json,
     if (json["additionalParams"].isMember("output") &&
         json["additionalParams"]["output"].isObject()) {
       // New structure: parse output section
+      // IMPORTANT: Output params should NOT be used for input
+      // RTMP_URL in output should be stored as RTMP_DES_URL to avoid confusion with input
       for (const auto &key :
            json["additionalParams"]["output"].getMemberNames()) {
         if (json["additionalParams"]["output"][key].isString()) {
@@ -122,8 +124,15 @@ static bool parseUpdateRequestFromJson(const Json::Value &json,
           // Trim RTMP URLs to prevent GStreamer pipeline errors
           if (key == "RTMP_URL" || key == "RTMP_DES_URL") {
             value = trim(value);
+            // If RTMP_URL is in output section, store as RTMP_DES_URL to avoid confusion with input
+            if (key == "RTMP_URL") {
+              req.additionalParams["RTMP_DES_URL"] = value;
+            } else {
+              req.additionalParams[key] = value;
+            }
+          } else {
+            req.additionalParams[key] = value;
           }
-          req.additionalParams[key] = value;
         }
       }
     }

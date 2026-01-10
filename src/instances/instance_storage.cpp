@@ -1,4 +1,5 @@
 #include "instances/instance_storage.h"
+#include "instances/uri_parser.h"
 #include "core/env_config.h"
 #include <algorithm>
 #include <filesystem>
@@ -744,6 +745,69 @@ InstanceStorage::instanceInfoToConfigJson(const InstanceInfo &info,
     }
   }
 
+  // Synchronize FILE_PATHS with Input.uri: Update FILE_PATHS based on current input source
+  // This ensures FILE_PATHS stays in sync with Input.uri for all input types
+  // BUT: Only sync if FILE_PATHS is not already set in additionalParams (to preserve user-provided values)
+  // Priority: RTSP URL > RTMP URL > HLS URL > HTTP URL > UDP URL > File Path
+  bool hasFilePaths = false;
+  // Check if FILE_PATHS is already set in additionalParams (either in config or in info)
+  if (config.isMember("AdditionalParams") && config["AdditionalParams"].isObject()) {
+    hasFilePaths = config["AdditionalParams"].isMember("FILE_PATHS");
+  }
+  // Also check in info.additionalParams (from request)
+  if (!hasFilePaths) {
+    hasFilePaths = info.additionalParams.count("FILE_PATHS") > 0;
+  }
+  
+  // Only synchronize if FILE_PATHS is not already set (preserve user-provided values)
+  if (!hasFilePaths) {
+    std::string primaryInputUrl = "";
+    if (!info.rtspUrl.empty()) {
+      primaryInputUrl = info.rtspUrl;
+    } else {
+      // Check additionalParams for other input types
+      // IMPORTANT: Only use input-specific params, not output params
+      // RTMP_SRC_URL is for input, RTMP_URL/RTMP_DES_URL are for output
+      auto rtmpSrcIt = info.additionalParams.find("RTMP_SRC_URL");
+      auto hlsIt = info.additionalParams.find("HLS_URL");
+      auto httpIt = info.additionalParams.find("HTTP_URL");
+      auto udpIt = info.additionalParams.find("UDP_URL");
+      
+      if (rtmpSrcIt != info.additionalParams.end() && !rtmpSrcIt->second.empty()) {
+        // RTMP_SRC_URL is explicitly for input
+        primaryInputUrl = rtmpSrcIt->second;
+      } else if (hlsIt != info.additionalParams.end() && !hlsIt->second.empty()) {
+        primaryInputUrl = hlsIt->second;
+      } else if (httpIt != info.additionalParams.end() && !httpIt->second.empty()) {
+        primaryInputUrl = httpIt->second;
+      } else if (udpIt != info.additionalParams.end() && !udpIt->second.empty()) {
+        primaryInputUrl = udpIt->second;
+      } else if (!info.filePath.empty()) {
+        primaryInputUrl = info.filePath;
+      }
+      // NOTE: We do NOT use RTMP_URL here because it might be from output section
+      // Only RTMP_SRC_URL should be used for input
+    }
+    
+    if (!primaryInputUrl.empty()) {
+      if (!config.isMember("AdditionalParams")) {
+        config["AdditionalParams"] = Json::Value(Json::objectValue);
+      }
+      // Create JSON array with the current input URL/path
+      Json::Value filePathsArray(Json::arrayValue);
+      filePathsArray.append(primaryInputUrl);
+      // Convert to JSON string
+      Json::StreamWriterBuilder builder;
+      builder["indentation"] = "";
+      std::string filePathsStr = Json::writeString(builder, filePathsArray);
+      config["AdditionalParams"]["FILE_PATHS"] = filePathsStr;
+      std::cerr << "[InstanceStorage] Synchronized FILE_PATHS with Input.uri: " 
+                << filePathsStr << std::endl;
+    }
+  } else {
+    std::cerr << "[InstanceStorage] FILE_PATHS already set in AdditionalParams, preserving user-provided value" << std::endl;
+  }
+
   // Store runtime info (not persisted, but included for completeness)
   config["loaded"] = info.loaded;
   config["running"] = info.running;
@@ -828,43 +892,169 @@ InstanceStorage::configJsonToInstanceInfo(const Json::Value &config,
       info.autoRestart = config["AutoRestart"].asBool();
     }
 
+    // Extract AdditionalParams FIRST (before Input) to ensure FILE_PATHS has highest priority
+    // IMPORTANT: Parse FILE_PATHS before Input.uri so FILE_PATHS can override Input.uri
+    if (config.isMember("AdditionalParams") &&
+        config["AdditionalParams"].isObject()) {
+      const Json::Value &additionalParams = config["AdditionalParams"];
+      
+      // First pass: Parse FILE_PATHS with highest priority
+      if (additionalParams.isMember("FILE_PATHS") && 
+          additionalParams["FILE_PATHS"].isString()) {
+        std::string filePathsStr = additionalParams["FILE_PATHS"].asString();
+        // Parse JSON string array: "[\"rtsp://...\", \"rtmp://...\", ...]"
+        try {
+          Json::Value filePathsJson;
+          Json::Reader reader;
+          if (reader.parse(filePathsStr, filePathsJson) && filePathsJson.isArray() && 
+              filePathsJson.size() > 0 && filePathsJson[0].isString()) {
+            std::string firstUrl = filePathsJson[0].asString();
+            std::string lowerUrl = firstUrl;
+            std::transform(lowerUrl.begin(), lowerUrl.end(), lowerUrl.begin(), ::tolower);
+            
+            // Determine input type and set appropriate field
+            // FILE_PATHS has highest priority - always override Input.uri
+            if (lowerUrl.find("rtsp://") == 0 || lowerUrl.find("rtsps://") == 0) {
+              // RTSP URL - FILE_PATHS overrides Input.uri
+              info.rtspUrl = firstUrl;
+              std::cerr << "[InstanceStorage] Extracted RTSP URL from FILE_PATHS (will override Input.uri): " 
+                        << firstUrl << std::endl;
+            } else if (lowerUrl.find("rtmp://") == 0) {
+              // RTMP URL - FILE_PATHS is for input, so store as RTMP_SRC_URL
+              info.additionalParams["RTMP_SRC_URL"] = firstUrl;
+              // Also set rtspUrl for backward compatibility (will be converted later)
+              info.rtspUrl = firstUrl; // FILE_PATHS overrides Input.uri
+              std::cerr << "[InstanceStorage] Extracted RTMP URL from FILE_PATHS (input, will override Input.uri): " 
+                        << firstUrl << " (stored as RTMP_SRC_URL)" << std::endl;
+            } else if (lowerUrl.find("http://") == 0 || lowerUrl.find("https://") == 0) {
+              // HTTP/HTTPS URL
+              if (lowerUrl.find(".m3u8") != std::string::npos) {
+                // HLS URL
+                info.additionalParams["HLS_URL"] = firstUrl;
+                std::cerr << "[InstanceStorage] Extracted HLS URL from FILE_PATHS (will override Input.uri): " 
+                          << firstUrl << std::endl;
+              } else {
+                // HTTP URL
+                info.additionalParams["HTTP_URL"] = firstUrl;
+                std::cerr << "[InstanceStorage] Extracted HTTP URL from FILE_PATHS (will override Input.uri): " 
+                          << firstUrl << std::endl;
+              }
+            } else if (lowerUrl.find("udp://") == 0) {
+              // UDP URL
+              info.additionalParams["UDP_URL"] = firstUrl;
+              std::cerr << "[InstanceStorage] Extracted UDP URL from FILE_PATHS (will override Input.uri): " 
+                        << firstUrl << std::endl;
+            } else {
+              // File path - FILE_PATHS overrides Input.uri
+              info.filePath = firstUrl;
+              std::cerr << "[InstanceStorage] Extracted file path from FILE_PATHS (will override Input.uri): " 
+                        << firstUrl << std::endl;
+            }
+          }
+        } catch (const std::exception &e) {
+          std::cerr << "[InstanceStorage] Failed to parse FILE_PATHS: " 
+                    << e.what() << std::endl;
+        }
+      }
+    }
+
     // Extract Input configuration
     if (config.isMember("Input") && config["Input"].isObject()) {
       const Json::Value &input = config["Input"];
 
-      // Extract URI
+      // Extract URI and parse actual URL/path from GStreamer pipeline
       if (input.isMember("uri") && input["uri"].isString()) {
         std::string uri = input["uri"].asString();
-        // Parse RTSP URL from GStreamer URI - support both old format (uri=)
-        // and new format (location=)
-        size_t rtspPos = uri.find("location=");
-        if (rtspPos != std::string::npos) {
-          // New format: rtspsrc location=...
-          size_t start = rtspPos + 9;
-          size_t end = uri.find(" ", start);
-          if (end == std::string::npos) {
-            end = uri.find(" !", start);
+        std::string extractedUrl = InstanceUriParser::extractUrlFromPipeline(uri);
+        
+        if (!extractedUrl.empty()) {
+          // Determine input type based on extracted URL
+          std::string lowerUrl = extractedUrl;
+          std::transform(lowerUrl.begin(), lowerUrl.end(), lowerUrl.begin(), ::tolower);
+          
+          // Only set from Input.uri if not already set by FILE_PATHS (FILE_PATHS has priority)
+          if (lowerUrl.find("rtsp://") == 0 || lowerUrl.find("rtsps://") == 0) {
+            // RTSP URL - only set if not already set by FILE_PATHS
+            if (info.rtspUrl.empty()) {
+              info.rtspUrl = extractedUrl;
+            }
+          } else if (lowerUrl.find("rtmp://") == 0) {
+            // RTMP URL - store in additionalParams as RTMP_SRC_URL (if not already set by FILE_PATHS)
+            if (!info.additionalParams.count("RTMP_SRC_URL")) {
+              info.additionalParams["RTMP_SRC_URL"] = extractedUrl;
+            }
+            // Also store in rtspUrl for backward compatibility (only if not set by FILE_PATHS)
+            if (info.rtspUrl.empty()) {
+              info.rtspUrl = extractedUrl;
+            }
+          } else if (lowerUrl.find("http://") == 0 || lowerUrl.find("https://") == 0) {
+            // HTTP/HTTPS URL - check if it's HLS
+            if (lowerUrl.find(".m3u8") != std::string::npos) {
+              // HLS URL - only set if not already set by FILE_PATHS
+              if (!info.additionalParams.count("HLS_URL")) {
+                info.additionalParams["HLS_URL"] = extractedUrl;
+              }
+            } else {
+              // HTTP URL - only set if not already set by FILE_PATHS
+              if (!info.additionalParams.count("HTTP_URL")) {
+                info.additionalParams["HTTP_URL"] = extractedUrl;
+              }
+            }
+          } else if (lowerUrl.find("udp://") == 0) {
+            // UDP URL - only set if not already set by FILE_PATHS
+            if (!info.additionalParams.count("UDP_URL")) {
+              info.additionalParams["UDP_URL"] = extractedUrl;
+            }
+          } else {
+            // File path (no protocol or local file) - only set if not already set by FILE_PATHS
+            if (info.filePath.empty()) {
+              info.filePath = extractedUrl;
+            }
           }
-          if (end == std::string::npos) {
-            end = uri.length();
-          }
-          info.rtspUrl = uri.substr(start, end - start);
         } else {
-          // Old format: gstreamer:///urisourcebin uri=...
-          rtspPos = uri.find("uri=");
+          // Fallback: if extraction failed, try old parsing method
+          size_t rtspPos = uri.find("location=");
           if (rtspPos != std::string::npos) {
-            size_t start = rtspPos + 4;
-            size_t end = uri.find(" !", start);
+            size_t start = rtspPos + 9;
+            size_t end = uri.find(" ", start);
+            if (end == std::string::npos) {
+              end = uri.find(" !", start);
+            }
             if (end == std::string::npos) {
               end = uri.length();
             }
-            info.rtspUrl = uri.substr(start, end - start);
+            std::string url = uri.substr(start, end - start);
+            std::string lowerUrl = url;
+            std::transform(lowerUrl.begin(), lowerUrl.end(), lowerUrl.begin(), ::tolower);
+            if (lowerUrl.find("rtsp://") == 0 || lowerUrl.find("rtsps://") == 0) {
+              // Only set if not already set by FILE_PATHS
+              if (info.rtspUrl.empty()) {
+                info.rtspUrl = url;
+              }
+            } else {
+              // Only set if not already set by FILE_PATHS
+              if (info.filePath.empty()) {
+                info.filePath = url;
+              }
+            }
           } else if (uri.find("://") == std::string::npos) {
-            // Direct file path (no protocol)
-            info.filePath = uri;
+            // Direct file path (no protocol) - only set if not already set by FILE_PATHS
+            if (info.filePath.empty()) {
+              info.filePath = uri;
+            }
           } else {
-            // URL with protocol
-            info.filePath = uri;
+            // URL with protocol - try to detect type - only set if not already set by FILE_PATHS
+            std::string lowerUri = uri;
+            std::transform(lowerUri.begin(), lowerUri.end(), lowerUri.begin(), ::tolower);
+            if (lowerUri.find("rtsp://") == 0 || lowerUri.find("rtsps://") == 0) {
+              if (info.rtspUrl.empty()) {
+                info.rtspUrl = uri;
+              }
+            } else {
+              if (info.filePath.empty()) {
+                info.filePath = uri;
+              }
+            }
           }
         }
       }
@@ -1002,20 +1192,27 @@ InstanceStorage::configJsonToInstanceInfo(const Json::Value &config,
       }
     }
 
-    // Extract AdditionalParams
+    // Extract remaining AdditionalParams (FILE_PATHS already processed above)
+    // Parse other params that weren't processed in the first pass
     if (config.isMember("AdditionalParams") &&
         config["AdditionalParams"].isObject()) {
       const Json::Value &additionalParams = config["AdditionalParams"];
+      
+      // Parse other additionalParams (FILE_PATHS already processed above)
       for (const auto &key : additionalParams.getMemberNames()) {
+        if (key == "FILE_PATHS") {
+          // Already processed above, skip
+          continue;
+        }
         if (additionalParams[key].isString()) {
           info.additionalParams[key] = additionalParams[key].asString();
 
-          // Extract RTSP_URL from additionalParams if not already set
+          // Extract RTSP_URL from additionalParams if not already set by FILE_PATHS
           if (key == "RTSP_URL" && info.rtspUrl.empty()) {
             info.rtspUrl = additionalParams[key].asString();
           }
 
-          // Extract FILE_PATH from additionalParams if not already set
+          // Extract FILE_PATH from additionalParams if not already set by FILE_PATHS
           if (key == "FILE_PATH" && info.filePath.empty()) {
             info.filePath = additionalParams[key].asString();
           }
