@@ -186,7 +186,7 @@ public:
    * @return Base64-encoded JPEG frame string, empty string if no frame
    * available
    */
-  std::string getLastFrame(const std::string &instanceId) const;
+  std::string getLastFrame(const std::string &instanceId, const std::string &frameType = "output") const;
 
 private:
   SolutionRegistry &solution_registry_;
@@ -296,9 +296,12 @@ private:
   using FramePtr = std::shared_ptr<cv::Mat>;
 
   struct FrameCache {
-    FramePtr frame; // Shared pointer to frame (no copy)
+    FramePtr frame; // Shared pointer to output frame (no copy)
+    FramePtr input_frame; // Shared pointer to input frame (raw, before AI processing)
     std::chrono::steady_clock::time_point timestamp;
+    std::chrono::steady_clock::time_point input_frame_timestamp;
     bool has_frame = false;
+    bool has_input_frame = false;
   };
 
   mutable std::unordered_map<std::string, FrameCache> frame_caches_;
@@ -312,6 +315,7 @@ private:
    * @param frame Frame to cache (will use shared ownership, no copy)
    */
   void updateFrameCache(const std::string &instanceId, const cv::Mat &frame);
+  void updateInputFrameCache(const std::string &instanceId, const cv::Mat &frame);
 
   /**
    * @brief Setup frame capture hook for pipeline

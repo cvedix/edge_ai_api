@@ -55,7 +55,7 @@ public:
 
   std::optional<InstanceStatistics>
   getInstanceStatistics(const std::string &instanceId) override;
-  std::string getLastFrame(const std::string &instanceId) const override;
+  std::string getLastFrame(const std::string &instanceId, const std::string &frameType = "output") const override;
   Json::Value getInstanceConfig(const std::string &instanceId) const override;
   bool updateInstanceFromConfig(const std::string &instanceId,
                                 const Json::Value &configJson) override;

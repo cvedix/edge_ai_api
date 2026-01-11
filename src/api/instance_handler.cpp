@@ -1820,9 +1820,15 @@ void InstanceHandler::getLastFrame(
   // Get instance ID from path parameter
   std::string instanceId = extractInstanceId(req);
 
+  // Get frame type parameter from query string (default: "output" for backward compatibility)
+  std::string frameType = req->getParameter("type");
+  if (frameType.empty()) {
+    frameType = "output";
+  }
+
   if (isApiLoggingEnabled()) {
     PLOG_INFO << "[API] GET /v1/core/instance/" << instanceId
-              << "/frame - Get last frame";
+              << "/frame?type=" << frameType << " - Get last frame";
     PLOG_DEBUG << "[API] Request from: " << req->getPeerAddr().toIpPort();
   }
 
@@ -1874,7 +1880,7 @@ void InstanceHandler::getLastFrame(
     }
 
     // Get last frame (empty string if no frame cached)
-    std::string frameBase64 = instance_manager_->getLastFrame(instanceId);
+    std::string frameBase64 = instance_manager_->getLastFrame(instanceId, frameType);
 
     // DEBUG: Log frame retrieval result
     if (isApiLoggingEnabled()) {
@@ -3158,9 +3164,15 @@ void InstanceHandler::getInstancePreview(
 
   std::string instanceId = extractInstanceId(req);
 
+  // Get frame type parameter from query string (default: "output" for preview)
+  std::string frameType = req->getParameter("type");
+  if (frameType.empty()) {
+    frameType = "output";
+  }
+
   if (isApiLoggingEnabled()) {
     PLOG_INFO << "[API] GET /v1/core/instance/" << instanceId
-              << "/preview - Get preview frame";
+              << "/preview?type=" << frameType << " - Get preview frame";
     PLOG_DEBUG << "[API] Request from: " << req->getPeerAddr().toIpPort();
   }
 
@@ -3204,7 +3216,7 @@ void InstanceHandler::getInstancePreview(
     const InstanceInfo &info = optInfo.value();
 
     // Get last frame (empty string if no frame cached)
-    std::string frameBase64 = instance_manager_->getLastFrame(instanceId);
+    std::string frameBase64 = instance_manager_->getLastFrame(instanceId, frameType);
 
     // Build JSON response
     Json::Value response;

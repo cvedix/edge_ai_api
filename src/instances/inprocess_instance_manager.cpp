@@ -277,8 +277,8 @@ InProcessInstanceManager::getInstanceStatistics(const std::string &instanceId) {
 }
 
 std::string
-InProcessInstanceManager::getLastFrame(const std::string &instanceId) const {
-  return registry_.getLastFrame(instanceId);
+InProcessInstanceManager::getLastFrame(const std::string &instanceId, const std::string &frameType) const {
+  return registry_.getLastFrame(instanceId, frameType);
 }
 
 Json::Value InProcessInstanceManager::getInstanceConfig(

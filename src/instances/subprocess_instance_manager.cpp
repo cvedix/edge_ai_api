@@ -1091,20 +1091,21 @@ SubprocessInstanceManager::getInstanceStatistics(
 }
 
 std::string
-SubprocessInstanceManager::getLastFrame(const std::string &instanceId) const {
+SubprocessInstanceManager::getLastFrame(const std::string &instanceId, const std::string &frameType) const {
   // Don't check isWorkerReady here - sendToWorker handles worker state check
   // and accepts both READY and BUSY states, so frame can be retrieved
   // even while pipeline is starting or other operations are in progress
 
   std::cout
       << "[SubprocessInstanceManager] getLastFrame() called for instance: "
-      << instanceId << std::endl;
+      << instanceId << ", frameType: " << frameType << std::endl;
 
   // Send GET_LAST_FRAME command to worker
   // Use configurable timeout for API calls (default: 5 seconds)
   worker::IPCMessage msg;
   msg.type = worker::MessageType::GET_LAST_FRAME;
   msg.payload["instance_id"] = instanceId;
+  msg.payload["type"] = frameType;
 
   std::cout << "[SubprocessInstanceManager] Sending GET_LAST_FRAME IPC message "
                "to worker for instance: "

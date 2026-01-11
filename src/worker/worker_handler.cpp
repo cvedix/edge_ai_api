@@ -809,9 +809,15 @@ IPCMessage WorkerHandler::handleGetStatistics(const IPCMessage & /*msg*/) {
   return response;
 }
 
-IPCMessage WorkerHandler::handleGetLastFrame(const IPCMessage & /*msg*/) {
+IPCMessage WorkerHandler::handleGetLastFrame(const IPCMessage &msg) {
   std::cout << "[Worker:" << instance_id_ << "] handleGetLastFrame() called"
             << std::endl;
+
+  // Parse frame type parameter (default: "output" for backward compatibility)
+  std::string frame_type = "output";
+  if (msg.payload.isMember("type") && msg.payload["type"].isString()) {
+    frame_type = msg.payload["type"].asString();
+  }
 
   IPCMessage response;
   response.type = MessageType::GET_LAST_FRAME_RESPONSE;
@@ -821,18 +827,25 @@ IPCMessage WorkerHandler::handleGetLastFrame(const IPCMessage & /*msg*/) {
 
   std::lock_guard<std::mutex> lock(frame_mutex_);
 
-  std::cout << "[Worker:" << instance_id_
-            << "] handleGetLastFrame() - Frame cache state: "
-            << "has_frame_=" << has_frame_
-            << ", last_frame_=" << (last_frame_ ? "valid" : "null")
-            << std::endl;
+  // Determine which frame to return based on type parameter
+  bool use_input = (frame_type == "input");
+  bool has_frame = use_input ? has_input_frame_ : has_frame_;
+  std::shared_ptr<cv::Mat> frame_to_use =
+      use_input ? last_input_frame_ : last_frame_;
+  auto frame_timestamp =
+      use_input ? last_input_frame_timestamp_ : last_frame_timestamp_;
 
-  if (has_frame_ && last_frame_ && !last_frame_->empty()) {
+  std::cout << "[Worker:" << instance_id_
+            << "] handleGetLastFrame() - Frame cache state: type=" << frame_type
+            << ", has_frame=" << has_frame
+            << ", frame_ptr=" << (frame_to_use ? "valid" : "null") << std::endl;
+
+  if (has_frame && frame_to_use && !frame_to_use->empty()) {
     // Check if frame is stale (older than configured threshold)
     // This ensures we only return recent frames from active video streams
     auto now = std::chrono::steady_clock::now();
     auto frame_age = std::chrono::duration_cast<std::chrono::seconds>(
-        now - last_frame_timestamp_);
+        now - frame_timestamp);
     const int MAX_FRAME_AGE_SECONDS = TimeoutConstants::getMaxFrameAgeSeconds();
 
     if (frame_age.count() > MAX_FRAME_AGE_SECONDS) {
@@ -845,16 +858,17 @@ IPCMessage WorkerHandler::handleGetLastFrame(const IPCMessage & /*msg*/) {
       data["has_frame"] = false;
     } else {
       std::cout << "[Worker:" << instance_id_
-                << "] handleGetLastFrame() - Frame available: "
-                << "size=" << last_frame_->cols << "x" << last_frame_->rows
-                << ", channels=" << last_frame_->channels()
-                << ", type=" << last_frame_->type()
+                << "] handleGetLastFrame() - Frame available (type=" << frame_type
+                << "): "
+                << "size=" << frame_to_use->cols << "x" << frame_to_use->rows
+                << ", channels=" << frame_to_use->channels()
+                << ", type=" << frame_to_use->type()
                 << ", age=" << frame_age.count() << " seconds" << std::endl;
 
       std::cout << "[Worker:" << instance_id_
                 << "] handleGetLastFrame() - Encoding frame to base64..."
                 << std::endl;
-      std::string encoded = encodeFrameToBase64(*last_frame_);
+      std::string encoded = encodeFrameToBase64(*frame_to_use);
       data["frame"] = encoded;
       data["has_frame"] = true;
 
@@ -865,18 +879,19 @@ IPCMessage WorkerHandler::handleGetLastFrame(const IPCMessage & /*msg*/) {
     }
   } else {
     std::cout << "[Worker:" << instance_id_
-              << "] handleGetLastFrame() - No frame available" << std::endl;
-    if (!has_frame_) {
+              << "] handleGetLastFrame() - No frame available (type="
+              << frame_type << ")" << std::endl;
+    if (!has_frame) {
       std::cout << "[Worker:" << instance_id_
-                << "] handleGetLastFrame() - Reason: has_frame_=false"
+                << "] handleGetLastFrame() - Reason: has_frame=" << has_frame
                 << std::endl;
-    } else if (!last_frame_) {
+    } else if (!frame_to_use) {
       std::cout << "[Worker:" << instance_id_
-                << "] handleGetLastFrame() - Reason: last_frame_ is null"
+                << "] handleGetLastFrame() - Reason: frame_ptr is null"
                 << std::endl;
-    } else if (last_frame_->empty()) {
+    } else if (frame_to_use->empty()) {
       std::cout << "[Worker:" << instance_id_
-                << "] handleGetLastFrame() - Reason: last_frame_ is empty"
+                << "] handleGetLastFrame() - Reason: frame is empty"
                 << std::endl;
     }
     data["frame"] = "";
@@ -1579,11 +1594,8 @@ void WorkerHandler::setupFrameCaptureHook() {
     std::cout << "[Worker:" << instance_id_
               << "] ✓ Frame capture hook setup completed on app_des_node"
               << std::endl;
-    return;
-  }
-
-  // If no app_des_node found, log warning
-  if (!appDesNode) {
+  } else {
+    // If no app_des_node found, log warning
     std::cerr << "[Worker:" << instance_id_
               << "] ⚠ Warning: No app_des_node found in pipeline" << std::endl;
     std::cerr << "[Worker:" << instance_id_
@@ -1594,6 +1606,59 @@ void WorkerHandler::setupFrameCaptureHook() {
               << "] Pipeline should have app_des_node automatically added by "
                  "PipelineBuilder, but it wasn't found."
               << std::endl;
+  }
+
+  // Setup hook on source node (first node) to capture input frames
+  if (!pipeline_nodes_.empty()) {
+    auto sourceNode = pipeline_nodes_[0];
+    if (sourceNode) {
+      std::cout << "[Worker:" << instance_id_
+                << "] Setting up input frame capture hook on source node"
+                << std::endl;
+
+      sourceNode->set_meta_arriving_hooker([this](std::string /*node_name*/,
+                                                   int /*queue_size*/,
+                                                   std::shared_ptr<
+                                                       cvedix_objects::cvedix_meta>
+                                                       meta) {
+        try {
+          if (!meta) {
+            return;
+          }
+
+          // Only capture FRAME meta types (input frames before processing)
+          if (meta->meta_type == cvedix_objects::cvedix_meta_type::FRAME) {
+            auto frame_meta =
+                std::dynamic_pointer_cast<cvedix_objects::cvedix_frame_meta>(
+                    meta);
+            if (!frame_meta) {
+              return;
+            }
+
+            // Use frame_meta->frame as input frame (raw, before AI processing)
+            if (!frame_meta->frame.empty()) {
+              updateInputFrameCache(frame_meta->frame);
+            }
+          }
+        } catch (const std::exception &e) {
+          // Throttle exception logging to avoid performance impact
+          static thread_local uint64_t exception_count = 0;
+          exception_count++;
+          if (exception_count % 100 == 1) {
+            std::cerr << "[Worker:" << instance_id_
+                      << "] [ERROR] Exception in input frame capture hook "
+                         "(count: "
+                      << exception_count << "): " << e.what() << std::endl;
+          }
+        } catch (...) {
+          // Ignore unknown exceptions
+        }
+      });
+
+      std::cout << "[Worker:" << instance_id_
+                << "] Input frame capture hook configured on source node"
+                << std::endl;
+    }
   }
 }
 
@@ -1682,6 +1747,21 @@ void WorkerHandler::updateFrameCache(const cv::Mat &frame) {
   if (!frame.empty()) {
     resolution_ = std::to_string(frame.cols) + "x" + std::to_string(frame.rows);
   }
+}
+
+void WorkerHandler::updateInputFrameCache(const cv::Mat &frame) {
+  // OPTIMIZATION: Use shared_ptr instead of clone() to avoid expensive memory
+  // copy
+  auto frame_ptr = std::make_shared<cv::Mat>(frame);
+  auto now = std::chrono::steady_clock::now();
+
+  {
+    std::lock_guard<std::mutex> lock(frame_mutex_);
+    last_input_frame_ = frame_ptr; // Shared ownership - no copy!
+    has_input_frame_ = true;
+    last_input_frame_timestamp_ = now; // Update timestamp when frame is cached
+  }
+  // Lock released immediately after pointer assignment
 }
 
 std::string WorkerHandler::encodeFrameToBase64(const cv::Mat &frame,

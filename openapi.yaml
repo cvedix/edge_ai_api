@@ -4298,16 +4298,21 @@ paths:
     get:
       summary: Get last frame from instance
       description: |
-        Returns the last processed frame from a running instance. The frame is encoded as JPEG and returned as a base64-encoded string.
+        Returns the last frame from a running instance. The frame is encoded as JPEG and returned as a base64-encoded string.
+
+        **Frame Types:**
+        - `output` (default): Returns the processed frame after AI processing (includes OSD/detection overlays)
+        - `input`: Returns the raw input frame before AI processing (from source node)
 
         **Features:**
-        - Frame is captured from the pipeline after processing (includes OSD/detection overlays)
+        - Frame is captured from the pipeline after processing (output type) or from source node (input type)
         - Frame is automatically cached when pipeline processes new frames
         - Frame cache is automatically cleaned up when instance stops or is deleted
 
         **Important Notes:**
-        - Frame capture only works if the pipeline has an `app_des_node`
-        - If pipeline doesn't have `app_des_node`, frame will be empty string
+        - Frame capture only works if the pipeline has an `app_des_node` (for output type)
+        - For input type, frame is captured from source node
+        - If pipeline doesn't have required nodes, frame will be empty string
         - Instance must be running to have a frame
         - Frame is cached automatically each time pipeline processes a new frame
       operationId: getLastFrame
@@ -4320,6 +4325,19 @@ paths:
           schema:
             type: string
           description: Instance ID (UUID)
+        - name: type
+          in: query
+          required: false
+          schema:
+            type: string
+            enum:
+              - input
+              - output
+            default: output
+          description: |
+            Frame type to retrieve:
+            - `input`: Raw input frame before AI processing (from source node)
+            - `output`: Processed frame after AI processing with overlays (default)
       responses:
         '200':
           description: Last frame retrieved successfully

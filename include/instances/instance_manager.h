@@ -108,9 +108,10 @@ public:
   /**
    * @brief Get last frame from instance (base64 JPEG)
    * @param instanceId Instance ID
+   * @param frameType Frame type: "input" for raw input frame, "output" for processed frame (default: "output")
    * @return Base64-encoded frame or empty string
    */
-  virtual std::string getLastFrame(const std::string &instanceId) const = 0;
+  virtual std::string getLastFrame(const std::string &instanceId, const std::string &frameType = "output") const = 0;
 
   /**
    * @brief Get instance config as JSON

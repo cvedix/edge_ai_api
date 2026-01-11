@@ -131,9 +131,13 @@ private:
   // performance
   mutable std::mutex frame_mutex_;
   std::shared_ptr<cv::Mat> last_frame_; // Changed from cv::Mat to shared_ptr
+  std::shared_ptr<cv::Mat> last_input_frame_; // Input frame (raw, before AI processing)
   bool has_frame_ = false;
+  bool has_input_frame_ = false;
   std::chrono::steady_clock::time_point
       last_frame_timestamp_; // Track when frame was last updated
+  std::chrono::steady_clock::time_point
+      last_input_frame_timestamp_; // Track when input frame was last updated
 
   /**
    * @brief Initialize dependencies (solution registry, pipeline builder)
@@ -215,6 +219,7 @@ private:
    * @brief Update frame cache
    */
   void updateFrameCache(const cv::Mat &frame);
+  void updateInputFrameCache(const cv::Mat &frame);
 
   /**
    * @brief Encode frame to base64 JPEG

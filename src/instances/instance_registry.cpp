@@ -5441,9 +5441,12 @@ InstanceRegistry::getInstanceStatistics(const std::string &instanceId) {
 }
 
 std::string
-InstanceRegistry::getLastFrame(const std::string &instanceId) const {
+InstanceRegistry::getLastFrame(const std::string &instanceId, const std::string &frameType) const {
   std::cout << "[InstanceRegistry] getLastFrame() called for instance: "
-            << instanceId << std::endl;
+            << instanceId << ", frameType: " << frameType << std::endl;
+
+  // Determine which frame to return based on type parameter
+  bool use_input = (frameType == "input");
 
   // PHASE 1 OPTIMIZATION: Get shared_ptr copy quickly, release lock
   // CRITICAL: Use timeout to prevent blocking if mutex is locked
@@ -5473,21 +5476,21 @@ InstanceRegistry::getLastFrame(const std::string &instanceId) const {
       return ""; // No frame cached
     }
 
-    const FrameCache &cache = it->second;
+    FrameCache &cache = it->second;
+    bool has_frame = use_input ? cache.has_input_frame : cache.has_frame;
+    frame_ptr = use_input ? cache.input_frame : cache.frame;
+
     std::cout
-        << "[InstanceRegistry] getLastFrame() - Cache entry found: has_frame="
-        << cache.has_frame << ", frame_ptr=" << (cache.frame ? "valid" : "null")
+        << "[InstanceRegistry] getLastFrame() - Cache entry found: type=" << frameType
+        << ", has_frame=" << has_frame << ", frame_ptr=" << (frame_ptr ? "valid" : "null")
         << std::endl;
 
-    if (!cache.has_frame || !cache.frame) {
+    if (!has_frame || !frame_ptr) {
       std::cout << "[InstanceRegistry] getLastFrame() - Cache entry exists but "
-                   "no frame available"
+                   "no frame available (type=" << frameType << ")"
                 << std::endl;
       return ""; // No frame cached
     }
-
-    // Get shared_ptr copy (reference counting, no copy of Mat data)
-    frame_ptr = cache.frame;
   }
   // Lock released - frame_ptr keeps frame alive via reference counting
 
@@ -5574,6 +5577,26 @@ void InstanceRegistry::updateFrameCache(const std::string &instanceId,
       }
     }
   }
+}
+
+void InstanceRegistry::updateInputFrameCache(const std::string &instanceId,
+                                            const cv::Mat &frame) {
+  if (frame.empty()) {
+    return;
+  }
+
+  // PHASE 1 OPTIMIZATION: Create shared_ptr OUTSIDE lock to minimize lock hold time
+  FramePtr frame_ptr = std::make_shared<cv::Mat>(frame);
+  auto now = std::chrono::steady_clock::now();
+
+  {
+    std::lock_guard<std::timed_mutex> lock(frame_cache_mutex_);
+    FrameCache &cache = frame_caches_[instanceId];
+    cache.input_frame = frame_ptr; // Shared ownership - no copy!
+    cache.has_input_frame = true;
+    cache.input_frame_timestamp = now;
+  }
+  // Lock released immediately after pointer assignment
 }
 
 void InstanceRegistry::setupFrameCaptureHook(
@@ -5878,17 +5901,67 @@ void InstanceRegistry::setupFrameCaptureHook(
     std::cerr << "[InstanceRegistry] ✓ Frame capture hook setup completed for "
                  "instance: "
               << instanceId << std::endl;
-    return;
-  }
-
-  // If no app_des_node found, log warning
-  if (!appDesNode) {
+  } else {
+    // If no app_des_node found, log warning
     std::cerr << "[InstanceRegistry] ⚠ Warning: No app_des_node found in "
                  "pipeline for instance: "
               << instanceId << std::endl;
     std::cerr << "[InstanceRegistry] Frame capture will not be available. "
                  "Consider adding app_des_node to pipeline."
               << std::endl;
+  }
+
+  // Setup hook on source node (first node) to capture input frames
+  if (!nodes.empty()) {
+    auto sourceNode = nodes[0];
+    if (sourceNode) {
+      std::cout << "[InstanceRegistry] Setting up input frame capture hook on "
+                   "source node for instance: "
+                << instanceId << std::endl;
+
+      sourceNode->set_meta_arriving_hooker([this, instanceId](
+                                              std::string /*node_name*/,
+                                              int /*queue_size*/,
+                                              std::shared_ptr<
+                                                  cvedix_objects::cvedix_meta>
+                                                  meta) {
+        try {
+          if (!meta) {
+            return;
+          }
+
+          // Only capture FRAME meta types (input frames before processing)
+          if (meta->meta_type == cvedix_objects::cvedix_meta_type::FRAME) {
+            auto frame_meta =
+                std::dynamic_pointer_cast<cvedix_objects::cvedix_frame_meta>(
+                    meta);
+            if (!frame_meta) {
+              return;
+            }
+
+            // Use frame_meta->frame as input frame (raw, before AI processing)
+            if (!frame_meta->frame.empty()) {
+              updateInputFrameCache(instanceId, frame_meta->frame);
+            }
+          }
+        } catch (const std::exception &e) {
+          // Throttle exception logging to avoid performance impact
+          static thread_local uint64_t exception_count = 0;
+          exception_count++;
+          if (exception_count % 100 == 1) {
+            std::cerr << "[InstanceRegistry] [ERROR] Exception in input frame "
+                         "capture hook (count: "
+                      << exception_count << "): " << e.what() << std::endl;
+          }
+        } catch (...) {
+          // Ignore unknown exceptions
+        }
+      });
+
+      std::cout << "[InstanceRegistry] Input frame capture hook configured on "
+                   "source node for instance: "
+                << instanceId << std::endl;
+    }
   }
 }
 
