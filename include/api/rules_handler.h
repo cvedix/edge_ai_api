@@ -33,6 +33,16 @@ public:
                 "/v1/core/instance/{instanceId}/rules", Delete);
   ADD_METHOD_TO(RulesHandler::handleOptions,
                 "/v1/core/instance/{instanceId}/rules", Options);
+  ADD_METHOD_TO(RulesHandler::getEntity,
+                "/v1/core/instance/{instanceId}/rules/entities/{entityUuid}", Get);
+  ADD_METHOD_TO(RulesHandler::createEntity,
+                "/v1/core/instance/{instanceId}/rules/entities", Post);
+  ADD_METHOD_TO(RulesHandler::updateEntity,
+                "/v1/core/instance/{instanceId}/rules/entities/{entityUuid}", Put);
+  ADD_METHOD_TO(RulesHandler::deleteEntity,
+                "/v1/core/instance/{instanceId}/rules/entities/{entityUuid}", Delete);
+  ADD_METHOD_TO(RulesHandler::toggleEntityEnabled,
+                "/v1/core/instance/{instanceId}/rules/entities/{entityUuid}/enable", Patch);
   METHOD_LIST_END
 
   /**
@@ -68,6 +78,41 @@ public:
    */
   void handleOptions(const HttpRequestPtr &req,
                      std::function<void(const HttpResponsePtr &)> &&callback);
+
+  /**
+   * @brief Handle GET /v1/core/instance/{instanceId}/rules/entities/{entityUuid}
+   * Gets a specific entity (zone or line) by UUID
+   */
+  void getEntity(const HttpRequestPtr &req,
+                 std::function<void(const HttpResponsePtr &)> &&callback);
+
+  /**
+   * @brief Handle POST /v1/core/instance/{instanceId}/rules/entities
+   * Creates a new entity (zone or line)
+   */
+  void createEntity(const HttpRequestPtr &req,
+                   std::function<void(const HttpResponsePtr &)> &&callback);
+
+  /**
+   * @brief Handle PUT /v1/core/instance/{instanceId}/rules/entities/{entityUuid}
+   * Updates a specific entity (zone or line) by UUID
+   */
+  void updateEntity(const HttpRequestPtr &req,
+                   std::function<void(const HttpResponsePtr &)> &&callback);
+
+  /**
+   * @brief Handle DELETE /v1/core/instance/{instanceId}/rules/entities/{entityUuid}
+   * Deletes a specific entity (zone or line) by UUID
+   */
+  void deleteEntity(const HttpRequestPtr &req,
+                   std::function<void(const HttpResponsePtr &)> &&callback);
+
+  /**
+   * @brief Handle PATCH /v1/core/instance/{instanceId}/rules/entities/{entityUuid}/enable
+   * Enables or disables a specific entity (zone or line) by UUID
+   */
+  void toggleEntityEnabled(const HttpRequestPtr &req,
+                          std::function<void(const HttpResponsePtr &)> &&callback);
 
   /**
    * @brief Set instance manager (dependency injection)
@@ -132,6 +177,44 @@ private:
    */
   bool applyLinesToInstance(const std::string &instanceId,
                             const Json::Value &lines) const;
+
+  /**
+   * @brief Find entity (zone or line) by UUID in rules
+   * @param rules Rules JSON object (with zones and lines arrays)
+   * @param entityUuid Entity UUID to find
+   * @return JSON object of entity if found, null JSON value otherwise
+   */
+  Json::Value findEntityByUuid(const Json::Value &rules,
+                               const std::string &entityUuid) const;
+
+  /**
+   * @brief Determine if entity is a zone or line
+   * @param rules Rules JSON object
+   * @param entityUuid Entity UUID
+   * @return "zone" or "line" if found, empty string otherwise
+   */
+  std::string getEntityType(const Json::Value &rules,
+                            const std::string &entityUuid) const;
+
+  /**
+   * @brief Remove entity from rules by UUID
+   * @param rules Rules JSON object (will be modified)
+   * @param entityUuid Entity UUID to remove
+   * @return true if entity was found and removed, false otherwise
+   */
+  bool removeEntityByUuid(Json::Value &rules,
+                          const std::string &entityUuid) const;
+
+  /**
+   * @brief Update entity in rules by UUID
+   * @param rules Rules JSON object (will be modified)
+   * @param entityUuid Entity UUID to update
+   * @param newEntity New entity JSON object
+   * @return true if entity was found and updated, false otherwise
+   */
+  bool updateEntityByUuid(Json::Value &rules,
+                          const std::string &entityUuid,
+                          const Json::Value &newEntity) const;
 };
 
 

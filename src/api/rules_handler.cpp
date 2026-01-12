@@ -181,8 +181,26 @@ bool RulesHandler::saveRulesToConfig(const std::string &instanceId,
     info.additionalParams["RulesMetadata"] = metadataJson;
   }
 
-  // Update instance in manager (this will trigger save to storage)
-  instance_manager_->updateInstance(instanceId, info);
+  // Update instance in manager using updateInstanceFromConfig
+  // Convert additionalParams to JSON config format
+  Json::Value configUpdate(Json::objectValue);
+  configUpdate["InstanceId"] = instanceId;
+  Json::Value additionalParams(Json::objectValue);
+  for (const auto &pair : info.additionalParams) {
+    additionalParams[pair.first] = pair.second;
+  }
+  configUpdate["AdditionalParams"] = additionalParams;
+
+  // Note: updateInstanceFromConfig will merge AdditionalParams correctly,
+  // preserving other fields and saving to storage if instance is persistent
+  if (!instance_manager_->updateInstanceFromConfig(instanceId, configUpdate)) {
+    if (isApiLoggingEnabled()) {
+      PLOG_WARNING << "[API] saveRulesToConfig: updateInstanceFromConfig failed "
+                      "for instance "
+                   << instanceId;
+    }
+    return false;
+  }
 
   return true;
 }
@@ -1060,16 +1078,779 @@ void RulesHandler::deleteRules(
 }
 
 void RulesHandler::handleOptions(
-    const HttpRequestPtr &req,
+    const HttpRequestPtr & /* req */,
     std::function<void(const HttpResponsePtr &)> &&callback) {
   auto resp = HttpResponse::newHttpResponse();
   resp->setStatusCode(k204NoContent);
   resp->addHeader("Access-Control-Allow-Origin", "*");
   resp->addHeader("Access-Control-Allow-Methods",
-                  "GET, POST, PUT, DELETE, OPTIONS");
+                  "GET, POST, PUT, DELETE, OPTIONS, PATCH");
   resp->addHeader("Access-Control-Allow-Headers",
                   "Content-Type, Authorization");
   resp->addHeader("Access-Control-Max-Age", "3600");
   callback(resp);
+}
+
+Json::Value RulesHandler::findEntityByUuid(const Json::Value &rules,
+                                            const std::string &entityUuid) const {
+  // Search in zones
+  if (rules.isMember("zones") && rules["zones"].isArray()) {
+    for (Json::ArrayIndex i = 0; i < rules["zones"].size(); ++i) {
+      const Json::Value &zone = rules["zones"][i];
+      if (!zone.isObject()) {
+        continue;
+      }
+      std::string id;
+      if (zone.isMember("id") && zone["id"].isString()) {
+        id = zone["id"].asString();
+      } else if (zone.isMember("entityUuid") && zone["entityUuid"].isString()) {
+        id = zone["entityUuid"].asString();
+      }
+      if (id == entityUuid) {
+        return zone;
+      }
+    }
+  }
+
+  // Search in lines
+  if (rules.isMember("lines") && rules["lines"].isArray()) {
+    for (Json::ArrayIndex i = 0; i < rules["lines"].size(); ++i) {
+      const Json::Value &line = rules["lines"][i];
+      if (!line.isObject()) {
+        continue;
+      }
+      std::string id;
+      if (line.isMember("id") && line["id"].isString()) {
+        id = line["id"].asString();
+      } else if (line.isMember("entityUuid") && line["entityUuid"].isString()) {
+        id = line["entityUuid"].asString();
+      }
+      if (id == entityUuid) {
+        return line;
+      }
+    }
+  }
+
+  return Json::Value(); // Return null JSON value if not found
+}
+
+std::string RulesHandler::getEntityType(const Json::Value &rules,
+                                         const std::string &entityUuid) const {
+  // Check in zones
+  if (rules.isMember("zones") && rules["zones"].isArray()) {
+    for (Json::ArrayIndex i = 0; i < rules["zones"].size(); ++i) {
+      const Json::Value &zone = rules["zones"][i];
+      if (!zone.isObject()) {
+        continue;
+      }
+      std::string id;
+      if (zone.isMember("id") && zone["id"].isString()) {
+        id = zone["id"].asString();
+      } else if (zone.isMember("entityUuid") && zone["entityUuid"].isString()) {
+        id = zone["entityUuid"].asString();
+      }
+      if (id == entityUuid) {
+        return "zone";
+      }
+    }
+  }
+
+  // Check in lines
+  if (rules.isMember("lines") && rules["lines"].isArray()) {
+    for (Json::ArrayIndex i = 0; i < rules["lines"].size(); ++i) {
+      const Json::Value &line = rules["lines"][i];
+      if (!line.isObject()) {
+        continue;
+      }
+      std::string id;
+      if (line.isMember("id") && line["id"].isString()) {
+        id = line["id"].asString();
+      } else if (line.isMember("entityUuid") && line["entityUuid"].isString()) {
+        id = line["entityUuid"].asString();
+      }
+      if (id == entityUuid) {
+        return "line";
+      }
+    }
+  }
+
+  return ""; // Return empty string if not found
+}
+
+bool RulesHandler::removeEntityByUuid(Json::Value &rules,
+                                      const std::string &entityUuid) const {
+  // Remove from zones
+  if (rules.isMember("zones") && rules["zones"].isArray()) {
+    Json::Value newZones(Json::arrayValue);
+    bool found = false;
+    for (Json::ArrayIndex i = 0; i < rules["zones"].size(); ++i) {
+      const Json::Value &zone = rules["zones"][i];
+      if (!zone.isObject()) {
+        newZones.append(zone);
+        continue;
+      }
+      std::string id;
+      if (zone.isMember("id") && zone["id"].isString()) {
+        id = zone["id"].asString();
+      } else if (zone.isMember("entityUuid") && zone["entityUuid"].isString()) {
+        id = zone["entityUuid"].asString();
+      }
+      if (id != entityUuid) {
+        newZones.append(zone);
+      } else {
+        found = true;
+      }
+    }
+    if (found) {
+      rules["zones"] = newZones;
+      return true;
+    }
+  }
+
+  // Remove from lines
+  if (rules.isMember("lines") && rules["lines"].isArray()) {
+    Json::Value newLines(Json::arrayValue);
+    bool found = false;
+    for (Json::ArrayIndex i = 0; i < rules["lines"].size(); ++i) {
+      const Json::Value &line = rules["lines"][i];
+      if (!line.isObject()) {
+        newLines.append(line);
+        continue;
+      }
+      std::string id;
+      if (line.isMember("id") && line["id"].isString()) {
+        id = line["id"].asString();
+      } else if (line.isMember("entityUuid") && line["entityUuid"].isString()) {
+        id = line["entityUuid"].asString();
+      }
+      if (id != entityUuid) {
+        newLines.append(line);
+      } else {
+        found = true;
+      }
+    }
+    if (found) {
+      rules["lines"] = newLines;
+      return true;
+    }
+  }
+
+  return false;
+}
+
+bool RulesHandler::updateEntityByUuid(Json::Value &rules,
+                                      const std::string &entityUuid,
+                                      const Json::Value &newEntity) const {
+  // Update in zones
+  if (rules.isMember("zones") && rules["zones"].isArray()) {
+    for (Json::ArrayIndex i = 0; i < rules["zones"].size(); ++i) {
+      Json::Value &zone = rules["zones"][i];
+      if (!zone.isObject()) {
+        continue;
+      }
+      std::string id;
+      if (zone.isMember("id") && zone["id"].isString()) {
+        id = zone["id"].asString();
+      } else if (zone.isMember("entityUuid") && zone["entityUuid"].isString()) {
+        id = zone["entityUuid"].asString();
+      }
+      if (id == entityUuid) {
+        // Update entity, ensure id is preserved
+        zone = newEntity;
+        if (!zone.isMember("id")) {
+          zone["id"] = entityUuid;
+        }
+        return true;
+      }
+    }
+  }
+
+  // Update in lines
+  if (rules.isMember("lines") && rules["lines"].isArray()) {
+    for (Json::ArrayIndex i = 0; i < rules["lines"].size(); ++i) {
+      Json::Value &line = rules["lines"][i];
+      if (!line.isObject()) {
+        continue;
+      }
+      std::string id;
+      if (line.isMember("id") && line["id"].isString()) {
+        id = line["id"].asString();
+      } else if (line.isMember("entityUuid") && line["entityUuid"].isString()) {
+        id = line["entityUuid"].asString();
+      }
+      if (id == entityUuid) {
+        // Update entity, ensure id is preserved
+        line = newEntity;
+        if (!line.isMember("id")) {
+          line["id"] = entityUuid;
+        }
+        return true;
+      }
+    }
+  }
+
+  return false;
+}
+
+void RulesHandler::getEntity(
+    const HttpRequestPtr &req,
+    std::function<void(const HttpResponsePtr &)> &&callback) {
+  auto start_time = std::chrono::steady_clock::now();
+
+  std::string instanceId = extractInstanceId(req);
+  std::string entityUuid = req->getParameter("entityUuid");
+
+  if (isApiLoggingEnabled()) {
+    PLOG_INFO << "[API] GET /v1/core/instance/" << instanceId
+              << "/rules/entities/" << entityUuid;
+  }
+
+  try {
+    if (!instance_manager_) {
+      callback(createErrorResponse(500, "Internal server error",
+                                   "Instance manager not initialized"));
+      return;
+    }
+
+    if (instanceId.empty() || entityUuid.empty()) {
+      callback(createErrorResponse(400, "Bad request",
+                                   "Instance ID and entity UUID are required"));
+      return;
+    }
+
+    // Check if instance exists
+    auto optInfo = instance_manager_->getInstance(instanceId);
+    if (!optInfo.has_value()) {
+      callback(createErrorResponse(404, "Not found",
+                                   "Instance not found: " + instanceId));
+      return;
+    }
+
+    // Load rules
+    Json::Value rules = loadRulesFromConfig(instanceId);
+
+    // Find entity
+    Json::Value entity = findEntityByUuid(rules, entityUuid);
+    if (entity.isNull()) {
+      callback(createErrorResponse(404, "Not found",
+                                   "Entity not found: " + entityUuid));
+      return;
+    }
+
+    auto end_time = std::chrono::steady_clock::now();
+    auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(
+        end_time - start_time);
+
+    if (isApiLoggingEnabled()) {
+      PLOG_INFO << "[API] GET /v1/core/instance/" << instanceId
+                << "/rules/entities/" << entityUuid << " - Success - "
+                << duration.count() << "ms";
+    }
+
+    callback(createSuccessResponse(entity, 200));
+  } catch (const std::exception &e) {
+    if (isApiLoggingEnabled()) {
+      PLOG_ERROR << "[API] GET /v1/core/instance/" << instanceId
+                 << "/rules/entities/" << entityUuid
+                 << " - Exception: " << e.what();
+    }
+    callback(createErrorResponse(500, "Internal server error",
+                                 "Unknown error occurred"));
+  }
+}
+
+void RulesHandler::createEntity(
+    const HttpRequestPtr &req,
+    std::function<void(const HttpResponsePtr &)> &&callback) {
+  auto start_time = std::chrono::steady_clock::now();
+
+  std::string instanceId = extractInstanceId(req);
+
+  if (isApiLoggingEnabled()) {
+    PLOG_INFO << "[API] POST /v1/core/instance/" << instanceId
+              << "/rules/entities - Create entity";
+  }
+
+  try {
+    if (!instance_manager_) {
+      callback(createErrorResponse(500, "Internal server error",
+                                   "Instance manager not initialized"));
+      return;
+    }
+
+    if (instanceId.empty()) {
+      callback(createErrorResponse(400, "Bad request",
+                                   "Instance ID is required"));
+      return;
+    }
+
+    // Check if instance exists
+    auto optInfo = instance_manager_->getInstance(instanceId);
+    if (!optInfo.has_value()) {
+      callback(createErrorResponse(404, "Not found",
+                                   "Instance not found: " + instanceId));
+      return;
+    }
+
+    // Parse JSON body
+    auto json = req->getJsonObject();
+    if (!json) {
+      callback(createErrorResponse(400, "Bad request",
+                                   "Request body must be valid JSON"));
+      return;
+    }
+
+    Json::Value newEntity = *json;
+
+    // Determine if entity is zone or line (check for type field or coordinates length)
+    bool isZone = false;
+    if (newEntity.isMember("type") && newEntity["type"].isString()) {
+      std::string type = newEntity["type"].asString();
+      // Zone types typically end with "Areas" or are "stopZone", "jamZone"
+      if (type.find("Areas") != std::string::npos || type == "stopZone" ||
+          type == "jamZone") {
+        isZone = true;
+      }
+    } else if (newEntity.isMember("coordinates") &&
+               newEntity["coordinates"].isArray()) {
+      // If coordinates has more than 2 points, it's likely a zone (polygon)
+      // If coordinates has exactly 2 points, it's likely a line
+      if (newEntity["coordinates"].size() > 2) {
+        isZone = true;
+      }
+    } else {
+      // Default: assume it's a line if no clear indication
+      isZone = false;
+    }
+
+    // Ensure entity has an id
+    std::string entityUuid;
+    if (newEntity.isMember("id") && newEntity["id"].isString()) {
+      entityUuid = newEntity["id"].asString();
+    } else if (newEntity.isMember("entityUuid") &&
+               newEntity["entityUuid"].isString()) {
+      entityUuid = newEntity["entityUuid"].asString();
+      newEntity["id"] = entityUuid;
+    } else {
+      // Generate UUID if not provided
+      // For simplicity, use a simple UUID generator or require client to provide
+      callback(createErrorResponse(400, "Bad request",
+                                   "Entity must have 'id' or 'entityUuid' field"));
+      return;
+    }
+
+    // Validate entity
+    std::vector<std::string> validationErrors;
+    if (isZone) {
+      if (!RuleTypeValidator::validateZone(newEntity, validationErrors)) {
+        std::string errorMessage = "Validation failed:\n";
+        for (const auto &error : validationErrors) {
+          errorMessage += "  - " + error + "\n";
+        }
+        callback(createErrorResponse(400, "Bad request", errorMessage));
+        return;
+      }
+    } else {
+      if (!RuleTypeValidator::validateLine(newEntity, validationErrors)) {
+        std::string errorMessage = "Validation failed:\n";
+        for (const auto &error : validationErrors) {
+          errorMessage += "  - " + error + "\n";
+        }
+        callback(createErrorResponse(400, "Bad request", errorMessage));
+        return;
+      }
+    }
+
+    // Load existing rules
+    Json::Value rules = loadRulesFromConfig(instanceId);
+
+    // Check if entity with same UUID already exists
+    Json::Value existingEntity = findEntityByUuid(rules, entityUuid);
+    if (!existingEntity.isNull()) {
+      callback(createErrorResponse(409, "Conflict",
+                                   "Entity with UUID " + entityUuid +
+                                       " already exists"));
+      return;
+    }
+
+    // Add entity to appropriate array
+    if (isZone) {
+      if (!rules.isMember("zones") || !rules["zones"].isArray()) {
+        rules["zones"] = Json::Value(Json::arrayValue);
+      }
+      rules["zones"].append(newEntity);
+    } else {
+      if (!rules.isMember("lines") || !rules["lines"].isArray()) {
+        rules["lines"] = Json::Value(Json::arrayValue);
+      }
+      rules["lines"].append(newEntity);
+    }
+
+    // Save rules
+    if (!saveRulesToConfig(instanceId, rules)) {
+      callback(createErrorResponse(500, "Internal server error",
+                                   "Failed to save rules to config"));
+      return;
+    }
+
+    // Process entity if instance is running
+    if (optInfo.value().running) {
+      if (isZone) {
+        RuleProcessor::processZone(instanceId, newEntity);
+      } else {
+        RuleProcessor::processLine(instanceId, newEntity);
+        applyLinesToInstance(instanceId, rules["lines"]);
+      }
+    }
+
+    auto end_time = std::chrono::steady_clock::now();
+    auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(
+        end_time - start_time);
+
+    if (isApiLoggingEnabled()) {
+      PLOG_INFO << "[API] POST /v1/core/instance/" << instanceId
+                << "/rules/entities - Success - " << duration.count() << "ms";
+    }
+
+    callback(createSuccessResponse(newEntity, 201));
+  } catch (const std::exception &e) {
+    if (isApiLoggingEnabled()) {
+      PLOG_ERROR << "[API] POST /v1/core/instance/" << instanceId
+                 << "/rules/entities - Exception: " << e.what();
+    }
+    callback(createErrorResponse(500, "Internal server error",
+                                 "Unknown error occurred"));
+  }
+}
+
+void RulesHandler::updateEntity(
+    const HttpRequestPtr &req,
+    std::function<void(const HttpResponsePtr &)> &&callback) {
+  auto start_time = std::chrono::steady_clock::now();
+
+  std::string instanceId = extractInstanceId(req);
+  std::string entityUuid = req->getParameter("entityUuid");
+
+  if (isApiLoggingEnabled()) {
+    PLOG_INFO << "[API] PUT /v1/core/instance/" << instanceId
+              << "/rules/entities/" << entityUuid << " - Update entity";
+  }
+
+  try {
+    if (!instance_manager_) {
+      callback(createErrorResponse(500, "Internal server error",
+                                   "Instance manager not initialized"));
+      return;
+    }
+
+    if (instanceId.empty() || entityUuid.empty()) {
+      callback(createErrorResponse(400, "Bad request",
+                                   "Instance ID and entity UUID are required"));
+      return;
+    }
+
+    // Check if instance exists
+    auto optInfo = instance_manager_->getInstance(instanceId);
+    if (!optInfo.has_value()) {
+      callback(createErrorResponse(404, "Not found",
+                                   "Instance not found: " + instanceId));
+      return;
+    }
+
+    // Parse JSON body
+    auto json = req->getJsonObject();
+    if (!json) {
+      callback(createErrorResponse(400, "Bad request",
+                                   "Request body must be valid JSON"));
+      return;
+    }
+
+    Json::Value updatedEntity = *json;
+
+    // Ensure entity UUID matches
+    if (updatedEntity.isMember("id") &&
+        updatedEntity["id"].asString() != entityUuid) {
+      callback(createErrorResponse(400, "Bad request",
+                                   "Entity UUID in body does not match path"));
+      return;
+    }
+    updatedEntity["id"] = entityUuid;
+
+    // Load existing rules
+    Json::Value rules = loadRulesFromConfig(instanceId);
+
+    // Check if entity exists
+    Json::Value existingEntity = findEntityByUuid(rules, entityUuid);
+    if (existingEntity.isNull()) {
+      callback(createErrorResponse(404, "Not found",
+                                   "Entity not found: " + entityUuid));
+      return;
+    }
+
+    // Determine entity type
+    std::string entityType = getEntityType(rules, entityUuid);
+    bool isZone = (entityType == "zone");
+
+    // Validate updated entity
+    std::vector<std::string> validationErrors;
+    if (isZone) {
+      if (!RuleTypeValidator::validateZone(updatedEntity, validationErrors)) {
+        std::string errorMessage = "Validation failed:\n";
+        for (const auto &error : validationErrors) {
+          errorMessage += "  - " + error + "\n";
+        }
+        callback(createErrorResponse(400, "Bad request", errorMessage));
+        return;
+      }
+    } else {
+      if (!RuleTypeValidator::validateLine(updatedEntity, validationErrors)) {
+        std::string errorMessage = "Validation failed:\n";
+        for (const auto &error : validationErrors) {
+          errorMessage += "  - " + error + "\n";
+        }
+        callback(createErrorResponse(400, "Bad request", errorMessage));
+        return;
+      }
+    }
+
+    // Update entity
+    if (!updateEntityByUuid(rules, entityUuid, updatedEntity)) {
+      callback(createErrorResponse(500, "Internal server error",
+                                   "Failed to update entity"));
+      return;
+    }
+
+    // Save rules
+    if (!saveRulesToConfig(instanceId, rules)) {
+      callback(createErrorResponse(500, "Internal server error",
+                                   "Failed to save rules to config"));
+      return;
+    }
+
+    // Process entity if instance is running
+    if (optInfo.value().running) {
+      if (isZone) {
+        RuleProcessor::processZone(instanceId, updatedEntity);
+      } else {
+        RuleProcessor::processLine(instanceId, updatedEntity);
+        applyLinesToInstance(instanceId, rules["lines"]);
+      }
+    }
+
+    auto end_time = std::chrono::steady_clock::now();
+    auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(
+        end_time - start_time);
+
+    if (isApiLoggingEnabled()) {
+      PLOG_INFO << "[API] PUT /v1/core/instance/" << instanceId
+                << "/rules/entities/" << entityUuid << " - Success - "
+                << duration.count() << "ms";
+    }
+
+    callback(createSuccessResponse(updatedEntity, 200));
+  } catch (const std::exception &e) {
+    if (isApiLoggingEnabled()) {
+      PLOG_ERROR << "[API] PUT /v1/core/instance/" << instanceId
+                 << "/rules/entities/" << entityUuid
+                 << " - Exception: " << e.what();
+    }
+    callback(createErrorResponse(500, "Internal server error",
+                                 "Unknown error occurred"));
+  }
+}
+
+void RulesHandler::deleteEntity(
+    const HttpRequestPtr &req,
+    std::function<void(const HttpResponsePtr &)> &&callback) {
+  auto start_time = std::chrono::steady_clock::now();
+
+  std::string instanceId = extractInstanceId(req);
+  std::string entityUuid = req->getParameter("entityUuid");
+
+  if (isApiLoggingEnabled()) {
+    PLOG_INFO << "[API] DELETE /v1/core/instance/" << instanceId
+              << "/rules/entities/" << entityUuid << " - Delete entity";
+  }
+
+  try {
+    if (!instance_manager_) {
+      callback(createErrorResponse(500, "Internal server error",
+                                   "Instance manager not initialized"));
+      return;
+    }
+
+    if (instanceId.empty() || entityUuid.empty()) {
+      callback(createErrorResponse(400, "Bad request",
+                                   "Instance ID and entity UUID are required"));
+      return;
+    }
+
+    // Check if instance exists
+    auto optInfo = instance_manager_->getInstance(instanceId);
+    if (!optInfo.has_value()) {
+      callback(createErrorResponse(404, "Not found",
+                                   "Instance not found: " + instanceId));
+      return;
+    }
+
+    // Load existing rules
+    Json::Value rules = loadRulesFromConfig(instanceId);
+
+    // Check if entity exists
+    Json::Value existingEntity = findEntityByUuid(rules, entityUuid);
+    if (existingEntity.isNull()) {
+      callback(createErrorResponse(404, "Not found",
+                                   "Entity not found: " + entityUuid));
+      return;
+    }
+
+    // Determine entity type
+    std::string entityType = getEntityType(rules, entityUuid);
+
+    // Remove entity
+    if (!removeEntityByUuid(rules, entityUuid)) {
+      callback(createErrorResponse(500, "Internal server error",
+                                   "Failed to remove entity"));
+      return;
+    }
+
+    // Save rules
+    if (!saveRulesToConfig(instanceId, rules)) {
+      callback(createErrorResponse(500, "Internal server error",
+                                   "Failed to save rules to config"));
+      return;
+    }
+
+    // If instance is running and entity was a line, update lines
+    if (optInfo.value().running && entityType == "line") {
+      applyLinesToInstance(instanceId, rules["lines"]);
+    }
+
+    auto end_time = std::chrono::steady_clock::now();
+    auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(
+        end_time - start_time);
+
+    if (isApiLoggingEnabled()) {
+      PLOG_INFO << "[API] DELETE /v1/core/instance/" << instanceId
+                << "/rules/entities/" << entityUuid << " - Success - "
+                << duration.count() << "ms";
+    }
+
+    callback(createSuccessResponse(Json::Value(Json::objectValue), 204));
+  } catch (const std::exception &e) {
+    if (isApiLoggingEnabled()) {
+      PLOG_ERROR << "[API] DELETE /v1/core/instance/" << instanceId
+                 << "/rules/entities/" << entityUuid
+                 << " - Exception: " << e.what();
+    }
+    callback(createErrorResponse(500, "Internal server error",
+                                 "Unknown error occurred"));
+  }
+}
+
+void RulesHandler::toggleEntityEnabled(
+    const HttpRequestPtr &req,
+    std::function<void(const HttpResponsePtr &)> &&callback) {
+  auto start_time = std::chrono::steady_clock::now();
+
+  std::string instanceId = extractInstanceId(req);
+  std::string entityUuid = req->getParameter("entityUuid");
+
+  if (isApiLoggingEnabled()) {
+    PLOG_INFO << "[API] PATCH /v1/core/instance/" << instanceId
+              << "/rules/entities/" << entityUuid << "/enable";
+  }
+
+  try {
+    if (!instance_manager_) {
+      callback(createErrorResponse(500, "Internal server error",
+                                   "Instance manager not initialized"));
+      return;
+    }
+
+    if (instanceId.empty() || entityUuid.empty()) {
+      callback(createErrorResponse(400, "Bad request",
+                                   "Instance ID and entity UUID are required"));
+      return;
+    }
+
+    // Check if instance exists
+    auto optInfo = instance_manager_->getInstance(instanceId);
+    if (!optInfo.has_value()) {
+      callback(createErrorResponse(404, "Not found",
+                                   "Instance not found: " + instanceId));
+      return;
+    }
+
+    // Parse JSON body to get enabled status
+    auto json = req->getJsonObject();
+    bool enabled = true; // Default to enabled
+    if (json && json->isMember("enabled") && (*json)["enabled"].isBool()) {
+      enabled = (*json)["enabled"].asBool();
+    } else if (json && json->isMember("enabled") &&
+               (*json)["enabled"].isString()) {
+      std::string enabledStr = (*json)["enabled"].asString();
+      enabled = (enabledStr == "true" || enabledStr == "1");
+    }
+
+    // Load existing rules
+    Json::Value rules = loadRulesFromConfig(instanceId);
+
+    // Find and update entity
+    Json::Value entity = findEntityByUuid(rules, entityUuid);
+    if (entity.isNull()) {
+      callback(createErrorResponse(404, "Not found",
+                                   "Entity not found: " + entityUuid));
+      return;
+    }
+
+    // Update enabled status
+    entity["enabled"] = enabled;
+
+    // Update entity in rules
+    if (!updateEntityByUuid(rules, entityUuid, entity)) {
+      callback(createErrorResponse(500, "Internal server error",
+                                   "Failed to update entity"));
+      return;
+    }
+
+    // Save rules
+    if (!saveRulesToConfig(instanceId, rules)) {
+      callback(createErrorResponse(500, "Internal server error",
+                                   "Failed to save rules to config"));
+      return;
+    }
+
+    // Process entity if instance is running
+    std::string entityType = getEntityType(rules, entityUuid);
+    if (optInfo.value().running) {
+      if (entityType == "zone") {
+        RuleProcessor::processZone(instanceId, entity);
+      } else if (entityType == "line") {
+        RuleProcessor::processLine(instanceId, entity);
+        applyLinesToInstance(instanceId, rules["lines"]);
+      }
+    }
+
+    auto end_time = std::chrono::steady_clock::now();
+    auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(
+        end_time - start_time);
+
+    if (isApiLoggingEnabled()) {
+      PLOG_INFO << "[API] PATCH /v1/core/instance/" << instanceId
+                << "/rules/entities/" << entityUuid << "/enable - Success - "
+                << duration.count() << "ms";
+    }
+
+    callback(createSuccessResponse(entity, 200));
+  } catch (const std::exception &e) {
+    if (isApiLoggingEnabled()) {
+      PLOG_ERROR << "[API] PATCH /v1/core/instance/" << instanceId
+                 << "/rules/entities/" << entityUuid
+                 << "/enable - Exception: " << e.what();
+    }
+    callback(createErrorResponse(500, "Internal server error",
+                                 "Unknown error occurred"));
+  }
 }
 
