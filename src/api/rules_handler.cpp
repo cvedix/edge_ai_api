@@ -2,6 +2,8 @@
 #include "core/logger.h"
 #include "core/logging_flags.h"
 #include "core/metrics_interceptor.h"
+#include "core/rule_type_validator.h"
+#include "core/rule_processor.h"
 #include "instances/instance_manager.h"
 #include <chrono>
 #include <drogon/HttpResponse.h>
@@ -13,6 +15,8 @@ IInstanceManager *RulesHandler::instance_manager_ = nullptr;
 
 void RulesHandler::setInstanceManager(IInstanceManager *manager) {
   instance_manager_ = manager;
+  // Also set for RuleProcessor
+  RuleProcessor::setInstanceManager(manager);
 }
 
 std::string RulesHandler::extractInstanceId(const HttpRequestPtr &req) const {
@@ -356,9 +360,30 @@ RulesHandler::convertEdgeAILinesToUSC(const Json::Value &edgeAILines) const {
 
 bool RulesHandler::applyLinesToInstance(const std::string &instanceId,
                                         const Json::Value &lines) const {
-  // This method can be used to apply lines to instance pipeline
-  // For now, we just save to config - pipeline integration can be added later
-  // Similar to how LinesHandler applies lines to ba_crossline_node
+  // Apply lines to instance pipeline
+  // Lines are already saved to config (RulesLines and CrossingLines)
+  // The pipeline will load them on next start/restart
+  // For runtime updates, we would need to access ba_crossline_node directly
+  // which requires SDK API access (similar to LinesHandler::updateLinesRuntime)
+  
+  if (!instance_manager_) {
+    return false;
+  }
+
+  auto optInfo = instance_manager_->getInstance(instanceId);
+  if (!optInfo.has_value() || !optInfo.value().running) {
+    // Instance not running - rules will be applied on next start
+    return true;
+  }
+
+  // Rules are saved to config, pipeline will reload on restart
+  // For now, return true - rules are saved correctly
+  // Future enhancement: Add runtime update via SDK API if available
+  if (isApiLoggingEnabled()) {
+    PLOG_DEBUG << "[API] applyLinesToInstance: Rules saved to config for instance " << instanceId
+               << ". Pipeline will reload on restart.";
+  }
+  
   return true;
 }
 
@@ -556,6 +581,49 @@ void RulesHandler::setRules(
       rulesToSet["lines"] = convertUSCLinesToEdgeAI(rulesToSet["lines"]);
     }
 
+    // Validate rules using RuleTypeValidator
+    std::vector<std::string> validationErrors;
+    
+    // Validate zones
+    if (rulesToSet.isMember("zones") && rulesToSet["zones"].isArray()) {
+      for (Json::ArrayIndex i = 0; i < rulesToSet["zones"].size(); ++i) {
+        const Json::Value &zone = rulesToSet["zones"][i];
+        std::vector<std::string> zoneErrors;
+        if (!RuleTypeValidator::validateZone(zone, zoneErrors)) {
+          for (const auto &error : zoneErrors) {
+            validationErrors.push_back("Zone[" + std::to_string(i) + "]: " + error);
+          }
+        }
+      }
+    }
+
+    // Validate lines
+    if (rulesToSet.isMember("lines") && rulesToSet["lines"].isArray()) {
+      for (Json::ArrayIndex i = 0; i < rulesToSet["lines"].size(); ++i) {
+        const Json::Value &line = rulesToSet["lines"][i];
+        std::vector<std::string> lineErrors;
+        if (!RuleTypeValidator::validateLine(line, lineErrors)) {
+          for (const auto &error : lineErrors) {
+            validationErrors.push_back("Line[" + std::to_string(i) + "]: " + error);
+          }
+        }
+      }
+    }
+
+    // Return validation errors if any
+    if (!validationErrors.empty()) {
+      std::string errorMessage = "Validation failed:\n";
+      for (const auto &error : validationErrors) {
+        errorMessage += "  - " + error + "\n";
+      }
+      if (isApiLoggingEnabled()) {
+        PLOG_WARNING << "[API] POST /v1/core/instance/" << instanceId
+                     << "/rules - Validation errors: " << errorMessage;
+      }
+      callback(createErrorResponse(400, "Bad request", errorMessage));
+      return;
+    }
+
     // Load existing rules
     Json::Value existingRules = loadRulesFromConfig(instanceId);
 
@@ -711,7 +779,34 @@ void RulesHandler::setRules(
       return;
     }
 
-    // Apply lines to instance if instance is running
+    // Process rules using RuleProcessor
+    RuleProcessor::setInstanceManager(instance_manager_);
+    
+    // Process zones
+    if (rulesToSet.isMember("zones") && rulesToSet["zones"].isArray() &&
+        !rulesToSet["zones"].empty()) {
+      if (!RuleProcessor::processZones(instanceId, rulesToSet["zones"])) {
+        if (isApiLoggingEnabled()) {
+          PLOG_WARNING << "[API] POST /v1/core/instance/" << instanceId
+                       << "/rules - Some zones failed to process";
+        }
+        // Continue anyway - rules are saved, processing is best-effort
+      }
+    }
+
+    // Process lines
+    if (rulesToSet.isMember("lines") && rulesToSet["lines"].isArray() &&
+        !rulesToSet["lines"].empty()) {
+      if (!RuleProcessor::processLines(instanceId, rulesToSet["lines"])) {
+        if (isApiLoggingEnabled()) {
+          PLOG_WARNING << "[API] POST /v1/core/instance/" << instanceId
+                       << "/rules - Some lines failed to process";
+        }
+        // Continue anyway - rules are saved, processing is best-effort
+      }
+    }
+
+    // Apply lines to instance if instance is running (legacy support)
     if (optInfo.value().running && rulesToSet.isMember("lines") &&
         rulesToSet["lines"].isArray() && !rulesToSet["lines"].empty()) {
       applyLinesToInstance(instanceId, rulesToSet["lines"]);

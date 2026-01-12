@@ -262,6 +262,7 @@ set(SOURCES
     src/api/group_handler.cpp
     src/api/config_handler.cpp
     src/api/lines_handler.cpp
+    src/api/rules_handler.cpp
     src/api/node_handler.cpp
     src/api/recognition_handler.cpp
     src/api/system_info_handler.cpp
@@ -303,6 +304,8 @@ set(SOURCES
     src/core/uuid_generator.cpp
     src/core/platform_detector.cpp
     src/core/log_manager.cpp
+    src/core/rule_type_validator.cpp
+    src/core/rule_processor.cpp
     src/models/create_instance_request.cpp
     src/models/update_instance_request.cpp
     src/models/solution_config.cpp

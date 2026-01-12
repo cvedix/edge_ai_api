@@ -5498,6 +5498,245 @@ paths:
         '200':
           description: CORS preflight response
 
+  /v1/core/instance/{instanceId}/rules:
+    get:
+      summary: Get all rules for an instance
+      description: |
+        Returns all rules (zones and lines) configured for an instance.
+        Rules include zone rules (intrusionAreas, loiteringAreas, stopZone, jamZone, etc.) and line rules (crossingLines, countingLines, tailgatingLines).
+      operationId: getRules
+      tags:
+        - Instances
+        - Rules
+      parameters:
+        - name: instanceId
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Unique identifier of the instance (UUID)
+        - name: includeDisabled
+          in: query
+          required: false
+          schema:
+            type: boolean
+            default: false
+          description: Include disabled rules in the response
+      responses:
+        '200':
+          description: Rules retrieved successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RulesResponse'
+        '404':
+          description: Instance not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+    post:
+      summary: Set/update rules for an instance
+      description: |
+        Sets or updates rules (zones and lines) for an instance. Rules are validated based on their type.
+        Existing rules with matching IDs are updated, new rules are added.
+        
+        **Supported Zone Types:**
+        - intrusionAreas, loiteringAreas, dwellingAreas, crowdingAreas
+        - stopZone, jamZone
+        - armedPersonAreas, crossingAreas, crowdEstimationAreas, fallenPersonAreas
+        - objectLeftAreas, objectRemovedAreas, occupancyAreas, custom
+        
+        **Supported Line Types:**
+        - crossingLines, countingLines, tailgatingLines
+        
+        Rules are validated and processed according to their type-specific requirements.
+      operationId: setRules
+      tags:
+        - Instances
+        - Rules
+      parameters:
+        - name: instanceId
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Unique identifier of the instance (UUID)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RulesRequest'
+            example:
+              zones:
+                - id: "zone-1"
+                  name: "Intrusion Zone 1"
+                  type: "intrusionAreas"
+                  polygon:
+                    - [100.0, 200.0]
+                    - [600.0, 200.0]
+                    - [600.0, 400.0]
+                    - [100.0, 400.0]
+                  properties:
+                    classes: ["Person", "Vehicle"]
+                  enabled: true
+                - id: "zone-2"
+                  name: "Stop Zone 1"
+                  type: "stopZone"
+                  polygon:
+                    - [200.0, 300.0]
+                    - [500.0, 300.0]
+                    - [500.0, 500.0]
+                    - [200.0, 500.0]
+                  properties:
+                    classes: ["Vehicle"]
+                  enabled: true
+                  min_stop_seconds: 3
+                  check_interval_frames: 20
+                  check_min_hit_frames: 50
+                  check_max_distance: 5
+              lines:
+                - id: "line-1"
+                  name: "Crossing Line 1"
+                  coordinates:
+                    - x: 100.0
+                      y: 300.0
+                    - x: 600.0
+                      y: 300.0
+                  direction: "Both"
+                  classes: ["Person", "Vehicle"]
+                  color: [255, 0, 0, 255]
+                  enabled: true
+              metadata:
+                instanceName: "Instance 1"
+                groupName: "default"
+                solutionName: "analytics"
+      responses:
+        '200':
+          description: Rules set successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RulesResponse'
+        '400':
+          description: Bad request (validation errors)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: Instance not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+    put:
+      summary: Replace all rules for an instance
+      description: |
+        Replaces all existing rules with the provided rules. This operation removes all existing rules and sets the new ones.
+      operationId: updateRules
+      tags:
+        - Instances
+        - Rules
+      parameters:
+        - name: instanceId
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Unique identifier of the instance (UUID)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RulesRequest'
+      responses:
+        '200':
+          description: Rules replaced successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RulesResponse'
+        '400':
+          description: Bad request (validation errors)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: Instance not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+    delete:
+      summary: Delete all rules for an instance
+      description: |
+        Deletes all rules (zones and lines) for an instance.
+      operationId: deleteRules
+      tags:
+        - Instances
+        - Rules
+      parameters:
+        - name: instanceId
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Unique identifier of the instance (UUID)
+      responses:
+        '200':
+          description: Rules deleted successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                    example: "Rules deleted successfully"
+        '404':
+          description: Instance not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+    options:
+      summary: CORS preflight for rules
+      operationId: rulesOptions
+      tags:
+        - Instances
+        - Rules
+      responses:
+        '200':
+          description: CORS preflight response
+
   /v1/core/instance/{instanceId}/lines:
     get:
       summary: Get all crossing lines
@@ -9328,6 +9567,215 @@ components:
           description: List of crossing lines
           items:
             $ref: '#/components/schemas/CrossingLine'
+
+    ZoneRule:
+      type: object
+      required:
+        - id
+        - name
+        - polygon
+        - properties
+        - type
+      properties:
+        id:
+          type: string
+          description: Unique identifier of the zone
+          example: "zone-123456"
+        name:
+          type: string
+          description: Human-readable name for the zone
+          example: "Intrusion Zone 1"
+        type:
+          type: string
+          description: Zone rule type
+          enum:
+            - "armedPersonAreas"
+            - "crossingAreas"
+            - "crowdEstimationAreas"
+            - "crowdingAreas"
+            - "dwellingAreas"
+            - "fallenPersonAreas"
+            - "intrusionAreas"
+            - "loiteringAreas"
+            - "objectLeftAreas"
+            - "objectRemovedAreas"
+            - "occupancyAreas"
+            - "stopZone"
+            - "jamZone"
+            - "custom"
+          example: "intrusionAreas"
+        polygon:
+          type: array
+          description: Polygon coordinates defining the zone (minimum 3 points)
+          items:
+            type: array
+            items:
+              type: number
+            minItems: 2
+            maxItems: 2
+          minItems: 3
+          example:
+            - [100.0, 200.0]
+            - [600.0, 200.0]
+            - [600.0, 400.0]
+            - [100.0, 400.0]
+        properties:
+          type: object
+          required:
+            - classes
+          properties:
+            classes:
+              type: array
+              description: Object classes to detect
+              items:
+                type: string
+                enum: ["Person", "Animal", "Vehicle", "Face", "Unknown"]
+              minItems: 1
+              example: ["Person", "Vehicle"]
+        enabled:
+          type: boolean
+          description: Whether the zone rule is enabled
+          default: true
+          example: true
+        duration:
+          type: number
+          description: Duration in seconds (required for loiteringAreas)
+          example: 30
+        threshold:
+          type: integer
+          description: Threshold value (required for crowdingAreas, jamZone)
+          example: 5
+        minDuration:
+          type: number
+          description: Minimum duration in seconds (required for dwellingAreas)
+          example: 10
+        min_stop_seconds:
+          type: number
+          description: Minimum stop time in seconds (required for stopZone)
+          example: 3
+        check_interval_frames:
+          type: integer
+          description: Check interval in frames (required for stopZone)
+          example: 20
+        check_min_hit_frames:
+          type: integer
+          description: Minimum hit frames (required for stopZone)
+          example: 50
+        check_max_distance:
+          type: number
+          description: Maximum distance for stop detection (required for stopZone)
+          example: 5
+        duration_seconds:
+          type: number
+          description: Duration in seconds (required for jamZone)
+          example: 10
+
+    LineRule:
+      type: object
+      required:
+        - id
+        - name
+        - coordinates
+        - direction
+        - classes
+      properties:
+        id:
+          type: string
+          description: Unique identifier of the line
+          example: "line-123456"
+        name:
+          type: string
+          description: Human-readable name for the line
+          example: "Crossing Line 1"
+        coordinates:
+          type: array
+          description: List of coordinate objects defining the line (minimum 2 points)
+          items:
+            $ref: '#/components/schemas/Coordinate'
+          minItems: 2
+          example:
+            - x: 100.0
+              y: 300.0
+            - x: 600.0
+              y: 300.0
+        direction:
+          type: string
+          description: Direction for line crossing (Up, Down, or Both)
+          enum: ["Up", "Down", "Both"]
+          default: "Both"
+          example: "Both"
+        classes:
+          type: array
+          description: Object classes to detect
+          items:
+            type: string
+            enum: ["Person", "Animal", "Vehicle", "Face", "Unknown"]
+          minItems: 1
+          example: ["Person", "Vehicle"]
+        color:
+          type: array
+          description: Line color in RGBA format
+          items:
+            type: integer
+            minimum: 0
+            maximum: 255
+          minItems: 4
+          maxItems: 4
+          default: [255, 0, 0, 255]
+          example: [255, 0, 0, 255]
+        enabled:
+          type: boolean
+          description: Whether the line rule is enabled
+          default: true
+          example: true
+        alarmAfterSeconds:
+          type: number
+          description: Alarm threshold in seconds (required for tailgatingLines)
+          example: 4
+
+    RulesRequest:
+      type: object
+      properties:
+        zones:
+          type: array
+          description: List of zone rules
+          items:
+            $ref: '#/components/schemas/ZoneRule'
+        lines:
+          type: array
+          description: List of line rules
+          items:
+            $ref: '#/components/schemas/LineRule'
+        metadata:
+          type: object
+          description: Metadata about the rules configuration
+          properties:
+            instanceName:
+              type: string
+              example: "Instance 1"
+            groupName:
+              type: string
+              example: "default"
+            solutionName:
+              type: string
+              example: "analytics"
+
+    RulesResponse:
+      type: object
+      properties:
+        zones:
+          type: array
+          description: List of zone rules
+          items:
+            $ref: '#/components/schemas/ZoneRule'
+        lines:
+          type: array
+          description: List of line rules
+          items:
+            $ref: '#/components/schemas/LineRule'
+        metadata:
+          type: object
+          description: Metadata about the rules configuration
 
     TemplateResponse:
       type: object
