@@ -164,6 +164,14 @@ private:
                               const std::map<std::string, std::string> &params);
 
   /**
+   * @brief Create RTSP destination node
+   */
+  std::shared_ptr<cvedix_nodes::cvedix_node>
+  createRTSPDestinationNode(const std::string &nodeName,
+                           const std::map<std::string, std::string> &params,
+                           const CreateInstanceRequest &req);
+
+  /**
    * @brief Create app destination node (for frame capture)
    */
   std::shared_ptr<cvedix_nodes::cvedix_node>
@@ -195,6 +203,51 @@ private:
   std::shared_ptr<cvedix_nodes::cvedix_node>
   createBACrosslineOSDNode(const std::string &nodeName,
                            const std::map<std::string, std::string> &params);
+
+  /**
+   * @brief Create BA stop node
+   */
+  std::shared_ptr<cvedix_nodes::cvedix_node>
+  createBAStopNode(const std::string &nodeName,
+                   const std::map<std::string, std::string> &params,
+                   const CreateInstanceRequest &req);
+
+  /**
+   * @brief Create BA stop OSD node
+   */
+  std::shared_ptr<cvedix_nodes::cvedix_node>
+  createBAStopOSDNode(const std::string &nodeName,
+                      const std::map<std::string, std::string> &params);
+
+  /**
+   * @brief Create BA jam node
+   */
+  std::shared_ptr<cvedix_nodes::cvedix_node>
+  createBAJamNode(const std::string &nodeName,
+                  const std::map<std::string, std::string> &params,
+                  const CreateInstanceRequest &req);
+
+  /**
+   * @brief Create BA jam OSD node
+   */
+  std::shared_ptr<cvedix_nodes::cvedix_node>
+  createBAJamOSDNode(const std::string &nodeName,
+                     const std::map<std::string, std::string> &params);
+
+  /**
+   * @brief Create pose OSD node
+   */
+  std::shared_ptr<cvedix_nodes::cvedix_node>
+  createPoseOSDNode(const std::string &nodeName,
+                    const std::map<std::string, std::string> &params);
+
+  /**
+   * @brief Create plate OSD node
+   */
+  std::shared_ptr<cvedix_nodes::cvedix_node>
+  createPlateOSDNode(const std::string &nodeName,
+                     const std::map<std::string, std::string> &params,
+                     const CreateInstanceRequest &req);
 
   // ========== Broker Nodes ==========
 

@@ -1,0 +1,19 @@
+{
+  "name": "ba_stop_demo_1",
+  "group": "demo",
+  "solution": "ba_stop",
+  "autoStart": false,
+  "additionalParams": {
+    "input": {
+      "FILE_PATH": "/home/cvedix/project/edge_ai_api/cvedix_data/test_video/vehicle_stop.mp4",
+      "VEHICLE_MODEL_PATH": "/home/cvedix/project/edge_ai_api/cvedix_data/models/trt/vehicle/vehicle_v8.5.trt",
+      "RESIZE_RATIO": "1.0"
+    },
+    "output": {
+      "RTMP_URL": "rtmp://localhost:1935/live/ba_stop_demo_1",
+      "ENABLE_SCREEN_DES": "false"
+    },
+    "StopZones": "[{\"id\":\"zone1\",\"name\":\"Channel 0 Stop Zone\",\"roi\":[{\"x\":20,\"y\":30},{\"x\":600,\"y\":40},{\"x\":600,\"y\":300},{\"x\":10,\"y\":300}],\"min_stop_seconds\":3,\"check_interval_frames\":20,\"check_min_hit_frames\":50,\"check_max_distance\":5}]"
+  }
+}
+

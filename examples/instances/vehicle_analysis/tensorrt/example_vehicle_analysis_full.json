@@ -1,0 +1,24 @@
+{
+  "name": "vehicle_analysis_full_demo",
+  "group": "demo",
+  "solution": "vehicle_analysis",
+  "autoStart": false,
+  "additionalParams": {
+    "input": {
+      "FILE_PATH": "/home/cvedix/project/edge_ai_api/cvedix_data/test_video/vehicle.mp4",
+      "VEHICLE_MODEL_PATH": "/home/cvedix/project/edge_ai_api/cvedix_data/models/trt/vehicle/vehicle_v8.5.trt",
+      "PLATE_DET_MODEL_PATH": "/home/cvedix/project/edge_ai_api/cvedix_data/models/trt/plate/det_v8.5.trt",
+      "PLATE_REC_MODEL_PATH": "/home/cvedix/project/edge_ai_api/cvedix_data/models/trt/plate/rec_v8.5.trt",
+      "COLOR_MODEL_PATH": "/home/cvedix/project/edge_ai_api/cvedix_data/models/trt/vehicle/color_v8.5.trt",
+      "TYPE_MODEL_PATH": "/home/cvedix/project/edge_ai_api/cvedix_data/models/trt/vehicle/type_v8.5.trt",
+      "FEATURE_MODEL_PATH": "/home/cvedix/project/edge_ai_api/cvedix_data/models/trt/vehicle/feature_v8.5.trt",
+      "RESIZE_RATIO": "1.0"
+    },
+    "output": {
+      "RTMP_URL": "rtmp://localhost:1935/live/vehicle_analysis",
+      "ENABLE_SCREEN_DES": "false",
+      "FONT_PATH": "/home/cvedix/project/edge_ai_api/cvedix_data/font/NotoSansCJKsc-Medium.otf"
+    }
+  }
+}
+

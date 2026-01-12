@@ -1,0 +1,20 @@
+{
+  "name": "video_restoration_rtmp_demo",
+  "group": "demo",
+  "solution": "video_enhancement",
+  "autoStart": false,
+  "additionalParams": {
+    "input": {
+      "FILE_PATH": "/home/cvedix/project/edge_ai_api/cvedix_data/test_video/low_quality.mp4",
+      "RESTORATION_MODEL_PATH": "/home/cvedix/project/edge_ai_api/cvedix_data/models/restoration/realesrgan-x4.onnx",
+      "BG_RESTORATION_MODEL": "/home/cvedix/project/edge_ai_api/cvedix_data/models/restoration/realesrgan-x4.onnx",
+      "RESIZE_RATIO": "1.0",
+      "RESTORATION_TO_OSD": "false"
+    },
+    "output": {
+      "RTMP_URL": "rtmp://localhost:1935/live/restoration",
+      "ENABLE_SCREEN_DES": "false"
+    }
+  }
+}
+

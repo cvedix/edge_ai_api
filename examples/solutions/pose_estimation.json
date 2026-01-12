@@ -1,0 +1,62 @@
+{
+  "solutionId": "pose_estimation",
+  "solutionName": "Pose Estimation",
+  "solutionType": "pose_estimation",
+  "isDefault": false,
+  "pipeline": [
+    {
+      "nodeType": "file_src",
+      "nodeName": "file_src_{instanceId}",
+      "parameters": {
+        "file_path": "${FILE_PATH}",
+        "channel": "0",
+        "resize_ratio": "${RESIZE_RATIO}"
+      }
+    },
+    {
+      "nodeType": "openpose_detector",
+      "nodeName": "openpose_detector_{instanceId}",
+      "parameters": {
+        "model_path": "${OPENPOSE_MODEL_PATH}",
+        "prototxt_path": "${OPENPOSE_PROTOTXT_PATH}",
+        "input_width": "${INPUT_WIDTH}",
+        "input_height": "${INPUT_HEIGHT}",
+        "score_threshold": "${SCORE_THRESHOLD}",
+        "pose_type": "${POSE_TYPE}"
+      }
+    },
+    {
+      "nodeType": "pose_osd",
+      "nodeName": "pose_osd_{instanceId}",
+      "parameters": {}
+    },
+    {
+      "nodeType": "screen_des",
+      "nodeName": "screen_des_{instanceId}",
+      "parameters": {
+        "channel": "0",
+        "enabled": "${ENABLE_SCREEN_DES}"
+      }
+    },
+    {
+      "nodeType": "rtmp_des",
+      "nodeName": "rtmp_des_{instanceId}",
+      "parameters": {
+        "rtmp_url": "${RTMP_URL}",
+        "channel": "0"
+      }
+    }
+  ],
+  "defaults": {
+    "detectorMode": "SmartDetection",
+    "detectionSensitivity": "0.7",
+    "sensorModality": "RGB",
+    "RESIZE_RATIO": "1.0",
+    "ENABLE_SCREEN_DES": "true",
+    "INPUT_WIDTH": "368",
+    "INPUT_HEIGHT": "368",
+    "SCORE_THRESHOLD": "0.1",
+    "POSE_TYPE": "body_25"
+  }
+}
+

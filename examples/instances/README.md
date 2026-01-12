@@ -18,6 +18,12 @@ examples/instances/
 
 - **face_detection/** - Face detection solutions
 - **ba_crossline/** - Behavior analysis crossline solutions
+- **ba_stop/** - Behavior analysis stop detection solutions
+- **ba_jam/** - Behavior analysis traffic jam detection solutions
+- **vehicle_analysis/** - Vehicle detection & analysis solutions
+- **pose_estimation/** - Pose estimation solutions
+- **text_recognition/** - Text recognition (OCR) solutions
+- **video_enhancement/** - Video enhancement/restoration solutions
 - **mask_rcnn/** - Mask R-CNN segmentation solutions
 - **infer_nodes/** - Các inference nodes riêng lẻ
 - **other_solutions/** - Các solutions khác

@@ -1,0 +1,97 @@
+{
+  "solutionId": "vehicle_analysis",
+  "solutionName": "Vehicle Detection & Analysis",
+  "solutionType": "vehicle_detection",
+  "isDefault": false,
+  "pipeline": [
+    {
+      "nodeType": "file_src",
+      "nodeName": "file_src_{instanceId}",
+      "parameters": {
+        "file_path": "${FILE_PATH}",
+        "channel": "0",
+        "resize_ratio": "${RESIZE_RATIO}"
+      }
+    },
+    {
+      "nodeType": "trt_vehicle_detector",
+      "nodeName": "vehicle_detector_{instanceId}",
+      "parameters": {
+        "model_path": "${VEHICLE_MODEL_PATH}"
+      }
+    },
+    {
+      "nodeType": "sort_track",
+      "nodeName": "sort_tracker_{instanceId}",
+      "parameters": {}
+    },
+    {
+      "nodeType": "trt_vehicle_plate_detector_v2",
+      "nodeName": "plate_detector_{instanceId}",
+      "parameters": {
+        "det_model_path": "${PLATE_DET_MODEL_PATH}",
+        "rec_model_path": "${PLATE_REC_MODEL_PATH}"
+      }
+    },
+    {
+      "nodeType": "trt_vehicle_color_classifier",
+      "nodeName": "color_classifier_{instanceId}",
+      "parameters": {
+        "model_path": "${COLOR_MODEL_PATH}"
+      }
+    },
+    {
+      "nodeType": "trt_vehicle_type_classifier",
+      "nodeName": "type_classifier_{instanceId}",
+      "parameters": {
+        "model_path": "${TYPE_MODEL_PATH}"
+      }
+    },
+    {
+      "nodeType": "trt_vehicle_feature_encoder",
+      "nodeName": "feature_encoder_{instanceId}",
+      "parameters": {
+        "model_path": "${FEATURE_MODEL_PATH}"
+      }
+    },
+    {
+      "nodeType": "plate_osd",
+      "nodeName": "plate_osd_{instanceId}",
+      "parameters": {
+        "font_path": "${FONT_PATH}"
+      }
+    },
+    {
+      "nodeType": "osd_v3",
+      "nodeName": "osd_v3_{instanceId}",
+      "parameters": {
+        "font_path": "${FONT_PATH}"
+      }
+    },
+    {
+      "nodeType": "screen_des",
+      "nodeName": "screen_des_{instanceId}",
+      "parameters": {
+        "channel": "0",
+        "enabled": "${ENABLE_SCREEN_DES}"
+      }
+    },
+    {
+      "nodeType": "rtmp_des",
+      "nodeName": "rtmp_des_{instanceId}",
+      "parameters": {
+        "rtmp_url": "${RTMP_URL}",
+        "channel": "0"
+      }
+    }
+  ],
+  "defaults": {
+    "detectorMode": "SmartDetection",
+    "detectionSensitivity": "0.7",
+    "sensorModality": "RGB",
+    "RESIZE_RATIO": "1.0",
+    "ENABLE_SCREEN_DES": "true",
+    "FONT_PATH": "./cvedix_data/font/NotoSansCJKsc-Medium.otf"
+  }
+}
+

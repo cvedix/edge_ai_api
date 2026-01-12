@@ -5,15 +5,22 @@
 #include <cstdlib> // For setenv
 #include <cstring> // For strlen
 #include <cvedix/nodes/ba/cvedix_ba_crossline_node.h>
+#include <cvedix/nodes/ba/cvedix_ba_stop_node.h>
+#include <cvedix/nodes/ba/cvedix_ba_jam_node.h>
 #include <cvedix/nodes/des/cvedix_app_des_node.h>
 #include <cvedix/nodes/des/cvedix_file_des_node.h>
 #include <cvedix/nodes/des/cvedix_rtmp_des_node.h>
+#include <cvedix/nodes/des/cvedix_rtsp_des_node.h>
 #include <cvedix/nodes/des/cvedix_screen_des_node.h>
 #include <cvedix/nodes/infers/cvedix_sface_feature_encoder_node.h>
 #include <cvedix/nodes/infers/cvedix_yunet_face_detector_node.h>
 #include <cvedix/nodes/osd/cvedix_ba_crossline_osd_node.h>
+#include <cvedix/nodes/osd/cvedix_ba_stop_osd_node.h>
+#include <cvedix/nodes/osd/cvedix_ba_jam_osd_node.h>
 #include <cvedix/nodes/osd/cvedix_face_osd_node_v2.h>
 #include <cvedix/nodes/osd/cvedix_osd_node_v3.h>
+#include <cvedix/nodes/osd/cvedix_pose_osd_node.h>
+#include <cvedix/nodes/osd/cvedix_plate_osd_node.h>
 #include <cvedix/nodes/src/cvedix_app_src_node.h>
 #include <cvedix/nodes/src/cvedix_file_src_node.h>
 #include <cvedix/nodes/src/cvedix_image_src_node.h>
@@ -457,7 +464,11 @@ PipelineBuilder::buildPipeline(const SolutionConfig &solution,
   for (const auto &nodeConfig : solution.pipeline) {
     if (nodeConfig.nodeType == "face_osd_v2" ||
         nodeConfig.nodeType == "osd_v3" ||
-        nodeConfig.nodeType == "ba_crossline_osd") {
+        nodeConfig.nodeType == "ba_crossline_osd" ||
+        nodeConfig.nodeType == "ba_stop_osd" ||
+        nodeConfig.nodeType == "ba_jam_osd" ||
+        nodeConfig.nodeType == "pose_osd" ||
+        nodeConfig.nodeType == "plate_osd") {
       hasOSDNode = true;
       break;
     }
@@ -496,9 +507,8 @@ PipelineBuilder::buildPipeline(const SolutionConfig &solution,
                              nodeConfig.nodeType == "rtmp_des" ||
                              nodeConfig.nodeType == "screen_des");
 
-          // Special handling for ba_crossline_osd node: attach to ba_crossline
-          // node This is critical - OSD node must attach to ba_crossline node
-          // to get lines
+          // Special handling for OSD nodes: attach to corresponding BA nodes
+          // This is critical - OSD nodes must attach to BA nodes to get regions/lines
           std::shared_ptr<cvedix_nodes::cvedix_node> attachTarget = nullptr;
           if (nodeConfig.nodeType == "ba_crossline_osd") {
             // Find ba_crossline node to attach to
@@ -519,6 +529,44 @@ PipelineBuilder::buildPipeline(const SolutionConfig &solution,
                            "receive lines."
                         << std::endl;
             }
+          } else if (nodeConfig.nodeType == "ba_stop_osd") {
+            // Find ba_stop node to attach to
+            for (int i = static_cast<int>(nodes.size()) - 1; i >= 0; --i) {
+              if (nodeTypes[i] == "ba_stop") {
+                attachTarget = nodes[i];
+                std::cerr << "[PipelineBuilder] Attaching ba_stop_osd "
+                             "node to ba_stop node "
+                             "(required to get regions for drawing)"
+                          << std::endl;
+                break;
+              }
+            }
+            if (!attachTarget) {
+              std::cerr << "[PipelineBuilder] ⚠ WARNING: ba_stop_osd node "
+                           "created but ba_stop node not found! "
+                           "OSD will attach to previous node but may not "
+                           "receive regions."
+                        << std::endl;
+            }
+          } else if (nodeConfig.nodeType == "ba_jam_osd") {
+            // Find ba_jam node to attach to
+            for (int i = static_cast<int>(nodes.size()) - 1; i >= 0; --i) {
+              if (nodeTypes[i] == "ba_jam") {
+                attachTarget = nodes[i];
+                std::cerr << "[PipelineBuilder] Attaching ba_jam_osd "
+                             "node to ba_jam node "
+                             "(required to get regions for drawing)"
+                          << std::endl;
+                break;
+              }
+            }
+            if (!attachTarget) {
+              std::cerr << "[PipelineBuilder] ⚠ WARNING: ba_jam_osd node "
+                           "created but ba_jam node not found! "
+                           "OSD will attach to previous node but may not "
+                           "receive regions."
+                        << std::endl;
+            }
           }
 
           // For RTMP nodes: if pipeline has OSD node, attach to OSD node (to
@@ -534,7 +582,15 @@ PipelineBuilder::buildPipeline(const SolutionConfig &solution,
                   std::dynamic_pointer_cast<cvedix_nodes::cvedix_osd_node_v3>(
                       checkNode) ||
                   std::dynamic_pointer_cast<
-                      cvedix_nodes::cvedix_ba_crossline_osd_node>(checkNode);
+                      cvedix_nodes::cvedix_ba_crossline_osd_node>(checkNode) ||
+                  std::dynamic_pointer_cast<
+                      cvedix_nodes::cvedix_ba_stop_osd_node>(checkNode) ||
+                  std::dynamic_pointer_cast<
+                      cvedix_nodes::cvedix_ba_jam_osd_node>(checkNode) ||
+                  std::dynamic_pointer_cast<
+                      cvedix_nodes::cvedix_pose_osd_node>(checkNode) ||
+                  std::dynamic_pointer_cast<
+                      cvedix_nodes::cvedix_plate_osd_node>(checkNode);
               if (isOSDNode) {
                 attachTarget = checkNode;
                 std::cerr << "[PipelineBuilder] Attaching RTMP node to OSD "
@@ -562,6 +618,7 @@ PipelineBuilder::buildPipeline(const SolutionConfig &solution,
                 for (int i = static_cast<int>(attachIndex) - 1; i >= 0; --i) {
                   bool nodeIsDest = (nodeTypes[i] == "file_des" ||
                                      nodeTypes[i] == "rtmp_des" ||
+                                     nodeTypes[i] == "rtsp_des" ||
                                      nodeTypes[i] == "screen_des");
                   if (!nodeIsDest) {
                     attachIndex = i;
@@ -663,7 +720,7 @@ PipelineBuilder::buildPipeline(const SolutionConfig &solution,
 
       if (fileDesNode && !nodes.empty()) {
         // Find the last non-destination node to attach to
-        // Destination nodes (file_des, rtmp_des, screen_des) don't forward
+        // Destination nodes (file_des, rtmp_des, rtsp_des, screen_des) don't forward
         // frames, so we need to attach to the source node (usually OSD node)
         std::shared_ptr<cvedix_nodes::cvedix_node> attachTarget = nullptr;
         for (int i = static_cast<int>(nodes.size()) - 1; i >= 0; --i) {
@@ -673,6 +730,8 @@ PipelineBuilder::buildPipeline(const SolutionConfig &solution,
               std::dynamic_pointer_cast<cvedix_nodes::cvedix_file_des_node>(
                   node) ||
               std::dynamic_pointer_cast<cvedix_nodes::cvedix_rtmp_des_node>(
+                  node) ||
+              std::dynamic_pointer_cast<cvedix_nodes::cvedix_rtsp_des_node>(
                   node) ||
               std::dynamic_pointer_cast<cvedix_nodes::cvedix_screen_des_node>(
                   node);
@@ -762,6 +821,16 @@ PipelineBuilder::buildPipeline(const SolutionConfig &solution,
                   node) != nullptr ||
               std::dynamic_pointer_cast<cvedix_nodes::cvedix_osd_node_v3>(
                   node) != nullptr ||
+              std::dynamic_pointer_cast<
+                  cvedix_nodes::cvedix_ba_crossline_osd_node>(node) != nullptr ||
+              std::dynamic_pointer_cast<
+                  cvedix_nodes::cvedix_ba_stop_osd_node>(node) != nullptr ||
+              std::dynamic_pointer_cast<
+                  cvedix_nodes::cvedix_ba_jam_osd_node>(node) != nullptr ||
+              std::dynamic_pointer_cast<
+                  cvedix_nodes::cvedix_pose_osd_node>(node) != nullptr ||
+              std::dynamic_pointer_cast<
+                  cvedix_nodes::cvedix_plate_osd_node>(node) != nullptr ||
               std::dynamic_pointer_cast<
                   cvedix_nodes::cvedix_ba_crossline_osd_node>(node) != nullptr;
 
@@ -884,7 +953,8 @@ PipelineBuilder::buildPipeline(const SolutionConfig &solution,
     for (int i = static_cast<int>(nodes.size()) - 1; i >= 0; --i) {
       bool isDestNode =
           (nodeTypes[i] == "file_des" || nodeTypes[i] == "rtmp_des" ||
-           nodeTypes[i] == "screen_des" || nodeTypes[i] == "app_des");
+           nodeTypes[i] == "rtsp_des" || nodeTypes[i] == "screen_des" ||
+           nodeTypes[i] == "app_des");
       // Also exclude broker nodes (they should be in sequence, not parallel)
       bool isBrokerNode = (nodeTypes[i] == "json_mqtt_broker" ||
                            nodeTypes[i] == "json_crossline_mqtt_broker" ||
@@ -903,7 +973,8 @@ PipelineBuilder::buildPipeline(const SolutionConfig &solution,
     for (int i = static_cast<int>(nodes.size()) - 1; i >= 0; --i) {
       bool isDestNode =
           (nodeTypes[i] == "file_des" || nodeTypes[i] == "rtmp_des" ||
-           nodeTypes[i] == "screen_des" || nodeTypes[i] == "app_des");
+           nodeTypes[i] == "rtsp_des" || nodeTypes[i] == "screen_des" ||
+           nodeTypes[i] == "app_des");
       if (!isDestNode) {
         return nodes[i];
       }
@@ -1173,7 +1244,15 @@ PipelineBuilder::buildPipeline(const SolutionConfig &solution,
                   std::dynamic_pointer_cast<cvedix_nodes::cvedix_osd_node_v3>(
                       node) ||
                   std::dynamic_pointer_cast<
-                      cvedix_nodes::cvedix_ba_crossline_osd_node>(node);
+                      cvedix_nodes::cvedix_ba_crossline_osd_node>(node) ||
+                  std::dynamic_pointer_cast<
+                      cvedix_nodes::cvedix_ba_stop_osd_node>(node) ||
+                  std::dynamic_pointer_cast<
+                      cvedix_nodes::cvedix_ba_jam_osd_node>(node) ||
+                  std::dynamic_pointer_cast<
+                      cvedix_nodes::cvedix_pose_osd_node>(node) ||
+                  std::dynamic_pointer_cast<
+                      cvedix_nodes::cvedix_plate_osd_node>(node);
               if (isOSDNode) {
                 attachTarget = node;
                 std::cerr << "[PipelineBuilder] Attaching RTMP node to OSD "
@@ -1278,6 +1357,8 @@ PipelineBuilder::buildPipeline(const SolutionConfig &solution,
                 std::dynamic_pointer_cast<cvedix_nodes::cvedix_file_des_node>(
                     node) ||
                 std::dynamic_pointer_cast<cvedix_nodes::cvedix_rtmp_des_node>(
+                    node) ||
+                std::dynamic_pointer_cast<cvedix_nodes::cvedix_rtsp_des_node>(
                     node) ||
                 std::dynamic_pointer_cast<cvedix_nodes::cvedix_screen_des_node>(
                     node) ||
@@ -1935,6 +2016,10 @@ PipelineBuilder::createNode(const SolutionConfig::NodeConfig &nodeConfig,
     // Behavior Analysis nodes
     else if (nodeConfig.nodeType == "ba_crossline") {
       return createBACrosslineNode(nodeName, params, req);
+    } else if (nodeConfig.nodeType == "ba_stop") {
+      return createBAStopNode(nodeName, params, req);
+    } else if (nodeConfig.nodeType == "ba_jam") {
+      return createBAJamNode(nodeName, params, req);
     }
     // OSD nodes
     else if (nodeConfig.nodeType == "face_osd_v2") {
@@ -1943,6 +2028,14 @@ PipelineBuilder::createNode(const SolutionConfig::NodeConfig &nodeConfig,
       return createOSDv3Node(nodeName, params, req);
     } else if (nodeConfig.nodeType == "ba_crossline_osd") {
       return createBACrosslineOSDNode(nodeName, params);
+    } else if (nodeConfig.nodeType == "ba_stop_osd") {
+      return createBAStopOSDNode(nodeName, params);
+    } else if (nodeConfig.nodeType == "ba_jam_osd") {
+      return createBAJamOSDNode(nodeName, params);
+    } else if (nodeConfig.nodeType == "pose_osd") {
+      return createPoseOSDNode(nodeName, params);
+    } else if (nodeConfig.nodeType == "plate_osd") {
+      return createPlateOSDNode(nodeName, params, req);
     }
     // Broker nodes
     else if (nodeConfig.nodeType == "json_console_broker") {
@@ -2031,6 +2124,8 @@ PipelineBuilder::createNode(const SolutionConfig::NodeConfig &nodeConfig,
       return createFileDestinationNode(nodeName, params, instanceId);
     } else if (nodeConfig.nodeType == "rtmp_des") {
       return createRTMPDestinationNode(nodeName, params, req);
+    } else if (nodeConfig.nodeType == "rtsp_des") {
+      return createRTSPDestinationNode(nodeName, params, req);
     } else if (nodeConfig.nodeType == "screen_des") {
       return createScreenDestinationNode(nodeName, params);
     } else {
@@ -3701,6 +3796,69 @@ PipelineBuilder::createScreenDestinationNode(
   }
 }
 
+std::shared_ptr<cvedix_nodes::cvedix_node>
+PipelineBuilder::createRTSPDestinationNode(
+    const std::string &nodeName,
+    const std::map<std::string, std::string> &params,
+    const CreateInstanceRequest &req) {
+
+  try {
+    // Get parameters with defaults
+    int channel = params.count("channel") ? std::stoi(params.at("channel")) : 0;
+    int port = params.count("port") ? std::stoi(params.at("port")) : 8000;
+    std::string streamName = params.count("stream_name")
+                                 ? params.at("stream_name")
+                                 : "stream";
+
+    // Check additionalParams for RTSP_PORT and RTSP_STREAM_NAME
+    // (similar to how RTMP_URL is handled in createRTMPDestinationNode)
+    if (req.additionalParams.count("RTSP_PORT")) {
+      try {
+        port = std::stoi(req.additionalParams.at("RTSP_PORT"));
+      } catch (...) {
+        std::cerr << "[PipelineBuilder] Warning: Invalid RTSP_PORT, using "
+                     "default: "
+                  << port << std::endl;
+      }
+    }
+    if (req.additionalParams.count("RTSP_STREAM_NAME")) {
+      streamName = req.additionalParams.at("RTSP_STREAM_NAME");
+    }
+
+    // Validate parameters
+    if (nodeName.empty()) {
+      throw std::invalid_argument("Node name cannot be empty");
+    }
+    if (port <= 0 || port > 65535) {
+      throw std::invalid_argument("Invalid RTSP port: " + std::to_string(port));
+    }
+
+    std::cerr << "[PipelineBuilder] Creating RTSP destination node:"
+              << std::endl;
+    std::cerr << "  Name: '" << nodeName << "'" << std::endl;
+    std::cerr << "  Port: " << port << std::endl;
+    std::cerr << "  Stream name: '" << streamName << "'" << std::endl;
+    std::cerr << "  Channel: " << channel << std::endl;
+
+    // Constructor: cvedix_rtsp_des_node(name, channel, port, stream_name)
+    auto node = std::make_shared<cvedix_nodes::cvedix_rtsp_des_node>(
+        nodeName, channel, port, streamName);
+
+    std::cerr << "[PipelineBuilder] ✓ RTSP destination node created successfully"
+              << std::endl;
+    return node;
+  } catch (const std::exception &e) {
+    std::cerr << "[PipelineBuilder] Exception in createRTSPDestinationNode: "
+              << e.what() << std::endl;
+    throw;
+  } catch (...) {
+    std::cerr << "[PipelineBuilder] Unknown exception in "
+                 "createRTSPDestinationNode"
+              << std::endl;
+    throw std::runtime_error("Unknown error creating RTSP destination node");
+  }
+}
+
 std::shared_ptr<cvedix_nodes::cvedix_node> PipelineBuilder::createSORTTrackNode(
     const std::string &nodeName,
     const std::map<std::string, std::string> &params) {
@@ -4082,6 +4240,477 @@ PipelineBuilder::createBACrosslineOSDNode(
     return node;
   } catch (const std::exception &e) {
     std::cerr << "[PipelineBuilder] Exception in createBACrosslineOSDNode: "
+              << e.what() << std::endl;
+    throw;
+  }
+}
+
+std::shared_ptr<cvedix_nodes::cvedix_node>
+PipelineBuilder::createBAStopNode(
+    const std::string &nodeName,
+    const std::map<std::string, std::string> &params,
+    const CreateInstanceRequest &req) {
+
+  try {
+    if (nodeName.empty()) {
+      throw std::invalid_argument("Node name cannot be empty");
+    }
+
+    std::map<int, std::vector<cvedix_objects::cvedix_point>> regions;
+    bool regionsParsed = false;
+
+    // Priority 1: Check StopZones from API (stored in additionalParams)
+    // Also check RulesZones for backward compatibility
+    std::vector<std::string> stopZoneKeys = {"StopZones", "RulesZones"};
+    for (const auto &key : stopZoneKeys) {
+      auto stopZonesIt = req.additionalParams.find(key);
+      if (stopZonesIt != req.additionalParams.end() &&
+          !stopZonesIt->second.empty()) {
+        try {
+          // Parse JSON string to JSON array
+          Json::Reader reader;
+          Json::Value parsedZones;
+          if (reader.parse(stopZonesIt->second, parsedZones)) {
+            // Handle both array and object with zones array
+            Json::Value zonesArray;
+            if (parsedZones.isArray()) {
+              zonesArray = parsedZones;
+            } else if (parsedZones.isObject() && parsedZones.isMember("zones") &&
+                       parsedZones["zones"].isArray()) {
+              zonesArray = parsedZones["zones"];
+            }
+
+            if (zonesArray.isArray()) {
+              // Iterate through zones array and filter for stopZone type
+              for (Json::ArrayIndex i = 0; i < zonesArray.size(); ++i) {
+                const Json::Value &zoneObj = zonesArray[i];
+
+                // Check if this is a stop zone (type == "stopZone" or in StopZones)
+                std::string zoneType = "stopZone";
+                if (zoneObj.isMember("type") && zoneObj["type"].isString()) {
+                  zoneType = zoneObj["type"].asString();
+                }
+
+                // Only process stopZone type
+                if (zoneType != "stopZone" && key == "StopZones") {
+                  continue; // Skip if not stopZone type when explicitly in StopZones
+                }
+                if (key == "RulesZones" && zoneType != "stopZone") {
+                  continue; // Only process stopZone from RulesZones
+                }
+
+                // Check if zone has roi or coordinates
+                Json::Value roiArray;
+                if (zoneObj.isMember("roi") && zoneObj["roi"].isArray()) {
+                  roiArray = zoneObj["roi"];
+                } else if (zoneObj.isMember("coordinates") &&
+                           zoneObj["coordinates"].isArray()) {
+                  roiArray = zoneObj["coordinates"];
+                } else {
+                  std::cerr << "[PipelineBuilder] WARNING: Stop zone at index "
+                            << i
+                            << " missing or invalid 'roi'/'coordinates' field, "
+                               "skipping"
+                            << std::endl;
+                  continue;
+                }
+
+                if (roiArray.size() < 3) {
+                  std::cerr << "[PipelineBuilder] WARNING: Stop zone at index "
+                            << i
+                            << " has less than 3 points, skipping" << std::endl;
+                  continue;
+                }
+
+                // Convert ROI to vector of points
+                std::vector<cvedix_objects::cvedix_point> regionPoints;
+                for (Json::ArrayIndex j = 0; j < roiArray.size(); ++j) {
+                  const Json::Value &pointObj = roiArray[j];
+
+                  if (!pointObj.isMember("x") || !pointObj.isMember("y")) {
+                    std::cerr << "[PipelineBuilder] WARNING: Stop zone at index "
+                              << i << ", point at index " << j
+                              << " has invalid format, skipping" << std::endl;
+                    continue;
+                  }
+
+                  if (!pointObj["x"].isNumeric() || !pointObj["y"].isNumeric()) {
+                    std::cerr << "[PipelineBuilder] WARNING: Stop zone at index "
+                              << i << ", point at index " << j
+                              << " has non-numeric coordinates, skipping"
+                              << std::endl;
+                    continue;
+                  }
+
+                  int x = pointObj["x"].asInt();
+                  int y = pointObj["y"].asInt();
+                  regionPoints.push_back(cvedix_objects::cvedix_point(x, y));
+                }
+
+                if (regionPoints.size() >= 3) {
+                  // Use array index as channel (0, 1, 2, ...)
+                  int channel = static_cast<int>(i);
+                  regions[channel] = regionPoints;
+                  regionsParsed = true;
+                }
+              }
+
+              if (regionsParsed) {
+                std::cerr << "[PipelineBuilder] ✓ Parsed " << regions.size()
+                          << " stop zone(s) from " << key << " API" << std::endl;
+                break; // Found valid zones, stop searching
+              }
+            }
+          }
+        } catch (const std::exception &e) {
+          std::cerr << "[PipelineBuilder] WARNING: Exception parsing " << key
+                    << " JSON: " << e.what()
+                    << ", trying next source" << std::endl;
+        }
+      }
+    }
+
+    // Priority 2: Fallback to solution config parameters if no regions from API
+    if (!regionsParsed && params.count("regions")) {
+      std::cerr << "[PipelineBuilder] WARNING: Regions parameter from solution "
+                   "config not yet supported for ba_stop node. "
+                   "Please use StopZones or RulesZones in additionalParams."
+                << std::endl;
+    }
+
+    if (!regionsParsed) {
+      std::cerr << "[PipelineBuilder] No valid stop zone configuration found. "
+                   "BA stop node will be created without regions. "
+                   "Regions can be added later via API."
+                << std::endl;
+    }
+
+    std::cerr << "[PipelineBuilder] Creating BA stop node:" << std::endl;
+    std::cerr << "  Name: '" << nodeName << "'" << std::endl;
+    std::cerr << "  Regions configured for " << regions.size() << " channel(s)"
+              << std::endl;
+
+    auto node = std::make_shared<cvedix_nodes::cvedix_ba_stop_node>(
+        nodeName, regions);
+
+    std::cerr << "[PipelineBuilder] ✓ BA stop node created successfully"
+              << std::endl;
+    std::cerr << "[PipelineBuilder]   Regions will be passed to OSD node via "
+                 "pipeline metadata"
+              << std::endl;
+    return node;
+  } catch (const std::exception &e) {
+    std::cerr << "[PipelineBuilder] Exception in createBAStopNode: "
+              << e.what() << std::endl;
+    throw;
+  }
+}
+
+std::shared_ptr<cvedix_nodes::cvedix_node>
+PipelineBuilder::createBAJamNode(
+    const std::string &nodeName,
+    const std::map<std::string, std::string> &params,
+    const CreateInstanceRequest &req) {
+
+  try {
+    if (nodeName.empty()) {
+      throw std::invalid_argument("Node name cannot be empty");
+    }
+
+    std::map<int, std::vector<cvedix_objects::cvedix_point>> regions;
+    bool regionsParsed = false;
+
+    // Priority 1: Check JamZones from API (stored in additionalParams)
+    // Also check RulesZones for backward compatibility
+    std::vector<std::string> jamZoneKeys = {"JamZones", "RulesZones"};
+    for (const auto &key : jamZoneKeys) {
+      auto jamZonesIt = req.additionalParams.find(key);
+      if (jamZonesIt != req.additionalParams.end() &&
+          !jamZonesIt->second.empty()) {
+        try {
+          // Parse JSON string to JSON array
+          Json::Reader reader;
+          Json::Value parsedZones;
+          if (reader.parse(jamZonesIt->second, parsedZones)) {
+            // Handle both array and object with zones array
+            Json::Value zonesArray;
+            if (parsedZones.isArray()) {
+              zonesArray = parsedZones;
+            } else if (parsedZones.isObject() && parsedZones.isMember("zones") &&
+                       parsedZones["zones"].isArray()) {
+              zonesArray = parsedZones["zones"];
+            }
+
+            if (zonesArray.isArray()) {
+              // Iterate through zones array and filter for jamZone type
+              for (Json::ArrayIndex i = 0; i < zonesArray.size(); ++i) {
+                const Json::Value &zoneObj = zonesArray[i];
+
+                // Check if this is a jam zone (type == "jamZone" or in JamZones)
+                std::string zoneType = "jamZone";
+                if (zoneObj.isMember("type") && zoneObj["type"].isString()) {
+                  zoneType = zoneObj["type"].asString();
+                }
+
+                // Only process jamZone type
+                if (zoneType != "jamZone" && key == "JamZones") {
+                  continue; // Skip if not jamZone type when explicitly in JamZones
+                }
+                if (key == "RulesZones" && zoneType != "jamZone") {
+                  continue; // Only process jamZone from RulesZones
+                }
+
+                // Check if zone has roi or coordinates
+                Json::Value roiArray;
+                if (zoneObj.isMember("roi") && zoneObj["roi"].isArray()) {
+                  roiArray = zoneObj["roi"];
+                } else if (zoneObj.isMember("coordinates") &&
+                           zoneObj["coordinates"].isArray()) {
+                  roiArray = zoneObj["coordinates"];
+                } else {
+                  std::cerr << "[PipelineBuilder] WARNING: Jam zone at index "
+                            << i
+                            << " missing or invalid 'roi'/'coordinates' field, "
+                               "skipping"
+                            << std::endl;
+                  continue;
+                }
+
+                if (roiArray.size() < 3) {
+                  std::cerr << "[PipelineBuilder] WARNING: Jam zone at index "
+                            << i << " has less than 3 points, skipping"
+                            << std::endl;
+                  continue;
+                }
+
+                // Convert ROI to vector of points
+                std::vector<cvedix_objects::cvedix_point> regionPoints;
+                for (Json::ArrayIndex j = 0; j < roiArray.size(); ++j) {
+                  const Json::Value &pointObj = roiArray[j];
+
+                  if (!pointObj.isMember("x") || !pointObj.isMember("y")) {
+                    std::cerr << "[PipelineBuilder] WARNING: Jam zone at index "
+                              << i << ", point at index " << j
+                              << " has invalid format, skipping" << std::endl;
+                    continue;
+                  }
+
+                  if (!pointObj["x"].isNumeric() || !pointObj["y"].isNumeric()) {
+                    std::cerr << "[PipelineBuilder] WARNING: Jam zone at index "
+                              << i << ", point at index " << j
+                              << " has non-numeric coordinates, skipping"
+                              << std::endl;
+                    continue;
+                  }
+
+                  int x = pointObj["x"].asInt();
+                  int y = pointObj["y"].asInt();
+                  regionPoints.push_back(cvedix_objects::cvedix_point(x, y));
+                }
+
+                if (regionPoints.size() >= 3) {
+                  // Use array index as channel (0, 1, 2, ...)
+                  int channel = static_cast<int>(i);
+                  regions[channel] = regionPoints;
+                  regionsParsed = true;
+                }
+              }
+
+              if (regionsParsed) {
+                std::cerr << "[PipelineBuilder] ✓ Parsed " << regions.size()
+                          << " jam zone(s) from " << key << " API" << std::endl;
+                break; // Found valid zones, stop searching
+              }
+            }
+          }
+        } catch (const std::exception &e) {
+          std::cerr << "[PipelineBuilder] WARNING: Exception parsing " << key
+                    << " JSON: " << e.what()
+                    << ", trying next source" << std::endl;
+        }
+      }
+    }
+
+    // Priority 2: Fallback to solution config parameters if no regions from API
+    if (!regionsParsed && params.count("regions")) {
+      std::cerr << "[PipelineBuilder] WARNING: Regions parameter from solution "
+                   "config not yet supported for ba_jam node. "
+                   "Please use JamZones or RulesZones in additionalParams."
+                << std::endl;
+    }
+
+    if (!regionsParsed) {
+      std::cerr << "[PipelineBuilder] No valid jam zone configuration found. "
+                   "BA jam node will be created without regions. "
+                   "Regions can be added later via API."
+                << std::endl;
+    }
+
+    std::cerr << "[PipelineBuilder] Creating BA jam node:" << std::endl;
+    std::cerr << "  Name: '" << nodeName << "'" << std::endl;
+    std::cerr << "  Regions configured for " << regions.size() << " channel(s)"
+              << std::endl;
+
+    auto node = std::make_shared<cvedix_nodes::cvedix_ba_jam_node>(
+        nodeName, regions);
+
+    std::cerr << "[PipelineBuilder] ✓ BA jam node created successfully"
+              << std::endl;
+    std::cerr << "[PipelineBuilder]   Regions will be passed to OSD node via "
+                 "pipeline metadata"
+              << std::endl;
+    return node;
+  } catch (const std::exception &e) {
+    std::cerr << "[PipelineBuilder] Exception in createBAJamNode: "
+              << e.what() << std::endl;
+    throw;
+  }
+}
+
+std::shared_ptr<cvedix_nodes::cvedix_node>
+PipelineBuilder::createBAStopOSDNode(
+    const std::string &nodeName,
+    const std::map<std::string, std::string> &params) {
+
+  try {
+    if (nodeName.empty()) {
+      throw std::invalid_argument("Node name cannot be empty");
+    }
+
+    std::cerr << "[PipelineBuilder] Creating BA stop OSD node:" << std::endl;
+    std::cerr << "  Name: '" << nodeName << "'" << std::endl;
+    std::cerr << "  Note: OSD node will automatically get regions from "
+                 "ba_stop_node via pipeline metadata"
+              << std::endl;
+
+    auto node =
+        std::make_shared<cvedix_nodes::cvedix_ba_stop_osd_node>(nodeName);
+
+    std::cerr
+        << "[PipelineBuilder] ✓ BA stop OSD node created successfully"
+        << std::endl;
+    std::cerr << "[PipelineBuilder]   OSD node will draw regions on video frames "
+                 "from ba_stop_node"
+              << std::endl;
+    return node;
+  } catch (const std::exception &e) {
+    std::cerr << "[PipelineBuilder] Exception in createBAStopOSDNode: "
+              << e.what() << std::endl;
+    throw;
+  }
+}
+
+std::shared_ptr<cvedix_nodes::cvedix_node>
+PipelineBuilder::createBAJamOSDNode(
+    const std::string &nodeName,
+    const std::map<std::string, std::string> &params) {
+
+  try {
+    if (nodeName.empty()) {
+      throw std::invalid_argument("Node name cannot be empty");
+    }
+
+    std::cerr << "[PipelineBuilder] Creating BA jam OSD node:" << std::endl;
+    std::cerr << "  Name: '" << nodeName << "'" << std::endl;
+    std::cerr << "  Note: OSD node will automatically get regions from "
+                 "ba_jam_node via pipeline metadata"
+              << std::endl;
+
+    auto node =
+        std::make_shared<cvedix_nodes::cvedix_ba_jam_osd_node>(nodeName);
+
+    std::cerr
+        << "[PipelineBuilder] ✓ BA jam OSD node created successfully"
+        << std::endl;
+    std::cerr << "[PipelineBuilder]   OSD node will draw regions on video frames "
+                 "from ba_jam_node"
+              << std::endl;
+    return node;
+  } catch (const std::exception &e) {
+    std::cerr << "[PipelineBuilder] Exception in createBAJamOSDNode: "
+              << e.what() << std::endl;
+    throw;
+  }
+}
+
+std::shared_ptr<cvedix_nodes::cvedix_node>
+PipelineBuilder::createPoseOSDNode(
+    const std::string &nodeName,
+    const std::map<std::string, std::string> &params) {
+
+  try {
+    if (nodeName.empty()) {
+      throw std::invalid_argument("Node name cannot be empty");
+    }
+
+    std::cerr << "[PipelineBuilder] Creating pose OSD node:" << std::endl;
+    std::cerr << "  Name: '" << nodeName << "'" << std::endl;
+    std::cerr << "  Note: OSD node will overlay pose estimation results on "
+                 "video frames"
+              << std::endl;
+
+    auto node =
+        std::make_shared<cvedix_nodes::cvedix_pose_osd_node>(nodeName);
+
+    std::cerr << "[PipelineBuilder] ✓ Pose OSD node created successfully"
+              << std::endl;
+    return node;
+  } catch (const std::exception &e) {
+    std::cerr << "[PipelineBuilder] Exception in createPoseOSDNode: "
+              << e.what() << std::endl;
+    throw;
+  }
+}
+
+std::shared_ptr<cvedix_nodes::cvedix_node>
+PipelineBuilder::createPlateOSDNode(
+    const std::string &nodeName,
+    const std::map<std::string, std::string> &params,
+    const CreateInstanceRequest &req) {
+
+  try {
+    if (nodeName.empty()) {
+      throw std::invalid_argument("Node name cannot be empty");
+    }
+
+    // Priority 1: Check additionalParams for FONT_PATH (highest priority -
+    // allows runtime override)
+    std::string fontPath = "";
+    auto it = req.additionalParams.find("FONT_PATH");
+    if (it != req.additionalParams.end() && !it->second.empty()) {
+      fontPath = it->second;
+      std::cerr << "[PipelineBuilder] Using FONT_PATH from additionalParams: "
+                << fontPath << std::endl;
+    }
+
+    // Priority 2: Check solution config parameters
+    if (fontPath.empty() && params.count("font_path")) {
+      fontPath = params.at("font_path");
+      if (!fontPath.empty()) {
+        std::cerr << "[PipelineBuilder] Using font_path from solution config: "
+                  << fontPath << std::endl;
+      }
+    }
+
+    std::cerr << "[PipelineBuilder] Creating plate OSD node:" << std::endl;
+    std::cerr << "  Name: '" << nodeName << "'" << std::endl;
+    if (!fontPath.empty()) {
+      std::cerr << "  Font path: '" << fontPath << "'" << std::endl;
+    } else {
+      std::cerr << "  Font path: (not specified, using default)" << std::endl;
+    }
+
+    auto node = std::make_shared<cvedix_nodes::cvedix_plate_osd_node>(
+        nodeName, fontPath);
+
+    std::cerr << "[PipelineBuilder] ✓ Plate OSD node created successfully"
+              << std::endl;
+    std::cerr << "[PipelineBuilder]   OSD node will overlay license plate "
+                 "detection results on video frames"
+              << std::endl;
+    return node;
+  } catch (const std::exception &e) {
+    std::cerr << "[PipelineBuilder] Exception in createPlateOSDNode: "
               << e.what() << std::endl;
     throw;
   }

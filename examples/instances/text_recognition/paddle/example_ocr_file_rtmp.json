@@ -1,0 +1,23 @@
+{
+  "name": "ocr_demo",
+  "group": "demo",
+  "solution": "text_recognition_ocr",
+  "autoStart": false,
+  "additionalParams": {
+    "input": {
+      "FILE_PATH": "/home/cvedix/project/edge_ai_api/cvedix_data/test_video/text.mp4",
+      "OCR_DET_MODEL_DIR": "/home/cvedix/project/edge_ai_api/cvedix_data/models/paddleocr/det",
+      "OCR_REC_MODEL_DIR": "/home/cvedix/project/edge_ai_api/cvedix_data/models/paddleocr/rec",
+      "OCR_CLS_MODEL_DIR": "/home/cvedix/project/edge_ai_api/cvedix_data/models/paddleocr/cls",
+      "RESIZE_RATIO": "1.0",
+      "USE_ANGLE_CLS": "true",
+      "OCR_LANG": "ch"
+    },
+    "output": {
+      "RTMP_URL": "rtmp://localhost:1935/live/ocr",
+      "ENABLE_SCREEN_DES": "false",
+      "FONT_PATH": "/home/cvedix/project/edge_ai_api/cvedix_data/font/NotoSansCJKsc-Medium.otf"
+    }
+  }
+}
+

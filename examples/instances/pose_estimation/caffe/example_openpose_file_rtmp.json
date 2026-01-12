@@ -1,0 +1,23 @@
+{
+  "name": "openpose_demo",
+  "group": "demo",
+  "solution": "pose_estimation",
+  "autoStart": false,
+  "additionalParams": {
+    "input": {
+      "FILE_PATH": "/home/cvedix/project/edge_ai_api/cvedix_data/test_video/pose.mp4",
+      "OPENPOSE_MODEL_PATH": "/home/cvedix/project/edge_ai_api/cvedix_data/models/openpose/pose/body_25_pose_iter_584000.caffemodel",
+      "OPENPOSE_PROTOTXT_PATH": "/home/cvedix/project/edge_ai_api/cvedix_data/models/openpose/pose/body_25_pose_deploy.prototxt",
+      "RESIZE_RATIO": "1.0",
+      "INPUT_WIDTH": "368",
+      "INPUT_HEIGHT": "368",
+      "SCORE_THRESHOLD": "0.1",
+      "POSE_TYPE": "body_25"
+    },
+    "output": {
+      "RTMP_URL": "rtmp://localhost:1935/live/openpose",
+      "ENABLE_SCREEN_DES": "false"
+    }
+  }
+}
+

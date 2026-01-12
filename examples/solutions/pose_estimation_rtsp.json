@@ -1,0 +1,55 @@
+{
+  "solutionId": "pose_estimation_rtsp",
+  "solutionName": "Pose Estimation (RTSP Output)",
+  "solutionType": "pose_estimation",
+  "isDefault": false,
+  "pipeline": [
+    {
+      "nodeType": "file_src",
+      "nodeName": "file_src_{instanceId}",
+      "parameters": {
+        "file_path": "${FILE_PATH}",
+        "channel": "0",
+        "resize_ratio": "${RESIZE_RATIO}"
+      }
+    },
+    {
+      "nodeType": "openpose_detector",
+      "nodeName": "openpose_detector_{instanceId}",
+      "parameters": {
+        "model_path": "${OPENPOSE_MODEL_PATH}",
+        "prototxt_path": "${OPENPOSE_PROTOTXT_PATH}",
+        "input_width": "${INPUT_WIDTH}",
+        "input_height": "${INPUT_HEIGHT}",
+        "score_threshold": "${SCORE_THRESHOLD}",
+        "pose_type": "${POSE_TYPE}"
+      }
+    },
+    {
+      "nodeType": "pose_osd",
+      "nodeName": "pose_osd_{instanceId}",
+      "parameters": {}
+    },
+    {
+      "nodeType": "rtsp_des",
+      "nodeName": "rtsp_des_{instanceId}",
+      "parameters": {
+        "port": "${RTSP_PORT}",
+        "stream_name": "${RTSP_STREAM_NAME}"
+      }
+    }
+  ],
+  "defaults": {
+    "detectorMode": "SmartDetection",
+    "detectionSensitivity": "0.7",
+    "sensorModality": "RGB",
+    "RESIZE_RATIO": "1.0",
+    "RTSP_PORT": "8000",
+    "RTSP_STREAM_NAME": "pose_estimation",
+    "INPUT_WIDTH": "368",
+    "INPUT_HEIGHT": "368",
+    "SCORE_THRESHOLD": "0.1",
+    "POSE_TYPE": "body_25"
+  }
+}
+

@@ -1002,7 +1002,11 @@ if(PkgConfig_FOUND)
     pkg_check_modules(GSTREAMER QUIET gstreamer-1.0)
     if(GSTREAMER_FOUND)
         target_compile_definitions(edge_ai_api PRIVATE CVEDIX_WITH_GSTREAMER)
+        target_include_directories(edge_ai_api PRIVATE ${GSTREAMER_INCLUDE_DIRS})
+        target_link_libraries(edge_ai_api PRIVATE ${GSTREAMER_LIBRARIES})
         message(STATUS "✓ GStreamer support enabled (CVEDIX_WITH_GSTREAMER)")
+        message(STATUS "  Include dirs: ${GSTREAMER_INCLUDE_DIRS}")
+        message(STATUS "  Libraries: ${GSTREAMER_LIBRARIES}")
     else()
         message(WARNING "⚠ GStreamer not found. RTSP/RTMP/Image/UDP source nodes will not be available.")
         message(WARNING "  To install: sudo apt-get install libgstreamer1.0-dev")
@@ -1016,11 +1020,24 @@ else()
             /usr/lib/x86_64-linux-gnu
             /usr/local/lib
     )
-    if(GSTREAMER_LIBRARY)
+    find_path(GSTREAMER_INCLUDE_DIR
+        NAMES gst/gst.h
+        PATHS
+            /usr/include
+            /usr/local/include
+            /usr/include/gstreamer-1.0
+            /usr/local/include/gstreamer-1.0
+    )
+    if(GSTREAMER_LIBRARY AND GSTREAMER_INCLUDE_DIR)
         target_compile_definitions(edge_ai_api PRIVATE CVEDIX_WITH_GSTREAMER)
+        target_include_directories(edge_ai_api PRIVATE ${GSTREAMER_INCLUDE_DIR})
+        target_link_libraries(edge_ai_api PRIVATE ${GSTREAMER_LIBRARY})
         message(STATUS "✓ GStreamer support enabled (CVEDIX_WITH_GSTREAMER)")
+        message(STATUS "  Include dir: ${GSTREAMER_INCLUDE_DIR}")
+        message(STATUS "  Library: ${GSTREAMER_LIBRARY}")
     else()
         message(WARNING "⚠ GStreamer not found. RTSP/RTMP/Image/UDP source nodes will not be available.")
+        message(WARNING "  To install: sudo apt-get install libgstreamer1.0-dev")
     endif()
 endif()
 
@@ -1150,8 +1167,14 @@ if(CPP_BASE64_INCLUDE_DIR)
     target_include_directories(edge_ai_core PUBLIC "${CPP_BASE64_INCLUDE_DIR}")
 endif()
 
-if(GSTREAMER_FOUND OR GSTREAMER_LIBRARY)
+if(GSTREAMER_FOUND)
     target_compile_definitions(edge_ai_core PUBLIC CVEDIX_WITH_GSTREAMER)
+    target_include_directories(edge_ai_core PUBLIC ${GSTREAMER_INCLUDE_DIRS})
+    target_link_libraries(edge_ai_core PUBLIC ${GSTREAMER_LIBRARIES})
+elseif(GSTREAMER_LIBRARY AND GSTREAMER_INCLUDE_DIR)
+    target_compile_definitions(edge_ai_core PUBLIC CVEDIX_WITH_GSTREAMER)
+    target_include_directories(edge_ai_core PUBLIC ${GSTREAMER_INCLUDE_DIR})
+    target_link_libraries(edge_ai_core PUBLIC ${GSTREAMER_LIBRARY})
 endif()
 
 if(CVEDIX_WITH_MQTT)

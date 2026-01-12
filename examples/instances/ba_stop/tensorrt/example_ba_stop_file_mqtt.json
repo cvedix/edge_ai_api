@@ -1,0 +1,24 @@
+{
+  "name": "ba_stop_mqtt_demo",
+  "group": "demo",
+  "solution": "ba_stop",
+  "autoStart": false,
+  "additionalParams": {
+    "input": {
+      "FILE_PATH": "/home/cvedix/project/edge_ai_api/cvedix_data/test_video/vehicle_stop.mp4",
+      "VEHICLE_MODEL_PATH": "/home/cvedix/project/edge_ai_api/cvedix_data/models/trt/vehicle/vehicle_v8.5.trt",
+      "RESIZE_RATIO": "1.0"
+    },
+    "output": {
+      "ENABLE_SCREEN_DES": "true",
+      "MQTT_BROKER_URL": "localhost",
+      "MQTT_PORT": "1883",
+      "MQTT_TOPIC": "ba_stop/events",
+      "MQTT_USERNAME": "",
+      "MQTT_PASSWORD": "",
+      "MQTT_RATE_LIMIT_MS": "1000"
+    },
+    "StopZones": "[{\"id\":\"zone1\",\"name\":\"Channel 0 Stop Zone\",\"roi\":[{\"x\":20,\"y\":30},{\"x\":600,\"y\":40},{\"x\":600,\"y\":300},{\"x\":10,\"y\":300}],\"min_stop_seconds\":3}]"
+  }
+}
+

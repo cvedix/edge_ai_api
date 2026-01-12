@@ -1,0 +1,63 @@
+{
+  "solutionId": "ba_jam",
+  "solutionName": "Behavior Analysis - Traffic Jam Detection",
+  "solutionType": "behavior_analysis",
+  "isDefault": false,
+  "pipeline": [
+    {
+      "nodeType": "file_src",
+      "nodeName": "file_src_{instanceId}",
+      "parameters": {
+        "file_path": "${FILE_PATH}",
+        "channel": "0",
+        "resize_ratio": "${RESIZE_RATIO}"
+      }
+    },
+    {
+      "nodeType": "trt_vehicle_detector",
+      "nodeName": "vehicle_detector_{instanceId}",
+      "parameters": {
+        "model_path": "${VEHICLE_MODEL_PATH}"
+      }
+    },
+    {
+      "nodeType": "sort_track",
+      "nodeName": "sort_tracker_{instanceId}",
+      "parameters": {}
+    },
+    {
+      "nodeType": "ba_jam",
+      "nodeName": "ba_jam_{instanceId}",
+      "parameters": {}
+    },
+    {
+      "nodeType": "ba_jam_osd",
+      "nodeName": "ba_jam_osd_{instanceId}",
+      "parameters": {}
+    },
+    {
+      "nodeType": "screen_des",
+      "nodeName": "screen_des_{instanceId}",
+      "parameters": {
+        "channel": "0",
+        "enabled": "${ENABLE_SCREEN_DES}"
+      }
+    },
+    {
+      "nodeType": "rtmp_des",
+      "nodeName": "rtmp_des_{instanceId}",
+      "parameters": {
+        "rtmp_url": "${RTMP_URL}",
+        "channel": "0"
+      }
+    }
+  ],
+  "defaults": {
+    "detectorMode": "SmartDetection",
+    "detectionSensitivity": "0.7",
+    "sensorModality": "RGB",
+    "RESIZE_RATIO": "1.0",
+    "ENABLE_SCREEN_DES": "true"
+  }
+}
+

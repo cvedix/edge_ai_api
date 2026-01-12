@@ -1,0 +1,56 @@
+{
+  "solutionId": "ba_stop_rtsp",
+  "solutionName": "Behavior Analysis - Stop Detection (RTSP Output)",
+  "solutionType": "behavior_analysis",
+  "isDefault": false,
+  "pipeline": [
+    {
+      "nodeType": "file_src",
+      "nodeName": "file_src_{instanceId}",
+      "parameters": {
+        "file_path": "${FILE_PATH}",
+        "channel": "0",
+        "resize_ratio": "${RESIZE_RATIO}"
+      }
+    },
+    {
+      "nodeType": "trt_vehicle_detector",
+      "nodeName": "vehicle_detector_{instanceId}",
+      "parameters": {
+        "model_path": "${VEHICLE_MODEL_PATH}"
+      }
+    },
+    {
+      "nodeType": "sort_track",
+      "nodeName": "sort_tracker_{instanceId}",
+      "parameters": {}
+    },
+    {
+      "nodeType": "ba_stop",
+      "nodeName": "ba_stop_{instanceId}",
+      "parameters": {}
+    },
+    {
+      "nodeType": "ba_stop_osd",
+      "nodeName": "ba_stop_osd_{instanceId}",
+      "parameters": {}
+    },
+    {
+      "nodeType": "rtsp_des",
+      "nodeName": "rtsp_des_{instanceId}",
+      "parameters": {
+        "port": "${RTSP_PORT}",
+        "stream_name": "${RTSP_STREAM_NAME}"
+      }
+    }
+  ],
+  "defaults": {
+    "detectorMode": "SmartDetection",
+    "detectionSensitivity": "0.7",
+    "sensorModality": "RGB",
+    "RESIZE_RATIO": "1.0",
+    "RTSP_PORT": "8000",
+    "RTSP_STREAM_NAME": "ba_stop"
+  }
+}
+

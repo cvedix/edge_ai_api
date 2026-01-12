@@ -1,0 +1,19 @@
+{
+  "name": "ba_jam_rtsp_demo",
+  "group": "demo",
+  "solution": "ba_jam",
+  "autoStart": false,
+  "additionalParams": {
+    "input": {
+      "RTSP_URL": "rtsp://localhost:8554/stream",
+      "VEHICLE_MODEL_PATH": "/home/cvedix/project/edge_ai_api/cvedix_data/models/trt/vehicle/vehicle_v8.5.trt",
+      "RESIZE_RATIO": "1.0"
+    },
+    "output": {
+      "RTMP_URL": "rtmp://localhost:1935/live/ba_jam_rtsp",
+      "ENABLE_SCREEN_DES": "false"
+    },
+    "JamZones": "[{\"id\":\"jam1\",\"name\":\"Jam Zone 1\",\"roi\":[{\"x\":100,\"y\":100},{\"x\":800,\"y\":150},{\"x\":800,\"y\":600},{\"x\":100,\"y\":550}],\"threshold\":5,\"duration_seconds\":10}]"
+  }
+}
+

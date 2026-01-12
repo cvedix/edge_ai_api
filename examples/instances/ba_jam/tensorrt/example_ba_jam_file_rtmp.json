@@ -1,0 +1,19 @@
+{
+  "name": "ba_jam_demo_1",
+  "group": "demo",
+  "solution": "ba_jam",
+  "autoStart": false,
+  "additionalParams": {
+    "input": {
+      "FILE_PATH": "/home/cvedix/project/edge_ai_api/cvedix_data/test_video/jam.mp4",
+      "VEHICLE_MODEL_PATH": "/home/cvedix/project/edge_ai_api/cvedix_data/models/trt/vehicle/vehicle_v8.5.trt",
+      "RESIZE_RATIO": "1.0"
+    },
+    "output": {
+      "RTMP_URL": "rtmp://localhost:1935/live/ba_jam_demo_1",
+      "ENABLE_SCREEN_DES": "false"
+    },
+    "JamZones": "[{\"id\":\"jam1\",\"name\":\"Jam Zone 1\",\"roi\":[{\"x\":20,\"y\":360},{\"x\":400,\"y\":250},{\"x\":535,\"y\":250},{\"x\":555,\"y\":560},{\"x\":30,\"y\":550}],\"threshold\":5,\"duration_seconds\":10}]"
+  }
+}
+

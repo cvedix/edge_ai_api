@@ -59,6 +59,103 @@ Mỗi solution file là một JSON với cấu trúc sau:
 - **Mô tả**: MaskRCNN instance segmentation với file source và RTMP streaming output
 - **Pipeline**: File Source → MaskRCNN Detector → OSD v3 → RTMP Destination
 - **Use case**: Test MaskRCNN detection và streaming kết quả lên RTMP server
+
+### 6. `ba_stop.json`
+- **Mô tả**: Behavior Analysis - Stop Detection
+- **Pipeline**: File Source → Vehicle Detector → SORT Tracker → BA Stop → BA Stop OSD → Screen/RTMP Destination
+- **Use case**: Phát hiện xe dừng lại trong các vùng được định nghĩa
+- **Yêu cầu**: 
+  - Vehicle detection model (.trt)
+  - StopZones hoặc RulesZones trong additionalParams
+
+### 7. `ba_jam.json`
+- **Mô tả**: Behavior Analysis - Traffic Jam Detection
+- **Pipeline**: File Source → Vehicle Detector → SORT Tracker → BA Jam → BA Jam OSD → Screen/RTMP Destination
+- **Use case**: Phát hiện kẹt xe trong các vùng được định nghĩa
+- **Yêu cầu**: 
+  - Vehicle detection model (.trt)
+  - JamZones hoặc RulesZones trong additionalParams
+
+### 8. `vehicle_analysis.json`
+- **Mô tả**: Vehicle Detection & Analysis (đầy đủ tính năng)
+- **Pipeline**: File Source → Vehicle Detector → SORT Tracker → Plate Detector → Color Classifier → Type Classifier → Feature Encoder → Plate OSD → OSD v3 → Screen/RTMP Destination
+- **Use case**: Phát hiện và phân tích xe (biển số, màu sắc, loại xe, features)
+- **Yêu cầu**: 
+  - Vehicle detection model (.trt)
+  - Plate detection model (.trt)
+  - Plate recognition model (.trt)
+  - Color classifier model (.trt)
+  - Type classifier model (.trt)
+  - Feature encoder model (.trt)
+
+### 9. `pose_estimation.json`
+- **Mô tả**: Pose Estimation sử dụng OpenPose
+- **Pipeline**: File Source → OpenPose Detector → Pose OSD → Screen/RTMP Destination
+- **Use case**: Ước tính tư thế người sử dụng OpenPose
+- **Yêu cầu**: 
+  - OpenPose model (.caffemodel)
+  - OpenPose prototxt (.prototxt)
+
+### 10. `pose_estimation_trt.json`
+- **Mô tả**: Pose Estimation sử dụng TensorRT YOLOv8 Pose
+- **Pipeline**: File Source → YOLOv8 Pose Detector → Pose OSD → Screen/RTMP Destination
+- **Use case**: Ước tính tư thế người sử dụng YOLOv8 Pose (nhanh hơn OpenPose)
+- **Yêu cầu**: 
+  - YOLOv8 Pose model (.engine)
+
+### 11. `text_recognition_ocr.json`
+- **Mô tả**: Text Recognition (OCR) sử dụng PaddleOCR
+- **Pipeline**: File Source → PaddleOCR Text Detector → Text OSD → Screen/RTMP Destination
+- **Use case**: Nhận dạng văn bản trong video/hình ảnh
+- **Yêu cầu**: 
+  - PaddleOCR models (det, rec, cls)
+  - CVEDIX_WITH_PADDLE enabled
+
+### 12. `video_enhancement.json`
+- **Mô tả**: Video Enhancement/Restoration
+- **Pipeline**: File Source → Restoration → Screen/RTMP/File Destination
+- **Use case**: Nâng cấp chất lượng video (super-resolution, denoising, etc.)
+- **Yêu cầu**: 
+  - Restoration model (.onnx)
+
+### 13. `ba_stop_rtsp.json`
+- **Mô tả**: Behavior Analysis - Stop Detection với RTSP output
+- **Pipeline**: File Source → Vehicle Detector → SORT Tracker → BA Stop → BA Stop OSD → RTSP Destination
+- **Use case**: Phát hiện xe dừng và stream qua RTSP
+- **Yêu cầu**: 
+  - Vehicle detection model (.trt)
+  - StopZones hoặc RulesZones trong additionalParams
+
+### 14. `vehicle_analysis_rtsp.json`
+- **Mô tả**: Vehicle Detection & Analysis với RTSP output
+- **Pipeline**: File Source → Vehicle Detector → SORT Tracker → Plate Detector → Plate OSD → OSD v3 → RTSP Destination
+- **Use case**: Phân tích xe và stream qua RTSP
+- **Yêu cầu**: 
+  - Vehicle detection model (.trt)
+  - Plate detection/recognition models (.trt)
+
+### 15. `pose_estimation_rtsp.json`
+- **Mô tả**: Pose Estimation với RTSP output
+- **Pipeline**: File Source → OpenPose Detector → Pose OSD → RTSP Destination
+- **Use case**: Ước tính tư thế và stream qua RTSP
+- **Yêu cầu**: 
+  - OpenPose model (.caffemodel)
+  - OpenPose prototxt (.prototxt)
+
+### 16. `face_detection_app.json`
+- **Mô tả**: Face Detection với App Destination
+- **Pipeline**: File Source → YuNet Face Detector → Face OSD v2 → App Destination
+- **Use case**: Face detection và capture frames để xử lý trong application
+- **Yêu cầu**: 
+  - Face detection model (.onnx)
+
+### 17. `vehicle_analysis_app.json`
+- **Mô tả**: Vehicle Detection & Analysis với App Destination
+- **Pipeline**: File Source → Vehicle Detector → SORT Tracker → Plate Detector → Plate OSD → OSD v3 → App Destination
+- **Use case**: Vehicle analysis và capture frames để xử lý trong application
+- **Yêu cầu**: 
+  - Vehicle detection model (.trt)
+  - Plate detection/recognition models (.trt)
 - **Yêu cầu**:
   - Model file (.pb)
   - Config file (.pbtxt)
@@ -185,8 +282,9 @@ curl -X POST http://localhost:8080/v1/core/instance \
 ### Destination Nodes
 - `file_des`: File destination (save output)
 - `rtmp_des`: RTMP streaming destination
-- `rtsp_des`: RTSP streaming destination
+- `rtsp_des`: RTSP streaming destination (xem solutions: `ba_stop_rtsp`, `vehicle_analysis_rtsp`, `pose_estimation_rtsp`)
 - `screen_des`: Screen display destination
+- `app_des`: Application destination (capture frames for app processing, xem solutions: `face_detection_app`, `vehicle_analysis_app`)
 - `face_osd_v2`: Face overlay/OSD node
 
 ## Xem thêm

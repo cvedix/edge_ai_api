@@ -1,0 +1,61 @@
+{
+  "solutionId": "video_enhancement",
+  "solutionName": "Video Enhancement",
+  "solutionType": "video_enhancement",
+  "isDefault": false,
+  "pipeline": [
+    {
+      "nodeType": "file_src",
+      "nodeName": "file_src_{instanceId}",
+      "parameters": {
+        "file_path": "${FILE_PATH}",
+        "channel": "0",
+        "resize_ratio": "${RESIZE_RATIO}"
+      }
+    },
+    {
+      "nodeType": "restoration",
+      "nodeName": "restoration_{instanceId}",
+      "parameters": {
+        "model_path": "${RESTORATION_MODEL_PATH}",
+        "bg_restoration_model": "${BG_RESTORATION_MODEL}",
+        "face_restoration_model": "${FACE_RESTORATION_MODEL}",
+        "restoration_to_osd": "${RESTORATION_TO_OSD}"
+      }
+    },
+    {
+      "nodeType": "screen_des",
+      "nodeName": "screen_des_{instanceId}",
+      "parameters": {
+        "channel": "0",
+        "enabled": "${ENABLE_SCREEN_DES}"
+      }
+    },
+    {
+      "nodeType": "rtmp_des",
+      "nodeName": "rtmp_des_{instanceId}",
+      "parameters": {
+        "rtmp_url": "${RTMP_URL}",
+        "channel": "0"
+      }
+    },
+    {
+      "nodeType": "file_des",
+      "nodeName": "file_des_{instanceId}",
+      "parameters": {
+        "save_dir": "./output/{instanceId}",
+        "name_prefix": "enhanced",
+        "osd": "true"
+      }
+    }
+  ],
+  "defaults": {
+    "detectorMode": "SmartDetection",
+    "detectionSensitivity": "0.7",
+    "sensorModality": "RGB",
+    "RESIZE_RATIO": "1.0",
+    "ENABLE_SCREEN_DES": "true",
+    "RESTORATION_TO_OSD": "false"
+  }
+}
+

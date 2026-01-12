@@ -1,0 +1,20 @@
+{
+  "name": "vehicle_plate_detection_demo",
+  "group": "demo",
+  "solution": "vehicle_analysis",
+  "autoStart": false,
+  "additionalParams": {
+    "input": {
+      "FILE_PATH": "/home/cvedix/project/edge_ai_api/cvedix_data/test_video/vehicle.mp4",
+      "VEHICLE_MODEL_PATH": "/home/cvedix/project/edge_ai_api/cvedix_data/models/trt/vehicle/vehicle_v8.5.trt",
+      "PLATE_DET_MODEL_PATH": "/home/cvedix/project/edge_ai_api/cvedix_data/models/trt/plate/det_v8.5.trt",
+      "PLATE_REC_MODEL_PATH": "/home/cvedix/project/edge_ai_api/cvedix_data/models/trt/plate/rec_v8.5.trt",
+      "RESIZE_RATIO": "1.0"
+    },
+    "output": {
+      "ENABLE_SCREEN_DES": "true",
+      "FONT_PATH": "/home/cvedix/project/edge_ai_api/cvedix_data/font/NotoSansCJKsc-Medium.otf"
+    }
+  }
+}
+

@@ -325,6 +325,8 @@ if(PkgConfig_FOUND)
     pkg_check_modules(GSTREAMER QUIET gstreamer-1.0)
     if(GSTREAMER_FOUND)
         target_compile_definitions(edge_ai_api_tests PRIVATE CVEDIX_WITH_GSTREAMER)
+        target_include_directories(edge_ai_api_tests PRIVATE ${GSTREAMER_INCLUDE_DIRS})
+        target_link_libraries(edge_ai_api_tests PRIVATE ${GSTREAMER_LIBRARIES})
     endif()
 else()
     find_library(GSTREAMER_LIBRARY
@@ -334,8 +336,18 @@ else()
             /usr/lib/x86_64-linux-gnu
             /usr/local/lib
     )
-    if(GSTREAMER_LIBRARY)
+    find_path(GSTREAMER_INCLUDE_DIR
+        NAMES gst/gst.h
+        PATHS
+            /usr/include
+            /usr/local/include
+            /usr/include/gstreamer-1.0
+            /usr/local/include/gstreamer-1.0
+    )
+    if(GSTREAMER_LIBRARY AND GSTREAMER_INCLUDE_DIR)
         target_compile_definitions(edge_ai_api_tests PRIVATE CVEDIX_WITH_GSTREAMER)
+        target_include_directories(edge_ai_api_tests PRIVATE ${GSTREAMER_INCLUDE_DIR})
+        target_link_libraries(edge_ai_api_tests PRIVATE ${GSTREAMER_LIBRARY})
     endif()
 endif()
 
