@@ -1422,7 +1422,7 @@ std::string NodeHandler::getPlaceholder(const std::string &paramName,
     return "/path/to/video.mp4";
   }
   if (paramName == "model_path" || paramName == "MODEL_PATH") {
-    return "/opt/cvedix/models/example.onnx";
+    return "/opt/edge_ai_api/models/face/face_detection_yunet_2022mar.onnx";
   }
   if (paramName == "port") {
     if (nodeType.find("rtsp") != std::string::npos) {
@@ -1574,8 +1574,8 @@ NodeHandler::getParameterExamples(const std::string &paramName,
     examples.push_back("rtsp://camera-ip:8554/stream");
   }
   if (paramName == "model_path" || paramName == "MODEL_PATH") {
-    examples.push_back("/opt/cvedix/models/yunet.onnx");
-    examples.push_back("/opt/cvedix/models/yolov8.engine");
+    examples.push_back("/opt/edge_ai_api/models/face/face_detection_yunet_2022mar.onnx");
+    examples.push_back("/opt/edge_ai_api/models/trt/others/yolov8s_v8.5.engine");
   }
   if (paramName == "save_dir") {
     examples.push_back("./output/{instanceId}");

@@ -1512,8 +1512,8 @@ PipelineBuilder::createNode(const SolutionConfig::NodeConfig &nodeConfig,
         if (it != req.additionalParams.end() && !it->second.empty()) {
           value = it->second;
         } else {
-          // Default to yunet.onnx - resolve path intelligently
-          value = resolveModelPath("models/face/yunet.onnx");
+          // Default to face_detection_yunet_2022mar.onnx - resolve path intelligently
+          value = resolveModelPath("models/face/face_detection_yunet_2022mar.onnx");
         }
       } else {
         value = modelPath;
@@ -2360,6 +2360,26 @@ PipelineBuilder::createRTSPSourceNode(
               << "' (length: " << nodeName.length() << ")" << std::endl;
     std::cerr << "[PipelineBuilder]   URL: '" << rtspUrl
               << "' (length: " << rtspUrl.length() << ")" << std::endl;
+    
+    // Log URL details for debugging (especially for long URLs with query params)
+    if (rtspUrl.length() > 200) {
+      std::cerr << "[PipelineBuilder]   NOTE: URL is very long (" 
+                << rtspUrl.length() << " chars). This may cause issues if not properly URL-encoded."
+                << std::endl;
+      std::cerr << "[PipelineBuilder]   URL preview (first 100 chars): " 
+                << rtspUrl.substr(0, 100) << "..." << std::endl;
+    }
+    
+    // Check for query parameters in URL
+    size_t queryPos = rtspUrl.find('?');
+    if (queryPos != std::string::npos) {
+      std::cerr << "[PipelineBuilder]   NOTE: URL contains query parameters. "
+                   "Make sure they are properly URL-encoded."
+                << std::endl;
+      size_t queryLength = rtspUrl.length() - queryPos - 1;
+      std::cerr << "[PipelineBuilder]   Query string length: " << queryLength 
+                << " characters" << std::endl;
+    }
     std::cerr << "[PipelineBuilder]   Channel: " << channel << std::endl;
     std::cerr << "[PipelineBuilder]   Resize ratio: " << std::fixed
               << std::setprecision(3) << resize_ratio
@@ -2501,6 +2521,54 @@ PipelineBuilder::createRTSPSourceNode(
                 << std::endl;
     }
 
+    // Configure TLS/SSL for rtsps:// (RTSP over TLS)
+    // Check if URL uses rtsps:// protocol
+    std::string lowerRtspUrl = rtspUrl;
+    std::transform(lowerRtspUrl.begin(), lowerRtspUrl.end(), lowerRtspUrl.begin(), ::tolower);
+    if (lowerRtspUrl.find("rtsps://") == 0) {
+      std::cerr << "[PipelineBuilder] Detected rtsps:// (RTSP over TLS) URL"
+                << std::endl;
+      
+      // For rtsps://, we need to configure TLS validation
+      // By default, disable strict certificate validation for compatibility
+      // Users can enable strict validation by setting GST_RTSP_TLS_VALIDATION=strict
+      const char *tlsValidation = std::getenv("GST_RTSP_TLS_VALIDATION");
+      if (!tlsValidation || strlen(tlsValidation) == 0) {
+        // Default: disable strict validation for compatibility with self-signed certs
+        // This is common in development/testing environments
+        setenv("GST_RTSP_TLS_VALIDATION", "none", 0);
+        std::cerr << "[PipelineBuilder] Set GST_RTSP_TLS_VALIDATION=none "
+                     "(disable strict TLS validation for rtsps://)"
+                  << std::endl;
+        std::cerr << "[PipelineBuilder] NOTE: For production, set "
+                     "GST_RTSP_TLS_VALIDATION=strict and provide CA certificate"
+                  << std::endl;
+      } else {
+        std::cerr << "[PipelineBuilder] Using GST_RTSP_TLS_VALIDATION="
+                  << tlsValidation << " from environment" << std::endl;
+      }
+      
+      // Check if CA certificate file is provided
+      const char *caCertFile = std::getenv("GST_RTSP_CA_CERT_FILE");
+      if (caCertFile && strlen(caCertFile) > 0) {
+        std::cerr << "[PipelineBuilder] Using CA certificate file: "
+                  << caCertFile << std::endl;
+      } else {
+        std::cerr << "[PipelineBuilder] NOTE: No CA certificate file specified. "
+                     "Set GST_RTSP_CA_CERT_FILE for strict TLS validation"
+                  << std::endl;
+      }
+      
+      // For rtsps://, force TCP transport (TLS requires TCP)
+      if (rtspTransport != "tcp") {
+        std::cerr << "[PipelineBuilder] WARNING: rtsps:// requires TCP transport. "
+                     "Forcing RTSP_TRANSPORT=tcp"
+                  << std::endl;
+        rtspTransport = "tcp";
+        setenv("GST_RTSP_PROTOCOLS", "tcp", 1);
+      }
+    }
+
     // Disable do-rtsp-keep-alive to reduce connection overhead (may help with
     // unstable streams) Note: This is a trade-off - keep-alive helps detect
     // disconnections, but can cause issues with unstable streams
@@ -2590,7 +2658,7 @@ PipelineBuilder::createFaceDetectorNode(
     // Get parameters with defaults - resolve path intelligently
     std::string modelPath = params.count("model_path")
                                 ? params.at("model_path")
-                                : resolveModelPath("models/face/yunet.onnx");
+                                : resolveModelPath("models/face/face_detection_yunet_2022mar.onnx");
     float scoreThreshold =
         params.count("score_threshold")
             ? static_cast<float>(std::stod(params.at("score_threshold")))

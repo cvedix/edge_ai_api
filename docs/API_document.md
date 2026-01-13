@@ -1595,7 +1595,7 @@ API path: /v1/core/instance/{instanceId}
   "inputPixelLimit": 0,
   "RTSP_URL": "rtsp://localhost:8554/stream",
   "MODEL_NAME": "yunet_2023mar",
-  "MODEL_PATH": "./models/yunet.onnx",
+  "MODEL_PATH": "/opt/edge_ai_api/models/face/face_detection_yunet_2022mar.onnx",
   "FILE_PATH": "/path/to/video.mp4",
   "RTMP_URL": "rtmp://localhost:1935/live/stream",
   "SFACE_MODEL_PATH": "string",
@@ -1632,7 +1632,7 @@ curl -X 'PUT' \
   "inputPixelLimit": 0,
   "RTSP_URL": "rtsp://localhost:8554/stream",
   "MODEL_NAME": "yunet_2023mar",
-  "MODEL_PATH": "./models/yunet.onnx",
+  "MODEL_PATH": "/opt/edge_ai_api/models/face/face_detection_yunet_2022mar.onnx",
   "FILE_PATH": "/path/to/video.mp4",
   "RTMP_URL": "rtmp://localhost:1935/live/stream",
   "SFACE_MODEL_PATH": "string",
@@ -3332,7 +3332,7 @@ API path: /v1/core/solution
       "nodeType": "yunet_face_detector",
       "nodeName": "detector_{instanceId}",
       "parameters": {
-        "model_path": "models/face/yunet.onnx"
+        "model_path": "/opt/edge_ai_api/models/face/face_detection_yunet_2022mar.onnx"
       }
     },
     {
@@ -3370,7 +3370,7 @@ curl -X 'POST' \
       "nodeType": "yunet_face_detector",
       "nodeName": "detector_{instanceId}",
       "parameters": {
-        "model_path": "models/face/yunet.onnx"
+        "model_path": "/opt/edge_ai_api/models/face/face_detection_yunet_2022mar.onnx"
       }
     },
     {
@@ -3815,7 +3815,7 @@ curl -X 'GET' \
     "additionalParams": {
       "input": {
         "RTSP_URL": "rtsp://example.com/stream",
-        "MODEL_PATH": "./models/face/yunet.onnx"
+        "MODEL_PATH": "/opt/edge_ai_api/models/face/face_detection_yunet_2022mar.onnx"
       },
       "output": {
         "MQTT_BROKER_URL": "localhost",

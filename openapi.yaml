@@ -6161,7 +6161,7 @@ paths:
                 - nodeType: "yunet_face_detector"
                   nodeName: "detector_{instanceId}"
                   parameters:
-                    model_path: "models/face/yunet.onnx"
+                    model_path: "/opt/edge_ai_api/models/face/face_detection_yunet_2022mar.onnx"
                 - nodeType: "file_des"
                   nodeName: "output_{instanceId}"
                   parameters:
@@ -6483,7 +6483,7 @@ paths:
                         name: "MODEL_PATH"
                         type: "string"
                         required: false
-                        default: "./models/default.onnx"
+                        default: "/opt/edge_ai_api/models/face/face_detection_yunet_2022mar.onnx"
                         description: "File path for yunet_face_detector node"
                   requiredAdditionalParams:
                     type: array
@@ -6750,7 +6750,7 @@ paths:
                           type: string
                         example:
                           RTSP_URL: "rtsp://example.com/stream"
-                          MODEL_PATH: "./models/face/yunet.onnx"
+                          MODEL_PATH: "/opt/edge_ai_api/models/face/face_detection_yunet_2022mar.onnx"
                       output:
                         type: object
                         description: Output parameters (e.g., MQTT_BROKER_URL, RTMP_URL, ENABLE_SCREEN_DES)
@@ -6916,7 +6916,7 @@ paths:
                 additionalParams:
                   input:
                     RTSP_URL: "rtsp://example.com/stream"
-                    MODEL_PATH: "./models/face/yunet.onnx"
+                    MODEL_PATH: "/opt/edge_ai_api/models/face/face_detection_yunet_2022mar.onnx"
                   output:
                     MQTT_BROKER_URL: "localhost"
                     MQTT_PORT: "1883"
@@ -8224,9 +8224,9 @@ components:
         MODEL_PATH:
           type: string
           description: |
-            Direct path to model file (e.g., "./models/yunet.onnx", "/usr/share/cvedix/cvedix_data/models/face/yunet.onnx").
+            Direct path to model file (e.g., "/opt/edge_ai_api/models/face/face_detection_yunet_2022mar.onnx").
             Used if MODEL_NAME is not provided or not found.
-          example: "./models/yunet.onnx"
+          example: "/opt/edge_ai_api/models/face/face_detection_yunet_2022mar.onnx"
         additionalParams:
           type: object
           description: |
@@ -8313,7 +8313,7 @@ components:
         MODEL_PATH:
           type: string
           description: Direct path to model file
-          example: "./models/yunet.onnx"
+          example: "/opt/edge_ai_api/models/face/face_detection_yunet_2022mar.onnx"
         FILE_PATH:
           type: string
           description: File path for file source
@@ -8325,6 +8325,7 @@ components:
         SFACE_MODEL_PATH:
           type: string
           description: Path to SFace encoder model
+          example: "/opt/edge_ai_api/models/face/face_recognition_sface_2021dec.onnx"
         SFACE_MODEL_NAME:
           type: string
           description: Name of SFace encoder model

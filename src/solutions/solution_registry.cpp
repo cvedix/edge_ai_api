@@ -155,7 +155,7 @@ void SolutionRegistry::registerFaceDetectionSolution() {
   faceDetector.nodeType = "yunet_face_detector";
   faceDetector.nodeName = "face_detector_{instanceId}";
   // Use ${MODEL_PATH} placeholder - can be overridden via
-  // additionalParams["MODEL_PATH"] in request Default to yunet.onnx if not
+  // additionalParams["MODEL_PATH"] in request Default to face_detection_yunet_2022mar.onnx if not
   // provided
   faceDetector.parameters["model_path"] = "${MODEL_PATH}";
   faceDetector.parameters["score_threshold"] = "${detectionSensitivity}";
@@ -536,7 +536,7 @@ void SolutionRegistry::registerFaceSwapSolution() {
   // variables.
   config.defaults["RTSP_URL"] = "rtsp://localhost:8554/stream";
   config.defaults["FACE_DETECTION_MODEL_PATH"] =
-      "/opt/cvedix/models/face/yunet.onnx";
+      "/opt/edge_ai_api/models/face/face_detection_yunet_2022mar.onnx";
   config.defaults["BUFFALO_L_FACE_ENCODING_MODEL"] =
       "/opt/cvedix/models/face/buffalo_l.onnx";
   config.defaults["EMAP_FILE_FOR_EMBEDDINGS"] =
@@ -603,7 +603,7 @@ void SolutionRegistry::registerInsightFaceRecognitionSolution() {
   // Default configurations
   config.defaults["RTSP_URL"] = "rtsp://localhost:8554/stream";
   config.defaults["FACE_DETECTION_MODEL_PATH"] =
-      "/opt/cvedix/models/face/yunet.onnx";
+      "/opt/edge_ai_api/models/face/face_detection_yunet_2022mar.onnx";
   config.defaults["FACE_RECOGNITION_MODEL_PATH"] =
       "/opt/cvedix/models/face/insightface.onnx";
   config.defaults["SAVE_DIR"] = "/tmp/output";
@@ -770,7 +770,7 @@ void SolutionRegistry::registerTRTInsightFaceRecognitionSolution() {
   // Default configurations
   config.defaults["RTSP_URL"] = "rtsp://localhost:8554/stream";
   config.defaults["FACE_DETECTION_MODEL_PATH"] =
-      "/opt/cvedix/models/face/yunet.onnx";
+      "/opt/edge_ai_api/models/face/face_detection_yunet_2022mar.onnx";
   config.defaults["FACE_RECOGNITION_MODEL_PATH"] =
       "/opt/cvedix/models/face/insightface.trt";
   config.defaults["SAVE_DIR"] = "/tmp/output";

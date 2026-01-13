@@ -165,7 +165,7 @@ Các tham số đặc biệt cho từng loại solution, được truyền dư�
   - Hệ thống sẽ tự động tìm file model trong các thư mục hệ thống
 
 - `MODEL_PATH` (string): Đường dẫn trực tiếp đến file model
-  - Ví dụ: `"./models/yunet.onnx"`, `"/usr/share/cvedix/cvedix_data/models/face/yunet.onnx"`
+  - Ví dụ: `"/opt/edge_ai_api/models/face/face_detection_yunet_2022mar.onnx"`
   - Chỉ được dùng nếu MODEL_NAME không được cung cấp hoặc không tìm thấy
 
 - `FILE_PATH` (string): Đường dẫn file video (cho solution `face_detection_file`)
@@ -375,7 +375,7 @@ Content-Type: application/json
       "nodeType": "yunet_face_detector",
       "nodeName": "detector_{instanceId}",
       "parameters": {
-        "model_path": "models/face/yunet.onnx"
+        "model_path": "/opt/edge_ai_api/models/face/face_detection_yunet_2022mar.onnx"
       }
     }
   ]
@@ -938,7 +938,7 @@ Content-Type: application/json
   - Tùy theo template, các parameters sẽ khác nhau
   - Ví dụ:
     - RTSP source: `{"rtsp_url": "rtsp://..."}`
-    - Face detector: `{"model_path": "./models/yunet.onnx"}`
+    - Face detector: `{"model_path": "/opt/edge_ai_api/models/face/face_detection_yunet_2022mar.onnx"}`
 
 **Tham số tùy chọn:**
 - `displayName` (string, optional): Tên hiển thị cho node

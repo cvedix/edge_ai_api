@@ -79,7 +79,7 @@ curl -X POST http://localhost:8080/v1/core/instance \
     "solution": "face_detection",
     "additionalParams": {
       "RTSP_SRC_URL": "rtsp://localhost/stream",
-      "MODEL_PATH": "/path/to/yunet.onnx"
+      "MODEL_PATH": "/opt/edge_ai_api/models/face/face_detection_yunet_2022mar.onnx"
     }
   }'
 ```

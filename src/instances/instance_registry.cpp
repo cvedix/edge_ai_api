@@ -253,7 +253,7 @@ std::string InstanceRegistry::createInstance(const CreateInstanceRequest &req) {
               modelPath = modelPathIt->second;
             } else {
               // Try to get from solution config or use default
-              modelPath = "/usr/share/cvedix/cvedix_data/models/face/"
+              modelPath = "/opt/edge_ai_api/models/face/"
                           "face_detection_yunet_2022mar.onnx";
             }
 
@@ -313,7 +313,7 @@ std::string InstanceRegistry::createInstance(const CreateInstanceRequest &req) {
               modelPath = modelPathIt->second;
             } else {
               // Use system-wide default path (no hardcoded user-specific paths)
-              modelPath = "/usr/share/cvedix/cvedix_data/models/face/"
+              modelPath = "/opt/edge_ai_api/models/face/"
                           "face_recognition_sface_2021dec.onnx";
             }
 
