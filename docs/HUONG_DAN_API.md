@@ -1205,4 +1205,3 @@ curl -X POST http://localhost:8080/v1/core/instance/{instanceId}/stop
 - **Recognition API Guide**: `docs/RECOGNITION_API_GUIDE.md`
 - **Swagger UI**: http://localhost:8080/swagger
 - **OpenAPI Spec**: http://localhost:8080/openapi.yaml
-

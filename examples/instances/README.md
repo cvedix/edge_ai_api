@@ -18,6 +18,8 @@ examples/instances/
 
 - **face_detection/** - Face detection solutions
 - **ba_crossline/** - Behavior analysis crossline solutions
+- **ba_jam/** - Behavior analysis jam (vehicle stopped) solutions
+- **ba_stop/** - Behavior analysis stop line solutions
 - **mask_rcnn/** - Mask R-CNN segmentation solutions
 - **infer_nodes/** - Các inference nodes riêng lẻ
 - **other_solutions/** - Các solutions khác
@@ -116,6 +118,34 @@ infer_nodes/
 - Format: `.caffemodel`, `.prototxt`
 - Use cases: OpenPose, Pose estimation
 - Requirements: OpenCV DNN với Caffe support
+
+## Behavior Analysis Solutions
+
+### Behavior Analysis Jam (`ba_jam/`)
+
+**Solutions:**
+- `ba_jam`: Phát hiện "jam" (vehicle stopped) trong các zone định nghĩa
+
+**Tính năng:**
+- Phát hiện phương tiện dừng lâu trong zone
+- Tracking với SORT
+- MQTT events khi phát hiện jam
+- RTMP streaming (tùy chọn)
+
+**Xem:** [ba_jam/README.md](./ba_jam/README.md)
+
+### Behavior Analysis Stop Line (`ba_stop/`)
+
+**Solutions:**
+- `ba_stop`: Phát hiện dừng (stop) tại các stop-line định nghĩa
+
+**Tính năng:**
+- Phát hiện phương tiện dừng tại stop-line
+- Tracking với SORT
+- MQTT events khi phát hiện stop
+- RTMP streaming (tùy chọn)
+
+**Xem:** [ba_stop/README.md](./ba_stop/README.md)
 
 ## RTMP/MQTT Integration
 

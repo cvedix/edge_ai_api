@@ -38,6 +38,10 @@ set(TEST_SOURCES
     test_group_handler.cpp
     test_create_instance_handler.cpp
     test_lines_handler.cpp
+    test_jams_handler.cpp
+    test_stops_handler.cpp
+    test_ba_jam_detection_params.cpp
+    test_ba_jam_pipeline.cpp
     # test_ai_handler.cpp  # Commented out: requires C++20 for counting_semaphore, but project uses C++17
     test_main.cpp
 )
@@ -75,6 +79,8 @@ target_sources(edge_ai_api_tests PRIVATE
     ${CMAKE_SOURCE_DIR}/src/api/group_handler.cpp
     ${CMAKE_SOURCE_DIR}/src/api/create_instance_handler.cpp
     ${CMAKE_SOURCE_DIR}/src/api/lines_handler.cpp
+    ${CMAKE_SOURCE_DIR}/src/api/jams_handler.cpp
+    ${CMAKE_SOURCE_DIR}/src/api/stops_handler.cpp
     # ${CMAKE_SOURCE_DIR}/src/api/ai_handler.cpp  # Commented out: requires C++20 for counting_semaphore, but project uses C++17
     ${CMAKE_SOURCE_DIR}/src/core/watchdog.cpp
     ${CMAKE_SOURCE_DIR}/src/core/health_monitor.cpp
