@@ -269,6 +269,7 @@ set(SOURCES
     src/api/log_handler.cpp
     src/models/model_upload_handler.cpp
     src/videos/video_upload_handler.cpp
+    src/videos/video_preview_handler.cpp
     src/fonts/font_upload_handler.cpp
     src/core/watchdog.cpp
     src/core/health_monitor.cpp

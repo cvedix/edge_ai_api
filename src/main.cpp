@@ -48,6 +48,7 @@
 #include "solutions/solution_storage.h"
 #include "utils/gstreamer_checker.h"
 #include "videos/video_upload_handler.h"
+#include "videos/video_preview_handler.h"
 #include <algorithm>
 #include <arpa/inet.h>
 #include <atomic>
@@ -3047,6 +3048,27 @@ int main(int argc, char *argv[]) {
     PLOG_INFO << "  PUT /v1/core/video/{videoName} - Rename video file";
     PLOG_INFO << "  DELETE /v1/core/video/{videoName} - Delete video file";
     PLOG_INFO << "  Videos directory: " << videosDir;
+    
+    // Initialize video preview handler
+    VideoPreviewHandler::setVideosDirectory(videosDir);
+    static VideoPreviewHandler videoPreviewHandler;
+    
+    // Start cleanup thread for old preview streams
+    std::thread cleanupThread([]() {
+      while (!g_shutdown) {
+        std::this_thread::sleep_for(std::chrono::minutes(5));
+        if (!g_shutdown) {
+          VideoPreviewHandler::cleanupOldStreams();
+        }
+      }
+    });
+    cleanupThread.detach();
+    
+    PLOG_INFO << "[Main] Video preview handler initialized";
+    PLOG_INFO << "  POST /v1/core/video/{videoName}/preview/start - Start video preview";
+    PLOG_INFO << "  DELETE /v1/core/video/{videoName}/preview/{previewId} - Stop preview";
+    PLOG_INFO << "  GET /v1/core/video/{videoName}/preview/{previewId}/{filename} - Serve HLS files";
+    
     PLOG_INFO << "[Main] Font upload handler initialized";
     PLOG_INFO << "  POST /v1/core/font/upload - Upload font file";
     PLOG_INFO << "  GET /v1/core/font/list - List uploaded fonts";
