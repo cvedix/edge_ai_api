@@ -26,6 +26,7 @@
     },
     "output": {
       "RTMP_URL": "rtmp://localhost:1935/live/ba_jam_stream",
+      "RTMP_DES_URL": "rtmp://localhost:1935/live/ba_jam_stream",
       "ENABLE_SCREEN_DES": "false",
       "BROKE_FOR": "NORMAL",
       "MQTT_BROKER_URL": "localhost",

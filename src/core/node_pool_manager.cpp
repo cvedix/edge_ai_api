@@ -1051,10 +1051,36 @@ size_t NodePoolManager::createNodesFromDefaultSolutions(
               nodeTemplate.defaultParameters.end()) {
             nodeParams[key] = nodeTemplate.defaultParameters.at(key);
           } else {
-            // Required parameter has placeholder and no default - skip this
-            // node
-            canCreate = false;
-            break;
+            // Check if this is a supported placeholder that will be resolved
+            // when creating instances (e.g., RTMP_DES_URL, RTSP_URL, etc.)
+            // These placeholders are resolved by PipelineBuilder when creating
+            // instances, so we allow the node to be created with the placeholder
+            // Extract placeholder name from ${NAME} format
+            std::string placeholderName;
+            if (value.size() > 3 && value.back() == '}') {
+              placeholderName = value.substr(2, value.length() - 3); // Extract ${...}
+            } else {
+              // Invalid placeholder format - skip this node
+              canCreate = false;
+              break;
+            }
+            // Allow placeholders that will be resolved by PipelineBuilder's generic
+            // placeholder substitution or explicit handlers. This includes:
+            // - Input/Output URLs: RTMP_DES_URL, RTMP_URL, RTSP_URL, RTSP_SRC_URL,
+            //   RTMP_SRC_URL, HLS_URL, HTTP_URL, FILE_PATH
+            // - Model paths: MODEL_PATH, SFACE_MODEL_PATH, WEIGHTS_PATH, CONFIG_PATH,
+            //   LABELS_PATH, MODEL_CONFIG_PATH, TRT_PATH
+            // - Configuration: RESIZE_RATIO, ENABLE_SCREEN_DES, SCORE_THRESHOLD,
+            //   INPUT_WIDTH, INPUT_HEIGHT
+            // - Behavior Analysis: CHECK_INTERVAL_FRAMES, CHECK_MIN_HIT_FRAMES,
+            //   CHECK_MAX_DISTANCE, CHECK_MIN_STOPS, CHECK_NOTIFY_INTERVAL
+            // - Crossline: CROSSLINE_START_X, CROSSLINE_START_Y, CROSSLINE_END_X,
+            //   CROSSLINE_END_Y
+            // - Other: Any placeholder that can be resolved from additionalParams
+            // Generic placeholder substitution in PipelineBuilder will handle all
+            // placeholders from additionalParams, so we allow all placeholders here
+            nodeParams[key] = value; // Keep placeholder as-is - will be resolved when
+                                     // creating instances
           }
         } else {
           nodeParams[key] = value;
@@ -1175,9 +1201,36 @@ NodePoolManager::createNodesFromSolution(const SolutionConfig &solutionConfig) {
             nodeTemplate.defaultParameters.end()) {
           nodeParams[key] = nodeTemplate.defaultParameters.at(key);
         } else {
-          // Required parameter has placeholder and no default - skip this node
-          canCreate = false;
-          break;
+          // Check if this is a supported placeholder that will be resolved
+          // when creating instances (e.g., RTMP_DES_URL, RTSP_URL, etc.)
+          // These placeholders are resolved by PipelineBuilder when creating
+          // instances, so we allow the node to be created with the placeholder
+          // Extract placeholder name from ${NAME} format
+          std::string placeholderName;
+          if (value.size() > 3 && value.back() == '}') {
+            placeholderName = value.substr(2, value.length() - 3); // Extract ${...}
+          } else {
+            // Invalid placeholder format - skip this node
+            canCreate = false;
+            break;
+          }
+          // Allow placeholders that will be resolved by PipelineBuilder's generic
+          // placeholder substitution or explicit handlers. This includes:
+          // - Input/Output URLs: RTMP_DES_URL, RTMP_URL, RTSP_URL, RTSP_SRC_URL,
+          //   RTMP_SRC_URL, HLS_URL, HTTP_URL, FILE_PATH
+          // - Model paths: MODEL_PATH, SFACE_MODEL_PATH, WEIGHTS_PATH, CONFIG_PATH,
+          //   LABELS_PATH, MODEL_CONFIG_PATH, TRT_PATH
+          // - Configuration: RESIZE_RATIO, ENABLE_SCREEN_DES, SCORE_THRESHOLD,
+          //   INPUT_WIDTH, INPUT_HEIGHT
+          // - Behavior Analysis: CHECK_INTERVAL_FRAMES, CHECK_MIN_HIT_FRAMES,
+          //   CHECK_MAX_DISTANCE, CHECK_MIN_STOPS, CHECK_NOTIFY_INTERVAL
+          // - Crossline: CROSSLINE_START_X, CROSSLINE_START_Y, CROSSLINE_END_X,
+          //   CROSSLINE_END_Y
+          // - Other: Any placeholder that can be resolved from additionalParams
+          // Generic placeholder substitution in PipelineBuilder will handle all
+          // placeholders from additionalParams, so we allow all placeholders here
+          nodeParams[key] = value; // Keep placeholder as-is - will be resolved when
+                                   // creating instances
         }
       } else {
         nodeParams[key] = value;

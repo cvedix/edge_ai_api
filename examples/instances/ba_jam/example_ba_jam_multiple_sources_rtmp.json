@@ -12,6 +12,7 @@
     },
     "output": {
       "RTMP_URL": "rtmp://localhost:1935/live/ba_jam_multiple",
+      "RTMP_DES_URL": "rtmp://localhost:1935/live/ba_jam_multiple",
       "ENABLE_SCREEN_DES": "false"
     },
     "JamZones": "[{\"id\":\"zone1\",\"name\":\"Channel 0 Jam Zone\",\"roi\":[{\"x\":20,\"y\":360},{\"x\":400,\"y\":250},{\"x\":535,\"y\":250},{\"x\":555,\"y\":560},{\"x\":30,\"y\":550}],\"check_interval_frames\":20,\"check_min_hit_frames\":50,\"check_max_distance\":8,\"check_min_stops\":8,\"check_notify_interval\":10},{\"id\":\"zone2\",\"name\":\"Channel 1 Jam Zone\",\"roi\":[{\"x\":12,\"y\":353},{\"x\":472,\"y\":108},{\"x\":581,\"y\":100},{\"x\":732,\"y\":399}],\"check_interval_frames\":20,\"check_min_hit_frames\":50,\"check_max_distance\":8,\"check_min_stops\":8,\"check_notify_interval\":10}]"

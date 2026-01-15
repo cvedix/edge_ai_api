@@ -15,7 +15,8 @@
       "SWAP_SOURCE_IMAGE": "/opt/cvedix/models/face/source_face.jpg"
     },
     "output": {
-      "RTMP_URL": "rtmp://localhost:1935/live/face_swap_stream"
+      "RTMP_URL": "rtmp://localhost:1935/live/face_swap_stream",
+      "RTMP_DES_URL": "rtmp://localhost:1935/live/face_swap_stream"
     }
   }
 }

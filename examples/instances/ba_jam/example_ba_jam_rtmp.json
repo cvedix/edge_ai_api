@@ -12,6 +12,7 @@
     },
     "output": {
       "RTMP_URL": "rtmp://localhost:1935/live/ba_jam_demo",
+      "RTMP_DES_URL": "rtmp://localhost:1935/live/ba_jam_demo",
       "ENABLE_SCREEN_DES": "false"
     },
     "JamZones": "[{\"id\":\"zone1\",\"name\":\"Front Lane\",\"coordinates\":[{\"x\":100,\"y\":300},{\"x\":700,\"y\":300},{\"x\":700,\"y\":400},{\"x\":100,\"y\":400}],\"min_frames_stopped\":30}]"

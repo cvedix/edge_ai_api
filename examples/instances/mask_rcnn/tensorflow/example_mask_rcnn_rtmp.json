@@ -17,7 +17,8 @@
       "RESIZE_RATIO": "1.0"
     },
     "output": {
-      "RTMP_URL": "rtmp://localhost:1935/live/mask_rcnn_demo"
+      "RTMP_URL": "rtmp://localhost:1935/live/mask_rcnn_demo",
+      "RTMP_DES_URL": "rtmp://localhost:1935/live/mask_rcnn_demo"
     }
   }
 }

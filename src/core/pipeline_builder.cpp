@@ -3201,7 +3201,7 @@ PipelineBuilder::createFaceDetectorNode(
         std::cerr << "[PipelineBuilder]   3. Directory should be traversable (755 or 775)"
                   << std::endl;
         std::cerr << "[PipelineBuilder]   4. Fix permissions and symlinks:" << std::endl;
-        std::cerr << "[PipelineBuilder]      sudo ./scripts/fix_cvedix_issues.sh"
+        std::cerr << "[PipelineBuilder]      sudo systemctl restart edge-ai-api"
                   << std::endl;
         std::cerr << "[PipelineBuilder]   5. Restart service:" << std::endl;
         std::cerr << "[PipelineBuilder]      sudo systemctl restart edge-ai-api"

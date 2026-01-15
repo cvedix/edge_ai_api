@@ -18,6 +18,7 @@
     },
     "output": {
       "RTMP_URL": "rtmp://localhost:1935/live/mask_rcnn_stream",
+      "RTMP_DES_URL": "rtmp://localhost:1935/live/mask_rcnn_stream",
       "ENABLE_SCREEN_DES": "false"
     }
   }

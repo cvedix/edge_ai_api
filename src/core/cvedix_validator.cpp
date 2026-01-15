@@ -107,7 +107,7 @@ std::string CVEDIXValidator::getPermissionErrorMessage(const std::string &filePa
   oss << "  2. File should be readable (644 or 664)\n";
   oss << "  3. Directory should be traversable (755 or 775)\n";
   oss << "  4. Fix permissions and symlinks:\n";
-  oss << "     sudo /opt/edge_ai_api/scripts/fix_cvedix_issues.sh\n";
+  oss << "     sudo systemctl restart edge-ai-api\n";
   oss << "  5. Restart service:\n";
   oss << "     sudo systemctl restart edge-ai-api\n";
   return oss.str();
@@ -118,7 +118,7 @@ std::string CVEDIXValidator::getDependencyErrorMessage() {
   oss << "CVEDIX SDK dependencies not available\n";
   oss << "\nSOLUTION:\n";
   oss << "  1. Fix symlinks:\n";
-  oss << "     sudo /opt/edge_ai_api/scripts/fix_all_symlinks.sh\n";
+  oss << "     sudo /opt/edge_ai_api/scripts/dev_setup.sh --skip-deps --skip-build\n";
   oss << "  2. Update library cache:\n";
   oss << "     sudo ldconfig\n";
   oss << "  3. Restart service:\n";

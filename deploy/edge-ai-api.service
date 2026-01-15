@@ -17,7 +17,8 @@ StandardError=journal
 # Resource limits
 LimitNOFILE=65536
 MemoryMax=2G
-CPUQuota=200%
+# CPUQuota removed - allow full CPU usage for better performance
+# CPUQuota=200%  # Was limiting to 2 cores, removed for better performance
 
 # Security settings
 NoNewPrivileges=true
@@ -48,8 +49,9 @@ Environment="EDGE_AI_WORKER_PATH=/usr/local/bin/edge_ai_worker"
 # Default: /opt/edge_ai_api/run
 Environment="EDGE_AI_SOCKET_DIR=/opt/edge_ai_api/run"
 # Execution mode: subprocess (isolated workers) or in-process (legacy)
-# Default: subprocess (better isolation, crash recovery, hot reload)
-Environment="EDGE_AI_EXECUTION_MODE=subprocess"
+# Changed to in-process for production stability (same as develop mode)
+# Default: in-process (no worker spawning - more stable)
+Environment="EDGE_AI_EXECUTION_MODE=in-process"
 # Instances directory for storing instance configurations
 # Default: /opt/edge_ai_api/instances
 Environment="INSTANCES_DIR=/opt/edge_ai_api/instances"

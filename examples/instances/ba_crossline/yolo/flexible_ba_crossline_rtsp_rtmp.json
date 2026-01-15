@@ -14,6 +14,7 @@
     },
     "output": {
       "RTMP_URL": "rtmp://localhost:1935/live/ba_crossline_stream",
+      "RTMP_DES_URL": "rtmp://localhost:1935/live/ba_crossline_stream",
       "ENABLE_SCREEN_DES": "false"
     },
     "CrossingLines": "[{\"id\":\"line1\",\"name\":\"RTSP Camera Crossline\",\"coordinates\":[{\"x\":0,\"y\":250},{\"x\":700,\"y\":220}],\"direction\":\"Both\",\"classes\":[\"Vehicle\"],\"color\":[255,0,0,255]},{\"id\":\"line2\",\"name\":\"RTSP Camera Crossline 2\",\"coordinates\":[{\"x\":100,\"y\":400},{\"x\":800,\"y\":380}],\"direction\":\"Both\",\"classes\":[\"Vehicle\",\"Person\"],\"color\":[0,255,0,255]}]"

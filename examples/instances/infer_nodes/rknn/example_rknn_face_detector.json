@@ -16,7 +16,8 @@
       "NUM_CLASSES": "1"
     },
     "output": {
-      "RTMP_URL": "rtmp://localhost:1935/live/rknn_face"
+      "RTMP_URL": "rtmp://localhost:1935/live/rknn_face",
+      "RTMP_DES_URL": "rtmp://localhost:1935/live/rknn_face"
     }
   }
 }

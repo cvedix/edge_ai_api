@@ -303,8 +303,9 @@ API_HOST=0.0.0.0
 API_PORT=8080
 LOG_LEVEL=INFO
 # Execution mode: subprocess (isolated workers) or in-process (legacy)
-# Subprocess mode provides better isolation, crash recovery, and hot reload
-EDGE_AI_EXECUTION_MODE=subprocess
+# Changed to in-process for production stability (same as develop mode)
+# In-process mode: no worker spawning, runs directly in main process
+EDGE_AI_EXECUTION_MODE=in-process
 EOF
     chown "$SERVICE_USER:$SERVICE_GROUP" "$INSTALL_DIR/config/.env"
     chmod 640 "$INSTALL_DIR/config/.env"
@@ -534,8 +535,9 @@ echo "  ✓ OpenCV freetype compatibility library copied"
 echo "  ✓ Permissions configured for data directories"
 echo "  ✓ Library cache updated"
 echo ""
-echo "If you encounter CVEDIX SDK issues, run:"
-echo "  sudo /opt/edge_ai_api/scripts/fix_cvedix_issues.sh"
+echo "If you encounter issues, check service status:"
+echo "  sudo systemctl status edge-ai-api"
+echo "  sudo journalctl -u edge-ai-api -n 50"
 echo ""
 echo "Service status:"
 echo "  sudo systemctl status ${SERVICE_NAME}"
