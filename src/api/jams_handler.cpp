@@ -271,7 +271,7 @@ void JamsHandler::getAllJams(const HttpRequestPtr &req, std::function<void(const
 
     // Build response
     Json::Value response;
-    response["jams"] = jamsArray;
+    response["jamZones"] = jamsArray;
     auto end_time = std::chrono::steady_clock::now();
     auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(
         end_time - start_time);
@@ -436,7 +436,7 @@ void JamsHandler::createJam(
     Json::Value result;
     result["message"] = "Jams created successfully";
     result["count"] = (int)jamsToAdd.size();
-    result["jams"] = savedJams;
+    result["zones"] = savedJams;
     callback(createSuccessResponse(result, 201));
 
   } catch (const std::exception &e) {
@@ -543,6 +543,7 @@ void JamsHandler::deleteAllJams(const HttpRequestPtr &req, std::function<void(co
 
     Json::Value response;
     response["message"] = "All jams deleted successfully";
+    response["jamZones"] = Json::Value(Json::arrayValue);
     callback(createSuccessResponse(response));
 
   } catch (const std::exception &e) {
@@ -1103,6 +1104,7 @@ void JamsHandler::batchUpdateJams(const HttpRequestPtr &req, std::function<void(
     Json::Value result;
     result["message"] = "Jams batch updated successfully";
     result["count"] = (int)newJams.size();
+    result["jamZones"] = newJams;
     callback(createSuccessResponse(result));
 
   } catch (const std::exception &e) {

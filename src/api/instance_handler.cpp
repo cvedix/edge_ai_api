@@ -1872,8 +1872,73 @@ void InstanceHandler::getLastFrame(
                  << ", loaded=" << info.loaded;
     }
 
-    // Get last frame (empty string if no frame cached)
-    std::string frameBase64 = instance_manager_->getLastFrame(instanceId);
+    // Get last frame with timeout protection
+    // CRITICAL: getLastFrame() can block for up to 5 seconds (IPC timeout)
+    // We need async + timeout to prevent API from hanging in production
+    // when there are concurrent requests
+    std::string frameBase64;
+    try {
+      auto future = std::async(
+          std::launch::async,
+          [this, instanceId]() -> std::string {
+            try {
+              if (!instance_manager_) {
+                std::cerr << "[InstanceHandler] [ASYNC THREAD] ERROR: "
+                             "instance_manager_ is null!"
+                          << std::endl;
+                return "";
+              }
+              return instance_manager_->getLastFrame(instanceId);
+            } catch (const std::exception &e) {
+              std::cerr << "[InstanceHandler] [ASYNC THREAD] EXCEPTION in "
+                           "getLastFrame: "
+                        << e.what() << std::endl;
+              return "";
+            } catch (...) {
+              std::cerr << "[InstanceHandler] [ASYNC THREAD] UNKNOWN EXCEPTION "
+                           "in getLastFrame"
+                        << std::endl;
+              return "";
+            }
+          });
+
+      // Wait with timeout: IPC_API_TIMEOUT_MS (default 5s) + 500ms buffer
+      auto timeoutMs = TimeoutConstants::getIpcApiTimeoutMs() + 500;
+      auto timeout = std::chrono::milliseconds(timeoutMs);
+      auto status = future.wait_for(timeout);
+      if (status == std::future_status::timeout) {
+        std::cerr << "[InstanceHandler] TIMEOUT waiting for getLastFrame() after "
+                  << timeoutMs << "ms" << std::endl;
+        if (isApiLoggingEnabled()) {
+          PLOG_WARNING << "[API] GET /v1/core/instance/" << instanceId
+                       << "/frame - Timeout getting frame (" << timeoutMs << "ms)";
+        }
+        callback(createErrorResponse(504, "Gateway Timeout",
+                                     "Frame request timed out. Worker may "
+                                     "be busy. Please try again later."));
+        return;
+      } else if (status == std::future_status::ready) {
+        try {
+          frameBase64 = future.get();
+        } catch (const std::exception &e) {
+          std::cerr << "[InstanceHandler] Exception getting future result: "
+                    << e.what() << std::endl;
+          callback(createErrorResponse(500, "Internal server error",
+                                       "Failed to get frame"));
+          return;
+        } catch (...) {
+          std::cerr << "[InstanceHandler] Unknown exception getting future result"
+                    << std::endl;
+          callback(createErrorResponse(500, "Internal server error",
+                                       "Failed to get frame"));
+          return;
+        }
+      }
+    } catch (...) {
+      callback(createErrorResponse(500, "Internal server error",
+                                   "Failed to get frame"));
+      return;
+    }
 
     // DEBUG: Log frame retrieval result
     if (isApiLoggingEnabled()) {

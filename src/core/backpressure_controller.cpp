@@ -1,6 +1,7 @@
 #include "core/backpressure_controller.h"
 #include <algorithm>
 #include <cmath>
+#include <iostream>
 
 namespace BackpressureController {
 
@@ -54,14 +55,26 @@ bool BackpressureController::shouldDropFrame(const std::string &instanceId) {
           statsIt->second.current_queue_size.load(std::memory_order_relaxed);
       size_t max_queue_size = config->max_queue_size;
 
-      // Drop frame if queue is >= 80% full (prevent queue overflow)
-      // This allows keeping high FPS but dropping frames when queue gets full
-      const double queue_drop_threshold = 0.8; // 80% of max queue size
+      // CRITICAL: Drop frames more aggressively when queue is getting full
+      // Use lower threshold (50%) to prevent queue overflow and maintain real-time processing
+      // This is especially important when RTMP output node is slow or blocking
+      const double queue_drop_threshold = 0.5; // 50% of max queue size (reduced from 80%)
       size_t drop_threshold =
           static_cast<size_t>(max_queue_size * queue_drop_threshold);
 
-      if (current_queue_size >= drop_threshold) {
+      // Also drop if queue size is very high (>= 40 frames) regardless of max_queue_size
+      // This handles cases where SDK queue size (51) exceeds configured max_queue_size
+      if (current_queue_size >= drop_threshold || current_queue_size >= 40) {
         // Queue is getting full - drop this frame to prevent overflow
+        // Log occasionally to avoid performance impact (every 100th drop)
+        static thread_local std::unordered_map<std::string, uint64_t> drop_log_counter;
+        auto &counter = drop_log_counter[instanceId];
+        counter++;
+        if (counter % 100 == 1) {
+          std::cerr << "[BackpressureController] Dropping frame for instance "
+                    << instanceId << " (queue_size=" << current_queue_size
+                    << ", threshold=" << drop_threshold << ")" << std::endl;
+        }
         return true;
       }
     }

@@ -91,6 +91,7 @@ target_sources(edge_ai_api_tests PRIVATE
     ${CMAKE_SOURCE_DIR}/src/instances/instance_registry.cpp
     ${CMAKE_SOURCE_DIR}/src/instances/inprocess_instance_manager.cpp
     ${CMAKE_SOURCE_DIR}/src/core/pipeline_builder.cpp
+    ${CMAKE_SOURCE_DIR}/src/core/cvedix_validator.cpp
     ${CMAKE_SOURCE_DIR}/src/utils/cvedix_mqtt_client_impl.cpp
     ${CMAKE_SOURCE_DIR}/src/utils/mp4_finalizer.cpp
     ${CMAKE_SOURCE_DIR}/src/utils/mp4_directory_watcher.cpp

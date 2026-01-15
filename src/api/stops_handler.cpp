@@ -212,6 +212,14 @@ bool StopsHandler::validateROI(const Json::Value &roi, std::string &error) const
 }
 
 bool StopsHandler::validateStopParameters(const Json::Value &stop, std::string &error) const {
+  // Reject unsupported parameters
+  const std::vector<std::string> unsupportedParams = {"classes", "color"};
+  for (const auto &param : unsupportedParams) {
+    if (stop.isMember(param)) {
+      error = "Unsupported parameter: " + param + ". This parameter is not supported for stop zones.";
+      return false;
+    }
+  }
 
   if (stop.isMember("minStopSeconds") && !stop["minStopSeconds"].isNumeric()) {
     error = "minStopSeconds must be a number";

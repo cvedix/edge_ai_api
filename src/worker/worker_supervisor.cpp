@@ -78,8 +78,17 @@ bool WorkerSupervisor::spawnWorker(const std::string &instance_id,
   // Find worker executable
   std::string exe_path = findWorkerExecutable();
   if (exe_path.empty()) {
-    std::cerr << "[Supervisor] Worker executable not found: "
+    std::cerr << "[Supervisor] ========================================" << std::endl;
+    std::cerr << "[Supervisor] ✗ Worker executable not found: "
               << worker_executable_ << std::endl;
+    std::cerr << "[Supervisor] ========================================" << std::endl;
+    std::cerr << "[Supervisor] SOLUTION:" << std::endl;
+    std::cerr << "[Supervisor]   1. Build worker executable:" << std::endl;
+    std::cerr << "[Supervisor]      cd build && make edge_ai_worker" << std::endl;
+    std::cerr << "[Supervisor]   2. Or check if executable exists in PATH" << std::endl;
+    std::cerr << "[Supervisor]   3. Run diagnostic script:" << std::endl;
+    std::cerr << "[Supervisor]      ./scripts/diagnose_spawn_worker.sh" << std::endl;
+    std::cerr << "[Supervisor] ========================================" << std::endl;
     return false;
   }
 
@@ -96,7 +105,19 @@ bool WorkerSupervisor::spawnWorker(const std::string &instance_id,
   pid_t pid = fork();
 
   if (pid < 0) {
-    std::cerr << "[Supervisor] Fork failed: " << strerror(errno) << std::endl;
+    std::cerr << "[Supervisor] ========================================" << std::endl;
+    std::cerr << "[Supervisor] ✗ Fork failed: " << strerror(errno) << std::endl;
+    std::cerr << "[Supervisor] ========================================" << std::endl;
+    std::cerr << "[Supervisor] SOLUTION:" << std::endl;
+    std::cerr << "[Supervisor]   1. Check process limits:" << std::endl;
+    std::cerr << "[Supervisor]      ulimit -u  # Check max user processes" << std::endl;
+    std::cerr << "[Supervisor]   2. Increase limits if needed:" << std::endl;
+    std::cerr << "[Supervisor]      ulimit -u 4096" << std::endl;
+    std::cerr << "[Supervisor]   3. Check system limits:" << std::endl;
+    std::cerr << "[Supervisor]      cat /proc/sys/kernel/pid_max" << std::endl;
+    std::cerr << "[Supervisor]   4. Run diagnostic script:" << std::endl;
+    std::cerr << "[Supervisor]      ./scripts/diagnose_spawn_worker.sh" << std::endl;
+    std::cerr << "[Supervisor] ========================================" << std::endl;
     return false;
   }
 
@@ -129,8 +150,25 @@ bool WorkerSupervisor::spawnWorker(const std::string &instance_id,
   bool ready = waitForWorkerReady(*worker, worker_startup_timeout_ms_);
 
   if (!ready) {
-    std::cerr << "[Supervisor] Worker failed to become ready, killing PID "
+    std::cerr << "[Supervisor] ========================================" << std::endl;
+    std::cerr << "[Supervisor] ✗ Worker failed to become ready, killing PID "
               << pid << std::endl;
+    std::cerr << "[Supervisor] ========================================" << std::endl;
+    std::cerr << "[Supervisor] SOLUTION:" << std::endl;
+    std::cerr << "[Supervisor]   1. Check worker logs for errors" << std::endl;
+    std::cerr << "[Supervisor]   2. Check socket directory permissions:" << std::endl;
+    std::cerr << "[Supervisor]      ls -la " << socket_path << std::endl;
+    std::cerr << "[Supervisor]   3. Check socket directory exists and is writable:" << std::endl;
+    std::filesystem::path socket_dir = std::filesystem::path(socket_path).parent_path();
+    std::cerr << "[Supervisor]      ls -ld " << socket_dir.string() << std::endl;
+    std::cerr << "[Supervisor]   4. Fix socket directory if needed:" << std::endl;
+    std::cerr << "[Supervisor]      sudo mkdir -p " << socket_dir.string() 
+              << " && sudo chmod 777 " << socket_dir.string() << std::endl;
+    std::cerr << "[Supervisor]   5. Check CVEDIX SDK dependencies:" << std::endl;
+    std::cerr << "[Supervisor]      sudo ./scripts/fix_cvedix_issues.sh" << std::endl;
+    std::cerr << "[Supervisor]   6. Run diagnostic script:" << std::endl;
+    std::cerr << "[Supervisor]      ./scripts/diagnose_spawn_worker.sh" << std::endl;
+    std::cerr << "[Supervisor] ========================================" << std::endl;
     kill(pid, SIGKILL);
     waitpid(pid, nullptr, 0);
     cleanupSocket(socket_path);
@@ -251,6 +289,22 @@ IPCMessage WorkerSupervisor::sendToWorker(const std::string &instance_id,
     }
     std::cout << "[WorkerSupervisor] Worker state is valid: "
               << static_cast<int>(worker.state) << std::endl;
+
+    // CRITICAL: If worker is already BUSY, reject the request to prevent
+    // concurrent sendAndReceive() calls which can cause response mismatch
+    // and timeout issues in production. The API layer should retry with
+    // exponential backoff.
+    if (worker.state == WorkerState::BUSY) {
+      std::cerr << "[WorkerSupervisor] ERROR: Worker is already BUSY, "
+                   "rejecting request to prevent concurrent operations"
+                << std::endl;
+      IPCMessage error;
+      error.type = MessageType::ERROR_RESPONSE;
+      error.payload = createErrorResponse(
+          "Worker is busy processing another request. Please retry later.",
+          ResponseStatus::ERROR);
+      return error;
+    }
 
     // Get client pointer and set state to BUSY while holding lock
     client_ptr = worker.client.get();

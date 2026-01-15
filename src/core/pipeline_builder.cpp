@@ -1,5 +1,6 @@
 #include "core/pipeline_builder.h"
 #include "config/system_config.h"
+#include "core/cvedix_validator.h"
 #include "core/env_config.h"
 #include "core/platform_detector.h"
 #include <cstdlib> // For setenv
@@ -127,10 +128,9 @@
 #include <sstream>
 #include <stdexcept>
 #include <typeinfo>
-// CVEDIX SDK uses experimental::filesystem, so we need to use it too for
-// compatibility
-#include <experimental/filesystem>
-namespace fs = std::experimental::filesystem;
+// Use standard filesystem (C++17)
+#include <filesystem>
+namespace fs = std::filesystem;
 
 // Static flag to ensure CVEDIX logger is initialized only once
 static std::once_flag cvedix_init_flag;
@@ -1595,9 +1595,21 @@ PipelineBuilder::buildPipeline(const SolutionConfig &solution,
           pos = rtmpNodeName.find("{instanceId}", pos + instanceId.length());
         }
 
+        std::cerr << "[PipelineBuilder] Attempting to create RTMP destination node with parameters:" << std::endl;
+        std::cerr << "  rtmp_url param: '" << rtmpConfig.parameters.at("rtmp_url") << "'" << std::endl;
+        std::cerr << "  RTMP_URL from req.additionalParams: ";
+        auto rtmpUrlIt = req.additionalParams.find("RTMP_URL");
+        if (rtmpUrlIt != req.additionalParams.end()) {
+          std::cerr << "'" << rtmpUrlIt->second << "'" << std::endl;
+        } else {
+          std::cerr << "NOT FOUND" << std::endl;
+        }
+        
         auto rtmpNode =
             createRTMPDestinationNode(rtmpNodeName, rtmpConfig.parameters, req);
         if (rtmpNode) {
+          std::cerr << "[PipelineBuilder] ✓ RTMP destination node created successfully: '"
+                    << rtmpNodeName << "'" << std::endl;
           // Find the best node to attach to:
           // 1. If pipeline has OSD node, attach RTMP node to OSD node (to get
           // frames with overlay)
@@ -1678,11 +1690,20 @@ PipelineBuilder::buildPipeline(const SolutionConfig &solution,
                 << "[PipelineBuilder] ✓ Auto-added rtmp_des node (attached to "
                    "same source as other DES nodes - parallel connection)"
                 << std::endl;
+            std::cerr << "[PipelineBuilder] RTMP node attached to: '"
+                      << typeid(*attachTarget).name() << "'" << std::endl;
           } else {
             std::cerr << "[PipelineBuilder] ⚠ Failed to find suitable node to "
                          "attach rtmp_des"
                       << std::endl;
+            std::cerr << "[PipelineBuilder] Available nodes count: "
+                      << nodes.size() << std::endl;
           }
+        } else {
+          std::cerr << "[PipelineBuilder] ✗ Failed to create RTMP destination node (returned nullptr)"
+                    << std::endl;
+          std::cerr << "[PipelineBuilder] This usually means RTMP_URL was empty or invalid"
+                    << std::endl;
         }
       } catch (const std::exception &e) {
         std::cerr << "[PipelineBuilder] ⚠ Failed to auto-add rtmp_des: "
@@ -3004,7 +3025,21 @@ PipelineBuilder::createFaceDetectorNode(
       throw std::invalid_argument("Model path cannot be empty");
     }
 
-    // Check if model file exists (warning only, SDK will also check)
+    // Pre-validate model file access before calling SDK constructor
+    // This provides better error messages and fail-fast behavior
+    try {
+      CVEDIXValidator::preCheckBeforeNodeCreation(modelPath);
+    } catch (const std::runtime_error &e) {
+      std::cerr << "[PipelineBuilder] ========================================"
+                << std::endl;
+      std::cerr << "[PipelineBuilder] ✗ Pre-validation failed" << std::endl;
+      std::cerr << "[PipelineBuilder] " << e.what() << std::endl;
+      std::cerr << "[PipelineBuilder] ========================================"
+                << std::endl;
+      throw; // Re-throw to let caller handle
+    }
+
+    // Check if model file exists (for informational logging)
     fs::path modelFilePath(modelPath);
     if (!fs::exists(modelFilePath)) {
       std::cerr << "[PipelineBuilder] ========================================"
@@ -3147,6 +3182,39 @@ PipelineBuilder::createFaceDetectorNode(
                      "node created but may fail during inference"
                   << std::endl;
       }
+    } catch (const std::filesystem::filesystem_error &e) {
+      // Handle filesystem errors (including permission denied)
+      if (e.code() == std::errc::permission_denied) {
+        std::cerr << "[PipelineBuilder] ========================================"
+                  << std::endl;
+        std::cerr << "[PipelineBuilder] ✗ Permission denied accessing model file"
+                  << std::endl;
+        std::cerr << "[PipelineBuilder] Model path: " << modelPath << std::endl;
+        std::cerr << "[PipelineBuilder] Error: " << e.what() << std::endl;
+        std::cerr << "[PipelineBuilder] ========================================"
+                  << std::endl;
+        std::cerr << "[PipelineBuilder] SOLUTION:" << std::endl;
+        std::cerr << "[PipelineBuilder]   1. Check file permissions:" << std::endl;
+        std::cerr << "[PipelineBuilder]      ls -la " << modelPath << std::endl;
+        std::cerr << "[PipelineBuilder]   2. File should be readable (644 or 664)"
+                  << std::endl;
+        std::cerr << "[PipelineBuilder]   3. Directory should be traversable (755 or 775)"
+                  << std::endl;
+        std::cerr << "[PipelineBuilder]   4. Fix permissions and symlinks:" << std::endl;
+        std::cerr << "[PipelineBuilder]      sudo ./scripts/fix_cvedix_issues.sh"
+                  << std::endl;
+        std::cerr << "[PipelineBuilder]   5. Restart service:" << std::endl;
+        std::cerr << "[PipelineBuilder]      sudo systemctl restart edge-ai-api"
+                  << std::endl;
+        std::cerr << "[PipelineBuilder] ========================================"
+                  << std::endl;
+        throw std::runtime_error("Permission denied accessing model file: " +
+                                 modelPath + ". See logs for fix instructions.");
+      }
+      // Re-throw other filesystem errors
+      std::cerr << "[PipelineBuilder] Filesystem error in constructor: "
+                << e.what() << std::endl;
+      throw;
     } catch (const std::bad_alloc &e) {
       std::cerr << "[PipelineBuilder] Memory allocation failed: " << e.what()
                 << std::endl;
@@ -4060,6 +4128,14 @@ PipelineBuilder::createRTMPDestinationNode(
     std::cerr
         << "[PipelineBuilder] ✓ RTMP destination node created successfully"
         << std::endl;
+    std::cerr << "[PipelineBuilder] RTMP node will start automatically when pipeline starts"
+              << std::endl;
+    std::cerr << "[PipelineBuilder] NOTE: If RTMP stream is not working, check:"
+              << std::endl;
+    std::cerr << "  1. RTMP server is accessible: " << rtmpUrl << std::endl;
+    std::cerr << "  2. RTMP server is running and accepting connections" << std::endl;
+    std::cerr << "  3. Network connectivity to RTMP server" << std::endl;
+    std::cerr << "  4. GStreamer pipeline logs for connection errors" << std::endl;
     return node;
   } catch (const std::exception &e) {
     std::cerr << "[PipelineBuilder] Exception in createRTMPDestinationNode: "
@@ -5026,6 +5102,16 @@ PipelineBuilder::getRTMPUrl(const CreateInstanceRequest &req) const {
     size_t last = str.find_last_not_of(" \t\n\r\f\v");
     return str.substr(first, (last - first + 1));
   };
+
+  // Debug: Log all additionalParams keys for troubleshooting
+  std::cerr << "[PipelineBuilder] getRTMPUrl: Checking additionalParams (total keys: "
+            << req.additionalParams.size() << ")" << std::endl;
+  for (const auto &[key, value] : req.additionalParams) {
+    if (key.find("RTMP") != std::string::npos) {
+      std::cerr << "[PipelineBuilder] getRTMPUrl: Found RTMP-related key: '"
+                << key << "' = '" << value << "'" << std::endl;
+    }
+  }
 
   // Get RTMP URL from additionalParams - check RTMP_DES_URL first (new format),
   // then RTMP_URL (backward compatibility)

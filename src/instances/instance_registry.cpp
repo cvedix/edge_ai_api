@@ -3693,10 +3693,65 @@ void InstanceRegistry::stopPipeline(
       }
     }
 
-    // CRITICAL: After stopping source node, wait for DNN processing nodes to
-    // finish This ensures all frames in the processing queue are handled and
-    // DNN models have cleared their internal state before we detach or restart
-    // This prevents shape mismatch errors when restarting
+    // CRITICAL: Explicitly detach all processing nodes (face_detector, etc.)
+    // to stop their internal queues from processing frames
+    // This prevents "queue full, dropping meta!" warnings after instance stop
+    std::cerr << "[InstanceRegistry] Detaching all processing nodes to stop "
+                 "internal queues..."
+              << std::endl;
+    for (const auto &node : nodes) {
+      if (!node) {
+        continue;
+      }
+
+      // Skip source and destination nodes (already handled)
+      auto rtspNode =
+          std::dynamic_pointer_cast<cvedix_nodes::cvedix_rtsp_src_node>(node);
+      auto rtmpSrcNode =
+          std::dynamic_pointer_cast<cvedix_nodes::cvedix_rtmp_src_node>(node);
+      auto fileNode =
+          std::dynamic_pointer_cast<cvedix_nodes::cvedix_file_src_node>(node);
+      auto rtmpDesNode =
+          std::dynamic_pointer_cast<cvedix_nodes::cvedix_rtmp_des_node>(node);
+
+      if (rtspNode || rtmpSrcNode || fileNode || rtmpDesNode) {
+        continue; // Already handled
+      }
+
+      // Detach processing nodes (face_detector, feature_encoder, etc.)
+      try {
+        auto faceDetectorNode =
+            std::dynamic_pointer_cast<
+                cvedix_nodes::cvedix_yunet_face_detector_node>(node);
+        auto featureEncoderNode =
+            std::dynamic_pointer_cast<
+                cvedix_nodes::cvedix_sface_feature_encoder_node>(node);
+
+        if (faceDetectorNode || featureEncoderNode) {
+          std::cerr << "[InstanceRegistry] Detaching DNN processing node to stop "
+                       "queue processing..."
+                    << std::endl;
+          // Use exclusive lock for cleanup operations
+          std::unique_lock<std::shared_mutex> gstLock(gstreamer_ops_mutex_);
+          node->detach_recursively();
+          std::cerr << "[InstanceRegistry] ✓ DNN processing node detached"
+                    << std::endl;
+        }
+      } catch (const std::exception &e) {
+        std::cerr << "[InstanceRegistry] ⚠ Exception detaching processing node: "
+                  << e.what() << std::endl;
+      } catch (...) {
+        std::cerr << "[InstanceRegistry] ⚠ Unknown error detaching processing "
+                     "node"
+                  << std::endl;
+      }
+    }
+
+    // CRITICAL: After stopping source node and detaching processing nodes, wait
+    // for DNN processing nodes to finish This ensures all frames in the
+    // processing queue are handled and DNN models have cleared their internal
+    // state before we detach or restart This prevents shape mismatch errors
+    // when restarting
     if (hasDNNModels) {
       if (isDeletion) {
         std::cerr << "[InstanceRegistry] Waiting for DNN models to finish "

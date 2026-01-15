@@ -2193,8 +2193,24 @@ int main(int argc, char *argv[]) {
     if (executionMode == InstanceExecutionMode::SUBPROCESS) {
       // Subprocess mode: Create SubprocessInstanceManager
       // Workers will be spawned for each instance
+      
+      // Resolve worker executable path from environment variable or use default
+      const char *worker_path_env = std::getenv("EDGE_AI_WORKER_PATH");
+      std::string worker_executable;
+      if (worker_path_env && strlen(worker_path_env) > 0) {
+        worker_executable = std::string(worker_path_env);
+        std::cerr << "[Main] Using worker executable from EDGE_AI_WORKER_PATH: "
+                  << worker_executable << std::endl;
+      } else {
+        // Default: try absolute path first, then fallback to just executable name
+        // This allows supervisor's findWorkerExecutable() to search in PATH
+        worker_executable = "edge_ai_worker";
+        std::cerr << "[Main] Using default worker executable: " << worker_executable
+                  << " (set EDGE_AI_WORKER_PATH to override)" << std::endl;
+      }
+      
       instanceManager = InstanceManagerFactory::createSubprocess(
-          solutionRegistry, instanceStorage, "edge_ai_worker");
+          solutionRegistry, instanceStorage, worker_executable);
       std::cerr << "[Main] ✓ Subprocess instance manager initialized"
                 << std::endl;
       PLOG_INFO << "[Main] Subprocess instance manager initialized";

@@ -27,7 +27,7 @@ ProtectSystem=true
 ProtectHome=true
 # Allow network access (required for binding ports)
 PrivateNetwork=false
-ReadWritePaths=/opt/edge_ai_api/logs /opt/edge_ai_api/data /opt/edge_ai_api/uploads /opt/edge_ai_api/instances /opt/edge_ai_api/record /opt/edge_ai_api/models /opt/edge_ai_api/videos /opt/edge_ai_api/fonts
+ReadWritePaths=/opt/edge_ai_api/logs /opt/edge_ai_api/data /opt/edge_ai_api/uploads /opt/edge_ai_api/instances /opt/edge_ai_api/record /opt/edge_ai_api/models /opt/edge_ai_api/videos /opt/edge_ai_api/fonts /opt/edge_ai_api/run
 
 # Watchdog settings (systemd built-in watchdog)
 # NOTE: Disabled because application has its own watchdog implementation
@@ -40,6 +40,19 @@ ReadWritePaths=/opt/edge_ai_api/logs /opt/edge_ai_api/data /opt/edge_ai_api/uplo
 EnvironmentFile=-/opt/edge_ai_api/config/.env
 Environment="API_HOST=0.0.0.0"
 Environment="API_PORT=8080"
+# Worker executable path (required for subprocess mode)
+# Default: edge_ai_worker (will search in PATH)
+# Production: /usr/local/bin/edge_ai_worker
+Environment="EDGE_AI_WORKER_PATH=/usr/local/bin/edge_ai_worker"
+# Socket directory for IPC between main process and workers
+# Default: /opt/edge_ai_api/run
+Environment="EDGE_AI_SOCKET_DIR=/opt/edge_ai_api/run"
+# Execution mode: subprocess (isolated workers) or in-process (legacy)
+# Default: subprocess (better isolation, crash recovery, hot reload)
+Environment="EDGE_AI_EXECUTION_MODE=subprocess"
+# Instances directory for storing instance configurations
+# Default: /opt/edge_ai_api/instances
+Environment="INSTANCES_DIR=/opt/edge_ai_api/instances"
 # GStreamer plugin path (required for filesrc and other plugins)
 # Default: Debian/Ubuntu x86_64 path
 # Override: Set GST_PLUGIN_PATH in /opt/edge_ai_api/config/.env

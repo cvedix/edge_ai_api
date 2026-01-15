@@ -129,6 +129,17 @@ override_dh_auto_install:
 	# Install OpenAPI specification file
 	install -m 644 $(CURDIR)/openapi.yaml $(CURDIR)/debian/$(PACKAGE_NAME)$(INSTALL_DIR)/openapi.yaml
 
+	# Install fix scripts for CVEDIX SDK issues
+	install -d $(CURDIR)/debian/$(PACKAGE_NAME)$(INSTALL_DIR)/scripts
+	@if [ -f $(CURDIR)/scripts/fix_all_symlinks.sh ]; then \
+		echo "Installing fix_all_symlinks.sh"; \
+		install -m 755 $(CURDIR)/scripts/fix_all_symlinks.sh $(CURDIR)/debian/$(PACKAGE_NAME)$(INSTALL_DIR)/scripts/fix_all_symlinks.sh; \
+	fi
+	@if [ -f $(CURDIR)/scripts/fix_cvedix_issues.sh ]; then \
+		echo "Installing fix_cvedix_issues.sh"; \
+		install -m 755 $(CURDIR)/scripts/fix_cvedix_issues.sh $(CURDIR)/debian/$(PACKAGE_NAME)$(INSTALL_DIR)/scripts/fix_cvedix_issues.sh; \
+	fi
+
 override_dh_shlibdeps:
 	# Skip automatic shlibdeps - we bundle libraries ourselves
 	:
