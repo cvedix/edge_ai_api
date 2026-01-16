@@ -428,7 +428,8 @@ static void ensureCVEDIXInitialized() {
 std::vector<std::shared_ptr<cvedix_nodes::cvedix_node>>
 PipelineBuilder::buildPipeline(const SolutionConfig &solution,
                                const CreateInstanceRequest &req,
-                               const std::string &instanceId) {
+                               const std::string &instanceId,
+                               const std::set<std::string> &existingRTMPStreamKeys) {
 
   // Ensure CVEDIX SDK is initialized before creating nodes
   ensureCVEDIXInitialized();
@@ -706,7 +707,7 @@ PipelineBuilder::buildPipeline(const SolutionConfig &solution,
         continue;
       }
       
-      auto node = createNode(modifiedNodeConfig, req, instanceId);
+      auto node = createNode(modifiedNodeConfig, req, instanceId, existingRTMPStreamKeys);
       if (node) {
         nodes.push_back(node);
         nodeTypes.push_back(nodeConfig.nodeType);
@@ -1606,7 +1607,7 @@ PipelineBuilder::buildPipeline(const SolutionConfig &solution,
         }
         
         auto rtmpNode =
-            createRTMPDestinationNode(rtmpNodeName, rtmpConfig.parameters, req);
+            createRTMPDestinationNode(rtmpNodeName, rtmpConfig.parameters, req, instanceId, existingRTMPStreamKeys);
         if (rtmpNode) {
           std::cerr << "[PipelineBuilder] ✓ RTMP destination node created successfully: '"
                     << rtmpNodeName << "'" << std::endl;
@@ -1797,7 +1798,8 @@ PipelineBuilder::buildPipeline(const SolutionConfig &solution,
 std::shared_ptr<cvedix_nodes::cvedix_node>
 PipelineBuilder::createNode(const SolutionConfig::NodeConfig &nodeConfig,
                             const CreateInstanceRequest &req,
-                            const std::string &instanceId) {
+                            const std::string &instanceId,
+                            const std::set<std::string> &existingRTMPStreamKeys) {
 
   // Get node name with instanceId substituted
   std::string nodeName = nodeConfig.nodeName;
@@ -2538,7 +2540,7 @@ PipelineBuilder::createNode(const SolutionConfig::NodeConfig &nodeConfig,
     else if (nodeConfig.nodeType == "file_des") {
       return createFileDestinationNode(nodeName, params, instanceId);
     } else if (nodeConfig.nodeType == "rtmp_des") {
-      return createRTMPDestinationNode(nodeName, params, req);
+      return createRTMPDestinationNode(nodeName, params, req, instanceId, existingRTMPStreamKeys);
     } else if (nodeConfig.nodeType == "screen_des") {
       return createScreenDestinationNode(nodeName, params);
     } else {
@@ -4032,11 +4034,41 @@ std::shared_ptr<cvedix_nodes::cvedix_node> PipelineBuilder::createFaceOSDNode(
   }
 }
 
+std::string PipelineBuilder::extractRTMPStreamKey(const std::string &rtmpUrl) const {
+  // Extract stream key from RTMP URL: rtmp://host:port/path/stream_key
+  if (rtmpUrl.empty()) {
+    return "";
+  }
+  
+  size_t protocolPos = rtmpUrl.find("rtmp://");
+  if (protocolPos == std::string::npos) {
+    return "";
+  }
+  
+  // Find the last '/' to locate stream key
+  size_t lastSlash = rtmpUrl.find_last_of('/');
+  if (lastSlash == std::string::npos || lastSlash >= rtmpUrl.length() - 1) {
+    return "";
+  }
+  
+  // Extract stream key (remove trailing _0 suffix if added by RTMP node)
+  std::string streamKey = rtmpUrl.substr(lastSlash + 1);
+  
+  // Remove _0 suffix if present (RTMP node automatically adds this)
+  if (streamKey.length() >= 2 && streamKey.substr(streamKey.length() - 2) == "_0") {
+    streamKey = streamKey.substr(0, streamKey.length() - 2);
+  }
+  
+  return streamKey;
+}
+
 std::shared_ptr<cvedix_nodes::cvedix_node>
 PipelineBuilder::createRTMPDestinationNode(
     const std::string &nodeName,
     const std::map<std::string, std::string> &params,
-    const CreateInstanceRequest &req) {
+    const CreateInstanceRequest &req,
+    const std::string &instanceId,
+    const std::set<std::string> &existingRTMPStreamKeys) {
 
   try {
     // Helper function to trim whitespace from string
@@ -4062,6 +4094,54 @@ PipelineBuilder::createRTMPDestinationNode(
 
     // Trim whitespace from RTMP URL to prevent GStreamer pipeline errors
     rtmpUrl = trim(rtmpUrl);
+
+    // CRITICAL FIX: Make RTMP URL unique per instance ONLY if stream key conflicts
+    // with existing instances. This prevents "Could not open resource for writing"
+    // errors when multiple instances try to use the same RTMP stream key.
+    // Only modify URL if conflict is detected - this preserves user's original URL
+    // when no conflict exists.
+    if (!rtmpUrl.empty() && !instanceId.empty()) {
+      // Extract stream key from RTMP URL
+      std::string streamKey = extractRTMPStreamKey(rtmpUrl);
+      
+      // Check if this stream key conflicts with existing instances
+      if (!streamKey.empty() && existingRTMPStreamKeys.find(streamKey) != existingRTMPStreamKeys.end()) {
+        // Conflict detected - make URL unique by appending instance ID
+        size_t protocolPos = rtmpUrl.find("rtmp://");
+        if (protocolPos != std::string::npos) {
+          // Find the last '/' to locate stream key
+          size_t lastSlash = rtmpUrl.find_last_of('/');
+          if (lastSlash != std::string::npos && lastSlash < rtmpUrl.length() - 1) {
+            std::string baseUrl = rtmpUrl.substr(0, lastSlash + 1);
+            
+            // Remove _0 suffix if present (RTMP node will add it back)
+            std::string originalStreamKey = streamKey;
+            if (originalStreamKey.length() >= 2 && 
+                originalStreamKey.substr(originalStreamKey.length() - 2) == "_0") {
+              originalStreamKey = originalStreamKey.substr(0, originalStreamKey.length() - 2);
+            }
+            
+            // Generate short unique ID from instanceId (use first 8 chars)
+            std::string shortId = instanceId.substr(0, 8);
+            
+            // Append instance ID to stream key: stream_key -> stream_key_<shortId>
+            std::string uniqueStreamKey = originalStreamKey + "_" + shortId;
+            rtmpUrl = baseUrl + uniqueStreamKey;
+            std::cerr << "[PipelineBuilder] RTMP stream key conflict detected: '"
+                      << streamKey << "'" << std::endl;
+            std::cerr << "[PipelineBuilder] Made RTMP URL unique per instance: '"
+                      << rtmpUrl << "'" << std::endl;
+            std::cerr << "[PipelineBuilder] Original stream key was appended with instance ID: '"
+                      << shortId << "'" << std::endl;
+          }
+        }
+      } else if (!streamKey.empty()) {
+        // No conflict - keep original URL unchanged
+        std::cerr << "[PipelineBuilder] RTMP stream key '"
+                  << streamKey << "' has no conflicts, using original URL: '"
+                  << rtmpUrl << "'" << std::endl;
+      }
+    }
 
     int channel = params.count("channel") ? std::stoi(params.at("channel")) : 0;
 

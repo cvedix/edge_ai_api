@@ -96,6 +96,47 @@ std::string InstanceRegistry::createInstance(const CreateInstanceRequest &req) {
     solution = &solutionConfig;
   }
 
+  // Collect existing RTMP stream keys from running instances to check for conflicts
+  // This allows us to only modify RTMP URLs when there's an actual conflict
+  std::set<std::string> existingRTMPStreamKeys;
+  {
+    std::shared_lock<std::shared_timed_mutex> lock(mutex_, std::defer_lock);
+    if (lock.try_lock_for(std::chrono::milliseconds(500))) {
+      for (const auto &[id, info] : instances_) {
+        // Skip current instance (it's being created)
+        if (id == instanceId) {
+          continue;
+        }
+        
+        // Extract RTMP stream key if RTMP URL is configured
+        if (!info.rtmpUrl.empty()) {
+          std::string streamKey = pipeline_builder_.extractRTMPStreamKey(info.rtmpUrl);
+          if (!streamKey.empty()) {
+            existingRTMPStreamKeys.insert(streamKey);
+          }
+        }
+        
+        // Also check additionalParams for RTMP_URL
+        auto rtmpIt = info.additionalParams.find("RTMP_URL");
+        if (rtmpIt != info.additionalParams.end() && !rtmpIt->second.empty()) {
+          std::string streamKey = pipeline_builder_.extractRTMPStreamKey(rtmpIt->second);
+          if (!streamKey.empty()) {
+            existingRTMPStreamKeys.insert(streamKey);
+          }
+        }
+        
+        // Check RTMP_DES_URL as well
+        auto rtmpDesIt = info.additionalParams.find("RTMP_DES_URL");
+        if (rtmpDesIt != info.additionalParams.end() && !rtmpDesIt->second.empty()) {
+          std::string streamKey = pipeline_builder_.extractRTMPStreamKey(rtmpDesIt->second);
+          if (!streamKey.empty()) {
+            existingRTMPStreamKeys.insert(streamKey);
+          }
+        }
+      }
+    }
+  }
+
   // Build pipeline if solution is provided (do this OUTSIDE lock - can take
   // time) ✅ Use RAII: pipeline will automatically cleanup if exception occurs
   // If pipeline_builder throws exception, pipeline vector will be empty and
@@ -103,7 +144,7 @@ std::string InstanceRegistry::createInstance(const CreateInstanceRequest &req) {
   std::vector<std::shared_ptr<cvedix_nodes::cvedix_node>> pipeline;
   if (solution) {
     try {
-      pipeline = pipeline_builder_.buildPipeline(*solution, req, instanceId);
+      pipeline = pipeline_builder_.buildPipeline(*solution, req, instanceId, existingRTMPStreamKeys);
       // ✅ Pipeline build succeeded - nodes are now owned by pipeline vector
       // If exception occurs after this point, pipeline will be destroyed
       // automatically
@@ -3953,10 +3994,51 @@ bool InstanceRegistry::rebuildPipelineFromInstanceInfo(
     req.additionalParams["FILE_PATH"] = info.filePath;
   }
 
+  // Collect existing RTMP stream keys from running instances to check for conflicts
+  // This allows us to only modify RTMP URLs when there's an actual conflict
+  std::set<std::string> existingRTMPStreamKeys;
+  {
+    std::shared_lock<std::shared_timed_mutex> lock(mutex_, std::defer_lock);
+    if (lock.try_lock_for(std::chrono::milliseconds(500))) {
+      for (const auto &[id, info] : instances_) {
+        // Skip current instance (it's being rebuilt)
+        if (id == instanceId) {
+          continue;
+        }
+        
+        // Extract RTMP stream key if RTMP URL is configured
+        if (!info.rtmpUrl.empty()) {
+          std::string streamKey = pipeline_builder_.extractRTMPStreamKey(info.rtmpUrl);
+          if (!streamKey.empty()) {
+            existingRTMPStreamKeys.insert(streamKey);
+          }
+        }
+        
+        // Also check additionalParams for RTMP_URL
+        auto rtmpIt = info.additionalParams.find("RTMP_URL");
+        if (rtmpIt != info.additionalParams.end() && !rtmpIt->second.empty()) {
+          std::string streamKey = pipeline_builder_.extractRTMPStreamKey(rtmpIt->second);
+          if (!streamKey.empty()) {
+            existingRTMPStreamKeys.insert(streamKey);
+          }
+        }
+        
+        // Check RTMP_DES_URL as well
+        auto rtmpDesIt = info.additionalParams.find("RTMP_DES_URL");
+        if (rtmpDesIt != info.additionalParams.end() && !rtmpDesIt->second.empty()) {
+          std::string streamKey = pipeline_builder_.extractRTMPStreamKey(rtmpDesIt->second);
+          if (!streamKey.empty()) {
+            existingRTMPStreamKeys.insert(streamKey);
+          }
+        }
+      }
+    }
+  }
+
   // Build pipeline (this can take time, so don't hold lock)
   std::vector<std::shared_ptr<cvedix_nodes::cvedix_node>> pipeline;
   try {
-    pipeline = pipeline_builder_.buildPipeline(solution, req, instanceId);
+    pipeline = pipeline_builder_.buildPipeline(solution, req, instanceId, existingRTMPStreamKeys);
     if (!pipeline.empty()) {
       // Store pipeline (need lock briefly)
       {
