@@ -12,6 +12,7 @@
 #include <drogon/HttpResponse.h>
 #include <json/json.h>
 #include <sstream>
+#include <vector>
 
 IInstanceManager *QuickInstanceHandler::instance_manager_ = nullptr;
 SolutionRegistry *QuickInstanceHandler::solution_registry_ = nullptr;
@@ -528,6 +529,14 @@ bool QuickInstanceHandler::parseQuickRequest(const Json::Value &json,
         if (key == "RTMP_URL" || key == "FILE_PATH") {
           value = convertPathToProduction(value);
         }
+        // Check if key already exists and warn if values differ
+        if (req.additionalParams.find(key) != req.additionalParams.end()) {
+          std::cerr << "[QuickInstanceHandler] WARNING: Key '" << key
+                    << "' already exists with value '"
+                    << req.additionalParams[key]
+                    << "', replacing with output value '" << value << "'"
+                    << std::endl;
+        }
         req.additionalParams[key] = value;
         // Also handle RTMP_DES_URL
         if (key == "RTMP_URL") {
@@ -633,6 +642,87 @@ bool QuickInstanceHandler::parseQuickRequest(const Json::Value &json,
     req.additionalParams["CrossingLines"] = crossingLinesStr;
   }
 
+  // Parse rules object (new format: { crossingLines: [...], intrusionAreas: [...], ... })
+  if (json.isMember("rules") && json["rules"].isObject()) {
+    Json::Value rulesObj = json["rules"];
+    Json::Value zonesArray(Json::arrayValue);
+    Json::Value linesArray(Json::arrayValue);
+
+    // List of line rule types
+    const std::vector<std::string> lineTypes = {
+      "crossingLines", "countingLines", "tailgatingLines"
+    };
+
+    // List of zone rule types
+    const std::vector<std::string> zoneTypes = {
+      "intrusionAreas", "crossingAreas", "loiteringAreas", "dwellingAreas",
+      "crowdingAreas", "crowdEstimationAreas", "occupancyAreas",
+      "objectLeftAreas", "objectRemovedAreas", "objectGuardingAreas",
+      "armedPersonAreas", "fallenPersonAreas"
+    };
+
+    // Process each rule type
+    for (const auto &ruleType : rulesObj.getMemberNames()) {
+      if (!rulesObj[ruleType].isArray()) {
+        continue;
+      }
+
+      Json::Value ruleList = rulesObj[ruleType];
+      for (const auto &rule : ruleList) {
+        if (!rule.isObject()) {
+          continue;
+        }
+
+        // Add type field to rule
+        Json::Value ruleWithType = rule;
+        ruleWithType["type"] = ruleType;
+
+        // Check if it's a line type or zone type
+        bool isLineType = std::find(lineTypes.begin(), lineTypes.end(), ruleType) != lineTypes.end();
+        
+        if (isLineType) {
+          linesArray.append(ruleWithType);
+        } else {
+          // Check if it's a known zone type
+          bool isZoneType = std::find(zoneTypes.begin(), zoneTypes.end(), ruleType) != zoneTypes.end();
+          if (isZoneType) {
+            zonesArray.append(ruleWithType);
+          }
+        }
+      }
+    }
+
+    // Save to RulesZones and RulesLines format
+    Json::StreamWriterBuilder builder;
+    builder["indentation"] = "";
+    
+    if (zonesArray.size() > 0) {
+      std::string zonesStr = Json::writeString(builder, zonesArray);
+      req.additionalParams["RulesZones"] = zonesStr;
+      std::cerr << "[QuickInstanceHandler] Parsed " << zonesArray.size() 
+                << " zones, saved to RulesZones: " << zonesStr.substr(0, 200) 
+                << (zonesStr.length() > 200 ? "..." : "") << std::endl;
+    }
+    
+    if (linesArray.size() > 0) {
+      std::string linesStr = Json::writeString(builder, linesArray);
+      req.additionalParams["RulesLines"] = linesStr;
+      std::cerr << "[QuickInstanceHandler] Parsed " << linesArray.size() 
+                << " lines, saved to RulesLines: " << linesStr.substr(0, 200) 
+                << (linesStr.length() > 200 ? "..." : "") << std::endl;
+    }
+
+    // Also save legacy format for backward compatibility (CrossingLines)
+    if (rulesObj.isMember("crossingLines") && rulesObj["crossingLines"].isArray()) {
+      Json::Value crossingLinesArray(Json::arrayValue);
+      for (const auto &line : rulesObj["crossingLines"]) {
+        crossingLinesArray.append(line);
+      }
+      std::string crossingLinesStr = Json::writeString(builder, crossingLinesArray);
+      req.additionalParams["CrossingLines"] = crossingLinesStr;
+    }
+  }
+
   // Parse additional parameters (flat structure for backward compatibility)
   // Also parse top-level keys in additionalParams (like CrossingLines) even
   // when input/output sections exist
@@ -650,6 +740,24 @@ bool QuickInstanceHandler::parseQuickRequest(const Json::Value &json,
         if (key.find("PATH") != std::string::npos ||
             key.find("FILE") != std::string::npos) {
           value = convertPathToProduction(value);
+        }
+        // IMPORTANT: Skip keys that were already set from output section
+        // to avoid overwriting user's output configuration
+        if (json.isMember("output") && json["output"].isObject() &&
+            json["output"].isMember(key)) {
+          std::cerr << "[QuickInstanceHandler] Skipping additionalParams key '"
+                    << key
+                    << "' because it was already set from output section"
+                    << std::endl;
+          continue;
+        }
+        // Check if key already exists and warn if values differ
+        if (req.additionalParams.find(key) != req.additionalParams.end()) {
+          std::cerr << "[QuickInstanceHandler] WARNING: Key '" << key
+                    << "' already exists with value '"
+                    << req.additionalParams[key]
+                    << "', replacing with additionalParams value '" << value
+                    << "'" << std::endl;
         }
         req.additionalParams[key] = value;
       }

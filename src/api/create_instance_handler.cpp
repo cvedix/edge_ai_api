@@ -451,6 +451,14 @@ bool CreateInstanceHandler::parseRequest(const Json::Value &json,
               req.additionalParams[key] = value;
             }
           } else {
+            // Check if key already exists and warn if values differ
+            if (req.additionalParams.find(key) != req.additionalParams.end()) {
+              std::cerr << "[CreateInstanceHandler] WARNING: Key '" << key
+                        << "' already exists with value '"
+                        << req.additionalParams[key]
+                        << "', replacing with new value '" << value << "'"
+                        << std::endl;
+            }
             req.additionalParams[key] = value;
           }
         }

@@ -368,17 +368,50 @@ bool InstanceStorage::mergeConfigs(
           if (newParams.isMember("output") && newParams["output"].isObject()) {
             for (const auto &outputKey : newParams["output"].getMemberNames()) {
               if (newParams["output"][outputKey].isString()) {
-                flattenedParams[outputKey] = newParams["output"][outputKey];
+                std::string newValue = newParams["output"][outputKey].asString();
+                // Check if key already exists and warn if values differ
+                if (flattenedParams.isMember(outputKey)) {
+                  std::string existingValue = flattenedParams[outputKey].asString();
+                  if (existingValue != newValue) {
+                    std::cerr << "[InstanceStorage] WARNING: Key '" << outputKey
+                              << "' already exists with value '" << existingValue
+                              << "', replacing with new value '" << newValue << "'"
+                              << std::endl;
+                  }
+                }
+                flattenedParams[outputKey] = newValue;
               }
             }
           }
 
           // Also merge flat keys (backward compatibility) - only replace keys
           // in request
+          // IMPORTANT: Skip keys that were already set from output section to
+          // avoid overwriting
           for (const auto &flatKey : newParams.getMemberNames()) {
             if (flatKey != "input" && flatKey != "output" &&
                 newParams[flatKey].isString()) {
-              flattenedParams[flatKey] = newParams[flatKey];
+              // Skip if this key was already set from output section
+              if (newParams.isMember("output") &&
+                  newParams["output"].isObject() &&
+                  newParams["output"].isMember(flatKey)) {
+                std::cerr << "[InstanceStorage] Skipping flat key '" << flatKey
+                          << "' because it was already set from output section"
+                          << std::endl;
+                continue;
+              }
+              std::string newValue = newParams[flatKey].asString();
+              // Check if key already exists and warn if values differ
+              if (flattenedParams.isMember(flatKey)) {
+                std::string existingValue = flattenedParams[flatKey].asString();
+                if (existingValue != newValue) {
+                  std::cerr << "[InstanceStorage] WARNING: Key '" << flatKey
+                            << "' already exists with value '" << existingValue
+                            << "', replacing with new value '" << newValue << "'"
+                            << std::endl;
+                }
+              }
+              flattenedParams[flatKey] = newValue;
             }
           }
         } else {
@@ -712,6 +745,160 @@ InstanceStorage::instanceInfoToConfigJson(const InstanceInfo &info,
   Json::Value zone(Json::objectValue);
   zone["Zones"] = Json::Value(Json::objectValue);
   config["Zone"] = zone;
+
+  // Convert RulesZones from additionalParams to Zone.Zones format
+  auto zonesIt = info.additionalParams.find("RulesZones");
+  if (zonesIt != info.additionalParams.end() && !zonesIt->second.empty()) {
+    std::cerr << "[InstanceStorage] Found RulesZones in additionalParams: " 
+              << zonesIt->second.substr(0, 200) 
+              << (zonesIt->second.length() > 200 ? "..." : "") << std::endl;
+    Json::Reader reader;
+    Json::Value parsedZones;
+    if (reader.parse(zonesIt->second, parsedZones) && parsedZones.isArray()) {
+      Json::Value zonesObj(Json::objectValue);
+      for (const auto &zoneItem : parsedZones) {
+        if (!zoneItem.isObject()) {
+          continue;
+        }
+        
+        // Get zone ID (required)
+        std::string zoneId;
+        if (zoneItem.isMember("id") && zoneItem["id"].isString()) {
+          zoneId = zoneItem["id"].asString();
+        } else {
+          // Generate ID if not provided
+          zoneId = "zone_" + std::to_string(zonesObj.size());
+        }
+        
+        // Build zone config
+        Json::Value zoneConfig(Json::objectValue);
+        
+        // Copy name if available
+        if (zoneItem.isMember("name") && zoneItem["name"].isString()) {
+          zoneConfig["name"] = zoneItem["name"].asString();
+        }
+        
+        // Convert roi to polygon format
+        if (zoneItem.isMember("roi") && zoneItem["roi"].isArray()) {
+          Json::Value polygon(Json::arrayValue);
+          for (const auto &point : zoneItem["roi"]) {
+            if (point.isObject() && point.isMember("x") && point.isMember("y")) {
+              Json::Value coord(Json::arrayValue);
+              coord.append(point["x"].asDouble());
+              coord.append(point["y"].asDouble());
+              polygon.append(coord);
+            }
+          }
+          if (polygon.size() > 0) {
+            zoneConfig["polygon"] = polygon;
+          }
+        }
+        
+        // Copy type if available
+        if (zoneItem.isMember("type") && zoneItem["type"].isString()) {
+          zoneConfig["type"] = zoneItem["type"].asString();
+        }
+        
+        // Copy other properties
+        for (const auto &key : zoneItem.getMemberNames()) {
+          if (key != "id" && key != "roi" && key != "name" && key != "type") {
+            zoneConfig[key] = zoneItem[key];
+          }
+        }
+        
+        zonesObj[zoneId] = zoneConfig;
+      }
+      if (zonesObj.size() > 0) {
+        config["Zone"]["Zones"] = zonesObj;
+        std::cerr << "[InstanceStorage] Converted " << zonesObj.size() 
+                  << " zones to Zone.Zones format" << std::endl;
+      }
+    } else {
+      std::cerr << "[InstanceStorage] Failed to parse RulesZones JSON" << std::endl;
+    }
+  } else {
+    std::cerr << "[InstanceStorage] RulesZones not found in additionalParams (total params: " 
+              << info.additionalParams.size() << ")" << std::endl;
+  }
+
+  // Convert RulesLines from additionalParams to Tripwire.Tripwires format
+  // Also check CrossingLines for backward compatibility
+  auto linesIt = info.additionalParams.find("RulesLines");
+  if (linesIt == info.additionalParams.end() || linesIt->second.empty()) {
+    // Fallback to CrossingLines for backward compatibility
+    linesIt = info.additionalParams.find("CrossingLines");
+  }
+  if (linesIt != info.additionalParams.end() && !linesIt->second.empty()) {
+    std::cerr << "[InstanceStorage] Found RulesLines/CrossingLines in additionalParams: " 
+              << linesIt->second.substr(0, 200) 
+              << (linesIt->second.length() > 200 ? "..." : "") << std::endl;
+    Json::Reader reader;
+    Json::Value parsedLines;
+    if (reader.parse(linesIt->second, parsedLines) && parsedLines.isArray()) {
+      Json::Value tripwiresObj(Json::objectValue);
+      for (const auto &lineItem : parsedLines) {
+        if (!lineItem.isObject()) {
+          continue;
+        }
+        
+        // Get line ID (required)
+        std::string lineId;
+        if (lineItem.isMember("id") && lineItem["id"].isString()) {
+          lineId = lineItem["id"].asString();
+        } else {
+          // Generate ID if not provided
+          lineId = "tripwire_" + std::to_string(tripwiresObj.size());
+        }
+        
+        // Build tripwire config
+        Json::Value tripwireConfig(Json::objectValue);
+        
+        // Copy name if available
+        if (lineItem.isMember("name") && lineItem["name"].isString()) {
+          tripwireConfig["name"] = lineItem["name"].asString();
+        }
+        
+        // Convert coordinates to tripwire format
+        if (lineItem.isMember("coordinates") && lineItem["coordinates"].isArray()) {
+          tripwireConfig["coordinates"] = lineItem["coordinates"];
+        }
+        
+        // Copy direction if available
+        if (lineItem.isMember("direction") && lineItem["direction"].isString()) {
+          tripwireConfig["direction"] = lineItem["direction"].asString();
+        }
+        
+        // Copy classes if available
+        if (lineItem.isMember("classes") && lineItem["classes"].isArray()) {
+          tripwireConfig["classes"] = lineItem["classes"];
+        }
+        
+        // Copy type if available
+        if (lineItem.isMember("type") && lineItem["type"].isString()) {
+          tripwireConfig["type"] = lineItem["type"].asString();
+        }
+        
+        // Copy other properties
+        for (const auto &key : lineItem.getMemberNames()) {
+          if (key != "id" && key != "coordinates" && key != "name" && 
+              key != "direction" && key != "classes" && key != "type") {
+            tripwireConfig[key] = lineItem[key];
+          }
+        }
+        
+        tripwiresObj[lineId] = tripwireConfig;
+      }
+      if (tripwiresObj.size() > 0) {
+        config["Tripwire"]["Tripwires"] = tripwiresObj;
+        std::cerr << "[InstanceStorage] Converted " << tripwiresObj.size() 
+                  << " tripwires to Tripwire.Tripwires format" << std::endl;
+      }
+    } else {
+      std::cerr << "[InstanceStorage] Failed to parse RulesLines/CrossingLines JSON" << std::endl;
+    }
+  } else {
+    std::cerr << "[InstanceStorage] RulesLines/CrossingLines not found in additionalParams" << std::endl;
+  }
 
   // Store additional parameters as nested config
   if (!info.additionalParams.empty()) {
