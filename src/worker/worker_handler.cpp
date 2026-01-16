@@ -5,6 +5,8 @@
 #include "models/create_instance_request.h"
 #include "solutions/solution_registry.h"
 #include <cstring>
+#include <sys/socket.h>
+#include <unistd.h>
 #include <cvedix/nodes/common/cvedix_node.h>
 #include <cvedix/nodes/des/cvedix_app_des_node.h>
 #include <cvedix/nodes/des/cvedix_rtmp_des_node.h>
@@ -117,8 +119,30 @@ int WorkerHandler::run() {
   // Create and start IPC server
   server_ = std::make_unique<UnixSocketServer>(socket_path_);
 
+  // Callback to send WORKER_READY message when client connects
+  auto onClientConnected = [this](int client_fd) {
+    std::cout << "[Worker:" << instance_id_ << "] Client connected, sending WORKER_READY message" << std::endl;
+    IPCMessage ready_msg;
+    ready_msg.type = MessageType::WORKER_READY;
+    ready_msg.payload = "{}"; // Empty JSON payload
+    
+    std::string data = ready_msg.serialize();
+    size_t total_sent = 0;
+    while (total_sent < data.size()) {
+      ssize_t sent = send(client_fd, data.data() + total_sent,
+                          data.size() - total_sent, MSG_NOSIGNAL);
+      if (sent <= 0) {
+        std::cerr << "[Worker:" << instance_id_ << "] Failed to send WORKER_READY: " << strerror(errno) << std::endl;
+        break;
+      }
+      total_sent += sent;
+    }
+    std::cout << "[Worker:" << instance_id_ << "] WORKER_READY message sent (" << total_sent << " bytes)" << std::endl;
+  };
+
   if (!server_->start(
-          [this](const IPCMessage &msg) { return handleMessage(msg); })) {
+          [this](const IPCMessage &msg) { return handleMessage(msg); },
+          onClientConnected)) {
     std::cerr << "[Worker:" << instance_id_ << "] Failed to start IPC server"
               << std::endl;
     return 1;
@@ -916,23 +940,75 @@ WorkerHandler::parseCreateRequest(const Json::Value &config) const {
   req.frameRateLimit = config.get("FrameRateLimit", 0).asInt();
 
   // Additional parameters (source URLs, model paths, etc.)
-  if (config.isMember("AdditionalParams")) {
-    const auto &params = config["AdditionalParams"];
-    for (const auto &key : params.getMemberNames()) {
-      req.additionalParams[key] = params[key].asString();
+  // Support both nested structure (input/output) and flat structure
+  // Support both "additionalParams" (lowercase, API format) and "AdditionalParams" (capital, internal format)
+  Json::Value params;
+  if (config.isMember("additionalParams") &&
+      config["additionalParams"].isObject()) {
+    params = config["additionalParams"];
+  } else if (config.isMember("AdditionalParams") &&
+             config["AdditionalParams"].isObject()) {
+    params = config["AdditionalParams"];
+  }
+  
+  if (!params.isNull()) {
+    
+    // Check if using new structure (input/output)
+    if (params.isMember("input") && params["input"].isObject()) {
+      // New structure: parse input section
+      for (const auto &key : params["input"].getMemberNames()) {
+        if (params["input"][key].isString()) {
+          req.additionalParams[key] = params["input"][key].asString();
+        }
+      }
+    }
+
+    if (params.isMember("output") && params["output"].isObject()) {
+      // New structure: parse output section
+      for (const auto &key : params["output"].getMemberNames()) {
+        if (params["output"][key].isString()) {
+          req.additionalParams[key] = params["output"][key].asString();
+        }
+      }
+    }
+
+    // Backward compatibility: if no input/output sections, parse as flat
+    // structure. Also parse top-level keys even when input/output sections exist
+    if (!params.isMember("input") && !params.isMember("output")) {
+      for (const auto &key : params.getMemberNames()) {
+        if (params[key].isString()) {
+          req.additionalParams[key] = params[key].asString();
+        }
+      }
     }
   }
 
-  // Direct URL parameters
+  // Direct URL parameters (top-level fields for backward compatibility)
+  // CRITICAL: These are set by SubprocessInstanceManager to ensure RTMP_URL is available
   if (config.isMember("RtspUrl")) {
     req.additionalParams["RTSP_URL"] = config["RtspUrl"].asString();
+    std::cout << "[Worker:" << instance_id_ << "] Found RTSP_URL in top-level RtspUrl: '"
+              << req.additionalParams["RTSP_URL"] << "'" << std::endl;
   }
   if (config.isMember("RtmpUrl")) {
     req.additionalParams["RTMP_URL"] = config["RtmpUrl"].asString();
+    std::cout << "[Worker:" << instance_id_ << "] Found RTMP_URL in top-level RtmpUrl: '"
+              << req.additionalParams["RTMP_URL"] << "'" << std::endl;
   }
   if (config.isMember("FilePath")) {
     req.additionalParams["FILE_PATH"] = config["FilePath"].asString();
+    std::cout << "[Worker:" << instance_id_ << "] Found FILE_PATH in top-level FilePath: '"
+              << req.additionalParams["FILE_PATH"] << "'" << std::endl;
   }
+
+  // Debug: Log final additionalParams to verify RTMP_URL is present
+  std::cout << "[Worker:" << instance_id_ << "] Final additionalParams keys: ";
+  for (const auto &[key, value] : req.additionalParams) {
+    if (key.find("RTMP") != std::string::npos || key.find("RTSP") != std::string::npos) {
+      std::cout << key << "='" << value << "' ";
+    }
+  }
+  std::cout << std::endl;
 
   return req;
 }

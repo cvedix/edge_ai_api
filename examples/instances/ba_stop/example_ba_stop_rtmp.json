@@ -12,6 +12,7 @@
     },
     "output": {
       "RTMP_URL": "rtmp://localhost:1935/live/ba_stop_demo",
+      "RTMP_DES_URL": "rtmp://localhost:1935/live/ba_stop_demo",
       "ENABLE_SCREEN_DES": "false"
     },
     "StopLines": "[{\"id\":\"stop1\",\"name\":\"Entrance Stop\",\"coordinates\":[{\"x\":200,\"y\":350},{\"x\":900,\"y\":350}],\"min_frames_stopped\":20}]"

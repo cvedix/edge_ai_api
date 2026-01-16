@@ -66,6 +66,17 @@ private:
                     std::string &error);
 
   /**
+   * @brief Convert development paths to production paths
+   * Converts paths like:
+   * - /home/cvedix/project/edge_ai_api/cvedix_data/... -> /opt/edge_ai_api/...
+   * - ./cvedix_data/... -> /opt/edge_ai_api/...
+   * - cvedix_data/... -> /opt/edge_ai_api/...
+   * @param path Original path
+   * @return Converted path
+   */
+  std::string convertPathToProduction(const std::string &path) const;
+
+  /**
    * @brief Convert InstanceInfo to JSON response
    */
   Json::Value instanceInfoToJson(const InstanceInfo &info) const;

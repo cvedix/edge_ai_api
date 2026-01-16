@@ -12,7 +12,8 @@
       "LABELS_PATH": "./cvedix_data/models/coco_80classes.txt"
     },
     "output": {
-      "RTMP_URL": "rtmp://localhost:1935/live/yolov8_detector"
+      "RTMP_URL": "rtmp://localhost:1935/live/yolov8_detector",
+      "RTMP_DES_URL": "rtmp://localhost:1935/live/yolov8_detector"
     }
   }
 }

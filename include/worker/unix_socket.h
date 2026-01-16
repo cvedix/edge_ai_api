@@ -18,6 +18,7 @@ namespace worker {
 class UnixSocketServer {
 public:
   using MessageHandler = std::function<IPCMessage(const IPCMessage &)>;
+  using ClientConnectedCallback = std::function<void(int client_fd)>;
 
   explicit UnixSocketServer(const std::string &socket_path);
   ~UnixSocketServer();
@@ -29,9 +30,10 @@ public:
   /**
    * @brief Start listening for connections
    * @param handler Callback for handling messages
+   * @param onClientConnected Optional callback when client connects (for sending WORKER_READY)
    * @return true if started successfully
    */
-  bool start(MessageHandler handler);
+  bool start(MessageHandler handler, ClientConnectedCallback onClientConnected = nullptr);
 
   /**
    * @brief Stop the server
@@ -54,6 +56,7 @@ private:
   std::atomic<bool> running_{false};
   std::thread accept_thread_;
   MessageHandler handler_;
+  ClientConnectedCallback on_client_connected_;
 
   void acceptLoop();
   void handleClient(int client_fd);

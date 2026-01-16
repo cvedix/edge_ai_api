@@ -125,6 +125,112 @@ else
     chmod 755 "$INSTALL_DIR"/uploads "$INSTALL_DIR"/lib "$INSTALL_DIR"/run 2>/dev/null || true
 fi
 
+# Setup permissions for external data directories (e.g., cvedix_data)
+# This handles cases where data is stored outside /opt/edge_ai_api
+echo "Setting up permissions for external data directories..."
+
+# Function to setup external data directory permissions
+setup_external_data_permissions() {
+    local data_dir="$1"
+    local description="$2"
+    
+    if [ ! -d "$data_dir" ]; then
+        return 0  # Directory doesn't exist, skip
+    fi
+    
+    echo "  Checking: $description ($data_dir)"
+    
+    # Get owner and group of the directory
+    local dir_owner=$(stat -c "%U" "$data_dir" 2>/dev/null || echo "")
+    local dir_group=$(stat -c "%G" "$data_dir" 2>/dev/null || echo "")
+    
+    if [ -z "$dir_owner" ]; then
+        return 0  # Cannot get owner info, skip
+    fi
+    
+    # Option 1: Add edgeai user to the directory's group (preferred)
+    if [ -n "$dir_group" ] && [ "$dir_group" != "root" ]; then
+        if getent group "$dir_group" >/dev/null 2>&1; then
+            if ! id -nG "$SERVICE_USER" 2>/dev/null | grep -qw "$dir_group"; then
+                echo "    Adding $SERVICE_USER to group $dir_group..."
+                usermod -a -G "$dir_group" "$SERVICE_USER" 2>/dev/null || true
+            fi
+        fi
+    fi
+    
+    # Option 2: Set permissions so others can read (for models/videos that need to be accessible)
+    # This is a fallback in case group membership doesn't work properly
+    # Only apply to specific subdirectories that need public read access
+    local public_read_dirs=("models" "videos" "test_video")
+    for subdir in "${public_read_dirs[@]}"; do
+        local full_path="$data_dir/$subdir"
+        if [ -d "$full_path" ]; then
+            echo "    Setting permissions for $subdir directory (public read)..."
+            # Set directory permissions: 755 (readable by all)
+            chmod 755 "$full_path" 2>/dev/null || true
+            # Set file permissions: 644 (readable by all)
+            find "$full_path" -type f -exec chmod 644 {} \; 2>/dev/null || true
+            # Set subdirectory permissions: 755
+            find "$full_path" -type d -exec chmod 755 {} \; 2>/dev/null || true
+        fi
+    done
+    
+    # For other subdirectories, ensure group has read access
+    # Also set permissions for others as fallback
+    find "$data_dir" -type d -exec chmod g+rx,o+rx {} \; 2>/dev/null || true
+    find "$data_dir" -type f -exec chmod g+r,o+r {} \; 2>/dev/null || true
+    
+    echo "    ✓ Permissions configured for $description"
+}
+
+# Common external data directory locations
+# Check in order of likelihood
+EXTERNAL_DATA_DIRS=(
+    "/home/*/project/edge_ai_api/cvedix_data"
+    "/home/*/edge_ai_api/cvedix_data"
+    "/opt/cvedix_data"
+    "/var/lib/edge_ai_api/cvedix_data"
+)
+
+# Also check if CVEDIX_DATA_ROOT environment variable is set in any user's environment
+for user_home in /home/*; do
+    if [ -d "$user_home" ]; then
+        username=$(basename "$user_home")
+        # Check for cvedix_data in common project locations
+        for pattern in "$user_home/project/edge_ai_api/cvedix_data" "$user_home/edge_ai_api/cvedix_data"; do
+            if [ -d "$pattern" ]; then
+                setup_external_data_permissions "$pattern" "User $username data directory"
+            fi
+        done
+    fi
+done
+
+# Check system-wide locations
+for pattern in "${EXTERNAL_DATA_DIRS[@]}"; do
+    for dir in $pattern; do
+        if [ -d "$dir" ]; then
+            setup_external_data_permissions "$dir" "System data directory"
+        fi
+    done
+done
+
+# Additional fix: Ensure /home directories have proper permissions for traversal
+# This is important because worker processes need to traverse /home/cvedix
+echo "Checking /home directory permissions..."
+for user_home in /home/*; do
+    if [ -d "$user_home" ]; then
+        username=$(basename "$user_home")
+        current_perms=$(stat -c "%a" "$user_home" 2>/dev/null || echo "")
+        # If permissions are too restrictive (750 or less), set to 751 (group r-x, others x)
+        if [ -n "$current_perms" ] && [ "$current_perms" -lt 751 ]; then
+            echo "  Setting /home/$username permissions to 751 (was $current_perms)..."
+            chmod 751 "$user_home" 2>/dev/null || true
+        fi
+    fi
+done
+
+echo "External data directory permissions setup completed."
+
 # Note: Record directory (/opt/edge_ai_api/record) is now created automatically
 # by create_directories.sh script from directories.conf configuration
 
@@ -197,8 +303,9 @@ API_HOST=0.0.0.0
 API_PORT=8080
 LOG_LEVEL=INFO
 # Execution mode: subprocess (isolated workers) or in-process (legacy)
-# Subprocess mode provides better isolation, crash recovery, and hot reload
-EDGE_AI_EXECUTION_MODE=subprocess
+# Changed to in-process for production stability (same as develop mode)
+# In-process mode: no worker spawning, runs directly in main process
+EDGE_AI_EXECUTION_MODE=in-process
 EOF
     chown "$SERVICE_USER:$SERVICE_GROUP" "$INSTALL_DIR/config/.env"
     chmod 640 "$INSTALL_DIR/config/.env"
@@ -275,6 +382,112 @@ setup_gst_plugin_path() {
 
 setup_gst_plugin_path
 
+# ============================================
+# Fix CVEDIX SDK Issues
+# ============================================
+echo "Fixing CVEDIX SDK issues..."
+
+fix_cvedix_issues() {
+    echo "  [1/4] Fixing libtinyexpr.so symlink..."
+    CVEDIX_LIB_DIR="/opt/cvedix/lib"
+    TINYEXPR_SOURCE="$CVEDIX_LIB_DIR/libtinyexpr.so"
+    TINYEXPR_TARGET="/usr/lib/libtinyexpr.so"
+    
+    if [ -f "$TINYEXPR_SOURCE" ]; then
+        if [ -L "$TINYEXPR_TARGET" ] || [ -f "$TINYEXPR_TARGET" ]; then
+            rm -f "$TINYEXPR_TARGET"
+        fi
+        ln -sf "$TINYEXPR_SOURCE" "$TINYEXPR_TARGET" 2>/dev/null || true
+        echo "    ✓ Created symlink: $TINYEXPR_TARGET -> $TINYEXPR_SOURCE"
+    else
+        echo "    ⚠  libtinyexpr.so not found at $TINYEXPR_SOURCE"
+    fi
+    
+    echo "  [2/4] Fixing Cereal symlink..."
+    # Try to find cereal in common locations
+    CEREAL_SOURCE=""
+    if [ -d "/usr/include/cereal" ]; then
+        CEREAL_SOURCE="/usr/include/cereal"
+    elif [ -d "/usr/local/include/cereal" ]; then
+        CEREAL_SOURCE="/usr/local/include/cereal"
+    fi
+    
+    if [ -n "$CEREAL_SOURCE" ]; then
+        CVEDIX_CEREAL_DIR="/opt/cvedix/include/cvedix/third_party"
+        mkdir -p "$CVEDIX_CEREAL_DIR"
+        if [ -L "$CVEDIX_CEREAL_DIR/cereal" ] || [ -d "$CVEDIX_CEREAL_DIR/cereal" ]; then
+            rm -rf "$CVEDIX_CEREAL_DIR/cereal"
+        fi
+        ln -sf "$CEREAL_SOURCE" "$CVEDIX_CEREAL_DIR/cereal" 2>/dev/null || true
+        echo "    ✓ Created symlink: $CVEDIX_CEREAL_DIR/cereal -> $CEREAL_SOURCE"
+        
+        # Also create in /usr/include/cvedix/third_party/cereal (for compatibility)
+        USR_CEREAL_DIR="/usr/include/cvedix/third_party"
+        mkdir -p "$USR_CEREAL_DIR"
+        if [ -L "$USR_CEREAL_DIR/cereal" ] || [ -d "$USR_CEREAL_DIR/cereal" ]; then
+            rm -rf "$USR_CEREAL_DIR/cereal"
+        fi
+        ln -sf "$CEREAL_SOURCE" "$USR_CEREAL_DIR/cereal" 2>/dev/null || true
+        echo "    ✓ Created symlink: $USR_CEREAL_DIR/cereal -> $CEREAL_SOURCE"
+    else
+        echo "    ⚠  Cereal not found. This may cause compilation issues if building from source."
+    fi
+    
+    echo "  [3/4] Fixing cpp-base64 symlink..."
+    # Try to find base64.h in common locations
+    BASE64_SOURCE=""
+    if [ -f "/usr/include/base64.h" ]; then
+        BASE64_SOURCE="/usr/include/base64.h"
+    elif [ -f "/usr/local/include/base64.h" ]; then
+        BASE64_SOURCE="/usr/local/include/base64.h"
+    fi
+    
+    if [ -n "$BASE64_SOURCE" ]; then
+        CVEDIX_BASE64_DIR="/opt/cvedix/include/cvedix/third_party/cpp_base64"
+        mkdir -p "$CVEDIX_BASE64_DIR"
+        if [ -L "$CVEDIX_BASE64_DIR/base64.h" ] || [ -f "$CVEDIX_BASE64_DIR/base64.h" ]; then
+            rm -f "$CVEDIX_BASE64_DIR/base64.h"
+        fi
+        ln -sf "$BASE64_SOURCE" "$CVEDIX_BASE64_DIR/base64.h" 2>/dev/null || true
+        echo "    ✓ Created symlink: $CVEDIX_BASE64_DIR/base64.h -> $BASE64_SOURCE"
+        
+        # Also create in /usr/include/cvedix/third_party/cpp_base64 (for compatibility)
+        USR_BASE64_DIR="/usr/include/cvedix/third_party/cpp_base64"
+        mkdir -p "$USR_BASE64_DIR"
+        if [ -L "$USR_BASE64_DIR/base64.h" ] || [ -f "$USR_BASE64_DIR/base64.h" ]; then
+            rm -f "$USR_BASE64_DIR/base64.h"
+        fi
+        ln -sf "$BASE64_SOURCE" "$USR_BASE64_DIR/base64.h" 2>/dev/null || true
+        echo "    ✓ Created symlink: $USR_BASE64_DIR/base64.h -> $BASE64_SOURCE"
+    else
+        echo "    ⚠  base64.h not found. This may cause compilation issues if building from source."
+    fi
+    
+    echo "  [4/4] Fixing OpenCV freetype compatibility..."
+    FREETYPE_406="/usr/lib/x86_64-linux-gnu/libopencv_freetype.so.4.6.0"
+    FREETYPE_410_BUILD="$INSTALL_DIR/lib/libopencv_freetype.so.410"
+    
+    if [ -f "$FREETYPE_406" ]; then
+        mkdir -p "$INSTALL_DIR/lib"
+        if [ -f "$FREETYPE_410_BUILD" ]; then
+            rm -f "$FREETYPE_410_BUILD"
+        fi
+        cp "$FREETYPE_406" "$FREETYPE_410_BUILD" 2>/dev/null || true
+        echo "    ✓ Copied OpenCV freetype 4.6.0 to $FREETYPE_410_BUILD"
+    else
+        echo "    ⚠  OpenCV freetype 4.6.0 not found at $FREETYPE_406"
+    fi
+    
+    echo "  ✓ CVEDIX SDK symlinks fixed"
+}
+
+fix_cvedix_issues
+
+# Update library cache after fixing symlinks
+echo "Updating library cache..."
+ldconfig 2>&1 | grep -v "is not a symbolic link" || true
+echo "  ✓ Library cache updated"
+
 # Verify executable and libraries
 if [ -f "$BIN_DIR/edge_ai_api" ]; then
     echo "Verifying executable..."
@@ -315,6 +528,16 @@ if [ -f "/etc/systemd/system/${SERVICE_NAME}.service" ]; then
 fi
 
 echo "Installation completed successfully!"
+echo ""
+echo "CVEDIX SDK fixes applied:"
+echo "  ✓ Symlinks created (tinyexpr, cereal, cpp-base64)"
+echo "  ✓ OpenCV freetype compatibility library copied"
+echo "  ✓ Permissions configured for data directories"
+echo "  ✓ Library cache updated"
+echo ""
+echo "If you encounter issues, check service status:"
+echo "  sudo systemctl status edge-ai-api"
+echo "  sudo journalctl -u edge-ai-api -n 50"
 echo ""
 echo "Service status:"
 echo "  sudo systemctl status ${SERVICE_NAME}"

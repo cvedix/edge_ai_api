@@ -96,6 +96,47 @@ std::string InstanceRegistry::createInstance(const CreateInstanceRequest &req) {
     solution = &solutionConfig;
   }
 
+  // Collect existing RTMP stream keys from running instances to check for conflicts
+  // This allows us to only modify RTMP URLs when there's an actual conflict
+  std::set<std::string> existingRTMPStreamKeys;
+  {
+    std::shared_lock<std::shared_timed_mutex> lock(mutex_, std::defer_lock);
+    if (lock.try_lock_for(std::chrono::milliseconds(500))) {
+      for (const auto &[id, info] : instances_) {
+        // Skip current instance (it's being created)
+        if (id == instanceId) {
+          continue;
+        }
+        
+        // Extract RTMP stream key if RTMP URL is configured
+        if (!info.rtmpUrl.empty()) {
+          std::string streamKey = pipeline_builder_.extractRTMPStreamKey(info.rtmpUrl);
+          if (!streamKey.empty()) {
+            existingRTMPStreamKeys.insert(streamKey);
+          }
+        }
+        
+        // Also check additionalParams for RTMP_URL
+        auto rtmpIt = info.additionalParams.find("RTMP_URL");
+        if (rtmpIt != info.additionalParams.end() && !rtmpIt->second.empty()) {
+          std::string streamKey = pipeline_builder_.extractRTMPStreamKey(rtmpIt->second);
+          if (!streamKey.empty()) {
+            existingRTMPStreamKeys.insert(streamKey);
+          }
+        }
+        
+        // Check RTMP_DES_URL as well
+        auto rtmpDesIt = info.additionalParams.find("RTMP_DES_URL");
+        if (rtmpDesIt != info.additionalParams.end() && !rtmpDesIt->second.empty()) {
+          std::string streamKey = pipeline_builder_.extractRTMPStreamKey(rtmpDesIt->second);
+          if (!streamKey.empty()) {
+            existingRTMPStreamKeys.insert(streamKey);
+          }
+        }
+      }
+    }
+  }
+
   // Build pipeline if solution is provided (do this OUTSIDE lock - can take
   // time) ✅ Use RAII: pipeline will automatically cleanup if exception occurs
   // If pipeline_builder throws exception, pipeline vector will be empty and
@@ -103,7 +144,7 @@ std::string InstanceRegistry::createInstance(const CreateInstanceRequest &req) {
   std::vector<std::shared_ptr<cvedix_nodes::cvedix_node>> pipeline;
   if (solution) {
     try {
-      pipeline = pipeline_builder_.buildPipeline(*solution, req, instanceId);
+      pipeline = pipeline_builder_.buildPipeline(*solution, req, instanceId, existingRTMPStreamKeys);
       // ✅ Pipeline build succeeded - nodes are now owned by pipeline vector
       // If exception occurs after this point, pipeline will be destroyed
       // automatically
@@ -3693,10 +3734,65 @@ void InstanceRegistry::stopPipeline(
       }
     }
 
-    // CRITICAL: After stopping source node, wait for DNN processing nodes to
-    // finish This ensures all frames in the processing queue are handled and
-    // DNN models have cleared their internal state before we detach or restart
-    // This prevents shape mismatch errors when restarting
+    // CRITICAL: Explicitly detach all processing nodes (face_detector, etc.)
+    // to stop their internal queues from processing frames
+    // This prevents "queue full, dropping meta!" warnings after instance stop
+    std::cerr << "[InstanceRegistry] Detaching all processing nodes to stop "
+                 "internal queues..."
+              << std::endl;
+    for (const auto &node : nodes) {
+      if (!node) {
+        continue;
+      }
+
+      // Skip source and destination nodes (already handled)
+      auto rtspNode =
+          std::dynamic_pointer_cast<cvedix_nodes::cvedix_rtsp_src_node>(node);
+      auto rtmpSrcNode =
+          std::dynamic_pointer_cast<cvedix_nodes::cvedix_rtmp_src_node>(node);
+      auto fileNode =
+          std::dynamic_pointer_cast<cvedix_nodes::cvedix_file_src_node>(node);
+      auto rtmpDesNode =
+          std::dynamic_pointer_cast<cvedix_nodes::cvedix_rtmp_des_node>(node);
+
+      if (rtspNode || rtmpSrcNode || fileNode || rtmpDesNode) {
+        continue; // Already handled
+      }
+
+      // Detach processing nodes (face_detector, feature_encoder, etc.)
+      try {
+        auto faceDetectorNode =
+            std::dynamic_pointer_cast<
+                cvedix_nodes::cvedix_yunet_face_detector_node>(node);
+        auto featureEncoderNode =
+            std::dynamic_pointer_cast<
+                cvedix_nodes::cvedix_sface_feature_encoder_node>(node);
+
+        if (faceDetectorNode || featureEncoderNode) {
+          std::cerr << "[InstanceRegistry] Detaching DNN processing node to stop "
+                       "queue processing..."
+                    << std::endl;
+          // Use exclusive lock for cleanup operations
+          std::unique_lock<std::shared_mutex> gstLock(gstreamer_ops_mutex_);
+          node->detach_recursively();
+          std::cerr << "[InstanceRegistry] ✓ DNN processing node detached"
+                    << std::endl;
+        }
+      } catch (const std::exception &e) {
+        std::cerr << "[InstanceRegistry] ⚠ Exception detaching processing node: "
+                  << e.what() << std::endl;
+      } catch (...) {
+        std::cerr << "[InstanceRegistry] ⚠ Unknown error detaching processing "
+                     "node"
+                  << std::endl;
+      }
+    }
+
+    // CRITICAL: After stopping source node and detaching processing nodes, wait
+    // for DNN processing nodes to finish This ensures all frames in the
+    // processing queue are handled and DNN models have cleared their internal
+    // state before we detach or restart This prevents shape mismatch errors
+    // when restarting
     if (hasDNNModels) {
       if (isDeletion) {
         std::cerr << "[InstanceRegistry] Waiting for DNN models to finish "
@@ -3898,10 +3994,51 @@ bool InstanceRegistry::rebuildPipelineFromInstanceInfo(
     req.additionalParams["FILE_PATH"] = info.filePath;
   }
 
+  // Collect existing RTMP stream keys from running instances to check for conflicts
+  // This allows us to only modify RTMP URLs when there's an actual conflict
+  std::set<std::string> existingRTMPStreamKeys;
+  {
+    std::shared_lock<std::shared_timed_mutex> lock(mutex_, std::defer_lock);
+    if (lock.try_lock_for(std::chrono::milliseconds(500))) {
+      for (const auto &[id, info] : instances_) {
+        // Skip current instance (it's being rebuilt)
+        if (id == instanceId) {
+          continue;
+        }
+        
+        // Extract RTMP stream key if RTMP URL is configured
+        if (!info.rtmpUrl.empty()) {
+          std::string streamKey = pipeline_builder_.extractRTMPStreamKey(info.rtmpUrl);
+          if (!streamKey.empty()) {
+            existingRTMPStreamKeys.insert(streamKey);
+          }
+        }
+        
+        // Also check additionalParams for RTMP_URL
+        auto rtmpIt = info.additionalParams.find("RTMP_URL");
+        if (rtmpIt != info.additionalParams.end() && !rtmpIt->second.empty()) {
+          std::string streamKey = pipeline_builder_.extractRTMPStreamKey(rtmpIt->second);
+          if (!streamKey.empty()) {
+            existingRTMPStreamKeys.insert(streamKey);
+          }
+        }
+        
+        // Check RTMP_DES_URL as well
+        auto rtmpDesIt = info.additionalParams.find("RTMP_DES_URL");
+        if (rtmpDesIt != info.additionalParams.end() && !rtmpDesIt->second.empty()) {
+          std::string streamKey = pipeline_builder_.extractRTMPStreamKey(rtmpDesIt->second);
+          if (!streamKey.empty()) {
+            existingRTMPStreamKeys.insert(streamKey);
+          }
+        }
+      }
+    }
+  }
+
   // Build pipeline (this can take time, so don't hold lock)
   std::vector<std::shared_ptr<cvedix_nodes::cvedix_node>> pipeline;
   try {
-    pipeline = pipeline_builder_.buildPipeline(solution, req, instanceId);
+    pipeline = pipeline_builder_.buildPipeline(solution, req, instanceId, existingRTMPStreamKeys);
     if (!pipeline.empty()) {
       // Store pipeline (need lock briefly)
       {

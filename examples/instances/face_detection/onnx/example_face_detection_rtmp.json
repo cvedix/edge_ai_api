@@ -13,7 +13,8 @@
       "RESIZE_RATIO": "1.0"
     },
     "output": {
-      "RTMP_URL": "rtmp://localhost:1935/live/camera_demo_1"
+      "RTMP_URL": "rtmp://localhost:1935/live/camera_demo_1",
+      "RTMP_DES_URL": "rtmp://localhost:1935/live/camera_demo_1"
     }
   }
 }

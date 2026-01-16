@@ -23,12 +23,13 @@ UnixSocketServer::UnixSocketServer(const std::string &socket_path)
 
 UnixSocketServer::~UnixSocketServer() { stop(); }
 
-bool UnixSocketServer::start(MessageHandler handler) {
+bool UnixSocketServer::start(MessageHandler handler, ClientConnectedCallback onClientConnected) {
   if (running_.load()) {
     return false;
   }
 
   handler_ = std::move(handler);
+  on_client_connected_ = std::move(onClientConnected);
 
   // Clean up existing socket
   cleanupSocket(socket_path_);
@@ -138,6 +139,11 @@ void UnixSocketServer::acceptLoop() {
         std::cerr << "[Worker] Accept failed: " << strerror(errno) << std::endl;
       }
       continue;
+    }
+
+    // Call onClientConnected callback if set (for sending WORKER_READY message)
+    if (on_client_connected_) {
+      on_client_connected_(client_fd);
     }
 
     // Handle client in same thread (single client expected per worker)

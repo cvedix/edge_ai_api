@@ -1,5 +1,6 @@
 #include "core/pipeline_builder.h"
 #include "config/system_config.h"
+#include "core/cvedix_validator.h"
 #include "core/env_config.h"
 #include "core/platform_detector.h"
 #include <cstdlib> // For setenv
@@ -127,10 +128,9 @@
 #include <sstream>
 #include <stdexcept>
 #include <typeinfo>
-// CVEDIX SDK uses experimental::filesystem, so we need to use it too for
-// compatibility
-#include <experimental/filesystem>
-namespace fs = std::experimental::filesystem;
+// Use standard filesystem (C++17)
+#include <filesystem>
+namespace fs = std::filesystem;
 
 // Static flag to ensure CVEDIX logger is initialized only once
 static std::once_flag cvedix_init_flag;
@@ -428,7 +428,8 @@ static void ensureCVEDIXInitialized() {
 std::vector<std::shared_ptr<cvedix_nodes::cvedix_node>>
 PipelineBuilder::buildPipeline(const SolutionConfig &solution,
                                const CreateInstanceRequest &req,
-                               const std::string &instanceId) {
+                               const std::string &instanceId,
+                               const std::set<std::string> &existingRTMPStreamKeys) {
 
   // Ensure CVEDIX SDK is initialized before creating nodes
   ensureCVEDIXInitialized();
@@ -706,7 +707,7 @@ PipelineBuilder::buildPipeline(const SolutionConfig &solution,
         continue;
       }
       
-      auto node = createNode(modifiedNodeConfig, req, instanceId);
+      auto node = createNode(modifiedNodeConfig, req, instanceId, existingRTMPStreamKeys);
       if (node) {
         nodes.push_back(node);
         nodeTypes.push_back(nodeConfig.nodeType);
@@ -1595,9 +1596,21 @@ PipelineBuilder::buildPipeline(const SolutionConfig &solution,
           pos = rtmpNodeName.find("{instanceId}", pos + instanceId.length());
         }
 
+        std::cerr << "[PipelineBuilder] Attempting to create RTMP destination node with parameters:" << std::endl;
+        std::cerr << "  rtmp_url param: '" << rtmpConfig.parameters.at("rtmp_url") << "'" << std::endl;
+        std::cerr << "  RTMP_URL from req.additionalParams: ";
+        auto rtmpUrlIt = req.additionalParams.find("RTMP_URL");
+        if (rtmpUrlIt != req.additionalParams.end()) {
+          std::cerr << "'" << rtmpUrlIt->second << "'" << std::endl;
+        } else {
+          std::cerr << "NOT FOUND" << std::endl;
+        }
+        
         auto rtmpNode =
-            createRTMPDestinationNode(rtmpNodeName, rtmpConfig.parameters, req);
+            createRTMPDestinationNode(rtmpNodeName, rtmpConfig.parameters, req, instanceId, existingRTMPStreamKeys);
         if (rtmpNode) {
+          std::cerr << "[PipelineBuilder] ✓ RTMP destination node created successfully: '"
+                    << rtmpNodeName << "'" << std::endl;
           // Find the best node to attach to:
           // 1. If pipeline has OSD node, attach RTMP node to OSD node (to get
           // frames with overlay)
@@ -1678,11 +1691,20 @@ PipelineBuilder::buildPipeline(const SolutionConfig &solution,
                 << "[PipelineBuilder] ✓ Auto-added rtmp_des node (attached to "
                    "same source as other DES nodes - parallel connection)"
                 << std::endl;
+            std::cerr << "[PipelineBuilder] RTMP node attached to: '"
+                      << typeid(*attachTarget).name() << "'" << std::endl;
           } else {
             std::cerr << "[PipelineBuilder] ⚠ Failed to find suitable node to "
                          "attach rtmp_des"
                       << std::endl;
+            std::cerr << "[PipelineBuilder] Available nodes count: "
+                      << nodes.size() << std::endl;
           }
+        } else {
+          std::cerr << "[PipelineBuilder] ✗ Failed to create RTMP destination node (returned nullptr)"
+                    << std::endl;
+          std::cerr << "[PipelineBuilder] This usually means RTMP_URL was empty or invalid"
+                    << std::endl;
         }
       } catch (const std::exception &e) {
         std::cerr << "[PipelineBuilder] ⚠ Failed to auto-add rtmp_des: "
@@ -1776,7 +1798,8 @@ PipelineBuilder::buildPipeline(const SolutionConfig &solution,
 std::shared_ptr<cvedix_nodes::cvedix_node>
 PipelineBuilder::createNode(const SolutionConfig::NodeConfig &nodeConfig,
                             const CreateInstanceRequest &req,
-                            const std::string &instanceId) {
+                            const std::string &instanceId,
+                            const std::set<std::string> &existingRTMPStreamKeys) {
 
   // Get node name with instanceId substituted
   std::string nodeName = nodeConfig.nodeName;
@@ -2517,7 +2540,7 @@ PipelineBuilder::createNode(const SolutionConfig::NodeConfig &nodeConfig,
     else if (nodeConfig.nodeType == "file_des") {
       return createFileDestinationNode(nodeName, params, instanceId);
     } else if (nodeConfig.nodeType == "rtmp_des") {
-      return createRTMPDestinationNode(nodeName, params, req);
+      return createRTMPDestinationNode(nodeName, params, req, instanceId, existingRTMPStreamKeys);
     } else if (nodeConfig.nodeType == "screen_des") {
       return createScreenDestinationNode(nodeName, params);
     } else {
@@ -3004,7 +3027,21 @@ PipelineBuilder::createFaceDetectorNode(
       throw std::invalid_argument("Model path cannot be empty");
     }
 
-    // Check if model file exists (warning only, SDK will also check)
+    // Pre-validate model file access before calling SDK constructor
+    // This provides better error messages and fail-fast behavior
+    try {
+      CVEDIXValidator::preCheckBeforeNodeCreation(modelPath);
+    } catch (const std::runtime_error &e) {
+      std::cerr << "[PipelineBuilder] ========================================"
+                << std::endl;
+      std::cerr << "[PipelineBuilder] ✗ Pre-validation failed" << std::endl;
+      std::cerr << "[PipelineBuilder] " << e.what() << std::endl;
+      std::cerr << "[PipelineBuilder] ========================================"
+                << std::endl;
+      throw; // Re-throw to let caller handle
+    }
+
+    // Check if model file exists (for informational logging)
     fs::path modelFilePath(modelPath);
     if (!fs::exists(modelFilePath)) {
       std::cerr << "[PipelineBuilder] ========================================"
@@ -3147,6 +3184,39 @@ PipelineBuilder::createFaceDetectorNode(
                      "node created but may fail during inference"
                   << std::endl;
       }
+    } catch (const std::filesystem::filesystem_error &e) {
+      // Handle filesystem errors (including permission denied)
+      if (e.code() == std::errc::permission_denied) {
+        std::cerr << "[PipelineBuilder] ========================================"
+                  << std::endl;
+        std::cerr << "[PipelineBuilder] ✗ Permission denied accessing model file"
+                  << std::endl;
+        std::cerr << "[PipelineBuilder] Model path: " << modelPath << std::endl;
+        std::cerr << "[PipelineBuilder] Error: " << e.what() << std::endl;
+        std::cerr << "[PipelineBuilder] ========================================"
+                  << std::endl;
+        std::cerr << "[PipelineBuilder] SOLUTION:" << std::endl;
+        std::cerr << "[PipelineBuilder]   1. Check file permissions:" << std::endl;
+        std::cerr << "[PipelineBuilder]      ls -la " << modelPath << std::endl;
+        std::cerr << "[PipelineBuilder]   2. File should be readable (644 or 664)"
+                  << std::endl;
+        std::cerr << "[PipelineBuilder]   3. Directory should be traversable (755 or 775)"
+                  << std::endl;
+        std::cerr << "[PipelineBuilder]   4. Fix permissions and symlinks:" << std::endl;
+        std::cerr << "[PipelineBuilder]      sudo systemctl restart edge-ai-api"
+                  << std::endl;
+        std::cerr << "[PipelineBuilder]   5. Restart service:" << std::endl;
+        std::cerr << "[PipelineBuilder]      sudo systemctl restart edge-ai-api"
+                  << std::endl;
+        std::cerr << "[PipelineBuilder] ========================================"
+                  << std::endl;
+        throw std::runtime_error("Permission denied accessing model file: " +
+                                 modelPath + ". See logs for fix instructions.");
+      }
+      // Re-throw other filesystem errors
+      std::cerr << "[PipelineBuilder] Filesystem error in constructor: "
+                << e.what() << std::endl;
+      throw;
     } catch (const std::bad_alloc &e) {
       std::cerr << "[PipelineBuilder] Memory allocation failed: " << e.what()
                 << std::endl;
@@ -3964,11 +4034,41 @@ std::shared_ptr<cvedix_nodes::cvedix_node> PipelineBuilder::createFaceOSDNode(
   }
 }
 
+std::string PipelineBuilder::extractRTMPStreamKey(const std::string &rtmpUrl) const {
+  // Extract stream key from RTMP URL: rtmp://host:port/path/stream_key
+  if (rtmpUrl.empty()) {
+    return "";
+  }
+  
+  size_t protocolPos = rtmpUrl.find("rtmp://");
+  if (protocolPos == std::string::npos) {
+    return "";
+  }
+  
+  // Find the last '/' to locate stream key
+  size_t lastSlash = rtmpUrl.find_last_of('/');
+  if (lastSlash == std::string::npos || lastSlash >= rtmpUrl.length() - 1) {
+    return "";
+  }
+  
+  // Extract stream key (remove trailing _0 suffix if added by RTMP node)
+  std::string streamKey = rtmpUrl.substr(lastSlash + 1);
+  
+  // Remove _0 suffix if present (RTMP node automatically adds this)
+  if (streamKey.length() >= 2 && streamKey.substr(streamKey.length() - 2) == "_0") {
+    streamKey = streamKey.substr(0, streamKey.length() - 2);
+  }
+  
+  return streamKey;
+}
+
 std::shared_ptr<cvedix_nodes::cvedix_node>
 PipelineBuilder::createRTMPDestinationNode(
     const std::string &nodeName,
     const std::map<std::string, std::string> &params,
-    const CreateInstanceRequest &req) {
+    const CreateInstanceRequest &req,
+    const std::string &instanceId,
+    const std::set<std::string> &existingRTMPStreamKeys) {
 
   try {
     // Helper function to trim whitespace from string
@@ -3994,6 +4094,54 @@ PipelineBuilder::createRTMPDestinationNode(
 
     // Trim whitespace from RTMP URL to prevent GStreamer pipeline errors
     rtmpUrl = trim(rtmpUrl);
+
+    // CRITICAL FIX: Make RTMP URL unique per instance ONLY if stream key conflicts
+    // with existing instances. This prevents "Could not open resource for writing"
+    // errors when multiple instances try to use the same RTMP stream key.
+    // Only modify URL if conflict is detected - this preserves user's original URL
+    // when no conflict exists.
+    if (!rtmpUrl.empty() && !instanceId.empty()) {
+      // Extract stream key from RTMP URL
+      std::string streamKey = extractRTMPStreamKey(rtmpUrl);
+      
+      // Check if this stream key conflicts with existing instances
+      if (!streamKey.empty() && existingRTMPStreamKeys.find(streamKey) != existingRTMPStreamKeys.end()) {
+        // Conflict detected - make URL unique by appending instance ID
+        size_t protocolPos = rtmpUrl.find("rtmp://");
+        if (protocolPos != std::string::npos) {
+          // Find the last '/' to locate stream key
+          size_t lastSlash = rtmpUrl.find_last_of('/');
+          if (lastSlash != std::string::npos && lastSlash < rtmpUrl.length() - 1) {
+            std::string baseUrl = rtmpUrl.substr(0, lastSlash + 1);
+            
+            // Remove _0 suffix if present (RTMP node will add it back)
+            std::string originalStreamKey = streamKey;
+            if (originalStreamKey.length() >= 2 && 
+                originalStreamKey.substr(originalStreamKey.length() - 2) == "_0") {
+              originalStreamKey = originalStreamKey.substr(0, originalStreamKey.length() - 2);
+            }
+            
+            // Generate short unique ID from instanceId (use first 8 chars)
+            std::string shortId = instanceId.substr(0, 8);
+            
+            // Append instance ID to stream key: stream_key -> stream_key_<shortId>
+            std::string uniqueStreamKey = originalStreamKey + "_" + shortId;
+            rtmpUrl = baseUrl + uniqueStreamKey;
+            std::cerr << "[PipelineBuilder] RTMP stream key conflict detected: '"
+                      << streamKey << "'" << std::endl;
+            std::cerr << "[PipelineBuilder] Made RTMP URL unique per instance: '"
+                      << rtmpUrl << "'" << std::endl;
+            std::cerr << "[PipelineBuilder] Original stream key was appended with instance ID: '"
+                      << shortId << "'" << std::endl;
+          }
+        }
+      } else if (!streamKey.empty()) {
+        // No conflict - keep original URL unchanged
+        std::cerr << "[PipelineBuilder] RTMP stream key '"
+                  << streamKey << "' has no conflicts, using original URL: '"
+                  << rtmpUrl << "'" << std::endl;
+      }
+    }
 
     int channel = params.count("channel") ? std::stoi(params.at("channel")) : 0;
 
@@ -4060,6 +4208,14 @@ PipelineBuilder::createRTMPDestinationNode(
     std::cerr
         << "[PipelineBuilder] ✓ RTMP destination node created successfully"
         << std::endl;
+    std::cerr << "[PipelineBuilder] RTMP node will start automatically when pipeline starts"
+              << std::endl;
+    std::cerr << "[PipelineBuilder] NOTE: If RTMP stream is not working, check:"
+              << std::endl;
+    std::cerr << "  1. RTMP server is accessible: " << rtmpUrl << std::endl;
+    std::cerr << "  2. RTMP server is running and accepting connections" << std::endl;
+    std::cerr << "  3. Network connectivity to RTMP server" << std::endl;
+    std::cerr << "  4. GStreamer pipeline logs for connection errors" << std::endl;
     return node;
   } catch (const std::exception &e) {
     std::cerr << "[PipelineBuilder] Exception in createRTMPDestinationNode: "
@@ -5026,6 +5182,16 @@ PipelineBuilder::getRTMPUrl(const CreateInstanceRequest &req) const {
     size_t last = str.find_last_not_of(" \t\n\r\f\v");
     return str.substr(first, (last - first + 1));
   };
+
+  // Debug: Log all additionalParams keys for troubleshooting
+  std::cerr << "[PipelineBuilder] getRTMPUrl: Checking additionalParams (total keys: "
+            << req.additionalParams.size() << ")" << std::endl;
+  for (const auto &[key, value] : req.additionalParams) {
+    if (key.find("RTMP") != std::string::npos) {
+      std::cerr << "[PipelineBuilder] getRTMPUrl: Found RTMP-related key: '"
+                << key << "' = '" << value << "'" << std::endl;
+    }
+  }
 
   // Get RTMP URL from additionalParams - check RTMP_DES_URL first (new format),
   // then RTMP_URL (backward compatibility)

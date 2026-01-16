@@ -431,6 +431,7 @@ TEST_F(JamsHandlerTest, BatchUpdateJams) {
   arr.append(jam1); arr.append(jam2);
 
   req->setBody(arr.toStyledString());
+  req->addHeader("Content-Type", "application/json");
 
   HttpResponsePtr response;
   bool callbackCalled = false;

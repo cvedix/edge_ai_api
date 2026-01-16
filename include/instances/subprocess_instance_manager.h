@@ -99,6 +99,11 @@ private:
   Json::Value buildWorkerConfig(const CreateInstanceRequest &req) const;
 
   /**
+   * @brief Build config JSON from InstanceInfo
+   */
+  Json::Value buildWorkerConfigFromInstanceInfo(const InstanceInfo &info) const;
+
+  /**
    * @brief Update local instance cache from worker response
    */
   void updateInstanceCache(const std::string &instanceId,

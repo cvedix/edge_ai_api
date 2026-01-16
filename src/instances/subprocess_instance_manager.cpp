@@ -61,21 +61,119 @@ SubprocessInstanceManager::createInstance(const CreateInstanceRequest &req) {
   InstanceInfo info;
   info.instanceId = instanceId;
   info.displayName = req.name.empty() ? instanceId : req.name;
+  info.group = req.group;
   info.solutionId = req.solution;
   info.running = false;
   info.loaded = true;
   info.autoStart = req.autoStart;
+  info.autoRestart = req.autoRestart;
   info.persistent = req.persistent;
+  info.frameRateLimit = req.frameRateLimit;
+  info.metadataMode = req.metadataMode;
+  info.statisticsMode = req.statisticsMode;
+  info.diagnosticsMode = req.diagnosticsMode;
+  info.debugMode = req.debugMode;
+  info.detectorMode = req.detectorMode;
+  info.detectionSensitivity = req.detectionSensitivity;
+  info.movementSensitivity = req.movementSensitivity;
+  info.sensorModality = req.sensorModality;
+  info.inputOrientation = req.inputOrientation;
+  info.inputPixelLimit = req.inputPixelLimit;
+  info.detectorModelFile = req.detectorModelFile;
+  info.detectorThermalModelFile = req.detectorThermalModelFile;
+  info.animalConfidenceThreshold = req.animalConfidenceThreshold;
+  info.personConfidenceThreshold = req.personConfidenceThreshold;
+  info.vehicleConfidenceThreshold = req.vehicleConfidenceThreshold;
+  info.faceConfidenceThreshold = req.faceConfidenceThreshold;
+  info.licensePlateConfidenceThreshold = req.licensePlateConfidenceThreshold;
+  info.confThreshold = req.confThreshold;
+  info.performanceMode = req.performanceMode;
+  info.recommendedFrameRate = req.recommendedFrameRate;
+  info.fps = 0.0;
   info.startTime = std::chrono::steady_clock::now();
+  info.lastActivityTime = info.startTime;
+  info.hasReceivedData = false;
+  info.retryCount = 0;
+  info.retryLimitReached = false;
+  
+  // Get version from CVEDIX SDK
+#ifdef CVEDIX_VERSION_STRING
+  info.version = CVEDIX_VERSION_STRING;
+#else
+  info.version = "2025.0.1.2"; // Default version
+#endif
+  
+  // Get solution name if solution is provided
+  if (!req.solution.empty()) {
+    auto optSolution = solution_registry_.getSolution(req.solution);
+    if (optSolution.has_value()) {
+      info.solutionName = optSolution.value().solutionName;
+    }
+  }
 
   // Copy additional params (including source URLs)
   info.additionalParams = req.additionalParams;
-  if (req.additionalParams.count("RTSP_URL")) {
+  
+  // Extract RTSP URL - check RTSP_SRC_URL first, then RTSP_URL
+  if (req.additionalParams.count("RTSP_SRC_URL")) {
+    info.rtspUrl = req.additionalParams.at("RTSP_SRC_URL");
+  } else if (req.additionalParams.count("RTSP_URL")) {
     info.rtspUrl = req.additionalParams.at("RTSP_URL");
   }
-  if (req.additionalParams.count("RTMP_URL")) {
-    info.rtmpUrl = req.additionalParams.at("RTMP_URL");
+  
+  // Extract RTMP URL - check RTMP_DES_URL first, then RTMP_URL
+  // Helper function to trim whitespace
+  auto trim = [](const std::string &str) -> std::string {
+    if (str.empty())
+      return str;
+    size_t first = str.find_first_not_of(" \t\n\r\f\v");
+    if (first == std::string::npos)
+      return "";
+    size_t last = str.find_last_not_of(" \t\n\r\f\v");
+    return str.substr(first, (last - first + 1));
+  };
+  
+  if (req.additionalParams.count("RTMP_DES_URL")) {
+    info.rtmpUrl = trim(req.additionalParams.at("RTMP_DES_URL"));
+  } else if (req.additionalParams.count("RTMP_URL")) {
+    info.rtmpUrl = trim(req.additionalParams.at("RTMP_URL"));
   }
+  
+  // Generate RTSP URL from RTMP URL if RTSP URL is not already set
+  // This allows RTSP stream to be available when RTMP output is configured
+  // Pattern: rtmp://host:1935/live/stream_key -> rtsp://host:8554/live/stream_key_0
+  // RTMP node automatically adds "_0" suffix to stream key
+  if (info.rtspUrl.empty() && !info.rtmpUrl.empty()) {
+    std::string rtmpUrl = info.rtmpUrl;
+    
+    // Replace RTMP protocol and port with RTSP
+    size_t protocolPos = rtmpUrl.find("rtmp://");
+    if (protocolPos != std::string::npos) {
+      std::string rtspUrl = rtmpUrl;
+      
+      // Replace protocol
+      rtspUrl.replace(protocolPos, 7, "rtsp://");
+      
+      // Replace port 1935 with 8554 (common RTSP port for conversion)
+      size_t portPos = rtspUrl.find(":1935");
+      if (portPos != std::string::npos) {
+        rtspUrl.replace(portPos, 5, ":8554");
+      }
+      
+      // Add "_0" suffix to stream key if not already present
+      // RTMP node automatically adds this suffix
+      size_t lastSlash = rtspUrl.find_last_of('/');
+      if (lastSlash != std::string::npos) {
+        std::string streamKey = rtspUrl.substr(lastSlash + 1);
+        if (streamKey.find("_0") == std::string::npos && !streamKey.empty()) {
+          rtspUrl += "_0";
+        }
+      }
+      
+      info.rtspUrl = rtspUrl;
+    }
+  }
+  
   if (req.additionalParams.count("FILE_PATH")) {
     info.filePath = req.additionalParams.at("FILE_PATH");
   }
@@ -85,14 +183,56 @@ SubprocessInstanceManager::createInstance(const CreateInstanceRequest &req) {
     instances_[instanceId] = info;
   }
 
-  // Persist if requested
-  if (req.persistent) {
-    instance_storage_.saveInstance(instanceId, info);
+  // Save to storage for all instances (for debugging and inspection)
+  // Only persistent instances will be loaded on server restart
+  bool saved = instance_storage_.saveInstance(instanceId, info);
+  if (saved) {
+    if (req.persistent) {
+      std::cerr << "[SubprocessInstanceManager] Instance configuration saved "
+                   "(persistent - will be loaded on restart)"
+                << std::endl;
+    } else {
+      std::cerr << "[SubprocessInstanceManager] Instance configuration saved "
+                   "(non-persistent - for inspection only)"
+                << std::endl;
+    }
+  } else {
+    std::cerr << "[SubprocessInstanceManager] Warning: Failed to save instance "
+                 "configuration to file"
+              << std::endl;
   }
 
-  // Auto-start if requested
+  // Wait for worker to be ready and pipeline to be built
+  // Pipeline is built automatically when worker starts if config has Solution
+  // But we need to wait for it to complete before starting
   if (req.autoStart) {
-    startInstance(instanceId);
+    // Wait for worker to become ready (up to 5 seconds)
+    const int maxWaitRetries = 50; // 50 retries * 100ms = 5 seconds
+    const int waitDelayMs = 100;
+    bool workerReady = false;
+    
+    for (int retry = 0; retry < maxWaitRetries; retry++) {
+      auto workerState = supervisor_->getWorkerState(instanceId);
+      if (workerState == worker::WorkerState::READY || 
+          workerState == worker::WorkerState::BUSY) {
+        workerReady = true;
+        break;
+      }
+      std::this_thread::sleep_for(std::chrono::milliseconds(waitDelayMs));
+    }
+    
+    if (!workerReady) {
+      std::cerr << "[SubprocessInstanceManager] Worker not ready after "
+                << (maxWaitRetries * waitDelayMs / 1000) << " seconds for instance: "
+                << instanceId << std::endl;
+    } else {
+      // Additional wait to ensure pipeline is built (if buildPipeline was called)
+      // Pipeline build happens async, so give it a bit more time
+      std::this_thread::sleep_for(std::chrono::milliseconds(500));
+      
+      // Now start the instance
+      startInstance(instanceId);
+    }
   }
 
   std::cout << "[SubprocessInstanceManager] Created instance: " << instanceId
@@ -144,22 +284,8 @@ bool SubprocessInstanceManager::startInstance(const std::string &instanceId,
                   << std::endl;
 
         const auto &info = optStoredInfo.value();
-        Json::Value config;
-        config["SolutionId"] = info.solutionId;
-        config["DisplayName"] = info.displayName;
-        config["RtspUrl"] = info.rtspUrl;
-        config["RtmpUrl"] = info.rtmpUrl;
-        config["FilePath"] = info.filePath;
-
-        // Add additional params if any
-        if (!info.additionalParams.empty()) {
-          Json::Value params;
-          for (const auto &[key, value] : info.additionalParams) {
-            params[key] = value;
-          }
-          config["AdditionalParams"] = params;
-        }
-
+        Json::Value config = buildWorkerConfigFromInstanceInfo(info);
+        
         if (supervisor_->spawnWorker(instanceId, config)) {
           // Add to local cache
           {
@@ -169,6 +295,22 @@ bool SubprocessInstanceManager::startInstance(const std::string &instanceId,
           std::cout
               << "[SubprocessInstanceManager] Worker spawned for instance: "
               << instanceId << std::endl;
+          
+          // Wait for worker to be ready and pipeline to be built
+          const int maxWaitRetries = 50; // 50 retries * 100ms = 5 seconds
+          const int waitDelayMs = 100;
+          for (int retry = 0; retry < maxWaitRetries; retry++) {
+            workerState = supervisor_->getWorkerState(instanceId);
+            if (workerState == worker::WorkerState::READY || 
+                workerState == worker::WorkerState::BUSY) {
+              break;
+            }
+            std::this_thread::sleep_for(std::chrono::milliseconds(waitDelayMs));
+          }
+          
+          // Additional wait to ensure pipeline is built
+          std::this_thread::sleep_for(std::chrono::milliseconds(500));
+          
           // Continue to start instance below
         } else {
           std::cerr << "[SubprocessInstanceManager] Failed to spawn worker for "
@@ -192,6 +334,59 @@ bool SubprocessInstanceManager::startInstance(const std::string &instanceId,
 
   auto response = supervisor_->sendToWorker(
       instanceId, msg, TimeoutConstants::getIpcStartStopTimeoutMs());
+
+  // If start failed with "No pipeline configured", build pipeline first
+  if (response.type == worker::MessageType::START_INSTANCE_RESPONSE &&
+      !response.payload.get("success", false).asBool()) {
+    std::string error = response.payload.get("error", "").asString();
+    if (error.find("No pipeline configured") != std::string::npos ||
+        error.find("pipeline configured") != std::string::npos) {
+      std::cout << "[SubprocessInstanceManager] Pipeline not built, building it "
+                   "now for instance: "
+                << instanceId << std::endl;
+      
+      // Get instance info to build config
+      std::lock_guard<std::mutex> lock(instances_mutex_);
+      auto it = instances_.find(instanceId);
+      if (it != instances_.end()) {
+        const auto &info = it->second;
+        Json::Value config = buildWorkerConfigFromInstanceInfo(info);
+        
+        // Send CREATE_INSTANCE to build pipeline
+        worker::IPCMessage createMsg;
+        createMsg.type = worker::MessageType::CREATE_INSTANCE;
+        createMsg.payload["config"] = config;
+        
+        auto createResponse = supervisor_->sendToWorker(
+            instanceId, createMsg, TimeoutConstants::getIpcStartStopTimeoutMs());
+        
+        if (createResponse.type != worker::MessageType::CREATE_INSTANCE_RESPONSE ||
+            !createResponse.payload.get("success", false).asBool()) {
+          std::cerr << "[SubprocessInstanceManager] Failed to create pipeline "
+                       "for instance: "
+                    << instanceId << std::endl;
+          std::string createError = createResponse.payload.get("error", "Unknown error").asString();
+          std::cerr << "[SubprocessInstanceManager] Error: " << createError << std::endl;
+          return false;
+        }
+        
+        std::cout << "[SubprocessInstanceManager] Pipeline created successfully, "
+                     "retrying start for instance: "
+                  << instanceId << std::endl;
+        
+        // Retry START_INSTANCE after pipeline is built
+        msg.type = worker::MessageType::START_INSTANCE;
+        msg.payload["instance_id"] = instanceId;
+        
+        response = supervisor_->sendToWorker(
+            instanceId, msg, TimeoutConstants::getIpcStartStopTimeoutMs());
+      } else {
+        std::cerr << "[SubprocessInstanceManager] Instance not found in cache: "
+                  << instanceId << std::endl;
+        return false;
+      }
+    }
+  }
 
   if (response.type == worker::MessageType::START_INSTANCE_RESPONSE &&
       response.payload.get("success", false).asBool()) {
@@ -1179,12 +1374,13 @@ void SubprocessInstanceManager::loadPersistentInstances() {
   // Get list of instance IDs from storage directory
   auto instanceIds = instance_storage_.loadAllInstances();
   if (instanceIds.empty()) {
-    std::cout << "[SubprocessInstanceManager] No persistent instances found"
+    std::cout << "[SubprocessInstanceManager] No instances found in storage"
               << std::endl;
     return;
   }
 
   int loadedCount = 0;
+  int skippedCount = 0;
   for (const auto &instanceId : instanceIds) {
     auto optInfo = instance_storage_.loadInstance(instanceId);
     if (!optInfo.has_value()) {
@@ -1193,6 +1389,15 @@ void SubprocessInstanceManager::loadPersistentInstances() {
 
     const auto &info = optInfo.value();
 
+    // Only load instances that are marked as persistent
+    if (!info.persistent) {
+      skippedCount++;
+      std::cerr << "[SubprocessInstanceManager] Skipping non-persistent instance: "
+                << instanceId << " (set persistent: true to auto-load on restart)"
+                << std::endl;
+      continue;
+    }
+
     // Build config for worker
     Json::Value config;
     config["SolutionId"] = info.solutionId;
@@ -1200,6 +1405,7 @@ void SubprocessInstanceManager::loadPersistentInstances() {
     config["RtspUrl"] = info.rtspUrl;
     config["RtmpUrl"] = info.rtmpUrl;
     config["FilePath"] = info.filePath;
+    config["Persistent"] = info.persistent;
 
     // Spawn worker
     if (supervisor_->spawnWorker(instanceId, config)) {
@@ -1218,7 +1424,11 @@ void SubprocessInstanceManager::loadPersistentInstances() {
   }
 
   std::cout << "[SubprocessInstanceManager] Loaded " << loadedCount
-            << " persistent instances" << std::endl;
+            << " persistent instances";
+  if (skippedCount > 0) {
+    std::cout << " (skipped " << skippedCount << " non-persistent instances)";
+  }
+  std::cout << std::endl;
 }
 
 int SubprocessInstanceManager::checkAndHandleRetryLimits() {
@@ -1278,7 +1488,91 @@ Json::Value SubprocessInstanceManager::buildWorkerConfig(
   config["Persistent"] = req.persistent;
 
   // Add additional parameters (includes source URLs)
+  // CRITICAL: Serialize as flat structure (not nested) to ensure worker can parse correctly
+  // The worker expects flat structure in AdditionalParams, not nested input/output
   for (const auto &[key, value] : req.additionalParams) {
+    config["AdditionalParams"][key] = value;
+  }
+
+  // CRITICAL: Also set RTMP_URL at top level for backward compatibility
+  // Some workers may check top-level RtmpUrl field
+  if (req.additionalParams.count("RTMP_URL")) {
+    config["RtmpUrl"] = req.additionalParams.at("RTMP_URL");
+  } else if (req.additionalParams.count("RTMP_DES_URL")) {
+    config["RtmpUrl"] = req.additionalParams.at("RTMP_DES_URL");
+  }
+
+  // Debug: Log RTMP_URL if present
+  if (req.additionalParams.count("RTMP_URL")) {
+    std::cout << "[SubprocessInstanceManager] RTMP_URL found in additionalParams: '"
+              << req.additionalParams.at("RTMP_URL") << "'" << std::endl;
+    std::cout << "[SubprocessInstanceManager] RTMP_URL also set in config[RtmpUrl]: '"
+              << config["RtmpUrl"].asString() << "'" << std::endl;
+  } else if (req.additionalParams.count("RTMP_DES_URL")) {
+    std::cout << "[SubprocessInstanceManager] RTMP_DES_URL found in additionalParams: '"
+              << req.additionalParams.at("RTMP_DES_URL") << "'" << std::endl;
+    std::cout << "[SubprocessInstanceManager] RTMP_DES_URL also set in config[RtmpUrl]: '"
+              << config["RtmpUrl"].asString() << "'" << std::endl;
+  } else {
+    std::cout << "[SubprocessInstanceManager] WARNING: No RTMP_URL or RTMP_DES_URL found in additionalParams"
+              << std::endl;
+    std::cout << "[SubprocessInstanceManager] Available additionalParams keys: ";
+    for (const auto &[key, value] : req.additionalParams) {
+      std::cout << key << " ";
+    }
+    std::cout << std::endl;
+  }
+  
+  // Debug: Log serialized config to verify RTMP_URL is included
+  std::cout << "[SubprocessInstanceManager] Serialized config AdditionalParams keys: ";
+  if (config.isMember("AdditionalParams") && config["AdditionalParams"].isObject()) {
+    for (const auto &key : config["AdditionalParams"].getMemberNames()) {
+      std::cout << key << " ";
+    }
+  }
+  std::cout << std::endl;
+
+  return config;
+}
+
+Json::Value SubprocessInstanceManager::buildWorkerConfigFromInstanceInfo(
+    const InstanceInfo &info) const {
+  Json::Value config;
+
+  // Get solution config if specified
+  if (!info.solutionId.empty()) {
+    auto optSolution = solution_registry_.getSolution(info.solutionId);
+    if (optSolution.has_value()) {
+      // Serialize solution config manually
+      const auto &sol = optSolution.value();
+      Json::Value solJson;
+      solJson["SolutionId"] = sol.solutionId;
+      solJson["SolutionName"] = sol.solutionName;
+      solJson["SolutionType"] = sol.solutionType;
+      solJson["IsDefault"] = sol.isDefault;
+      config["Solution"] = solJson;
+    }
+  }
+
+  // Add instance-specific config
+  config["Name"] = info.displayName;
+  config["Group"] = info.group;
+  config["AutoStart"] = info.autoStart;
+  config["Persistent"] = info.persistent;
+
+  // Add URLs and file paths
+  if (!info.rtspUrl.empty()) {
+    config["AdditionalParams"]["RTSP_URL"] = info.rtspUrl;
+  }
+  if (!info.rtmpUrl.empty()) {
+    config["AdditionalParams"]["RTMP_URL"] = info.rtmpUrl;
+  }
+  if (!info.filePath.empty()) {
+    config["AdditionalParams"]["FILE_PATH"] = info.filePath;
+  }
+
+  // Add all additional parameters
+  for (const auto &[key, value] : info.additionalParams) {
     config["AdditionalParams"][key] = value;
   }
 

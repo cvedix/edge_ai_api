@@ -290,6 +290,7 @@ set(SOURCES
     src/solutions/solution_registry.cpp
     src/groups/group_registry.cpp
     src/core/pipeline_builder.cpp
+    src/core/cvedix_validator.cpp
     src/utils/cvedix_mqtt_client_impl.cpp
     src/utils/gstreamer_checker.cpp
     src/utils/mp4_finalizer.cpp
@@ -416,7 +417,7 @@ if(CEREAL_INCLUDE_DIR)
         )
         if(NOT SYMLINK_RESULT EQUAL 0)
             message(WARNING "⚠ Failed to create cereal symlink in build directory: ${SYMLINK_ERROR}")
-            message(WARNING "  This may cause compilation errors. Run: sudo ./scripts/fix_all_symlinks.sh")
+            message(WARNING "  This may cause compilation errors. Run: sudo ./scripts/dev_setup.sh --skip-deps --skip-build")
         endif()
     endif()
 
@@ -440,7 +441,7 @@ if(CEREAL_INCLUDE_DIR)
             message(WARNING "    sudo ln -sf ${CEREAL_INCLUDE_DIR}/cereal /opt/cvedix/include/cvedix/third_party/cereal")
         else()
             message(WARNING "  For /usr/include installation:")
-            message(WARNING "    Run: sudo bash ${CMAKE_SOURCE_DIR}/scripts/fix_all_symlinks.sh")
+            message(WARNING "    Run: sudo bash ${CMAKE_SOURCE_DIR}/scripts/dev_setup.sh --skip-deps --skip-build")
             message(WARNING "  Or manually:")
             message(WARNING "    sudo mkdir -p /usr/include/cvedix/third_party")
             message(WARNING "    sudo ln -sf ${CEREAL_INCLUDE_DIR}/cereal /usr/include/cvedix/third_party/cereal")
@@ -512,7 +513,7 @@ if(CPP_BASE64_INCLUDE_DIR)
         )
         if(NOT SYMLINK_RESULT EQUAL 0)
             message(WARNING "⚠ Failed to create cpp-base64 symlink in build directory: ${SYMLINK_ERROR}")
-            message(WARNING "  This may cause compilation errors. Run: sudo ./scripts/fix_all_symlinks.sh")
+            message(WARNING "  This may cause compilation errors. Run: sudo ./scripts/dev_setup.sh --skip-deps --skip-build")
         endif()
     endif()
 
@@ -616,7 +617,7 @@ if(EXISTS "/opt/cvedix/lib/cmake/cvedix/cvedix-config.cmake")
             else()
                 message(WARNING "⚠ Could not create cpp_base64 symlink (may need sudo):")
                 message(WARNING "  Error: ${SYMLINK_ERROR}")
-                message(WARNING "  Run: sudo ./scripts/fix_all_symlinks.sh")
+                message(WARNING "  Run: sudo ./scripts/dev_setup.sh --skip-deps --skip-build")
             endif()
         else()
             message(WARNING "⚠ Could not create directory (may need sudo):")
@@ -1093,6 +1094,7 @@ target_sources(edge_ai_api PRIVATE ${WORKER_IPC_SOURCES})
 # the main server and worker processes
 set(CORE_LIB_SOURCES
     src/core/pipeline_builder.cpp
+    src/core/cvedix_validator.cpp
     src/solutions/solution_registry.cpp
     src/solutions/solution_storage.cpp
     src/models/solution_config.cpp
