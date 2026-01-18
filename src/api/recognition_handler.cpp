@@ -78,21 +78,36 @@ static float cosine_similarity(const std::vector<float> &a,
 // Helper function: Average embeddings
 static std::vector<float>
 average_embeddings(const std::vector<std::vector<float>> &embeddings) {
-  if (embeddings.empty() || embeddings[0].empty())
+  if (embeddings.empty())
     return std::vector<float>();
 
-  size_t dim = embeddings[0].size();
+  // Pick the first non-empty embedding as the reference dimension
+  size_t dim = 0;
+  for (const auto &emb : embeddings) {
+    if (!emb.empty()) {
+      dim = emb.size();
+      break;
+    }
+  }
+  if (dim == 0)
+    return std::vector<float>();
+
   std::vector<float> avg_embedding(dim, 0.0f);
 
+  size_t used_count = 0;
   for (const auto &emb : embeddings) {
     if (emb.size() != dim)
       continue;
     for (size_t i = 0; i < dim; i++) {
       avg_embedding[i] += emb[i];
     }
+    used_count++;
   }
 
-  float count = static_cast<float>(embeddings.size());
+  if (used_count == 0)
+    return std::vector<float>();
+
+  float count = static_cast<float>(used_count);
   for (size_t i = 0; i < dim; i++) {
     avg_embedding[i] /= count;
   }
@@ -2351,6 +2366,7 @@ bool RecognitionHandler::extractImageData(const HttpRequestPtr &req,
 void RecognitionHandler::parseQueryParameters(const HttpRequestPtr &req,
                                               int &limit, int &predictionCount,
                                               double &detProbThreshold,
+                                              double &similarityThreshold,
                                               std::string &facePlugins,
                                               std::string &status,
                                               bool &detectFaces) const {
@@ -2395,6 +2411,23 @@ void RecognitionHandler::parseQueryParameters(const HttpRequestPtr &req,
     detProbThreshold = 0.5; // Default when parameter is missing or empty
   }
 
+  // Parse similarity threshold (optional)
+  // If provided, recognize endpoint will filter predicted subjects to only those
+  // with similarity >= threshold (0.0 - 1.0). If not provided, returns top-N
+  // similarities without filtering (backward compatible).
+  similarityThreshold = -1.0;
+  std::string similarityThresholdStr = req->getParameter("threshold");
+  if (!similarityThresholdStr.empty()) {
+    try {
+      similarityThreshold = std::stod(similarityThresholdStr);
+      if (similarityThreshold < 0.0 || similarityThreshold > 1.0) {
+        similarityThreshold = -1.0;
+      }
+    } catch (...) {
+      similarityThreshold = -1.0;
+    }
+  }
+
   // Parse face_plugins
   facePlugins = req->getParameter("face_plugins");
 
@@ -2415,7 +2448,8 @@ void RecognitionHandler::parseQueryParameters(const HttpRequestPtr &req,
 
 Json::Value RecognitionHandler::processFaceRecognition(
     const std::vector<unsigned char> &imageData, int limit, int predictionCount,
-    double detProbThreshold, const std::string &facePlugins,
+    double detProbThreshold, double similarityThreshold,
+    const std::string &facePlugins,
     bool detectFaces) const {
   Json::Value result(Json::arrayValue);
 
@@ -2737,15 +2771,31 @@ Json::Value RecognitionHandler::processFaceRecognition(
                     return a.second > b.second;
                   });
 
-        // Take top N results (return all similarities, not just above
-        // threshold)
-        int top_n =
-            std::min(predictionCount, static_cast<int>(similarities.size()));
-        for (int j = 0; j < top_n; j++) {
-          Json::Value subject;
-          subject["subject"] = similarities[j].first;
-          subject["similarity"] = static_cast<double>(similarities[j].second);
-          subjects.append(subject);
+        // Take top N results.
+        // Backward compatible default: return top-N similarities even if low.
+        // If similarityThreshold is provided (>= 0.0), filter results.
+        if (similarityThreshold >= 0.0) {
+          for (const auto &pair : similarities) {
+            if (pair.second < static_cast<float>(similarityThreshold))
+              continue;
+            Json::Value subject;
+            subject["subject"] = pair.first;
+            subject["similarity"] = static_cast<double>(pair.second);
+            subjects.append(subject);
+            if (subjects.size() >= static_cast<Json::ArrayIndex>(
+                                     std::max(0, predictionCount))) {
+              break;
+            }
+          }
+        } else {
+          int top_n =
+              std::min(predictionCount, static_cast<int>(similarities.size()));
+          for (int j = 0; j < top_n; j++) {
+            Json::Value subject;
+            subject["subject"] = similarities[j].first;
+            subject["similarity"] = static_cast<double>(similarities[j].second);
+            subjects.append(subject);
+          }
         }
 
         if (isApiLoggingEnabled()) {
@@ -2839,24 +2889,30 @@ void RecognitionHandler::recognizeFaces(
     int limit = 0;
     int predictionCount = 1;
     double detProbThreshold = 0.5;
+    double similarityThreshold = -1.0;
     std::string facePlugins;
     std::string status;
     bool detectFaces = true;
 
     parseQueryParameters(req, limit, predictionCount, detProbThreshold,
-                         facePlugins, status, detectFaces);
+                         similarityThreshold, facePlugins, status, detectFaces);
 
     if (isApiLoggingEnabled()) {
       PLOG_DEBUG << "[API] Recognition parameters - limit: " << limit
                  << ", prediction_count: " << predictionCount
                  << ", det_prob_threshold: " << detProbThreshold
+                 << ", threshold: "
+                 << (similarityThreshold >= 0.0
+                         ? std::to_string(similarityThreshold)
+                         : std::string("disabled"))
                  << ", detect_faces: " << (detectFaces ? "true" : "false");
     }
 
     // Process face recognition
     Json::Value recognitionResult =
         processFaceRecognition(imageData, limit, predictionCount,
-                               detProbThreshold, facePlugins, detectFaces);
+                               detProbThreshold, similarityThreshold,
+                               facePlugins, detectFaces);
 
     // Build response
     Json::Value response;
@@ -4733,7 +4789,8 @@ void RecognitionHandler::searchAppearanceSubject(
       return;
     }
 
-    // Get aligned face and extract embedding
+    // Get aligned face and extract embedding (use lightweight augmentation:
+    // original + horizontal flip) to make query embeddings more robust.
     cv::Mat aligned_face = align_face_using_landmarks(image, faces, 0);
     std::string onnx_path = db.get_onnx_model_path();
     if (onnx_path.empty()) {
@@ -4742,8 +4799,19 @@ void RecognitionHandler::searchAppearanceSubject(
       return;
     }
 
-    std::vector<float> input_embedding =
+    std::vector<std::vector<float>> input_embeddings;
+    std::vector<float> emb1 =
         extract_embedding_from_image(aligned_face, onnx_path);
+    if (!emb1.empty())
+      input_embeddings.push_back(emb1);
+
+    cv::Mat flipped;
+    cv::flip(aligned_face, flipped, 1);
+    std::vector<float> emb2 = extract_embedding_from_image(flipped, onnx_path);
+    if (!emb2.empty())
+      input_embeddings.push_back(emb2);
+
+    std::vector<float> input_embedding = average_embeddings(input_embeddings);
     if (input_embedding.empty()) {
       callback(createErrorResponse(500, "Internal server error",
                                    "Failed to extract face embedding"));

@@ -2066,6 +2066,13 @@ paths:
             format: float
             default: 0.5
           description: Detection probability threshold (0.0 to 1.0)
+        - name: threshold
+          in: query
+          required: false
+          schema:
+            type: number
+            format: float
+          description: Optional similarity threshold (0.0 to 1.0). If provided, subjects with similarity below this threshold will be filtered out. If omitted, returns top-N similarities without filtering.
         - name: face_plugins
           in: query
           required: false
