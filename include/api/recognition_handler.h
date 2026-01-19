@@ -235,6 +235,7 @@ private:
    */
   void parseQueryParameters(const HttpRequestPtr &req, int &limit,
                             int &predictionCount, double &detProbThreshold,
+                            double &similarityThreshold,
                             std::string &facePlugins, std::string &status,
                             bool &detectFaces) const;
 
@@ -244,6 +245,7 @@ private:
   Json::Value
   processFaceRecognition(const std::vector<unsigned char> &imageData, int limit,
                          int predictionCount, double detProbThreshold,
+                         double similarityThreshold,
                          const std::string &facePlugins,
                          bool detectFaces) const;
 
