@@ -124,6 +124,7 @@ Nhận diện khuôn mặt trong ảnh đã upload. Trả về:
 | `limit` | integer | ❌ No | 0 | Số lượng khuôn mặt tối đa (0 = không giới hạn) |
 | `prediction_count` | integer | ❌ No | 1 | Số lượng predictions trả về cho mỗi khuôn mặt |
 | `det_prob_threshold` | float | ❌ No | 0.5 | Ngưỡng phát hiện (0.0 - 1.0) |
+| `threshold` | float | ❌ No | - | (Mới) Ngưỡng similarity tối thiểu để **giữ lại** kết quả subjects (0.0 - 1.0). Nếu không truyền, API trả top-N kể cả similarity thấp (backward compatible) |
 | `face_plugins` | string | ❌ No | - | Face plugins (comma-separated) |
 | `status` | string | ❌ No | - | Status filter |
 | `detect_faces` | boolean | ❌ No | true | Có phát hiện khuôn mặt hay không |
@@ -320,6 +321,7 @@ Xóa nhiều subjects cùng lúc bằng cách gửi danh sách image_ids.
 
 #### Mô Tả
 Tìm kiếm khuôn mặt tương tự trong database. Trả về danh sách matches được sắp xếp theo similarity (cao nhất trước).
+Lưu ý: Query embedding được trích xuất với augmentation nhẹ (original + horizontal flip) để ổn định hơn trong điều kiện ánh sáng/góc khác nhau.
 
 #### Parameters
 

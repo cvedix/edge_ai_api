@@ -4,6 +4,7 @@
 #include "models/create_instance_request.h"
 #include "models/solution_config.h"
 #include <memory>
+#include <set>
 #include <string>
 #include <vector>
 
@@ -30,7 +31,15 @@ public:
   std::vector<std::shared_ptr<cvedix_nodes::cvedix_node>>
   buildPipeline(const SolutionConfig &solution,
                 const CreateInstanceRequest &req,
-                const std::string &instanceId);
+                const std::string &instanceId,
+                const std::set<std::string> &existingRTMPStreamKeys = {});
+
+  /**
+   * @brief Extract stream key from RTMP URL
+   * @param rtmpUrl RTMP URL (e.g., rtmp://host:port/path/stream_key)
+   * @return Stream key or empty string if invalid
+   */
+  std::string extractRTMPStreamKey(const std::string &rtmpUrl) const;
 
 private:
   /**
@@ -42,7 +51,8 @@ private:
    */
   std::shared_ptr<cvedix_nodes::cvedix_node>
   createNode(const SolutionConfig::NodeConfig &nodeConfig,
-             const CreateInstanceRequest &req, const std::string &instanceId);
+             const CreateInstanceRequest &req, const std::string &instanceId,
+             const std::set<std::string> &existingRTMPStreamKeys = {});
 
   // ========== Source Nodes ==========
 
@@ -154,7 +164,9 @@ private:
   std::shared_ptr<cvedix_nodes::cvedix_node>
   createRTMPDestinationNode(const std::string &nodeName,
                             const std::map<std::string, std::string> &params,
-                            const CreateInstanceRequest &req);
+                            const CreateInstanceRequest &req,
+                            const std::string &instanceId,
+                            const std::set<std::string> &existingRTMPStreamKeys = {});
 
   /**
    * @brief Create screen destination node
@@ -190,12 +202,39 @@ private:
                         const CreateInstanceRequest &req);
 
   /**
+   * @brief Create BA jam node
+   */
+  std::shared_ptr<cvedix_nodes::cvedix_node>
+  createBAJamNode(const std::string &nodeName,
+                  const std::map<std::string, std::string> &params,
+                  const CreateInstanceRequest &req);
+
+  /**
+   * @brief Create BA stop node
+   */
+  std::shared_ptr<cvedix_nodes::cvedix_node>
+  createBAStopNode(const std::string &nodeName,
+                   const std::map<std::string, std::string> &params,
+                   const CreateInstanceRequest &req);
+
+  /**
    * @brief Create BA crossline OSD node
    */
   std::shared_ptr<cvedix_nodes::cvedix_node>
   createBACrosslineOSDNode(const std::string &nodeName,
                            const std::map<std::string, std::string> &params);
-
+  /**
+   * @brief Create BA jam OSD node
+   */
+  std::shared_ptr<cvedix_nodes::cvedix_node>
+  createBAJamOSDNode(const std::string &nodeName,
+                     const std::map<std::string, std::string> &params);
+  /**
+   * @brief Create BA stop OSD node
+   */
+  std::shared_ptr<cvedix_nodes::cvedix_node>
+  createBAStopOSDNode(const std::string &nodeName,
+                      const std::map<std::string, std::string> &params);
   // ========== Broker Nodes ==========
 
   /**
@@ -231,6 +270,24 @@ private:
       const std::string &nodeName,
       const std::map<std::string, std::string> &params,
       const CreateInstanceRequest &req, const std::string &instanceId);
+
+  /**
+   * @brief Create JSON Jam MQTT broker node (custom formatting for
+   * ba_jam)
+   */
+  std::shared_ptr<cvedix_nodes::cvedix_node> createJSONJamMQTTBrokerNode(
+      const std::string &nodeName,
+      const std::map<std::string, std::string> &params,
+      const CreateInstanceRequest &req, const std::string &instanceId);
+  /**
+   * @brief Create JSON Stop MQTT broker node (custom formatting for
+   * ba_stop)
+   */
+  std::shared_ptr<cvedix_nodes::cvedix_node> createJSONStopMQTTBrokerNode(
+      const std::string &nodeName,
+      const std::map<std::string, std::string> &params,
+      const CreateInstanceRequest &req, const std::string &instanceId);
+
 
   /**
    * @brief Create JSON Kafka broker node

@@ -13,11 +13,13 @@
 #include "api/config_handler.h"
 #include "api/endpoints_handler.h"
 #include "api/group_handler.h"
+#include "api/jams_handler.h"
 #include "api/lines_handler.h"
 #include "api/log_handler.h"
 #include "api/node_handler.h"
 #include "api/recognition_handler.h"
 #include "api/solution_handler.h"
+#include "api/stops_handler.h"
 #ifdef ENABLE_METRICS_HANDLER
 #include "api/metrics_handler.h"
 #endif
@@ -33,6 +35,7 @@
 #include "core/node_storage.h"
 #include "core/pipeline_builder.h"
 #include "core/request_middleware.h"
+#include "core/timeout_constants.h"
 #include "core/watchdog.h"
 #include "fonts/font_upload_handler.h"
 #include "groups/group_registry.h"
@@ -541,20 +544,24 @@ void signalHandler(int signal) {
         }
       }).detach();
 
-      // Start shutdown timer thread - force exit after 100ms if still running
-      // RTSP retry loops may prevent graceful shutdown, so use very short
-      // timeout CRITICAL: This thread MUST run and force exit, even if
-      // instances are blocking
+      // Start shutdown timer thread - force exit after configurable timeout
+      // (default: 500ms) if still running
+      // RTSP retry loops may prevent graceful shutdown, but we need enough time
+      // for stopInstance() to complete
+      // CRITICAL: This thread MUST run and force exit, even if instances are
+      // blocking
       std::thread([]() {
-        // Use very short timeout - RTSP retry loops can block indefinitely
-        // 100ms is enough to attempt cleanup, but we force exit quickly
-        std::this_thread::sleep_for(std::chrono::milliseconds(100));
+        // Use configurable timeout (default: 500ms) - allows stopInstance() to
+        // complete but still forces exit if RTSP retry loops block indefinitely
+        auto shutdownTimeout = TimeoutConstants::getShutdownTimeout();
+        std::this_thread::sleep_for(shutdownTimeout);
 
         // Force exit regardless of shutdown state - RTSP retry loops prevent
         // cleanup
         PLOG_WARNING << "Shutdown timeout reached - forcing exit";
-        std::cerr << "[CRITICAL] Shutdown timeout (100ms) - KILLING PROCESS NOW"
-                  << std::endl;
+        std::cerr << "[CRITICAL] Shutdown timeout ("
+                  << TimeoutConstants::getShutdownTimeoutMs()
+                  << "ms) - KILLING PROCESS NOW" << std::endl;
         std::cerr << "[CRITICAL] RTSP retry loops prevented graceful shutdown "
                      "- forcing exit"
                   << std::endl;
@@ -2186,8 +2193,24 @@ int main(int argc, char *argv[]) {
     if (executionMode == InstanceExecutionMode::SUBPROCESS) {
       // Subprocess mode: Create SubprocessInstanceManager
       // Workers will be spawned for each instance
+      
+      // Resolve worker executable path from environment variable or use default
+      const char *worker_path_env = std::getenv("EDGE_AI_WORKER_PATH");
+      std::string worker_executable;
+      if (worker_path_env && strlen(worker_path_env) > 0) {
+        worker_executable = std::string(worker_path_env);
+        std::cerr << "[Main] Using worker executable from EDGE_AI_WORKER_PATH: "
+                  << worker_executable << std::endl;
+      } else {
+        // Default: try absolute path first, then fallback to just executable name
+        // This allows supervisor's findWorkerExecutable() to search in PATH
+        worker_executable = "edge_ai_worker";
+        std::cerr << "[Main] Using default worker executable: " << worker_executable
+                  << " (set EDGE_AI_WORKER_PATH to override)" << std::endl;
+      }
+      
       instanceManager = InstanceManagerFactory::createSubprocess(
-          solutionRegistry, instanceStorage, "edge_ai_worker");
+          solutionRegistry, instanceStorage, worker_executable);
       std::cerr << "[Main] ✓ Subprocess instance manager initialized"
                 << std::endl;
       PLOG_INFO << "[Main] Subprocess instance manager initialized";
@@ -2500,6 +2523,12 @@ int main(int argc, char *argv[]) {
     // Subprocess modes)
     LinesHandler::setInstanceManager(instanceManager.get());
 
+    // Register instance manager with stops handler (ba_stop)
+    StopsHandler::setInstanceManager(instanceManager.get());
+
+    // Register instance manager with jams handler (ba_jam)
+    JamsHandler::setInstanceManager(instanceManager.get());
+
     // Register instance manager with WebSocket controller
     AIWebSocketController::setInstanceManager(instanceManager.get());
 
@@ -2513,6 +2542,8 @@ int main(int argc, char *argv[]) {
     static GroupHandler groupHandler;
     static NodeHandler nodeHandler;
     static LinesHandler linesHandler;
+    static JamsHandler jamsHandler;
+    static StopsHandler stopsHandler;
 
     // Initialize model upload handler with configurable directory
     // Priority: 1. MODELS_DIR env var, 2. /opt/edge_ai_api/models (with
@@ -3591,14 +3622,26 @@ int main(int argc, char *argv[]) {
     // Try to find available port before starting Drogon
     // Drogon's addListener doesn't throw - it fails at run() time
     // So we check port availability manually first
-    auto isPortAvailable = [](const std::string &host, int port) -> bool {
+    // Note: When SO_REUSEPORT is enabled, multiple sockets can bind to the same
+    // port So we need to handle both cases
+    auto isPortAvailable = [enable_reuse_port](const std::string &host,
+                                               int port) -> bool {
       int sock = socket(AF_INET, SOCK_STREAM, 0);
       if (sock < 0)
         return false;
 
-      // Allow reuse
+      // Always allow address reuse to handle TIME_WAIT sockets
       int opt = 1;
       setsockopt(sock, SOL_SOCKET, SO_REUSEADDR, &opt, sizeof(opt));
+
+      // If SO_REUSEPORT is enabled, also set it for port availability check
+      // This allows checking if port is available when SO_REUSEPORT will be
+      // used
+      if (enable_reuse_port) {
+#ifdef SO_REUSEPORT
+        setsockopt(sock, SOL_SOCKET, SO_REUSEPORT, &opt, sizeof(opt));
+#endif
+      }
 
       struct sockaddr_in addr;
       memset(&addr, 0, sizeof(addr));
@@ -3640,11 +3683,10 @@ int main(int argc, char *argv[]) {
     }
 
     // Now add listener with the available port
-    if (enable_reuse_port) {
-      app.addListener(host, port, false, "", "");
-    } else {
-      app.addListener(host, port, false, "", "");
-    }
+    // Note: Drogon framework handles SO_REUSEPORT internally based on thread
+    // pool We just need to call addListener once - Drogon will create multiple
+    // listeners if needed for load balancing when using multiple threads
+    app.addListener(host, port, false, "", "");
 
     PLOG_INFO << "[Server] Starting HTTP server on " << host << ":" << port;
     PLOG_INFO << "[Server] Access http://" << host << ":" << port

@@ -272,8 +272,10 @@ if [ "$SKIP_BUILD" = false ]; then
     fi
 
     if [ ! -f "CMakeCache.txt" ]; then
-        echo "Chạy CMake..."
-        if ! cmake ..; then
+        echo "Chạy CMake với Release mode..."
+        if ! cmake .. -DCMAKE_BUILD_TYPE=Release \
+                      -DAUTO_DOWNLOAD_DEPENDENCIES=ON \
+                      -DDROGON_USE_FETCHCONTENT=ON; then
             echo -e "${RED}Error: CMake configuration failed${NC}"
             exit 1
         fi

@@ -1,0 +1,86 @@
+{
+    "solutionId": "ba_stop_mqtt_default",
+    "solutionName": "Behavior Analysis - Stop Detection with MQTT",
+    "solutionType": "behavior_analysis",
+    "isDefault": false,
+    "description": "Phát hiện đối tượng dừng lại quá thời gian quy định với MQTT event publishing",
+    "category": "behavior_analysis",
+    "pipeline": [
+        {
+            "nodeType": "file_src",
+            "nodeName": "file_src_{instanceId}",
+            "parameters": {
+                "file_path": "${FILE_PATH}",
+                "channel": "0",
+                "resize_ratio": "${RESIZE_RATIO}"
+            }
+        },
+        {
+            "nodeType": "yolo_detector",
+            "nodeName": "yolo_detector_{instanceId}",
+            "parameters": {
+                "weights_path": "${WEIGHTS_PATH}",
+                "config_path": "${CONFIG_PATH}",
+                "labels_path": "${LABELS_PATH}",
+                "score_threshold": "${detectionSensitivity}",
+                "nms_threshold": "0.4"
+            }
+        },
+        {
+            "nodeType": "sort_track",
+            "nodeName": "sort_tracker_{instanceId}",
+            "parameters": {}
+        },
+        {
+            "nodeType": "ba_stop",
+            "nodeName": "ba_stop_{instanceId}",
+            "parameters": {
+                "region_channel": "0",
+                "min_stop_seconds": "${MIN_STOP_SECONDS}",
+                "check_interval_frames": "${CHECK_INTERVAL_FRAMES}",
+                "check_min_hit_frames": "${CHECK_MIN_HIT_FRAMES}",
+                "check_max_distance": "${CHECK_MAX_DISTANCE}"
+            }
+        },
+        {
+            "nodeType": "json_mqtt_broker",
+            "nodeName": "json_mqtt_broker_{instanceId}",
+            "parameters": {}
+        },
+        {
+            "nodeType": "ba_stop_osd",
+            "nodeName": "osd_{instanceId}",
+            "parameters": {}
+        },
+        {
+            "nodeType": "file_des",
+            "nodeName": "file_des_{instanceId}",
+            "parameters": {
+                "save_dir": "./output/{instanceId}",
+                "name_prefix": "ba_stop_mqtt",
+                "osd": "true"
+            }
+        }
+    ],
+    "defaults": {
+        "detectorMode": "SmartDetection",
+        "detectionSensitivity": "0.7",
+        "sensorModality": "RGB",
+        "RESIZE_RATIO": "1.0"
+    },
+    "requiredParams": {
+        "FILE_PATH": "Đường dẫn file video input (hoặc dùng RTSP_URL)",
+        "WEIGHTS_PATH": "Đường dẫn YOLO weights file",
+        "CONFIG_PATH": "Đường dẫn YOLO config file",
+        "LABELS_PATH": "Đường dẫn labels file",
+        "MIN_STOP_SECONDS": "Số giây tối thiểu đối tượng dừng lại để phát hiện sự kiện",
+        "CHECK_INTERVAL_FRAMES": "Số khung hình giữa các lần kiểm tra dừng",
+        "CHECK_MIN_HIT_FRAMES": "Số khung hình tối thiểu để xác định đối tượng dừng",
+        "CHECK_MAX_DISTANCE": "Khoảng cách tối đa giữa các vị trí liên tiếp để coi là dừng"
+    },
+    "optionalParams": {
+        "RTSP_URL": "URL RTSP stream (thay thế FILE_PATH)",
+        "RTMP_URL": "URL RTMP server (thay thế file_des)",
+        "RESIZE_RATIO": "Tỷ lệ resize video (0.0-1.0), mặc định 1.0"
+    }
+}

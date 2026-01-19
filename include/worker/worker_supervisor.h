@@ -150,7 +150,7 @@ public:
 private:
   std::string worker_executable_;
 
-  mutable std::mutex workers_mutex_;
+  mutable std::timed_mutex workers_mutex_;
   std::unordered_map<std::string, std::unique_ptr<WorkerInfo>> workers_;
 
   std::atomic<bool> running_{false};

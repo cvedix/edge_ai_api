@@ -1,4 +1,5 @@
 #include "worker/worker_supervisor.h"
+#include "core/timeout_constants.h"
 #include <chrono>
 #include <climits> // for PATH_MAX
 #include <cstring>
@@ -38,7 +39,7 @@ void WorkerSupervisor::stop() {
   // Stop all workers
   std::vector<std::string> worker_ids;
   {
-    std::lock_guard<std::mutex> lock(workers_mutex_);
+    std::lock_guard<std::timed_mutex> lock(workers_mutex_);
     for (const auto &[id, _] : workers_) {
       worker_ids.push_back(id);
     }
@@ -65,7 +66,7 @@ void WorkerSupervisor::stop() {
 
 bool WorkerSupervisor::spawnWorker(const std::string &instance_id,
                                    const Json::Value &config) {
-  std::lock_guard<std::mutex> lock(workers_mutex_);
+  std::lock_guard<std::timed_mutex> lock(workers_mutex_);
 
   // Check if worker already exists
   if (workers_.find(instance_id) != workers_.end()) {
@@ -77,8 +78,17 @@ bool WorkerSupervisor::spawnWorker(const std::string &instance_id,
   // Find worker executable
   std::string exe_path = findWorkerExecutable();
   if (exe_path.empty()) {
-    std::cerr << "[Supervisor] Worker executable not found: "
+    std::cerr << "[Supervisor] ========================================" << std::endl;
+    std::cerr << "[Supervisor] ✗ Worker executable not found: "
               << worker_executable_ << std::endl;
+    std::cerr << "[Supervisor] ========================================" << std::endl;
+    std::cerr << "[Supervisor] SOLUTION:" << std::endl;
+    std::cerr << "[Supervisor]   1. Build worker executable:" << std::endl;
+    std::cerr << "[Supervisor]      cd build && make edge_ai_worker" << std::endl;
+    std::cerr << "[Supervisor]   2. Or check if executable exists in PATH" << std::endl;
+    std::cerr << "[Supervisor]   3. Run diagnostic script:" << std::endl;
+    std::cerr << "[Supervisor]      ./scripts/diagnose_spawn_worker.sh" << std::endl;
+    std::cerr << "[Supervisor] ========================================" << std::endl;
     return false;
   }
 
@@ -95,7 +105,19 @@ bool WorkerSupervisor::spawnWorker(const std::string &instance_id,
   pid_t pid = fork();
 
   if (pid < 0) {
-    std::cerr << "[Supervisor] Fork failed: " << strerror(errno) << std::endl;
+    std::cerr << "[Supervisor] ========================================" << std::endl;
+    std::cerr << "[Supervisor] ✗ Fork failed: " << strerror(errno) << std::endl;
+    std::cerr << "[Supervisor] ========================================" << std::endl;
+    std::cerr << "[Supervisor] SOLUTION:" << std::endl;
+    std::cerr << "[Supervisor]   1. Check process limits:" << std::endl;
+    std::cerr << "[Supervisor]      ulimit -u  # Check max user processes" << std::endl;
+    std::cerr << "[Supervisor]   2. Increase limits if needed:" << std::endl;
+    std::cerr << "[Supervisor]      ulimit -u 4096" << std::endl;
+    std::cerr << "[Supervisor]   3. Check system limits:" << std::endl;
+    std::cerr << "[Supervisor]      cat /proc/sys/kernel/pid_max" << std::endl;
+    std::cerr << "[Supervisor]   4. Run diagnostic script:" << std::endl;
+    std::cerr << "[Supervisor]      ./scripts/diagnose_spawn_worker.sh" << std::endl;
+    std::cerr << "[Supervisor] ========================================" << std::endl;
     return false;
   }
 
@@ -128,8 +150,25 @@ bool WorkerSupervisor::spawnWorker(const std::string &instance_id,
   bool ready = waitForWorkerReady(*worker, worker_startup_timeout_ms_);
 
   if (!ready) {
-    std::cerr << "[Supervisor] Worker failed to become ready, killing PID "
+    std::cerr << "[Supervisor] ========================================" << std::endl;
+    std::cerr << "[Supervisor] ✗ Worker failed to become ready, killing PID "
               << pid << std::endl;
+    std::cerr << "[Supervisor] ========================================" << std::endl;
+    std::cerr << "[Supervisor] SOLUTION:" << std::endl;
+    std::cerr << "[Supervisor]   1. Check worker logs for errors" << std::endl;
+    std::cerr << "[Supervisor]   2. Check socket directory permissions:" << std::endl;
+    std::cerr << "[Supervisor]      ls -la " << socket_path << std::endl;
+    std::cerr << "[Supervisor]   3. Check socket directory exists and is writable:" << std::endl;
+    std::filesystem::path socket_dir = std::filesystem::path(socket_path).parent_path();
+    std::cerr << "[Supervisor]      ls -ld " << socket_dir.string() << std::endl;
+    std::cerr << "[Supervisor]   4. Fix socket directory if needed:" << std::endl;
+    std::cerr << "[Supervisor]      sudo mkdir -p " << socket_dir.string() 
+              << " && sudo chmod 777 " << socket_dir.string() << std::endl;
+    std::cerr << "[Supervisor]   5. Check CVEDIX SDK dependencies:" << std::endl;
+    std::cerr << "[Supervisor]      sudo systemctl restart edge-ai-api" << std::endl;
+    std::cerr << "[Supervisor]   6. Run diagnostic script:" << std::endl;
+    std::cerr << "[Supervisor]      ./scripts/diagnose_spawn_worker.sh" << std::endl;
+    std::cerr << "[Supervisor] ========================================" << std::endl;
     kill(pid, SIGKILL);
     waitpid(pid, nullptr, 0);
     cleanupSocket(socket_path);
@@ -142,7 +181,7 @@ bool WorkerSupervisor::spawnWorker(const std::string &instance_id,
 
 bool WorkerSupervisor::terminateWorker(const std::string &instance_id,
                                        bool force) {
-  std::lock_guard<std::mutex> lock(workers_mutex_);
+  std::lock_guard<std::timed_mutex> lock(workers_mutex_);
 
   auto it = workers_.find(instance_id);
   if (it == workers_.end()) {
@@ -195,52 +234,204 @@ bool WorkerSupervisor::terminateWorker(const std::string &instance_id,
 IPCMessage WorkerSupervisor::sendToWorker(const std::string &instance_id,
                                           const IPCMessage &msg,
                                           int timeout_ms) {
-  std::lock_guard<std::mutex> lock(workers_mutex_);
+  std::cout << "[WorkerSupervisor] ===== sendToWorker START =====" << std::endl;
+  std::cout << "[WorkerSupervisor] Instance ID: " << instance_id << std::endl;
+  std::cout << "[WorkerSupervisor] Message type: " << static_cast<int>(msg.type)
+            << std::endl;
+  std::cout << "[WorkerSupervisor] Timeout: " << timeout_ms << "ms"
+            << std::endl;
 
-  auto it = workers_.find(instance_id);
-  if (it == workers_.end()) {
-    IPCMessage error;
-    error.type = MessageType::ERROR_RESPONSE;
-    error.payload =
-        createErrorResponse("Worker not found", ResponseStatus::NOT_FOUND);
-    return error;
+  // CRITICAL: Get worker client pointer while holding lock, then release lock
+  // before calling sendAndReceive() to prevent deadlock with getWorkerState()
+  // sendAndReceive() can take up to 5 seconds, holding lock that long blocks
+  // other operations
+  UnixSocketClient *client_ptr = nullptr;
+
+  {
+    std::lock_guard<std::timed_mutex> lock(workers_mutex_);
+    std::cout << "[WorkerSupervisor] Acquired workers_mutex_ lock" << std::endl;
+
+    auto it = workers_.find(instance_id);
+    if (it == workers_.end()) {
+      std::cerr << "[WorkerSupervisor] ERROR: Worker not found for instance "
+                << instance_id << std::endl;
+      IPCMessage error;
+      error.type = MessageType::ERROR_RESPONSE;
+      error.payload =
+          createErrorResponse("Worker not found", ResponseStatus::NOT_FOUND);
+      return error;
+    }
+    std::cout << "[WorkerSupervisor] Worker found in map" << std::endl;
+
+    WorkerInfo &worker = *it->second;
+
+    if (!worker.client || !worker.client->isConnected()) {
+      std::cerr << "[WorkerSupervisor] ERROR: Worker not connected"
+                << std::endl;
+      IPCMessage error;
+      error.type = MessageType::ERROR_RESPONSE;
+      error.payload =
+          createErrorResponse("Worker not connected", ResponseStatus::ERROR);
+      return error;
+    }
+    std::cout << "[WorkerSupervisor] Worker client is connected" << std::endl;
+
+    if (worker.state != WorkerState::READY &&
+        worker.state != WorkerState::BUSY) {
+      std::cerr << "[WorkerSupervisor] ERROR: Worker state is "
+                << static_cast<int>(worker.state) << " (not READY or BUSY)"
+                << std::endl;
+      IPCMessage error;
+      error.type = MessageType::ERROR_RESPONSE;
+      error.payload =
+          createErrorResponse("Worker not ready", ResponseStatus::ERROR);
+      return error;
+    }
+    std::cout << "[WorkerSupervisor] Worker state is valid: "
+              << static_cast<int>(worker.state) << std::endl;
+
+    // CRITICAL: If worker is already BUSY, reject the request to prevent
+    // concurrent sendAndReceive() calls which can cause response mismatch
+    // and timeout issues in production. The API layer should retry with
+    // exponential backoff.
+    if (worker.state == WorkerState::BUSY) {
+      std::cerr << "[WorkerSupervisor] ERROR: Worker is already BUSY, "
+                   "rejecting request to prevent concurrent operations"
+                << std::endl;
+      IPCMessage error;
+      error.type = MessageType::ERROR_RESPONSE;
+      error.payload = createErrorResponse(
+          "Worker is busy processing another request. Please retry later.",
+          ResponseStatus::ERROR);
+      return error;
+    }
+
+    // Get client pointer and set state to BUSY while holding lock
+    client_ptr = worker.client.get();
+    setWorkerState(worker, WorkerState::BUSY);
+    std::cout << "[WorkerSupervisor] Set worker state to BUSY" << std::endl;
+  } // Lock released here - critical to prevent deadlock!
+  std::cout << "[WorkerSupervisor] Released workers_mutex_ lock before "
+               "sendAndReceive()"
+            << std::endl;
+
+  // Use try-catch to ensure worker state is always restored to READY
+  // even if sendAndReceive throws exception or times out
+  IPCMessage response;
+  try {
+    std::cout << "[WorkerSupervisor] Calling client->sendAndReceive()..."
+              << std::endl;
+    auto send_start = std::chrono::steady_clock::now();
+    response = client_ptr->sendAndReceive(msg, timeout_ms);
+    auto send_end = std::chrono::steady_clock::now();
+    auto send_duration = std::chrono::duration_cast<std::chrono::milliseconds>(
+                             send_end - send_start)
+                             .count();
+    std::cout << "[WorkerSupervisor] sendAndReceive() completed in "
+              << send_duration << "ms" << std::endl;
+    std::cout << "[WorkerSupervisor] Response type: "
+              << static_cast<int>(response.type) << std::endl;
+
+    // Re-acquire lock to restore state
+    {
+      std::lock_guard<std::timed_mutex> lock(workers_mutex_);
+      auto it = workers_.find(instance_id);
+      if (it != workers_.end()) {
+        setWorkerState(*it->second, WorkerState::READY);
+        std::cout << "[WorkerSupervisor] Set worker state back to READY"
+                  << std::endl;
+      }
+    }
+  } catch (const std::exception &e) {
+    std::cerr << "[WorkerSupervisor] EXCEPTION in sendAndReceive: " << e.what()
+              << std::endl;
+    // Re-acquire lock to restore state
+    {
+      std::lock_guard<std::timed_mutex> lock(workers_mutex_);
+      auto it = workers_.find(instance_id);
+      if (it != workers_.end()) {
+        setWorkerState(*it->second, WorkerState::READY);
+      }
+    }
+    // Return error response
+    response.type = MessageType::ERROR_RESPONSE;
+    response.payload =
+        createErrorResponse("IPC communication error: " + std::string(e.what()),
+                            ResponseStatus::ERROR);
+  } catch (...) {
+    std::cerr << "[WorkerSupervisor] UNKNOWN EXCEPTION in sendAndReceive"
+              << std::endl;
+    // Re-acquire lock to restore state
+    {
+      std::lock_guard<std::timed_mutex> lock(workers_mutex_);
+      auto it = workers_.find(instance_id);
+      if (it != workers_.end()) {
+        setWorkerState(*it->second, WorkerState::READY);
+      }
+    }
+    // Return error response
+    response.type = MessageType::ERROR_RESPONSE;
+    response.payload = createErrorResponse("Unknown IPC communication error",
+                                           ResponseStatus::ERROR);
   }
 
-  WorkerInfo &worker = *it->second;
-
-  if (!worker.client || !worker.client->isConnected()) {
-    IPCMessage error;
-    error.type = MessageType::ERROR_RESPONSE;
-    error.payload =
-        createErrorResponse("Worker not connected", ResponseStatus::ERROR);
-    return error;
-  }
-
-  if (worker.state != WorkerState::READY && worker.state != WorkerState::BUSY) {
-    IPCMessage error;
-    error.type = MessageType::ERROR_RESPONSE;
-    error.payload =
-        createErrorResponse("Worker not ready", ResponseStatus::ERROR);
-    return error;
-  }
-
-  setWorkerState(worker, WorkerState::BUSY);
-  IPCMessage response = worker.client->sendAndReceive(msg, timeout_ms);
-  setWorkerState(worker, WorkerState::READY);
-
+  std::cout << "[WorkerSupervisor] ===== sendToWorker END =====" << std::endl;
   return response;
 }
 
 WorkerState
 WorkerSupervisor::getWorkerState(const std::string &instance_id) const {
-  std::lock_guard<std::mutex> lock(workers_mutex_);
+  std::cout << "[WorkerSupervisor] getWorkerState() called for instance: "
+            << instance_id << std::endl;
+  std::cout << "[WorkerSupervisor] Attempting to acquire workers_mutex_ lock..."
+            << std::endl;
+  auto lock_start = std::chrono::steady_clock::now();
 
-  auto it = workers_.find(instance_id);
-  if (it == workers_.end()) {
+  // Use timeout to prevent blocking indefinitely if mutex is held by another
+  // thread This is critical to prevent deadlock when sendToWorker() is holding
+  // the lock
+  auto timeout_ms = TimeoutConstants::getWorkerStateMutexTimeoutMs();
+  std::unique_lock<std::timed_mutex> lock(workers_mutex_, std::defer_lock);
+
+  if (!lock.try_lock_for(std::chrono::milliseconds(timeout_ms))) {
+    auto lock_end = std::chrono::steady_clock::now();
+    auto lock_duration = std::chrono::duration_cast<std::chrono::milliseconds>(
+                             lock_end - lock_start)
+                             .count();
+    std::cerr << "[WorkerSupervisor] ERROR: Failed to acquire workers_mutex_ "
+                 "lock after "
+              << lock_duration << "ms (timeout: " << timeout_ms << "ms)"
+              << std::endl;
+    std::cerr << "[WorkerSupervisor] WARNING: Worker state check timed out - "
+                 "mutex may be held by sendToWorker()"
+              << std::endl;
+    // Return STOPPED as safe default - caller should handle this gracefully
     return WorkerState::STOPPED;
   }
 
-  return it->second->state;
+  auto lock_end = std::chrono::steady_clock::now();
+  auto lock_duration = std::chrono::duration_cast<std::chrono::milliseconds>(
+                           lock_end - lock_start)
+                           .count();
+  if (lock_duration > 10) {
+    std::cout << "[WorkerSupervisor] WARNING: workers_mutex_ lock took "
+              << lock_duration << "ms (may indicate contention)" << std::endl;
+  } else {
+    std::cout << "[WorkerSupervisor] Acquired workers_mutex_ lock in "
+              << lock_duration << "ms" << std::endl;
+  }
+
+  auto it = workers_.find(instance_id);
+  if (it == workers_.end()) {
+    std::cout << "[WorkerSupervisor] Worker not found, returning STOPPED"
+              << std::endl;
+    return WorkerState::STOPPED;
+  }
+
+  auto state = it->second->state;
+  std::cout << "[WorkerSupervisor] Worker found, state: "
+            << static_cast<int>(state) << std::endl;
+  return state;
 }
 
 bool WorkerSupervisor::isWorkerReady(const std::string &instance_id) const {
@@ -248,7 +439,7 @@ bool WorkerSupervisor::isWorkerReady(const std::string &instance_id) const {
 }
 
 std::vector<std::string> WorkerSupervisor::getWorkerIds() const {
-  std::lock_guard<std::mutex> lock(workers_mutex_);
+  std::lock_guard<std::timed_mutex> lock(workers_mutex_);
 
   std::vector<std::string> ids;
   ids.reserve(workers_.size());
@@ -268,7 +459,7 @@ void WorkerSupervisor::setErrorCallback(ErrorCallback callback) {
 
 std::optional<WorkerInfo>
 WorkerSupervisor::getWorkerInfo(const std::string &instance_id) const {
-  std::lock_guard<std::mutex> lock(workers_mutex_);
+  std::lock_guard<std::timed_mutex> lock(workers_mutex_);
 
   auto it = workers_.find(instance_id);
   if (it == workers_.end()) {
@@ -299,7 +490,7 @@ void WorkerSupervisor::monitorLoop() {
     std::vector<std::string> crashed_workers;
 
     {
-      std::lock_guard<std::mutex> lock(workers_mutex_);
+      std::lock_guard<std::timed_mutex> lock(workers_mutex_);
 
       for (auto &[instance_id, worker] : workers_) {
         // Check if process is still alive
@@ -371,7 +562,7 @@ void WorkerSupervisor::handleWorkerCrash(const std::string &instance_id) {
   }
 
   // Attempt restart if under limit
-  std::lock_guard<std::mutex> lock(workers_mutex_);
+  std::lock_guard<std::timed_mutex> lock(workers_mutex_);
   auto it = workers_.find(instance_id);
   if (it == workers_.end())
     return;

@@ -31,7 +31,8 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 
 # Configuration
-VERSION="2025.0.1.3-Beta"
+# Note: Version should match CMakeLists.txt PROJECT_VERSION
+VERSION="2025.0.1.1"
 ARCH="amd64"
 CLEAN_BUILD=false
 SKIP_BUILD=false
@@ -175,6 +176,41 @@ if [ "\$CUDA_FOUND" = true ]; then
     echo "  CUDA libraries bundled successfully"
 fi
 
+# Copy hwinfo libraries from build directory
+# hwinfo libraries are built as part of the project but may not be in system paths
+EXEC_DIR=\$(dirname "\$EXEC_PATH")
+# Find build directory: go up from exec dir until we find a directory named "build" or use exec dir's parent
+if [[ "\$EXEC_DIR" == *"/bin" ]]; then
+    BUILD_DIR=\$(dirname "\$EXEC_DIR")
+else
+    BUILD_DIR="\$EXEC_DIR"
+fi
+HWINFO_LIB_PATHS=(
+    "\$BUILD_DIR/_deps/hwinfo-build"
+    "\$BUILD_DIR/third_party/hwinfo"
+    "\$BUILD_DIR"
+)
+HWINFO_FOUND=false
+for hwinfo_path in "\${HWINFO_LIB_PATHS[@]}"; do
+    if [ -d "\$hwinfo_path" ]; then
+        # Find all libhwinfo*.so* files
+        while IFS= read -r hwinfo_lib; do
+            if [ -f "\$hwinfo_lib" ]; then
+                libname=\$(basename "\$hwinfo_lib")
+                if [ ! -f "\$LIB_TEMP_DIR/\$libname" ]; then
+                    echo "  Copying hwinfo library \$libname from \$hwinfo_path..."
+                    cp -L "\$hwinfo_lib" "\$LIB_TEMP_DIR/" 2>/dev/null || true
+                    HWINFO_FOUND=true
+                fi
+            fi
+        done < <(find "\$hwinfo_path" -name "libhwinfo*.so*" -type f 2>/dev/null)
+    fi
+done
+
+if [ "\$HWINFO_FOUND" = true ]; then
+    echo "  hwinfo libraries bundled successfully"
+fi
+
 # Copy other required libraries from ldd output (including OpenCV and GStreamer for full package)
 # Bundle all required libraries for a self-contained package
 ldd "$EXEC_PATH" 2>/dev/null | grep -v "not found" | awk '{print $3}' | grep -v "^$" | sort -u | while read lib; do
@@ -294,6 +330,41 @@ bundle_libraries() {
 
     if [ "$CUDA_FOUND" = true ]; then
         echo "  CUDA libraries bundled successfully"
+    fi
+
+    # Copy hwinfo libraries from build directory
+    # hwinfo libraries are built as part of the project but may not be in system paths
+    EXEC_DIR=$(dirname "$EXECUTABLE")
+    # Find build directory: go up from exec dir until we find a directory named "build" or use exec dir's parent
+    if [[ "$EXEC_DIR" == *"/bin" ]]; then
+        BUILD_DIR=$(dirname "$EXEC_DIR")
+    else
+        BUILD_DIR="$EXEC_DIR"
+    fi
+    HWINFO_LIB_PATHS=(
+        "$BUILD_DIR/_deps/hwinfo-build"
+        "$BUILD_DIR/third_party/hwinfo"
+        "$BUILD_DIR"
+    )
+    HWINFO_FOUND=false
+    for hwinfo_path in "${HWINFO_LIB_PATHS[@]}"; do
+        if [ -d "$hwinfo_path" ]; then
+            # Find all libhwinfo*.so* files
+            while IFS= read -r hwinfo_lib; do
+                if [ -f "$hwinfo_lib" ]; then
+                    libname=$(basename "$hwinfo_lib")
+                    if [ ! -f "$LIB_DIR/$libname" ]; then
+                        echo "  Copying hwinfo library $libname from $hwinfo_path..."
+                        cp -L "$hwinfo_lib" "$LIB_DIR/" 2>/dev/null || true
+                        HWINFO_FOUND=true
+                    fi
+                fi
+            done < <(find "$hwinfo_path" -name "libhwinfo*.so*" -type f 2>/dev/null)
+        fi
+    done
+
+    if [ "$HWINFO_FOUND" = true ]; then
+        echo "  hwinfo libraries bundled successfully"
     fi
 
     # Find and copy required libraries (including OpenCV and GStreamer for full package)

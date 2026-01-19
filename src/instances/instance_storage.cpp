@@ -1268,13 +1268,21 @@ std::vector<std::string> InstanceStorage::loadAllInstances() {
 bool InstanceStorage::deleteInstance(const std::string &instanceId) {
   try {
     bool success = true;
+    std::vector<std::string> failedTiers;
 
     // Delete from primary storage directory first
     Json::Value instances = loadInstancesFile();
     if (instances.isMember(instanceId)) {
       instances.removeMember(instanceId);
       if (!saveInstancesFile(instances)) {
+        std::cerr << "[InstanceStorage] Failed to delete instance "
+                  << instanceId << " from primary storage: " << storage_dir_
+                  << std::endl;
         success = false;
+        failedTiers.push_back(storage_dir_);
+      } else {
+        std::cerr << "[InstanceStorage] Deleted instance " << instanceId
+                  << " from primary storage: " << storage_dir_ << std::endl;
       }
     }
 
@@ -1333,19 +1341,64 @@ bool InstanceStorage::deleteInstance(const std::string &instanceId) {
               writerBuilder.newStreamWriter());
           writer->write(tierInstances, &outFile);
           outFile.close();
-          std::cerr << "[InstanceStorage] Deleted instance " << instanceId
-                    << " from tier: " << dir << std::endl;
+
+          // Verify deletion by reloading the file
+          std::ifstream verifyFile(filepath);
+          if (verifyFile.is_open()) {
+            Json::Value verifyInstances(Json::objectValue);
+            std::string verifyErrors;
+            if (Json::parseFromStream(builder, verifyFile, &verifyInstances,
+                                      &verifyErrors)) {
+              if (verifyInstances.isMember(instanceId)) {
+                std::cerr << "[InstanceStorage] ERROR: Instance " << instanceId
+                          << " still exists in tier after deletion: " << dir
+                          << std::endl;
+                success = false;
+                failedTiers.push_back(dir);
+              } else {
+                std::cerr
+                    << "[InstanceStorage] ✓ Verified deletion of instance "
+                    << instanceId << " from tier: " << dir << std::endl;
+              }
+            }
+            verifyFile.close();
+          }
         } else {
           std::cerr << "[InstanceStorage] Warning: Could not open file for "
                        "writing in tier: "
                     << dir << std::endl;
           success = false;
+          failedTiers.push_back(dir);
         }
       } catch (const std::exception &e) {
         std::cerr << "[InstanceStorage] Exception deleting from tier " << dir
                   << ": " << e.what() << std::endl;
+        success = false;
+        failedTiers.push_back(dir);
         // Continue with other tiers
       }
+    }
+
+    // Final verification: Check if instance still exists in any tier
+    if (instanceExists(instanceId)) {
+      std::cerr << "[InstanceStorage] ERROR: Instance " << instanceId
+                << " still exists after deletion attempt!" << std::endl;
+      std::cerr << "[InstanceStorage] Failed tiers: ";
+      for (const auto &tier : failedTiers) {
+        std::cerr << tier << " ";
+      }
+      std::cerr << std::endl;
+      return false;
+    }
+
+    if (!success && !failedTiers.empty()) {
+      std::cerr << "[InstanceStorage] Warning: Some tiers failed to delete, "
+                   "but instance "
+                << "was removed from primary storage. Failed tiers: ";
+      for (const auto &tier : failedTiers) {
+        std::cerr << tier << " ";
+      }
+      std::cerr << std::endl;
     }
 
     return success;

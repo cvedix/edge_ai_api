@@ -38,6 +38,10 @@ set(TEST_SOURCES
     test_group_handler.cpp
     test_create_instance_handler.cpp
     test_lines_handler.cpp
+    test_jams_handler.cpp
+    test_stops_handler.cpp
+    test_ba_jam_detection_params.cpp
+    test_ba_jam_pipeline.cpp
     # test_ai_handler.cpp  # Commented out: requires C++20 for counting_semaphore, but project uses C++17
     test_main.cpp
 )
@@ -75,6 +79,8 @@ target_sources(edge_ai_api_tests PRIVATE
     ${CMAKE_SOURCE_DIR}/src/api/group_handler.cpp
     ${CMAKE_SOURCE_DIR}/src/api/create_instance_handler.cpp
     ${CMAKE_SOURCE_DIR}/src/api/lines_handler.cpp
+    ${CMAKE_SOURCE_DIR}/src/api/jams_handler.cpp
+    ${CMAKE_SOURCE_DIR}/src/api/stops_handler.cpp
     # ${CMAKE_SOURCE_DIR}/src/api/ai_handler.cpp  # Commented out: requires C++20 for counting_semaphore, but project uses C++17
     ${CMAKE_SOURCE_DIR}/src/core/watchdog.cpp
     ${CMAKE_SOURCE_DIR}/src/core/health_monitor.cpp
@@ -85,6 +91,7 @@ target_sources(edge_ai_api_tests PRIVATE
     ${CMAKE_SOURCE_DIR}/src/instances/instance_registry.cpp
     ${CMAKE_SOURCE_DIR}/src/instances/inprocess_instance_manager.cpp
     ${CMAKE_SOURCE_DIR}/src/core/pipeline_builder.cpp
+    ${CMAKE_SOURCE_DIR}/src/core/cvedix_validator.cpp
     ${CMAKE_SOURCE_DIR}/src/utils/cvedix_mqtt_client_impl.cpp
     ${CMAKE_SOURCE_DIR}/src/utils/mp4_finalizer.cpp
     ${CMAKE_SOURCE_DIR}/src/utils/mp4_directory_watcher.cpp
@@ -101,6 +108,7 @@ target_sources(edge_ai_api_tests PRIVATE
     ${CMAKE_SOURCE_DIR}/src/core/node_storage.cpp
     ${CMAKE_SOURCE_DIR}/src/core/performance_monitor.cpp
     ${CMAKE_SOURCE_DIR}/src/core/backpressure_controller.cpp
+    ${CMAKE_SOURCE_DIR}/src/core/adaptive_queue_size_manager.cpp
     ${CMAKE_SOURCE_DIR}/src/groups/group_registry.cpp
     ${CMAKE_SOURCE_DIR}/src/groups/group_storage.cpp
     ${CMAKE_SOURCE_DIR}/src/models/group_info.cpp
