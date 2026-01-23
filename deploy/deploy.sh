@@ -271,11 +271,37 @@ if [ "$SKIP_BUILD" = false ]; then
         exit 1
     fi
 
+    # Check and fix OpenCV dual version before CMake
+    if [ -f "/usr/local/lib/cmake/opencv4/OpenCVConfig.cmake" ]; then
+        echo "Checking OpenCV configuration..."
+        
+        # Create opencv4.pc symlink if needed
+        if [ ! -f "/usr/local/lib/pkgconfig/opencv4.pc" ] && [ -f "/usr/local/lib/pkgconfig/opencv.pc" ]; then
+            echo "Creating opencv4.pc symlink..."
+            mkdir -p /usr/local/lib/pkgconfig
+            ln -sf /usr/local/lib/pkgconfig/opencv.pc /usr/local/lib/pkgconfig/opencv4.pc 2>/dev/null || true
+        fi
+        
+        # Set PKG_CONFIG_PATH for current session
+        export PKG_CONFIG_PATH=/usr/local/lib/pkgconfig:$PKG_CONFIG_PATH
+    fi
+    
     if [ ! -f "CMakeCache.txt" ]; then
         echo "Chạy CMake với Release mode..."
-        if ! cmake .. -DCMAKE_BUILD_TYPE=Release \
-                      -DAUTO_DOWNLOAD_DEPENDENCIES=ON \
-                      -DDROGON_USE_FETCHCONTENT=ON; then
+        
+        # Set OpenCV_DIR if OpenCV 4.10.0 exists in /usr/local
+        CMAKE_OPTS=(
+            -DCMAKE_BUILD_TYPE=Release
+            -DAUTO_DOWNLOAD_DEPENDENCIES=ON
+            -DDROGON_USE_FETCHCONTENT=ON
+        )
+        
+        if [ -f "/usr/local/lib/cmake/opencv4/OpenCVConfig.cmake" ]; then
+            CMAKE_OPTS+=(-DOpenCV_DIR=/usr/local/lib/cmake/opencv4)
+            echo "  Using OpenCV from /usr/local (version 4.10.0+)"
+        fi
+        
+        if ! cmake .. "${CMAKE_OPTS[@]}"; then
             echo -e "${RED}Error: CMake configuration failed${NC}"
             exit 1
         fi
