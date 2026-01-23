@@ -234,60 +234,132 @@ static cv::Mat align_face_using_landmarks(const cv::Mat &image,
 static std::vector<float>
 extract_embedding_from_image(const cv::Mat &aligned_face,
                              const std::string &onnx_model_path) {
-
-  cv::dnn::Net net = cv::dnn::readNetFromONNX(onnx_model_path);
-  if (net.empty()) {
-    return std::vector<float>();
-  }
+  try {
+    cv::dnn::Net net = cv::dnn::readNetFromONNX(onnx_model_path);
+    if (net.empty()) {
+      if (isApiLoggingEnabled()) {
+        PLOG_WARNING << "[RecognitionHandler] Failed to load ONNX model from: "
+                     << onnx_model_path;
+      }
+      return std::vector<float>();
+    }
 
 #ifdef CVEDIX_WITH_CUDA
-  net.setPreferableBackend(cv::dnn::DNN_BACKEND_CUDA);
-  net.setPreferableTarget(cv::dnn::DNN_TARGET_CUDA);
+    net.setPreferableBackend(cv::dnn::DNN_BACKEND_CUDA);
+    net.setPreferableTarget(cv::dnn::DNN_TARGET_CUDA);
 #else
-  net.setPreferableBackend(cv::dnn::DNN_BACKEND_OPENCV);
-  net.setPreferableTarget(cv::dnn::DNN_TARGET_CPU);
+    net.setPreferableBackend(cv::dnn::DNN_BACKEND_OPENCV);
+    net.setPreferableTarget(cv::dnn::DNN_TARGET_CPU);
 #endif
 
-  cv::Mat rgb;
-  cv::cvtColor(aligned_face, rgb, cv::COLOR_BGR2RGB);
+    cv::Mat rgb;
+    cv::cvtColor(aligned_face, rgb, cv::COLOR_BGR2RGB);
 
-  if (rgb.rows != 112 || rgb.cols != 112) {
-    cv::resize(rgb, rgb, cv::Size(112, 112), 0, 0, cv::INTER_LINEAR);
-  }
+    if (rgb.rows != 112 || rgb.cols != 112) {
+      cv::resize(rgb, rgb, cv::Size(112, 112), 0, 0, cv::INTER_LINEAR);
+    }
 
-  cv::Mat blob;
-  cv::dnn::blobFromImage(rgb, blob, 1.0f / 128.0f, cv::Size(),
-                         cv::Scalar(127.5f, 127.5f, 127.5f), false, false,
-                         CV_32F);
+    cv::Mat blob;
+    cv::dnn::blobFromImage(rgb, blob, 1.0f / 128.0f, cv::Size(),
+                           cv::Scalar(127.5f, 127.5f, 127.5f), false, false,
+                           CV_32F);
 
-  net.setInput(blob);
-  std::vector<cv::Mat> outputs;
-  net.forward(outputs, net.getUnconnectedOutLayersNames());
+    net.setInput(blob);
+    std::vector<cv::Mat> outputs;
+    
+    // Wrap forward() in try-catch to handle OpenCV DNN shape mismatch errors
+    try {
+      net.forward(outputs, net.getUnconnectedOutLayersNames());
+    } catch (const cv::Exception &e) {
+      // Check if this is a shape mismatch error (Eltwise layer issue)
+      std::string error_msg = e.what();
+      bool is_shape_mismatch =
+          (error_msg.find("getMemoryShapes") != std::string::npos ||
+           error_msg.find("eltwise_layer") != std::string::npos ||
+           error_msg.find("Assertion failed") != std::string::npos ||
+           error_msg.find("inputs[vecIdx][j]") != std::string::npos ||
+           error_msg.find("Eltwise") != std::string::npos ||
+           e.code == cv::Error::StsAssert);
+      
+      if (is_shape_mismatch) {
+        if (isApiLoggingEnabled()) {
+          PLOG_ERROR << "[RecognitionHandler] OpenCV DNN shape mismatch error "
+                        "in ONNX model forward pass";
+          PLOG_ERROR << "[RecognitionHandler] Error code: " << e.code
+                     << ", Error message: " << e.msg;
+          PLOG_ERROR << "[RecognitionHandler] This may indicate an "
+                        "incompatibility between the ONNX model and OpenCV DNN";
+          PLOG_ERROR << "[RecognitionHandler] Model path: " << onnx_model_path;
+          PLOG_ERROR << "[RecognitionHandler] Input image size: " << rgb.cols
+                     << "x" << rgb.rows;
+        }
+      } else {
+        if (isApiLoggingEnabled()) {
+          PLOG_ERROR << "[RecognitionHandler] OpenCV DNN forward error: "
+                     << e.msg;
+          PLOG_ERROR << "[RecognitionHandler] Error code: " << e.code;
+        }
+      }
+      return std::vector<float>();
+    } catch (const std::exception &e) {
+      if (isApiLoggingEnabled()) {
+        PLOG_ERROR << "[RecognitionHandler] Exception during ONNX model "
+                      "forward pass: "
+                   << e.what();
+      }
+      return std::vector<float>();
+    }
 
-  if (outputs.empty()) {
+    if (outputs.empty()) {
+      if (isApiLoggingEnabled()) {
+        PLOG_WARNING << "[RecognitionHandler] ONNX model forward returned "
+                        "empty outputs";
+      }
+      return std::vector<float>();
+    }
+
+    const cv::Mat &output = outputs[0];
+    int emb_dim = (output.dims == 2) ? output.size[1] : output.size[0];
+
+    std::vector<float> embedding(emb_dim);
+    const float *output_ptr = output.ptr<float>();
+    std::copy(output_ptr, output_ptr + emb_dim, embedding.begin());
+
+    // L2 normalize
+    float norm = 0.0f;
+    for (float val : embedding) {
+      norm += val * val;
+    }
+    norm = std::sqrt(norm);
+    if (norm > 1e-6) {
+      for (float &val : embedding) {
+        val /= norm;
+      }
+    }
+
+    return embedding;
+  } catch (const cv::Exception &e) {
+    if (isApiLoggingEnabled()) {
+      PLOG_ERROR << "[RecognitionHandler] OpenCV exception in "
+                    "extract_embedding_from_image: "
+                 << e.msg;
+      PLOG_ERROR << "[RecognitionHandler] Error code: " << e.code;
+    }
+    return std::vector<float>();
+  } catch (const std::exception &e) {
+    if (isApiLoggingEnabled()) {
+      PLOG_ERROR << "[RecognitionHandler] Exception in "
+                    "extract_embedding_from_image: "
+                 << e.what();
+    }
+    return std::vector<float>();
+  } catch (...) {
+    if (isApiLoggingEnabled()) {
+      PLOG_ERROR << "[RecognitionHandler] Unknown exception in "
+                    "extract_embedding_from_image";
+    }
     return std::vector<float>();
   }
-
-  const cv::Mat &output = outputs[0];
-  int emb_dim = (output.dims == 2) ? output.size[1] : output.size[0];
-
-  std::vector<float> embedding(emb_dim);
-  const float *output_ptr = output.ptr<float>();
-  std::copy(output_ptr, output_ptr + emb_dim, embedding.begin());
-
-  // L2 normalize
-  float norm = 0.0f;
-  for (float val : embedding) {
-    norm += val * val;
-  }
-  norm = std::sqrt(norm);
-  if (norm > 1e-6) {
-    for (float &val : embedding) {
-      val /= norm;
-    }
-  }
-
-  return embedding;
 }
 
 // Helper function: Check if face database connection is enabled
@@ -702,10 +774,9 @@ public:
 
     // Find ONNX model
     std::vector<std::string> model_paths = {
-        "/home/cvedix/project/cvedix_data/models/face/"
-        "face_recognition_sface_2021dec.onnx",
-        "./cvedix_data/models/face/face_recognition_sface_2021dec.onnx",
-        "../cvedix_data/models/face/face_recognition_sface_2021dec.onnx"};
+        "/opt/edge_ai_api/models/face/face_recognition_sface_2021dec.onnx",
+        "./models/face/face_recognition_sface_2021dec.onnx",
+        "../models/face/face_recognition_sface_2021dec.onnx"};
 
     bool found_onnx = false;
     for (const auto &path : model_paths) {
@@ -729,14 +800,12 @@ public:
 
     // Find detector model (try both with and without _int8 suffix)
     std::vector<std::string> detector_paths = {
-        "/home/cvedix/project/cvedix_data/models/face/"
-        "face_detection_yunet_2023mar.onnx",
-        "/home/cvedix/project/cvedix_data/models/face/"
-        "face_detection_yunet_2023mar_int8.onnx",
-        "./cvedix_data/models/face/face_detection_yunet_2023mar.onnx",
-        "./cvedix_data/models/face/face_detection_yunet_2023mar_int8.onnx",
-        "../cvedix_data/models/face/face_detection_yunet_2023mar.onnx",
-        "../cvedix_data/models/face/face_detection_yunet_2023mar_int8.onnx"};
+        "/opt/edge_ai_api/models/face/face_detection_yunet_2023mar.onnx",
+        "/opt/edge_ai_api/models/face/face_detection_yunet_2023mar_int8.onnx",
+        "./models/face/face_detection_yunet_2023mar.onnx",
+        "./models/face/face_detection_yunet_2023mar_int8.onnx",
+        "../models/face/face_detection_yunet_2023mar.onnx",
+        "../models/face/face_detection_yunet_2023mar_int8.onnx"};
 
     bool found_detector = false;
     for (const auto &path : detector_paths) {
@@ -764,6 +833,10 @@ public:
                                 std::string &error_msg) {
     if (imageData.empty()) {
       error_msg = "Image data is empty";
+      if (isApiLoggingEnabled()) {
+        PLOG_ERROR << "[FaceDatabase] " << error_msg
+                   << " for person: " << person_name;
+      }
       return false;
     }
 
@@ -771,6 +844,11 @@ public:
     if (image.empty()) {
       error_msg = "Failed to decode image data. Image may be corrupted or in "
                   "unsupported format.";
+      if (isApiLoggingEnabled()) {
+        PLOG_ERROR << "[FaceDatabase] " << error_msg
+                   << ", image data size: " << imageData.size()
+                   << " bytes, person: " << person_name;
+      }
       return false;
     }
 
@@ -783,7 +861,10 @@ public:
       error_msg = "Face detector model not found. Please ensure "
                   "face_detection_yunet_2023mar.onnx or "
                   "face_detection_yunet_2023mar_int8.onnx exists in "
-                  "cvedix_data/models/face/";
+                  "/opt/edge_ai_api/models/face/";
+      if (isApiLoggingEnabled()) {
+        PLOG_ERROR << "[FaceDatabase] " << error_msg;
+      }
       return false;
     }
 
@@ -793,13 +874,27 @@ public:
           detector_model_path_, "", cv::Size(320, 320),
           static_cast<float>(detProbThreshold), 0.3f, 5000,
           cv::dnn::DNN_BACKEND_OPENCV, cv::dnn::DNN_TARGET_CPU);
+    } catch (const cv::Exception &e) {
+      error_msg = "Failed to create face detector: " + std::string(e.what());
+      if (isApiLoggingEnabled()) {
+        PLOG_ERROR << "[FaceDatabase] " << error_msg;
+        PLOG_ERROR << "[FaceDatabase] OpenCV error code: " << e.code;
+      }
+      return false;
     } catch (const std::exception &e) {
       error_msg = "Failed to create face detector: " + std::string(e.what());
+      if (isApiLoggingEnabled()) {
+        PLOG_ERROR << "[FaceDatabase] " << error_msg;
+      }
       return false;
     }
 
     if (face_detector.empty()) {
       error_msg = "Face detector creation returned empty";
+      if (isApiLoggingEnabled()) {
+        PLOG_ERROR << "[FaceDatabase] " << error_msg
+                   << ", model path: " << detector_model_path_;
+      }
       return false;
     }
 
@@ -809,6 +904,11 @@ public:
       face_detector->detect(image, faces);
     } catch (const cv::Exception &e) {
       error_msg = "Face detection exception: " + std::string(e.what());
+      if (isApiLoggingEnabled()) {
+        PLOG_ERROR << "[FaceDatabase] " << error_msg;
+        PLOG_ERROR << "[FaceDatabase] OpenCV error code: " << e.code
+                   << ", image size: " << image.cols << "x" << image.rows;
+      }
       return false;
     }
 
@@ -846,7 +946,10 @@ public:
     if (onnx_model_path_.empty()) {
       error_msg = "Face recognition model not found. Please ensure "
                   "face_recognition_sface_2021dec.onnx exists in "
-                  "cvedix_data/models/face/";
+                  "/opt/edge_ai_api/models/face/";
+      if (isApiLoggingEnabled()) {
+        PLOG_ERROR << "[FaceDatabase] " << error_msg;
+      }
       return false;
     }
 
@@ -888,6 +991,10 @@ public:
 
     if (embeddings.empty()) {
       error_msg = "Failed to extract face embeddings from image";
+      if (isApiLoggingEnabled()) {
+        PLOG_ERROR << "[FaceDatabase] " << error_msg
+                   << ", model path: " << onnx_model_path_;
+      }
       return false;
     }
 
@@ -3370,6 +3477,31 @@ void RecognitionHandler::registerFaceSubject(
   try {
     // Parse query parameters
     std::string subjectName = req->getParameter("subject");
+    
+    // URL decode the subject name if it contains encoded characters
+    // (Drogon usually auto-decodes, but we do it explicitly for safety)
+    if (!subjectName.empty()) {
+      std::string decoded;
+      decoded.reserve(subjectName.length());
+      for (size_t i = 0; i < subjectName.length(); ++i) {
+        if (subjectName[i] == '%' && i + 2 < subjectName.length()) {
+          // Try to decode hex value
+          char hex[3] = {subjectName[i + 1], subjectName[i + 2], '\0'};
+          char *end;
+          unsigned long value = std::strtoul(hex, &end, 16);
+          if (*end == '\0' && value <= 255) {
+            decoded += static_cast<char>(value);
+            i += 2; // Skip the hex digits
+          } else {
+            decoded += subjectName[i]; // Invalid encoding, keep as-is
+          }
+        } else {
+          decoded += subjectName[i];
+        }
+      }
+      subjectName = decoded;
+    }
+    
     if (subjectName.empty()) {
       if (isApiLoggingEnabled()) {
         PLOG_WARNING << "[API] POST /v1/recognition/faces - Missing required "
@@ -3413,11 +3545,21 @@ void RecognitionHandler::registerFaceSubject(
       if (isApiLoggingEnabled()) {
         PLOG_WARNING
             << "[API] POST /v1/recognition/faces - Failed to decode image";
+        PLOG_WARNING << "[API] POST /v1/recognition/faces - Image data size: "
+                     << imageData.size() << " bytes";
+        PLOG_WARNING << "[API] POST /v1/recognition/faces - Subject: "
+                     << subjectName;
       }
       callback(
           createErrorResponse(400, "Invalid request",
                               "Invalid image format or corrupted image data"));
       return;
+    }
+
+    if (isApiLoggingEnabled()) {
+      PLOG_DEBUG << "[API] POST /v1/recognition/faces - Successfully decoded "
+                    "image: "
+                 << image.cols << "x" << image.rows << " pixels";
     }
 
     // Face detection node: Check if image contains a face before registration
@@ -3426,27 +3568,36 @@ void RecognitionHandler::registerFaceSubject(
     std::string detector_path = db.get_detector_model_path();
     if (detector_path.empty()) {
       if (isApiLoggingEnabled()) {
-        PLOG_WARNING << "[API] POST /v1/recognition/faces - Face detector "
-                        "model not found";
+        PLOG_ERROR << "[API] POST /v1/recognition/faces - Face detector "
+                      "model not found";
+        PLOG_ERROR << "[API] POST /v1/recognition/faces - Subject: "
+                   << subjectName;
+        PLOG_ERROR << "[API] POST /v1/recognition/faces - Image size: "
+                   << image.cols << "x" << image.rows;
       }
       callback(createErrorResponse(500, "Internal server error",
                                    "Face detector model not found"));
       return;
     }
 
+    if (isApiLoggingEnabled()) {
+      PLOG_DEBUG << "[API] POST /v1/recognition/faces - Using detector: "
+                 << detector_path;
+    }
+
     // Create face detector with actual image size for better accuracy
     cv::Ptr<cv::FaceDetectorYN> face_detector;
-    try {
-      // Use actual image size instead of fixed 320x320 for better detection
-      // accuracy
-      cv::Size inputSize = image.size();
-      // Ensure minimum size for detector (some models require minimum
-      // dimensions)
-      if (inputSize.width < 320)
-        inputSize.width = 320;
-      if (inputSize.height < 320)
-        inputSize.height = 320;
+    // Use actual image size instead of fixed 320x320 for better detection
+    // accuracy
+    cv::Size inputSize = image.size();
+    // Ensure minimum size for detector (some models require minimum
+    // dimensions)
+    if (inputSize.width < 320)
+      inputSize.width = 320;
+    if (inputSize.height < 320)
+      inputSize.height = 320;
 
+    try {
       face_detector = cv::FaceDetectorYN::create(
           detector_path, "", inputSize, static_cast<float>(detProbThreshold),
           0.3f, 5000, cv::dnn::DNN_BACKEND_OPENCV, cv::dnn::DNN_TARGET_CPU);
@@ -3455,6 +3606,15 @@ void RecognitionHandler::registerFaceSubject(
         PLOG_ERROR << "[API] POST /v1/recognition/faces - Failed to create "
                       "face detector: "
                    << e.what();
+        PLOG_ERROR << "[API] POST /v1/recognition/faces - OpenCV error code: "
+                   << e.code << ", error message: " << e.msg;
+        PLOG_ERROR << "[API] POST /v1/recognition/faces - Detector path: "
+                   << detector_path;
+        PLOG_ERROR << "[API] POST /v1/recognition/faces - Input size: "
+                   << inputSize.width << "x" << inputSize.height
+                   << ", threshold: " << detProbThreshold;
+        PLOG_ERROR << "[API] POST /v1/recognition/faces - Subject: "
+                   << subjectName;
       }
       callback(createErrorResponse(500, "Internal server error",
                                    "Failed to create face detector"));
@@ -3464,6 +3624,13 @@ void RecognitionHandler::registerFaceSubject(
         PLOG_ERROR << "[API] POST /v1/recognition/faces - Failed to create "
                       "face detector: "
                    << e.what();
+        PLOG_ERROR << "[API] POST /v1/recognition/faces - Detector path: "
+                   << detector_path;
+        PLOG_ERROR << "[API] POST /v1/recognition/faces - Input size: "
+                   << inputSize.width << "x" << inputSize.height
+                   << ", threshold: " << detProbThreshold;
+        PLOG_ERROR << "[API] POST /v1/recognition/faces - Subject: "
+                   << subjectName;
       }
       callback(createErrorResponse(500, "Internal server error",
                                    "Failed to create face detector"));
@@ -3481,7 +3648,44 @@ void RecognitionHandler::registerFaceSubject(
     }
 
     // Set input size to actual image size for detection
-    face_detector->setInputSize(image.size());
+    cv::Size imageSize = image.size();
+    if (isApiLoggingEnabled()) {
+      PLOG_DEBUG << "[API] POST /v1/recognition/faces - Setting detector input "
+                    "size to: "
+                 << imageSize.width << "x" << imageSize.height;
+    }
+    
+    try {
+      face_detector->setInputSize(imageSize);
+    } catch (const cv::Exception &e) {
+      if (isApiLoggingEnabled()) {
+        PLOG_ERROR << "[API] POST /v1/recognition/faces - Failed to set input "
+                      "size: "
+                   << e.what();
+        PLOG_ERROR << "[API] POST /v1/recognition/faces - OpenCV error code: "
+                   << e.code << ", error message: " << e.msg;
+        PLOG_ERROR << "[API] POST /v1/recognition/faces - Image size: "
+                   << imageSize.width << "x" << imageSize.height;
+        PLOG_ERROR << "[API] POST /v1/recognition/faces - Subject: "
+                   << subjectName;
+      }
+      callback(createErrorResponse(500, "Internal server error",
+                                   "Failed to configure face detector"));
+      return;
+    } catch (const std::exception &e) {
+      if (isApiLoggingEnabled()) {
+        PLOG_ERROR << "[API] POST /v1/recognition/faces - Failed to set input "
+                      "size: "
+                   << e.what();
+        PLOG_ERROR << "[API] POST /v1/recognition/faces - Image size: "
+                   << imageSize.width << "x" << imageSize.height;
+        PLOG_ERROR << "[API] POST /v1/recognition/faces - Subject: "
+                   << subjectName;
+      }
+      callback(createErrorResponse(500, "Internal server error",
+                                   "Failed to configure face detector"));
+      return;
+    }
 
     if (isApiLoggingEnabled()) {
       PLOG_DEBUG << "[API] POST /v1/recognition/faces - Running face detection "
@@ -3499,6 +3703,15 @@ void RecognitionHandler::registerFaceSubject(
         PLOG_ERROR
             << "[API] POST /v1/recognition/faces - Face detection exception: "
             << e.what();
+        PLOG_ERROR << "[API] POST /v1/recognition/faces - OpenCV error code: "
+                   << e.code << ", error message: " << e.msg;
+        PLOG_ERROR << "[API] POST /v1/recognition/faces - Detector path: "
+                   << detector_path;
+        PLOG_ERROR << "[API] POST /v1/recognition/faces - Image size: "
+                   << image.cols << "x" << image.rows
+                   << ", threshold: " << detProbThreshold;
+        PLOG_ERROR << "[API] POST /v1/recognition/faces - Subject: "
+                   << subjectName;
       }
       callback(createErrorResponse(500, "Internal server error",
                                    "Face detection failed"));
@@ -3508,6 +3721,13 @@ void RecognitionHandler::registerFaceSubject(
         PLOG_ERROR
             << "[API] POST /v1/recognition/faces - Face detection exception: "
             << e.what();
+        PLOG_ERROR << "[API] POST /v1/recognition/faces - Detector path: "
+                   << detector_path;
+        PLOG_ERROR << "[API] POST /v1/recognition/faces - Image size: "
+                   << image.cols << "x" << image.rows
+                   << ", threshold: " << detProbThreshold;
+        PLOG_ERROR << "[API] POST /v1/recognition/faces - Subject: "
+                   << subjectName;
       }
       callback(createErrorResponse(500, "Internal server error",
                                    "Face detection failed"));
