@@ -163,10 +163,97 @@ if [ "$SKIP_DEPS" = false ] && [ "$BUILD_ONLY" = false ]; then
 fi
 
 # ============================================
+# Function: Check and Fix OpenCV Dual Version
+# ============================================
+check_and_fix_opencv_dual_version() {
+    echo -e "${BLUE}Checking OpenCV versions...${NC}"
+    
+    # Check if OpenCV 4.10.0 exists in /usr/local
+    if [ ! -f "/usr/local/lib/cmake/opencv4/OpenCVConfig.cmake" ]; then
+        echo -e "${YELLOW}⚠${NC}  OpenCV 4.10.0 not found in /usr/local. Skipping dual version check."
+        return 0
+    fi
+    
+    # Get OpenCV 4.10.0 version
+    OPENCV_410_VERSION=$(grep "SET(OpenCV_VERSION" /usr/local/lib/cmake/opencv4/OpenCVConfig.cmake 2>/dev/null | head -1 | sed 's/.*SET(OpenCV_VERSION //' | sed 's/).*//' || echo "")
+    
+    if [ -z "$OPENCV_410_VERSION" ]; then
+        echo -e "${YELLOW}⚠${NC}  Could not detect OpenCV version in /usr/local. Skipping."
+        return 0
+    fi
+    
+    # Check pkg-config version
+    PKG_CONFIG_VERSION=$(pkg-config --modversion opencv4 2>/dev/null || echo "")
+    
+    # Check if dual version issue exists
+    if [ -n "$PKG_CONFIG_VERSION" ] && [ "$PKG_CONFIG_VERSION" != "$OPENCV_410_VERSION" ]; then
+        echo -e "${YELLOW}⚠${NC}  Detected dual OpenCV versions:"
+        echo "    pkg-config: $PKG_CONFIG_VERSION (from /usr)"
+        echo "    /usr/local:  $OPENCV_410_VERSION"
+        echo ""
+        echo -e "${BLUE}Fixing dual OpenCV version issue...${NC}"
+        
+        # Check if opencv.pc exists in /usr/local
+        if [ -f "/usr/local/lib/pkgconfig/opencv.pc" ]; then
+            # Create symlink opencv4.pc -> opencv.pc
+            if [ "$EUID" -eq 0 ]; then
+                ln -sf /usr/local/lib/pkgconfig/opencv.pc /usr/local/lib/pkgconfig/opencv4.pc 2>/dev/null || true
+                echo -e "${GREEN}✓${NC} Created symlink: opencv4.pc -> opencv.pc"
+            else
+                echo -e "${YELLOW}⚠${NC}  Need sudo to create symlink. Run manually:"
+                echo "    sudo ln -sf /usr/local/lib/pkgconfig/opencv.pc /usr/local/lib/pkgconfig/opencv4.pc"
+            fi
+        else
+            echo -e "${YELLOW}⚠${NC}  opencv.pc not found in /usr/local/lib/pkgconfig/"
+            echo "    OpenCV 4.10.0 may not have been installed with pkg-config support"
+        fi
+        
+        # Set PKG_CONFIG_PATH in ~/.bashrc if not already set
+        if ! grep -q "/usr/local/lib/pkgconfig" ~/.bashrc 2>/dev/null; then
+            echo "" >> ~/.bashrc
+            echo "# OpenCV 4.10.0 pkg-config path (auto-added by dev_setup.sh)" >> ~/.bashrc
+            echo "export PKG_CONFIG_PATH=/usr/local/lib/pkgconfig:\$PKG_CONFIG_PATH" >> ~/.bashrc
+            echo -e "${GREEN}✓${NC} Added PKG_CONFIG_PATH to ~/.bashrc"
+        else
+            echo -e "${GREEN}✓${NC} PKG_CONFIG_PATH already set in ~/.bashrc"
+        fi
+        
+        # Set for current session
+        export PKG_CONFIG_PATH=/usr/local/lib/pkgconfig:$PKG_CONFIG_PATH
+        
+        # Verify fix
+        NEW_VERSION=$(pkg-config --modversion opencv4 2>/dev/null || echo "")
+        if [ "$NEW_VERSION" = "$OPENCV_410_VERSION" ]; then
+            echo -e "${GREEN}✓${NC} Fixed! pkg-config now reports: $NEW_VERSION"
+        else
+            echo -e "${YELLOW}⚠${NC}  Fix applied, but verification shows: $NEW_VERSION"
+            echo "    You may need to run: source ~/.bashrc"
+        fi
+    elif [ -z "$PKG_CONFIG_VERSION" ]; then
+        echo -e "${YELLOW}⚠${NC}  pkg-config cannot find opencv4. Checking if fix needed..."
+        
+        # Check if opencv4.pc exists
+        if [ ! -f "/usr/local/lib/pkgconfig/opencv4.pc" ] && [ -f "/usr/local/lib/pkgconfig/opencv.pc" ]; then
+            echo -e "${BLUE}Creating opencv4.pc symlink...${NC}"
+            if [ "$EUID" -eq 0 ]; then
+                mkdir -p /usr/local/lib/pkgconfig
+                ln -sf /usr/local/lib/pkgconfig/opencv.pc /usr/local/lib/pkgconfig/opencv4.pc 2>/dev/null || true
+                echo -e "${GREEN}✓${NC} Created symlink"
+            else
+                echo -e "${YELLOW}⚠${NC}  Need sudo to create symlink"
+            fi
+        fi
+    else
+        echo -e "${GREEN}✓${NC} OpenCV version consistent: $PKG_CONFIG_VERSION"
+    fi
+    echo ""
+}
+
+# ============================================
 # Step 2: Fix Symlinks
 # ============================================
 if [ "$SKIP_SYMLINKS" = false ] && [ "$BUILD_ONLY" = false ]; then
-    echo -e "${BLUE}[2/3]${NC} Fixing symlinks..."
+    echo -e "${BLUE}[2/4]${NC} Fixing symlinks..."
 
     if [ "$EUID" -ne 0 ]; then
         echo -e "${YELLOW}⚠${NC}  Need sudo to fix symlinks. Skipping..."
@@ -197,6 +284,10 @@ if [ "$SKIP_SYMLINKS" = false ] && [ "$BUILD_ONLY" = false ]; then
 
         echo -e "${GREEN}✓${NC} Symlinks fixed"
     fi
+    
+    # Check and fix OpenCV dual version issue
+    check_and_fix_opencv_dual_version
+    
     echo ""
 fi
 
@@ -204,7 +295,7 @@ fi
 # Step 3: Build Project
 # ============================================
 if [ "$SKIP_BUILD" = false ]; then
-    echo -e "${BLUE}[3/3]${NC} Building project..."
+    echo -e "${BLUE}[3/4]${NC} Building project..."
     cd "$PROJECT_ROOT"
 
     if [ ! -d "build" ]; then
@@ -213,11 +304,30 @@ if [ "$SKIP_BUILD" = false ]; then
 
     cd build
 
-    if [ ! -f "CMakeCache.txt" ]; then
+    # Check if CMake needs to be run (no Makefile or CMakeCache.txt)
+    if [ ! -f "Makefile" ] || [ ! -f "CMakeCache.txt" ]; then
         echo "Running CMake..."
-        cmake .. -DCMAKE_BUILD_TYPE=Release \
-                 -DAUTO_DOWNLOAD_DEPENDENCIES=ON \
-                 -DDROGON_USE_FETCHCONTENT=ON
+        
+        # Set OpenCV_DIR if OpenCV 4.10.0 exists in /usr/local
+        CMAKE_OPTS=(
+            -DCMAKE_BUILD_TYPE=Release
+            -DAUTO_DOWNLOAD_DEPENDENCIES=ON
+            -DDROGON_USE_FETCHCONTENT=ON
+        )
+        
+        if [ -f "/usr/local/lib/cmake/opencv4/OpenCVConfig.cmake" ]; then
+            CMAKE_OPTS+=(-DOpenCV_DIR=/usr/local/lib/cmake/opencv4)
+            echo "  Using OpenCV from /usr/local (version 4.10.0+)"
+        fi
+        
+        cmake .. "${CMAKE_OPTS[@]}"
+        
+        # Verify Makefile was created
+        if [ ! -f "Makefile" ]; then
+            echo -e "${RED}✗${NC} CMake failed to generate Makefile"
+            echo "Please check CMake errors above"
+            exit 1
+        fi
     fi
 
     echo "Building (using all CPU cores)..."
