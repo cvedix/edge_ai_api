@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.14)
-project(edge_ai_api VERSION 2025.0.1.1)
+project(edge_ai_api VERSION 2026.0.1.3)
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -1200,8 +1200,9 @@ message(STATUS "✓ Edge AI Worker executable configured")
 # ============================================
 # Install target (optional)
 # ============================================
-install(TARGETS edge_ai_api edge_ai_worker
+install(TARGETS edge_ai_api edge_ai_worker edge_ai_core
     RUNTIME DESTINATION bin
+    LIBRARY DESTINATION lib
 )
 
 # ============================================

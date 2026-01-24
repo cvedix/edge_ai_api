@@ -5,7 +5,7 @@
 
 // Version information - can be set via CMake or build system
 #ifndef PROJECT_VERSION
-#define PROJECT_VERSION "2025.0.1.1"
+#define PROJECT_VERSION "2026.0.1.1"
 #endif
 
 #ifndef BUILD_TIME

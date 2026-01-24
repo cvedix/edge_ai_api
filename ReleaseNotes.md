@@ -2,8 +2,8 @@
 
 ## 📦 Version Information
 
-**Version:** 2025.0.1.1
-**Release Date:** 2025-12-28  
+**Version:** 2026.0.1.1
+**Release Date:** 2026-01-01  
 **Build Type:** Release
 
 ---

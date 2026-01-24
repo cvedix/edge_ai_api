@@ -2492,7 +2492,7 @@ InstanceRegistry::createInstanceInfo(const std::string &instanceId,
 #ifdef CVEDIX_VERSION_STRING
   info.version = CVEDIX_VERSION_STRING;
 #else
-  info.version = "2025.0.1.2"; // Default version
+  info.version = "2026.0.1.1"; // Default version
 #endif
 
   if (solution) {

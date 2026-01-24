@@ -31,11 +31,70 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 
 # Configuration
-# Note: Version should match CMakeLists.txt PROJECT_VERSION
-VERSION="2025.0.1.1"
 ARCH="amd64"
 CLEAN_BUILD=false
 SKIP_BUILD=false
+AUTO_INCREMENT=true
+
+# Function to read version from VERSION file or CMakeLists.txt
+read_version() {
+    local version_file="$PROJECT_ROOT/VERSION"
+    local cmake_file="$PROJECT_ROOT/CMakeLists.txt"
+    
+    if [ -f "$version_file" ]; then
+        cat "$version_file" | head -1 | tr -d '[:space:]'
+    elif [ -f "$cmake_file" ]; then
+        grep -E "project\(.*VERSION" "$cmake_file" | sed -E 's/.*VERSION[[:space:]]+([0-9.]+).*/\1/' | head -1
+    else
+        echo "2026.0.1.1"  # Default fallback
+    fi
+}
+
+# Function to increment version (increment last number)
+increment_version() {
+    local version="$1"
+    # Split version by dots
+    IFS='.' read -ra PARTS <<< "$version"
+    local major="${PARTS[0]}"
+    local minor="${PARTS[1]}"
+    local patch="${PARTS[2]}"
+    local build="${PARTS[3]:-0}"
+    
+    # Increment build number (last number)
+    build=$((build + 1))
+    
+    echo "$major.$minor.$patch.$build"
+}
+
+# Function to update version in all files
+update_version_files() {
+    local new_version="$1"
+    local version_file="$PROJECT_ROOT/VERSION"
+    local cmake_file="$PROJECT_ROOT/CMakeLists.txt"
+    local changelog_file="$PROJECT_ROOT/debian/changelog"
+    
+    echo "Updating version to $new_version in all files..."
+    
+    # Update VERSION file
+    echo "$new_version" > "$version_file"
+    echo -e "${GREEN}✓${NC} Updated $version_file"
+    
+    # Update CMakeLists.txt
+    if [ -f "$cmake_file" ]; then
+        sed -i "s/project(edge_ai_api VERSION [0-9.]*)/project(edge_ai_api VERSION $new_version)/" "$cmake_file"
+        echo -e "${GREEN}✓${NC} Updated CMakeLists.txt"
+    fi
+    
+    # Update debian/changelog
+    if [ -f "$changelog_file" ]; then
+        # Update first line of changelog
+        sed -i "1s/edge-ai-api ([0-9.]*)/edge-ai-api ($new_version)/" "$changelog_file"
+        echo -e "${GREEN}✓${NC} Updated debian/changelog"
+    fi
+}
+
+# Read current version
+VERSION=$(read_version)
 
 # Parse arguments
 while [[ $# -gt 0 ]]; do
@@ -50,16 +109,22 @@ while [[ $# -gt 0 ]]; do
             ;;
         --version)
             VERSION="$2"
+            AUTO_INCREMENT=false  # Don't auto-increment if version is manually set
             shift 2
+            ;;
+        --no-increment)
+            AUTO_INCREMENT=false
+            shift
             ;;
         --help|-h)
             echo "Usage: $0 [OPTIONS]"
             echo ""
             echo "Options:"
-            echo "  --clean        Clean build directory before building"
-            echo "  --no-build     Skip build (use existing build)"
-            echo "  --version VER  Set package version"
-            echo "  --help, -h     Show this help"
+            echo "  --clean         Clean build directory before building"
+            echo "  --no-build      Skip build (use existing build)"
+            echo "  --version VER  Set package version (disables auto-increment)"
+            echo "  --no-increment  Don't auto-increment version"
+            echo "  --help, -h      Show this help"
             echo ""
             echo "Example:"
             echo "  ./build_deb.sh                    # Build với default settings"
@@ -74,6 +139,20 @@ while [[ $# -gt 0 ]]; do
             ;;
     esac
 done
+
+# Auto-increment version if enabled
+if [ "$AUTO_INCREMENT" = true ]; then
+    OLD_VERSION="$VERSION"
+    VERSION=$(increment_version "$VERSION")
+    echo "=========================================="
+    echo "Auto-Incrementing Version"
+    echo "=========================================="
+    echo "Old version: $OLD_VERSION"
+    echo "New version: $VERSION"
+    echo ""
+    update_version_files "$VERSION"
+    echo ""
+fi
 
 echo "=========================================="
 echo "Build Debian Package - All-in-One"
@@ -616,6 +695,17 @@ fi
 rm -rf debian/edge-ai-api
 rm -f ../edge-ai-api_*.changes ../edge-ai-api_*.buildinfo 2>/dev/null || true
 
+# Generate version manifest
+if [ -f "$PROJECT_ROOT/packaging/scripts/generate_version_manifest.sh" ] && [ -f "$EXECUTABLE" ]; then
+    echo ""
+    echo "Generating version manifest..."
+    MANIFEST_FILE="$PROJECT_ROOT/version_manifest_${VERSION}.txt"
+    "$PROJECT_ROOT/packaging/scripts/generate_version_manifest.sh" "$EXECUTABLE" "$MANIFEST_FILE"
+    if [ -f "$MANIFEST_FILE" ]; then
+        echo -e "${GREEN}✓${NC} Version manifest: $MANIFEST_FILE"
+    fi
+fi
+
 echo ""
 echo "=========================================="
 echo -e "${GREEN}✓ Package built successfully!${NC}"
@@ -625,15 +715,38 @@ echo "Package: $FINAL_NAME"
 echo "Location: $DEB_FILE"
 echo "Size: $(du -h "$DEB_FILE" | cut -f1)"
 echo ""
-echo "To install:"
-echo "  sudo dpkg -i $FINAL_NAME"
+echo "=========================================="
+echo "Installation Instructions"
+echo "=========================================="
 echo ""
-echo "If there are dependency issues:"
-echo "  sudo apt-get install -f"
+echo "1. Pre-installation check (optional):"
+echo "   ./packaging/scripts/pre_install_check.sh"
 echo ""
-echo "After installation, start the service:"
-echo "  sudo systemctl start edge-ai-api"
+echo "2. Install package:"
+echo "   sudo dpkg -i $FINAL_NAME"
 echo ""
-echo "Check status:"
-echo "  sudo systemctl status edge-ai-api"
+echo "3. If there are dependency issues:"
+echo "   sudo apt-get install -f"
+echo ""
+echo "4. Verify installation:"
+echo "   sudo /opt/edge_ai_api/scripts/validate_installation.sh --verbose"
+echo ""
+echo "5. Start the service:"
+echo "   sudo systemctl start edge-ai-api"
+echo ""
+echo "6. Check status:"
+echo "   sudo systemctl status edge-ai-api"
+echo ""
+echo "=========================================="
+echo "Reproducibility"
+echo "=========================================="
+echo ""
+echo "This package is self-contained with all libraries bundled."
+echo "For reproducibility guide, see:"
+echo "  packaging/REPRODUCIBILITY.md"
+echo ""
+if [ -f "$MANIFEST_FILE" ]; then
+    echo "Version manifest saved: $MANIFEST_FILE"
+    echo "Use this to verify library versions match between test and production."
+fi
 echo ""

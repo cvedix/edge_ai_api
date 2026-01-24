@@ -488,22 +488,35 @@ echo "Updating library cache..."
 ldconfig 2>&1 | grep -v "is not a symbolic link" || true
 echo "  ✓ Library cache updated"
 
-# Verify executable and libraries
-if [ -f "$BIN_DIR/edge_ai_api" ]; then
-    echo "Verifying executable..."
-    # Check if executable can find libraries
-    if command -v ldd >/dev/null 2>&1; then
-        MISSING_LIBS=$(ldd "$BIN_DIR/edge_ai_api" 2>&1 | grep "not found" || true)
-        if [ -n "$MISSING_LIBS" ]; then
-            echo "Warning: Some libraries may be missing:"
-            echo "$MISSING_LIBS"
-        fi
+# Verify executable and libraries using validation script
+if [ -f "$INSTALL_DIR/scripts/validate_installation.sh" ]; then
+    echo "Running post-installation validation..."
+    if "$INSTALL_DIR/scripts/validate_installation.sh"; then
+        echo "✓ Validation passed"
+    else
+        echo "⚠ Validation completed with warnings or errors"
+        echo "  Review the output above for details"
+        echo "  You can re-run validation manually:"
+        echo "    sudo $INSTALL_DIR/scripts/validate_installation.sh --verbose"
     fi
+else
+    # Fallback to basic verification
+    echo "Verifying executable..."
+    if [ -f "$BIN_DIR/edge_ai_api" ]; then
+        # Check if executable can find libraries
+        if command -v ldd >/dev/null 2>&1; then
+            MISSING_LIBS=$(ldd "$BIN_DIR/edge_ai_api" 2>&1 | grep "not found" || true)
+            if [ -n "$MISSING_LIBS" ]; then
+                echo "Warning: Some libraries may be missing:"
+                echo "$MISSING_LIBS"
+            fi
+        fi
 
-    # Check RPATH
-    if command -v patchelf >/dev/null 2>&1; then
-        RPATH=$(patchelf --print-rpath "$BIN_DIR/edge_ai_api" 2>/dev/null || echo "")
-        echo "Executable RPATH: ${RPATH:-not set}"
+        # Check RPATH
+        if command -v patchelf >/dev/null 2>&1; then
+            RPATH=$(patchelf --print-rpath "$BIN_DIR/edge_ai_api" 2>/dev/null || echo "")
+            echo "Executable RPATH: ${RPATH:-not set}"
+        fi
     fi
 fi
 
