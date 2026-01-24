@@ -1,8 +1,10 @@
-edge-ai-api (2025.0.1.1) unstable; urgency=medium
+edge-ai-api (2026.0.1.3) unstable; urgency=medium
 
-  * Beta release with bundled dependencies
-  * Includes all required shared libraries
-  * Systemd service integration
-  * Full CVEDIX SDK support
+  * Version 2026.0.1.1 release
+  * Self-contained package with all dependencies bundled
+  * Post-installation validation scripts
+  * Version manifest tracking for reproducibility
+  * Improved library bundling and RPATH configuration
+  * Auto-increment version on build
 
- -- CVEDIX <support@cvedix.com>  Mon, 01 Jan 2025 12:00:00 +0000
+ -- CVEDIX <support@cvedix.com>  Mon, 01 Jan 2026 12:00:00 +0000

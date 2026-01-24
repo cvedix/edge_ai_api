@@ -1,0 +1,9 @@
+{
+  "additionalParams": {
+    "output": {
+      "ENABLE_SCREEN_DES": "false",
+      "RTMP_DES_URL": "rtmp://anhoidong.datacenter.cvedix.com:1935/live/sang_ba_jam_1"
+    }
+  }
+}
+

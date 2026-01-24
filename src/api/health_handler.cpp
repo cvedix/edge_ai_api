@@ -45,7 +45,7 @@ void HealthHandler::getHealth(
     response["timestamp"] = getCurrentTimestamp();
     response["uptime"] = static_cast<Json::Int64>(uptime);
     response["service"] = "edge_ai_api";
-    response["version"] = "2025.0.1.1";
+    response["version"] = "2026.0.1.1";
     response["checks"] = checks;
 
     auto resp = HttpResponse::newHttpJsonResponse(response);
