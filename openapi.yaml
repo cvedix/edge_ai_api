@@ -8295,7 +8295,7 @@ paths:
         '
       operationId: getAllJams
       tags:
-      - Jams
+      - Area
       parameters:
       - name: instanceId
         in: path
@@ -8341,7 +8341,7 @@ paths:
         '
       operationId: createJam
       tags:
-      - Jams
+      - Area
       parameters:
       - name: instanceId
         in: path
@@ -8450,7 +8450,7 @@ paths:
         '
       operationId: deleteAllJams
       tags:
-      - Jams
+      - Area
       parameters:
       - name: instanceId
         in: path
@@ -8486,7 +8486,7 @@ paths:
       summary: CORS preflight for jams endpoints
       operationId: jamsOptions
       tags:
-      - Jams
+      - Area
       responses:
         '200':
           description: CORS preflight response
@@ -8498,7 +8498,7 @@ paths:
         '
       operationId: getJam
       tags:
-      - Jams
+      - Area
       parameters:
       - name: instanceId
         in: path
@@ -8540,7 +8540,7 @@ paths:
         '
       operationId: updateJam
       tags:
-      - Jams
+      - Area
       parameters:
       - name: instanceId
         in: path
@@ -8598,7 +8598,7 @@ paths:
         '
       operationId: deleteJam
       tags:
-      - Jams
+      - Area
       parameters:
       - name: instanceId
         in: path
@@ -8647,7 +8647,7 @@ paths:
         '
       operationId: getAllStops
       tags:
-      - Stops
+      - Area
       parameters:
       - name: instanceId
         in: path
@@ -8692,7 +8692,7 @@ paths:
         '
       operationId: createStop
       tags:
-      - Stops
+      - Area
       parameters:
       - name: instanceId
         in: path
@@ -8803,7 +8803,7 @@ paths:
         '
       operationId: deleteAllStops
       tags:
-      - Stops
+      - Area
       parameters:
       - name: instanceId
         in: path
@@ -8839,7 +8839,7 @@ paths:
       summary: CORS preflight for stops endpoints
       operationId: stopsOptions
       tags:
-      - Stops
+      - Area
       responses:
         '200':
           description: CORS preflight response
@@ -8851,7 +8851,7 @@ paths:
         '
       operationId: getStop
       tags:
-      - Stops
+      - Area
       parameters:
       - name: instanceId
         in: path
@@ -8896,7 +8896,7 @@ paths:
         '
       operationId: updateStop
       tags:
-      - Stops
+      - Area
       parameters:
       - name: instanceId
         in: path
@@ -8928,7 +8928,7 @@ paths:
         '
       operationId: deleteStop
       tags:
-      - Stops
+      - Area
       parameters:
       - name: instanceId
         in: path
@@ -8971,7 +8971,7 @@ paths:
       summary: CORS preflight for stops detail endpoint
       operationId: stopOptions
       tags:
-      - Stops
+      - Area
       responses:
         '200':
           description: CORS preflight response
@@ -13085,12 +13085,8 @@ tags:
 - name: Lines
   description: Crossing lines management for ba_crossline instances (create, list, delete). Lines are drawn on video stream
     for object counting.
-- name: Jams
-  description: Jam zones management for ba_jam instances (create, list, delete). Zones are defined on video stream for traffic
-    jams detection.
-- name: Stops
-  description: Stop zones management for ba_stop instances (create, list, delete). Zones are defined on video stream for stop
-    objects detection.
+- name: Area
+  description: Area management for ba_jam and ba_stop instances (create, list, delete). Includes jam zones for traffic jams detection and stop zones for stop objects detection. Zones are defined on video stream.
 - name: Solutions
   description: Solution configuration management endpoints (create, list, update, delete)
 - name: Groups

@@ -118,7 +118,51 @@ fi
 
 # Copy other required libraries from ldd output (including OpenCV and GStreamer for full package)
 # Bundle all required libraries for a self-contained package
-ldd "$EXEC_PATH" 2>/dev/null | grep -v "not found" | awk '{print $3}' | grep -v "^$" | sort -u | while read lib; do
+# Collect all libraries from multiple sources
+ALL_LIBS=$(mktemp)
+trap "rm -f $ALL_LIBS" EXIT
+
+# Function to collect libraries from a binary/library
+collect_libs() {
+    local binary="$1"
+    if [ -f "$binary" ]; then
+        ldd "$binary" 2>/dev/null | grep -v "not found" | awk '{print $3}' | grep -v "^$" >> "$ALL_LIBS" || true
+    fi
+}
+
+# Collect from main executable
+echo "Collecting libraries from main executable..."
+collect_libs "$EXEC_PATH"
+
+# Also check edge_ai_worker if it exists
+WORKER_PATH=$(dirname "$EXEC_PATH")/edge_ai_worker
+if [ -f "$WORKER_PATH" ]; then
+    echo "Collecting libraries from edge_ai_worker..."
+    collect_libs "$WORKER_PATH"
+fi
+
+# Also check edge_ai_core library if it exists
+CORE_LIB_PATH=$(dirname "$EXEC_PATH")/../lib/libedge_ai_core.so*
+if ls $CORE_LIB_PATH 1> /dev/null 2>&1; then
+    for core_lib in $CORE_LIB_PATH; do
+        if [ -f "$core_lib" ]; then
+            echo "Collecting libraries from $(basename "$core_lib")..."
+            collect_libs "$core_lib"
+        fi
+    done
+fi
+
+# Also collect from all libraries already in build/lib
+if [ -d "$BUILD_LIB_DIR" ]; then
+    for lib_file in "$BUILD_LIB_DIR"/*.so*; do
+        if [ -f "$lib_file" ] && [ ! -L "$lib_file" ]; then
+            collect_libs "$lib_file"
+        fi
+    done
+fi
+
+# Copy all unique libraries
+sort -u "$ALL_LIBS" | while read lib; do
     if [ -f "$lib" ]; then
         libname=$(basename "$lib")
 
@@ -139,12 +183,36 @@ ldd "$EXEC_PATH" 2>/dev/null | grep -v "not found" | awk '{print $3}' | grep -v 
     fi
 done
 
-# Copy symlinks
+# Copy symlinks and resolve them
+# Multiple passes to handle nested symlinks
+for pass in 1 2 3; do
+    changed=false
+    for lib in "$LIB_TEMP_DIR"/*.so*; do
+        if [ -L "$lib" ] 2>/dev/null; then
+            target=$(readlink -f "$lib")
+            target_name=$(basename "$target")
+            if [ -f "$target" ] && [ ! -f "$LIB_TEMP_DIR/$target_name" ]; then
+                echo "  Resolving symlink: $(basename "$lib") -> $target_name"
+                cp -L "$target" "$LIB_TEMP_DIR/" 2>/dev/null || true
+                changed=true
+            fi
+        fi
+    done
+    [ "$changed" = false ] && break
+done
+
+# Final pass: ensure all symlinks point to files that exist
 for lib in "$LIB_TEMP_DIR"/*.so*; do
     if [ -L "$lib" ] 2>/dev/null; then
         target=$(readlink -f "$lib")
-        if [ -f "$target" ] && [ ! -f "$LIB_TEMP_DIR/$(basename "$target")" ]; then
-            cp -L "$target" "$LIB_TEMP_DIR/" 2>/dev/null || true
+        if [ ! -f "$target" ]; then
+            # Try to find the target in the same directory
+            target_name=$(basename "$target")
+            if [ -f "$LIB_TEMP_DIR/$target_name" ]; then
+                # Recreate symlink to point to local file
+                rm -f "$lib"
+                ln -sf "$target_name" "$lib" 2>/dev/null || true
+            fi
         fi
     fi
 done

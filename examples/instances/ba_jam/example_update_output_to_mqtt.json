@@ -1,0 +1,12 @@
+{
+  "additionalParams": {
+    "output": {
+      "ENABLE_SCREEN_DES": "false",
+      "BROKE_FOR": "NORMAL",
+      "MQTT_BROKER_URL": "console.vinguard.cloud",
+      "MQTT_PORT": "1883",
+      "MQTT_TOPIC": "ba_jam/events"
+    }
+  }
+}
+
