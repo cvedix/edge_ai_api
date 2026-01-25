@@ -128,9 +128,11 @@ private:
    * @brief Generate Scalar API documentation HTML content
    * @param version API version (e.g., "v1", "v2") or empty for all versions
    * @param baseUrl Base URL for the API server (e.g., "http://localhost:8080")
+   * @param language Language code (e.g., "en", "vi") or empty for default
    */
   std::string generateScalarDocumentHTML(const std::string &version = "",
-                                         const std::string &baseUrl = "") const;
+                                         const std::string &baseUrl = "",
+                                         const std::string &language = "en") const;
 
   /**
    * @brief Read OpenAPI YAML file
