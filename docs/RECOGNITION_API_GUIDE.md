@@ -680,7 +680,7 @@ node test_recognition.js
 
 ### 4. Test với Postman
 
-1. Import collection từ file `EDGE_AI_API.postman_collection.json`
+1. Import collection từ file `api-specs/postman/api.collection.json`
 2. Tìm folder "Recognition"
 3. Chọn request cần test
 4. Thêm file ảnh vào body (form-data)
@@ -871,7 +871,7 @@ curl -X POST "http://localhost:8080/v1/recognition/faces?subject=test_person&det
 
 - [Face Database Connection Guide](./FACE_DATABASE_CONNECTION.md)
 - [API Documentation](./API.md)
-- [OpenAPI Specification](../openapi.yaml)
+- [OpenAPI Specification](../api-specs/openapi.yaml)
 
 ---
 

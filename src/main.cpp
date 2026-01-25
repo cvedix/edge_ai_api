@@ -2004,6 +2004,7 @@ int main(int argc, char *argv[]) {
     PLOG_INFO << "  GET /swagger         - Swagger UI (all versions)";
     PLOG_INFO << "  GET /v1/swagger      - Swagger UI for API v1";
     PLOG_INFO << "  GET /v2/swagger      - Swagger UI for API v2";
+    PLOG_INFO << "  GET /v1/document     - Scalar API documentation for v1";
     PLOG_INFO << "  GET /openapi.yaml    - OpenAPI spec (all versions)";
     PLOG_INFO << "  GET /v1/openapi.yaml - OpenAPI spec for v1";
     PLOG_INFO << "  GET /v2/openapi.yaml - OpenAPI spec for v2";

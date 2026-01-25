@@ -139,7 +139,7 @@ override_dh_auto_install:
 	install -m 644 $(CURDIR)/README.md $(CURDIR)/debian/$(PACKAGE_NAME)$(INSTALL_DIR)/README.md
 
 	# Install OpenAPI specification file
-	install -m 644 $(CURDIR)/openapi.yaml $(CURDIR)/debian/$(PACKAGE_NAME)$(INSTALL_DIR)/openapi.yaml
+	install -m 644 $(CURDIR)/api-specs/openapi.yaml $(CURDIR)/debian/$(PACKAGE_NAME)$(INSTALL_DIR)/openapi.yaml
 
 	# Install scripts directory (if needed)
 	install -d $(CURDIR)/debian/$(PACKAGE_NAME)$(INSTALL_DIR)/scripts
