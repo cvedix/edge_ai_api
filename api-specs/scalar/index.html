@@ -14,6 +14,9 @@
             promise: null
         };
         
+        // Global reference to Scalar instance for cleanup
+        window.scalarInstance = null;
+        
         // Function to load script dynamically
         function loadScript(src) {
             return new Promise((resolve, reject) => {
@@ -124,10 +127,75 @@
             return loadPromise;
         }
         
-        // Start loading immediately (non-blocking)
-        loadScalarScript().catch(error => {
-            console.warn('Initial Scalar load attempt failed (will retry on init):', error);
-        });
+        // Set initial data-spec-url BEFORE loading Scalar script
+        // This ensures Scalar can auto-initialize when it loads
+        function setInitialSpecUrl() {
+            const apiRef = document.getElementById('api-reference');
+            console.log('[Scalar] setInitialSpecUrl - apiRef:', apiRef);
+            if (apiRef) {
+                // Check if data-spec-url already set by server
+                const existingUrl = apiRef.getAttribute('data-spec-url');
+                console.log('[Scalar] setInitialSpecUrl - existing data-spec-url:', existingUrl);
+                
+                // Get language from URL or default to 'en'
+                const urlParams = new URLSearchParams(window.location.search);
+                const lang = urlParams.get('lang') || localStorage.getItem('api-docs-language') || 'en';
+                const baseUrl = window.location.origin;
+                const version = 'v1';
+                const specUrl = baseUrl + '/' + version + '/openapi/' + lang + '/openapi.yaml';
+                
+                console.log('[Scalar] setInitialSpecUrl - computed specUrl:', specUrl);
+                console.log('[Scalar] setInitialSpecUrl - language:', lang);
+                
+                // Only set if not already set or if different
+                if (!existingUrl || existingUrl !== specUrl) {
+                    apiRef.setAttribute('data-spec-url', specUrl);
+                    console.log('[Scalar] setInitialSpecUrl - Set data-spec-url to:', specUrl);
+                } else {
+                    console.log('[Scalar] setInitialSpecUrl - data-spec-url already correct:', existingUrl);
+                }
+                return true; // Element found and URL set
+            }
+            return false; // Element not found
+        }
+        
+        // Try to set URL immediately if DOM is ready
+        if (document.readyState === 'loading') {
+            // DOM is still loading, wait for DOMContentLoaded
+            document.addEventListener('DOMContentLoaded', function() {
+                console.log('[Scalar] DOMContentLoaded fired');
+                if (setInitialSpecUrl()) {
+                    // Element found and URL set, now load script
+                    console.log('[Scalar] Starting to load Scalar script after DOMContentLoaded');
+                    loadScalarScript().catch(error => {
+                        console.warn('Initial Scalar load attempt failed (will retry on init):', error);
+                    });
+                } else {
+                    console.error('[Scalar] Element #api-reference not found in DOMContentLoaded!');
+                }
+            });
+        } else {
+            // DOM is already ready
+            console.log('[Scalar] DOM already ready, setting URL immediately');
+            if (setInitialSpecUrl()) {
+                // Element found and URL set, now load script
+                console.log('[Scalar] Starting to load Scalar script (DOM already ready)');
+                loadScalarScript().catch(error => {
+                    console.warn('Initial Scalar load attempt failed (will retry on init):', error);
+                });
+            } else {
+                console.error('[Scalar] Element #api-reference not found! Waiting for DOMContentLoaded...');
+                // Wait a bit and try again
+                setTimeout(function() {
+                    if (setInitialSpecUrl()) {
+                        console.log('[Scalar] Element found after delay, loading script');
+                        loadScalarScript().catch(error => {
+                            console.warn('Initial Scalar load attempt failed (will retry on init):', error);
+                        });
+                    }
+                }, 100);
+            }
+        }
     </script>
     <style>
         body {
@@ -195,7 +263,7 @@
         </select>
     </div>
     
-    <div id="api-reference"></div>
+    <div id="api-reference" data-spec-url="{{INITIAL_SPEC_URL}}"></div>
     
     <!-- Server will inject configuration here -->
     <!-- If placeholders are not replaced, the code will use fallback defaults -->
@@ -301,13 +369,20 @@
         function getLanguage() {
             const urlParams = new URLSearchParams(window.location.search);
             const langFromUrl = urlParams.get('lang');
+            console.log('[Scalar] getLanguage() - URL:', window.location.href);
+            console.log('[Scalar] getLanguage() - langFromUrl:', langFromUrl);
+            
             if (langFromUrl && (langFromUrl === 'en' || langFromUrl === 'vi')) {
+                console.log('[Scalar] getLanguage() - Using language from URL:', langFromUrl);
                 return langFromUrl;
             }
             const langFromStorage = localStorage.getItem('api-docs-language');
+            console.log('[Scalar] getLanguage() - langFromStorage:', langFromStorage);
             if (langFromStorage && (langFromStorage === 'en' || langFromStorage === 'vi')) {
+                console.log('[Scalar] getLanguage() - Using language from storage:', langFromStorage);
                 return langFromStorage;
             }
+            console.log('[Scalar] getLanguage() - Defaulting to English');
             return 'en'; // Default to English
         }
 
@@ -320,7 +395,7 @@
         }
 
         // Khởi tạo Scalar với ngôn ngữ đã chọn
-        async function initializeScalar(language) {
+        async function initializeScalar(language, forceRefresh = false) {
             let config;
             try {
                 config = getServerConfig();
@@ -344,6 +419,14 @@
                 fallbackUrl = baseUrl + '/openapi.yaml';
             }
             
+            // Add cache-busting parameter when force refresh is needed (e.g., language change)
+            if (forceRefresh) {
+                const cacheBuster = '?_t=' + Date.now();
+                specUrl += cacheBuster;
+                fallbackUrl += cacheBuster;
+                console.log('[Scalar] Added cache-busting parameter to force refresh');
+            }
+            
             // Use config fallback URL if our computed fallback is not available
             // (config fallback might be more reliable)
             if (!fallbackUrl || fallbackUrl === configFallbackUrl) {
@@ -353,8 +436,11 @@
                 console.log('Using config fallback URL as alternative:', configFallbackUrl);
             }
             
-            console.log('Initializing Scalar with spec URL:', specUrl);
-            console.log('Fallback URL:', fallbackUrl);
+            console.log('[Scalar] initializeScalar() called with language:', language);
+            console.log('[Scalar] Initializing Scalar with spec URL:', specUrl);
+            console.log('[Scalar] Fallback URL:', fallbackUrl);
+            console.log('[Scalar] Base URL:', baseUrl);
+            console.log('[Scalar] Version:', versionStr);
 
             // Get the api-reference element
             const apiRef = document.getElementById('api-reference');
@@ -363,33 +449,80 @@
                 return Promise.reject(new Error('api-reference element not found'));
             }
 
-            // Clear old content
-            apiRef.innerHTML = '';
+            // Clear old content completely - force remove element and recreate to ensure clean state
+            console.log('[Scalar] Clearing old content, current innerHTML length:', apiRef.innerHTML.length);
             
-            // Set data-spec-url attribute for Scalar auto-initialization
-            // This is the simplest and most reliable way
-            apiRef.setAttribute('data-spec-url', specUrl);
+            // Store parent and position
+            const parent = apiRef.parentNode;
+            const nextSibling = apiRef.nextSibling;
             
-            // Wait for Scalar to be available, then let it auto-initialize
-            return waitForScalarAndInitialize();
+            // Remove old element completely
+            apiRef.remove();
             
-            async function waitForScalarAndInitialize() {
-                // Wait for Scalar script to load
+            // Create fresh element with new spec URL
+            const newApiRef = document.createElement('div');
+            newApiRef.id = 'api-reference';
+            newApiRef.setAttribute('data-spec-url', specUrl);
+            
+            // Insert at same position
+            if (nextSibling) {
+                parent.insertBefore(newApiRef, nextSibling);
+            } else {
+                parent.appendChild(newApiRef);
+            }
+            
+            console.log('[Scalar] Created fresh api-reference element with data-spec-url:', specUrl);
+            console.log('[Scalar] data-spec-url after setting:', newApiRef.getAttribute('data-spec-url'));
+            
+            // Always use manual initialization for better control, especially when switching languages
+            // First ensure Scalar script is loaded, then initialize
+            return waitForScalarAndManualInit(specUrl, fallbackUrl, baseUrl);
+            
+            async function waitForScalarAndManualInit(currentSpecUrl, currentFallbackUrl, currentBaseUrl) {
+                // Get the fresh api-reference element
+                const freshApiRef = document.getElementById('api-reference');
+                if (!freshApiRef) {
+                    console.error('[Scalar] api-reference element not found after recreation');
+                    return Promise.reject(new Error('api-reference element not found'));
+                }
+                
+                // Verify the spec URL is set correctly
+                const elementSpecUrl = freshApiRef.getAttribute('data-spec-url');
+                if (elementSpecUrl !== currentSpecUrl) {
+                    console.warn('[Scalar] Spec URL mismatch. Expected:', currentSpecUrl, 'Got:', elementSpecUrl);
+                    freshApiRef.setAttribute('data-spec-url', currentSpecUrl);
+                }
+                
+                // First, ensure Scalar script is loaded
+                console.log('[Scalar] Ensuring Scalar script is loaded...');
+                try {
+                    await loadScalarScript();
+                    console.log('[Scalar] Scalar script load completed');
+                } catch (loadError) {
+                    console.error('[Scalar] Failed to load Scalar script:', loadError);
+                    // Continue anyway, might already be loaded
+                }
+                
+                // Wait for ScalarApiReference to be available - check for actual ScalarApiReference object
                 let retries = 0;
-                const maxRetries = 50; // 5 seconds
+                const maxRetries = 150; // 15 seconds - give even more time for script to fully load
                 while (retries < maxRetries) {
-                    if (typeof ScalarApiReference !== 'undefined') {
-                        console.log('ScalarApiReference found, allowing auto-initialization');
-                        // Scalar will auto-initialize from data-spec-url attribute
-                        return;
+                    // Check directly for ScalarApiReference (not through helper to avoid loadScalarScript)
+                    if (typeof window.ScalarApiReference !== 'undefined' && 
+                        window.ScalarApiReference !== window.loadScalarScript &&
+                        typeof window.ScalarApiReference === 'object' &&
+                        (window.ScalarApiReference.default || window.ScalarApiReference.ApiReference)) {
+                        console.log('[Scalar] ScalarApiReference found, initializing manually with URL:', currentSpecUrl);
+                        // Always use manual initialization for better control
+                        return initScalar(currentSpecUrl, currentFallbackUrl, currentBaseUrl);
                     }
                     await new Promise(resolve => setTimeout(resolve, 100));
                     retries++;
                 }
                 
-                // If Scalar didn't load, try manual initialization
-                console.warn('ScalarApiReference not found after waiting, trying manual init');
-                return initScalar();
+                // If Scalar didn't load, try manual initialization anyway
+                console.warn('[Scalar] ScalarApiReference not found after waiting, trying manual init anyway');
+                return initScalar(currentSpecUrl, currentFallbackUrl, currentBaseUrl);
             }
 
             // Helper function to check if Scalar is available - check all possible ways
@@ -415,33 +548,35 @@
             
             // Helper function to get ScalarApiReference - try all possible ways
             function getScalarApiReference() {
-                // Try ScalarApiReference first
-                if (typeof ScalarApiReference !== 'undefined') {
+                // Try ScalarApiReference first (the actual API)
+                if (typeof ScalarApiReference !== 'undefined' && ScalarApiReference !== window.loadScalarScript) {
                     return ScalarApiReference;
                 }
-                if (typeof window.ScalarApiReference !== 'undefined') {
+                if (typeof window.ScalarApiReference !== 'undefined' && window.ScalarApiReference !== window.loadScalarScript) {
                     return window.ScalarApiReference;
                 }
-                if (window.ScalarApiReference) {
+                if (window.ScalarApiReference && window.ScalarApiReference !== window.loadScalarScript) {
                     return window.ScalarApiReference;
                 }
                 
-                // Try Scalar
-                if (typeof Scalar !== 'undefined') {
+                // Try Scalar (alternative name)
+                if (typeof Scalar !== 'undefined' && Scalar !== window.loadScalarScript) {
                     return Scalar;
                 }
-                if (typeof window.Scalar !== 'undefined') {
+                if (typeof window.Scalar !== 'undefined' && window.Scalar !== window.loadScalarScript) {
                     return window.Scalar;
                 }
-                if (window.Scalar) {
+                if (window.Scalar && window.Scalar !== window.loadScalarScript) {
                     return window.Scalar;
                 }
                 
-                // Search for any Scalar-related global
+                // Search for any Scalar-related global, but exclude loadScalarScript
                 for (let key in window) {
-                    if (key.includes('Scalar') || key.includes('scalar')) {
+                    if ((key.includes('Scalar') || key.includes('scalar')) && key !== 'loadScalarScript') {
                         const obj = window[key];
-                        if (obj && (obj.default || typeof obj === 'function')) {
+                        // Only return if it's not a function (ScalarApiReference is an object, not a function)
+                        // Or if it has a default property (like ScalarApiReference.default)
+                        if (obj && (obj.default || (typeof obj !== 'function' && typeof obj === 'object'))) {
                             console.log('Using Scalar global:', key);
                             return obj;
                         }
@@ -452,41 +587,103 @@
             }
             
             // Đợi Scalar script load xong rồi mới khởi tạo
-            async function initScalar() {
+            async function initScalar(currentSpecUrl, currentFallbackUrl, currentBaseUrl) {
                 try {
+                    // Use parameters passed in to avoid closure issues
+                    const specUrlToUse = currentSpecUrl || specUrl;
+                    const fallbackUrlToUse = currentFallbackUrl || fallbackUrl;
+                    const baseUrlToUse = currentBaseUrl || baseUrl;
+                    
+                    // Get fresh reference to api-reference element
+                    const freshApiRef = document.getElementById('api-reference');
+                    if (!freshApiRef) {
+                        throw new Error('api-reference element not found in initScalar');
+                    }
+                    
+                    // Verify spec URL is correct
+                    const elementSpecUrl = freshApiRef.getAttribute('data-spec-url');
+                    console.log('[Scalar] initScalar - element spec URL:', elementSpecUrl);
+                    console.log('[Scalar] initScalar - parameter spec URL:', specUrlToUse);
+                    
+                    // Use the URL from parameter (most reliable)
+                    const urlToUse = specUrlToUse;
+                    
                     // First, check which URL is available
-                    let finalUrl = specUrl;
+                    // Remove cache-busting parameter for HEAD request (server might not like it)
+                    const urlForCheck = urlToUse.split('?')[0];
+                    const fallbackForCheck = fallbackUrlToUse.split('?')[0];
+                    let finalUrl = urlToUse; // Keep original URL with cache-busting for actual fetch
+                    
                     try {
-                        console.log('Checking if language-specific URL exists:', specUrl);
-                        const response = await fetch(specUrl, { method: 'HEAD' });
+                        console.log('[Scalar] Checking if language-specific URL exists:', urlForCheck);
+                        const response = await fetch(urlForCheck, { 
+                            method: 'HEAD',
+                            cache: 'no-cache', // Force fresh fetch
+                            headers: {
+                                'Cache-Control': 'no-cache, no-store, must-revalidate',
+                                'Pragma': 'no-cache',
+                                'Expires': '0'
+                            }
+                        });
                         if (!response.ok) {
                             throw new Error(`URL returned ${response.status}`);
                         }
-                        console.log('✅ Language-specific URL exists, using it');
-                        finalUrl = specUrl;
+                        console.log('[Scalar] ✅ Language-specific URL exists, using it');
+                        finalUrl = urlToUse; // Use URL with cache-busting
                     } catch (urlError) {
-                        console.warn('Language-specific URL not found, trying fallback:', fallbackUrl);
+                        console.warn('[Scalar] Language-specific URL not found, trying fallback:', fallbackForCheck);
                         try {
-                            const fallbackResponse = await fetch(fallbackUrl, { method: 'HEAD' });
+                            const fallbackResponse = await fetch(fallbackForCheck, { 
+                                method: 'HEAD',
+                                cache: 'no-cache',
+                                headers: {
+                                    'Cache-Control': 'no-cache, no-store, must-revalidate',
+                                    'Pragma': 'no-cache',
+                                    'Expires': '0'
+                                }
+                            });
                             if (fallbackResponse.ok) {
-                                console.log('✅ Fallback URL exists, using it');
-                                finalUrl = fallbackUrl;
+                                console.log('[Scalar] ✅ Fallback URL exists, using it');
+                                finalUrl = fallbackUrlToUse; // Use fallback with cache-busting
                             } else {
                                 throw new Error(`Fallback URL returned ${fallbackResponse.status}`);
                             }
                         } catch (fallbackError) {
-                            console.error('Both URLs failed, using language-specific URL anyway:', fallbackError);
-                            finalUrl = specUrl; // Use original URL, let Scalar handle the error
+                            console.error('[Scalar] Both URLs failed, using language-specific URL anyway:', fallbackError);
+                            finalUrl = urlToUse; // Use original URL, let Scalar handle the error
                         }
                     }
                     
+                    // Get server URL from config or use current origin
+                    const serverUrl = baseUrlToUse || window.location.origin;
+                    
                     // Create configuration with the final URL (use new format - not deprecated)
+                    // Ensure cache-busting is preserved and add additional cache control
                     const configuration = {
-                        url: finalUrl,  // New format - not deprecated
+                        url: finalUrl,  // New format - not deprecated (includes cache-busting if forceRefresh)
                         theme: 'default',
-                        layout: 'modern'
+                        layout: 'modern',
+                        // Enable API testing with proper server URL
+                        defaultHttpClient: {
+                            targetKey: 'javascript',
+                            clientKey: 'fetch'
+                        },
+                        // Configure server for API testing
+                        withCredentials: false,
+                        // Proxy configuration if needed (optional)
+                        proxy: undefined,
+                        // Force no-cache for spec fetching
+                        fetchOptions: {
+                            cache: 'no-store',
+                            headers: {
+                                'Cache-Control': 'no-cache, no-store, must-revalidate',
+                                'Pragma': 'no-cache',
+                                'Expires': '0'
+                            }
+                        }
                     };
                     console.log('Final URL for Scalar:', finalUrl);
+                    console.log('Server URL for API testing:', serverUrl);
                     console.log('Configuration:', configuration);
                     
                     // Ensure Scalar script is loaded
@@ -571,6 +768,23 @@
                                 return;
                             }
                             
+                            // Destroy previous instance if exists
+                            if (window.scalarInstance) {
+                                try {
+                                    console.log('Destroying previous Scalar instance...');
+                                    if (window.scalarInstance.destroy && typeof window.scalarInstance.destroy === 'function') {
+                                        window.scalarInstance.destroy();
+                                    } else if (window.scalarInstance.unmount && typeof window.scalarInstance.unmount === 'function') {
+                                        window.scalarInstance.unmount();
+                                    } else if (window.scalarInstance.app && window.scalarInstance.app.unmount) {
+                                        window.scalarInstance.app.unmount();
+                                    }
+                                } catch (destroyError) {
+                                    console.warn('Error destroying previous instance:', destroyError);
+                                }
+                                window.scalarInstance = null;
+                            }
+                            
                             // Try multiple ways to call createApiReference
                             let initialized = false;
                             
@@ -581,6 +795,12 @@
                                     ...configuration,
                                     target: '#api-reference'
                                 });
+                                
+                                // Store instance reference for cleanup
+                                if (result1) {
+                                    window.scalarInstance = result1;
+                                }
+                                
                                 console.log('Method 1 result:', result1);
                                 console.log('Method 1 result keys:', result1 ? Object.keys(result1) : 'null');
                                 
@@ -685,11 +905,19 @@
                                     const result2a = ScalarRef.createApiReference(apiRef, configuration);
                                     console.log('Method 2a result:', result2a);
                                     
+                                    // Store instance reference
+                                    if (result2a) {
+                                        window.scalarInstance = result2a;
+                                    }
+                                    
                                     // Check if it's a promise
                                     if (result2a && typeof result2a.then === 'function') {
                                         console.log('Method 2a returned a promise, awaiting...');
                                         result2a.then((resolvedResult) => {
                                             console.log('Method 2a promise resolved:', resolvedResult);
+                                            if (resolvedResult) {
+                                                window.scalarInstance = resolvedResult;
+                                            }
                                             if (!tryMountApp(resolvedResult, 'Method 2a')) {
                                                 initialized = true;
                                             }
@@ -710,9 +938,17 @@
                                         const result2b = ScalarRef.createApiReference(apiRef, configuration.url);
                                         console.log('Method 2b result:', result2b);
                                         
+                                        // Store instance reference
+                                        if (result2b) {
+                                            window.scalarInstance = result2b;
+                                        }
+                                        
                                         if (result2b && typeof result2b.then === 'function') {
                                             result2b.then((resolvedResult) => {
                                                 console.log('Method 2b promise resolved:', resolvedResult);
+                                                if (resolvedResult) {
+                                                    window.scalarInstance = resolvedResult;
+                                                }
                                                 if (!tryMountApp(resolvedResult, 'Method 2b')) {
                                                     initialized = true;
                                                 }
@@ -733,9 +969,17 @@
                                             const result2c = ScalarRef.createApiReference(apiRef);
                                             console.log('Method 2c result:', result2c);
                                             
+                                            // Store instance reference
+                                            if (result2c) {
+                                                window.scalarInstance = result2c;
+                                            }
+                                            
                                             if (result2c && typeof result2c.then === 'function') {
                                                 result2c.then((resolvedResult) => {
                                                     console.log('Method 2c promise resolved:', resolvedResult);
+                                                    if (resolvedResult) {
+                                                        window.scalarInstance = resolvedResult;
+                                                    }
                                                     if (!tryMountApp(resolvedResult, 'Method 2c')) {
                                                         initialized = true;
                                                     }
@@ -762,6 +1006,12 @@
                                         ...configuration,
                                         target: apiRef
                                     });
+                                    
+                                    // Store instance reference
+                                    if (result3) {
+                                        window.scalarInstance = result3;
+                                    }
+                                    
                                     console.log('Method 3 result:', result3);
                                     initialized = true;
                                 } catch (e3) {
@@ -930,6 +1180,11 @@
                                 });
                                 
                                 // Try mounting app if present
+                                // Store instance reference
+                                if (fallbackResult) {
+                                    window.scalarInstance = fallbackResult;
+                                }
+                                
                                 if (fallbackResult && fallbackResult.app && typeof fallbackResult.app.mount === 'function') {
                                     try {
                                         fallbackResult.app.mount('#api-reference');
@@ -1137,9 +1392,16 @@
             const select = document.getElementById('language-select');
             const selectedLang = select.value;
             saveLanguage(selectedLang);
-            await initializeScalar(selectedLang).catch(err => {
-                console.error('Failed to reinitialize Scalar with new language:', err);
-            });
+            
+            console.log('[Language Change] Switching to language:', selectedLang);
+            
+            // Reload page to ensure fresh content (most reliable solution)
+            // This ensures:
+            // 1. Server renders HTML with correct language parameter
+            // 2. Scalar initializes fresh with correct data-spec-url
+            // 3. No cache issues or stale content
+            // The URL already has ?lang= parameter, so reload will fetch correct content
+            window.location.reload();
         }
 
         // Khởi tạo
@@ -1153,12 +1415,24 @@
             
             // Set initial data-spec-url immediately so Scalar can auto-initialize when it loads
             const apiRef = document.getElementById('api-reference');
+            console.log('[Scalar] init() - currentLang:', currentLang);
+            console.log('[Scalar] init() - apiRef:', apiRef);
             if (apiRef) {
+                const existingUrl = apiRef.getAttribute('data-spec-url');
+                console.log('[Scalar] init() - existing data-spec-url:', existingUrl);
+                
                 const baseUrl = window.location.origin;
                 const version = 'v1';
                 const specUrl = baseUrl + '/' + version + '/openapi/' + currentLang + '/openapi.yaml';
-                apiRef.setAttribute('data-spec-url', specUrl);
-                console.log('Set initial data-spec-url:', specUrl);
+                console.log('[Scalar] init() - computed specUrl:', specUrl);
+                
+                if (!existingUrl || existingUrl !== specUrl) {
+                    apiRef.setAttribute('data-spec-url', specUrl);
+                    console.log('[Scalar] init() - Set data-spec-url to:', specUrl);
+                } else {
+                    console.log('[Scalar] init() - data-spec-url already correct');
+                }
+                console.log('[Scalar] init() - Final data-spec-url:', apiRef.getAttribute('data-spec-url'));
             }
             
             // Also call initializeScalar to handle language switching

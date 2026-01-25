@@ -1,5 +1,6 @@
 #include "api/swagger_handler.h"
 #include "core/env_config.h"
+#include "core/logger.h"
 #include "core/metrics_interceptor.h"
 #include <algorithm>
 #include <cctype>
@@ -115,7 +116,49 @@ void SwaggerHandler::getScalarDocument(
     }
 
     std::string baseUrl = scheme + "://" + host;
-    std::string html = generateScalarDocumentHTML(version, baseUrl);
+    
+    // Get language from URL parameter if present
+    std::string language = req->getParameter("lang");
+    PLOG_INFO << "[Scalar] Request path: " << path;
+    PLOG_INFO << "[Scalar] Language from getParameter('lang'): " << (language.empty() ? "(empty)" : language);
+    
+    if (language.empty()) {
+      // Try to get from query string
+      auto queryParams = req->getParameters();
+      PLOG_INFO << "[Scalar] Query params count: " << queryParams.size();
+      for (const auto& [key, value] : queryParams) {
+        PLOG_INFO << "[Scalar] Query param: " << key << " = " << value;
+      }
+      auto it = queryParams.find("lang");
+      if (it != queryParams.end()) {
+        language = it->second;
+        PLOG_INFO << "[Scalar] Language from query params: " << language;
+      }
+    }
+    
+    // Validate language
+    if (!language.empty() && language != "en" && language != "vi") {
+      PLOG_WARNING << "[Scalar] Invalid language: " << language << ", defaulting to 'en'";
+      language = "en"; // Default to English if invalid
+    }
+    if (language.empty()) {
+      PLOG_INFO << "[Scalar] No language specified, defaulting to 'en'";
+      language = "en"; // Default to English
+    }
+    
+    PLOG_INFO << "[Scalar] Final language: " << language;
+    PLOG_INFO << "[Scalar] Base URL: " << baseUrl;
+    PLOG_INFO << "[Scalar] Version: " << (version.empty() ? "(empty)" : version);
+    
+    std::string html = generateScalarDocumentHTML(version, baseUrl, language);
+    
+    PLOG_INFO << "[Scalar] Generated HTML length: " << html.length();
+    // Log if initial spec URL was replaced
+    if (html.find("{{INITIAL_SPEC_URL}}") != std::string::npos) {
+      PLOG_WARNING << "[Scalar] WARNING: {{INITIAL_SPEC_URL}} placeholder not replaced!";
+    } else {
+      PLOG_INFO << "[Scalar] {{INITIAL_SPEC_URL}} placeholder replaced successfully";
+    }
 
     auto resp = HttpResponse::newHttpResponse();
     resp->setStatusCode(k200OK);
@@ -638,12 +681,14 @@ SwaggerHandler::readScalarHTMLFile() const {
 
 std::string
 SwaggerHandler::generateScalarDocumentHTML(const std::string &version,
-                                           const std::string &baseUrl) const {
+                                           const std::string &baseUrl,
+                                           const std::string &language) const {
   // Try to read HTML from file first
   std::string html = readScalarHTMLFile();
   
   if (!html.empty()) {
     // Determine the OpenAPI spec URL based on version
+    // Default to English, but will be updated by JavaScript based on language selector
     std::string specUrl = "/openapi.yaml";
     if (!version.empty()) {
       specUrl = "/" + version + "/openapi.yaml";
@@ -659,11 +704,28 @@ SwaggerHandler::generateScalarDocumentHTML(const std::string &version,
       fullSpecUrl = cleanBaseUrl + specUrl;
     }
 
+    // Build initial spec URL based on language parameter
+    std::string lang = language.empty() ? "en" : language;
+    if (lang != "en" && lang != "vi") {
+      PLOG_WARNING << "[Scalar] Invalid language in generateScalarDocumentHTML: " << lang << ", defaulting to 'en'";
+      lang = "en"; // Default to English if invalid
+    }
+    std::string initialSpecUrl = fullSpecUrl;
+    if (!version.empty()) {
+      initialSpecUrl = cleanBaseUrl + "/" + version + "/openapi/" + lang + "/openapi.yaml";
+    } else {
+      initialSpecUrl = cleanBaseUrl + "/openapi/" + lang + "/openapi.yaml";
+    }
+    
+    PLOG_INFO << "[Scalar] Initial spec URL: " << initialSpecUrl;
+    PLOG_INFO << "[Scalar] Language for initial URL: " << lang;
+
     // Replace placeholders in HTML
     // For JSON script tag, we need proper JSON strings
     std::string baseUrlJson = baseUrl.empty() ? "window.location.origin" : "\"" + cleanBaseUrl + "\"";
     std::string versionJson = version.empty() ? "\"\"" : "\"" + version + "\"";
     std::string fallbackUrlJson = "\"" + fullSpecUrl + "\"";
+    std::string initialSpecUrlJson = "\"" + initialSpecUrl + "\"";
     
     // Replace placeholders - use replace_all equivalent
     std::string placeholder;
@@ -692,6 +754,14 @@ SwaggerHandler::generateScalarDocumentHTML(const std::string &version,
       pos += fallbackUrlJson.length();
     }
     
+    // Replace {{INITIAL_SPEC_URL}} - this is critical for Scalar auto-initialization
+    placeholder = "{{INITIAL_SPEC_URL}}";
+    pos = 0;
+    while ((pos = html.find(placeholder, pos)) != std::string::npos) {
+      html.replace(pos, placeholder.length(), initialSpecUrlJson);
+      pos += initialSpecUrlJson.length();
+    }
+    
     return html;
   }
 
@@ -707,13 +777,25 @@ SwaggerHandler::generateScalarDocumentHTML(const std::string &version,
 
   // Use absolute URL if baseUrl is provided, otherwise use relative URL
   std::string fullSpecUrl = specUrl;
+  std::string cleanBaseUrl = baseUrl;
   if (!baseUrl.empty()) {
     // Remove trailing slash from baseUrl if present
-    std::string cleanBaseUrl = baseUrl;
     if (cleanBaseUrl.back() == '/') {
       cleanBaseUrl.pop_back();
     }
     fullSpecUrl = cleanBaseUrl + specUrl;
+  }
+
+  // Build initial spec URL based on language parameter
+  std::string lang = language.empty() ? "en" : language;
+  if (lang != "en" && lang != "vi") {
+    lang = "en"; // Default to English if invalid
+  }
+  std::string initialSpecUrl = fullSpecUrl;
+  if (!version.empty() && !cleanBaseUrl.empty()) {
+    initialSpecUrl = cleanBaseUrl + "/" + version + "/openapi/" + lang + "/openapi.yaml";
+  } else if (!cleanBaseUrl.empty()) {
+    initialSpecUrl = cleanBaseUrl + "/openapi/" + lang + "/openapi.yaml";
   }
 
   // Scalar API Reference HTML - using data-configuration attribute like the original file
@@ -780,6 +862,12 @@ SwaggerHandler::generateScalarDocumentHTML(const std::string &version,
         }
     </style>
     <script>
+        console.log('[Scalar Fallback] Script block initialized at:', new Date().toISOString());
+        console.log('[Scalar Fallback] Document readyState:', document.readyState);
+        
+        // Global reference to Scalar instance for cleanup
+        window.scalarInstance = null;
+        
         // CDN fallback configuration for Scalar
         // Using version 1.24.0 (pinned for stability)
         const SCALAR_CDN_URLS = [
@@ -789,10 +877,29 @@ SwaggerHandler::generateScalarDocumentHTML(const std::string &version,
         ];
 
         let scriptLoaded = false;
+        
+        // Check if element exists immediately
+        console.log('[Scalar Fallback] Checking for #api-reference element immediately...');
+        const immediateCheck = document.getElementById('api-reference');
+        console.log('[Scalar Fallback] Immediate check result:', immediateCheck ? 'FOUND' : 'NOT FOUND');
+        if (immediateCheck) {
+            console.log('[Scalar Fallback] Immediate element data-spec-url:', immediateCheck.getAttribute('data-spec-url'));
+        }
 
         function loadScalarScript(urls, index = 0) {
+            console.log('[Scalar Fallback] loadScalarScript called, index:', index, 'at:', new Date().toISOString());
+            console.log('[Scalar Fallback] Document readyState:', document.readyState);
+            
+            // Check element before loading script
+            const apiRefBefore = document.getElementById('api-reference');
+            console.log('[Scalar Fallback] Element check before script load:', apiRefBefore ? 'FOUND' : 'NOT FOUND');
+            if (apiRefBefore) {
+                console.log('[Scalar Fallback] Element data-spec-url before script load:', apiRefBefore.getAttribute('data-spec-url'));
+                console.log('[Scalar Fallback] Element innerHTML length:', apiRefBefore.innerHTML.length);
+            }
+            
             if (index >= urls.length) {
-                console.error('All CDN fallbacks failed for Scalar API Reference');
+                console.error('[Scalar Fallback] All CDN fallbacks failed for Scalar API Reference');
                 document.getElementById('loading-message').style.display = 'none';
                 document.getElementById('error-message').style.display = 'block';
                 document.getElementById('error-message').innerHTML = 
@@ -808,7 +915,7 @@ SwaggerHandler::generateScalarDocumentHTML(const std::string &version,
             }
 
             const url = urls[index];
-            console.log('Loading Scalar from:', url);
+            console.log('[Scalar Fallback] Loading Scalar from:', url, 'at:', new Date().toISOString());
 
             const script = document.createElement('script');
             script.src = url;
@@ -817,18 +924,72 @@ SwaggerHandler::generateScalarDocumentHTML(const std::string &version,
                 loadScalarScript(urls, index + 1);
             };
             script.onload = function() {
-                console.log('Successfully loaded Scalar from', url);
+                console.log('[Scalar Fallback] Script onload fired at:', new Date().toISOString());
+                console.log('[Scalar Fallback] Successfully loaded Scalar from:', url);
+                console.log('[Scalar Fallback] Document readyState:', document.readyState);
                 scriptLoaded = true;
-                // Scalar will auto-initialize from data-configuration attribute
-                document.getElementById('loading-message').style.display = 'none';
+                
+                // Check element immediately after script load
+                const apiRefImmediate = document.getElementById('api-reference');
+                console.log('[Scalar Fallback] Element check immediately after script load:', apiRefImmediate ? 'FOUND' : 'NOT FOUND');
+                if (apiRefImmediate) {
+                    console.log('[Scalar Fallback] Element data-spec-url immediately after script load:', apiRefImmediate.getAttribute('data-spec-url'));
+                }
+                
+                // Check if ScalarApiReference is available
+                console.log('[Scalar Fallback] typeof ScalarApiReference:', typeof ScalarApiReference);
+                console.log('[Scalar Fallback] typeof window.ScalarApiReference:', typeof window.ScalarApiReference);
+                if (typeof ScalarApiReference !== 'undefined') {
+                    console.log('[Scalar Fallback] ScalarApiReference keys:', Object.keys(ScalarApiReference));
+                    if (ScalarApiReference.default) {
+                        console.log('[Scalar Fallback] ScalarApiReference.default is available');
+                    }
+                }
+                
+                // Đợi một chút để đảm bảo element đã được render hoàn toàn
+                setTimeout(function() {
+                    console.log('[Scalar Fallback] setTimeout callback fired at:', new Date().toISOString());
+                    const apiRef = document.getElementById('api-reference');
+                    console.log('[Scalar Fallback] Element check in setTimeout:', apiRef ? 'FOUND' : 'NOT FOUND');
+                    if (apiRef) {
+                        const specUrl = apiRef.getAttribute('data-spec-url');
+                        console.log('[Scalar Fallback] Element data-spec-url in setTimeout:', specUrl);
+                        console.log('[Scalar Fallback] Element innerHTML length:', apiRef.innerHTML.length);
+                        
+                        if (specUrl) {
+                            // Nếu Scalar chưa tự động khởi tạo, khởi tạo thủ công
+                            if (typeof ScalarApiReference !== 'undefined' && ScalarApiReference.default) {
+                                console.log('[Scalar Fallback] Manually initializing Scalar with URL:', specUrl);
+                                try {
+                                    ScalarApiReference.default({
+                                        spec: { url: specUrl },
+                                        theme: 'default',
+                                        layout: 'modern'
+                                    });
+                                    console.log('[Scalar Fallback] Scalar initialization call completed');
+                                } catch (e) {
+                                    console.error('[Scalar Fallback] Error initializing Scalar:', e);
+                                }
+                            } else {
+                                console.warn('[Scalar Fallback] ScalarApiReference.default not available, waiting for auto-init');
+                            }
+                        } else {
+                            console.warn('[Scalar Fallback] Element #api-reference missing data-spec-url');
+                        }
+                    } else {
+                        console.error('[Scalar Fallback] Element #api-reference not found in setTimeout');
+                    }
+                    document.getElementById('loading-message').style.display = 'none';
+                }, 100);
             };
+            // Load script với defer để đảm bảo DOM đã sẵn sàng
+            script.defer = true;
             document.head.appendChild(script);
         }
 
-        // Check if spec URL is accessible
+R"(        // Check if spec URL is accessible
         function checkSpecUrl() {
-            const specUrl = ")" +
-                     fullSpecUrl + R"(";
+            const specUrl = ")" + fullSpecUrl + R"(";
             fetch(specUrl)
                 .then(response => {
                     if (!response.ok) {
@@ -856,12 +1017,49 @@ SwaggerHandler::generateScalarDocumentHTML(const std::string &version,
                 });
         }
 
-        // Start loading when page loads
+        // Start loading when page loads - đảm bảo element đã có trong DOM
+        console.log('[Scalar Fallback] Setting up DOMContentLoaded listener at:', new Date().toISOString());
         window.addEventListener('DOMContentLoaded', function() {
-            loadScalarScript(SCALAR_CDN_URLS);
-            // Check spec URL after a short delay
-            setTimeout(checkSpecUrl, 1000);
+            console.log('[Scalar Fallback] DOMContentLoaded fired at:', new Date().toISOString());
+            console.log('[Scalar Fallback] Document readyState:', document.readyState);
+            
+            // Check element immediately
+            const apiRefImmediate = document.getElementById('api-reference');
+            console.log('[Scalar Fallback] Element check in DOMContentLoaded:', apiRefImmediate ? 'FOUND' : 'NOT FOUND');
+            if (apiRefImmediate) {
+                console.log('[Scalar Fallback] Element data-spec-url in DOMContentLoaded:', apiRefImmediate.getAttribute('data-spec-url'));
+            }
+            
+            // Đợi một chút để đảm bảo tất cả elements đã được render
+            setTimeout(function() {
+                console.log('[Scalar Fallback] setTimeout in DOMContentLoaded fired at:', new Date().toISOString());
+                const apiRef = document.getElementById('api-reference');
+                console.log('[Scalar Fallback] Element check in setTimeout:', apiRef ? 'FOUND' : 'NOT FOUND');
+                if (apiRef) {
+                    const specUrl = apiRef.getAttribute('data-spec-url');
+                    console.log('[Scalar Fallback] Element #api-reference found, data-spec-url:', specUrl);
+                    console.log('[Scalar Fallback] Loading Scalar script...');
+                    loadScalarScript(SCALAR_CDN_URLS);
+                } else {
+                    console.error('[Scalar Fallback] Element #api-reference not found in setTimeout!');
+                }
+                // Check spec URL after a short delay
+                setTimeout(checkSpecUrl, 1000);
+            }, 50); // Small delay to ensure DOM is fully ready
         });
+        
+        // Also check if DOM is already loaded
+        if (document.readyState === 'loading') {
+            console.log('[Scalar Fallback] Document is still loading, waiting for DOMContentLoaded');
+        } else {
+            console.log('[Scalar Fallback] Document already loaded, readyState:', document.readyState);
+            // If already loaded, trigger immediately
+            const apiRefNow = document.getElementById('api-reference');
+            console.log('[Scalar Fallback] Element check now (already loaded):', apiRefNow ? 'FOUND' : 'NOT FOUND');
+            if (apiRefNow) {
+                console.log('[Scalar Fallback] Element data-spec-url now:', apiRefNow.getAttribute('data-spec-url'));
+            }
+        }
 
         // Fallback: if script doesn't load after 10 seconds, show error
         setTimeout(function() {
@@ -875,7 +1073,6 @@ SwaggerHandler::generateScalarDocumentHTML(const std::string &version,
             }
         }, 10000);
     </script>
-    <script src="https://cdn.jsdelivr.net/npm/@scalar/api-reference@1.24.0/dist/browser/standalone.js"></script>
 </head>
 <body>
     <div class="language-selector">
@@ -890,8 +1087,11 @@ SwaggerHandler::generateScalarDocumentHTML(const std::string &version,
         <p>Please wait while we load the Scalar API Reference.</p>
     </div>
     <div id="error-message"></div>
-    <div id="api-reference"></div>
+    <div id="api-reference" data-spec-url=")" + initialSpecUrl + R"("></div>
     <script>
+        // Global reference to Scalar instance for cleanup
+        window.scalarInstance = null;
+        
         // Lấy ngôn ngữ từ URL parameter hoặc localStorage
         function getLanguage() {
             const urlParams = new URLSearchParams(window.location.search);
@@ -915,7 +1115,7 @@ SwaggerHandler::generateScalarDocumentHTML(const std::string &version,
         }
 
         // Khởi tạo Scalar với ngôn ngữ đã chọn
-        function initializeScalar(language) {
+        function initializeScalar(language, forceRefresh) {
             const baseUrl = ")" + baseUrl + R"(";
             const versionStr = ")" + version + R"(";
             let specUrl;
@@ -928,11 +1128,23 @@ SwaggerHandler::generateScalarDocumentHTML(const std::string &version,
                 specUrl = baseUrl + '/openapi/' + language + '/openapi.yaml';
             }
             
+            // Add cache-busting parameter when force refresh is needed (e.g., language change)
+            if (forceRefresh) {
+                specUrl += '?_t=' + Date.now();
+            }
+            
             // Fallback: nếu không tìm thấy file theo ngôn ngữ, dùng file mặc định
             const fallbackUrl = ")" + fullSpecUrl + R"(";
             
             // Thử load file theo ngôn ngữ, nếu fail thì dùng fallback
-            fetch(specUrl)
+            fetch(specUrl, { 
+                cache: 'no-store',
+                headers: {
+                    'Cache-Control': 'no-cache, no-store, must-revalidate',
+                    'Pragma': 'no-cache',
+                    'Expires': '0'
+                }
+            })
                 .then(response => {
                     if (!response.ok) {
                         throw new Error('File not found');
@@ -944,6 +1156,15 @@ SwaggerHandler::generateScalarDocumentHTML(const std::string &version,
                     return fallbackUrl;
                 })
                 .then(finalUrl => {
+                    // Update data-spec-url attribute trước khi khởi tạo
+                    const apiRef = document.getElementById('api-reference');
+                    if (apiRef) {
+                        apiRef.setAttribute('data-spec-url', finalUrl);
+                    }
+                    
+                    // Get server URL for API testing
+                    const serverUrl = baseUrl || window.location.origin;
+                    
                     const configuration = {
                         spec: {
                             url: finalUrl
@@ -953,10 +1174,13 @@ SwaggerHandler::generateScalarDocumentHTML(const std::string &version,
                         hideDownloadButton: false,
                         hideModels: false,
                         hideSidebar: false,
+                        // Enable API testing with proper configuration
                         defaultHttpClient: {
                             targetKey: 'javascript',
                             clientKey: 'fetch'
-                        }
+                        },
+                        // Configure server for API testing
+                        withCredentials: false
                     };
 
                     // Xóa api-reference cũ nếu có
@@ -965,13 +1189,35 @@ SwaggerHandler::generateScalarDocumentHTML(const std::string &version,
                         oldRef.innerHTML = '';
                     }
 
+                    // Destroy previous instance if exists
+                    if (window.scalarInstance) {
+                        try {
+                            console.log('[Scalar] Destroying previous instance...');
+                            if (window.scalarInstance.destroy && typeof window.scalarInstance.destroy === 'function') {
+                                window.scalarInstance.destroy();
+                            } else if (window.scalarInstance.unmount && typeof window.scalarInstance.unmount === 'function') {
+                                window.scalarInstance.unmount();
+                            } else if (window.scalarInstance.app && window.scalarInstance.app.unmount) {
+                                window.scalarInstance.app.unmount();
+                            }
+                        } catch (destroyError) {
+                            console.warn('[Scalar] Error destroying instance:', destroyError);
+                        }
+                        window.scalarInstance = null;
+                    }
+                    
                     // Đợi Scalar script load xong rồi mới khởi tạo
                     if (typeof ScalarApiReference !== 'undefined') {
                         // Scalar đã load, khởi tạo trực tiếp
-                        ScalarApiReference.default({
+                        const result = ScalarApiReference.default({
                             ...configuration,
                             target: '#api-reference'
                         });
+                        
+                        // Store instance reference
+                        if (result) {
+                            window.scalarInstance = result;
+                        }
                     } else {
                         // Scalar chưa load, tạo script element để tự động khởi tạo
                         const script = document.createElement('script');
@@ -983,11 +1229,20 @@ SwaggerHandler::generateScalarDocumentHTML(const std::string &version,
         }
 
         // Xử lý thay đổi ngôn ngữ
-        function handleLanguageChange() {
+        async function handleLanguageChange() {
             const select = document.getElementById('language-select');
             const selectedLang = select.value;
             saveLanguage(selectedLang);
-            initializeScalar(selectedLang);
+            
+            console.log('[Language Change] Switching to language:', selectedLang);
+            
+            // Reload page to ensure fresh content (most reliable solution)
+            // This ensures:
+            // 1. Server renders HTML with correct language parameter
+            // 2. Scalar initializes fresh with correct data-spec-url
+            // 3. No cache issues or stale content
+            // The URL already has ?lang= parameter, so reload will fetch correct content
+            window.location.reload();
         }
 
         // Khởi tạo
@@ -999,8 +1254,18 @@ SwaggerHandler::generateScalarDocumentHTML(const std::string &version,
                 select.addEventListener('change', handleLanguageChange);
             }
             
-            // Khởi tạo Scalar với ngôn ngữ hiện tại
-            initializeScalar(currentLang);
+            // Kiểm tra xem data-spec-url đã được set đúng chưa
+            const apiRef = document.getElementById('api-reference');
+            const currentUrl = apiRef ? apiRef.getAttribute('data-spec-url') : '';
+            
+            // Chỉ khởi tạo lại nếu URL không khớp với language hiện tại
+            if (!currentUrl || !currentUrl.includes('/openapi/' + currentLang + '/')) {
+                // Khởi tạo Scalar với ngôn ngữ hiện tại (sẽ update data-spec-url trong initializeScalar)
+                initializeScalar(currentLang);
+            } else {
+                // URL đã đúng, chỉ cần đảm bảo Scalar đã khởi tạo
+                console.log('Scalar URL already correct for language:', currentLang);
+            }
         });
     </script>
 </body>
@@ -1058,15 +1323,58 @@ SwaggerHandler::readOpenAPIFile(const std::string &version,
 
   // 1. If language is specified, check language-specific file first
   if (!language.empty() && validateLanguageCode(language)) {
+    // Try multiple possible locations for the file
+    std::vector<std::filesystem::path> testLocations;
+    
+    // Location 1: Project root (relative to source/build)
     try {
       std::filesystem::path currentDir = std::filesystem::current_path();
-      std::filesystem::path testPath = currentDir / "api-specs" / "openapi" / language / "openapi.yaml";
-      if (std::filesystem::exists(testPath) &&
-          std::filesystem::is_regular_file(testPath)) {
-        possiblePaths.push_back(testPath);
+      // If we're in build directory, go up to project root
+      if (currentDir.filename() == "build") {
+        testLocations.push_back(currentDir.parent_path() / "api-specs" / "openapi" / language / "openapi.yaml");
+      }
+      // Also try current directory
+      testLocations.push_back(currentDir / "api-specs" / "openapi" / language / "openapi.yaml");
+    } catch (...) {
+      // Ignore
+    }
+    
+    // Location 2: Search up from current directory (for development)
+    try {
+      std::filesystem::path basePath = std::filesystem::canonical(std::filesystem::current_path());
+      std::filesystem::path current = basePath;
+      for (int i = 0; i < 4; ++i) {
+        std::filesystem::path testPath = current / "api-specs" / "openapi" / language / "openapi.yaml";
+        testLocations.push_back(testPath);
+        if (current.has_parent_path() && current != current.parent_path()) {
+          current = current.parent_path();
+        } else {
+          break;
+        }
       }
     } catch (...) {
-      // Ignore errors
+      // Ignore
+    }
+    
+    // Check all test locations
+    for (const auto& testPath : testLocations) {
+      try {
+        PLOG_INFO << "[OpenAPI] Checking language-specific file: " << testPath;
+        if (std::filesystem::exists(testPath) &&
+            std::filesystem::is_regular_file(testPath)) {
+          PLOG_INFO << "[OpenAPI] Found language-specific file: " << testPath << " for language: " << language;
+          possiblePaths.push_back(testPath);
+          break; // Found it, no need to check other locations
+        }
+      } catch (const std::exception& e) {
+        PLOG_WARNING << "[OpenAPI] Error checking " << testPath << ": " << e.what();
+      } catch (...) {
+        // Ignore
+      }
+    }
+    
+    if (possiblePaths.empty()) {
+      PLOG_WARNING << "[OpenAPI] Language-specific file not found for language: " << language;
     }
 
     // Also check in install directory
@@ -1200,6 +1508,11 @@ SwaggerHandler::readOpenAPIFile(const std::string &version,
   }
 
   // Try to read from found paths
+  PLOG_INFO << "[OpenAPI] Found " << possiblePaths.size() << " possible paths for version: " << version << ", language: " << language;
+  for (size_t i = 0; i < possiblePaths.size(); ++i) {
+    PLOG_INFO << "[OpenAPI] Path " << (i+1) << ": " << possiblePaths[i];
+  }
+  
   std::string yamlContent;
   std::filesystem::path actualFilePath;
   std::filesystem::file_time_type fileModTime;
@@ -1208,6 +1521,7 @@ SwaggerHandler::readOpenAPIFile(const std::string &version,
     try {
       // Use canonical path to ensure no symlink attacks
       std::filesystem::path canonicalPath = std::filesystem::canonical(path);
+      PLOG_INFO << "[OpenAPI] Trying to read file: " << canonicalPath;
 
       std::ifstream file(canonicalPath);
       if (file.is_open() && file.good()) {
@@ -1216,14 +1530,33 @@ SwaggerHandler::readOpenAPIFile(const std::string &version,
         file.close();
         yamlContent = buffer.str();
         if (!yamlContent.empty()) {
+          PLOG_INFO << "[OpenAPI] Successfully read file: " << canonicalPath << ", size: " << yamlContent.length();
+          // Log first few characters to verify language
+          if (yamlContent.length() > 200) {
+            std::string preview = yamlContent.substr(0, 200);
+            PLOG_INFO << "[OpenAPI] File preview (first 200 chars): " << preview;
+            // Check if it contains Vietnamese text
+            if (yamlContent.find("Kiểm tra") != std::string::npos || 
+                yamlContent.find("trạng thái") != std::string::npos) {
+              PLOG_INFO << "[OpenAPI] File contains Vietnamese text - language: " << language;
+            } else if (yamlContent.find("Health check") != std::string::npos ||
+                       yamlContent.find("Returns the health") != std::string::npos) {
+              PLOG_WARNING << "[OpenAPI] File contains English text but language requested is: " << language;
+            }
+          }
           actualFilePath = canonicalPath;
           fileModTime = std::filesystem::last_write_time(canonicalPath);
           break;
+        } else {
+          PLOG_WARNING << "[OpenAPI] File is empty: " << canonicalPath;
         }
+      } else {
+        PLOG_WARNING << "[OpenAPI] Cannot open file: " << canonicalPath;
       }
+    } catch (const std::exception& e) {
+      PLOG_ERROR << "[OpenAPI] Error reading file " << path << ": " << e.what();
     } catch (...) {
-      // Skip this path if there's an error
-      continue;
+      PLOG_ERROR << "[OpenAPI] Unknown error reading file: " << path;
     }
   }
 
