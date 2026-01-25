@@ -1,23 +1,23 @@
 openapi: 3.0.3
 info:
   title: Edge AI API
-  description: 'REST API for Edge AI operations and management.
+  description: 'REST API cho các thao tác và quản lý Edge AI.
 
 
-    ## Logging Features
+    ## Tính năng Ghi log
 
 
-    The server supports detailed logging features that can be enabled via command-line arguments:
+    Máy chủ hỗ trợ các tính năng ghi log chi tiết có thể được bật qua các tham số dòng lệnh:
 
 
-    - **API Logging** (`--log-api` or `--debug-api`): Logs all API requests and responses with response times
+    - **Ghi log API** (`--log-api` hoặc `--debug-api`): Ghi lại tất cả các yêu cầu và phản hồi API cùng với thời gian phản hồi
 
-    - **Instance Execution Logging** (`--log-instance` or `--debug-instance`): Logs instance lifecycle events (start/stop/status)
+    - **Ghi log Thực thi Instance** (`--log-instance` hoặc `--debug-instance`): Ghi lại các sự kiện vòng đời instance (start/stop/status)
 
-    - **SDK Output Logging** (`--log-sdk-output` or `--debug-sdk-output`): Logs SDK output when instances process data
+    - **Ghi log Đầu ra SDK** (`--log-sdk-output` hoặc `--debug-sdk-output`): Ghi lại đầu ra SDK khi các instance xử lý dữ liệu
 
 
-    Example usage:
+    Ví dụ sử dụng:
 
     ```bash
 
@@ -26,19 +26,19 @@ info:
     ```
 
 
-    For more details, see the [Logging Documentation](../docs/LOGGING.md).
+    Để biết thêm chi tiết, xem [Tài liệu Ghi log](../docs/LOGGING.md).
 
 
     ## Swagger UI
 
 
-    This API provides Swagger UI for interactive testing and exploration:
+    API này cung cấp Swagger UI để kiểm thử và khám phá tương tác:
 
-    - Access Swagger UI at `/swagger` or `/v1/swagger`
+    - Truy cập Swagger UI tại `/swagger` hoặc `/v1/swagger`
 
-    - OpenAPI specification available at `/openapi.yaml` or `/v1/openapi.yaml`
+    - Đặc tả OpenAPI có sẵn tại `/openapi.yaml` hoặc `/v1/openapi.yaml`
 
-    - Server URLs are automatically updated based on environment variables (`API_HOST` and `API_PORT`)
+    - URL máy chủ được cập nhật tự động dựa trên các biến môi trường (`API_HOST` và `API_PORT`)
 
     '
   version: 1.0.0
