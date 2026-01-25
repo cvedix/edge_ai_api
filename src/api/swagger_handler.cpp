@@ -84,6 +84,72 @@ void SwaggerHandler::getSwaggerUI(
   }
 }
 
+void SwaggerHandler::getScalarDocument(
+    const HttpRequestPtr &req,
+    std::function<void(const HttpResponsePtr &)> &&callback) {
+  // Set handler start time for accurate metrics
+  MetricsInterceptor::setHandlerStartTime(req);
+
+  try {
+    std::string path = req->path();
+    std::string version = extractVersionFromPath(path);
+
+    // Validate version format if provided
+    if (!version.empty() && !validateVersionFormat(version)) {
+      auto resp = HttpResponse::newHttpResponse();
+      resp->setStatusCode(k400BadRequest);
+      resp->setBody("Invalid API version format");
+      MetricsInterceptor::callWithMetrics(req, resp, std::move(callback));
+      return;
+    }
+
+    // Build absolute URL for OpenAPI spec based on request
+    std::string host = req->getHeader("Host");
+    if (host.empty()) {
+      host = "localhost:8080";
+    }
+    std::string scheme = req->getHeader("X-Forwarded-Proto");
+    if (scheme.empty()) {
+      // Check if request is secure
+      scheme = req->isOnSecureConnection() ? "https" : "http";
+    }
+
+    std::string baseUrl = scheme + "://" + host;
+    std::string html = generateScalarDocumentHTML(version, baseUrl);
+
+    auto resp = HttpResponse::newHttpResponse();
+    resp->setStatusCode(k200OK);
+    resp->setContentTypeCode(CT_TEXT_HTML);
+    resp->setBody(html);
+
+    // Add CORS headers
+    resp->addHeader("Access-Control-Allow-Origin", "*");
+    resp->addHeader("Access-Control-Allow-Methods", "GET, OPTIONS");
+    resp->addHeader("Access-Control-Allow-Headers", "Content-Type");
+
+    // Record metrics and call callback
+    MetricsInterceptor::callWithMetrics(req, resp, std::move(callback));
+  } catch (const std::exception &e) {
+    auto resp = HttpResponse::newHttpResponse();
+    resp->setStatusCode(k500InternalServerError);
+    resp->setBody("Internal server error");
+    // Add CORS headers
+    resp->addHeader("Access-Control-Allow-Origin", "*");
+    resp->addHeader("Access-Control-Allow-Methods", "GET, OPTIONS");
+    resp->addHeader("Access-Control-Allow-Headers", "Content-Type");
+    MetricsInterceptor::callWithMetrics(req, resp, std::move(callback));
+  } catch (...) {
+    auto resp = HttpResponse::newHttpResponse();
+    resp->setStatusCode(k500InternalServerError);
+    resp->setBody("Internal server error");
+    // Add CORS headers
+    resp->addHeader("Access-Control-Allow-Origin", "*");
+    resp->addHeader("Access-Control-Allow-Methods", "GET, OPTIONS");
+    resp->addHeader("Access-Control-Allow-Headers", "Content-Type");
+    MetricsInterceptor::callWithMetrics(req, resp, std::move(callback));
+  }
+}
+
 void SwaggerHandler::getOpenAPISpec(
     const HttpRequestPtr &req,
     std::function<void(const HttpResponsePtr &)> &&callback) {
@@ -112,7 +178,90 @@ void SwaggerHandler::getOpenAPISpec(
       requestHost = "localhost:8080";
     }
 
-    std::string yaml = readOpenAPIFile(version, requestHost);
+    std::string yaml = readOpenAPIFile(version, requestHost, "");
+
+    auto resp = HttpResponse::newHttpResponse();
+    resp->setStatusCode(k200OK);
+    resp->setContentTypeCode(CT_TEXT_PLAIN);
+    resp->addHeader("Content-Type", "text/yaml; charset=utf-8");
+    resp->setBody(yaml);
+
+    // Add CORS headers (restrictive for production)
+    resp->addHeader("Access-Control-Allow-Origin", "*");
+    resp->addHeader("Access-Control-Allow-Methods", "GET, OPTIONS");
+    resp->addHeader("Access-Control-Allow-Headers", "Content-Type");
+
+    // Record metrics and call callback
+    MetricsInterceptor::callWithMetrics(req, resp, std::move(callback));
+  } catch (const std::exception &e) {
+    auto resp = HttpResponse::newHttpResponse();
+    resp->setStatusCode(k500InternalServerError);
+    resp->setBody("Internal server error");
+    // Add CORS headers
+    resp->addHeader("Access-Control-Allow-Origin", "*");
+    resp->addHeader("Access-Control-Allow-Methods", "GET, OPTIONS");
+    resp->addHeader("Access-Control-Allow-Headers", "Content-Type");
+    MetricsInterceptor::callWithMetrics(req, resp, std::move(callback));
+  } catch (...) {
+    auto resp = HttpResponse::newHttpResponse();
+    resp->setStatusCode(k500InternalServerError);
+    resp->setBody("Internal server error");
+    // Add CORS headers
+    resp->addHeader("Access-Control-Allow-Origin", "*");
+    resp->addHeader("Access-Control-Allow-Methods", "GET, OPTIONS");
+    resp->addHeader("Access-Control-Allow-Headers", "Content-Type");
+    MetricsInterceptor::callWithMetrics(req, resp, std::move(callback));
+  }
+}
+
+void SwaggerHandler::getOpenAPISpecWithLang(
+    const HttpRequestPtr &req,
+    std::function<void(const HttpResponsePtr &)> &&callback) {
+  // Set handler start time for accurate metrics
+  MetricsInterceptor::setHandlerStartTime(req);
+  try {
+    std::string path = req->path();
+    std::string version = extractVersionFromPath(path);
+    // Get language from path parameter (Drogon uses {lang} in route)
+    std::string language = req->getParameter("lang");
+    // Fallback to extracting from path if parameter not found
+    if (language.empty()) {
+      language = extractLanguageFromPath(path);
+    }
+
+    // Validate version format if provided
+    if (!version.empty() && !validateVersionFormat(version)) {
+      auto resp = HttpResponse::newHttpResponse();
+      resp->setStatusCode(k400BadRequest);
+      resp->setBody("Invalid API version format");
+      // Add CORS headers
+      resp->addHeader("Access-Control-Allow-Origin", "*");
+      resp->addHeader("Access-Control-Allow-Methods", "GET, OPTIONS");
+      resp->addHeader("Access-Control-Allow-Headers", "Content-Type");
+      MetricsInterceptor::callWithMetrics(req, resp, std::move(callback));
+      return;
+    }
+
+    // Validate language code
+    if (!language.empty() && !validateLanguageCode(language)) {
+      auto resp = HttpResponse::newHttpResponse();
+      resp->setStatusCode(k400BadRequest);
+      resp->setBody("Invalid language code. Supported languages: en, vi");
+      // Add CORS headers
+      resp->addHeader("Access-Control-Allow-Origin", "*");
+      resp->addHeader("Access-Control-Allow-Methods", "GET, OPTIONS");
+      resp->addHeader("Access-Control-Allow-Headers", "Content-Type");
+      MetricsInterceptor::callWithMetrics(req, resp, std::move(callback));
+      return;
+    }
+
+    // Get host from request for browser-accessible URL
+    std::string requestHost = req->getHeader("Host");
+    if (requestHost.empty()) {
+      requestHost = "localhost:8080";
+    }
+
+    std::string yaml = readOpenAPIFile(version, requestHost, language);
 
     auto resp = HttpResponse::newHttpResponse();
     resp->setStatusCode(k200OK);
@@ -186,6 +335,24 @@ bool SwaggerHandler::validateVersionFormat(const std::string &version) const {
 
   // Ensure at least one digit after 'v'
   return version.length() > 1;
+}
+
+std::string SwaggerHandler::extractLanguageFromPath(const std::string &path) const {
+  // Match patterns like /v1/openapi/en/openapi.yaml or /v1/openapi/vi/openapi.yaml
+  // Extract the language code (en or vi) from the path
+  std::regex langPattern(R"(/openapi/(en|vi)/openapi\.yaml)");
+  std::smatch match;
+
+  if (std::regex_search(path, match, langPattern)) {
+    return match[1].str();
+  }
+
+  return ""; // No language found
+}
+
+bool SwaggerHandler::validateLanguageCode(const std::string &lang) const {
+  // Only support "en" and "vi"
+  return lang == "en" || lang == "vi";
 }
 
 std::string SwaggerHandler::sanitizePath(const std::string &path) const {
@@ -392,10 +559,465 @@ SwaggerHandler::generateSwaggerUIHTML(const std::string &version,
 }
 
 std::string
+SwaggerHandler::readScalarHTMLFile() const {
+  // Try to find api-specs/scalar/index.html
+  std::vector<std::filesystem::path> possiblePaths;
+
+  // 1. Check api-specs/scalar/index.html first (project structure)
+  try {
+    std::filesystem::path currentDir = std::filesystem::current_path();
+    std::filesystem::path testPath = currentDir / "api-specs" / "scalar" / "index.html";
+    if (std::filesystem::exists(testPath) &&
+        std::filesystem::is_regular_file(testPath)) {
+      possiblePaths.push_back(testPath);
+    }
+  } catch (...) {
+    // Ignore errors
+  }
+
+  // 2. Check environment variable for installation directory
+  const char *installDir = std::getenv("EDGE_AI_API_INSTALL_DIR");
+  if (installDir && installDir[0] != '\0') {
+    try {
+      std::filesystem::path installPath(installDir);
+      std::filesystem::path testPath = installPath / "api-specs" / "scalar" / "index.html";
+      if (std::filesystem::exists(testPath) &&
+          std::filesystem::is_regular_file(testPath)) {
+        possiblePaths.push_back(testPath);
+      }
+    } catch (...) {
+      // Ignore errors
+    }
+  }
+
+  // 3. Search up from current directory (for development)
+  std::filesystem::path basePath;
+  try {
+    basePath = std::filesystem::canonical(std::filesystem::current_path());
+  } catch (...) {
+    basePath = std::filesystem::current_path();
+  }
+
+  std::filesystem::path current = basePath;
+  for (int i = 0; i < 4; ++i) {
+    std::filesystem::path testPath = current / "api-specs" / "scalar" / "index.html";
+    if (std::filesystem::exists(testPath) &&
+        std::filesystem::is_regular_file(testPath)) {
+      possiblePaths.push_back(testPath);
+    }
+
+    if (current.has_parent_path() && current != current.parent_path()) {
+      current = current.parent_path();
+    } else {
+      break;
+    }
+  }
+
+  // Try to read from found paths
+  for (const auto &path : possiblePaths) {
+    try {
+      std::filesystem::path canonicalPath = std::filesystem::canonical(path);
+      std::ifstream file(canonicalPath);
+      if (file.is_open() && file.good()) {
+        std::stringstream buffer;
+        buffer << file.rdbuf();
+        file.close();
+        std::string htmlContent = buffer.str();
+        if (!htmlContent.empty()) {
+          return htmlContent;
+        }
+      }
+    } catch (...) {
+      // Continue to next path
+    }
+  }
+
+  // Return empty string if file not found (fallback to hardcoded HTML)
+  return "";
+}
+
+std::string
+SwaggerHandler::generateScalarDocumentHTML(const std::string &version,
+                                           const std::string &baseUrl) const {
+  // Try to read HTML from file first
+  std::string html = readScalarHTMLFile();
+  
+  if (!html.empty()) {
+    // Determine the OpenAPI spec URL based on version
+    std::string specUrl = "/openapi.yaml";
+    if (!version.empty()) {
+      specUrl = "/" + version + "/openapi.yaml";
+    }
+
+    // Use absolute URL if baseUrl is provided, otherwise use relative URL
+    std::string fullSpecUrl = specUrl;
+    std::string cleanBaseUrl = baseUrl;
+    if (!baseUrl.empty()) {
+      if (cleanBaseUrl.back() == '/') {
+        cleanBaseUrl.pop_back();
+      }
+      fullSpecUrl = cleanBaseUrl + specUrl;
+    }
+
+    // Replace placeholders in HTML
+    // For JSON script tag, we need proper JSON strings
+    std::string baseUrlJson = baseUrl.empty() ? "window.location.origin" : "\"" + cleanBaseUrl + "\"";
+    std::string versionJson = version.empty() ? "\"\"" : "\"" + version + "\"";
+    std::string fallbackUrlJson = "\"" + fullSpecUrl + "\"";
+    
+    // Replace placeholders - use replace_all equivalent
+    std::string placeholder;
+    
+    // Replace {{BASE_URL}}
+    placeholder = "{{BASE_URL}}";
+    size_t pos = 0;
+    while ((pos = html.find(placeholder, pos)) != std::string::npos) {
+      html.replace(pos, placeholder.length(), baseUrlJson);
+      pos += baseUrlJson.length();
+    }
+    
+    // Replace {{VERSION}}
+    placeholder = "{{VERSION}}";
+    pos = 0;
+    while ((pos = html.find(placeholder, pos)) != std::string::npos) {
+      html.replace(pos, placeholder.length(), versionJson);
+      pos += versionJson.length();
+    }
+    
+    // Replace {{FALLBACK_URL}}
+    placeholder = "{{FALLBACK_URL}}";
+    pos = 0;
+    while ((pos = html.find(placeholder, pos)) != std::string::npos) {
+      html.replace(pos, placeholder.length(), fallbackUrlJson);
+      pos += fallbackUrlJson.length();
+    }
+    
+    return html;
+  }
+
+  // Fallback to hardcoded HTML if file not found
+  // Determine the OpenAPI spec URL based on version
+  std::string specUrl = "/openapi.yaml";
+  std::string title = "Edge AI API - Scalar Documentation";
+
+  if (!version.empty()) {
+    specUrl = "/" + version + "/openapi.yaml";
+    title = "Edge AI API " + version + " - Scalar Documentation";
+  }
+
+  // Use absolute URL if baseUrl is provided, otherwise use relative URL
+  std::string fullSpecUrl = specUrl;
+  if (!baseUrl.empty()) {
+    // Remove trailing slash from baseUrl if present
+    std::string cleanBaseUrl = baseUrl;
+    if (cleanBaseUrl.back() == '/') {
+      cleanBaseUrl.pop_back();
+    }
+    fullSpecUrl = cleanBaseUrl + specUrl;
+  }
+
+  // Scalar API Reference HTML - using data-configuration attribute like the original file
+  std::string fallbackHtml = R"(<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>)" + title +
+                     R"(</title>
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+        }
+        .language-selector {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            z-index: 10000;
+            background: white;
+            padding: 10px 15px;
+            border-radius: 8px;
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+        .language-selector label {
+            font-weight: 600;
+            font-size: 14px;
+            color: #333;
+        }
+        .language-selector select {
+            padding: 6px 12px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            font-size: 14px;
+            cursor: pointer;
+            background: white;
+        }
+        .language-selector select:hover {
+            border-color: #999;
+        }
+        .language-selector select:focus {
+            outline: none;
+            border-color: #0066cc;
+            box-shadow: 0 0 0 2px rgba(0, 102, 204, 0.1);
+        }
+        #loading-message {
+            text-align: center;
+            padding: 40px 20px;
+            color: #333;
+        }
+        #error-message {
+            display: none;
+            text-align: center;
+            padding: 40px 20px;
+            color: #d32f2f;
+            background: #ffebee;
+            margin: 20px;
+            border-radius: 4px;
+        }
+    </style>
+    <script>
+        // CDN fallback configuration for Scalar
+        // Using version 1.24.0 (pinned for stability)
+        const SCALAR_CDN_URLS = [
+            'https://cdn.jsdelivr.net/npm/@scalar/api-reference@1.24.0/dist/browser/standalone.js',
+            'https://unpkg.com/@scalar/api-reference@1.24.0/dist/browser/standalone.js',
+            'https://fastly.jsdelivr.net/npm/@scalar/api-reference@1.24.0/dist/browser/standalone.js'
+        ];
+
+        let scriptLoaded = false;
+
+        function loadScalarScript(urls, index = 0) {
+            if (index >= urls.length) {
+                console.error('All CDN fallbacks failed for Scalar API Reference');
+                document.getElementById('loading-message').style.display = 'none';
+                document.getElementById('error-message').style.display = 'block';
+                document.getElementById('error-message').innerHTML = 
+                    '<h2>Failed to load Scalar API Reference</h2>' +
+                    '<p>Unable to load from CDN. Please check your internet connection.</p>' +
+                    '<p>You can try:</p>' +
+                    '<ul style="text-align: left; display: inline-block;">' +
+                    '<li>Refresh the page</li>' +
+                    '<li>Check your internet connection</li>' +
+                    '<li>Check browser console for errors</li>' +
+                    '</ul>';
+                return;
+            }
+
+            const url = urls[index];
+            console.log('Loading Scalar from:', url);
+
+            const script = document.createElement('script');
+            script.src = url;
+            script.onerror = function() {
+                console.warn('Failed to load Scalar from', url, ', trying next CDN...');
+                loadScalarScript(urls, index + 1);
+            };
+            script.onload = function() {
+                console.log('Successfully loaded Scalar from', url);
+                scriptLoaded = true;
+                // Scalar will auto-initialize from data-configuration attribute
+                document.getElementById('loading-message').style.display = 'none';
+            };
+            document.head.appendChild(script);
+        }
+
+        // Check if spec URL is accessible
+        function checkSpecUrl() {
+            const specUrl = ")" +
+                     fullSpecUrl + R"(";
+            fetch(specUrl)
+                .then(response => {
+                    if (!response.ok) {
+                        throw new Error('HTTP ' + response.status + ': ' + response.statusText);
+                    }
+                    return response.text();
+                })
+                .then(data => {
+                    console.log('OpenAPI spec loaded successfully');
+                })
+                .catch(error => {
+                    console.error('Failed to load OpenAPI spec:', error);
+                    document.getElementById('loading-message').style.display = 'none';
+                    document.getElementById('error-message').style.display = 'block';
+                    document.getElementById('error-message').innerHTML = 
+                        '<h2>Error loading API documentation</h2>' +
+                        '<p>Failed to load OpenAPI specification from: <a href="' + specUrl + '" target="_blank">' + specUrl + '</a></p>' +
+                        '<p>Error: ' + error.message + '</p>' +
+                        '<p>Please check:</p>' +
+                        '<ul style="text-align: left; display: inline-block;">' +
+                        '<li>That the server is running</li>' +
+                        '<li>That the endpoint is accessible</li>' +
+                        '<li>Browser console for more details</li>' +
+                        '</ul>';
+                });
+        }
+
+        // Start loading when page loads
+        window.addEventListener('DOMContentLoaded', function() {
+            loadScalarScript(SCALAR_CDN_URLS);
+            // Check spec URL after a short delay
+            setTimeout(checkSpecUrl, 1000);
+        });
+
+        // Fallback: if script doesn't load after 10 seconds, show error
+        setTimeout(function() {
+            if (!scriptLoaded) {
+                console.warn('Scalar script loading timeout');
+                document.getElementById('loading-message').style.display = 'none';
+                document.getElementById('error-message').style.display = 'block';
+                document.getElementById('error-message').innerHTML = 
+                    '<h2>Timeout loading Scalar API Reference</h2>' +
+                    '<p>The script is taking too long to load. Please refresh the page.</p>';
+            }
+        }, 10000);
+    </script>
+    <script src="https://cdn.jsdelivr.net/npm/@scalar/api-reference@1.24.0/dist/browser/standalone.js"></script>
+</head>
+<body>
+    <div class="language-selector">
+        <label for="language-select">Language / Ngôn ngữ:</label>
+        <select id="language-select">
+            <option value="en">English</option>
+            <option value="vi">Tiếng Việt</option>
+        </select>
+    </div>
+    <div id="loading-message">
+        <h2>Loading API Documentation...</h2>
+        <p>Please wait while we load the Scalar API Reference.</p>
+    </div>
+    <div id="error-message"></div>
+    <div id="api-reference"></div>
+    <script>
+        // Lấy ngôn ngữ từ URL parameter hoặc localStorage
+        function getLanguage() {
+            const urlParams = new URLSearchParams(window.location.search);
+            const langFromUrl = urlParams.get('lang');
+            if (langFromUrl && (langFromUrl === 'en' || langFromUrl === 'vi')) {
+                return langFromUrl;
+            }
+            const langFromStorage = localStorage.getItem('api-docs-language');
+            if (langFromStorage && (langFromStorage === 'en' || langFromStorage === 'vi')) {
+                return langFromStorage;
+            }
+            return 'en'; // Default to English
+        }
+
+        // Lưu ngôn ngữ đã chọn
+        function saveLanguage(lang) {
+            localStorage.setItem('api-docs-language', lang);
+            const url = new URL(window.location);
+            url.searchParams.set('lang', lang);
+            window.history.replaceState({}, '', url);
+        }
+
+        // Khởi tạo Scalar với ngôn ngữ đã chọn
+        function initializeScalar(language) {
+            const baseUrl = ")" + baseUrl + R"(";
+            const versionStr = ")" + version + R"(";
+            let specUrl;
+            
+            // Xây dựng URL cho file OpenAPI theo ngôn ngữ
+            // File OpenAPI được serve từ endpoint: /{version}/openapi/{lang}/openapi.yaml
+            if (versionStr && versionStr !== '') {
+                specUrl = baseUrl + '/' + versionStr + '/openapi/' + language + '/openapi.yaml';
+            } else {
+                specUrl = baseUrl + '/openapi/' + language + '/openapi.yaml';
+            }
+            
+            // Fallback: nếu không tìm thấy file theo ngôn ngữ, dùng file mặc định
+            const fallbackUrl = ")" + fullSpecUrl + R"(";
+            
+            // Thử load file theo ngôn ngữ, nếu fail thì dùng fallback
+            fetch(specUrl)
+                .then(response => {
+                    if (!response.ok) {
+                        throw new Error('File not found');
+                    }
+                    return specUrl;
+                })
+                .catch(() => {
+                    console.warn('Language-specific file not found, using fallback');
+                    return fallbackUrl;
+                })
+                .then(finalUrl => {
+                    const configuration = {
+                        spec: {
+                            url: finalUrl
+                        },
+                        theme: 'default',
+                        layout: 'modern',
+                        hideDownloadButton: false,
+                        hideModels: false,
+                        hideSidebar: false,
+                        defaultHttpClient: {
+                            targetKey: 'javascript',
+                            clientKey: 'fetch'
+                        }
+                    };
+
+                    // Xóa api-reference cũ nếu có
+                    const oldRef = document.getElementById('api-reference');
+                    if (oldRef) {
+                        oldRef.innerHTML = '';
+                    }
+
+                    // Đợi Scalar script load xong rồi mới khởi tạo
+                    if (typeof ScalarApiReference !== 'undefined') {
+                        // Scalar đã load, khởi tạo trực tiếp
+                        ScalarApiReference.default({
+                            ...configuration,
+                            target: '#api-reference'
+                        });
+                    } else {
+                        // Scalar chưa load, tạo script element để tự động khởi tạo
+                        const script = document.createElement('script');
+                        script.id = 'api-reference-config';
+                        script.setAttribute('data-configuration', JSON.stringify(configuration));
+                        document.body.appendChild(script);
+                    }
+                });
+        }
+
+        // Xử lý thay đổi ngôn ngữ
+        function handleLanguageChange() {
+            const select = document.getElementById('language-select');
+            const selectedLang = select.value;
+            saveLanguage(selectedLang);
+            initializeScalar(selectedLang);
+        }
+
+        // Khởi tạo
+        document.addEventListener('DOMContentLoaded', function() {
+            const currentLang = getLanguage();
+            const select = document.getElementById('language-select');
+            if (select) {
+                select.value = currentLang;
+                select.addEventListener('change', handleLanguageChange);
+            }
+            
+            // Khởi tạo Scalar với ngôn ngữ hiện tại
+            initializeScalar(currentLang);
+        });
+    </script>
+</body>
+</html>)";
+
+  return html;
+}
+
+std::string
 SwaggerHandler::readOpenAPIFile(const std::string &version,
-                                const std::string &requestHost) const {
-  // Check cache first
+                                const std::string &requestHost,
+                                const std::string &language) const {
+  // Check cache first - include language in cache key
   std::string cacheKey = version.empty() ? "all" : version;
+  if (!language.empty()) {
+    cacheKey += "_" + language;
+  }
 
   {
     std::lock_guard<std::mutex> lock(cache_mutex_);
@@ -430,11 +1052,52 @@ SwaggerHandler::readOpenAPIFile(const std::string &version,
   }
 
   // Cache miss or expired, read from file
-  // Priority: 1) Current working directory (service install dir), 2)
-  // Environment variable, 3) Search up from current dir
+  // Priority: 1) api-specs/openapi/{lang}/openapi.yaml (if language specified), 2) api-specs/openapi.yaml (project structure), 3) Current working directory (service install dir), 4)
+  // Environment variable, 5) Search up from current dir
   std::vector<std::filesystem::path> possiblePaths;
 
-  // 1. Check current working directory first (for service installations)
+  // 1. If language is specified, check language-specific file first
+  if (!language.empty() && validateLanguageCode(language)) {
+    try {
+      std::filesystem::path currentDir = std::filesystem::current_path();
+      std::filesystem::path testPath = currentDir / "api-specs" / "openapi" / language / "openapi.yaml";
+      if (std::filesystem::exists(testPath) &&
+          std::filesystem::is_regular_file(testPath)) {
+        possiblePaths.push_back(testPath);
+      }
+    } catch (...) {
+      // Ignore errors
+    }
+
+    // Also check in install directory
+    const char *installDir = std::getenv("EDGE_AI_API_INSTALL_DIR");
+    if (installDir && installDir[0] != '\0') {
+      try {
+        std::filesystem::path installPath(installDir);
+        std::filesystem::path testPath = installPath / "api-specs" / "openapi" / language / "openapi.yaml";
+        if (std::filesystem::exists(testPath) &&
+            std::filesystem::is_regular_file(testPath)) {
+          possiblePaths.push_back(testPath);
+        }
+      } catch (...) {
+        // Ignore errors
+      }
+    }
+  }
+
+  // 2. Check api-specs/openapi.yaml (project structure) - fallback if language-specific not found
+  try {
+    std::filesystem::path currentDir = std::filesystem::current_path();
+    std::filesystem::path testPath = currentDir / "api-specs" / "openapi.yaml";
+    if (std::filesystem::exists(testPath) &&
+        std::filesystem::is_regular_file(testPath)) {
+      possiblePaths.push_back(testPath);
+    }
+  } catch (...) {
+    // Ignore errors
+  }
+
+  // 3. Check current working directory (for service installations)
   try {
     std::filesystem::path currentDir = std::filesystem::current_path();
     std::filesystem::path testPath = currentDir / "openapi.yaml";
@@ -446,7 +1109,7 @@ SwaggerHandler::readOpenAPIFile(const std::string &version,
     // Ignore errors
   }
 
-  // 2. Check environment variable for installation directory
+  // 4. Check environment variable for installation directory
   const char *installDir = std::getenv("EDGE_AI_API_INSTALL_DIR");
   if (installDir && installDir[0] != '\0') {
     try {
@@ -456,12 +1119,18 @@ SwaggerHandler::readOpenAPIFile(const std::string &version,
           std::filesystem::is_regular_file(testPath)) {
         possiblePaths.push_back(testPath);
       }
+      // Also check api-specs subdirectory
+      std::filesystem::path testPathApiSpecs = installPath / "api-specs" / "openapi.yaml";
+      if (std::filesystem::exists(testPathApiSpecs) &&
+          std::filesystem::is_regular_file(testPathApiSpecs)) {
+        possiblePaths.push_back(testPathApiSpecs);
+      }
     } catch (...) {
       // Ignore errors
     }
   }
 
-  // 3. Search up from current directory (for development)
+  // 5. Search up from current directory (for development)
   std::filesystem::path basePath;
   try {
     basePath = std::filesystem::canonical(std::filesystem::current_path());
@@ -471,6 +1140,32 @@ SwaggerHandler::readOpenAPIFile(const std::string &version,
 
   std::filesystem::path current = basePath;
   for (int i = 0; i < 4; ++i) {
+    // Check api-specs/openapi.yaml first
+    std::filesystem::path testPathApiSpecs = current / "api-specs" / "openapi.yaml";
+    if (std::filesystem::exists(testPathApiSpecs)) {
+      if (std::filesystem::is_regular_file(testPathApiSpecs)) {
+        // Avoid duplicates
+        bool alreadyAdded = false;
+        for (const auto &existing : possiblePaths) {
+          try {
+            if (std::filesystem::equivalent(testPathApiSpecs, existing)) {
+              alreadyAdded = true;
+              break;
+            }
+          } catch (...) {
+            if (testPathApiSpecs == existing) {
+              alreadyAdded = true;
+              break;
+            }
+          }
+        }
+        if (!alreadyAdded) {
+          possiblePaths.push_back(testPathApiSpecs);
+        }
+      }
+    }
+
+    // Check openapi.yaml in current directory
     std::filesystem::path testPath = current / "openapi.yaml";
     if (std::filesystem::exists(testPath)) {
       // Verify it's a regular file and not a symlink to prevent attacks

@@ -18,9 +18,12 @@ using namespace drogon;
  * - GET /swagger - Swagger UI interface (all versions)
  * - GET /v1/swagger - Swagger UI for API v1
  * - GET /v2/swagger - Swagger UI for API v2
+ * - GET /v1/document - Scalar API documentation for API v1
  * - GET /openapi.yaml - OpenAPI specification file (all versions)
  * - GET /v1/openapi.yaml - OpenAPI specification for v1
  * - GET /v2/openapi.yaml - OpenAPI specification for v2
+ * - GET /v1/openapi/{lang}/openapi.yaml - OpenAPI specification for v1 with language (en/vi)
+ * - GET /v2/openapi/{lang}/openapi.yaml - OpenAPI specification for v2 with language (en/vi)
  */
 class SwaggerHandler : public drogon::HttpController<SwaggerHandler> {
 public:
@@ -28,16 +31,22 @@ public:
   ADD_METHOD_TO(SwaggerHandler::getSwaggerUI, "/swagger", Get);
   ADD_METHOD_TO(SwaggerHandler::getSwaggerUI, "/v1/swagger", Get);
   ADD_METHOD_TO(SwaggerHandler::getSwaggerUI, "/v2/swagger", Get);
+  ADD_METHOD_TO(SwaggerHandler::getScalarDocument, "/v1/document", Get);
   ADD_METHOD_TO(SwaggerHandler::getOpenAPISpec, "/openapi.yaml", Get);
   ADD_METHOD_TO(SwaggerHandler::getOpenAPISpec, "/v1/openapi.yaml", Get);
   ADD_METHOD_TO(SwaggerHandler::getOpenAPISpec, "/v2/openapi.yaml", Get);
+  ADD_METHOD_TO(SwaggerHandler::getOpenAPISpecWithLang, "/v1/openapi/{lang}/openapi.yaml", Get);
+  ADD_METHOD_TO(SwaggerHandler::getOpenAPISpecWithLang, "/v2/openapi/{lang}/openapi.yaml", Get);
   ADD_METHOD_TO(SwaggerHandler::getOpenAPISpec, "/api-docs", Get);
   ADD_METHOD_TO(SwaggerHandler::handleOptions, "/swagger", Options);
   ADD_METHOD_TO(SwaggerHandler::handleOptions, "/v1/swagger", Options);
   ADD_METHOD_TO(SwaggerHandler::handleOptions, "/v2/swagger", Options);
+  ADD_METHOD_TO(SwaggerHandler::handleOptions, "/v1/document", Options);
   ADD_METHOD_TO(SwaggerHandler::handleOptions, "/openapi.yaml", Options);
   ADD_METHOD_TO(SwaggerHandler::handleOptions, "/v1/openapi.yaml", Options);
   ADD_METHOD_TO(SwaggerHandler::handleOptions, "/v2/openapi.yaml", Options);
+  ADD_METHOD_TO(SwaggerHandler::handleOptions, "/v1/openapi/{lang}/openapi.yaml", Options);
+  ADD_METHOD_TO(SwaggerHandler::handleOptions, "/v2/openapi/{lang}/openapi.yaml", Options);
   METHOD_LIST_END
 
   /**
@@ -47,10 +56,22 @@ public:
                     std::function<void(const HttpResponsePtr &)> &&callback);
 
   /**
+   * @brief Serve Scalar API documentation HTML page
+   */
+  void getScalarDocument(const HttpRequestPtr &req,
+                         std::function<void(const HttpResponsePtr &)> &&callback);
+
+  /**
    * @brief Serve OpenAPI specification file
    */
   void getOpenAPISpec(const HttpRequestPtr &req,
-                      std::function<void(const HttpResponsePtr &)> &&callback);
+                     std::function<void(const HttpResponsePtr &)> &&callback);
+
+  /**
+   * @brief Serve OpenAPI specification file with language support
+   */
+  void getOpenAPISpecWithLang(const HttpRequestPtr &req,
+                              std::function<void(const HttpResponsePtr &)> &&callback);
 
   /**
    * @brief Handle OPTIONS request for CORS preflight
@@ -82,6 +103,20 @@ private:
   std::string extractVersionFromPath(const std::string &path) const;
 
   /**
+   * @brief Extract language from request path
+   * @param path Request path
+   * @return Language string (e.g., "en", "vi") or empty string if not found
+   */
+  std::string extractLanguageFromPath(const std::string &path) const;
+
+  /**
+   * @brief Validate language code
+   * @param lang Language code to validate
+   * @return true if valid (en or vi), false otherwise
+   */
+  bool validateLanguageCode(const std::string &lang) const;
+
+  /**
    * @brief Generate Swagger UI HTML content
    * @param version API version (e.g., "v1", "v2") or empty for all versions
    * @param baseUrl Base URL for the API server (e.g., "http://localhost:8080")
@@ -90,13 +125,29 @@ private:
                                     const std::string &baseUrl = "") const;
 
   /**
+   * @brief Generate Scalar API documentation HTML content
+   * @param version API version (e.g., "v1", "v2") or empty for all versions
+   * @param baseUrl Base URL for the API server (e.g., "http://localhost:8080")
+   */
+  std::string generateScalarDocumentHTML(const std::string &version = "",
+                                         const std::string &baseUrl = "") const;
+
+  /**
    * @brief Read OpenAPI YAML file
    * @param version API version to filter (e.g., "v1", "v2") or empty for all
    * versions
    * @param requestHost Host from request header (for browser-accessible URL)
+   * @param language Language code (e.g., "en", "vi") or empty for default
    */
   std::string readOpenAPIFile(const std::string &version = "",
-                              const std::string &requestHost = "") const;
+                              const std::string &requestHost = "",
+                              const std::string &language = "") const;
+
+  /**
+   * @brief Read Scalar HTML template file
+   * @return HTML content from api-specs/scalar/index.html
+   */
+  std::string readScalarHTMLFile() const;
 
   /**
    * @brief Filter OpenAPI YAML to only include paths for specified version
