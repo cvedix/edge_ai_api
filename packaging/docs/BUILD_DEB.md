@@ -81,18 +81,61 @@ sudo apt-get install -y \
 
 ## 💾 Cài Đặt Package
 
+### ⚠️ Quan Trọng: Prerequisites Trước Khi Cài Đặt
+
+**Trước khi cài đặt package**, bạn cần cài đặt các dependencies sau nếu muốn cài OpenCV 4.10 tự động:
+
+```bash
+sudo apt-get update
+sudo apt-get install -y unzip cmake make g++ wget
+```
+
+**Lý do:** Trong quá trình cài đặt package (`dpkg -i`), hệ thống không cho phép cài đặt thêm packages khác vì dpkg đang giữ lock. Do đó, nếu bạn muốn cài OpenCV 4.10 tự động trong quá trình cài đặt package, các dependencies trên phải được cài đặt **trước**.
+
+**Nếu không cài dependencies trước:**
+- Package vẫn sẽ được cài đặt thành công
+- OpenCV 4.10 sẽ được bỏ qua trong quá trình cài đặt
+- Bạn có thể cài OpenCV 4.10 sau bằng cách:
+  ```bash
+  sudo apt-get update
+  sudo apt-get install -y unzip cmake make g++ wget
+  sudo /opt/edge_ai_api/scripts/build_opencv_safe.sh
+  ```
+
+### Các Bước Cài Đặt
+
 **Sau khi có file .deb**, mới cần sudo để cài đặt:
 
 ```bash
-# Cài đặt
+# 1. Cài đặt dependencies cho OpenCV (nếu muốn cài OpenCV tự động)
+sudo apt-get update
+sudo apt-get install -y unzip cmake make g++ wget
+
+# 2. Cài đặt package
 sudo dpkg -i edge-ai-api-2025.0.1.3-Beta-amd64.deb
 
-# Nếu có lỗi dependencies
+# 3. Nếu có lỗi dependencies
 sudo apt-get install -f
 
-# Khởi động service
+# 4. Khởi động service
 sudo systemctl start edge-ai-api
 sudo systemctl enable edge-ai-api  # Tự động chạy khi khởi động
+```
+
+### Cài Đặt OpenCV 4.10 Sau Khi Cài Package
+
+Nếu bạn đã cài package nhưng chưa cài OpenCV 4.10, bạn có thể cài sau:
+
+```bash
+# 1. Cài dependencies
+sudo apt-get update
+sudo apt-get install -y unzip cmake make g++ wget
+
+# 2. Chạy script cài OpenCV 4.10
+sudo /opt/edge_ai_api/scripts/build_opencv_safe.sh
+
+# 3. Khởi động lại service
+sudo systemctl restart edge-ai-api
 ```
 
 ## ✅ Kiểm Tra

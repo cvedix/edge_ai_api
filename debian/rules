@@ -19,6 +19,10 @@ LIB_DIR = /opt/edge_ai_api/lib
 SERVICE_USER = edgeai
 SERVICE_GROUP = edgeai
 
+# SDK configuration
+SDK_EXTRACT_DIR = $(CURDIR)/debian/sdk_extract
+CVEDIX_INSTALL_DIR = /opt/cvedix
+
 %:
 	dh $@
 
@@ -87,17 +91,98 @@ override_dh_auto_install:
 		cp -r $(CURDIR)/debian/edge-ai-api/opt/edge_ai_api/lib/* $(CURDIR)/debian/$(PACKAGE_NAME)$(LIB_DIR)/ 2>/dev/null || true; \
 	fi
 
+	# Copy libopencv_freetype.so.410 from build/lib (created by CMakeLists.txt or build script)
+	# This is required for CVEDIX SDK compatibility
+	# Must be done AFTER bundle_libs.sh to ensure it's not overwritten
+	@LIB_TEMP_DIR=$(CURDIR)/debian/$(PACKAGE_NAME)$(LIB_DIR); \
+	if [ ! -f "$$LIB_TEMP_DIR/libopencv_freetype.so.410" ]; then \
+		FREETYPE_COPIED=false; \
+		# Try build/lib first (created by CMakeLists.txt or build script) \
+		if [ -f $(CURDIR)/build/lib/libopencv_freetype.so.410 ]; then \
+			echo "Copying libopencv_freetype.so.410 from build/lib..."; \
+			cp -L $(CURDIR)/build/lib/libopencv_freetype.so.410 "$$LIB_TEMP_DIR/" 2>/dev/null && FREETYPE_COPIED=true || true; \
+			if [ "$$FREETYPE_COPIED" = true ]; then \
+				echo "  ✓ libopencv_freetype.so.410 bundled from build/lib"; \
+			fi; \
+		fi; \
+		# Try system OpenCV 4.6 if not found in build/lib \
+		if [ "$$FREETYPE_COPIED" = false ]; then \
+			FREETYPE_SOURCES="/usr/lib/x86_64-linux-gnu/libopencv_freetype.so.4.6.0 /usr/lib/x86_64-linux-gnu/libopencv_freetype.so.406 /usr/local/lib/libopencv_freetype.so.4.6.0 /usr/local/lib/libopencv_freetype.so.406 /usr/lib/libopencv_freetype.so.4.6.0 /usr/lib/libopencv_freetype.so.406"; \
+			for source in $$FREETYPE_SOURCES; do \
+				if [ -f "$$source" ]; then \
+					echo "Copying libopencv_freetype.so.410 from $$source..."; \
+					cp -L "$$source" "$$LIB_TEMP_DIR/libopencv_freetype.so.410" 2>/dev/null && FREETYPE_COPIED=true && break || true; \
+				fi; \
+			done; \
+			if [ "$$FREETYPE_COPIED" = true ]; then \
+				echo "  ✓ libopencv_freetype.so.410 bundled from system OpenCV 4.6"; \
+			fi; \
+		fi; \
+		# Try SDK extract directory if available \
+		if [ "$$FREETYPE_COPIED" = false ] && [ -d $(SDK_EXTRACT_DIR) ]; then \
+			for sdk_source in $(SDK_EXTRACT_DIR)/opt/cvedix/lib/libopencv_freetype.so* $(SDK_EXTRACT_DIR)/usr/lib/x86_64-linux-gnu/libopencv_freetype.so*; do \
+				if [ -f "$$sdk_source" ]; then \
+					echo "Copying libopencv_freetype.so.410 from SDK extract..."; \
+					cp -L "$$sdk_source" "$$LIB_TEMP_DIR/libopencv_freetype.so.410" 2>/dev/null && FREETYPE_COPIED=true && break || true; \
+				fi; \
+			done; \
+			if [ "$$FREETYPE_COPIED" = true ]; then \
+				echo "  ✓ libopencv_freetype.so.410 bundled from SDK extract"; \
+			fi; \
+		fi; \
+		# Final check \
+		if [ "$$FREETYPE_COPIED" = false ]; then \
+			echo "  ✗ ERROR: libopencv_freetype.so.410 not found in any source"; \
+			echo "  This file is REQUIRED for CVEDIX SDK compatibility"; \
+			echo "  Please ensure OpenCV 4.6 is installed on build machine or file exists in build/lib"; \
+			echo "  The package will be built but service may fail to start"; \
+		fi; \
+	fi; \
+	# CRITICAL: Remove any conflicting freetype versions (e.g., .406) if .410 exists
+	if [ -f "$$LIB_TEMP_DIR/libopencv_freetype.so.410" ]; then \
+		for freetype_file in $$LIB_TEMP_DIR/libopencv_freetype.so.*; do \
+			if [ -f "$$freetype_file" ] && [ "$$(basename $$freetype_file)" != "libopencv_freetype.so.410" ] && [ "$$(basename $$freetype_file)" != "libopencv_freetype.so.410.0" ]; then \
+				echo "  Removing conflicting freetype version: $$(basename $$freetype_file)"; \
+				rm -f "$$freetype_file" 2>/dev/null || true; \
+			fi; \
+		done; \
+		echo "  ✓ Ensured only libopencv_freetype.so.410 is present"; \
+	fi
+
 	# Update RPATH in executables to use bundled libraries
-	# RPATH: /opt/edge_ai_api/lib (relative to executable at /usr/local/bin)
+	# RPATH: /opt/edge_ai_api/lib:/opt/cvedix/lib (relative to executable at /usr/local/bin)
+	# CRITICAL: RPATH must be set correctly for bundled libraries to be found
+	@EXPECTED_RPATH="/opt/edge_ai_api/lib:/opt/cvedix/lib"; \
 	if command -v patchelf >/dev/null 2>&1; then \
 		if [ -f $(CURDIR)/debian/$(PACKAGE_NAME)$(BIN_DIR)/edge_ai_api ]; then \
 			echo "Setting RPATH for edge_ai_api..."; \
-			patchelf --set-rpath "/opt/edge_ai_api/lib" $(CURDIR)/debian/$(PACKAGE_NAME)$(BIN_DIR)/edge_ai_api 2>/dev/null || true; \
+			if patchelf --set-rpath "$$EXPECTED_RPATH" $(CURDIR)/debian/$(PACKAGE_NAME)$(BIN_DIR)/edge_ai_api 2>&1; then \
+				VERIFIED_RPATH=$$(patchelf --print-rpath $(CURDIR)/debian/$(PACKAGE_NAME)$(BIN_DIR)/edge_ai_api 2>/dev/null || echo ""); \
+				if [ "$$VERIFIED_RPATH" = "$$EXPECTED_RPATH" ]; then \
+					echo "  ✓ RPATH set successfully for edge_ai_api: $$VERIFIED_RPATH"; \
+				else \
+					echo "  ⚠  Warning: RPATH may not be set correctly. Expected: $$EXPECTED_RPATH, Got: $$VERIFIED_RPATH"; \
+				fi; \
+			else \
+				echo "  ✗ ERROR: Failed to set RPATH for edge_ai_api"; \
+			fi; \
 		fi; \
 		if [ -f $(CURDIR)/debian/$(PACKAGE_NAME)$(BIN_DIR)/edge_ai_worker ]; then \
 			echo "Setting RPATH for edge_ai_worker..."; \
-			patchelf --set-rpath "/opt/edge_ai_api/lib" $(CURDIR)/debian/$(PACKAGE_NAME)$(BIN_DIR)/edge_ai_worker 2>/dev/null || true; \
+			if patchelf --set-rpath "$$EXPECTED_RPATH" $(CURDIR)/debian/$(PACKAGE_NAME)$(BIN_DIR)/edge_ai_worker 2>&1; then \
+				VERIFIED_RPATH=$$(patchelf --print-rpath $(CURDIR)/debian/$(PACKAGE_NAME)$(BIN_DIR)/edge_ai_worker 2>/dev/null || echo ""); \
+				if [ "$$VERIFIED_RPATH" = "$$EXPECTED_RPATH" ]; then \
+					echo "  ✓ RPATH set successfully for edge_ai_worker: $$VERIFIED_RPATH"; \
+				else \
+					echo "  ⚠  Warning: RPATH may not be set correctly. Expected: $$EXPECTED_RPATH, Got: $$VERIFIED_RPATH"; \
+				fi; \
+			else \
+				echo "  ✗ ERROR: Failed to set RPATH for edge_ai_worker"; \
+			fi; \
 		fi; \
+	else \
+		echo "  ⚠  Warning: patchelf not found, RPATH cannot be set during build"; \
+		echo "  RPATH must be set in postinst script or binary will not find bundled libraries"; \
 	fi
 
 	# Install systemd service
@@ -149,6 +234,58 @@ override_dh_auto_install:
 	fi
 	if [ -f $(CURDIR)/packaging/scripts/generate_version_manifest.sh ]; then \
 		install -m 755 $(CURDIR)/packaging/scripts/generate_version_manifest.sh $(CURDIR)/debian/$(PACKAGE_NAME)$(INSTALL_DIR)/scripts/generate_version_manifest.sh; \
+	fi
+	# Install OpenCV build script for user to install OpenCV 4.10 if needed
+	if [ -f $(CURDIR)/scripts/build_opencv_safe.sh ]; then \
+		install -m 755 $(CURDIR)/scripts/build_opencv_safe.sh $(CURDIR)/debian/$(PACKAGE_NAME)$(INSTALL_DIR)/scripts/build_opencv_safe.sh; \
+	fi
+
+	# ============================================
+	# Install CVEDIX SDK from extracted .deb
+	# Copy ALL files from SDK package to edge-ai-api package
+	# ============================================
+	@echo "Installing CVEDIX SDK from extracted package..."; \
+	if [ -d $(SDK_EXTRACT_DIR) ]; then \
+		echo "  Copying entire CVEDIX SDK directory structure..."; \
+		# Copy entire SDK directory structure to /opt/cvedix \
+		if [ -d $(SDK_EXTRACT_DIR)/opt/cvedix ]; then \
+			install -d $(CURDIR)/debian/$(PACKAGE_NAME)$(CVEDIX_INSTALL_DIR); \
+			cp -r $(SDK_EXTRACT_DIR)/opt/cvedix/* $(CURDIR)/debian/$(PACKAGE_NAME)$(CVEDIX_INSTALL_DIR)/ 2>/dev/null || true; \
+			echo "  ✓ CVEDIX SDK fully integrated into package"; \
+		else \
+			echo "  ⚠  Warning: /opt/cvedix not found in SDK extract directory"; \
+		fi; \
+		# Also copy SDK libraries to bundled lib directory for easier access \
+		if [ -d $(SDK_EXTRACT_DIR)/opt/cvedix/lib ]; then \
+			echo "  Copying SDK libraries to bundled lib directory..."; \
+			cp -L $(SDK_EXTRACT_DIR)/opt/cvedix/lib/*.so* $(CURDIR)/debian/$(PACKAGE_NAME)$(LIB_DIR)/ 2>/dev/null || true; \
+		fi; \
+	else \
+		echo "  ⚠  Warning: SDK extract directory not found: $(SDK_EXTRACT_DIR)"; \
+		echo "  SDK will not be bundled in this package"; \
+	fi
+
+	# Install default data from cvedix_data (fonts and models)
+	# These will be installed to /opt/edge_ai_api/fonts and /opt/edge_ai_api/models
+	# as default data for users on fresh installations
+	@echo "Installing default data from cvedix_data..."; \
+	if [ -d $(CURDIR)/cvedix_data ]; then \
+		# Install default fonts \
+		if [ -d $(CURDIR)/cvedix_data/font ]; then \
+			echo "Installing default fonts..."; \
+			install -d $(CURDIR)/debian/$(PACKAGE_NAME)$(INSTALL_DIR)/fonts; \
+			cp -r $(CURDIR)/cvedix_data/font/* $(CURDIR)/debian/$(PACKAGE_NAME)$(INSTALL_DIR)/fonts/ 2>/dev/null || true; \
+			echo "  ✓ Default fonts installed"; \
+		fi; \
+		# Install default models \
+		if [ -d $(CURDIR)/cvedix_data/models ]; then \
+			echo "Installing default models..."; \
+			install -d $(CURDIR)/debian/$(PACKAGE_NAME)$(INSTALL_DIR)/models; \
+			cp -r $(CURDIR)/cvedix_data/models/* $(CURDIR)/debian/$(PACKAGE_NAME)$(INSTALL_DIR)/models/ 2>/dev/null || true; \
+			echo "  ✓ Default models installed"; \
+		fi; \
+	else \
+		echo "  Note: cvedix_data directory not found, skipping default data installation"; \
 	fi
 
 	# Bundle GStreamer plugins (optional - for fully standalone package)

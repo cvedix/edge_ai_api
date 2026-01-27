@@ -257,20 +257,44 @@ Sau khi build, file `.deb` sẽ được tạo tại project root với tên:
 edge-ai-api-2025.0.1.3-Beta-amd64.deb
 ```
 
+**⚠️ Quan trọng - Prerequisites:**
+
+Trước khi cài đặt package, nếu bạn muốn cài OpenCV 4.10 tự động trong quá trình cài đặt, cần cài dependencies trước:
+
+```bash
+sudo apt-get update
+sudo apt-get install -y unzip cmake make g++ wget
+```
+
+**Lý do:** Trong quá trình cài đặt package (`dpkg -i`), hệ thống không cho phép cài đặt thêm packages khác vì dpkg đang giữ lock. Nếu không cài dependencies trước, OpenCV sẽ được bỏ qua và bạn có thể cài sau.
+
 **Cài đặt package:**
 
 ```bash
-# Cài đặt
+# 1. Cài dependencies cho OpenCV (nếu muốn cài OpenCV tự động)
+sudo apt-get update
+sudo apt-get install -y unzip cmake make g++ wget
+
+# 2. Cài đặt
 sudo dpkg -i edge-ai-api-2025.0.1.3-Beta-amd64.deb
 
-# Nếu có lỗi dependencies, chạy:
+# 3. Nếu có lỗi dependencies, chạy:
 sudo apt-get install -f
 
-# Khởi động service
+# 4. Khởi động service
 sudo systemctl start edge-ai-api
 
-# Enable tự động chạy khi khởi động
+# 5. Enable tự động chạy khi khởi động
 sudo systemctl enable edge-ai-api
+```
+
+**Nếu chưa cài OpenCV 4.10, cài sau:**
+
+```bash
+sudo apt-get update
+sudo apt-get install -y unzip cmake make g++ wget
+sudo /opt/edge_ai_api/scripts/build_opencv_safe.sh
+sudo systemctl restart edge-ai-api
 ```
 
 ### Kiểm Tra Cài Đặt

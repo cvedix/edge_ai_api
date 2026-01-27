@@ -1,6 +1,8 @@
 #!/bin/bash
 # postinst script for edge-ai-api
 
+# Use set -e for strict error handling
+# Non-critical commands should use || true to prevent script failure
 set -e
 
 PACKAGE_NAME="edge-ai-api"
@@ -29,9 +31,23 @@ bundle_libraries() {
     # Create symlinks for .so files (ldconfig requires symlinks)
     # For files like libdrogon.so.1.8.0, create libdrogon.so.1 -> libdrogon.so.1.8.0
     # and libdrogon.so -> libdrogon.so.1
-    for lib_file in "$LIB_DIR"/*.so.*; do
+    for lib_file in "$LIB_DIR"/*.so*; do
         if [ -f "$lib_file" ] && [ ! -L "$lib_file" ]; then
             lib_base=$(basename "$lib_file")
+            
+            # Special handling for libopencv_freetype.so.410 (required by CVEDIX SDK)
+            if [[ "$lib_base" == "libopencv_freetype.so.410" ]]; then
+                # Ensure the file itself is accessible
+                if [ ! -r "$lib_file" ]; then
+                    chmod 644 "$lib_file" 2>/dev/null || true
+                fi
+                # Create symlink libopencv_freetype.so.410 -> libopencv_freetype.so.410 (self-reference for compatibility)
+                if [ ! -L "$LIB_DIR/libopencv_freetype.so.410" ]; then
+                    ln -sf "$lib_base" "$LIB_DIR/libopencv_freetype.so.410" 2>/dev/null || true
+                fi
+                continue
+            fi
+            
             # Extract base name (e.g., libdrogon.so.1.8.0 -> libdrogon.so.1)
             lib_major="${lib_base%.*}"
             # Extract base name without version (e.g., libdrogon.so.1 -> libdrogon.so)
@@ -50,8 +66,19 @@ bundle_libraries() {
     done
 
     # Create ldconfig configuration
-    echo "$LIB_DIR" > /etc/ld.so.conf.d/edge-ai-api.conf
-    ldconfig 2>&1 | grep -v "is not a symbolic link" || true
+    if [ -d "/etc/ld.so.conf.d" ] && [ -w "/etc/ld.so.conf.d" ]; then
+        echo "$LIB_DIR" > /etc/ld.so.conf.d/edge-ai-api.conf 2>/dev/null || {
+            echo "⚠  Warning: Cannot write to /etc/ld.so.conf.d/edge-ai-api.conf"
+            echo "Library path may not be configured correctly."
+        }
+        if command -v ldconfig >/dev/null 2>&1; then
+            ldconfig 2>&1 | grep -v "is not a symbolic link" || true
+        else
+            echo "⚠  Warning: ldconfig not found. Library cache may not be updated."
+        fi
+    else
+        echo "⚠  Warning: Cannot access /etc/ld.so.conf.d. Library path may not be configured."
+    fi
 
     echo "Libraries configured successfully."
 }
@@ -59,32 +86,57 @@ bundle_libraries() {
 # Create user and group
 if ! id "$SERVICE_USER" &>/dev/null; then
     echo "Creating user $SERVICE_USER..."
-    adduser --system --group --home "$INSTALL_DIR" --no-create-home --shell /bin/false "$SERVICE_USER" || true
+    if command -v adduser >/dev/null 2>&1; then
+        adduser --system --group --home "$INSTALL_DIR" --no-create-home --shell /bin/false "$SERVICE_USER" 2>/dev/null || {
+            # Fallback to useradd if adduser fails
+            if command -v useradd >/dev/null 2>&1; then
+                useradd --system --home-dir "$INSTALL_DIR" --shell /bin/false --comment "Edge AI API Service User" "$SERVICE_USER" 2>/dev/null || true
+                groupadd --system "$SERVICE_GROUP" 2>/dev/null || true
+                usermod -g "$SERVICE_GROUP" "$SERVICE_USER" 2>/dev/null || true
+            else
+                echo "⚠  Warning: Neither adduser nor useradd found. Cannot create service user."
+                echo "Service may not run correctly without proper user setup."
+            fi
+        }
+    elif command -v useradd >/dev/null 2>&1; then
+        useradd --system --home-dir "$INSTALL_DIR" --shell /bin/false --comment "Edge AI API Service User" "$SERVICE_USER" 2>/dev/null || true
+        groupadd --system "$SERVICE_GROUP" 2>/dev/null || true
+        usermod -g "$SERVICE_GROUP" "$SERVICE_USER" 2>/dev/null || true
+    else
+        echo "⚠  Warning: No user creation tool found (adduser/useradd). Cannot create service user."
+        echo "Service may not run correctly without proper user setup."
+    fi
+else
+    echo "  ✓ User $SERVICE_USER already exists"
 fi
 
 # Create required directories (must exist before systemd sets up mount namespace)
 echo "Creating required directories..."
 
-# Load directory creation helper
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
-if [ -f "$PROJECT_ROOT/scripts/create_directories.sh" ]; then
-    echo "Creating application directories..."
-    "$PROJECT_ROOT/scripts/create_directories.sh" "$INSTALL_DIR" --full-permissions || {
+# Try to find create_directories.sh script from installed package
+# When running from postinst, script is in /var/lib/dpkg/info/, so we need to check INSTALL_DIR
+CREATE_DIRS_SCRIPT=""
+if [ -f "$INSTALL_DIR/scripts/create_directories.sh" ]; then
+    CREATE_DIRS_SCRIPT="$INSTALL_DIR/scripts/create_directories.sh"
+elif [ -f "$INSTALL_DIR/deploy/create_directories.sh" ]; then
+    CREATE_DIRS_SCRIPT="$INSTALL_DIR/deploy/create_directories.sh"
+fi
+
+if [ -n "$CREATE_DIRS_SCRIPT" ] && [ -f "$CREATE_DIRS_SCRIPT" ]; then
+    echo "Creating application directories using script..."
+    chmod +x "$CREATE_DIRS_SCRIPT" 2>/dev/null || true
+    "$CREATE_DIRS_SCRIPT" "$INSTALL_DIR" --full-permissions || {
         echo "Warning: Failed to create directories with full permissions, trying without..."
-        "$PROJECT_ROOT/scripts/create_directories.sh" "$INSTALL_DIR" || {
-            echo "Error: Failed to create directories" >&2
-            exit 1
+        "$CREATE_DIRS_SCRIPT" "$INSTALL_DIR" || {
+            echo "Warning: Failed to create directories with script, using fallback..."
+            CREATE_DIRS_SCRIPT=""
         }
     }
-elif [ -f "$PROJECT_ROOT/deploy/create_directories.sh" ]; then
-    # Fallback to old location for backward compatibility
-    source "$PROJECT_ROOT/deploy/create_directories.sh"
-    create_app_directories "$INSTALL_DIR" "$PROJECT_ROOT"
-else
-    # Fallback: create directories manually if helper not found
-    # NOTE: This list must match directories.conf
-    echo "Warning: create_directories.sh not found, using fallback"
+fi
+
+# Fallback: create directories manually if helper not found or failed
+if [ -z "$CREATE_DIRS_SCRIPT" ] || [ ! -f "$CREATE_DIRS_SCRIPT" ]; then
+    echo "Creating directories manually (fallback)..."
     mkdir -p "$INSTALL_DIR"/instances
     mkdir -p "$INSTALL_DIR"/solutions
     mkdir -p "$INSTALL_DIR"/groups
@@ -99,16 +151,27 @@ else
     mkdir -p "$INSTALL_DIR"/lib
     mkdir -p "$INSTALL_DIR"/run
     mkdir -p "$INSTALL_DIR"/record
+    echo "  ✓ Directories created"
 fi
 
 # Set up directory permissions
 echo "Setting up directory permissions..."
-chown -R "$SERVICE_USER:$SERVICE_GROUP" "$INSTALL_DIR" 2>/dev/null || true
-chmod 755 "$INSTALL_DIR"
+# Verify user exists before chown
+if id "$SERVICE_USER" &>/dev/null; then
+    chown -R "$SERVICE_USER:$SERVICE_GROUP" "$INSTALL_DIR" 2>/dev/null || {
+        echo "  ⚠  Warning: Cannot change ownership of $INSTALL_DIR to $SERVICE_USER:$SERVICE_GROUP"
+        echo "  This may cause permission issues. Please check manually."
+    }
+else
+    echo "  ⚠  Warning: User $SERVICE_USER does not exist. Cannot set ownership."
+fi
+chmod 755 "$INSTALL_DIR" 2>/dev/null || {
+    echo "  ⚠  Warning: Cannot set permissions on $INSTALL_DIR"
+}
 
 # Apply permissions from directories.conf
-if [ -f "$PROJECT_ROOT/deploy/directories.conf" ]; then
-    source "$PROJECT_ROOT/deploy/directories.conf"
+if [ -f "$INSTALL_DIR/deploy/directories.conf" ]; then
+    source "$INSTALL_DIR/deploy/directories.conf"
     for dir_name in "${!APP_DIRECTORIES[@]}"; do
         dir_path="$INSTALL_DIR/$dir_name"
         dir_perms="${APP_DIRECTORIES[$dir_name]}"
@@ -236,6 +299,56 @@ echo "External data directory permissions setup completed."
 
 # Bundle libraries
 bundle_libraries
+
+# Setup CVEDIX SDK library path (SDK is bundled in this package)
+echo "Setting up CVEDIX SDK library path..."
+if [ -d "/opt/cvedix/lib" ]; then
+    if [ -d "/etc/ld.so.conf.d" ] && [ -w "/etc/ld.so.conf.d" ]; then
+        if echo "/opt/cvedix/lib" > /etc/ld.so.conf.d/cvedix.conf 2>/dev/null; then
+            echo "  ✓ Added /opt/cvedix/lib to library search path"
+            if command -v ldconfig >/dev/null 2>&1; then
+                ldconfig 2>&1 | grep -v "is not a symbolic link" || true
+            else
+                echo "  ⚠  Warning: ldconfig not found. Library cache may not be updated."
+            fi
+        else
+            echo "  ⚠  Warning: Cannot write to /etc/ld.so.conf.d/cvedix.conf"
+        fi
+    else
+        echo "  ⚠  Warning: Cannot access /etc/ld.so.conf.d. Library path may not be configured."
+    fi
+else
+    echo "  ⚠  Warning: /opt/cvedix/lib not found (SDK may not be properly installed)"
+fi
+
+# Check OpenCV installation (bundled or system)
+echo "Checking OpenCV installation..."
+OPENCV_FOUND=false
+if [ -d "$INSTALL_DIR/lib" ]; then
+    # Check if OpenCV is bundled
+    if find "$INSTALL_DIR/lib" -name "libopencv_core.so.4.10*" -o -name "libopencv_core.so.410*" 2>/dev/null | grep -q .; then
+        echo "  ✓ OpenCV 4.10 libraries found in bundled lib directory"
+        OPENCV_FOUND=true
+    fi
+fi
+
+# Check system OpenCV
+if [ "$OPENCV_FOUND" = false ]; then
+    if command -v opencv_version >/dev/null 2>&1; then
+        OPENCV_VER=$(opencv_version 2>/dev/null | head -1 || echo "")
+        if echo "$OPENCV_VER" | grep -qE "^4\.(10|1[1-9]|[2-9][0-9])"; then
+            echo "  ✓ OpenCV $OPENCV_VER found in system"
+            OPENCV_FOUND=true
+        else
+            echo "  ⚠  OpenCV version $OPENCV_VER found, but 4.10+ is recommended"
+        fi
+    fi
+fi
+
+if [ "$OPENCV_FOUND" = false ]; then
+    echo "  ⚠  Warning: OpenCV 4.10+ not found"
+    echo "  You may need to install OpenCV 4.10+ or ensure bundled libraries are available"
+fi
 
 # Setup face database permissions
 echo "Setting up face database permissions..."
@@ -383,6 +496,307 @@ setup_gst_plugin_path() {
 setup_gst_plugin_path
 
 # ============================================
+# Check and Install OpenCV 4.10
+# ============================================
+check_opencv_410() {
+    echo "Checking OpenCV 4.10 installation..."
+    
+    OPENCV_VERSION=""
+    OPENCV_LIB_PATH=""
+    OPENCV_FOUND=false
+    
+    # Check opencv_version command
+    if command -v opencv_version &>/dev/null; then
+        OPENCV_VERSION=$(opencv_version 2>/dev/null | head -1 || echo "")
+        if echo "$OPENCV_VERSION" | grep -qE "^4\.(10|1[1-9]|[2-9][0-9])"; then
+            OPENCV_FOUND=true
+            echo "  ✓ Found OpenCV $OPENCV_VERSION via opencv_version command"
+        fi
+    fi
+    
+    # Check library paths
+    OPENCV_PATHS=(
+        "/usr/local/lib"
+        "/usr/local/lib/x86_64-linux-gnu"
+        "/usr/lib/x86_64-linux-gnu"
+        "/usr/lib"
+    )
+    
+    for path in "${OPENCV_PATHS[@]}"; do
+        if [ -d "$path" ]; then
+            if find "$path" -maxdepth 1 -name "libopencv_core.so.4.10*" -o -name "libopencv_core.so.410*" 2>/dev/null | grep -q .; then
+                OPENCV_LIB_PATH="$path"
+                OPENCV_FOUND=true
+                echo "  ✓ Found OpenCV 4.10 libraries at: $OPENCV_LIB_PATH"
+                break
+            fi
+        fi
+    done
+    
+    # Check for freetype library specifically
+    FREETYPE_FOUND=false
+    if [ "$OPENCV_FOUND" = true ]; then
+        FREETYPE_SOURCES=(
+            "/usr/local/lib/libopencv_freetype.so.4.10"
+            "/usr/local/lib/libopencv_freetype.so.410"
+            "/usr/lib/x86_64-linux-gnu/libopencv_freetype.so.4.10"
+            "/usr/lib/x86_64-linux-gnu/libopencv_freetype.so.410"
+        )
+        
+        for source in "${FREETYPE_SOURCES[@]}"; do
+            if [ -f "$source" ]; then
+                FREETYPE_FOUND=true
+                echo "  ✓ Found libopencv_freetype.so.410 at: $source"
+                break
+            fi
+        done
+    fi
+    
+    if [ "$OPENCV_FOUND" = true ] && [ "$FREETYPE_FOUND" = true ]; then
+        return 0  # OpenCV 4.10 with freetype is installed
+    else
+        return 1  # OpenCV 4.10 is not properly installed
+    fi
+}
+
+install_opencv_410() {
+    echo ""
+    echo "=========================================="
+    echo "OpenCV 4.10 Installation Required"
+    echo "=========================================="
+    echo ""
+    echo "OpenCV 4.10 with freetype support is required for edge_ai_api."
+    echo "The installation process will take approximately 30-60 minutes."
+    echo ""
+    
+    # Check disk space (need at least 5GB free for OpenCV build)
+    echo "Checking disk space..."
+    AVAILABLE_SPACE=$(df -BG /tmp 2>/dev/null | tail -1 | awk '{print $4}' | sed 's/G//' || echo "0")
+    if [ "$AVAILABLE_SPACE" -lt 5 ] 2>/dev/null; then
+        echo "⚠  Warning: Less than 5GB free space available ($AVAILABLE_SPACE GB)"
+        echo "OpenCV build requires at least 5GB free space."
+        echo "Please free up disk space and try again, or install OpenCV manually."
+        return 1
+    fi
+    echo "  ✓ Sufficient disk space available ($AVAILABLE_SPACE GB)"
+    
+    # Check network connectivity
+    echo "Checking network connectivity..."
+    if ! ping -c 1 -W 2 github.com >/dev/null 2>&1 && ! ping -c 1 -W 2 8.8.8.8 >/dev/null 2>&1; then
+        echo "⚠  Warning: No network connectivity detected"
+        echo "OpenCV installation requires internet connection to download source code."
+        echo "Please check your network connection and try again."
+        return 1
+    fi
+    echo "  ✓ Network connectivity OK"
+    
+    # Check if running in non-interactive mode
+    if [ -n "${DEBIAN_FRONTEND:-}" ] && [ "$DEBIAN_FRONTEND" = "noninteractive" ]; then
+        echo "Running in non-interactive mode. Skipping OpenCV installation."
+        echo "Please install OpenCV 4.10 manually using:"
+        echo "  sudo $INSTALL_DIR/scripts/build_opencv_safe.sh"
+        return 1
+    fi
+    
+    # Check if we have a TTY for user interaction
+    if [ ! -t 0 ]; then
+        echo "No TTY available. Cannot prompt for user input."
+        echo "Please install OpenCV 4.10 manually using:"
+        echo "  sudo $INSTALL_DIR/scripts/build_opencv_safe.sh"
+        return 1
+    fi
+    
+    # Prompt user
+    echo "Choose an option:"
+    echo "  1) Install OpenCV 4.10 automatically (recommended)"
+    echo "  2) Skip installation and install manually later"
+    echo ""
+    read -p "Enter your choice [1-2] (default: 1): " choice
+    choice=${choice:-1}
+    
+    case "$choice" in
+        1)
+            echo ""
+            echo "Starting automatic OpenCV 4.10 installation..."
+            echo "This may take 30-60 minutes. Please be patient."
+            echo ""
+            
+            # Check for required dependencies
+            echo "Checking dependencies..."
+            MISSING_DEPS=()
+            for dep in unzip wget cmake make g++; do
+                if ! command -v "$dep" >/dev/null 2>&1; then
+                    MISSING_DEPS+=("$dep")
+                fi
+            done
+            
+            if [ ${#MISSING_DEPS[@]} -gt 0 ]; then
+                echo "Missing dependencies detected: ${MISSING_DEPS[*]}"
+                
+                # Check if dpkg lock is held (we're in the middle of package installation)
+                if [ -f /var/lib/dpkg/lock-frontend ] || [ -f /var/lib/dpkg/lock ]; then
+                    echo ""
+                    echo "═══════════════════════════════════════════════════════════════"
+                    echo "⚠  KHÔNG THỂ CÀI DEPENDENCIES TRONG QUÁ TRÌNH CÀI PACKAGE"
+                    echo "═══════════════════════════════════════════════════════════════"
+                    echo ""
+                    echo "Lý do: dpkg đang giữ lock trong quá trình cài đặt package."
+                    echo "Đây là hành vi bình thường của hệ thống Debian/Ubuntu."
+                    echo ""
+                    echo "Giải pháp:"
+                    echo "  1. Package sẽ được cài đặt thành công (OpenCV sẽ được bỏ qua)"
+                    echo "  2. Sau khi cài đặt package xong, chạy các lệnh sau:"
+                    echo ""
+                    echo "     sudo apt-get update"
+                    echo "     sudo apt-get install -y ${MISSING_DEPS[*]}"
+                    echo "     sudo $INSTALL_DIR/scripts/build_opencv_safe.sh"
+                    echo ""
+                    echo "Hoặc cài dependencies TRƯỚC khi cài package:"
+                    echo "     sudo apt-get update"
+                    echo "     sudo apt-get install -y ${MISSING_DEPS[*]}"
+                    echo "     sudo dpkg -i <package-file>.deb"
+                    echo ""
+                    echo "═══════════════════════════════════════════════════════════════"
+                    echo ""
+                    echo "⚠  Bỏ qua cài đặt OpenCV. Cài đặt package sẽ tiếp tục..."
+                    return 0  # Return success to not fail package installation
+                fi
+                
+                # Try to install dependencies
+                echo "Installing missing dependencies: ${MISSING_DEPS[*]}"
+                if apt-get update -qq && apt-get install -y -qq "${MISSING_DEPS[@]}" 2>/dev/null; then
+                    echo "  ✓ Dependencies installed successfully"
+                else
+                    echo "⚠  Failed to install dependencies automatically."
+                    echo "Please install them manually:"
+                    echo "  sudo apt-get update"
+                    echo "  sudo apt-get install -y ${MISSING_DEPS[*]}"
+                    echo ""
+                    echo "Then run the OpenCV installation script:"
+                    echo "  sudo $INSTALL_DIR/scripts/build_opencv_safe.sh"
+                    echo ""
+                    echo "⚠  Skipping OpenCV installation for now. Package installation will continue."
+                    return 0  # Return success to not fail package installation
+                fi
+            else
+                echo "  ✓ All dependencies are available"
+            fi
+            
+            OPENCV_BUILD_SCRIPT="$INSTALL_DIR/scripts/build_opencv_safe.sh"
+            if [ ! -f "$OPENCV_BUILD_SCRIPT" ]; then
+                echo "⚠  WARNING: OpenCV build script not found at $OPENCV_BUILD_SCRIPT"
+                echo "Please install OpenCV 4.10 manually later."
+                echo "⚠  Skipping OpenCV installation for now. Package installation will continue."
+                return 0  # Return success to not fail package installation
+            fi
+            
+            # Make script executable
+            chmod +x "$OPENCV_BUILD_SCRIPT"
+            
+            # Create temporary directory for OpenCV build
+            OPENCV_BUILD_DIR=$(mktemp -d)
+            if [ ! -d "$OPENCV_BUILD_DIR" ]; then
+                echo "⚠  WARNING: Failed to create temporary build directory"
+                echo "⚠  Skipping OpenCV installation for now. Package installation will continue."
+                return 0  # Return success to not fail package installation
+            fi
+            
+            # Cleanup function
+            cleanup_build_dir() {
+                if [ -d "$OPENCV_BUILD_DIR" ]; then
+                    echo "Cleaning up temporary build directory..."
+                    rm -rf "$OPENCV_BUILD_DIR" 2>/dev/null || true
+                fi
+            }
+            trap cleanup_build_dir EXIT
+            
+            echo "Using temporary build directory: $OPENCV_BUILD_DIR"
+            cd "$OPENCV_BUILD_DIR" || {
+                echo "⚠  WARNING: Failed to change to build directory"
+                echo "⚠  Skipping OpenCV installation for now. Package installation will continue."
+                return 0  # Return success to not fail package installation
+            }
+            
+            # Run the build script directly (it now has improved validation handling)
+            echo "Running OpenCV build script..."
+            echo "Note: Script includes improved error handling for zip validation."
+            
+            # Run script with better error handling
+            set +e  # Don't exit on error immediately
+            bash "$OPENCV_BUILD_SCRIPT"
+            BUILD_EXIT_CODE=$?
+            set -e  # Re-enable exit on error
+            
+            if [ $BUILD_EXIT_CODE -eq 0 ]; then
+                echo ""
+                echo "✓ OpenCV 4.10 installed successfully!"
+                # Update library cache
+                if command -v ldconfig >/dev/null 2>&1; then
+                    ldconfig 2>&1 | grep -v "is not a symbolic link" || true
+                fi
+                cd - >/dev/null || true
+                cleanup_build_dir
+                trap - EXIT
+                return 0
+            else
+                echo ""
+                echo "⚠  OpenCV 4.10 installation encountered errors (exit code: $BUILD_EXIT_CODE)"
+                echo ""
+                echo "This may be due to:"
+                echo "  - Network issues during download"
+                echo "  - Zip file validation issues (file may still be valid)"
+                echo "  - Build dependencies missing"
+                echo ""
+                echo "You can try installing manually:"
+                echo "  cd /tmp"
+                echo "  sudo $OPENCV_BUILD_SCRIPT"
+                echo ""
+                echo "⚠  Skipping OpenCV installation for now. Package installation will continue."
+                cd - >/dev/null || true
+                cleanup_build_dir
+                trap - EXIT
+                return 0  # Return success to not fail package installation
+            fi
+            ;;
+        2)
+            echo ""
+            echo "Skipping automatic installation."
+            echo "To install OpenCV 4.10 manually, run:"
+            echo "  sudo $INSTALL_DIR/scripts/build_opencv_safe.sh"
+            echo ""
+            echo "After installation, copy the freetype library:"
+            echo "  sudo cp /usr/local/lib/libopencv_freetype.so.4.10 $INSTALL_DIR/lib/libopencv_freetype.so.410"
+            echo "  sudo ldconfig"
+            echo "  sudo systemctl restart ${SERVICE_NAME}"
+            return 0  # Return success to not fail package installation
+            ;;
+        *)
+            echo "Invalid choice. Skipping installation."
+            return 0  # Return success to not fail package installation
+            ;;
+    esac
+}
+
+# Check OpenCV 4.10 before fixing CVEDIX SDK issues
+# Make OpenCV installation optional - don't fail package installation if it fails
+if ! check_opencv_410; then
+    echo ""
+    echo "⚠  OpenCV 4.10 is not properly installed or freetype library is missing."
+    # Temporarily disable exit on error for OpenCV installation
+    set +e
+    install_opencv_410
+    INSTALL_OPENCV_EXIT=$?
+    set -e
+    # Re-check after installation attempt
+    check_opencv_410 || true
+    if [ $INSTALL_OPENCV_EXIT -ne 0 ]; then
+        echo ""
+        echo "⚠  OpenCV 4.10 installation was skipped or failed."
+        echo "   Package installation will continue. You can install OpenCV later."
+    fi
+fi
+
+# ============================================
 # Fix CVEDIX SDK Issues
 # ============================================
 echo "Fixing CVEDIX SDK issues..."
@@ -464,18 +878,78 @@ fix_cvedix_issues() {
     fi
     
     echo "  [4/4] Fixing OpenCV freetype compatibility..."
-    FREETYPE_406="/usr/lib/x86_64-linux-gnu/libopencv_freetype.so.4.6.0"
-    FREETYPE_410_BUILD="$INSTALL_DIR/lib/libopencv_freetype.so.410"
+    FREETYPE_410_TARGET="$INSTALL_DIR/lib/libopencv_freetype.so.410"
+    mkdir -p "$INSTALL_DIR/lib"
     
-    if [ -f "$FREETYPE_406" ]; then
-        mkdir -p "$INSTALL_DIR/lib"
-        if [ -f "$FREETYPE_410_BUILD" ]; then
-            rm -f "$FREETYPE_410_BUILD"
+    # Check if file already exists in bundled lib directory (from package)
+    if [ -f "$FREETYPE_410_TARGET" ]; then
+        echo "    ✓ libopencv_freetype.so.410 already exists in bundled lib directory"
+        # Verify file is readable
+        if [ ! -r "$FREETYPE_410_TARGET" ]; then
+            echo "    ⚠  Warning: File exists but is not readable, fixing permissions..."
+            chmod 644 "$FREETYPE_410_TARGET" 2>/dev/null || true
         fi
-        cp "$FREETYPE_406" "$FREETYPE_410_BUILD" 2>/dev/null || true
-        echo "    ✓ Copied OpenCV freetype 4.6.0 to $FREETYPE_410_BUILD"
     else
-        echo "    ⚠  OpenCV freetype 4.6.0 not found at $FREETYPE_406"
+        # File not in package, try to find from system OpenCV installations
+        FREETYPE_COPIED=false
+        
+        # First, try to find from OpenCV 4.10 (preferred) - check after installation attempt
+        OPENCV_410_FREETYPE_SOURCES=(
+            "/usr/local/lib/libopencv_freetype.so.4.10"
+            "/usr/local/lib/libopencv_freetype.so.410"
+            "/usr/lib/x86_64-linux-gnu/libopencv_freetype.so.4.10"
+            "/usr/lib/x86_64-linux-gnu/libopencv_freetype.so.410"
+            "/usr/lib/libopencv_freetype.so.4.10"
+            "/usr/lib/libopencv_freetype.so.410"
+        )
+        
+        for source in "${OPENCV_410_FREETYPE_SOURCES[@]}"; do
+            if [ -f "$source" ]; then
+                echo "    Copying from OpenCV 4.10: $source"
+                cp "$source" "$FREETYPE_410_TARGET" 2>/dev/null && FREETYPE_COPIED=true && break || true
+            fi
+        done
+        
+        # OpenCV 4.10 only - do NOT use OpenCV 4.6 as fallback
+        # If not found from OpenCV 4.10, we need to rebuild OpenCV 4.10 with freetype support
+        if [ "$FREETYPE_COPIED" = false ]; then
+            echo "    ⚠  OpenCV 4.10 freetype library not found"
+            echo "    This means OpenCV 4.10 was built without freetype module"
+            echo "    We require OpenCV 4.10 with freetype support (not OpenCV 4.6)"
+        fi
+        
+        # If still not found, provide instructions (OpenCV 4.10 only)
+        if [ "$FREETYPE_COPIED" = false ]; then
+            echo "    ✗ ERROR: libopencv_freetype.so.410 not found"
+            echo "    This file is REQUIRED for CVEDIX SDK compatibility"
+            echo ""
+            echo "    OpenCV 4.10 must be built with freetype module support."
+            echo "    We do NOT use OpenCV 4.6 as fallback."
+            echo ""
+            echo "    To fix:"
+            echo "      1. Install freetype2-dev: sudo apt-get install libfreetype6-dev"
+            echo "      2. Rebuild OpenCV 4.10 with freetype: sudo $INSTALL_DIR/scripts/build_opencv_safe.sh"
+            echo "      3. Copy freetype library: sudo cp /usr/local/lib/libopencv_freetype.so.4.10 $FREETYPE_410_TARGET"
+            echo "      4. Update cache: sudo ldconfig"
+            echo "      5. Restart service: sudo systemctl restart ${SERVICE_NAME}"
+            echo ""
+            echo "    Or use the fix script: sudo $INSTALL_DIR/scripts/fix_freetype.sh"
+            echo ""
+            echo "    Installation will continue but the service will fail to start without this file."
+        else
+            echo "    ✓ Copied OpenCV freetype to $FREETYPE_410_TARGET"
+            # Set correct permissions
+            chmod 644 "$FREETYPE_410_TARGET" 2>/dev/null || true
+            chown "$SERVICE_USER:$SERVICE_GROUP" "$FREETYPE_410_TARGET" 2>/dev/null || true
+        fi
+    fi
+    
+    # Final verification: ensure file exists and is readable
+    if [ -f "$FREETYPE_410_TARGET" ] && [ -r "$FREETYPE_410_TARGET" ]; then
+        echo "    ✓ Verified: libopencv_freetype.so.410 is available and readable"
+    else
+        echo "    ✗ ERROR: libopencv_freetype.so.410 is missing or not readable at $FREETYPE_410_TARGET"
+        echo "    The service will fail to start without this file."
     fi
     
     echo "  ✓ CVEDIX SDK symlinks fixed"
@@ -485,8 +959,96 @@ fix_cvedix_issues
 
 # Update library cache after fixing symlinks
 echo "Updating library cache..."
-ldconfig 2>&1 | grep -v "is not a symbolic link" || true
-echo "  ✓ Library cache updated"
+if command -v ldconfig >/dev/null 2>&1; then
+    ldconfig 2>&1 | grep -v "is not a symbolic link" || true
+    echo "  ✓ Library cache updated"
+else
+    echo "  ⚠  Warning: ldconfig not found. Library cache may not be updated."
+    echo "  Libraries may not be found at runtime. Please install glibc-utils."
+fi
+
+# Verify RPATH is set correctly for executables (critical for finding bundled libraries)
+echo "Verifying RPATH configuration..."
+EXPECTED_RPATH="/opt/edge_ai_api/lib:/opt/cvedix/lib"
+
+if command -v patchelf >/dev/null 2>&1; then
+    if [ -f "$BIN_DIR/edge_ai_api" ]; then
+        CURRENT_RPATH=$(patchelf --print-rpath "$BIN_DIR/edge_ai_api" 2>/dev/null || echo "")
+        if [ "$CURRENT_RPATH" != "$EXPECTED_RPATH" ]; then
+            echo "  Setting RPATH for edge_ai_api..."
+            patchelf --set-rpath "$EXPECTED_RPATH" "$BIN_DIR/edge_ai_api" 2>/dev/null || true
+            echo "  ✓ RPATH updated for edge_ai_api"
+        else
+            echo "  ✓ RPATH already correct for edge_ai_api"
+        fi
+    fi
+    if [ -f "$BIN_DIR/edge_ai_worker" ]; then
+        CURRENT_RPATH=$(patchelf --print-rpath "$BIN_DIR/edge_ai_worker" 2>/dev/null || echo "")
+        if [ "$CURRENT_RPATH" != "$EXPECTED_RPATH" ]; then
+            echo "  Setting RPATH for edge_ai_worker..."
+            patchelf --set-rpath "$EXPECTED_RPATH" "$BIN_DIR/edge_ai_worker" 2>/dev/null || true
+            echo "  ✓ RPATH updated for edge_ai_worker"
+        else
+            echo "  ✓ RPATH already correct for edge_ai_worker"
+        fi
+    fi
+else
+        echo "  ⚠  patchelf not found, cannot verify/update RPATH"
+        echo "  RPATH should be set during package build"
+        echo "  Attempting to verify library search path..."
+        # Verify that library directory is in ld.so.conf
+        if [ -f /etc/ld.so.conf.d/edge-ai-api.conf ] && grep -q "^$LIB_DIR$" /etc/ld.so.conf.d/edge-ai-api.conf 2>/dev/null; then
+            echo "  ✓ Library directory $LIB_DIR is in ld.so.conf"
+        else
+            echo "  ⚠  Warning: Library directory $LIB_DIR may not be in ld.so.conf"
+            if [ -d "/etc/ld.so.conf.d" ] && [ -w "/etc/ld.so.conf.d" ]; then
+                echo "  Creating ld.so.conf entry..."
+                if echo "$LIB_DIR" > /etc/ld.so.conf.d/edge-ai-api.conf 2>/dev/null; then
+                    if command -v ldconfig >/dev/null 2>&1; then
+                        ldconfig 2>&1 | grep -v "is not a symbolic link" || true
+                    else
+                        echo "  ⚠  Warning: ldconfig not found. Library cache may not be updated."
+                    fi
+                else
+                    echo "  ⚠  Warning: Cannot write to /etc/ld.so.conf.d/edge-ai-api.conf"
+                fi
+            else
+                echo "  ⚠  Warning: Cannot access /etc/ld.so.conf.d"
+            fi
+        fi
+    fi
+
+# CRITICAL: Ensure libopencv_freetype.so.410 is accessible
+# Even if RPATH is set, we need to ensure the library is findable
+if [ -f "$LIB_DIR/libopencv_freetype.so.410" ]; then
+    echo "  Verifying libopencv_freetype.so.410 accessibility..."
+    # Ensure file permissions are correct
+    chmod 644 "$LIB_DIR/libopencv_freetype.so.410" 2>/dev/null || true
+    # Run ldconfig again to ensure library is indexed
+    if command -v ldconfig >/dev/null 2>&1; then
+        ldconfig 2>&1 | grep -v "is not a symbolic link" || true
+        echo "  ✓ libopencv_freetype.so.410 verified and indexed"
+    else
+        echo "  ⚠  Warning: ldconfig not found. Library may not be indexed."
+    fi
+else
+    echo "  ✗ ERROR: libopencv_freetype.so.410 not found at $LIB_DIR/libopencv_freetype.so.410"
+fi
+
+# Final verification: check if critical library exists
+echo "Verifying critical libraries..."
+if [ -f "$INSTALL_DIR/lib/libopencv_freetype.so.410" ]; then
+    echo "  ✓ libopencv_freetype.so.410 found at $INSTALL_DIR/lib/libopencv_freetype.so.410"
+    # Test if file can be loaded (basic check)
+    if ldd "$INSTALL_DIR/lib/libopencv_freetype.so.410" >/dev/null 2>&1; then
+        echo "  ✓ libopencv_freetype.so.410 is a valid shared library"
+    else
+        echo "  ⚠  Warning: libopencv_freetype.so.410 may be corrupted"
+    fi
+else
+    echo "  ✗ ERROR: libopencv_freetype.so.410 NOT FOUND at $INSTALL_DIR/lib/libopencv_freetype.so.410"
+    echo "  This will cause the service to fail. Please rebuild the package."
+fi
 
 # Verify executable and libraries using validation script
 if [ -f "$INSTALL_DIR/scripts/validate_installation.sh" ]; then
@@ -521,23 +1083,32 @@ else
 fi
 
 # Enable and start systemd service
-if [ -f "/etc/systemd/system/${SERVICE_NAME}.service" ]; then
-    echo "Enabling systemd service..."
-    systemctl daemon-reload
-    systemctl enable "${SERVICE_NAME}.service" || true
+if command -v systemctl >/dev/null 2>&1 && [ -d "/etc/systemd/system" ]; then
+    if [ -f "/etc/systemd/system/${SERVICE_NAME}.service" ]; then
+        echo "Enabling systemd service..."
+        systemctl daemon-reload 2>/dev/null || true
+        systemctl enable "${SERVICE_NAME}.service" 2>/dev/null || true
 
-    echo "Starting systemd service..."
-    if systemctl start "${SERVICE_NAME}.service"; then
-        echo "Service started successfully."
-        sleep 1
-        if systemctl is-active --quiet "${SERVICE_NAME}.service"; then
-            echo "Service is running."
+        echo "Starting systemd service..."
+        if systemctl start "${SERVICE_NAME}.service" 2>/dev/null; then
+            echo "Service started successfully."
+            sleep 1
+            if systemctl is-active --quiet "${SERVICE_NAME}.service" 2>/dev/null; then
+                echo "Service is running."
+            else
+                echo "Warning: Service was started but may not be running. Check status with: sudo systemctl status ${SERVICE_NAME}"
+            fi
         else
-            echo "Warning: Service was started but may not be running. Check status with: sudo systemctl status ${SERVICE_NAME}"
+            echo "Warning: Failed to start service. Check status with: sudo systemctl status ${SERVICE_NAME}"
         fi
     else
-        echo "Warning: Failed to start service. Check status with: sudo systemctl status ${SERVICE_NAME}"
+        echo "⚠  Warning: Systemd service file not found at /etc/systemd/system/${SERVICE_NAME}.service"
+        echo "Service will not be started automatically."
     fi
+else
+    echo "⚠  Warning: systemctl not found or systemd not available"
+    echo "Service management commands will not work. Please start the service manually:"
+    echo "  $BIN_DIR/edge_ai_api"
 fi
 
 echo "Installation completed successfully!"
@@ -557,5 +1128,64 @@ echo "  sudo systemctl status ${SERVICE_NAME}"
 echo ""
 echo "To restart the service:"
 echo "  sudo systemctl restart ${SERVICE_NAME}"
+echo ""
+echo "=========================================="
+echo "Troubleshooting: Fix libopencv_freetype.so.410 Error"
+echo "=========================================="
+echo ""
+echo "If you see error: 'libopencv_freetype.so.410: cannot open shared object file'"
+echo "You can fix it manually with these commands:"
+echo ""
+echo "1. Check if file exists:"
+echo "   ls -la $INSTALL_DIR/lib/libopencv_freetype.so.410"
+echo ""
+echo "2. If file is missing, check if OpenCV 4.10 is installed:"
+echo "   opencv_version"
+echo "   # Or check library locations:"
+echo "   ls -la /usr/local/lib/libopencv_freetype.so*"
+echo "   ls -la /usr/lib/x86_64-linux-gnu/libopencv_freetype.so*"
+echo ""
+echo "3. If OpenCV 4.10 is installed, copy freetype library:"
+echo "   # Try OpenCV 4.10 first (preferred):"
+echo "   sudo cp /usr/local/lib/libopencv_freetype.so.4.10 $INSTALL_DIR/lib/libopencv_freetype.so.410"
+echo "   # Or try other locations:"
+echo "   sudo cp /usr/lib/x86_64-linux-gnu/libopencv_freetype.so.4.10 $INSTALL_DIR/lib/libopencv_freetype.so.410"
+echo ""
+echo "4. If OpenCV 4.10 is NOT installed, install it using the build script:"
+echo "   # Download the build script if not available:"
+echo "   cd /tmp"
+echo "   wget https://raw.githubusercontent.com/cvedix/edge_ai_api/main/scripts/build_opencv_safe.sh"
+echo "   # Or use the script from package source:"
+echo "   # cd /path/to/edge_ai_api"
+echo "   # sudo ./scripts/build_opencv_safe.sh"
+echo ""
+echo "   # Make script executable and run:"
+echo "   chmod +x build_opencv_safe.sh"
+echo "   sudo ./build_opencv_safe.sh"
+echo ""
+echo "   # After installation, copy the freetype library:"
+echo "   sudo cp /usr/local/lib/libopencv_freetype.so.4.10 $INSTALL_DIR/lib/libopencv_freetype.so.410"
+echo ""
+echo "5. Fallback: If OpenCV 4.6 is available (not recommended):"
+echo "   sudo cp /usr/lib/x86_64-linux-gnu/libopencv_freetype.so.4.6.0 $INSTALL_DIR/lib/libopencv_freetype.so.410"
+echo ""
+echo "6. Set correct permissions:"
+echo "   sudo chmod 644 $INSTALL_DIR/lib/libopencv_freetype.so.410"
+echo "   sudo chown edgeai:edgeai $INSTALL_DIR/lib/libopencv_freetype.so.410"
+echo ""
+echo "7. Update library cache:"
+echo "   sudo ldconfig"
+echo ""
+echo "8. Restart service:"
+echo "   sudo systemctl restart ${SERVICE_NAME}"
+echo ""
+echo "9. Verify fix:"
+echo "   sudo systemctl status ${SERVICE_NAME}"
+echo "   sudo journalctl -u ${SERVICE_NAME} -n 20"
+echo ""
+echo "Note: This file should be included in the package. If it's missing,"
+echo "please rebuild the package with OpenCV 4.10 available on the build machine."
+echo "The recommended solution is to install OpenCV 4.10 using build_opencv_safe.sh"
+echo ""
 
 exit 0

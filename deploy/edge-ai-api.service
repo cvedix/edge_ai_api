@@ -56,10 +56,12 @@ Environment="EDGE_AI_EXECUTION_MODE=in-process"
 # Default: /opt/edge_ai_api/instances
 Environment="INSTANCES_DIR=/opt/edge_ai_api/instances"
 # GStreamer plugin path (required for filesrc and other plugins)
-# Default: Debian/Ubuntu x86_64 path
-# Override: Set GST_PLUGIN_PATH in /opt/edge_ai_api/config/.env
-# To auto-detect: Run scripts/setup_gst_plugin_path.sh
-Environment="GST_PLUGIN_PATH=/usr/lib/x86_64-linux-gnu/gstreamer-1.0"
+# Priority: 1) Bundled plugins in /opt/edge_ai_api/lib/gstreamer-1.0 (all-in-one)
+#          2) Value from /opt/edge_ai_api/config/.env (set by postinst)
+#          3) System default path (fallback)
+# NOTE: Do NOT hardcode here - let .env file or auto-detection handle it
+# The postinst script will set GST_PLUGIN_PATH in .env file automatically
+# If .env doesn't exist or doesn't have GST_PLUGIN_PATH, the application will auto-detect
 # Disable problematic VA plugins that cause crashes on systems with broken GPU drivers
 # Set rank to NONE to prevent GStreamer from loading VA plugins
 Environment="GST_PLUGIN_FEATURE_RANK=va:NONE,vaapi:NONE,vaapidecode:NONE,vaapipostproc:NONE"
