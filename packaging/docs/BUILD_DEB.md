@@ -13,7 +13,13 @@ File này hướng dẫn cách build file `.deb` tự chứa tất cả dependen
 ```bash
 # 1. Cài dependencies (nếu muốn cài OpenCV tự động)
 sudo apt-get update
-sudo apt-get install -y unzip cmake make g++ wget
+sudo apt-get install -y \
+    unzip \
+    cmake \
+    make \
+    g++ \
+    wget \
+    ffmpeg
 
 # 2. Cài package
 sudo dpkg -i edge-ai-api-*.deb
@@ -91,7 +97,8 @@ sudo apt-get install -y \
     libjsoncpp-dev uuid-dev pkg-config \
     libopencv-dev \
     libgstreamer1.0-dev libgstreamer-plugins-base1.0-dev \
-    libmosquitto-dev
+    libmosquitto-dev \
+    ffmpeg
 ```
 
 ## 🔧 Build Package
@@ -115,7 +122,13 @@ sudo apt-get install -y \
 
 ```bash
 sudo apt-get update
-sudo apt-get install -y unzip cmake make g++ wget
+sudo apt-get install -y \
+    unzip \
+    cmake \
+    make \
+    g++ \
+    wget \
+    ffmpeg
 ```
 
 **Lý do:** Trong quá trình cài đặt package (`dpkg -i`), hệ thống không cho phép cài đặt thêm packages khác vì dpkg đang giữ lock. Do đó, nếu bạn muốn cài OpenCV 4.10 tự động trong quá trình cài đặt package, các dependencies trên phải được cài đặt **trước**.
@@ -126,7 +139,13 @@ sudo apt-get install -y unzip cmake make g++ wget
 - Bạn có thể cài OpenCV 4.10 sau bằng cách:
   ```bash
   sudo apt-get update
-  sudo apt-get install -y unzip cmake make g++ wget
+  sudo apt-get install -y \
+      unzip \
+      cmake \
+      make \
+      g++ \
+      wget \
+      ffmpeg
   sudo /opt/edge_ai_api/scripts/build_opencv_safe.sh
   ```
 
@@ -137,7 +156,13 @@ sudo apt-get install -y unzip cmake make g++ wget
 ```bash
 # 1. Cài đặt dependencies cho OpenCV (nếu muốn cài OpenCV tự động)
 sudo apt-get update
-sudo apt-get install -y unzip cmake make g++ wget
+sudo apt-get install -y \
+    unzip \
+    cmake \
+    make \
+    g++ \
+    wget \
+    ffmpeg
 
 # 2. Cài đặt package
 sudo dpkg -i edge-ai-api-2025.0.1.3-Beta-amd64.deb
@@ -227,7 +252,13 @@ Nếu bạn đã cài package nhưng chưa cài OpenCV 4.10, bạn có thể cà
 ```bash
 # 1. Cài dependencies
 sudo apt-get update
-sudo apt-get install -y unzip cmake make g++ wget
+sudo apt-get install -y \
+    unzip \
+    cmake \
+    make \
+    g++ \
+    wget \
+    ffmpeg
 
 # 2. Chạy script cài OpenCV 4.10
 sudo /opt/edge_ai_api/scripts/build_opencv_safe.sh
@@ -388,7 +419,13 @@ ldconfig -p | grep opencv
 ```bash
 # Cài dependencies
 sudo apt-get update
-sudo apt-get install -y unzip cmake make g++ wget
+sudo apt-get install -y \
+    unzip \
+    cmake \
+    make \
+    g++ \
+    wget \
+    ffmpeg
 
 # Build và cài OpenCV 4.10
 sudo /opt/edge_ai_api/scripts/build_opencv_safe.sh

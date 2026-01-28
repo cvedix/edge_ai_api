@@ -146,7 +146,8 @@ sudo apt install -y \
     openexr \
     libatlas-base-dev \
     python3-dev \
-    python3-numpy
+    python3-numpy \
+    ffmpeg
 ```
 
 ### Bước 8: Cài Đặt OpenCV 4.10 (BẮT BUỘC)
@@ -279,7 +280,82 @@ edge-ai-api-all-in-one-2026.0.1.22-amd64.deb
 
 ### Cài Đặt
 
-**ALL-IN-ONE package chỉ cần system libraries cơ bản**, không cần cài thêm dependencies:
+**⚠️ BẮT BUỘC - Prerequisites Trước Khi Cài Đặt Package:**
+
+**QUAN TRỌNG:** Để cài đặt package thành công, bạn **BẮT BUỘC** phải chuẩn bị và cài đặt các dependencies sau **TRƯỚC KHI** chạy `dpkg -i`. Nếu không chuẩn bị đầy đủ, quá trình cài đặt sẽ thất bại hoặc gặp lỗi.
+
+**Bước 1: Cập Nhật Package List**
+```bash
+sudo apt-get update
+```
+
+**Bước 2: Cài Đặt System Libraries Cơ Bản (BẮT BUỘC)**
+```bash
+sudo apt-get install -y \
+    libc6 \
+    libstdc++6 \
+    libgcc-s1 \
+    adduser \
+    systemd
+```
+
+**Bước 3: Cài Đặt FFmpeg (BẮT BUỘC)**
+
+FFmpeg cần thiết cho việc xử lý video và audio:
+
+```bash
+sudo apt install -y ffmpeg
+```
+
+**Bước 4: Cài Đặt Dependencies Cho OpenCV (Nếu Package Chưa Bundle OpenCV)**
+
+Nếu package chưa bundle OpenCV 4.10, bạn cần cài đặt các dependencies để OpenCV có thể được cài đặt tự động trong quá trình cài package:
+
+```bash
+sudo apt-get install -y \
+    unzip \
+    cmake \
+    make \
+    g++ \
+    wget \
+    build-essential \
+    pkg-config \
+    libfreetype6-dev \
+    libharfbuzz-dev \
+    libjpeg-dev \
+    libpng-dev \
+    libtiff-dev \
+    libavcodec-dev \
+    libavformat-dev \
+    libswscale-dev \
+    libgtk-3-dev \
+    gfortran \
+    openexr \
+    libatlas-base-dev \
+    python3-dev \
+    python3-numpy
+```
+
+**Bước 5: (Tùy chọn) Cài Đặt GStreamer Plugins Trước**
+
+Để đảm bảo GStreamer plugins hoạt động tốt, bạn có thể cài đặt trước:
+
+```bash
+sudo apt-get install -y \
+    gstreamer1.0-libav \
+    gstreamer1.0-plugins-base \
+    gstreamer1.0-plugins-good \
+    gstreamer1.0-plugins-bad \
+    gstreamer1.0-plugins-ugly \
+    gstreamer1.0-tools
+```
+
+**Lưu ý quan trọng:**
+- ⚠️ **KHÔNG** bỏ qua các bước trên! Cài đặt các dependencies **TRƯỚC KHI** chạy `dpkg -i`.
+- Nếu thiếu dependencies, quá trình cài đặt sẽ thất bại hoặc OpenCV không thể cài đặt tự động.
+- Trong quá trình cài đặt package (`dpkg -i`), hệ thống không cho phép cài đặt thêm packages khác vì dpkg đang giữ lock.
+
+**Các bước cài đặt package:**
 
 ```bash
 # Bước 1: Cài đặt package
