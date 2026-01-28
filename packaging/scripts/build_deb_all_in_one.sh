@@ -320,16 +320,73 @@ for opencv_path in "${OPENCV_PATHS[@]}"; do
 done
 
 
-# Bundle GStreamer libraries
+# Bundle GStreamer libraries (CRITICAL: Must bundle ALL GStreamer libraries for compatibility)
 echo "Bundling GStreamer libraries..."
 GST_PATHS=(
     "/usr/lib/x86_64-linux-gnu"
     "/usr/local/lib"
     "/usr/lib"
 )
+# List of critical GStreamer libraries that MUST be bundled
+CRITICAL_GST_LIBS=(
+    "libgstreamer-1.0.so*"
+    "libgstbase-1.0.so*"
+    "libgstvideo-1.0.so*"
+    "libgstaudio-1.0.so*"
+    "libgstapp-1.0.so*"
+    "libgstpbutils-1.0.so*"
+    "libgstriff-1.0.so*"
+    "libgstrtp-1.0.so*"
+    "libgstsdp-1.0.so*"
+    "libgstrtsp-1.0.so*"
+    "libgsttag-1.0.so*"
+    "libgstnet-1.0.so*"
+    "libgstcontroller-1.0.so*"
+    "libgstallocators-1.0.so*"
+    "libgstgl-1.0.so*"
+)
+
+# Bundle GLib and GObject (CRITICAL dependencies of GStreamer)
+echo "Bundling GLib/GObject libraries (GStreamer dependencies)..."
+GLIB_LIBS=(
+    "libglib-2.0.so*"
+    "libgobject-2.0.so*"
+    "libgio-2.0.so*"
+    "libgmodule-2.0.so*"
+    "libgthread-2.0.so*"
+)
 for gst_path in "${GST_PATHS[@]}"; do
     if [ -d "$gst_path" ]; then
-        # GStreamer core libraries
+        for lib_pattern in "${GLIB_LIBS[@]}"; do
+            find "$gst_path" -maxdepth 1 -name "$lib_pattern" -type f 2>/dev/null | while read glib_lib; do
+                if [ -f "$glib_lib" ]; then
+                    libname=$(basename "$glib_lib")
+                    if [ ! -f "$LIB_TEMP_DIR/$libname" ]; then
+                        echo "  Copying GLib library $libname..."
+                        cp -L "$glib_lib" "$LIB_TEMP_DIR/" 2>/dev/null || true
+                    fi
+                fi
+            done
+        done
+    fi
+done
+
+for gst_path in "${GST_PATHS[@]}"; do
+    if [ -d "$gst_path" ]; then
+        # First, copy critical libraries explicitly
+        for lib_pattern in "${CRITICAL_GST_LIBS[@]}"; do
+            find "$gst_path" -maxdepth 1 -name "$lib_pattern" -type f 2>/dev/null | while read gst_lib; do
+                if [ -f "$gst_lib" ]; then
+                    libname=$(basename "$gst_lib")
+                    if [ ! -f "$LIB_TEMP_DIR/$libname" ]; then
+                        echo "  Copying critical GStreamer library $libname..."
+                        cp -L "$gst_lib" "$LIB_TEMP_DIR/" 2>/dev/null || true
+                    fi
+                fi
+            done
+        done
+        
+        # Then copy all other GStreamer libraries
         find "$gst_path" -maxdepth 1 \( -name "libgstreamer*.so*" -o -name "libgst*.so*" \) -type f 2>/dev/null | while read gst_lib; do
             if [ -f "$gst_lib" ]; then
                 libname=$(basename "$gst_lib")
@@ -442,20 +499,42 @@ if ls $CORE_LIB_PATH 1> /dev/null 2>&1; then
     done
 fi
 
+# CRITICAL: Collect dependencies from ALL libraries in build/lib
+# This ensures Drogon, Trantor, jsoncpp, and other built libraries' dependencies are bundled
 if [ -d "$BUILD_LIB_DIR" ]; then
+    echo "Collecting dependencies from all libraries in build/lib..."
     for lib_file in "$BUILD_LIB_DIR"/*.so*; do
         if [ -f "$lib_file" ] && [ ! -L "$lib_file" ]; then
-            collect_libs "$lib_file"
+            libname=$(basename "$lib_file")
+            # Skip if already collected (avoid duplicates)
+            if ! grep -q "^$lib_file$" "$ALL_LIBS" 2>/dev/null; then
+                echo "  Collecting dependencies from $libname..."
+                collect_libs "$lib_file"
+            fi
+        fi
+    done
+fi
+
+# Also collect dependencies from GStreamer plugins (they may have additional dependencies)
+if [ -d "$LIB_TEMP_DIR/gstreamer-1.0" ]; then
+    echo "Collecting dependencies from GStreamer plugins..."
+    for plugin_file in "$LIB_TEMP_DIR/gstreamer-1.0"/*.so; do
+        if [ -f "$plugin_file" ] && [ ! -L "$plugin_file" ]; then
+            pluginname=$(basename "$plugin_file")
+            echo "  Collecting dependencies from plugin $pluginname..."
+            collect_libs "$plugin_file"
         fi
     done
 fi
 
 # Copy all unique libraries (including dependencies of bundled libraries)
+# CRITICAL: Bundle ALL dependencies including system libraries for ALL-IN-ONE package
 sort -u "$ALL_LIBS" | while read lib; do
     if [ -f "$lib" ]; then
         libname=$(basename "$lib")
         case "$libname" in
             libc.so*|libm.so*|libpthread.so*|libdl.so*|libgcc_s.so*|libstdc++.so*|ld-linux*)
+                # Skip basic system libraries (always available on target system)
                 continue
                 ;;
             *)
@@ -465,6 +544,41 @@ sort -u "$ALL_LIBS" | while read lib; do
                 fi
                 ;;
         esac
+    fi
+done
+
+# Explicitly bundle critical system libraries that may be needed for compatibility
+# These are typically available on all systems, but bundling ensures version compatibility
+echo "Bundling critical system libraries for compatibility..."
+CRITICAL_SYSTEM_LIBS=(
+    "libz.so*"
+    "libuuid.so*"
+    "libssl.so*"
+    "libcrypto.so*"
+    "libbrotli*.so*"
+    "libharfbuzz.so*"
+    "libfreetype.so*"
+    "libjpeg.so*"
+    "libpng*.so*"
+    "libtiff.so*"
+    "libwebp.so*"
+    "libtbb.so*"
+)
+
+for gst_path in "${GST_PATHS[@]}"; do
+    if [ -d "$gst_path" ]; then
+        for lib_pattern in "${CRITICAL_SYSTEM_LIBS[@]}"; do
+            find "$gst_path" -maxdepth 1 -name "$lib_pattern" -type f 2>/dev/null | while read sys_lib; do
+                if [ -f "$sys_lib" ]; then
+                    libname=$(basename "$sys_lib")
+                    # Only bundle if not already bundled and not a basic system library
+                    if [ ! -f "$LIB_TEMP_DIR/$libname" ] && [[ ! "$libname" =~ ^libc\.|^libm\.|^libpthread\.|^libdl\.|^libgcc_s\.|^libstdc\+\+\. ]]; then
+                        echo "  Copying system library $libname for compatibility..."
+                        cp -L "$sys_lib" "$LIB_TEMP_DIR/" 2>/dev/null || true
+                    fi
+                fi
+            done
+        done
     fi
 done
 
@@ -707,7 +821,7 @@ if [ -f "debian/control" ]; then
 
     while IFS=',' read -ra DEPS; do
         for dep_raw in "${DEPS[@]}"; do
-            dep=$(echo "$dep_raw" | sed 's/([^)]*)//g' | sed 's/|.*$//' | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
+            dep=$(echo "$dep_raw" | sed 's/([^)]*)//g' | sed 's/|.*$//' | sed 's/^[[:space:]]*//;s/[[:space:]]*$//' | sed 's/,$//')
             [ -z "$dep" ] && continue
 
             if command -v "$dep" &>/dev/null; then
@@ -1372,8 +1486,32 @@ echo ""
 # ============================================
 echo -e "${BLUE}[9/9]${NC} Updating changelog..."
 if [ -f "debian/changelog" ]; then
-    # Add note about SDK bundling
-    sed -i "s/edge-ai-api (.*) unstable/edge-ai-api ($VERSION) unstable/" debian/changelog
+    # CRITICAL: Update version in changelog BEFORE building package
+    # dpkg-buildpackage reads version from changelog, so this must be done first
+    echo "  Updating version in changelog to $VERSION..."
+    
+    # More robust sed pattern to match any version format
+    # Match: edge-ai-api (VERSION) distribution; urgency=...
+    sed -i "1s/^edge-ai-api ([0-9.]*)/edge-ai-api ($VERSION)/" debian/changelog
+    
+    # Verify version was updated
+    CHANGELOG_VERSION=$(head -1 debian/changelog | sed -n 's/^edge-ai-api (\([0-9.]*\)).*/\1/p')
+    if [ "$CHANGELOG_VERSION" != "$VERSION" ]; then
+        echo -e "${YELLOW}  ⚠  Warning: Changelog version ($CHANGELOG_VERSION) does not match expected ($VERSION)${NC}"
+        echo "  Attempting to fix..."
+        # Try more aggressive replacement
+        sed -i "1s/([0-9.]*)/($VERSION)/" debian/changelog
+        CHANGELOG_VERSION=$(head -1 debian/changelog | sed -n 's/^edge-ai-api (\([0-9.]*\)).*/\1/p')
+        if [ "$CHANGELOG_VERSION" = "$VERSION" ]; then
+            echo -e "${GREEN}  ✓ Fixed changelog version${NC}"
+        else
+            echo -e "${RED}  ✗ Failed to update changelog version${NC}"
+            echo "  Current first line: $(head -1 debian/changelog)"
+        fi
+    else
+        echo -e "${GREEN}  ✓ Changelog version updated to $VERSION${NC}"
+    fi
+    
     # Add entry about SDK bundling if not already present
     if ! grep -q "CVEDIX SDK bundled" debian/changelog; then
         sed -i "1a\\

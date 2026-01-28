@@ -430,17 +430,26 @@ setup_gst_plugin_path() {
     local env_file="$INSTALL_DIR/config/.env"
     local plugin_path=""
 
-    # Method 1: Use pkg-config (most reliable)
-    if command -v pkg-config >/dev/null 2>&1; then
+    # Method 1: Check for bundled plugins FIRST (ALL-IN-ONE package includes bundled plugins)
+    # This is the most reliable for all-in-one packages
+    local bundled_plugin_path="$INSTALL_DIR/lib/gstreamer-1.0"
+    if [ -d "$bundled_plugin_path" ] && [ -f "$bundled_plugin_path/libgstcoreelements.so" ]; then
+        plugin_path="$bundled_plugin_path"
+        echo "  ✓ Using bundled GStreamer plugins: $plugin_path"
+        echo "  Plugin count: $(ls -1 "$bundled_plugin_path"/*.so 2>/dev/null | wc -l)"
+    fi
+
+    # Method 2: Use pkg-config (fallback if bundled plugins not found)
+    if [ -z "$plugin_path" ] && command -v pkg-config >/dev/null 2>&1; then
         plugin_path=$(pkg-config --variable=pluginsdir gstreamer-1.0 2>/dev/null || echo "")
-        if [ -n "$plugin_path" ] && [ -d "$plugin_path" ]; then
+        if [ -n "$plugin_path" ] && [ -d "$plugin_path" ] && [ -f "$plugin_path/libgstcoreelements.so" ]; then
             echo "  ✓ Detected via pkg-config: $plugin_path"
         else
             plugin_path=""
         fi
     fi
 
-    # Method 2: Common paths for different architectures
+    # Method 3: Common paths for different architectures (fallback)
     if [ -z "$plugin_path" ]; then
         local common_paths=(
             "/usr/lib/x86_64-linux-gnu/gstreamer-1.0"
@@ -460,7 +469,7 @@ setup_gst_plugin_path() {
         done
     fi
 
-    # Method 3: Find by searching for libgstcoreelements.so
+    # Method 4: Find by searching for libgstcoreelements.so (last resort)
     if [ -z "$plugin_path" ]; then
         plugin_path=$(find /usr -name "libgstcoreelements.so" 2>/dev/null | head -1 | xargs dirname 2>/dev/null || echo "")
         if [ -n "$plugin_path" ] && [ -d "$plugin_path" ]; then
@@ -487,6 +496,24 @@ setup_gst_plugin_path() {
         fi
         chown "$SERVICE_USER:$SERVICE_GROUP" "$env_file"
         chmod 640 "$env_file"
+        
+        # CRITICAL: Update GStreamer registry after setting plugin path
+        # This ensures bundled plugins are discovered and registered
+        echo "Updating GStreamer plugin registry..."
+        export GST_PLUGIN_PATH="$plugin_path"
+        if command -v gst-inspect-1.0 >/dev/null 2>&1; then
+            # Force registry update by inspecting a critical plugin
+            # This will scan and register all plugins in GST_PLUGIN_PATH
+            if gst-inspect-1.0 filesrc >/dev/null 2>&1; then
+                echo "  ✓ GStreamer registry updated successfully"
+            else
+                echo "  ⚠  Warning: Could not verify GStreamer registry update"
+                echo "  Plugins may not be discovered correctly"
+            fi
+        else
+            echo "  ⚠  Warning: gst-inspect-1.0 not found, cannot update registry"
+            echo "  Registry will be updated on first GStreamer use"
+        fi
     else
         echo "  ⚠ Could not detect GStreamer plugin path"
         echo "  You can set it manually: sudo $INSTALL_DIR/scripts/utils.sh setup-gst-path"
@@ -494,6 +521,190 @@ setup_gst_plugin_path() {
 }
 
 setup_gst_plugin_path
+
+# ============================================
+# Check and Install GStreamer Plugins
+# ============================================
+check_and_install_gstreamer_plugins() {
+    echo ""
+    echo "============================================"
+    echo "Checking GStreamer plugins..."
+    echo "============================================"
+    
+    # Required plugins for file source and RTMP
+    local required_plugins=(
+        "isomp4:gstreamer1.0-plugins-good"
+        "h264parse:gstreamer1.0-plugins-good"
+        "avdec_h264:gstreamer1.0-libav"
+        "filesrc:gstreamer1.0-plugins-base"
+        "videoconvert:gstreamer1.0-plugins-base"
+        "x264enc:gstreamer1.0-plugins-ugly"
+        "flvmux:gstreamer1.0-plugins-good"
+        "rtmpsink:gstreamer1.0-plugins-bad"
+    )
+    
+    local missing_plugins=()
+    local missing_packages=()
+    local plugin_path=""
+    
+    # Get plugin path from .env or use bundled path
+    if [ -f "$INSTALL_DIR/config/.env" ]; then
+        plugin_path=$(grep "^GST_PLUGIN_PATH=" "$INSTALL_DIR/config/.env" 2>/dev/null | cut -d'=' -f2 | tr -d '"' || echo "")
+    fi
+    
+    # Fallback to bundled path
+    if [ -z "$plugin_path" ] || [ ! -d "$plugin_path" ]; then
+        plugin_path="$INSTALL_DIR/lib/gstreamer-1.0"
+    fi
+    
+    # Also check system paths (plugins may be installed system-wide)
+    local system_plugin_paths=(
+        "/usr/lib/x86_64-linux-gnu/gstreamer-1.0"
+        "/usr/lib/aarch64-linux-gnu/gstreamer-1.0"
+        "/usr/lib/arm-linux-gnueabihf/gstreamer-1.0"
+        "/usr/lib64/gstreamer-1.0"
+        "/usr/lib/gstreamer-1.0"
+    )
+    
+    # Combine bundled and system paths for checking
+    local all_plugin_paths="$plugin_path"
+    for sys_path in "${system_plugin_paths[@]}"; do
+        if [ -d "$sys_path" ]; then
+            all_plugin_paths="$all_plugin_paths:$sys_path"
+        fi
+    done
+    
+    # Check each required plugin
+    export GST_PLUGIN_PATH="$all_plugin_paths"
+    for plugin_info in "${required_plugins[@]}"; do
+        local plugin_name=$(echo "$plugin_info" | cut -d':' -f1)
+        local package_name=$(echo "$plugin_info" | cut -d':' -f2)
+        
+        # Check if plugin is available
+        if command -v gst-inspect-1.0 >/dev/null 2>&1; then
+            if ! gst-inspect-1.0 "$plugin_name" >/dev/null 2>&1; then
+                missing_plugins+=("$plugin_name")
+                if [[ ! " ${missing_packages[@]} " =~ " ${package_name} " ]]; then
+                    missing_packages+=("$package_name")
+                fi
+            fi
+        else
+            # If gst-inspect-1.0 is not available, check by file existence
+            local plugin_file="libgst${plugin_name}.so"
+            if [ "$plugin_name" = "isomp4" ]; then
+                plugin_file="libgstisomp4.so"
+            elif [ "$plugin_name" = "avdec_h264" ]; then
+                plugin_file="libgstav.so"
+            elif [ "$plugin_name" = "filesrc" ]; then
+                plugin_file="libgstcoreelements.so"
+            fi
+            
+            if [ ! -f "$plugin_path/$plugin_file" ]; then
+                missing_plugins+=("$plugin_name")
+                if [[ ! " ${missing_packages[@]} " =~ " ${package_name} " ]]; then
+                    missing_packages+=("$package_name")
+                fi
+            fi
+        fi
+    done
+    
+    # If no plugins are missing, we're done
+    if [ ${#missing_plugins[@]} -eq 0 ]; then
+        echo "  ✓ All required GStreamer plugins are available"
+        return 0
+    fi
+    
+    # Report missing plugins
+    echo "  ⚠  Missing required GStreamer plugins:"
+    for plugin in "${missing_plugins[@]}"; do
+        echo "     - $plugin"
+    done
+    echo ""
+    echo "  These plugins are required for:"
+    echo "    - Reading video files (MP4/H.264)"
+    echo "    - RTMP streaming output"
+    echo "    - Video format conversion"
+    echo ""
+    
+    # Check if we're in non-interactive mode (e.g., automated installation)
+    if [ -n "$DEBIAN_FRONTEND" ] && [ "$DEBIAN_FRONTEND" = "noninteractive" ]; then
+        echo "  ⚠  Running in non-interactive mode"
+        echo "  ⚠  GStreamer plugins will NOT be installed automatically"
+        echo "  ⚠  Please install them manually after installation:"
+        echo "     sudo apt-get update"
+        echo "     sudo apt-get install -y ${missing_packages[*]}"
+        return 1
+    fi
+    
+    # In interactive mode, automatically install (postinst scripts typically can't read stdin reliably)
+    # User can skip by setting environment variable: DEBIAN_FRONTEND=noninteractive
+    echo "  Installing missing GStreamer plugins automatically..."
+    echo "  (To skip, set DEBIAN_FRONTEND=noninteractive before installation)"
+    echo ""
+    
+    # Auto-install in interactive mode
+    if true; then
+        echo "  Installing GStreamer plugins..."
+        
+        # Update package list
+        if command -v apt-get >/dev/null 2>&1; then
+            if apt-get update >/dev/null 2>&1; then
+                echo "  ✓ Updated package list"
+            else
+                echo "  ⚠  Warning: Failed to update package list"
+                echo "  ⚠  Attempting to install anyway..."
+            fi
+            
+            # Install packages
+            if apt-get install -y "${missing_packages[@]}" >/dev/null 2>&1; then
+                echo "  ✓ Installed GStreamer plugin packages"
+                
+                # Update GStreamer registry
+                export GST_PLUGIN_PATH="$plugin_path"
+                if command -v gst-inspect-1.0 >/dev/null 2>&1; then
+                    echo "  Updating GStreamer plugin registry..."
+                    gst-inspect-1.0 >/dev/null 2>&1 || true
+                    echo "  ✓ GStreamer registry updated"
+                fi
+                
+                # Verify installation
+                local all_found=true
+                for plugin in "${missing_plugins[@]}"; do
+                    if command -v gst-inspect-1.0 >/dev/null 2>&1; then
+                        if gst-inspect-1.0 "$plugin" >/dev/null 2>&1; then
+                            echo "  ✓ Plugin '$plugin' is now available"
+                        else
+                            echo "  ⚠  Warning: Plugin '$plugin' still not found after installation"
+                            all_found=false
+                        fi
+                    fi
+                done
+                
+                if [ "$all_found" = true ]; then
+                    echo "  ✓ All required GStreamer plugins are now available"
+                    return 0
+                else
+                    echo "  ⚠  Some plugins may still be missing"
+                    echo "  ⚠  You may need to restart the service: sudo systemctl restart $SERVICE_NAME"
+                    return 1
+                fi
+            else
+                echo "  ✗ Failed to install GStreamer plugins"
+                echo "  ⚠  Please install manually:"
+                echo "     sudo apt-get update"
+                echo "     sudo apt-get install -y ${missing_packages[*]}"
+                return 1
+            fi
+        else
+            echo "  ✗ apt-get not found, cannot install plugins automatically"
+            echo "  ⚠  Please install manually using your package manager"
+            return 1
+        fi
+    fi
+}
+
+# Check and install GStreamer plugins (after plugin path is set up)
+check_and_install_gstreamer_plugins || true
 
 # ============================================
 # Check and Install OpenCV 4.10

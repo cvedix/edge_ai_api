@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.14)
-project(edge_ai_api VERSION 2026.0.1.37)
+project(edge_ai_api VERSION 2026.0.1.42)
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)

@@ -6,6 +6,7 @@
 #include "core/timeout_constants.h"
 #include "core/uuid_generator.h"
 #include "models/update_instance_request.h"
+#include "utils/gstreamer_checker.h"
 #include "utils/mp4_directory_watcher.h"
 #include "utils/mp4_finalizer.h"
 #include <algorithm>
@@ -1015,6 +1016,70 @@ bool InstanceRegistry::startInstance(const std::string &instanceId,
         }
         return false;
       }
+
+      // CRITICAL: Check for required GStreamer plugins BEFORE attempting to open file
+      // This prevents infinite retry loops when plugins are missing
+      // Missing plugins cause GStreamer to fail silently, leading to SDK retries
+      std::cerr << "[InstanceRegistry] Checking GStreamer plugins for file source..."
+                << std::endl;
+      auto plugins = GStreamerChecker::checkRequiredPlugins();
+      std::vector<std::string> missingRequired;
+      // Check for plugins specifically needed for file source (MP4/H.264)
+      std::vector<std::string> requiredForFileSource = {
+          "isomp4", "h264parse", "avdec_h264", "filesrc", "videoconvert"};
+      for (const auto &pluginName : requiredForFileSource) {
+        auto it = plugins.find(pluginName);
+        if (it != plugins.end() && it->second.required && !it->second.available) {
+          missingRequired.push_back(pluginName);
+        }
+      }
+
+      if (!missingRequired.empty()) {
+        std::cerr
+            << "[InstanceRegistry] ✗ Cannot start instance - required GStreamer "
+               "plugins are missing"
+            << std::endl;
+        std::cerr << "[InstanceRegistry] Missing plugins: ";
+        for (size_t i = 0; i < missingRequired.size(); ++i) {
+          std::cerr << missingRequired[i];
+          if (i < missingRequired.size() - 1)
+            std::cerr << ", ";
+        }
+        std::cerr << std::endl;
+        std::cerr
+            << "[InstanceRegistry] These plugins are required to read video files"
+            << std::endl;
+        std::cerr << "[InstanceRegistry] Error details:" << std::endl;
+        std::cerr << "[InstanceRegistry]   - GStreamer cannot open video file "
+                     "without these plugins"
+                  << std::endl;
+        std::cerr
+            << "[InstanceRegistry]   - File source node will retry indefinitely"
+            << std::endl;
+        std::cerr << "[InstanceRegistry]   - This causes process to hang or exit"
+                  << std::endl;
+        std::cerr << "[InstanceRegistry] Please install missing plugins:"
+                  << std::endl;
+        std::string installCmd =
+            GStreamerChecker::getInstallationCommand(missingRequired);
+        if (!installCmd.empty()) {
+          std::cerr << "[InstanceRegistry]   " << installCmd << std::endl;
+        } else {
+          std::cerr << "[InstanceRegistry]   sudo apt-get update && sudo apt-get "
+                       "install -y gstreamer1.0-libav gstreamer1.0-plugins-base "
+                       "gstreamer1.0-plugins-good"
+                    << std::endl;
+        }
+        // Cleanup pipeline
+        {
+          std::unique_lock<std::shared_timed_mutex> lock(
+              mutex_); // Exclusive lock for write operations
+          pipelines_.erase(instanceId);
+        }
+        return false;
+      }
+      std::cerr << "[InstanceRegistry] ✓ Required GStreamer plugins are available"
+                << std::endl;
 
       // Validate video file format using ffprobe (if available)
       // This prevents infinite retry loops when file is corrupted or invalid
@@ -3106,14 +3171,27 @@ bool InstanceRegistry::startPipeline(
           std::cerr
               << "[InstanceRegistry] ⚠ WARNING: fileNode->start() timeout ("
               << START_TIMEOUT_MS << "ms)" << std::endl;
-          std::cerr << "[InstanceRegistry] ⚠ This may indicate GStreamer "
-                       "pipeline issue or video file problem"
+          std::cerr << "[InstanceRegistry] ⚠ This may indicate:" << std::endl;
+          std::cerr << "[InstanceRegistry]   1. GStreamer pipeline issue (check "
+                       "plugins are installed)"
+                    << std::endl;
+          std::cerr << "[InstanceRegistry]   2. Video file is corrupted or "
+                       "incompatible format"
+                    << std::endl;
+          std::cerr << "[InstanceRegistry]   3. GStreamer is retrying to open "
+                       "file (may indicate missing plugins)"
                     << std::endl;
           std::cerr << "[InstanceRegistry] ⚠ Server will continue running, but "
                        "instance may not process frames correctly"
                     << std::endl;
-          std::cerr << "[InstanceRegistry] ⚠ Consider stopping and restarting "
-                       "the instance"
+          std::cerr << "[InstanceRegistry] ⚠ If this persists, check:" << std::endl;
+          std::cerr << "[InstanceRegistry]   - GStreamer plugins are installed: "
+                       "gst-inspect-1.0 isomp4"
+                    << std::endl;
+          std::cerr << "[InstanceRegistry]   - Video file is valid (use ffprobe on "
+                       "the file path)"
+                    << std::endl;
+          std::cerr << "[InstanceRegistry]   - Check logs for GStreamer errors"
                     << std::endl;
           // Don't return false - let instance continue, but it may not work
           // correctly This prevents server from being blocked

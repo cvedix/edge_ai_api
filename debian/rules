@@ -288,24 +288,39 @@ override_dh_auto_install:
 		echo "  Note: cvedix_data directory not found, skipping default data installation"; \
 	fi
 
-	# Bundle GStreamer plugins (optional - for fully standalone package)
-	# Note: GStreamer plugins are usually in system directories, but we can bundle
-	# essential ones if needed. However, this significantly increases package size.
-	# For now, we rely on system GStreamer plugins and set GST_PLUGIN_PATH in postinst.
-	# If you want to bundle plugins, uncomment the following:
-	# GST_PLUGIN_DIR=$(CURDIR)/debian/$(PACKAGE_NAME)$(INSTALL_DIR)/gstreamer-1.0
-	# install -d $(GST_PLUGIN_DIR)
-	# # Copy essential plugins from common locations
-	# for plugin_dir in /usr/lib/x86_64-linux-gnu/gstreamer-1.0 /usr/lib/gstreamer-1.0; do \
-	# 	if [ -d $$plugin_dir ]; then \
-	# 		for plugin in libgstcoreelements.so libgstvideoconvert.so libgstapp.so libgstisomp4.so libgsth264parse.so libgstflvmux.so libgstrtmp.so libgstx264.so libgstlibav.so; do \
-	# 			if [ -f $$plugin_dir/$$plugin ]; then \
-	# 				cp -L $$plugin_dir/$$plugin $(GST_PLUGIN_DIR)/ 2>/dev/null || true; \
-	# 			fi; \
-	# 		done; \
-	# 		break; \
-	# 	fi; \
-	# done
+	# Bundle GStreamer plugins (ALL-IN-ONE package includes bundled plugins)
+	# bundle_libs.sh creates gstreamer-1.0 directory in LIB_DIR during bundling
+	# We need to ensure it's properly installed to the package
+	@GST_PLUGIN_DIR=$(CURDIR)/debian/$(PACKAGE_NAME)$(LIB_DIR)/gstreamer-1.0; \
+	BUNDLED_GST_PLUGINS=$(CURDIR)/debian/$(PACKAGE_NAME)$(LIB_DIR)/gstreamer-1.0; \
+	if [ -d "$$BUNDLED_GST_PLUGINS" ] && [ "$$(ls -A $$BUNDLED_GST_PLUGINS 2>/dev/null)" ]; then \
+		echo "  ✓ Bundled GStreamer plugins found in $$BUNDLED_GST_PLUGINS"; \
+		echo "  Plugin count: $$(ls -1 $$BUNDLED_GST_PLUGINS/*.so 2>/dev/null | wc -l)"; \
+	else \
+		echo "  ⚠  Bundled GStreamer plugins not found, copying from system..."; \
+		install -d $$GST_PLUGIN_DIR; \
+		# Copy essential plugins from common locations as fallback \
+		for plugin_dir in /usr/lib/x86_64-linux-gnu/gstreamer-1.0 /usr/lib/gstreamer-1.0; do \
+			if [ -d $$plugin_dir ]; then \
+				echo "  Copying plugins from $$plugin_dir..."; \
+				for plugin in libgstcoreelements.so libgstvideoconvert.so libgstapp.so libgstisomp4.so libgsth264parse.so libgstflvmux.so libgstrtmp.so libgstx264.so libgstlibav.so libgstplayback.so libgstvideo.so libgstaudio.so libgstfilesrc.so libgstappsink.so libgstappsrc.so; do \
+					if [ -f $$plugin_dir/$$plugin ]; then \
+						cp -L $$plugin_dir/$$plugin $$GST_PLUGIN_DIR/ 2>/dev/null || true; \
+					fi; \
+				done; \
+				# Copy all plugins if essential ones were found \
+				if [ -f $$GST_PLUGIN_DIR/libgstcoreelements.so ]; then \
+					echo "  ✓ Essential plugins copied, copying remaining plugins..."; \
+					cp -L $$plugin_dir/*.so $$GST_PLUGIN_DIR/ 2>/dev/null || true; \
+				fi; \
+				break; \
+			fi; \
+		done; \
+		if [ ! -f $$GST_PLUGIN_DIR/libgstcoreelements.so ]; then \
+			echo "  ⚠  Warning: Could not find GStreamer plugins to bundle"; \
+			echo "  Service may fail if GStreamer plugins are not available on target system"; \
+		fi; \
+	fi
 
 override_dh_shlibdeps:
 	# Skip automatic shlibdeps - we bundle libraries ourselves

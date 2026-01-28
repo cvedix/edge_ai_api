@@ -193,49 +193,47 @@ curl http://localhost:8080/v1/core/version
 
 ### Yêu Cầu Build Package
 
+Các package này cần được cài đặt **trước khi build** Debian package. Script sẽ tự động kiểm tra và báo lỗi nếu thiếu dependencies:
+
 ```bash
-sudo apt-get update
-sudo apt-get install -y \
-    build-essential cmake git \
-    debhelper dpkg-dev pkg-config \
+sudo apt update
+sudo apt install -y \
+    build-essential cmake git pkg-config \
+    debhelper dpkg-dev fakeroot \
     libssl-dev zlib1g-dev \
     libjsoncpp-dev uuid-dev \
-    libeigen3-dev \
-    libglib2.0-dev \
-    libgstreamer1.0-dev \
-    libgstreamer-plugins-base1.0-dev \
-    libgstrtspserver-1.0-dev \
-    libmosquitto-dev
+    libopencv-dev \
+    libgstreamer1.0-dev libgstreamer-plugins-base1.0-dev \
+    libmosquitto-dev \
+    gstreamer1.0-libav \
+    gstreamer1.0-plugins-base \
+    gstreamer1.0-plugins-good \
+    gstreamer1.0-plugins-bad \
+    gstreamer1.0-plugins-ugly \
+    libfreetype6-dev libharfbuzz-dev \
+    libjpeg-dev libpng-dev libtiff-dev \
+    libavcodec-dev libavformat-dev libswscale-dev \
+    libgtk-3-dev
 ```
+
+**⚠️ QUAN TRỌNG cho ALL-IN-ONE Package:** Máy build **BẮT BUỘC** phải có OpenCV 4.10. Xem chi tiết: [packaging/docs/BUILD_ALL_IN_ONE.md](packaging/docs/BUILD_ALL_IN_ONE.md)
 
 ### Build Debian Package
 
-Có 3 cách để build package:
+Có 2 loại package có thể build:
 
-#### Cách 1: Dùng Đường Dẫn Đầy Đủ
+#### 1. Package Thông Thường
 
 ```bash
 # Từ project root
 ./packaging/scripts/build_deb.sh
-```
 
-#### Cách 2: Từ Thư Mục Packaging
-
-```bash
+# Hoặc từ thư mục scripts
 cd packaging/scripts
 ./build_deb.sh
 ```
 
-**Script tự động thực hiện:**
-- ✅ Kiểm tra dependencies
-- ✅ Build project với CMake
-- ✅ Bundle tất cả shared libraries
-- ✅ Tạo file .deb package
-
-> ⚠️ **Lưu ý**: Không cần `sudo` để build! Chỉ cần sudo khi **cài đặt** package sau này.
-
-### Tùy Chọn Build
-
+**Tùy chọn build:**
 ```bash
 # Clean build (xóa build cũ trước)
 ./packaging/scripts/build_deb.sh --clean
@@ -250,23 +248,93 @@ cd packaging/scripts
 ./packaging/scripts/build_deb.sh --help
 ```
 
+#### 2. ALL-IN-ONE Package (Khuyến nghị)
+
+**ALL-IN-ONE package tự chứa TẤT CẢ dependencies**, không cần cài thêm packages khi cài đặt:
+
+```bash
+# Build ALL-IN-ONE package
+./packaging/scripts/build_deb_all_in_one.sh --sdk-deb <path-to-sdk.deb>
+
+# Ví dụ:
+./packaging/scripts/build_deb_all_in_one.sh \
+    --sdk-deb ../cvedix-ai-runtime-2025.0.1.3-x86_64.deb
+
+# Tùy chọn
+./packaging/scripts/build_deb_all_in_one.sh --sdk-deb <path> --clean
+./packaging/scripts/build_deb_all_in_one.sh --sdk-deb <path> --no-build
+```
+
+**Script tự động thực hiện:**
+- ✅ Kiểm tra dependencies
+- ✅ Build project với CMake
+- ✅ Bundle tất cả shared libraries (OpenCV, GStreamer, FFmpeg, CVEDIX SDK)
+- ✅ Bundle GStreamer plugins
+- ✅ Bundle default fonts và models
+- ✅ Tạo file .deb package
+
+> ⚠️ **Lưu ý**: Không cần `sudo` để build! Chỉ cần sudo khi **cài đặt** package sau này.
+
+> ⚠️ **QUAN TRỌNG**: Để build ALL-IN-ONE package, máy build **BẮT BUỘC** phải có OpenCV 4.10. Xem chi tiết: [packaging/docs/BUILD_ALL_IN_ONE.md](packaging/docs/BUILD_ALL_IN_ONE.md)
+
 ### Cài Đặt Package
 
-Sau khi build, file `.deb` sẽ được tạo tại project root với tên:
+Sau khi build, file `.deb` sẽ được tạo tại project root:
+- Package thông thường: `edge-ai-api-{VERSION}-amd64.deb`
+- ALL-IN-ONE package: `edge-ai-api-all-in-one-{VERSION}-amd64.deb`
+
+#### Cài Đặt ALL-IN-ONE Package (Khuyến nghị)
+
+**ALL-IN-ONE package chỉ cần system libraries cơ bản**, không cần cài dependencies:
+
+```bash
+# Bước 1: Cài đặt package
+sudo dpkg -i edge-ai-api-all-in-one-*.deb
+
+# Trong quá trình cài đặt, nếu thiếu OpenCV 4.10, hệ thống sẽ hiển thị:
+# ==========================================
+# OpenCV 4.10 Installation Required
+# ==========================================
+# Choose an option:
+#   1) Install OpenCV 4.10 automatically (recommended)
+#   2) Skip installation and install manually later
+#
+# Chọn option 1 để cài đặt tự động (mất khoảng 30-60 phút)
+
+# Bước 2: Nếu có lỗi dependencies (hiếm khi xảy ra với ALL-IN-ONE)
+sudo apt-get install -f
+
+# Bước 3: Nếu OpenCV cài đặt bị lỗi hoặc bị gián đoạn, chạy lại script cài đặt:
+sudo /opt/edge_ai_api/scripts/build_opencv_safe.sh
+
+# Bước 4: Khởi động service
+sudo systemctl start edge-ai-api
+sudo systemctl enable edge-ai-api  # Tự động chạy khi khởi động
+
+# Bước 5: Kiểm tra service
+sudo systemctl status edge-ai-api
+
+# Bước 6: Test API
+curl http://localhost:8080/v1/core/health
 ```
-edge-ai-api-2025.0.1.3-Beta-amd64.deb
-```
+
+**Lưu ý về OpenCV:**
+- Nếu package đã bundle OpenCV 4.10, quá trình cài đặt sẽ không yêu cầu cài thêm.
+- Nếu thiếu OpenCV 4.10, quá trình cài đặt sẽ tự động phát hiện và cho phép cài đặt tự động.
+- Nếu cài đặt OpenCV bị lỗi, chạy lại: `sudo /opt/edge_ai_api/scripts/build_opencv_safe.sh`
+
+#### Cài Đặt Package Thông Thường
 
 **⚠️ Quan trọng - Prerequisites:**
 
-Trước khi cài đặt package, nếu bạn muốn cài OpenCV 4.10 tự động trong quá trình cài đặt, cần cài dependencies trước:
+Trước khi cài đặt package thông thường, cần cài dependencies trước:
 
 ```bash
 sudo apt-get update
 sudo apt-get install -y unzip cmake make g++ wget
 ```
 
-**Lý do:** Trong quá trình cài đặt package (`dpkg -i`), hệ thống không cho phép cài đặt thêm packages khác vì dpkg đang giữ lock. Nếu không cài dependencies trước, OpenCV sẽ được bỏ qua và bạn có thể cài sau.
+**Lý do:** Trong quá trình cài đặt package (`dpkg -i`), hệ thống không cho phép cài đặt thêm packages khác vì dpkg đang giữ lock.
 
 **Cài đặt package:**
 
@@ -276,16 +344,17 @@ sudo apt-get update
 sudo apt-get install -y unzip cmake make g++ wget
 
 # 2. Cài đặt
-sudo dpkg -i edge-ai-api-2025.0.1.3-Beta-amd64.deb
+sudo dpkg -i edge-ai-api-*.deb
 
 # 3. Nếu có lỗi dependencies, chạy:
 sudo apt-get install -f
 
 # 4. Khởi động service
 sudo systemctl start edge-ai-api
-
-# 5. Enable tự động chạy khi khởi động
 sudo systemctl enable edge-ai-api
+
+# 5. Kiểm tra service
+sudo systemctl status edge-ai-api
 ```
 
 **Nếu chưa cài OpenCV 4.10, cài sau:**
@@ -297,9 +366,28 @@ sudo /opt/edge_ai_api/scripts/build_opencv_safe.sh
 sudo systemctl restart edge-ai-api
 ```
 
-### Kiểm Tra Cài Đặt
+### Verify Installation
 
 ```bash
+# Kiểm tra package status
+dpkg -l | grep edge-ai-api
+
+# Kiểm tra libraries
+ls -la /opt/edge_ai_api/lib/
+
+# Kiểm tra GStreamer plugins (ALL-IN-ONE)
+ls -la /opt/edge_ai_api/lib/gstreamer-1.0/
+
+# Kiểm tra default fonts và models (ALL-IN-ONE)
+ls -la /opt/edge_ai_api/fonts/
+ls -la /opt/edge_ai_api/models/
+
+# Kiểm tra CVEDIX SDK
+ls -la /opt/cvedix/lib/
+
+# Test executable
+/usr/local/bin/edge_ai_api --help
+
 # Kiểm tra service status
 sudo systemctl status edge-ai-api
 
@@ -316,9 +404,12 @@ curl http://localhost:8080/v1/core/version
 Sau khi cài đặt package, các file sẽ được đặt tại:
 
 - **Executable**: `/usr/local/bin/edge_ai_api`
-- **Libraries**: `/opt/edge_ai_api/lib/` (bundled - tất cả trong một nơi)
+- **Libraries**: `/opt/edge_ai_api/lib/` (bundled - tự chứa)
+- **GStreamer plugins**: `/opt/edge_ai_api/lib/gstreamer-1.0/` (ALL-IN-ONE)
 - **Config**: `/opt/edge_ai_api/config/`
 - **Data**: `/opt/edge_ai_api/` (instances, solutions, models, logs, etc.)
+- **Fonts**: `/opt/edge_ai_api/fonts/` (default fonts - ALL-IN-ONE)
+- **Models**: `/opt/edge_ai_api/models/` (default models - ALL-IN-ONE)
 - **Service**: `/etc/systemd/system/edge-ai-api.service`
 
 ### Quản Lý Service
@@ -605,7 +696,8 @@ Toàn bộ danh sách API, request/response schema và ví dụ `curl` để **t
 ## 📚 Tài Liệu Tham Khảo
 
 - [README.md](README.md) - Tổng quan project
-- [packaging/docs/BUILD_DEB.md](packaging/docs/BUILD_DEB.md) - Chi tiết build Debian package
+- [packaging/docs/BUILD_DEB.md](packaging/docs/BUILD_DEB.md) - Chi tiết build Debian package thông thường
+- [packaging/docs/BUILD_ALL_IN_ONE.md](packaging/docs/BUILD_ALL_IN_ONE.md) - Chi tiết build ALL-IN-ONE package (khuyến nghị)
 - [docs/API.md](docs/API.md) - Full API reference
 - [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md) - Development guide
 - [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) - System architecture
