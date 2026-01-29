@@ -5,32 +5,69 @@ Maintainer: CVEDIX <support@cvedix.com>
 Build-Depends: debhelper (>= 13),
                cmake (>= 3.14),
                build-essential,
+               make,
                git,
+               unzip,
                libssl-dev,
+               libcurl4-openssl-dev,
                zlib1g-dev,
                libjsoncpp-dev,
+               libjson-c-dev,
                uuid-dev,
                pkg-config,
                libopencv-dev,
                libgstreamer1.0-dev,
                libgstreamer-plugins-base1.0-dev,
-               libmosquitto-dev
+               libgstrtspserver-1.0-dev,
+               libmosquitto-dev,
+               mosquitto,
+               mosquitto-clients,
+               libturbojpeg0-dev | libturbojpeg-dev,
+               gstreamer1.0-tools,
+               python3-gst-1.0,
+               gstreamer1.0-rtsp,
+               libgtk-3-dev,
+               libavcodec-dev,
+               libavformat-dev,
+               libswscale-dev,
+               libv4l-dev,
+               libxvidcore-dev,
+               libx264-dev,
+               libjpeg-dev,
+               libpng-dev,
+               libtiff-dev,
+               gfortran,
+               openexr,
+               libatlas-base-dev,
+               python3-dev,
+               python3-numpy
 Standards-Version: 4.6.0
 Homepage: https://github.com/cvedix/edge_ai_api
 
 Package: edge-ai-api
 Architecture: amd64
-Depends: ${misc:Depends},
+Depends: ,
          libc6,
          libstdc++6,
          libgcc-s1,
          adduser,
          systemd
-Description: Edge AI API Server - RESTful API for CVEDIX Edge AI SDK
+Description: Edge AI API Server - ALL-IN-ONE Package
  Edge AI API Server provides a RESTful control plane for managing
  CVEDIX Edge AI SDK instances remotely. It allows backend services
  or remote operators to configure, launch, and monitor real-time
  computer vision instances on edge devices without direct access.
+ .
+ This is an ALL-IN-ONE package that includes:
+  - CVEDIX SDK runtime (bundled)
+  - OpenCV libraries (bundled)
+  - GStreamer libraries and plugins (bundled)
+  - FFmpeg libraries (bundled)
+  - All other dependencies (bundled)
+ .
+ No additional dependencies need to be installed. The package is
+ self-contained and can be installed on any Ubuntu/Debian system
+ with only basic system libraries (libc6, libstdc++6, libgcc-s1).
  .
  Features:
   - RESTful API for instance management
@@ -38,3 +75,4 @@ Description: Edge AI API Server - RESTful API for CVEDIX Edge AI SDK
   - Swagger UI for API exploration
   - Systemd service integration
   - Comprehensive logging and monitoring
+  - All dependencies bundled (no external dependencies required)

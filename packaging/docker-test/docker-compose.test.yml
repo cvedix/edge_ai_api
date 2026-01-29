@@ -1,0 +1,19 @@
+services:
+  edge-ai-api-test:
+    build:
+      context: ../..  # Project root để có thể copy .deb file
+      dockerfile: packaging/docker-test/Dockerfile.test
+    container_name: edge-ai-api-test
+    # Privileged mode cần thiết cho systemd
+    privileged: true
+    # Mount systemd
+    volumes:
+      - /sys/fs/cgroup:/sys/fs/cgroup:ro
+    ports:
+      - "8080:8080"
+    # Giữ container chạy
+    tty: true
+    stdin_open: true
+    # Restart policy
+    restart: unless-stopped
+

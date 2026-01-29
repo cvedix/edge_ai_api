@@ -119,21 +119,128 @@ echo "=========================================="
 echo "3. Verifying RPATH Configuration"
 echo "=========================================="
 
-if command -v patchelf >/dev/null 2>&1; then
-    if [ -f "$EXECUTABLE" ]; then
+EXPECTED_RPATH="/opt/edge_ai_api/lib:/opt/cvedix/lib"
+RPATH_FIXED=false
+
+if [ -f "$EXECUTABLE" ]; then
+    rpath=""
+    
+    # Try patchelf first (most reliable)
+    if command -v patchelf >/dev/null 2>&1; then
         rpath=$(patchelf --print-rpath "$EXECUTABLE" 2>/dev/null || echo "")
-        if [ -n "$rpath" ]; then
-            if echo "$rpath" | grep -q "/opt/edge_ai_api/lib"; then
+    # Fallback to readelf (usually available on most Linux systems)
+    elif command -v readelf >/dev/null 2>&1; then
+        rpath=$(readelf -d "$EXECUTABLE" 2>/dev/null | grep -i "rpath" | sed -n 's/.*\[\(.*\)\].*/\1/p' | head -1 || echo "")
+    # Fallback to objdump (also usually available)
+    elif command -v objdump >/dev/null 2>&1; then
+        rpath=$(objdump -p "$EXECUTABLE" 2>/dev/null | grep -i "rpath" | sed 's/.*RPATH[[:space:]]*\(.*\)/\1/' | head -1 || echo "")
+    fi
+    
+    if [ -n "$rpath" ]; then
+        # Check if RPATH contains build paths (should not)
+        if echo "$rpath" | grep -qE "(build/lib|/home/|/tmp/|/var/tmp/)"; then
+            log_warning "RPATH contains build paths (should be production paths only): $rpath"
+            log_info "Expected RPATH: $EXPECTED_RPATH"
+            
+            # Try to fix if patchelf is available
+            if command -v patchelf >/dev/null 2>&1; then
+                log_info "Attempting to fix RPATH..."
+                if patchelf --set-rpath "$EXPECTED_RPATH" "$EXECUTABLE" 2>/dev/null; then
+                    VERIFIED_RPATH=$(patchelf --print-rpath "$EXECUTABLE" 2>/dev/null || echo "")
+                    if [ "$VERIFIED_RPATH" = "$EXPECTED_RPATH" ]; then
+                        log_success "RPATH fixed successfully: $VERIFIED_RPATH"
+                        RPATH_FIXED=true
+                    else
+                        log_error "Failed to fix RPATH. Current: $VERIFIED_RPATH, Expected: $EXPECTED_RPATH"
+                    fi
+                else
+                    log_error "Failed to set RPATH using patchelf"
+                    log_info "Please run manually: sudo patchelf --set-rpath '$EXPECTED_RPATH' $EXECUTABLE"
+                fi
+            else
+                log_error "patchelf not found. Cannot fix RPATH automatically."
+                log_info "Please install patchelf and run: sudo patchelf --set-rpath '$EXPECTED_RPATH' $EXECUTABLE"
+            fi
+        # Check if RPATH contains production paths
+        elif echo "$rpath" | grep -q "/opt/edge_ai_api/lib"; then
+            # Verify it matches expected exactly
+            if [ "$rpath" = "$EXPECTED_RPATH" ]; then
                 log_success "RPATH correctly set: $rpath"
             else
-                log_warning "RPATH may not point to bundled libraries: $rpath"
+                log_warning "RPATH contains production paths but may not be optimal: $rpath"
+                log_info "Expected RPATH: $EXPECTED_RPATH"
+                
+                # Try to fix if patchelf is available
+                if command -v patchelf >/dev/null 2>&1; then
+                    log_info "Attempting to optimize RPATH..."
+                    if patchelf --set-rpath "$EXPECTED_RPATH" "$EXECUTABLE" 2>/dev/null; then
+                        VERIFIED_RPATH=$(patchelf --print-rpath "$EXECUTABLE" 2>/dev/null || echo "")
+                        if [ "$VERIFIED_RPATH" = "$EXPECTED_RPATH" ]; then
+                            log_success "RPATH optimized successfully: $VERIFIED_RPATH"
+                            RPATH_FIXED=true
+                        fi
+                    fi
+                fi
             fi
         else
+            log_warning "RPATH may not point to bundled libraries: $rpath"
+            log_info "Expected RPATH: $EXPECTED_RPATH"
+            
+            # Try to fix if patchelf is available
+            if command -v patchelf >/dev/null 2>&1; then
+                log_info "Attempting to set RPATH..."
+                if patchelf --set-rpath "$EXPECTED_RPATH" "$EXECUTABLE" 2>/dev/null; then
+                    VERIFIED_RPATH=$(patchelf --print-rpath "$EXECUTABLE" 2>/dev/null || echo "")
+                    if [ "$VERIFIED_RPATH" = "$EXPECTED_RPATH" ]; then
+                        log_success "RPATH set successfully: $VERIFIED_RPATH"
+                        RPATH_FIXED=true
+                    fi
+                fi
+            fi
+        fi
+        
+        # Also check worker executable
+        if [ -f "$WORKER" ]; then
+            worker_rpath=""
+            if command -v patchelf >/dev/null 2>&1; then
+                worker_rpath=$(patchelf --print-rpath "$WORKER" 2>/dev/null || echo "")
+            elif command -v readelf >/dev/null 2>&1; then
+                worker_rpath=$(readelf -d "$WORKER" 2>/dev/null | grep -i "rpath" | sed -n 's/.*\[\(.*\)\].*/\1/p' | head -1 || echo "")
+            fi
+            
+            if [ -n "$worker_rpath" ] && [ "$worker_rpath" != "$EXPECTED_RPATH" ]; then
+                if command -v patchelf >/dev/null 2>&1; then
+                    log_info "Fixing RPATH for worker executable..."
+                    if patchelf --set-rpath "$EXPECTED_RPATH" "$WORKER" 2>/dev/null; then
+                        log_success "Worker RPATH fixed"
+                        RPATH_FIXED=true
+                    fi
+                fi
+            fi
+        fi
+    else
+        # Check if we have a tool to verify RPATH
+        if command -v patchelf >/dev/null 2>&1 || command -v readelf >/dev/null 2>&1 || command -v objdump >/dev/null 2>&1; then
             log_warning "RPATH not set (may use LD_LIBRARY_PATH or system libraries)"
+            log_info "Expected RPATH: $EXPECTED_RPATH"
+            
+            # Try to set if patchelf is available
+            if command -v patchelf >/dev/null 2>&1; then
+                log_info "Attempting to set RPATH..."
+                if patchelf --set-rpath "$EXPECTED_RPATH" "$EXECUTABLE" 2>/dev/null; then
+                    VERIFIED_RPATH=$(patchelf --print-rpath "$EXECUTABLE" 2>/dev/null || echo "")
+                    if [ "$VERIFIED_RPATH" = "$EXPECTED_RPATH" ]; then
+                        log_success "RPATH set successfully: $VERIFIED_RPATH"
+                        RPATH_FIXED=true
+                    fi
+                fi
+            fi
+        else
+            log_warning "No tools available to verify RPATH (patchelf/readelf/objdump not found)"
         fi
     fi
 else
-    log_warning "patchelf not found, cannot verify RPATH"
+    log_warning "Executable not found, cannot verify RPATH"
 fi
 
 # ============================================

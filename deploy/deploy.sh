@@ -529,8 +529,8 @@ cd "$PROJECT_ROOT"
     fi
 
 # Copy openapi.yaml file (required for Swagger UI)
-if [ -f "$PROJECT_ROOT/openapi.yaml" ]; then
-    cp "$PROJECT_ROOT/openapi.yaml" "$INSTALL_DIR/openapi.yaml"
+if [ -f "$PROJECT_ROOT/api-specs/openapi.yaml" ]; then
+    cp "$PROJECT_ROOT/api-specs/openapi.yaml" "$INSTALL_DIR/openapi.yaml"
     chown "$SERVICE_USER:$SERVICE_GROUP" "$INSTALL_DIR/openapi.yaml"
     chmod 644 "$INSTALL_DIR/openapi.yaml"
     echo -e "${GREEN}✓${NC} Đã copy openapi.yaml"

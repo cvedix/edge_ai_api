@@ -1,11 +1,13 @@
 #include "instances/instance_registry.h"
 #include "core/adaptive_queue_size_manager.h"
 #include "core/backpressure_controller.h"
+#include "core/cvedix_validator.h"
 #include "core/logger.h"
 #include "core/logging_flags.h"
 #include "core/timeout_constants.h"
 #include "core/uuid_generator.h"
 #include "models/update_instance_request.h"
+#include "utils/gstreamer_checker.h"
 #include "utils/mp4_directory_watcher.h"
 #include "utils/mp4_finalizer.h"
 #include <algorithm>
@@ -975,6 +977,43 @@ bool InstanceRegistry::startInstance(const std::string &instanceId,
     }
 
     if (!filePath.empty()) {
+      // CRITICAL: Check parent directory is traversable FIRST
+      // On Linux, you need execute permission on directory to access files inside
+      fs::path filePathObj(filePath);
+      fs::path parentDir = filePathObj.parent_path();
+      
+      if (!parentDir.empty() && parentDir != "/" && 
+          !CVEDIXValidator::isDirectoryTraversable(parentDir)) {
+        std::cerr
+            << "[InstanceRegistry] ✗ Cannot access parent directory: "
+            << parentDir.string() << std::endl;
+        std::cerr << "[InstanceRegistry] ✗ Cannot start instance - directory "
+                     "permission validation failed"
+                  << std::endl;
+        std::cerr << "[InstanceRegistry] Directory must have execute (x) "
+                     "permission for traversal"
+                  << std::endl;
+        std::cerr << "[InstanceRegistry] Current directory permissions:" << std::endl;
+        struct stat dirStat;
+        if (stat(parentDir.c_str(), &dirStat) == 0) {
+          std::cerr << "[InstanceRegistry]   Mode: " << std::oct << (dirStat.st_mode & 0777) 
+                    << std::dec << std::endl;
+        }
+        std::cerr << "[InstanceRegistry] Solution:" << std::endl;
+        std::cerr << "[InstanceRegistry]   sudo chmod 755 " << parentDir.string() 
+                  << std::endl;
+        std::cerr << "[InstanceRegistry]   Or ensure directory is readable and "
+                     "executable by service user (edgeai)"
+                  << std::endl;
+        // Cleanup pipeline
+        {
+          std::unique_lock<std::shared_timed_mutex> lock(
+              mutex_); // Exclusive lock for write operations
+          pipelines_.erase(instanceId);
+        }
+        return false;
+      }
+
       // Check if file exists and is readable
       struct stat fileStat;
       if (stat(filePath.c_str(), &fileStat) != 0) {
@@ -992,6 +1031,9 @@ bool InstanceRegistry::startInstance(const std::string &instanceId,
         std::cerr
             << "[InstanceRegistry]   3. File permissions allow read access"
             << std::endl;
+        std::cerr << "[InstanceRegistry]   4. Parent directory is traversable "
+                     "(has execute permission)"
+                  << std::endl;
         // Cleanup pipeline
         {
           std::unique_lock<std::shared_timed_mutex> lock(
@@ -1015,6 +1057,88 @@ bool InstanceRegistry::startInstance(const std::string &instanceId,
         }
         return false;
       }
+
+      // Check file is readable
+      if (!CVEDIXValidator::isFileReadable(filePathObj)) {
+        std::cerr << "[InstanceRegistry] ✗ File is not readable: " << filePath
+                  << std::endl;
+        std::cerr << "[InstanceRegistry] ✗ Cannot start instance - file "
+                     "permission validation failed"
+                  << std::endl;
+        std::cerr << CVEDIXValidator::getPermissionErrorMessage(filePath)
+                  << std::endl;
+        // Cleanup pipeline
+        {
+          std::unique_lock<std::shared_timed_mutex> lock(
+              mutex_); // Exclusive lock for write operations
+          pipelines_.erase(instanceId);
+        }
+        return false;
+      }
+
+      // CRITICAL: Check for required GStreamer plugins BEFORE attempting to open file
+      // This prevents infinite retry loops when plugins are missing
+      // Missing plugins cause GStreamer to fail silently, leading to SDK retries
+      std::cerr << "[InstanceRegistry] Checking GStreamer plugins for file source..."
+                << std::endl;
+      auto plugins = GStreamerChecker::checkRequiredPlugins();
+      std::vector<std::string> missingRequired;
+      // Check for plugins specifically needed for file source (MP4/H.264)
+      std::vector<std::string> requiredForFileSource = {
+          "isomp4", "h264parse", "avdec_h264", "filesrc", "videoconvert"};
+      for (const auto &pluginName : requiredForFileSource) {
+        auto it = plugins.find(pluginName);
+        if (it != plugins.end() && it->second.required && !it->second.available) {
+          missingRequired.push_back(pluginName);
+        }
+      }
+
+      if (!missingRequired.empty()) {
+        std::cerr
+            << "[InstanceRegistry] ✗ Cannot start instance - required GStreamer "
+               "plugins are missing"
+            << std::endl;
+        std::cerr << "[InstanceRegistry] Missing plugins: ";
+        for (size_t i = 0; i < missingRequired.size(); ++i) {
+          std::cerr << missingRequired[i];
+          if (i < missingRequired.size() - 1)
+            std::cerr << ", ";
+        }
+        std::cerr << std::endl;
+        std::cerr
+            << "[InstanceRegistry] These plugins are required to read video files"
+            << std::endl;
+        std::cerr << "[InstanceRegistry] Error details:" << std::endl;
+        std::cerr << "[InstanceRegistry]   - GStreamer cannot open video file "
+                     "without these plugins"
+                  << std::endl;
+        std::cerr
+            << "[InstanceRegistry]   - File source node will retry indefinitely"
+            << std::endl;
+        std::cerr << "[InstanceRegistry]   - This causes process to hang or exit"
+                  << std::endl;
+        std::cerr << "[InstanceRegistry] Please install missing plugins:"
+                  << std::endl;
+        std::string installCmd =
+            GStreamerChecker::getInstallationCommand(missingRequired);
+        if (!installCmd.empty()) {
+          std::cerr << "[InstanceRegistry]   " << installCmd << std::endl;
+        } else {
+          std::cerr << "[InstanceRegistry]   sudo apt-get update && sudo apt-get "
+                       "install -y gstreamer1.0-libav gstreamer1.0-plugins-base "
+                       "gstreamer1.0-plugins-good"
+                    << std::endl;
+        }
+        // Cleanup pipeline
+        {
+          std::unique_lock<std::shared_timed_mutex> lock(
+              mutex_); // Exclusive lock for write operations
+          pipelines_.erase(instanceId);
+        }
+        return false;
+      }
+      std::cerr << "[InstanceRegistry] ✓ Required GStreamer plugins are available"
+                << std::endl;
 
       // Validate video file format using ffprobe (if available)
       // This prevents infinite retry loops when file is corrupted or invalid
@@ -3016,6 +3140,45 @@ bool InstanceRegistry::startPipeline(
       std::cerr << "[InstanceRegistry] ========================================"
                 << std::endl;
 
+      // Log file path being used for debugging
+      std::string filePathForLogging;
+      {
+        std::shared_lock<std::shared_timed_mutex> lock(mutex_);
+        auto instanceIt = instances_.find(instanceId);
+        if (instanceIt != instances_.end()) {
+          filePathForLogging = instanceIt->second.filePath;
+          // Also check additionalParams for FILE_PATH
+          auto filePathIt = instanceIt->second.additionalParams.find("FILE_PATH");
+          if (filePathIt != instanceIt->second.additionalParams.end() &&
+              !filePathIt->second.empty()) {
+            filePathForLogging = filePathIt->second;
+          }
+        }
+      }
+      if (!filePathForLogging.empty()) {
+        std::cerr << "[InstanceRegistry] File path: '" << filePathForLogging
+                  << "'" << std::endl;
+        // Verify file still exists (might have been deleted after validation)
+        struct stat fileStat;
+        if (stat(filePathForLogging.c_str(), &fileStat) == 0) {
+          std::cerr << "[InstanceRegistry] ✓ File exists and is accessible"
+                    << std::endl;
+        } else {
+          std::cerr << "[InstanceRegistry] ⚠ WARNING: File may not exist or "
+                       "is not accessible: "
+                    << filePathForLogging << std::endl;
+          std::cerr << "[InstanceRegistry] This may cause 'open file failed' "
+                       "errors"
+                    << std::endl;
+        }
+      } else {
+        std::cerr << "[InstanceRegistry] ⚠ WARNING: File path is empty!"
+                  << std::endl;
+        std::cerr << "[InstanceRegistry] This will cause 'open file failed' "
+                     "errors"
+                  << std::endl;
+      }
+
       // CRITICAL: Validate file exists BEFORE starting to prevent infinite
       // retry loops Note: File path validation should have been done in
       // startInstance(), but we check again here for safety This prevents SDK
@@ -3106,14 +3269,27 @@ bool InstanceRegistry::startPipeline(
           std::cerr
               << "[InstanceRegistry] ⚠ WARNING: fileNode->start() timeout ("
               << START_TIMEOUT_MS << "ms)" << std::endl;
-          std::cerr << "[InstanceRegistry] ⚠ This may indicate GStreamer "
-                       "pipeline issue or video file problem"
+          std::cerr << "[InstanceRegistry] ⚠ This may indicate:" << std::endl;
+          std::cerr << "[InstanceRegistry]   1. GStreamer pipeline issue (check "
+                       "plugins are installed)"
+                    << std::endl;
+          std::cerr << "[InstanceRegistry]   2. Video file is corrupted or "
+                       "incompatible format"
+                    << std::endl;
+          std::cerr << "[InstanceRegistry]   3. GStreamer is retrying to open "
+                       "file (may indicate missing plugins)"
                     << std::endl;
           std::cerr << "[InstanceRegistry] ⚠ Server will continue running, but "
                        "instance may not process frames correctly"
                     << std::endl;
-          std::cerr << "[InstanceRegistry] ⚠ Consider stopping and restarting "
-                       "the instance"
+          std::cerr << "[InstanceRegistry] ⚠ If this persists, check:" << std::endl;
+          std::cerr << "[InstanceRegistry]   - GStreamer plugins are installed: "
+                       "gst-inspect-1.0 isomp4"
+                    << std::endl;
+          std::cerr << "[InstanceRegistry]   - Video file is valid (use ffprobe on "
+                       "the file path)"
+                    << std::endl;
+          std::cerr << "[InstanceRegistry]   - Check logs for GStreamer errors"
                     << std::endl;
           // Don't return false - let instance continue, but it may not work
           // correctly This prevents server from being blocked

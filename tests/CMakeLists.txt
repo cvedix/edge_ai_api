@@ -95,6 +95,7 @@ target_sources(edge_ai_api_tests PRIVATE
     ${CMAKE_SOURCE_DIR}/src/utils/cvedix_mqtt_client_impl.cpp
     ${CMAKE_SOURCE_DIR}/src/utils/mp4_finalizer.cpp
     ${CMAKE_SOURCE_DIR}/src/utils/mp4_directory_watcher.cpp
+    ${CMAKE_SOURCE_DIR}/src/utils/gstreamer_checker.cpp
     ${CMAKE_SOURCE_DIR}/src/solutions/solution_registry.cpp
     ${CMAKE_SOURCE_DIR}/src/solutions/solution_storage.cpp
     ${CMAKE_SOURCE_DIR}/src/config/system_config.cpp
