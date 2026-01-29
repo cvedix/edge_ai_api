@@ -110,7 +110,8 @@ sudo apt-get install -y \
     libstdc++6 \
     libgcc-s1 \
     adduser \
-    systemd
+    systemd \
+    patchelf
 ```
 
 **Bước 3: Cài Đặt Dependencies Cho OpenCV và FFmpeg (Nếu Package Chưa Bundle OpenCV)**
@@ -509,6 +510,31 @@ ldd /usr/local/bin/edge_ai_api | grep "not found"
 # Script validation (nếu có)
 sudo /opt/edge_ai_api/scripts/validate_installation.sh --verbose
 ```
+
+### Lỗi: RPATH chứa đường dẫn build
+
+Nếu script validation báo cảnh báo về RPATH chứa đường dẫn build (ví dụ: `/home/.../build/lib`), bạn cần sửa RPATH:
+
+```bash
+# Cài đặt patchelf nếu chưa có
+sudo apt-get install -y patchelf
+
+# Chạy script tự động fix RPATH
+sudo /opt/edge_ai_api/scripts/fix_rpath.sh
+
+# Hoặc fix thủ công
+sudo patchelf --set-rpath "/opt/edge_ai_api/lib:/opt/cvedix/lib" /usr/local/bin/edge_ai_api
+sudo patchelf --set-rpath "/opt/edge_ai_api/lib:/opt/cvedix/lib" /usr/local/bin/edge_ai_worker
+
+# Verify RPATH đã được fix
+patchelf --print-rpath /usr/local/bin/edge_ai_api
+# Kết quả mong đợi: /opt/edge_ai_api/lib:/opt/cvedix/lib
+
+# Restart service sau khi fix
+sudo systemctl restart edge-ai-api
+```
+
+**Nguyên nhân:** Executable được build với RPATH trỏ đến thư mục build thay vì thư mục production. Script `fix_rpath.sh` sẽ tự động sửa lỗi này.
 
 ## 📚 Tài Liệu Liên Quan
 

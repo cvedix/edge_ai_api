@@ -1,6 +1,7 @@
 #include "instances/instance_registry.h"
 #include "core/adaptive_queue_size_manager.h"
 #include "core/backpressure_controller.h"
+#include "core/cvedix_validator.h"
 #include "core/logger.h"
 #include "core/logging_flags.h"
 #include "core/timeout_constants.h"
@@ -976,6 +977,43 @@ bool InstanceRegistry::startInstance(const std::string &instanceId,
     }
 
     if (!filePath.empty()) {
+      // CRITICAL: Check parent directory is traversable FIRST
+      // On Linux, you need execute permission on directory to access files inside
+      fs::path filePathObj(filePath);
+      fs::path parentDir = filePathObj.parent_path();
+      
+      if (!parentDir.empty() && parentDir != "/" && 
+          !CVEDIXValidator::isDirectoryTraversable(parentDir)) {
+        std::cerr
+            << "[InstanceRegistry] ✗ Cannot access parent directory: "
+            << parentDir.string() << std::endl;
+        std::cerr << "[InstanceRegistry] ✗ Cannot start instance - directory "
+                     "permission validation failed"
+                  << std::endl;
+        std::cerr << "[InstanceRegistry] Directory must have execute (x) "
+                     "permission for traversal"
+                  << std::endl;
+        std::cerr << "[InstanceRegistry] Current directory permissions:" << std::endl;
+        struct stat dirStat;
+        if (stat(parentDir.c_str(), &dirStat) == 0) {
+          std::cerr << "[InstanceRegistry]   Mode: " << std::oct << (dirStat.st_mode & 0777) 
+                    << std::dec << std::endl;
+        }
+        std::cerr << "[InstanceRegistry] Solution:" << std::endl;
+        std::cerr << "[InstanceRegistry]   sudo chmod 755 " << parentDir.string() 
+                  << std::endl;
+        std::cerr << "[InstanceRegistry]   Or ensure directory is readable and "
+                     "executable by service user (edgeai)"
+                  << std::endl;
+        // Cleanup pipeline
+        {
+          std::unique_lock<std::shared_timed_mutex> lock(
+              mutex_); // Exclusive lock for write operations
+          pipelines_.erase(instanceId);
+        }
+        return false;
+      }
+
       // Check if file exists and is readable
       struct stat fileStat;
       if (stat(filePath.c_str(), &fileStat) != 0) {
@@ -993,6 +1031,9 @@ bool InstanceRegistry::startInstance(const std::string &instanceId,
         std::cerr
             << "[InstanceRegistry]   3. File permissions allow read access"
             << std::endl;
+        std::cerr << "[InstanceRegistry]   4. Parent directory is traversable "
+                     "(has execute permission)"
+                  << std::endl;
         // Cleanup pipeline
         {
           std::unique_lock<std::shared_timed_mutex> lock(
@@ -1007,6 +1048,24 @@ bool InstanceRegistry::startInstance(const std::string &instanceId,
                   << filePath << std::endl;
         std::cerr << "[InstanceRegistry] ✗ Cannot start instance - file "
                      "validation failed"
+                  << std::endl;
+        // Cleanup pipeline
+        {
+          std::unique_lock<std::shared_timed_mutex> lock(
+              mutex_); // Exclusive lock for write operations
+          pipelines_.erase(instanceId);
+        }
+        return false;
+      }
+
+      // Check file is readable
+      if (!CVEDIXValidator::isFileReadable(filePathObj)) {
+        std::cerr << "[InstanceRegistry] ✗ File is not readable: " << filePath
+                  << std::endl;
+        std::cerr << "[InstanceRegistry] ✗ Cannot start instance - file "
+                     "permission validation failed"
+                  << std::endl;
+        std::cerr << CVEDIXValidator::getPermissionErrorMessage(filePath)
                   << std::endl;
         // Cleanup pipeline
         {
@@ -3080,6 +3139,45 @@ bool InstanceRegistry::startPipeline(
                 << std::endl;
       std::cerr << "[InstanceRegistry] ========================================"
                 << std::endl;
+
+      // Log file path being used for debugging
+      std::string filePathForLogging;
+      {
+        std::shared_lock<std::shared_timed_mutex> lock(mutex_);
+        auto instanceIt = instances_.find(instanceId);
+        if (instanceIt != instances_.end()) {
+          filePathForLogging = instanceIt->second.filePath;
+          // Also check additionalParams for FILE_PATH
+          auto filePathIt = instanceIt->second.additionalParams.find("FILE_PATH");
+          if (filePathIt != instanceIt->second.additionalParams.end() &&
+              !filePathIt->second.empty()) {
+            filePathForLogging = filePathIt->second;
+          }
+        }
+      }
+      if (!filePathForLogging.empty()) {
+        std::cerr << "[InstanceRegistry] File path: '" << filePathForLogging
+                  << "'" << std::endl;
+        // Verify file still exists (might have been deleted after validation)
+        struct stat fileStat;
+        if (stat(filePathForLogging.c_str(), &fileStat) == 0) {
+          std::cerr << "[InstanceRegistry] ✓ File exists and is accessible"
+                    << std::endl;
+        } else {
+          std::cerr << "[InstanceRegistry] ⚠ WARNING: File may not exist or "
+                       "is not accessible: "
+                    << filePathForLogging << std::endl;
+          std::cerr << "[InstanceRegistry] This may cause 'open file failed' "
+                       "errors"
+                    << std::endl;
+        }
+      } else {
+        std::cerr << "[InstanceRegistry] ⚠ WARNING: File path is empty!"
+                  << std::endl;
+        std::cerr << "[InstanceRegistry] This will cause 'open file failed' "
+                     "errors"
+                  << std::endl;
+      }
 
       // CRITICAL: Validate file exists BEFORE starting to prevent infinite
       // retry loops Note: File path validation should have been done in

@@ -763,27 +763,86 @@ rm -rf "$SDK_EXTRACT_DIR"
 mkdir -p "$SDK_EXTRACT_DIR"
 
 # Extract SDK .deb (extract both data and control)
-dpkg-deb -x "$SDK_DEB_FILE" "$SDK_EXTRACT_DIR"
+echo "  Extracting SDK package data..."
+if ! dpkg-deb -x "$SDK_DEB_FILE" "$SDK_EXTRACT_DIR"; then
+    echo -e "${RED}✗ Error: Failed to extract SDK package data${NC}"
+    echo "  SDK .deb file may be corrupted or invalid"
+    echo "  File: $SDK_DEB_FILE"
+    exit 1
+fi
+
+# Extract control info (optional, may not exist in all packages)
 dpkg-deb -e "$SDK_DEB_FILE" "$SDK_EXTRACT_DIR/DEBIAN" 2>/dev/null || true
 
 # Get SDK package info
-SDK_PKG_NAME=$(dpkg-deb -f "$SDK_DEB_FILE" Package)
-SDK_PKG_VERSION=$(dpkg-deb -f "$SDK_DEB_FILE" Version)
-SDK_PKG_ARCH=$(dpkg-deb -f "$SDK_DEB_FILE" Architecture)
+SDK_PKG_NAME=$(dpkg-deb -f "$SDK_DEB_FILE" Package 2>/dev/null || echo "unknown")
+SDK_PKG_VERSION=$(dpkg-deb -f "$SDK_DEB_FILE" Version 2>/dev/null || echo "unknown")
+SDK_PKG_ARCH=$(dpkg-deb -f "$SDK_DEB_FILE" Architecture 2>/dev/null || echo "unknown")
 
 echo -e "${GREEN}✓${NC} SDK extracted: $SDK_PKG_NAME ($SDK_PKG_VERSION, $SDK_PKG_ARCH)"
 echo "  SDK contents: $SDK_EXTRACT_DIR"
 
-# List what was extracted for verification
+# CRITICAL: Verify SDK was extracted correctly
+SDK_EXTRACT_SUCCESS=false
 if [ -d "$SDK_EXTRACT_DIR/opt/cvedix" ]; then
+    SDK_EXTRACT_SUCCESS=true
     echo "  SDK directories found:"
     find "$SDK_EXTRACT_DIR/opt/cvedix" -type d -maxdepth 2 | sed 's|^.*/opt/cvedix/|    - |' | head -10
-    echo "  SDK libraries found:"
-    find "$SDK_EXTRACT_DIR/opt/cvedix/lib" -name "*.so*" -type f 2>/dev/null | sed 's|^.*/|    - |' | head -10 || echo "    (none found)"
+    
+    # Verify critical SDK libraries exist
+    echo "  Verifying SDK libraries..."
+    SDK_LIB_COUNT=$(find "$SDK_EXTRACT_DIR/opt/cvedix/lib" -name "*.so*" -type f 2>/dev/null | wc -l)
+    if [ "$SDK_LIB_COUNT" -gt 0 ]; then
+        echo "  SDK libraries found: $SDK_LIB_COUNT"
+        find "$SDK_EXTRACT_DIR/opt/cvedix/lib" -name "*.so*" -type f 2>/dev/null | sed 's|^.*/|    - |' | head -10
+    else
+        echo -e "${YELLOW}  ⚠  Warning: No SDK libraries found in /opt/cvedix/lib${NC}"
+    fi
+    
+    # Verify critical SDK files
+    CRITICAL_SDK_FILES=(
+        "$SDK_EXTRACT_DIR/opt/cvedix/lib/libcvedix_core.so"
+        "$SDK_EXTRACT_DIR/opt/cvedix/lib/libtinyexpr.so"
+    )
+    MISSING_FILES=()
+    for sdk_file in "${CRITICAL_SDK_FILES[@]}"; do
+        if [ ! -f "$sdk_file" ] && [ ! -L "$sdk_file" ]; then
+            # Check for versioned files (e.g., libcvedix_core.so.1.0.0)
+            if ! find "$(dirname "$sdk_file")" -name "$(basename "$sdk_file").*" -type f 2>/dev/null | grep -q .; then
+                MISSING_FILES+=("$(basename "$sdk_file")")
+            fi
+        fi
+    done
+    
+    if [ ${#MISSING_FILES[@]} -gt 0 ]; then
+        echo -e "${YELLOW}  ⚠  Warning: Some critical SDK files may be missing:${NC}"
+        for file in "${MISSING_FILES[@]}"; do
+            echo "    - $file"
+        done
+        echo "  Package will be built but may not work correctly"
+    fi
 else
     echo -e "${YELLOW}  ⚠  Warning: /opt/cvedix not found in SDK package${NC}"
     echo "  Checking alternative locations..."
     find "$SDK_EXTRACT_DIR" -type d -maxdepth 3 | head -10
+    
+    # Check if SDK is in a different location
+    if find "$SDK_EXTRACT_DIR" -type d -name "cvedix" 2>/dev/null | grep -q .; then
+        echo "  Found 'cvedix' directory in alternative location:"
+        find "$SDK_EXTRACT_DIR" -type d -name "cvedix" 2>/dev/null | head -5
+        echo -e "${YELLOW}  ⚠  SDK structure may be different than expected${NC}"
+    else
+        echo -e "${RED}  ✗ Error: SDK directory structure not found${NC}"
+        echo "  SDK package may be invalid or corrupted"
+        echo "  Package build will continue but SDK will not be bundled"
+    fi
+fi
+
+# Final verification
+if [ "$SDK_EXTRACT_SUCCESS" = false ]; then
+    echo -e "${YELLOW}  ⚠  Warning: SDK extraction verification failed${NC}"
+    echo "  Package will be built but SDK may not be included"
+    echo "  Please verify SDK .deb file is valid: $SDK_DEB_FILE"
 fi
 echo ""
 

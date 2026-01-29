@@ -152,6 +152,15 @@ if [ -z "$CREATE_DIRS_SCRIPT" ] || [ ! -f "$CREATE_DIRS_SCRIPT" ]; then
     mkdir -p "$INSTALL_DIR"/run
     mkdir -p "$INSTALL_DIR"/record
     echo "  ✓ Directories created"
+    # CRITICAL: Set permissions to 755 for all directories to ensure traverse access
+    # This prevents "open file failed" errors when service tries to access files
+    echo "  Setting permissions to 755 for all directories..."
+    chmod 755 "$INSTALL_DIR"/instances "$INSTALL_DIR"/solutions "$INSTALL_DIR"/groups \
+              "$INSTALL_DIR"/nodes "$INSTALL_DIR"/models "$INSTALL_DIR"/videos \
+              "$INSTALL_DIR"/fonts "$INSTALL_DIR"/logs "$INSTALL_DIR"/data \
+              "$INSTALL_DIR"/config "$INSTALL_DIR"/uploads "$INSTALL_DIR"/lib \
+              "$INSTALL_DIR"/run "$INSTALL_DIR"/record 2>/dev/null || true
+    echo "  ✓ Permissions set to 755"
 fi
 
 # Set up directory permissions
@@ -169,23 +178,72 @@ chmod 755 "$INSTALL_DIR" 2>/dev/null || {
     echo "  ⚠  Warning: Cannot set permissions on $INSTALL_DIR"
 }
 
-# Apply permissions from directories.conf
+# CRITICAL: Apply permissions from directories.conf AFTER chown
+# This ensures permissions are set correctly even after ownership change
+# On Linux, execute permission (x) on directory is REQUIRED to access files inside
 if [ -f "$INSTALL_DIR/deploy/directories.conf" ]; then
-    source "$INSTALL_DIR/deploy/directories.conf"
-    for dir_name in "${!APP_DIRECTORIES[@]}"; do
-        dir_path="$INSTALL_DIR/$dir_name"
-        dir_perms="${APP_DIRECTORIES[$dir_name]}"
-        if [ -d "$dir_path" ]; then
-            chmod "$dir_perms" "$dir_path" 2>/dev/null || true
+    echo "  Applying permissions from directories.conf..."
+    # Source directories.conf using a safe method
+    if [ -r "$INSTALL_DIR/deploy/directories.conf" ]; then
+        # Use bash to source the config file (postinst runs with bash)
+        declare -A APP_DIRECTORIES=()
+        eval "$(bash -c "source '$INSTALL_DIR/deploy/directories.conf' && declare -p APP_DIRECTORIES" 2>/dev/null || echo "")"
+        
+        if [ ${#APP_DIRECTORIES[@]} -gt 0 ]; then
+            for dir_name in "${!APP_DIRECTORIES[@]}"; do
+                dir_path="$INSTALL_DIR/$dir_name"
+                dir_perms="${APP_DIRECTORIES[$dir_name]}"
+                if [ -d "$dir_path" ]; then
+                    # CRITICAL: Force all directories to 755 to ensure traverse access
+                    # On Linux, execute permission (x) on directory is REQUIRED to access files inside
+                    # This prevents "open file failed" errors
+                    dir_perms="755"
+                    chmod "$dir_perms" "$dir_path" 2>/dev/null || true
+                fi
+            done
+            echo "  ✓ Permissions applied from directories.conf (all set to 755)"
+        else
+            echo "  ⚠  Warning: Failed to load APP_DIRECTORIES from directories.conf, using fallback"
+            # Fall through to fallback
         fi
-    done
-else
-    # Fallback permissions (must match directories.conf)
-    chmod 750 "$INSTALL_DIR"/instances "$INSTALL_DIR"/solutions "$INSTALL_DIR"/groups \
+    else
+        echo "  ⚠  Warning: Cannot read directories.conf, using fallback"
+        # Fall through to fallback
+    fi
+fi
+
+# Fallback: Use 755 for all directories if directories.conf not available or failed
+# CRITICAL: This ensures traverse access is always enabled
+if [ ${#APP_DIRECTORIES[@]} -eq 0 ] || [ ! -f "$INSTALL_DIR/deploy/directories.conf" ]; then
+    echo "  Setting fallback permissions to 755 for all directories..."
+    chmod 755 "$INSTALL_DIR"/instances "$INSTALL_DIR"/solutions "$INSTALL_DIR"/groups \
               "$INSTALL_DIR"/nodes "$INSTALL_DIR"/models "$INSTALL_DIR"/videos \
               "$INSTALL_DIR"/fonts "$INSTALL_DIR"/logs "$INSTALL_DIR"/data \
-              "$INSTALL_DIR"/config "$INSTALL_DIR"/record 2>/dev/null || true
-    chmod 755 "$INSTALL_DIR"/uploads "$INSTALL_DIR"/lib "$INSTALL_DIR"/run 2>/dev/null || true
+              "$INSTALL_DIR"/config "$INSTALL_DIR"/uploads "$INSTALL_DIR"/lib \
+              "$INSTALL_DIR"/run "$INSTALL_DIR"/record 2>/dev/null || true
+    echo "  ✓ All directories set to 755 (traverse access enabled)"
+fi
+
+# CRITICAL: Final verification - ensure ALL directories have execute permission (755)
+# This is the most common cause of "open file failed" errors
+# On Linux, execute permission (x) on directory is REQUIRED to access files inside
+echo "  Verifying all directory permissions are 755..."
+ALL_DIRS_OK=true
+for dir_name in instances solutions groups nodes models videos fonts logs data config uploads lib run record; do
+    dir_path="$INSTALL_DIR/$dir_name"
+    if [ -d "$dir_path" ]; then
+        CURRENT_PERMS=$(stat -c "%a" "$dir_path" 2>/dev/null || echo "")
+        if [ -n "$CURRENT_PERMS" ] && [ "$CURRENT_PERMS" != "755" ] && [ "$CURRENT_PERMS" != "775" ] && [ "$CURRENT_PERMS" != "777" ]; then
+            echo "  ⚠  Warning: $dir_name directory has restrictive permissions ($CURRENT_PERMS), fixing..."
+            chmod 755 "$dir_path" 2>/dev/null || true
+            ALL_DIRS_OK=false
+        fi
+    fi
+done
+if [ "$ALL_DIRS_OK" = true ]; then
+    echo "  ✓ All directories have correct permissions (755)"
+else
+    echo "  ✓ Fixed restrictive directory permissions to 755"
 fi
 
 # Setup permissions for external data directories (e.g., cvedix_data)
