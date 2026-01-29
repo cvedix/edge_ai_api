@@ -45,6 +45,8 @@ make -j$(nproc)
 
 **⚠️ Khuyến nghị: Sử dụng ALL-IN-ONE package** - Tự chứa tất cả dependencies, không cần cài thêm packages.
 
+**📥 Tải file .deb ALL-IN-ONE:** [Download từ Google Drive](https://drive.google.com/file/d/1KaGvhSVFqFOc8_XIU6gd7xgWTT52fVub/view?usp=sharing)
+
 **⚠️ QUAN TRỌNG:** Trước khi cài đặt package `.deb`, bạn **BẮT BUỘC** phải chuẩn bị và cài đặt các dependencies trước. Xem chi tiết: [docs/INSTALLATION.md](docs/INSTALLATION.md)
 
 **Quick Start:**
