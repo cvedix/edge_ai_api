@@ -19,6 +19,10 @@ LIB_DIR = /opt/edge_ai_api/lib
 SERVICE_USER = edgeai
 SERVICE_GROUP = edgeai
 
+# SDK configuration
+SDK_EXTRACT_DIR = $(CURDIR)/debian/sdk_extract
+CVEDIX_INSTALL_DIR = /opt/cvedix
+
 %:
 	dh $@
 
@@ -87,17 +91,98 @@ override_dh_auto_install:
 		cp -r $(CURDIR)/debian/edge-ai-api/opt/edge_ai_api/lib/* $(CURDIR)/debian/$(PACKAGE_NAME)$(LIB_DIR)/ 2>/dev/null || true; \
 	fi
 
+	# Copy libopencv_freetype.so.410 from build/lib (created by CMakeLists.txt or build script)
+	# This is required for CVEDIX SDK compatibility
+	# Must be done AFTER bundle_libs.sh to ensure it's not overwritten
+	@LIB_TEMP_DIR=$(CURDIR)/debian/$(PACKAGE_NAME)$(LIB_DIR); \
+	if [ ! -f "$$LIB_TEMP_DIR/libopencv_freetype.so.410" ]; then \
+		FREETYPE_COPIED=false; \
+		# Try build/lib first (created by CMakeLists.txt or build script) \
+		if [ -f $(CURDIR)/build/lib/libopencv_freetype.so.410 ]; then \
+			echo "Copying libopencv_freetype.so.410 from build/lib..."; \
+			cp -L $(CURDIR)/build/lib/libopencv_freetype.so.410 "$$LIB_TEMP_DIR/" 2>/dev/null && FREETYPE_COPIED=true || true; \
+			if [ "$$FREETYPE_COPIED" = true ]; then \
+				echo "  ✓ libopencv_freetype.so.410 bundled from build/lib"; \
+			fi; \
+		fi; \
+		# Try system OpenCV 4.6 if not found in build/lib \
+		if [ "$$FREETYPE_COPIED" = false ]; then \
+			FREETYPE_SOURCES="/usr/lib/x86_64-linux-gnu/libopencv_freetype.so.4.6.0 /usr/lib/x86_64-linux-gnu/libopencv_freetype.so.406 /usr/local/lib/libopencv_freetype.so.4.6.0 /usr/local/lib/libopencv_freetype.so.406 /usr/lib/libopencv_freetype.so.4.6.0 /usr/lib/libopencv_freetype.so.406"; \
+			for source in $$FREETYPE_SOURCES; do \
+				if [ -f "$$source" ]; then \
+					echo "Copying libopencv_freetype.so.410 from $$source..."; \
+					cp -L "$$source" "$$LIB_TEMP_DIR/libopencv_freetype.so.410" 2>/dev/null && FREETYPE_COPIED=true && break || true; \
+				fi; \
+			done; \
+			if [ "$$FREETYPE_COPIED" = true ]; then \
+				echo "  ✓ libopencv_freetype.so.410 bundled from system OpenCV 4.6"; \
+			fi; \
+		fi; \
+		# Try SDK extract directory if available \
+		if [ "$$FREETYPE_COPIED" = false ] && [ -d $(SDK_EXTRACT_DIR) ]; then \
+			for sdk_source in $(SDK_EXTRACT_DIR)/opt/cvedix/lib/libopencv_freetype.so* $(SDK_EXTRACT_DIR)/usr/lib/x86_64-linux-gnu/libopencv_freetype.so*; do \
+				if [ -f "$$sdk_source" ]; then \
+					echo "Copying libopencv_freetype.so.410 from SDK extract..."; \
+					cp -L "$$sdk_source" "$$LIB_TEMP_DIR/libopencv_freetype.so.410" 2>/dev/null && FREETYPE_COPIED=true && break || true; \
+				fi; \
+			done; \
+			if [ "$$FREETYPE_COPIED" = true ]; then \
+				echo "  ✓ libopencv_freetype.so.410 bundled from SDK extract"; \
+			fi; \
+		fi; \
+		# Final check \
+		if [ "$$FREETYPE_COPIED" = false ]; then \
+			echo "  ✗ ERROR: libopencv_freetype.so.410 not found in any source"; \
+			echo "  This file is REQUIRED for CVEDIX SDK compatibility"; \
+			echo "  Please ensure OpenCV 4.6 is installed on build machine or file exists in build/lib"; \
+			echo "  The package will be built but service may fail to start"; \
+		fi; \
+	fi; \
+	# CRITICAL: Remove any conflicting freetype versions (e.g., .406) if .410 exists
+	if [ -f "$$LIB_TEMP_DIR/libopencv_freetype.so.410" ]; then \
+		for freetype_file in $$LIB_TEMP_DIR/libopencv_freetype.so.*; do \
+			if [ -f "$$freetype_file" ] && [ "$$(basename $$freetype_file)" != "libopencv_freetype.so.410" ] && [ "$$(basename $$freetype_file)" != "libopencv_freetype.so.410.0" ]; then \
+				echo "  Removing conflicting freetype version: $$(basename $$freetype_file)"; \
+				rm -f "$$freetype_file" 2>/dev/null || true; \
+			fi; \
+		done; \
+		echo "  ✓ Ensured only libopencv_freetype.so.410 is present"; \
+	fi
+
 	# Update RPATH in executables to use bundled libraries
-	# RPATH: /opt/edge_ai_api/lib (relative to executable at /usr/local/bin)
+	# RPATH: /opt/edge_ai_api/lib:/opt/cvedix/lib (relative to executable at /usr/local/bin)
+	# CRITICAL: RPATH must be set correctly for bundled libraries to be found
+	@EXPECTED_RPATH="/opt/edge_ai_api/lib:/opt/cvedix/lib"; \
 	if command -v patchelf >/dev/null 2>&1; then \
 		if [ -f $(CURDIR)/debian/$(PACKAGE_NAME)$(BIN_DIR)/edge_ai_api ]; then \
 			echo "Setting RPATH for edge_ai_api..."; \
-			patchelf --set-rpath "/opt/edge_ai_api/lib" $(CURDIR)/debian/$(PACKAGE_NAME)$(BIN_DIR)/edge_ai_api 2>/dev/null || true; \
+			if patchelf --set-rpath "$$EXPECTED_RPATH" $(CURDIR)/debian/$(PACKAGE_NAME)$(BIN_DIR)/edge_ai_api 2>&1; then \
+				VERIFIED_RPATH=$$(patchelf --print-rpath $(CURDIR)/debian/$(PACKAGE_NAME)$(BIN_DIR)/edge_ai_api 2>/dev/null || echo ""); \
+				if [ "$$VERIFIED_RPATH" = "$$EXPECTED_RPATH" ]; then \
+					echo "  ✓ RPATH set successfully for edge_ai_api: $$VERIFIED_RPATH"; \
+				else \
+					echo "  ⚠  Warning: RPATH may not be set correctly. Expected: $$EXPECTED_RPATH, Got: $$VERIFIED_RPATH"; \
+				fi; \
+			else \
+				echo "  ✗ ERROR: Failed to set RPATH for edge_ai_api"; \
+			fi; \
 		fi; \
 		if [ -f $(CURDIR)/debian/$(PACKAGE_NAME)$(BIN_DIR)/edge_ai_worker ]; then \
 			echo "Setting RPATH for edge_ai_worker..."; \
-			patchelf --set-rpath "/opt/edge_ai_api/lib" $(CURDIR)/debian/$(PACKAGE_NAME)$(BIN_DIR)/edge_ai_worker 2>/dev/null || true; \
+			if patchelf --set-rpath "$$EXPECTED_RPATH" $(CURDIR)/debian/$(PACKAGE_NAME)$(BIN_DIR)/edge_ai_worker 2>&1; then \
+				VERIFIED_RPATH=$$(patchelf --print-rpath $(CURDIR)/debian/$(PACKAGE_NAME)$(BIN_DIR)/edge_ai_worker 2>/dev/null || echo ""); \
+				if [ "$$VERIFIED_RPATH" = "$$EXPECTED_RPATH" ]; then \
+					echo "  ✓ RPATH set successfully for edge_ai_worker: $$VERIFIED_RPATH"; \
+				else \
+					echo "  ⚠  Warning: RPATH may not be set correctly. Expected: $$EXPECTED_RPATH, Got: $$VERIFIED_RPATH"; \
+				fi; \
+			else \
+				echo "  ✗ ERROR: Failed to set RPATH for edge_ai_worker"; \
+			fi; \
 		fi; \
+	else \
+		echo "  ⚠  Warning: patchelf not found, RPATH cannot be set during build"; \
+		echo "  RPATH must be set in postinst script or binary will not find bundled libraries"; \
 	fi
 
 	# Install systemd service
@@ -105,7 +190,7 @@ override_dh_auto_install:
 	install -m 644 $(CURDIR)/deploy/edge-ai-api.service $(CURDIR)/debian/$(PACKAGE_NAME)/etc/systemd/system/edge-ai-api.service
 
 	# Install config files
-	install -d $(CURDIR)/debian/$(PACKAGE_NAME)$(INSTALL_DIR)/config
+	install -d -m 755 $(CURDIR)/debian/$(PACKAGE_NAME)$(INSTALL_DIR)/config
 	install -m 644 $(CURDIR)/config.json $(CURDIR)/debian/$(PACKAGE_NAME)$(INSTALL_DIR)/config/config.json
 
 	# Create directory structure from directories.conf
@@ -115,60 +200,176 @@ override_dh_auto_install:
 		echo "Reading directories from $$DIRS_CONF"; \
 		DIR_LIST=$$(grep -E '^\s*\["' $$DIRS_CONF | sed 's/.*\["\([^"]*\)"\].*/\1/' | tr '\n' ' '); \
 		for dir in $$DIR_LIST; do \
-			install -d $(CURDIR)/debian/$(PACKAGE_NAME)$(INSTALL_DIR)/$$dir; \
+			install -d -m 755 $(CURDIR)/debian/$(PACKAGE_NAME)$(INSTALL_DIR)/$$dir; \
 		done; \
 	else \
 		echo "Warning: directories.conf not found, using fallback"; \
-		install -d $(CURDIR)/debian/$(PACKAGE_NAME)$(INSTALL_DIR)/instances; \
-		install -d $(CURDIR)/debian/$(PACKAGE_NAME)$(INSTALL_DIR)/solutions; \
-		install -d $(CURDIR)/debian/$(PACKAGE_NAME)$(INSTALL_DIR)/groups; \
-		install -d $(CURDIR)/debian/$(PACKAGE_NAME)$(INSTALL_DIR)/nodes; \
-		install -d $(CURDIR)/debian/$(PACKAGE_NAME)$(INSTALL_DIR)/models; \
-		install -d $(CURDIR)/debian/$(PACKAGE_NAME)$(INSTALL_DIR)/videos; \
-		install -d $(CURDIR)/debian/$(PACKAGE_NAME)$(INSTALL_DIR)/fonts; \
-		install -d $(CURDIR)/debian/$(PACKAGE_NAME)$(INSTALL_DIR)/logs; \
-		install -d $(CURDIR)/debian/$(PACKAGE_NAME)$(INSTALL_DIR)/data; \
-		install -d $(CURDIR)/debian/$(PACKAGE_NAME)$(INSTALL_DIR)/config; \
-		install -d $(CURDIR)/debian/$(PACKAGE_NAME)$(INSTALL_DIR)/uploads; \
-		install -d $(CURDIR)/debian/$(PACKAGE_NAME)$(INSTALL_DIR)/lib; \
-		install -d $(CURDIR)/debian/$(PACKAGE_NAME)$(INSTALL_DIR)/run; \
+		install -d -m 755 $(CURDIR)/debian/$(PACKAGE_NAME)$(INSTALL_DIR)/instances; \
+		install -d -m 755 $(CURDIR)/debian/$(PACKAGE_NAME)$(INSTALL_DIR)/solutions; \
+		install -d -m 755 $(CURDIR)/debian/$(PACKAGE_NAME)$(INSTALL_DIR)/groups; \
+		install -d -m 755 $(CURDIR)/debian/$(PACKAGE_NAME)$(INSTALL_DIR)/nodes; \
+		install -d -m 755 $(CURDIR)/debian/$(PACKAGE_NAME)$(INSTALL_DIR)/models; \
+		install -d -m 755 $(CURDIR)/debian/$(PACKAGE_NAME)$(INSTALL_DIR)/videos; \
+		install -d -m 755 $(CURDIR)/debian/$(PACKAGE_NAME)$(INSTALL_DIR)/fonts; \
+		install -d -m 755 $(CURDIR)/debian/$(PACKAGE_NAME)$(INSTALL_DIR)/logs; \
+		install -d -m 755 $(CURDIR)/debian/$(PACKAGE_NAME)$(INSTALL_DIR)/data; \
+		install -d -m 755 $(CURDIR)/debian/$(PACKAGE_NAME)$(INSTALL_DIR)/config; \
+		install -d -m 755 $(CURDIR)/debian/$(PACKAGE_NAME)$(INSTALL_DIR)/uploads; \
+		install -d -m 755 $(CURDIR)/debian/$(PACKAGE_NAME)$(INSTALL_DIR)/lib; \
+		install -d -m 755 $(CURDIR)/debian/$(PACKAGE_NAME)$(INSTALL_DIR)/run; \
+		install -d -m 755 $(CURDIR)/debian/$(PACKAGE_NAME)$(INSTALL_DIR)/record; \
 	fi
 
 	# Install README
-	install -d $(CURDIR)/debian/$(PACKAGE_NAME)$(INSTALL_DIR)
+	install -d -m 755 $(CURDIR)/debian/$(PACKAGE_NAME)$(INSTALL_DIR)
 	install -m 644 $(CURDIR)/README.md $(CURDIR)/debian/$(PACKAGE_NAME)$(INSTALL_DIR)/README.md
 
 	# Install OpenAPI specification file
-	install -m 644 $(CURDIR)/openapi.yaml $(CURDIR)/debian/$(PACKAGE_NAME)$(INSTALL_DIR)/openapi.yaml
+	install -m 644 $(CURDIR)/api-specs/openapi.yaml $(CURDIR)/debian/$(PACKAGE_NAME)$(INSTALL_DIR)/openapi.yaml
 
 	# Install scripts directory (if needed)
-	install -d $(CURDIR)/debian/$(PACKAGE_NAME)$(INSTALL_DIR)/scripts
+	install -d -m 755 $(CURDIR)/debian/$(PACKAGE_NAME)$(INSTALL_DIR)/scripts
 	# Install validation and utility scripts
 	if [ -f $(CURDIR)/packaging/scripts/validate_installation.sh ]; then \
 		install -m 755 $(CURDIR)/packaging/scripts/validate_installation.sh $(CURDIR)/debian/$(PACKAGE_NAME)$(INSTALL_DIR)/scripts/validate_installation.sh; \
 	fi
+	if [ -f $(CURDIR)/packaging/scripts/fix_rpath.sh ]; then \
+		install -m 755 $(CURDIR)/packaging/scripts/fix_rpath.sh $(CURDIR)/debian/$(PACKAGE_NAME)$(INSTALL_DIR)/scripts/fix_rpath.sh; \
+	fi
 	if [ -f $(CURDIR)/packaging/scripts/generate_version_manifest.sh ]; then \
 		install -m 755 $(CURDIR)/packaging/scripts/generate_version_manifest.sh $(CURDIR)/debian/$(PACKAGE_NAME)$(INSTALL_DIR)/scripts/generate_version_manifest.sh; \
 	fi
+	# Install OpenCV build script for user to install OpenCV 4.10 if needed
+	if [ -f $(CURDIR)/scripts/build_opencv_safe.sh ]; then \
+		install -m 755 $(CURDIR)/scripts/build_opencv_safe.sh $(CURDIR)/debian/$(PACKAGE_NAME)$(INSTALL_DIR)/scripts/build_opencv_safe.sh; \
+	fi
+	# CRITICAL: Install create_directories.sh script (required by postinst)
+	if [ -f $(CURDIR)/scripts/create_directories.sh ]; then \
+		install -m 755 $(CURDIR)/scripts/create_directories.sh $(CURDIR)/debian/$(PACKAGE_NAME)$(INSTALL_DIR)/scripts/create_directories.sh; \
+	fi
+	
+	# CRITICAL: Install deploy directory and directories.conf (required by postinst)
+	install -d -m 755 $(CURDIR)/debian/$(PACKAGE_NAME)$(INSTALL_DIR)/deploy
+	if [ -f $(CURDIR)/deploy/directories.conf ]; then \
+		install -m 644 $(CURDIR)/deploy/directories.conf $(CURDIR)/debian/$(PACKAGE_NAME)$(INSTALL_DIR)/deploy/directories.conf; \
+	fi
 
-	# Bundle GStreamer plugins (optional - for fully standalone package)
-	# Note: GStreamer plugins are usually in system directories, but we can bundle
-	# essential ones if needed. However, this significantly increases package size.
-	# For now, we rely on system GStreamer plugins and set GST_PLUGIN_PATH in postinst.
-	# If you want to bundle plugins, uncomment the following:
-	# GST_PLUGIN_DIR=$(CURDIR)/debian/$(PACKAGE_NAME)$(INSTALL_DIR)/gstreamer-1.0
-	# install -d $(GST_PLUGIN_DIR)
-	# # Copy essential plugins from common locations
-	# for plugin_dir in /usr/lib/x86_64-linux-gnu/gstreamer-1.0 /usr/lib/gstreamer-1.0; do \
-	# 	if [ -d $$plugin_dir ]; then \
-	# 		for plugin in libgstcoreelements.so libgstvideoconvert.so libgstapp.so libgstisomp4.so libgsth264parse.so libgstflvmux.so libgstrtmp.so libgstx264.so libgstlibav.so; do \
-	# 			if [ -f $$plugin_dir/$$plugin ]; then \
-	# 				cp -L $$plugin_dir/$$plugin $(GST_PLUGIN_DIR)/ 2>/dev/null || true; \
-	# 			fi; \
-	# 		done; \
-	# 		break; \
-	# 	fi; \
-	# done
+	# ============================================
+	# Install CVEDIX SDK from extracted .deb
+	# Copy ALL files from SDK package to edge-ai-api package
+	# ============================================
+	@echo "Installing CVEDIX SDK from extracted package..."; \
+	if [ -d $(SDK_EXTRACT_DIR) ]; then \
+		echo "  Copying entire CVEDIX SDK directory structure..."; \
+		# Copy entire SDK directory structure to /opt/cvedix \
+		if [ -d $(SDK_EXTRACT_DIR)/opt/cvedix ]; then \
+			install -d -m 755 $(CURDIR)/debian/$(PACKAGE_NAME)$(CVEDIX_INSTALL_DIR); \
+			# Use cp -a to preserve permissions and handle symlinks correctly \
+			if cp -a $(SDK_EXTRACT_DIR)/opt/cvedix/* $(CURDIR)/debian/$(PACKAGE_NAME)$(CVEDIX_INSTALL_DIR)/ 2>&1; then \
+				echo "  ✓ CVEDIX SDK fully integrated into package"; \
+				# Verify critical SDK files were copied \
+				if [ -d $(CURDIR)/debian/$(PACKAGE_NAME)$(CVEDIX_INSTALL_DIR)/lib ]; then \
+					SDK_LIB_COUNT=$$(find $(CURDIR)/debian/$(PACKAGE_NAME)$(CVEDIX_INSTALL_DIR)/lib -name "*.so*" -type f -o -name "*.so*" -type l 2>/dev/null | wc -l); \
+					if [ "$$SDK_LIB_COUNT" -gt 0 ]; then \
+						echo "  ✓ Verified: $$SDK_LIB_COUNT SDK libraries copied"; \
+					else \
+						echo "  ⚠  Warning: No SDK libraries found after copy"; \
+					fi; \
+				else \
+					echo "  ⚠  Warning: SDK lib directory not found after copy"; \
+				fi; \
+			else \
+				echo "  ✗ Error: Failed to copy SDK files"; \
+				echo "  SDK may be partially copied or missing"; \
+				echo "  Package will be built but may not work correctly"; \
+			fi; \
+		else \
+			echo "  ⚠  Warning: /opt/cvedix not found in SDK extract directory"; \
+			echo "  Checking for alternative SDK locations..."; \
+			if find $(SDK_EXTRACT_DIR) -type d -name "cvedix" 2>/dev/null | head -1 | grep -q .; then \
+				ALT_SDK_DIR=$$(find $(SDK_EXTRACT_DIR) -type d -name "cvedix" 2>/dev/null | head -1); \
+				echo "  Found SDK at alternative location: $$ALT_SDK_DIR"; \
+				install -d -m 755 $(CURDIR)/debian/$(PACKAGE_NAME)$(CVEDIX_INSTALL_DIR); \
+				cp -a "$$ALT_SDK_DIR"/* $(CURDIR)/debian/$(PACKAGE_NAME)$(CVEDIX_INSTALL_DIR)/ 2>&1 || echo "  ⚠  Failed to copy from alternative location"; \
+			fi; \
+		fi; \
+		# Also copy SDK libraries to bundled lib directory for easier access \
+		if [ -d $(SDK_EXTRACT_DIR)/opt/cvedix/lib ]; then \
+			echo "  Copying SDK libraries to bundled lib directory..."; \
+			# Use cp -L to follow symlinks and copy actual files \
+			if cp -L $(SDK_EXTRACT_DIR)/opt/cvedix/lib/*.so* $(CURDIR)/debian/$(PACKAGE_NAME)$(LIB_DIR)/ 2>&1; then \
+				COPIED_COUNT=$$(ls -1 $(CURDIR)/debian/$(PACKAGE_NAME)$(LIB_DIR)/libcvedix*.so* $(CURDIR)/debian/$(PACKAGE_NAME)$(LIB_DIR)/libtinyexpr*.so* 2>/dev/null | wc -l); \
+				if [ "$$COPIED_COUNT" -gt 0 ]; then \
+					echo "  ✓ Copied $$COPIED_COUNT SDK libraries to bundled lib"; \
+				else \
+					echo "  ⚠  Warning: SDK libraries may not have been copied correctly"; \
+				fi; \
+			else \
+				echo "  ⚠  Warning: Failed to copy SDK libraries to bundled lib"; \
+			fi; \
+		fi; \
+	else \
+		echo "  ✗ Error: SDK extract directory not found: $(SDK_EXTRACT_DIR)"; \
+		echo "  SDK will not be bundled in this package"; \
+		echo "  Please ensure SDK .deb file was extracted correctly"; \
+	fi
+
+	# Install default data from cvedix_data (fonts and models)
+	# These will be installed to /opt/edge_ai_api/fonts and /opt/edge_ai_api/models
+	# as default data for users on fresh installations
+	@echo "Installing default data from cvedix_data..."; \
+	if [ -d $(CURDIR)/cvedix_data ]; then \
+		# Install default fonts \
+		if [ -d $(CURDIR)/cvedix_data/font ]; then \
+			echo "Installing default fonts..."; \
+			install -d -m 755 $(CURDIR)/debian/$(PACKAGE_NAME)$(INSTALL_DIR)/fonts; \
+			cp -r $(CURDIR)/cvedix_data/font/* $(CURDIR)/debian/$(PACKAGE_NAME)$(INSTALL_DIR)/fonts/ 2>/dev/null || true; \
+			echo "  ✓ Default fonts installed"; \
+		fi; \
+		# Install default models \
+		if [ -d $(CURDIR)/cvedix_data/models ]; then \
+			echo "Installing default models..."; \
+			install -d -m 755 $(CURDIR)/debian/$(PACKAGE_NAME)$(INSTALL_DIR)/models; \
+			cp -r $(CURDIR)/cvedix_data/models/* $(CURDIR)/debian/$(PACKAGE_NAME)$(INSTALL_DIR)/models/ 2>/dev/null || true; \
+			echo "  ✓ Default models installed"; \
+		fi; \
+	else \
+		echo "  Note: cvedix_data directory not found, skipping default data installation"; \
+	fi
+
+	# Bundle GStreamer plugins (ALL-IN-ONE package includes bundled plugins)
+	# bundle_libs.sh creates gstreamer-1.0 directory in LIB_DIR during bundling
+	# We need to ensure it's properly installed to the package
+	@GST_PLUGIN_DIR=$(CURDIR)/debian/$(PACKAGE_NAME)$(LIB_DIR)/gstreamer-1.0; \
+	BUNDLED_GST_PLUGINS=$(CURDIR)/debian/$(PACKAGE_NAME)$(LIB_DIR)/gstreamer-1.0; \
+	if [ -d "$$BUNDLED_GST_PLUGINS" ] && [ "$$(ls -A $$BUNDLED_GST_PLUGINS 2>/dev/null)" ]; then \
+		echo "  ✓ Bundled GStreamer plugins found in $$BUNDLED_GST_PLUGINS"; \
+		echo "  Plugin count: $$(ls -1 $$BUNDLED_GST_PLUGINS/*.so 2>/dev/null | wc -l)"; \
+	else \
+		echo "  ⚠  Bundled GStreamer plugins not found, copying from system..."; \
+		install -d $$GST_PLUGIN_DIR; \
+		# Copy essential plugins from common locations as fallback \
+		for plugin_dir in /usr/lib/x86_64-linux-gnu/gstreamer-1.0 /usr/lib/gstreamer-1.0; do \
+			if [ -d $$plugin_dir ]; then \
+				echo "  Copying plugins from $$plugin_dir..."; \
+				for plugin in libgstcoreelements.so libgstvideoconvert.so libgstapp.so libgstisomp4.so libgsth264parse.so libgstflvmux.so libgstrtmp.so libgstx264.so libgstlibav.so libgstplayback.so libgstvideo.so libgstaudio.so libgstfilesrc.so libgstappsink.so libgstappsrc.so; do \
+					if [ -f $$plugin_dir/$$plugin ]; then \
+						cp -L $$plugin_dir/$$plugin $$GST_PLUGIN_DIR/ 2>/dev/null || true; \
+					fi; \
+				done; \
+				# Copy all plugins if essential ones were found \
+				if [ -f $$GST_PLUGIN_DIR/libgstcoreelements.so ]; then \
+					echo "  ✓ Essential plugins copied, copying remaining plugins..."; \
+					cp -L $$plugin_dir/*.so $$GST_PLUGIN_DIR/ 2>/dev/null || true; \
+				fi; \
+				break; \
+			fi; \
+		done; \
+		if [ ! -f $$GST_PLUGIN_DIR/libgstcoreelements.so ]; then \
+			echo "  ⚠  Warning: Could not find GStreamer plugins to bundle"; \
+			echo "  Service may fail if GStreamer plugins are not available on target system"; \
+		fi; \
+	fi
 
 override_dh_shlibdeps:
 	# Skip automatic shlibdeps - we bundle libraries ourselves

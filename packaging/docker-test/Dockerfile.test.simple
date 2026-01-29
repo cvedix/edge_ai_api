@@ -1,0 +1,85 @@
+# Dockerfile đơn giản để test .deb package (không cần systemd)
+# Sử dụng Ubuntu 22.04 LTS
+FROM ubuntu:22.04
+
+# Tránh tương tác trong quá trình cài đặt
+ENV DEBIAN_FRONTEND=noninteractive
+
+# Cài đặt các dependencies cần thiết cho runtime
+RUN apt-get update && apt-get install -y \
+    # Dependencies cơ bản
+    libc6 \
+    libstdc++6 \
+    libgcc-s1 \
+    # OpenCV runtime
+    libopencv-dev \
+    # GStreamer và plugins
+    libgstreamer1.0-0 \
+    libgstreamer-plugins-base1.0-0 \
+    gstreamer1.0-plugins-base \
+    gstreamer1.0-plugins-good \
+    gstreamer1.0-plugins-bad \
+    gstreamer1.0-plugins-ugly \
+    gstreamer1.0-libav \
+    gstreamer1.0-tools \
+    gstreamer1.0-rtsp \
+    libgstrtspserver-1.0-0 \
+    python3-gst-1.0 \
+    # TurboJPEG
+    libturbojpeg0 \
+    # Mosquitto
+    mosquitto \
+    mosquitto-clients \
+    libmosquitto1 \
+    # SSL
+    libssl3 \
+    # JSON
+    libjsoncpp25 \
+    # cURL
+    libcurl4 \
+    # FFmpeg libraries
+    libavcodec58 \
+    libavformat58 \
+    libswscale5 \
+    # Utilities
+    curl \
+    wget \
+    dpkg \
+    && rm -rf /var/lib/apt/lists/*
+
+# Copy file .deb vào container
+COPY edge-ai-api-with-sdk-2026.0.1.21-amd64.deb /tmp/
+
+# Cài đặt package (bỏ qua systemd dependencies nếu có)
+RUN dpkg -i /tmp/edge-ai-api-with-sdk-2026.0.1.21-amd64.deb || \
+    (apt-get update && apt-get install -f -y && \
+     dpkg -i --force-depends /tmp/edge-ai-api-with-sdk-2026.0.1.21-amd64.deb || true)
+
+# Expose port cho API
+EXPOSE 8080
+
+# Tạo entrypoint script đơn giản
+RUN echo '#!/bin/bash\n\
+echo "=== Edge AI API Test Container (Simple) ==="\n\
+echo ""\n\
+echo "Package đã được cài đặt!"\n\
+echo ""\n\
+echo "Executable:"\n\
+ls -la /usr/local/bin/edge_ai_api 2>/dev/null || echo "  Không tìm thấy"\n\
+echo ""\n\
+echo "Config directory:"\n\
+ls -la /opt/edge_ai_api/ 2>/dev/null || echo "  Không tìm thấy"\n\
+echo ""\n\
+echo "Để test, chạy:"\n\
+echo "  /usr/local/bin/edge_ai_api --help"\n\
+echo "  /usr/local/bin/edge_ai_api --log-api"\n\
+echo ""\n\
+echo "Hoặc test API:"\n\
+echo "  # Trong một terminal khác:\n\
+echo "  curl http://localhost:8080/v1/core/health"\n\
+echo ""\n\
+bash\n\
+' > /entrypoint.sh && chmod +x /entrypoint.sh
+
+ENTRYPOINT ["/entrypoint.sh"]
+

@@ -13071,6 +13071,26 @@ components:
             processor: 4
             destination: 3
             broker: 0
+x-tagGroups:
+  - name: Core API
+    tags:
+      - Core
+      - Logs
+      - Config
+      - Instances
+      - Solutions
+      - Groups
+      - Models
+      - Video
+      - Fonts
+      - Node
+  - name: SecuRT API
+    tags:
+      - AI
+      - Lines
+      - Area
+  - name: ONVIF API
+    tags: []
 tags:
 - name: Core
   description: Core API endpoints for health and version information

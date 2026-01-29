@@ -1743,26 +1743,44 @@ static void setupGStreamerPluginPath(bool enable_find_search = false) {
 
   std::string plugin_path;
 
-  // Method 1: Try common paths first (fastest, no external commands)
-  // This covers 99% of production cases (Debian/Ubuntu x86_64, ARM64, ARM32,
-  // Fedora, etc.)
-  std::vector<std::string> common_paths = {
-      "/usr/lib/x86_64-linux-gnu/gstreamer-1.0",
-      "/usr/lib/aarch64-linux-gnu/gstreamer-1.0",
-      "/usr/lib/arm-linux-gnueabihf/gstreamer-1.0",
-      "/usr/lib64/gstreamer-1.0",
-      "/usr/lib/gstreamer-1.0",
-      "/usr/local/lib/gstreamer-1.0"};
-
-  for (const auto &path : common_paths) {
+  // Method 1: Check for bundled plugins FIRST (ALL-IN-ONE package)
+  // This is the most reliable for all-in-one packages
+  std::vector<std::string> bundled_paths = {
+      "/opt/edge_ai_api/lib/gstreamer-1.0",
+      "/usr/local/edge_ai_api/lib/gstreamer-1.0"};
+  
+  for (const auto &path : bundled_paths) {
     if (std::filesystem::exists(path) && std::filesystem::is_directory(path) &&
         std::filesystem::exists(path + "/libgstcoreelements.so")) {
       plugin_path = path;
+      std::cerr << "[Main] ✓ Found bundled GStreamer plugins: " << plugin_path
+                << std::endl;
       break;
     }
   }
 
-  // Method 2: Try pkg-config (only if common paths failed)
+  // Method 2: Try common system paths (fallback if bundled plugins not found)
+  // This covers 99% of production cases (Debian/Ubuntu x86_64, ARM64, ARM32,
+  // Fedora, etc.)
+  if (plugin_path.empty()) {
+    std::vector<std::string> common_paths = {
+        "/usr/lib/x86_64-linux-gnu/gstreamer-1.0",
+        "/usr/lib/aarch64-linux-gnu/gstreamer-1.0",
+        "/usr/lib/arm-linux-gnueabihf/gstreamer-1.0",
+        "/usr/lib64/gstreamer-1.0",
+        "/usr/lib/gstreamer-1.0",
+        "/usr/local/lib/gstreamer-1.0"};
+
+    for (const auto &path : common_paths) {
+      if (std::filesystem::exists(path) && std::filesystem::is_directory(path) &&
+          std::filesystem::exists(path + "/libgstcoreelements.so")) {
+        plugin_path = path;
+        break;
+      }
+    }
+  }
+
+  // Method 3: Try pkg-config (only if bundled and common paths failed)
   // NOTE: This requires pkg-config to be installed and accessible
   if (plugin_path.empty()) {
     FILE *pipe = popen(
@@ -1784,7 +1802,7 @@ static void setupGStreamerPluginPath(bool enable_find_search = false) {
     }
   }
 
-  // Method 3: Try to find libgstcoreelements.so (SLOW - only for development)
+  // Method 4: Try to find libgstcoreelements.so (SLOW - only for development)
   // PRODUCTION: Skip this by default (enable_find_search=false)
   // This can scan entire /usr filesystem which is slow and may fail in
   // restricted environments
@@ -1810,9 +1828,47 @@ static void setupGStreamerPluginPath(bool enable_find_search = false) {
 
   // Set GST_PLUGIN_PATH if found
   if (!plugin_path.empty()) {
+    // SECURITY: Validate plugin_path to prevent command injection
+    // Only allow safe characters: alphanumeric, forward slash, dash, underscore, dot
+    bool is_safe_path = true;
+    for (char c : plugin_path) {
+      if (!((c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || 
+            (c >= '0' && c <= '9') || c == '/' || c == '-' || 
+            c == '_' || c == '.' || c == ':')) {
+        is_safe_path = false;
+        break;
+      }
+    }
+    
+    if (!is_safe_path) {
+      std::cerr << "[Main] ⚠ Detected unsafe characters in plugin_path, "
+                   "skipping GStreamer registry update for security"
+                << std::endl;
+      return;
+    }
+    
     if (setenv("GST_PLUGIN_PATH", plugin_path.c_str(), 0) == 0) {
       std::cerr << "[Main] ✓ Auto-detected and set GST_PLUGIN_PATH: "
                 << plugin_path << std::endl;
+      
+      // CRITICAL: Force GStreamer registry update by running gst-inspect-1.0
+      // This ensures bundled plugins are discovered before OpenCV uses GStreamer
+      // Note: This is a best-effort attempt - if gst-inspect-1.0 is not available,
+      // GStreamer will scan plugins on first use (which may be too late for OpenCV)
+      // SECURITY: Use environment variable already set via setenv() instead of
+      // embedding plugin_path in shell command to prevent command injection
+      int ret = system("gst-inspect-1.0 filesrc >/dev/null 2>&1");
+      if (ret == 0) {
+        std::cerr << "[Main] ✓ GStreamer registry updated successfully"
+                  << std::endl;
+      } else {
+        std::cerr << "[Main] ⚠ Could not force GStreamer registry update "
+                     "(gst-inspect-1.0 may not be available)"
+                  << std::endl;
+        std::cerr << "[Main]   Registry will be updated on first GStreamer use"
+                  << std::endl;
+      }
+      
       std::cerr << "[Main]   NOTE: For production, set GST_PLUGIN_PATH in "
                    "service file or .env"
                 << std::endl;
@@ -2004,6 +2060,7 @@ int main(int argc, char *argv[]) {
     PLOG_INFO << "  GET /swagger         - Swagger UI (all versions)";
     PLOG_INFO << "  GET /v1/swagger      - Swagger UI for API v1";
     PLOG_INFO << "  GET /v2/swagger      - Swagger UI for API v2";
+    PLOG_INFO << "  GET /v1/document     - Scalar API documentation for v1";
     PLOG_INFO << "  GET /openapi.yaml    - OpenAPI spec (all versions)";
     PLOG_INFO << "  GET /v1/openapi.yaml - OpenAPI spec for v1";
     PLOG_INFO << "  GET /v2/openapi.yaml - OpenAPI spec for v2";
