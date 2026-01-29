@@ -1828,6 +1828,25 @@ static void setupGStreamerPluginPath(bool enable_find_search = false) {
 
   // Set GST_PLUGIN_PATH if found
   if (!plugin_path.empty()) {
+    // SECURITY: Validate plugin_path to prevent command injection
+    // Only allow safe characters: alphanumeric, forward slash, dash, underscore, dot
+    bool is_safe_path = true;
+    for (char c : plugin_path) {
+      if (!((c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || 
+            (c >= '0' && c <= '9') || c == '/' || c == '-' || 
+            c == '_' || c == '.' || c == ':')) {
+        is_safe_path = false;
+        break;
+      }
+    }
+    
+    if (!is_safe_path) {
+      std::cerr << "[Main] ⚠ Detected unsafe characters in plugin_path, "
+                   "skipping GStreamer registry update for security"
+                << std::endl;
+      return;
+    }
+    
     if (setenv("GST_PLUGIN_PATH", plugin_path.c_str(), 0) == 0) {
       std::cerr << "[Main] ✓ Auto-detected and set GST_PLUGIN_PATH: "
                 << plugin_path << std::endl;
@@ -1836,9 +1855,9 @@ static void setupGStreamerPluginPath(bool enable_find_search = false) {
       // This ensures bundled plugins are discovered before OpenCV uses GStreamer
       // Note: This is a best-effort attempt - if gst-inspect-1.0 is not available,
       // GStreamer will scan plugins on first use (which may be too late for OpenCV)
-      std::string gst_inspect_cmd = "GST_PLUGIN_PATH=" + plugin_path + 
-                                    " gst-inspect-1.0 filesrc >/dev/null 2>&1";
-      int ret = system(gst_inspect_cmd.c_str());
+      // SECURITY: Use environment variable already set via setenv() instead of
+      // embedding plugin_path in shell command to prevent command injection
+      int ret = system("gst-inspect-1.0 filesrc >/dev/null 2>&1");
       if (ret == 0) {
         std::cerr << "[Main] ✓ GStreamer registry updated successfully"
                   << std::endl;
