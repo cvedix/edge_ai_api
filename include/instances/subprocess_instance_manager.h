@@ -1,6 +1,7 @@
 #pragma once
 
 #include "instances/instance_manager.h"
+#include "instances/instance_state_manager.h"
 #include "instances/instance_storage.h"
 #include "solutions/solution_registry.h"
 #include "worker/worker_supervisor.h"
@@ -66,6 +67,14 @@ public:
   void loadPersistentInstances() override;
   int checkAndHandleRetryLimits() override;
 
+  // ========== Instance State Management ==========
+
+  bool loadInstance(const std::string &instanceId) override;
+  bool unloadInstance(const std::string &instanceId) override;
+  Json::Value getInstanceState(const std::string &instanceId) override;
+  bool setInstanceState(const std::string &instanceId, const std::string &path,
+                        const Json::Value &value) override;
+
   // ========== Backend Info ==========
 
   std::string getBackendType() const override { return "subprocess"; }
@@ -87,6 +96,7 @@ private:
   SolutionRegistry &solution_registry_;
   InstanceStorage &instance_storage_;
   std::unique_ptr<worker::WorkerSupervisor> supervisor_;
+  static InstanceStateManager state_manager_; // Shared state manager
 
   // Local cache of instance info (synced with workers)
   // Both mutex and map are mutable to allow cache updates in const methods

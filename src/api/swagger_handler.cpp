@@ -538,13 +538,30 @@ SwaggerHandler::generateSwaggerUIHTML(const std::string &version,
         let cssLoaded = false;
         let bundleLoaded = false;
         let standaloneLoaded = false;
+        let swaggerInitialized = false;
 
         function checkAndInitSwagger() {
-            if (cssLoaded && bundleLoaded && standaloneLoaded && typeof SwaggerUIBundle !== 'undefined' && typeof SwaggerUIStandalonePreset !== 'undefined') {
+            // Check if DOM is ready
+            if (document.readyState === 'loading') {
+                document.addEventListener('DOMContentLoaded', checkAndInitSwagger);
+                return;
+            }
+
+            // Check if all resources are loaded and Swagger is available
+            if (!swaggerInitialized && cssLoaded && bundleLoaded && standaloneLoaded && 
+                typeof SwaggerUIBundle !== 'undefined' && typeof SwaggerUIStandalonePreset !== 'undefined') {
+                
+                const swaggerContainer = document.getElementById('swagger-ui');
+                if (!swaggerContainer) {
+                    console.error('Swagger UI container not found');
+                    return;
+                }
+
                 const loadingMsg = document.getElementById('loading-message');
                 if (loadingMsg) loadingMsg.remove();
 
                 try {
+                    swaggerInitialized = true;
                     const ui = SwaggerUIBundle({
                         url: ')" +
                      fullSpecUrl + R"(',
@@ -559,37 +576,61 @@ SwaggerHandler::generateSwaggerUIHTML(const std::string &version,
                         ],
                         layout: "StandaloneLayout",
                         validatorUrl: null,
+                        tryItOutEnabled: true,
+                        requestInterceptor: function(request) {
+                            console.log('Swagger request:', request);
+                            return request;
+                        },
                         onComplete: function() {
                             console.log("Swagger UI loaded successfully");
                         },
                         onFailure: function(data) {
                             console.error("Swagger UI failed to load:", data);
+                            const container = document.getElementById('swagger-ui');
+                            if (container) {
+                                container.innerHTML = '<div style="padding: 20px; color: red;">Error loading Swagger UI. Please check console for details.</div>';
+                            }
                         }
                     });
                 } catch (error) {
                     console.error("Error initializing Swagger UI:", error);
-                    document.getElementById('swagger-ui').innerHTML = '<div style="padding: 20px; color: red;">Error loading Swagger UI. Please check console for details.</div>';
+                    const container = document.getElementById('swagger-ui');
+                    if (container) {
+                        container.innerHTML = '<div style="padding: 20px; color: red;">Error loading Swagger UI: ' + error.message + '. Please check console for details.</div>';
+                    }
+                    swaggerInitialized = false;
                 }
             }
         }
 
-        // Load CSS first
-        loadResource(CDN_CONFIGS.css, 'css', function() {
-            cssLoaded = true;
-            checkAndInitSwagger();
-        });
+        // Wait for DOM to be ready before loading resources
+        if (document.readyState === 'loading') {
+            document.addEventListener('DOMContentLoaded', function() {
+                initializeSwaggerResources();
+            });
+        } else {
+            initializeSwaggerResources();
+        }
 
-        // Load bundle script
-        loadResource(CDN_CONFIGS.bundle, 'script', function() {
-            bundleLoaded = true;
-            checkAndInitSwagger();
-        });
+        function initializeSwaggerResources() {
+            // Load CSS first
+            loadResource(CDN_CONFIGS.css, 'css', function() {
+                cssLoaded = true;
+                checkAndInitSwagger();
+            });
 
-        // Load standalone preset script
-        loadResource(CDN_CONFIGS.standalone, 'script', function() {
-            standaloneLoaded = true;
-            checkAndInitSwagger();
-        });
+            // Load bundle script
+            loadResource(CDN_CONFIGS.bundle, 'script', function() {
+                bundleLoaded = true;
+                checkAndInitSwagger();
+            });
+
+            // Load standalone preset script
+            loadResource(CDN_CONFIGS.standalone, 'script', function() {
+                standaloneLoaded = true;
+                checkAndInitSwagger();
+            });
+        }
     </script>
 </head>
 <body>
@@ -1180,7 +1221,54 @@ R"(        // Check if spec URL is accessible
                             clientKey: 'fetch'
                         },
                         // Configure server for API testing
-                        withCredentials: false
+                        withCredentials: false,
+                        // Custom CSS để cải thiện định dạng response body
+                        customCss: `
+                            .scalar-api-reference .response-body {
+                                font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', 'Consolas', 'source-code-pro', monospace !important;
+                                font-size: 13px !important;
+                                line-height: 1.6 !important;
+                                background: #f8f9fa !important;
+                                border-radius: 6px !important;
+                                padding: 16px !important;
+                                overflow-x: auto !important;
+                            }
+                            .scalar-api-reference .response-body pre {
+                                margin: 0 !important;
+                                padding: 0 !important;
+                                background: transparent !important;
+                                white-space: pre-wrap !important;
+                                word-wrap: break-word !important;
+                            }
+                            .scalar-api-reference .response-body code {
+                                color: #24292e !important;
+                                background: transparent !important;
+                                padding: 0 !important;
+                                font-size: 13px !important;
+                            }
+                            .scalar-api-reference .response-section {
+                                padding: 20px !important;
+                                background: #ffffff !important;
+                                border: 1px solid #e1e4e8 !important;
+                                border-radius: 6px !important;
+                                margin-top: 16px !important;
+                            }
+                            .scalar-api-reference .response-body::-webkit-scrollbar {
+                                width: 8px;
+                                height: 8px;
+                            }
+                            .scalar-api-reference .response-body::-webkit-scrollbar-track {
+                                background: #f1f1f1;
+                                border-radius: 4px;
+                            }
+                            .scalar-api-reference .response-body::-webkit-scrollbar-thumb {
+                                background: #888;
+                                border-radius: 4px;
+                            }
+                            .scalar-api-reference .response-body::-webkit-scrollbar-thumb:hover {
+                                background: #555;
+                            }
+                        `
                     };
 
                     // Xóa api-reference cũ nếu có
@@ -1756,3 +1844,4 @@ void SwaggerHandler::handleOptions(
   // Record metrics and call callback
   MetricsInterceptor::callWithMetrics(req, resp, std::move(callback));
 }
+
