@@ -20,6 +20,9 @@
 #include "api/recognition_handler.h"
 #include "api/solution_handler.h"
 #include "api/stops_handler.h"
+#include "api/securt_handler.h"
+#include "core/securt_instance_manager.h"
+#include "core/analytics_entities_manager.h"
 #ifdef ENABLE_METRICS_HANDLER
 #include "api/metrics_handler.h"
 #endif
@@ -2589,6 +2592,14 @@ int main(int argc, char *argv[]) {
     // Register instance manager with WebSocket controller
     AIWebSocketController::setInstanceManager(instanceManager.get());
 
+    // Initialize SecuRT instance manager and analytics entities manager
+    static SecuRTInstanceManager securtInstanceManager(instanceManager.get());
+    static AnalyticsEntitiesManager analyticsEntitiesManager;
+
+    // Register SecuRT managers with handler
+    SecuRTHandler::setInstanceManager(&securtInstanceManager);
+    SecuRTHandler::setAnalyticsEntitiesManager(&analyticsEntitiesManager);
+
     // CRITICAL: Create handler instances AFTER dependencies are set
     // This ensures handlers are ready when Drogon registers routes
     // Handlers created here depend on dependencies set above
@@ -2601,6 +2612,7 @@ int main(int argc, char *argv[]) {
     static LinesHandler linesHandler;
     static JamsHandler jamsHandler;
     static StopsHandler stopsHandler;
+    static SecuRTHandler securtHandler;
 
     // Initialize model upload handler with configurable directory
     // Priority: 1. MODELS_DIR env var, 2. /opt/edge_ai_api/models (with

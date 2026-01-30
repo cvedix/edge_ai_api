@@ -264,6 +264,7 @@ set(SOURCES
     src/api/lines_handler.cpp
     src/api/jams_handler.cpp
     src/api/stops_handler.cpp
+    src/api/securt_handler.cpp
     src/api/node_handler.cpp
     src/api/recognition_handler.cpp
     src/api/system_info_handler.cpp
@@ -1106,6 +1107,10 @@ set(CORE_LIB_SOURCES
     src/utils/mp4_finalizer.cpp
     src/utils/mp4_directory_watcher.cpp
     src/config/system_config.cpp
+    src/core/securt_instance_registry.cpp
+    src/core/securt_statistics_collector.cpp
+    src/core/securt_instance_manager.cpp
+    src/core/analytics_entities_manager.cpp
 )
 
 add_library(edge_ai_core SHARED ${CORE_LIB_SOURCES})
@@ -1164,6 +1169,10 @@ if(CVEDIX_WITH_MQTT)
 endif()
 
 message(STATUS "✓ Edge AI Core library configured")
+
+# Link edge_ai_core to edge_ai_api
+target_link_libraries(edge_ai_api PRIVATE edge_ai_core)
+message(STATUS "✓ edge_ai_api linked to edge_ai_core")
 
 # ============================================
 # Edge AI Worker executable (subprocess)
