@@ -6085,6 +6085,126 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
+    patch:
+      summary: Patch instance with partial data
+      description: 'Updates an instance with partial data. This is similar to PUT but explicitly designed for partial updates where only specific fields need to be changed.
+
+
+        **Difference from PUT:**
+
+        - **PATCH**: Explicitly designed for partial updates, only update provided fields
+
+        - **PUT**: Can be used for full or partial updates
+
+
+        **Behavior:**
+
+        - Only provided fields will be updated; other fields remain unchanged
+
+        - Supports both camelCase (field-by-field) and PascalCase (direct config) formats
+
+        - If the instance is currently running, it will be automatically restarted to apply the changes
+
+        - The instance must exist and not be read-only
+
+
+        **Use Cases:**
+
+        - Update a single field (e.g., just the name)
+
+        - Update a few related fields
+
+        - Partial configuration updates
+
+
+        **Example:**
+
+        Update only the instance name:
+
+        ```json
+
+        {
+
+          "name": "Updated Instance Name"
+
+        }
+
+        ```
+
+
+        Update name and frame rate limit:
+
+        ```json
+
+        {
+
+          "name": "Updated Instance Name",
+
+          "frameRateLimit": 30
+
+        }
+
+        ```
+
+        '
+      operationId: corePatchInstanceV1
+      tags:
+      - Instances
+      parameters:
+      - name: instanceId
+        in: path
+        required: true
+        schema:
+          type: string
+        description: Instance ID (UUID)
+        example: 291a85b8-d4c0-5765-dcb2-48c9b51f48d0
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateInstanceRequest'
+            examples:
+              updateName:
+                summary: Update instance name only
+                value:
+                  name: Updated Instance Name
+              updateMultiple:
+                summary: Update multiple fields
+                value:
+                  name: Updated Instance Name
+                  frameRateLimit: 30
+                  autoStart: true
+      responses:
+        '204':
+          description: Instance updated successfully
+        '400':
+          description: Bad request (parsing error or invalid arguments)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                error: Bad request
+                message: Invalid request body or validation failed
+        '404':
+          description: Instance not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                error: Not found
+                message: 'Instance not found: 291a85b8-d4c0-5765-dcb2-48c9b51f48d0'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                error: Internal Server Error
+                message: Failed to update instance
     options:
       summary: CORS preflight for update instance
       operationId: updateInstanceOptions
@@ -6108,7 +6228,7 @@ paths:
             Access-Control-Allow-Methods:
               schema:
                 type: string
-                example: GET, PUT, DELETE, OPTIONS
+                example: GET, PUT, PATCH, DELETE, OPTIONS
             Access-Control-Allow-Headers:
               schema:
                 type: string
@@ -7617,6 +7737,382 @@ paths:
     options:
       summary: CORS preflight for set config
       operationId: setConfigOptions
+      tags:
+      - Instances
+      responses:
+        '200':
+          description: CORS preflight response
+  /v1/core/instance/{instanceId}/load:
+    post:
+      summary: Load instance into memory
+      description: 'Loads an instance into memory and initializes state storage. This is different from starting an instance - loading prepares the instance and enables state management, while starting begins the processing pipeline.
+
+
+        **Behavior:**
+
+        - Instance must exist
+
+        - If instance is already loaded, returns 406 Not Acceptable
+
+        - Initializes state storage for the instance
+
+        - Instance can be loaded without being started (running)
+
+
+        **Use Cases:**
+
+        - Prepare instance for state management
+
+        - Load instance into memory before setting runtime state
+
+        - Manage memory and resources
+
+
+        **Note:** State can only be set/get when instance is loaded. State is cleared when instance is unloaded.
+
+        '
+      operationId: coreLoadInstanceV1
+      tags:
+      - Instances
+      parameters:
+      - name: instanceId
+        in: path
+        required: true
+        schema:
+          type: string
+        description: Unique identifier of the instance (UUID)
+        example: 291a85b8-d4c0-5765-dcb2-48c9b51f48d0
+      responses:
+        '204':
+          description: Instance loaded successfully
+        '404':
+          description: Instance not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                error: Not found
+                message: 'Instance not found: 291a85b8-d4c0-5765-dcb2-48c9b51f48d0'
+        '406':
+          description: Cannot load instance (already loaded or invalid state)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                error: Not Acceptable
+                message: 'Cannot load instance: 291a85b8-d4c0-5765-dcb2-48c9b51f48d0'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+    options:
+      summary: CORS preflight for load instance
+      operationId: loadInstanceOptions
+      tags:
+      - Instances
+      responses:
+        '200':
+          description: CORS preflight response
+  /v1/core/instance/{instanceId}/unload:
+    post:
+      summary: Unload instance from memory
+      description: 'Unloads an instance from memory, clears state storage, and releases resources. This is different from stopping an instance - unloading removes the instance from memory and clears runtime state, while stopping only halts the processing pipeline.
+
+
+        **Behavior:**
+
+        - Instance must exist and be loaded
+
+        - If instance is running, it will be stopped first
+
+        - State storage is cleared (all runtime state is lost)
+
+        - Resources are released
+
+
+        **Use Cases:**
+
+        - Free memory when instance is not needed
+
+        - Clear runtime state
+
+        - Release resources
+
+
+        **Note:** State is cleared when instance is unloaded. State does not persist after unload. Config (persistent configuration) is not affected.
+
+        '
+      operationId: coreUnloadInstanceV1
+      tags:
+      - Instances
+      parameters:
+      - name: instanceId
+        in: path
+        required: true
+        schema:
+          type: string
+        description: Unique identifier of the instance (UUID)
+        example: 291a85b8-d4c0-5765-dcb2-48c9b51f48d0
+      responses:
+        '204':
+          description: Instance unloaded successfully
+        '404':
+          description: Instance not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                error: Not found
+                message: 'Instance not found: 291a85b8-d4c0-5765-dcb2-48c9b51f48d0'
+        '406':
+          description: Instance not loaded
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                error: Not Acceptable
+                message: 'Instance not loaded: 291a85b8-d4c0-5765-dcb2-48c9b51f48d0'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+    options:
+      summary: CORS preflight for unload instance
+      operationId: unloadInstanceOptions
+      tags:
+      - Instances
+      responses:
+        '200':
+          description: CORS preflight response
+  /v1/core/instance/{instanceId}/state:
+    get:
+      summary: Get runtime state of instance
+      description: 'Returns the runtime state of an instance. State is different from config - state contains runtime settings that only exist when the instance is loaded, while config contains persistent settings that are stored in files.
+
+
+        **State vs Config:**
+
+        - **State**: Runtime settings, in-memory only, cleared when instance is unloaded
+
+        - **Config**: Persistent settings, stored in files, persists after restart
+
+
+        **Behavior:**
+
+        - Instance must exist and be loaded (or running)
+
+        - Returns empty object `{}` if no state has been set
+
+        - State is cleared when instance is unloaded
+
+
+        **Use Cases:**
+
+        - Get runtime settings and flags
+
+        - Check runtime state values
+
+        - Monitor runtime configuration
+
+
+        **Note:** State does not persist after unload or restart. For persistent configuration, use the config endpoint.
+
+        '
+      operationId: coreGetInstanceStateV1
+      tags:
+      - Instances
+      parameters:
+      - name: instanceId
+        in: path
+        required: true
+        schema:
+          type: string
+        description: Unique identifier of the instance (UUID)
+        example: 291a85b8-d4c0-5765-dcb2-48c9b51f48d0
+      responses:
+        '200':
+          description: Instance state retrieved successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/InstanceState'
+              examples:
+                emptyState:
+                  summary: Empty state (no state set)
+                  value: {}
+                withState:
+                  summary: State with values
+                  value:
+                    runtime:
+                      mode: production
+                      debug:
+                        enabled: false
+                    metrics:
+                      interval: 60
+                    Output:
+                      handlers:
+                        Mqtt:
+                          enabled: true
+                          broker: localhost
+        '404':
+          description: Instance not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                error: Not found
+                message: 'Instance not found: 291a85b8-d4c0-5765-dcb2-48c9b51f48d0'
+        '406':
+          description: Instance not loaded
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                error: Not Acceptable
+                message: 'Instance not loaded: 291a85b8-d4c0-5765-dcb2-48c9b51f48d0'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+    post:
+      summary: Set runtime state value at a specific path
+      description: 'Sets a runtime state value at the specified path. State is different from config - state contains runtime settings that only exist when the instance is loaded, while config contains persistent settings.
+
+
+        **State vs Config:**
+
+        - **State**: Runtime settings, in-memory only, cleared when instance is unloaded
+
+        - **Config**: Persistent settings, stored in files, persists after restart
+
+
+        **Behavior:**
+
+        - Instance must exist and be loaded (or running)
+
+        - If instance is running but not loaded, state storage will be initialized
+
+        - Path uses forward slashes "/" for nested structures
+
+        - State is cleared when instance is unloaded
+
+
+        **Path Examples:**
+
+        - Simple path: `"testValue"` - Sets top-level testValue
+
+        - Nested path: `"Output/handlers/Mqtt"` - Sets Mqtt handler in Output.handlers
+
+        - Deep nested: `"runtime/debug/enabled"` - Sets enabled flag in runtime.debug
+
+
+        **jsonValue Format:**
+
+        - For string values: `"\"my string\""` (escaped JSON string)
+
+        - For object values: `"{\"key\":\"value\"}"` (escaped JSON object)
+
+        - For number values: `"123"` or `"45.67"`
+
+        - For boolean values: `"true"` or `"false"`
+
+
+        **Use Cases:**
+
+        - Set runtime flags and settings
+
+        - Configure runtime behavior
+
+        - Update temporary runtime values
+
+
+        **Note:** State does not persist after unload or restart. For persistent configuration, use the config endpoint.
+
+        '
+      operationId: corePostInstanceStateV1
+      tags:
+      - Instances
+      parameters:
+      - name: instanceId
+        in: path
+        required: true
+        schema:
+          type: string
+        description: Unique identifier of the instance (UUID)
+        example: 291a85b8-d4c0-5765-dcb2-48c9b51f48d0
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SetStateRequest'
+            examples:
+              stringValue:
+                summary: Set string value
+                value:
+                  path: runtime/mode
+                  jsonValue: '"production"'
+              objectValue:
+                summary: Set object value
+                value:
+                  path: Output/handlers/Mqtt
+                  jsonValue: '{"enabled":true,"broker":"localhost","port":1883}'
+              nestedPath:
+                summary: Set nested path value
+                value:
+                  path: runtime/debug/enabled
+                  jsonValue: 'true'
+      responses:
+        '204':
+          description: State value set successfully
+        '400':
+          description: Bad request (invalid input, missing required fields, or invalid JSON)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                error: Bad request
+                message: Field 'jsonValue' must contain valid JSON
+        '404':
+          description: Instance not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                error: Not found
+                message: 'Instance not found: 291a85b8-d4c0-5765-dcb2-48c9b51f48d0'
+        '406':
+          description: Instance not loaded
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                error: Not Acceptable
+                message: 'Instance not loaded: 291a85b8-d4c0-5765-dcb2-48c9b51f48d0'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+    options:
+      summary: CORS preflight for instance state
+      operationId: instanceStateOptions
       tags:
       - Instances
       responses:
@@ -10845,6 +11341,56 @@ components:
 
             '
           example: '{"uri":"mqtt://localhost:1883/events"}'
+    SetStateRequest:
+      type: object
+      required:
+      - path
+      - jsonValue
+      properties:
+        path:
+          type: string
+          description: 'The key for which the state value is to be updated. For nested structures, use forward slashes "/"
+            as separators.
+
+            Examples: "runtime/mode", "Output/handlers/Mqtt", "runtime/debug/enabled"
+
+            '
+          example: Output/handlers/Mqtt
+        jsonValue:
+          type: string
+          description: 'A string containing a JSON value or object. Ensure proper escaping for strings or objects.
+
+            - For string values: "\"my string\"" (escaped JSON string)
+
+            - For object values: "{\"key\":\"value\"}" (escaped JSON object)
+
+            - For number values: "123" or "45.67"
+
+            - For boolean values: "true" or "false"
+
+            '
+          example: '{"enabled":true,"broker":"localhost"}'
+    InstanceState:
+      type: object
+      description: 'Runtime state of an instance. State is different from config - state contains runtime settings that only exist when the instance is loaded, while config contains persistent settings.
+
+        State is cleared when instance is unloaded. State does not persist after restart.
+
+        '
+      additionalProperties: true
+      example:
+        runtime:
+          mode: production
+          debug:
+            enabled: false
+        metrics:
+          interval: 60
+        Output:
+          handlers:
+            Mqtt:
+              enabled: true
+              broker: localhost
+              port: 1883
     ConfigureStreamOutputRequest:
       type: object
       required:
