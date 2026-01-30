@@ -213,6 +213,11 @@ private:
    */
   void registerBAStopMQTTDefaultSolution();
 
+  /**
+   * @brief Register securt solution
+   */
+  void registerSecuRTSolution();
+
 #ifdef CVEDIX_WITH_RKNN
   /**
    * @brief Register RKNN YOLOv11 detection solution
