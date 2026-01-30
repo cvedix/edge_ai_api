@@ -125,6 +125,7 @@ void SolutionRegistry::initializeDefaultSolutions() {
   registerBAJamMQTTDefaultSolution();           // ba_jam_mqtt_default
   registerBAStopDefaultSolution();              // ba_stop_default
   registerBAStopMQTTDefaultSolution();          // ba_stop_mqtt_default
+  registerSecuRTSolution();                     // securt
 
 #ifdef CVEDIX_WITH_RKNN
   registerRKNNYOLOv11DetectionSolution();
@@ -1698,6 +1699,42 @@ void SolutionRegistry::registerBAStopMQTTDefaultSolution() {
   config.pipeline.push_back(baStopOSD2);
 
   config.defaults["MIN_STOP_SECONDS"] = "3";
+
+  registerSolution(config);
+}
+
+void SolutionRegistry::registerSecuRTSolution() {
+  SolutionConfig config;
+  config.solutionId = "securt";
+  config.solutionName = "SecuRT Solution";
+  config.solutionType = "securt";
+  config.isDefault = true;
+
+  // File Source Node (supports flexible input: file, RTSP, RTMP, HLS via
+  // auto-detection)
+  SolutionConfig::NodeConfig fileSrc;
+  fileSrc.nodeType = "file_src";
+  fileSrc.nodeName = "file_src_{instanceId}";
+  fileSrc.parameters["file_path"] =
+      "${FILE_PATH}"; // Can be file path or RTSP/RTMP URL
+  fileSrc.parameters["channel"] = "0";
+  fileSrc.parameters["resize_ratio"] = "1.0";
+  config.pipeline.push_back(fileSrc);
+
+  // File Destination Node
+  SolutionConfig::NodeConfig fileDes;
+  fileDes.nodeType = "file_des";
+  fileDes.nodeName = "file_des_{instanceId}";
+  fileDes.parameters["save_dir"] = "./output/{instanceId}";
+  fileDes.parameters["name_prefix"] = "securt";
+  fileDes.parameters["osd"] = "true";
+  config.pipeline.push_back(fileDes);
+
+  // Default configurations
+  config.defaults["detectorMode"] = "SmartDetection";
+  config.defaults["detectionSensitivity"] = "Medium";
+  config.defaults["movementSensitivity"] = "Medium";
+  config.defaults["sensorModality"] = "RGB";
 
   registerSolution(config);
 }

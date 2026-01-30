@@ -10986,6 +10986,584 @@ paths:
       responses:
         '200':
           description: CORS preflight response
+  /v1/securt/instance:
+    post:
+      summary: Create a new SecuRT instance
+      description: Creates a new SecuRT instance with the provided configuration. The instance ID will be auto-generated if not provided.
+      operationId: createSecuRTInstance
+      tags:
+      - SecuRT Instance
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SecuRTInstanceWrite'
+            example:
+              name: My SecuRT Instance
+              detectorMode: SmartDetection
+              detectionSensitivity: Low
+              movementSensitivity: Low
+              sensorModality: RGB
+              frameRateLimit: 0
+              metadataMode: false
+              statisticsMode: false
+              diagnosticsMode: false
+              debugMode: false
+      responses:
+        '201':
+          description: Instance created successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  instanceId:
+                    type: string
+                    description: The ID of the created instance
+                    example: securt-instance-123
+        '400':
+          description: Invalid request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '409':
+          description: Instance already exists or creation failed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+    options:
+      summary: CORS preflight for create instance
+      operationId: createSecuRTInstanceOptions
+      tags:
+      - SecuRT Instance
+      responses:
+        '200':
+          description: CORS preflight response
+  /v1/securt/instance/{instanceId}:
+    put:
+      summary: Create SecuRT instance with specific ID
+      description: Creates a SecuRT instance with the specified instance ID. If the instance already exists, returns a conflict error.
+      operationId: createSecuRTInstanceWithId
+      tags:
+      - SecuRT Instance
+      parameters:
+      - name: instanceId
+        in: path
+        required: true
+        schema:
+          type: string
+        description: Instance ID
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SecuRTInstanceWrite'
+            example:
+              name: My SecuRT Instance
+              detectorMode: SmartDetection
+              detectionSensitivity: Low
+              movementSensitivity: Low
+              sensorModality: RGB
+              frameRateLimit: 0
+              metadataMode: false
+              statisticsMode: false
+              diagnosticsMode: false
+              debugMode: false
+      responses:
+        '201':
+          description: Instance created successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  instanceId:
+                    type: string
+                    description: The ID of the created instance
+                    example: securt-instance-123
+        '400':
+          description: Invalid request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '409':
+          description: Instance already exists
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+    patch:
+      summary: Update SecuRT instance
+      description: Updates an existing SecuRT instance with the provided configuration. Only provided fields will be updated.
+      operationId: updateSecuRTInstance
+      tags:
+      - SecuRT Instance
+      parameters:
+      - name: instanceId
+        in: path
+        required: true
+        schema:
+          type: string
+        description: Instance ID
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SecuRTInstanceWrite'
+            example:
+              name: Updated Instance Name
+              detectorMode: Detection
+              detectionSensitivity: Medium
+      responses:
+        '204':
+          description: Instance updated successfully
+        '400':
+          description: Invalid request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: Instance not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+    delete:
+      summary: Delete SecuRT instance
+      description: Deletes an existing SecuRT instance. The instance must exist.
+      operationId: deleteSecuRTInstance
+      tags:
+      - SecuRT Instance
+      parameters:
+      - name: instanceId
+        in: path
+        required: true
+        schema:
+          type: string
+        description: Instance ID
+      responses:
+        '204':
+          description: Instance deleted successfully
+        '400':
+          description: Invalid request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: Instance not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+    options:
+      summary: CORS preflight for instance operations
+      operationId: securtInstanceOptions
+      tags:
+      - SecuRT Instance
+      responses:
+        '200':
+          description: CORS preflight response
+  /v1/securt/instance/{instanceId}/stats:
+    get:
+      summary: Get SecuRT instance statistics
+      description: Returns statistics for a SecuRT instance including frame rate, latency, frames processed, track count, and running status.
+      operationId: getSecuRTInstanceStats
+      tags:
+      - SecuRT Instance
+      parameters:
+      - name: instanceId
+        in: path
+        required: true
+        schema:
+          type: string
+        description: Instance ID
+      responses:
+        '200':
+          description: Statistics retrieved successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SecuRTInstanceStats'
+              example:
+                startTime: 1704067200000
+                frameRate: 30.5
+                latency: 33.2
+                framesProcessed: 91500
+                trackCount: 5
+                isRunning: true
+        '400':
+          description: Invalid request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: Instance not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+    options:
+      summary: CORS preflight for stats
+      operationId: getSecuRTInstanceStatsOptions
+      tags:
+      - SecuRT Instance
+      responses:
+        '200':
+          description: CORS preflight response
+  /v1/securt/instance/{instanceId}/areas:
+    get:
+      summary: Get analytics areas for SecuRT instance
+      description: Returns all analytics areas configured for a SecuRT instance. This includes crossing areas, intrusion areas, loitering areas, crowding areas, occupancy areas, crowd estimation areas, dwelling areas, armed person areas, object left areas, object removed areas, and fallen person areas.
+      operationId: getSecuRTAreas
+      tags:
+      - Area
+      parameters:
+      - name: instanceId
+        in: path
+        required: true
+        schema:
+          type: string
+        description: Instance ID
+      responses:
+        '200':
+          description: Analytics areas retrieved successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  crossing:
+                    type: array
+                    description: Crossing areas
+                    items:
+                      type: object
+                  intrusion:
+                    type: array
+                    description: Intrusion areas
+                    items:
+                      type: object
+                  loitering:
+                    type: array
+                    description: Loitering areas
+                    items:
+                      type: object
+                  crowding:
+                    type: array
+                    description: Crowding areas
+                    items:
+                      type: object
+                  occupancy:
+                    type: array
+                    description: Occupancy areas
+                    items:
+                      type: object
+                  crowdEstimation:
+                    type: array
+                    description: Crowd estimation areas
+                    items:
+                      type: object
+                  dwelling:
+                    type: array
+                    description: Dwelling areas
+                    items:
+                      type: object
+                  armedPerson:
+                    type: array
+                    description: Armed person areas
+                    items:
+                      type: object
+                  objectLeft:
+                    type: array
+                    description: Object left areas
+                    items:
+                      type: object
+                  objectRemoved:
+                    type: array
+                    description: Object removed areas
+                    items:
+                      type: object
+                  fallenPerson:
+                    type: array
+                    description: Fallen person areas
+                    items:
+                      type: object
+              example:
+                crossing: []
+                intrusion: []
+                loitering: []
+                crowding: []
+                occupancy: []
+                crowdEstimation: []
+                dwelling: []
+                armedPerson: []
+                objectLeft: []
+                objectRemoved: []
+                fallenPerson: []
+        '400':
+          description: Invalid request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: Instance not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+    options:
+      summary: CORS preflight for areas
+      operationId: getSecuRTAreasOptions
+      tags:
+      - Area
+      responses:
+        '200':
+          description: CORS preflight response
+  /v1/securt/instance/{instanceId}/lines:
+    get:
+      summary: Get analytics lines for SecuRT instance
+      description: Returns all analytics lines configured for a SecuRT instance. This includes crossing lines, counting lines, and tailgating lines.
+      operationId: getSecuRTLines
+      tags:
+      - Lines
+      parameters:
+      - name: instanceId
+        in: path
+        required: true
+        schema:
+          type: string
+        description: Instance ID
+      responses:
+        '200':
+          description: Analytics lines retrieved successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  crossing:
+                    type: array
+                    description: Crossing lines
+                    items:
+                      type: object
+                  counting:
+                    type: array
+                    description: Counting lines
+                    items:
+                      type: object
+                  tailgating:
+                    type: array
+                    description: Tailgating lines
+                    items:
+                      type: object
+              example:
+                crossing: []
+                counting: []
+                tailgating: []
+        '400':
+          description: Invalid request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: Instance not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+    options:
+      summary: CORS preflight for lines
+      operationId: getSecuRTLinesOptions
+      tags:
+      - Lines
+      responses:
+        '200':
+          description: CORS preflight response
+  /v1/securt/instance/{instanceId}/analytics_entities:
+    get:
+      summary: Get analytics entities for SecuRT instance
+      description: Returns all analytics entities (areas and lines) configured for a SecuRT instance. This includes all types of areas (crossing, intrusion, loitering, crowding, occupancy, crowd estimation, dwelling, armed person, object left, object removed, fallen person) and all types of lines (crossing, counting, tailgating).
+      operationId: securtGetAnalyticsEntitiesV1
+      tags:
+      - SecuRT Instance
+      parameters:
+      - name: instanceId
+        in: path
+        required: true
+        schema:
+          type: string
+        description: Instance ID
+      responses:
+        '200':
+          description: Analytics entities retrieved successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  crossingAreas:
+                    type: array
+                    description: Crossing areas
+                    items:
+                      type: object
+                  intrusionAreas:
+                    type: array
+                    description: Intrusion areas
+                    items:
+                      type: object
+                  loiteringAreas:
+                    type: array
+                    description: Loitering areas
+                    items:
+                      type: object
+                  crowdingAreas:
+                    type: array
+                    description: Crowding areas
+                    items:
+                      type: object
+                  occupancyAreas:
+                    type: array
+                    description: Occupancy areas
+                    items:
+                      type: object
+                  crowdEstimationAreas:
+                    type: array
+                    description: Crowd estimation areas
+                    items:
+                      type: object
+                  dwellingAreas:
+                    type: array
+                    description: Dwelling areas
+                    items:
+                      type: object
+                  armedPersonAreas:
+                    type: array
+                    description: Armed person areas
+                    items:
+                      type: object
+                  objectLeftAreas:
+                    type: array
+                    description: Object left areas
+                    items:
+                      type: object
+                  objectRemovedAreas:
+                    type: array
+                    description: Object removed areas
+                    items:
+                      type: object
+                  fallenPersonAreas:
+                    type: array
+                    description: Fallen person areas
+                    items:
+                      type: object
+                  crossingLines:
+                    type: array
+                    description: Crossing lines
+                    items:
+                      type: object
+                  countingLines:
+                    type: array
+                    description: Counting lines
+                    items:
+                      type: object
+                  tailgatingLines:
+                    type: array
+                    description: Tailgating lines
+                    items:
+                      type: object
+              example:
+                crossingAreas: []
+                intrusionAreas: []
+                loiteringAreas: []
+                crowdingAreas: []
+                occupancyAreas: []
+                crowdEstimationAreas: []
+                dwellingAreas: []
+                armedPersonAreas: []
+                objectLeftAreas: []
+                objectRemovedAreas: []
+                fallenPersonAreas: []
+                crossingLines: []
+                countingLines: []
+                tailgatingLines: []
+        '400':
+          description: Invalid request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: Instance not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+    options:
+      summary: CORS preflight for analytics entities
+      operationId: securtGetAnalyticsEntitiesV1Options
+      tags:
+      - SecuRT Instance
+      responses:
+        '200':
+          description: CORS preflight response
 components:
   schemas:
     HealthResponse:
@@ -13617,6 +14195,105 @@ components:
             processor: 4
             destination: 3
             broker: 0
+    SecuRTInstanceWrite:
+      type: object
+      required:
+      - name
+      properties:
+        name:
+          type: string
+          description: Instance name
+          example: My SecuRT Instance
+        detectorMode:
+          type: string
+          enum:
+          - SmartDetection
+          - Detection
+          description: Detector mode
+          default: SmartDetection
+          example: SmartDetection
+        detectionSensitivity:
+          type: string
+          enum:
+          - Low
+          - Medium
+          - High
+          description: Detection sensitivity level
+          default: Low
+          example: Low
+        movementSensitivity:
+          type: string
+          enum:
+          - Low
+          - Medium
+          - High
+          description: Movement sensitivity level
+          default: Low
+          example: Low
+        sensorModality:
+          type: string
+          enum:
+          - RGB
+          - Thermal
+          description: Sensor modality
+          default: RGB
+          example: RGB
+        frameRateLimit:
+          type: number
+          format: double
+          description: Frame rate limit (FPS, 0 = unlimited)
+          default: 0
+          example: 0
+        metadataMode:
+          type: boolean
+          description: Enable metadata mode (output detection results as JSON)
+          default: false
+          example: false
+        statisticsMode:
+          type: boolean
+          description: Enable statistics mode
+          default: false
+          example: false
+        diagnosticsMode:
+          type: boolean
+          description: Enable diagnostics mode
+          default: false
+          example: false
+        debugMode:
+          type: boolean
+          description: Enable debug mode
+          default: false
+          example: false
+    SecuRTInstanceStats:
+      type: object
+      properties:
+        startTime:
+          type: integer
+          format: int64
+          description: Start time as Unix timestamp in milliseconds
+          example: 1704067200000
+        frameRate:
+          type: number
+          format: double
+          description: Current frame rate (FPS)
+          example: 30.5
+        latency:
+          type: number
+          format: double
+          description: Average latency in milliseconds
+          example: 33.2
+        framesProcessed:
+          type: integer
+          description: Total frames processed
+          example: 91500
+        trackCount:
+          type: integer
+          description: Current track count
+          example: 5
+        isRunning:
+          type: boolean
+          description: Whether instance is running
+          example: true
 x-tagGroups:
   - name: Core API
     tags:
@@ -13630,9 +14307,10 @@ x-tagGroups:
       - Video
       - Fonts
       - Node
+      - AI
   - name: SecuRT API
     tags:
-      - AI
+      - SecuRT Instance
       - Lines
       - Area
   - name: ONVIF API
@@ -13644,15 +14322,16 @@ tags:
   description: Log management endpoints for viewing and filtering application logs by category and date
 - name: AI
   description: AI processing endpoints for image/frame processing, batch operations, status, and metrics
+- name: SecuRT Instance
+  description: SecuRT instance management endpoints (create, update, delete, statistics)
 - name: Config
   description: System configuration management endpoints (get, create, update, delete)
 - name: Instances
   description: AI instance management endpoints (create, list, start, stop, delete)
 - name: Lines
-  description: Crossing lines management for ba_crossline instances (create, list, delete). Lines are drawn on video stream
-    for object counting.
+  description: SecuRT analytics lines management (crossing, counting, tailgating lines)
 - name: Area
-  description: Area management for ba_jam and ba_stop instances (create, list, delete). Includes jam zones for traffic jams detection and stop zones for stop objects detection. Zones are defined on video stream.
+  description: SecuRT analytics areas management (crossing, intrusion, loitering, crowding, occupancy, and other area types)
 - name: Solutions
   description: Solution configuration management endpoints (create, list, update, delete)
 - name: Groups

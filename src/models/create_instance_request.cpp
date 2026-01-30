@@ -47,8 +47,8 @@ bool CreateInstanceRequest::validate() const {
   }
 
   // Validate detectorMode
-  if (detectorMode != "SmartDetection") {
-    validation_error_ = "detectorMode must be SmartDetection";
+  if (detectorMode != "SmartDetection" && detectorMode != "Detection") {
+    validation_error_ = "detectorMode must be 'SmartDetection' or 'Detection'";
     return false;
   }
 

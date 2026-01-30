@@ -90,6 +90,7 @@ struct SecuRTInstance {
  * @brief SecuRT Instance Write Schema
  *
  * Used for creating/updating SecuRT instances.
+ * Tracks which fields are set for partial updates.
  */
 struct SecuRTInstanceWrite {
   std::string name;
@@ -103,6 +104,18 @@ struct SecuRTInstanceWrite {
   bool diagnosticsMode = false;
   bool debugMode = false;
 
+  // Track which fields are set (for partial updates)
+  bool nameSet = false;
+  bool detectorModeSet = false;
+  bool detectionSensitivitySet = false;
+  bool movementSensitivitySet = false;
+  bool sensorModalitySet = false;
+  bool frameRateLimitSet = false;
+  bool metadataModeSet = false;
+  bool statisticsModeSet = false;
+  bool diagnosticsModeSet = false;
+  bool debugModeSet = false;
+
   /**
    * @brief Create from JSON
    */
@@ -110,37 +123,47 @@ struct SecuRTInstanceWrite {
     SecuRTInstanceWrite write;
     if (json.isMember("name") && json["name"].isString()) {
       write.name = json["name"].asString();
+      write.nameSet = true;
     }
     if (json.isMember("detectorMode") && json["detectorMode"].isString()) {
       write.detectorMode = json["detectorMode"].asString();
+      write.detectorModeSet = true;
     }
     if (json.isMember("detectionSensitivity") &&
         json["detectionSensitivity"].isString()) {
       write.detectionSensitivity = json["detectionSensitivity"].asString();
+      write.detectionSensitivitySet = true;
     }
     if (json.isMember("movementSensitivity") &&
         json["movementSensitivity"].isString()) {
       write.movementSensitivity = json["movementSensitivity"].asString();
+      write.movementSensitivitySet = true;
     }
     if (json.isMember("sensorModality") &&
         json["sensorModality"].isString()) {
       write.sensorModality = json["sensorModality"].asString();
+      write.sensorModalitySet = true;
     }
     if (json.isMember("frameRateLimit") &&
         json["frameRateLimit"].isNumeric()) {
       write.frameRateLimit = json["frameRateLimit"].asDouble();
+      write.frameRateLimitSet = true;
     }
     if (json.isMember("metadataMode") && json["metadataMode"].isBool()) {
       write.metadataMode = json["metadataMode"].asBool();
+      write.metadataModeSet = true;
     }
     if (json.isMember("statisticsMode") && json["statisticsMode"].isBool()) {
       write.statisticsMode = json["statisticsMode"].asBool();
+      write.statisticsModeSet = true;
     }
     if (json.isMember("diagnosticsMode") && json["diagnosticsMode"].isBool()) {
       write.diagnosticsMode = json["diagnosticsMode"].asBool();
+      write.diagnosticsModeSet = true;
     }
     if (json.isMember("debugMode") && json["debugMode"].isBool()) {
       write.debugMode = json["debugMode"].asBool();
+      write.debugModeSet = true;
     }
     return write;
   }

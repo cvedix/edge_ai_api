@@ -550,12 +550,25 @@ void SecuRTHandler::handleOptions(
 }
 
 std::string SecuRTHandler::extractInstanceId(const HttpRequestPtr &req) const {
-  const auto &params = req->getParameters();
-  auto it = params.find("instanceId");
-  if (it != params.end()) {
-    return it->second;
+  // Try getParameter first (standard way for path parameters)
+  std::string instanceId = req->getParameter("instanceId");
+
+  // Fallback: extract from path if getParameter doesn't work
+  if (instanceId.empty()) {
+    std::string path = req->getPath();
+    // Try /securt/instance/ pattern
+    size_t instancePos = path.find("/securt/instance/");
+    if (instancePos != std::string::npos) {
+      size_t start = instancePos + 17; // length of "/securt/instance/"
+      size_t end = path.find("/", start);
+      if (end == std::string::npos) {
+        end = path.length();
+      }
+      instanceId = path.substr(start, end - start);
+    }
   }
-  return "";
+
+  return instanceId;
 }
 
 HttpResponsePtr SecuRTHandler::createErrorResponse(int statusCode,

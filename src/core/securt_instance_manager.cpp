@@ -99,17 +99,38 @@ bool SecuRTInstanceManager::updateInstance(const std::string &instanceId,
 
   // Update core instance if needed
   if (instance_manager_) {
-    // Update core instance config
+    // Update core instance config - only include fields that were set
     Json::Value configJson;
-    configJson["detectorMode"] = write.detectorMode;
-    configJson["detectionSensitivity"] = write.detectionSensitivity;
-    configJson["movementSensitivity"] = write.movementSensitivity;
-    configJson["sensorModality"] = write.sensorModality;
-    configJson["frameRateLimit"] = write.frameRateLimit;
-    configJson["metadataMode"] = write.metadataMode;
-    configJson["statisticsMode"] = write.statisticsMode;
-    configJson["diagnosticsMode"] = write.diagnosticsMode;
-    configJson["debugMode"] = write.debugMode;
+    if (write.nameSet) {
+      configJson["name"] = write.name;
+    }
+    if (write.detectorModeSet) {
+      configJson["detectorMode"] = write.detectorMode;
+    }
+    if (write.detectionSensitivitySet) {
+      configJson["detectionSensitivity"] = write.detectionSensitivity;
+    }
+    if (write.movementSensitivitySet) {
+      configJson["movementSensitivity"] = write.movementSensitivity;
+    }
+    if (write.sensorModalitySet) {
+      configJson["sensorModality"] = write.sensorModality;
+    }
+    if (write.frameRateLimitSet) {
+      configJson["frameRateLimit"] = write.frameRateLimit;
+    }
+    if (write.metadataModeSet) {
+      configJson["metadataMode"] = write.metadataMode;
+    }
+    if (write.statisticsModeSet) {
+      configJson["statisticsMode"] = write.statisticsMode;
+    }
+    if (write.diagnosticsModeSet) {
+      configJson["diagnosticsMode"] = write.diagnosticsMode;
+    }
+    if (write.debugModeSet) {
+      configJson["debugMode"] = write.debugMode;
+    }
 
     instance_manager_->updateInstance(instanceId, configJson);
   }
@@ -166,6 +187,11 @@ SecuRTInstanceManager::getStatistics(const std::string &instanceId) const {
           if (coreStats->start_time > 0) {
             stats.startTime = static_cast<int64_t>(coreStats->start_time) * 1000;
           }
+          
+          // Note: trackCount is not available in core instance statistics
+          // It needs to be obtained from pipeline metadata or tracking nodes
+          // Currently returns 0 until pipeline hook is implemented
+          // TODO: Implement trackCount collection from pipeline metadata
         }
       } catch (...) {
         // Ignore errors, use default stats

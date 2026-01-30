@@ -31,8 +31,8 @@ bool UpdateInstanceRequest::validate() const {
   }
 
   // Validate detectorMode if provided
-  if (!detectorMode.empty() && detectorMode != "SmartDetection") {
-    validation_error_ = "detectorMode must be 'SmartDetection'";
+  if (!detectorMode.empty() && detectorMode != "SmartDetection" && detectorMode != "Detection") {
+    validation_error_ = "detectorMode must be 'SmartDetection' or 'Detection'";
     return false;
   }
 

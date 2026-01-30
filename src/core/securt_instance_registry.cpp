@@ -30,18 +30,37 @@ bool SecuRTInstanceRegistry::updateInstance(
   }
 
   SecuRTInstance &instance = it->second;
-  if (!updates.name.empty()) {
+  // Only update fields that were set in the request
+  if (updates.nameSet) {
     instance.name = updates.name;
   }
-  instance.detectorMode = updates.detectorMode;
-  instance.detectionSensitivity = updates.detectionSensitivity;
-  instance.movementSensitivity = updates.movementSensitivity;
-  instance.sensorModality = updates.sensorModality;
-  instance.frameRateLimit = updates.frameRateLimit;
-  instance.metadataMode = updates.metadataMode;
-  instance.statisticsMode = updates.statisticsMode;
-  instance.diagnosticsMode = updates.diagnosticsMode;
-  instance.debugMode = updates.debugMode;
+  if (updates.detectorModeSet) {
+    instance.detectorMode = updates.detectorMode;
+  }
+  if (updates.detectionSensitivitySet) {
+    instance.detectionSensitivity = updates.detectionSensitivity;
+  }
+  if (updates.movementSensitivitySet) {
+    instance.movementSensitivity = updates.movementSensitivity;
+  }
+  if (updates.sensorModalitySet) {
+    instance.sensorModality = updates.sensorModality;
+  }
+  if (updates.frameRateLimitSet) {
+    instance.frameRateLimit = updates.frameRateLimit;
+  }
+  if (updates.metadataModeSet) {
+    instance.metadataMode = updates.metadataMode;
+  }
+  if (updates.statisticsModeSet) {
+    instance.statisticsMode = updates.statisticsMode;
+  }
+  if (updates.diagnosticsModeSet) {
+    instance.diagnosticsMode = updates.diagnosticsMode;
+  }
+  if (updates.debugModeSet) {
+    instance.debugMode = updates.debugMode;
+  }
 
   return true;
 }
