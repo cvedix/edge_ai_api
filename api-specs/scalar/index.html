@@ -252,6 +252,251 @@
             padding: 0;
             overflow-x: hidden;
         }
+        
+        /* ============================================
+           JSON Display Enhancement Styles
+           ============================================ */
+        
+        /* Container cho JSON response với controls */
+        .json-display-wrapper {
+            position: relative;
+            margin: 12px 0;
+        }
+        
+        /* Controls bar cho JSON blocks */
+        .json-controls {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            padding: 8px 12px;
+            background: #f6f8fa;
+            border: 1px solid #e1e4e8;
+            border-bottom: none;
+            border-radius: 6px 6px 0 0;
+            font-size: 12px;
+        }
+        
+        /* Nút Copy JSON */
+        .json-copy-btn {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            padding: 4px 12px;
+            background: #ffffff;
+            border: 1px solid #d1d5db;
+            border-radius: 4px;
+            color: #374151;
+            font-size: 12px;
+            font-weight: 500;
+            cursor: pointer;
+            transition: all 0.2s;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+        }
+        
+        .json-copy-btn:hover {
+            background: #f9fafb;
+            border-color: #9ca3af;
+            color: #111827;
+        }
+        
+        .json-copy-btn:active {
+            transform: scale(0.98);
+        }
+        
+        .json-copy-btn.copied {
+            background: #10b981;
+            border-color: #10b981;
+            color: white;
+        }
+        
+        .json-copy-btn svg {
+            width: 14px;
+            height: 14px;
+            fill: currentColor;
+        }
+        
+        /* Toggle wrap button */
+        .json-wrap-toggle {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            padding: 4px 12px;
+            background: #ffffff;
+            border: 1px solid #d1d5db;
+            border-radius: 4px;
+            color: #374151;
+            font-size: 12px;
+            font-weight: 500;
+            cursor: pointer;
+            transition: all 0.2s;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+        }
+        
+        .json-wrap-toggle:hover {
+            background: #f9fafb;
+            border-color: #9ca3af;
+        }
+        
+        .json-wrap-toggle.active {
+            background: #3b82f6;
+            border-color: #3b82f6;
+            color: white;
+        }
+        
+        /* Cải thiện hiển thị <pre><code> chứa JSON */
+        /* Target các pre code blocks trong Scalar response */
+        .scalar-api-reference pre code,
+        pre code.hljs,
+        pre code[class*="hljs"],
+        pre code[class*="language-json"],
+        .response-body pre code,
+        .response-body pre code.hljs {
+            font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', 'Consolas', 'source-code-pro', monospace !important;
+            font-size: 13px !important;
+            line-height: 1.7 !important;
+            color: #24292e !important;
+            background: transparent !important;
+            padding: 0 !important;
+            display: block !important;
+            white-space: pre !important;
+            word-wrap: normal !important;
+            overflow-x: auto !important;
+            tab-size: 2 !important;
+        }
+        
+        /* Container cho pre code với line numbers */
+        .json-with-lines {
+            position: relative;
+            display: flex;
+            background: #f8f9fa;
+            border: 1px solid #e1e4e8;
+            border-radius: 0 0 6px 6px;
+            overflow: hidden;
+            width: 100%;
+            min-width: 0; /* Cho phép container shrink */
+        }
+        
+        /* Line numbers column */
+        .json-line-numbers {
+            flex-shrink: 0;
+            padding: 16px 12px 16px 16px;
+            background: #f1f3f5;
+            border-right: 1px solid #e1e4e8;
+            color: #6e7681;
+            font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', 'Consolas', monospace;
+            font-size: 13px;
+            line-height: 1.7;
+            text-align: right;
+            user-select: none;
+            min-width: 50px;
+        }
+        
+        /* Code content area */
+        .json-code-content {
+            flex: 1;
+            overflow: auto;
+            padding: 16px;
+            position: relative;
+            min-width: 0; /* Cho phép flex item shrink */
+            width: 100%;
+        }
+        
+        /* Pre element styling */
+        .json-code-content pre {
+            margin: 0 !important;
+            padding: 0 !important;
+            background: transparent !important;
+            overflow: visible !important;
+            width: 100%;
+            max-width: 100%;
+        }
+        
+        /* Code element styling - đảm bảo hiển thị đầy đủ */
+        .json-code-content pre code,
+        .json-code-content pre code.hljs {
+            display: block !important;
+            width: 100% !important;
+            max-width: 100% !important;
+            overflow: visible !important;
+            word-break: normal !important;
+        }
+        
+        /* Wrap mode - cho phép wrap dòng */
+        .json-display-wrapper.wrap-mode .json-code-content pre code,
+        .json-display-wrapper.wrap-mode .json-code-content pre code.hljs {
+            white-space: pre-wrap !important;
+            word-wrap: break-word !important;
+            word-break: break-word !important;
+            overflow-wrap: break-word !important;
+        }
+        
+        /* Đảm bảo wrapper không bị giới hạn width */
+        .json-display-wrapper {
+            width: 100%;
+            max-width: 100%;
+            box-sizing: border-box;
+        }
+        
+        /* Scrollbar styling cho JSON container */
+        .json-code-content::-webkit-scrollbar,
+        .json-display-wrapper pre::-webkit-scrollbar {
+            width: 10px;
+            height: 10px;
+        }
+        
+        .json-code-content::-webkit-scrollbar-track,
+        .json-display-wrapper pre::-webkit-scrollbar-track {
+            background: #f1f1f1;
+            border-radius: 5px;
+        }
+        
+        .json-code-content::-webkit-scrollbar-thumb,
+        .json-display-wrapper pre::-webkit-scrollbar-thumb {
+            background: #c1c1c1;
+            border-radius: 5px;
+        }
+        
+        .json-code-content::-webkit-scrollbar-thumb:hover,
+        .json-display-wrapper pre::-webkit-scrollbar-thumb:hover {
+            background: #a8a8a8;
+        }
+        
+        /* Giữ nguyên syntax highlighting của highlight.js */
+        .json-code-content .hljs-keyword,
+        .json-code-content code .hljs-keyword {
+            color: #d73a49 !important;
+        }
+        
+        .json-code-content .hljs-string,
+        .json-code-content code .hljs-string {
+            color: #032f62 !important;
+        }
+        
+        .json-code-content .hljs-number,
+        .json-code-content code .hljs-number {
+            color: #005cc5 !important;
+        }
+        
+        .json-code-content .hljs-literal,
+        .json-code-content code .hljs-literal {
+            color: #e36209 !important;
+        }
+        
+        .json-code-content .hljs-attr,
+        .json-code-content code .hljs-attr {
+            color: #6f42c1 !important;
+            font-weight: 500 !important;
+        }
+        
+        /* Responsive: ẩn line numbers trên màn hình nhỏ */
+        @media (max-width: 768px) {
+            .json-line-numbers {
+                display: none;
+            }
+            .json-code-content {
+                padding-left: 16px;
+            }
+        }
     </style>
 </head>
 <body>
@@ -680,7 +925,30 @@
                                 'Pragma': 'no-cache',
                                 'Expires': '0'
                             }
-                        }
+                        },
+                        // Custom CSS để cải thiện định dạng response body
+                        // Note: JSON enhancement được xử lý bởi script riêng
+                        customCss: `
+                            /* Cải thiện hiển thị response section tổng thể */
+                            .scalar-api-reference .response-section {
+                                padding: 20px !important;
+                                background: #ffffff !important;
+                                border: 1px solid #e1e4e8 !important;
+                                border-radius: 6px !important;
+                                margin-top: 16px !important;
+                            }
+                            
+                            /* Cải thiện hiển thị response headers */
+                            .scalar-api-reference .response-headers {
+                                font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', 'Consolas', monospace !important;
+                                font-size: 12px !important;
+                            }
+                            
+                            /* Đảm bảo response body có không gian đủ */
+                            .scalar-api-reference .response-body {
+                                margin: 12px 0 !important;
+                            }
+                        `
                     };
                     console.log('Final URL for Scalar:', finalUrl);
                     console.log('Server URL for API testing:', serverUrl);
@@ -1159,7 +1427,9 @@
                             const fallbackConfig = {
                                 url: fallbackUrl,  // New format - not deprecated
                                 theme: 'default',
-                                layout: 'modern'
+                                layout: 'modern',
+                                // Custom CSS để cải thiện định dạng response body
+                                customCss: configuration.customCss
                             };
                             console.log('Trying fallback URL with new format:', fallbackUrl);
                             const ScalarRef2 = getScalarApiReference();
@@ -1218,10 +1488,23 @@
                 const apiRef = document.getElementById('api-reference');
                 if (apiRef) {
                     // Use provided config or create a default one
+                    const defaultCustomCss = `
+                        .scalar-api-reference .response-section {
+                            padding: 20px !important;
+                            background: #ffffff !important;
+                            border: 1px solid #e1e4e8 !important;
+                            border-radius: 6px !important;
+                            margin-top: 16px !important;
+                        }
+                        .scalar-api-reference .response-body {
+                            margin: 12px 0 !important;
+                        }
+                    `;
                     const config = configToUse || {
                         url: fallbackUrl || specUrl,
                         theme: 'default',
-                        layout: 'modern'
+                        layout: 'modern',
+                        customCss: defaultCustomCss
                     };
                     
                     // Don't clear content if it already has content (might be from previous mount)
@@ -1462,6 +1745,327 @@
             // DOM đã sẵn sàng
             init();
         }
+    </script>
+    
+    <!-- JSON Display Enhancement Script -->
+    <script>
+        (function() {
+            'use strict';
+            
+            // Icon SVG cho nút Copy
+            const copyIconSvg = '<svg viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M5.5 2.5H11.5C12.0523 2.5 12.5 2.94772 12.5 3.5V9.5C12.5 10.0523 12.0523 10.5 11.5 10.5H9.5V12.5C9.5 13.0523 9.05228 13.5 8.5 13.5H2.5C1.94772 13.5 1.5 13.0523 1.5 12.5V6.5C1.5 5.94772 1.94772 5.5 2.5 5.5H4.5V3.5C4.5 2.94772 4.94772 2.5 5.5 2.5ZM4.5 5.5H2.5V12.5H8.5V10.5H6.5C5.94772 10.5 5.5 10.0523 5.5 9.5V5.5H4.5ZM6.5 5.5V9.5H11.5V3.5H5.5V5.5H6.5Z"/></svg>';
+            const checkIconSvg = '<svg viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M13.5 4.5L6 12L2.5 8.5" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+            
+            // Hàm copy text vào clipboard
+            async function copyToClipboard(text) {
+                try {
+                    if (navigator.clipboard && navigator.clipboard.writeText) {
+                        await navigator.clipboard.writeText(text);
+                        return true;
+                    } else {
+                        // Fallback cho browsers cũ
+                        const textArea = document.createElement('textarea');
+                        textArea.value = text;
+                        textArea.style.position = 'fixed';
+                        textArea.style.opacity = '0';
+                        document.body.appendChild(textArea);
+                        textArea.select();
+                        const success = document.execCommand('copy');
+                        document.body.removeChild(textArea);
+                        return success;
+                    }
+                } catch (err) {
+                    console.error('Failed to copy:', err);
+                    return false;
+                }
+            }
+            
+            // Hàm lấy text thuần từ code element (loại bỏ HTML tags)
+            function getPlainText(codeElement) {
+                if (!codeElement) return '';
+                
+                // Nếu có textContent, dùng nó (đã loại bỏ HTML)
+                if (codeElement.textContent) {
+                    return codeElement.textContent;
+                }
+                
+                // Fallback: clone và loại bỏ các span
+                const clone = codeElement.cloneNode(true);
+                const spans = clone.querySelectorAll('span');
+                spans.forEach(span => {
+                    const text = document.createTextNode(span.textContent);
+                    span.parentNode.replaceChild(text, span);
+                });
+                return clone.textContent || clone.innerText || '';
+            }
+            
+            // Hàm đếm số dòng trong text
+            function countLines(text) {
+                if (!text) return 0;
+                return text.split('\n').length;
+            }
+            
+            // Hàm tạo line numbers HTML
+            function createLineNumbers(count) {
+                const lines = [];
+                for (let i = 1; i <= count; i++) {
+                    lines.push(i);
+                }
+                return lines.join('\n');
+            }
+            
+            // Hàm enhance JSON display cho một pre code block
+            function enhanceJsonDisplay(preCodeBlock) {
+                // Kiểm tra xem đã được enhance chưa
+                if (preCodeBlock.closest('.json-display-wrapper')) {
+                    return;
+                }
+                
+                // Chỉ enhance trong response body area, không enhance trong request examples
+                const isInResponse = preCodeBlock.closest('[class*="response"], [class*="Response"], [id*="response"], [id*="Response"]');
+                const isInRequest = preCodeBlock.closest('[class*="request"], [class*="Request"], [class*="example"], [class*="Example"], [class*="curl"]');
+                
+                // Nếu không trong response area hoặc trong request area, skip
+                if (!isInResponse || isInRequest) {
+                    return;
+                }
+                
+                const codeElement = preCodeBlock.querySelector('code');
+                if (!codeElement) return;
+                
+                // Lấy text thuần
+                const plainText = getPlainText(codeElement);
+                if (!plainText || plainText.trim().length === 0) return;
+                
+                // Kiểm tra xem có phải JSON không (heuristic)
+                const trimmed = plainText.trim();
+                const looksLikeJson = (trimmed.startsWith('{') && trimmed.endsWith('}')) ||
+                                     (trimmed.startsWith('[') && trimmed.endsWith(']'));
+                
+                if (!looksLikeJson) return;
+                
+                // Kiểm tra thêm: JSON phải có ít nhất một key-value pair hoặc array element
+                // Tránh wrap các code blocks ngắn không phải JSON response
+                if (trimmed.length < 10) return;
+                
+                // Kiểm tra có chứa JSON structure cơ bản
+                const hasJsonStructure = trimmed.includes(':') || 
+                                        (trimmed.startsWith('[') && trimmed.includes(','));
+                
+                if (!hasJsonStructure) return;
+                
+                // Đếm số dòng
+                const lineCount = countLines(plainText);
+                
+                // Tạo wrapper
+                const wrapper = document.createElement('div');
+                wrapper.className = 'json-display-wrapper';
+                
+                // Tạo controls bar
+                const controls = document.createElement('div');
+                controls.className = 'json-controls';
+                
+                // Nút Copy
+                const copyBtn = document.createElement('button');
+                copyBtn.className = 'json-copy-btn';
+                copyBtn.innerHTML = copyIconSvg + '<span>Copy JSON</span>';
+                copyBtn.type = 'button';
+                copyBtn.addEventListener('click', async function() {
+                    const success = await copyToClipboard(plainText);
+                    if (success) {
+                        copyBtn.classList.add('copied');
+                        copyBtn.innerHTML = checkIconSvg + '<span>Copied!</span>';
+                        setTimeout(() => {
+                            copyBtn.classList.remove('copied');
+                            copyBtn.innerHTML = copyIconSvg + '<span>Copy JSON</span>';
+                        }, 2000);
+                    }
+                });
+                
+                // Toggle Wrap button
+                const wrapToggle = document.createElement('button');
+                wrapToggle.className = 'json-wrap-toggle';
+                wrapToggle.textContent = 'Wrap Lines';
+                wrapToggle.type = 'button';
+                wrapToggle.addEventListener('click', function() {
+                    wrapper.classList.toggle('wrap-mode');
+                    wrapToggle.classList.toggle('active');
+                    wrapToggle.textContent = wrapper.classList.contains('wrap-mode') 
+                        ? 'No Wrap' 
+                        : 'Wrap Lines';
+                });
+                
+                controls.appendChild(copyBtn);
+                controls.appendChild(wrapToggle);
+                
+                // Tạo container với line numbers
+                const jsonContainer = document.createElement('div');
+                jsonContainer.className = 'json-with-lines';
+                
+                // Line numbers (chỉ hiển thị nếu có nhiều hơn 1 dòng)
+                if (lineCount > 1) {
+                    const lineNumbers = document.createElement('div');
+                    lineNumbers.className = 'json-line-numbers';
+                    lineNumbers.textContent = createLineNumbers(lineCount);
+                    jsonContainer.appendChild(lineNumbers);
+                }
+                
+                // Code content area
+                const codeContent = document.createElement('div');
+                codeContent.className = 'json-code-content';
+                
+                // Di chuyển pre element vào codeContent (không clone, move trực tiếp để giữ nguyên mọi thứ)
+                // Clone trước để giữ nguyên trong DOM gốc nếu cần
+                const preElement = preCodeBlock.cloneNode(true);
+                
+                // Đảm bảo pre element giữ nguyên styles và attributes
+                preElement.style.margin = '0';
+                preElement.style.padding = '0';
+                preElement.style.background = 'transparent';
+                
+                codeContent.appendChild(preElement);
+                jsonContainer.appendChild(codeContent);
+                
+                // Assemble
+                wrapper.appendChild(controls);
+                wrapper.appendChild(jsonContainer);
+                
+                // Thay thế preCodeBlock bằng wrapper
+                // Đảm bảo parent node tồn tại
+                if (preCodeBlock.parentNode) {
+                    preCodeBlock.parentNode.replaceChild(wrapper, preCodeBlock);
+                } else {
+                    console.warn('Cannot replace: preCodeBlock has no parent node');
+                    return;
+                }
+                
+                // Đảm bảo content hiển thị sau khi replace
+                setTimeout(() => {
+                    const codeEl = codeContent.querySelector('code');
+                    if (codeEl && codeEl.textContent.trim().length === 0) {
+                        console.warn('Warning: Code element appears empty after enhancement');
+                    }
+                }, 100);
+            }
+            
+            // Hàm tìm và enhance tất cả JSON blocks
+            function enhanceAllJsonDisplays() {
+                // Chỉ tìm trong response body areas, tránh request examples
+                const responseSelectors = [
+                    '[class*="response"] pre code',
+                    '[class*="Response"] pre code',
+                    '[id*="response"] pre code',
+                    '[id*="Response"] pre code',
+                    'pre code.hljs',
+                    'pre code[class*="hljs"]',
+                    'pre code[class*="language-json"]'
+                ];
+                
+                let found = false;
+                const processed = new Set(); // Track processed elements để tránh duplicate
+                
+                responseSelectors.forEach(selector => {
+                    try {
+                        const codeBlocks = document.querySelectorAll(selector);
+                        codeBlocks.forEach(codeBlock => {
+                            // Skip nếu đã được xử lý
+                            if (processed.has(codeBlock)) return;
+                            
+                            // Chỉ xử lý nếu trong response area, không phải request
+                            const isInResponse = codeBlock.closest('[class*="response"], [class*="Response"], [id*="response"], [id*="Response"]');
+                            const isInRequest = codeBlock.closest('[class*="request"], [class*="Request"], [class*="example"], [class*="Example"], [class*="curl"], [class*="Curl"]');
+                            
+                            if (isInResponse && !isInRequest) {
+                                const preBlock = codeBlock.closest('pre');
+                                if (preBlock && !preBlock.closest('.json-display-wrapper')) {
+                                    processed.add(codeBlock);
+                                    enhanceJsonDisplay(preBlock);
+                                    found = true;
+                                }
+                            }
+                        });
+                    } catch (e) {
+                        console.warn('Error processing selector:', selector, e);
+                    }
+                });
+                
+                return found;
+            }
+            
+            // Observer để tự động enhance khi có content mới
+            let observer = null;
+            
+            function setupObserver() {
+                if (observer) {
+                    observer.disconnect();
+                }
+                
+                observer = new MutationObserver(function(mutations) {
+                    let shouldEnhance = false;
+                    mutations.forEach(mutation => {
+                        if (mutation.addedNodes.length > 0) {
+                            shouldEnhance = true;
+                        }
+                    });
+                    
+                    if (shouldEnhance) {
+                        // Debounce: đợi một chút để Scalar render xong
+                        setTimeout(() => {
+                            enhanceAllJsonDisplays();
+                        }, 500);
+                    }
+                });
+                
+                // Observe toàn bộ document
+                observer.observe(document.body, {
+                    childList: true,
+                    subtree: true
+                });
+            }
+            
+            // Khởi tạo
+            function initJsonEnhancement() {
+                console.log('[JSON Enhancement] Initializing...');
+                
+                // Enhance ngay lập tức
+                const found = enhanceAllJsonDisplays();
+                console.log('[JSON Enhancement] Initial enhancement:', found ? 'found JSON blocks' : 'no JSON blocks found');
+                
+                // Setup observer
+                setupObserver();
+                
+                // Enhance lại sau khi Scalar load xong (nếu có)
+                if (typeof window.scalarInstance !== 'undefined') {
+                    setTimeout(() => {
+                        console.log('[JSON Enhancement] Re-enhancing after Scalar load...');
+                        enhanceAllJsonDisplays();
+                    }, 2000);
+                }
+            }
+            
+            // Chạy khi DOM ready
+            if (document.readyState === 'loading') {
+                document.addEventListener('DOMContentLoaded', function() {
+                    setTimeout(initJsonEnhancement, 500);
+                });
+            } else {
+                setTimeout(initJsonEnhancement, 500);
+            }
+            
+            // Chạy lại sau khi window load (để bắt Scalar content)
+            window.addEventListener('load', function() {
+                setTimeout(function() {
+                    console.log('[JSON Enhancement] Re-enhancing after window load...');
+                    initJsonEnhancement();
+                }, 1500);
+            });
+            
+            // Expose function để có thể gọi thủ công nếu cần
+            window.enhanceJsonDisplays = function() {
+                console.log('[JSON Enhancement] Manual trigger');
+                return enhanceAllJsonDisplays();
+            };
+        })();
     </script>
 </body>
 </html>

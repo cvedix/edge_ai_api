@@ -7,6 +7,9 @@
 #include <iostream>
 #include <thread>
 
+// Static member initialization
+InstanceStateManager SubprocessInstanceManager::state_manager_;
+
 SubprocessInstanceManager::SubprocessInstanceManager(
     SolutionRegistry &solutionRegistry, InstanceStorage &instanceStorage,
     const std::string &workerExecutable)
@@ -1452,6 +1455,127 @@ int SubprocessInstanceManager::checkAndHandleRetryLimits() {
   }
 
   return stoppedCount;
+}
+
+bool SubprocessInstanceManager::loadInstance(const std::string &instanceId) {
+  // Check if instance exists
+  auto optInfo = getInstance(instanceId);
+  if (!optInfo.has_value()) {
+    std::cerr << "[SubprocessInstanceManager] Cannot load instance " << instanceId
+              << ": Instance not found" << std::endl;
+    return false;
+  }
+
+  InstanceInfo info = optInfo.value();
+
+  // Check if already loaded (worker exists and state initialized) - make operation idempotent
+  auto workerState = supervisor_->getWorkerState(instanceId);
+  if (workerState != worker::WorkerState::STOPPED &&
+      state_manager_.hasState(instanceId)) {
+    std::cout << "[SubprocessInstanceManager] Instance " << instanceId
+              << " is already loaded (worker state: " << static_cast<int>(workerState)
+              << ", has state: true) - idempotent operation" << std::endl;
+    return true; // Already loaded - idempotent success
+  }
+
+  // If worker doesn't exist, spawn it
+  if (workerState == worker::WorkerState::STOPPED) {
+    Json::Value config = buildWorkerConfigFromInstanceInfo(info);
+    if (!supervisor_->spawnWorker(instanceId, config)) {
+      std::cerr << "[SubprocessInstanceManager] Cannot load instance " << instanceId
+                << ": Failed to spawn worker process" << std::endl;
+      return false; // Failed to spawn worker
+    }
+  }
+
+  // Initialize state storage (if not already initialized)
+  if (!state_manager_.hasState(instanceId)) {
+    state_manager_.initializeState(instanceId);
+  }
+
+  // Update loaded flag in cache
+  {
+    std::lock_guard<std::mutex> lock(instances_mutex_);
+    auto it = instances_.find(instanceId);
+    if (it != instances_.end()) {
+      it->second.loaded = true;
+    }
+  }
+
+  std::cout << "[SubprocessInstanceManager] Successfully loaded instance "
+            << instanceId << std::endl;
+  return true;
+}
+
+bool SubprocessInstanceManager::unloadInstance(const std::string &instanceId) {
+  // Check if instance exists
+  auto optInfo = getInstance(instanceId);
+  if (!optInfo.has_value()) {
+    return false;
+  }
+
+  // Check if loaded
+  if (!state_manager_.hasState(instanceId)) {
+    return false; // Not loaded
+  }
+
+  // Stop instance if running
+  auto workerState = supervisor_->getWorkerState(instanceId);
+  if (workerState == worker::WorkerState::READY ||
+      workerState == worker::WorkerState::BUSY) {
+    stopInstance(instanceId);
+  }
+
+  // Terminate worker
+  supervisor_->terminateWorker(instanceId, false);
+
+  // Clear state storage
+  state_manager_.clearState(instanceId);
+
+  // Update loaded flag in cache
+  {
+    std::lock_guard<std::mutex> lock(instances_mutex_);
+    auto it = instances_.find(instanceId);
+    if (it != instances_.end()) {
+      it->second.loaded = false;
+    }
+  }
+
+  return true;
+}
+
+Json::Value
+SubprocessInstanceManager::getInstanceState(const std::string &instanceId) {
+  return state_manager_.getState(instanceId);
+}
+
+bool SubprocessInstanceManager::setInstanceState(const std::string &instanceId,
+                                                  const std::string &path,
+                                                  const Json::Value &value) {
+  // Check if instance exists
+  auto optInfo = getInstance(instanceId);
+  if (!optInfo.has_value()) {
+    return false;
+  }
+
+  InstanceInfo info = optInfo.value();
+
+  // Instance must be loaded or running
+  auto workerState = supervisor_->getWorkerState(instanceId);
+  bool isLoaded = state_manager_.hasState(instanceId);
+  bool isRunning = (workerState == worker::WorkerState::READY ||
+                    workerState == worker::WorkerState::BUSY);
+
+  if (!isLoaded && !isRunning) {
+    return false;
+  }
+
+  // If not loaded but running, initialize state
+  if (!isLoaded) {
+    state_manager_.initializeState(instanceId);
+  }
+
+  return state_manager_.setState(instanceId, path, value);
 }
 
 void SubprocessInstanceManager::stopAllWorkers() {

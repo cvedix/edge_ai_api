@@ -2548,6 +2548,8 @@ PipelineBuilder::createNode(const SolutionConfig::NodeConfig &nodeConfig,
                 << nodeConfig.nodeType << std::endl;
       throw std::runtime_error("Unknown node type: " + nodeConfig.nodeType);
     }
+    // This should never be reached, but added to satisfy compiler warning
+    return nullptr;
   } catch (const std::exception &e) {
     std::cerr << "[PipelineBuilder] Error in createNode for type "
               << nodeConfig.nodeType << ": " << e.what() << std::endl;
