@@ -3,6 +3,9 @@
 #include <json/json.h>
 #include <string>
 
+// Forward declarations
+class AreaManager;
+
 /**
  * @brief Analytics Entities Manager
  *
@@ -11,6 +14,11 @@
  */
 class AnalyticsEntitiesManager {
 public:
+  /**
+   * @brief Set area manager (dependency injection)
+   */
+  static void setAreaManager(AreaManager *manager);
+
   /**
    * @brief Get all analytics entities for an instance
    * @param instanceId Instance ID
@@ -116,5 +124,8 @@ private:
    * @return JSON array of tailgating lines
    */
   Json::Value getTailgatingLines(const std::string &instanceId) const;
+
+private:
+  static AreaManager *area_manager_;
 };
 

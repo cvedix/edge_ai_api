@@ -255,6 +255,7 @@ set(SOURCES
     src/api/watchdog_handler.cpp
     src/api/endpoints_handler.cpp
     src/api/swagger_handler.cpp
+    src/api/scalar_handler.cpp
     src/api/create_instance_handler.cpp
     src/api/quick_instance_handler.cpp
     src/api/instance_handler.cpp
@@ -265,6 +266,7 @@ set(SOURCES
     src/api/jams_handler.cpp
     src/api/stops_handler.cpp
     src/api/securt_handler.cpp
+    src/api/area_handler.cpp
     src/api/node_handler.cpp
     src/api/recognition_handler.cpp
     src/api/system_info_handler.cpp
@@ -400,8 +402,8 @@ endif()
 if(CEREAL_INCLUDE_DIR)
     message(STATUS "✓ Found Cereal: ${CEREAL_INCLUDE_DIR}")
 
-    # CVEDIX SDK expects cereal at ../../../third_party/cereal relative to /opt/cvedix/include/cvedix/nodes/broker/cereal_archive/
-    # This means it looks for /opt/cvedix/include/cvedix/third_party/cereal/cereal.hpp
+    # CVEDIX SDK expects cereal at ../../../third_party/cereal relative to /opt/cvedix-ai-runtime/include/cvedix/nodes/broker/cereal_archive/
+    # This means it looks for /opt/cvedix-ai-runtime/include/cvedix/third_party/cereal/cereal.hpp
     # Create the exact directory structure CVEDIX SDK expects in build directory
     set(CVEDIX_THIRD_PARTY_DIR "${CMAKE_BINARY_DIR}/cvedix_third_party")
     set(CVEDIX_CEREAL_DIR "${CVEDIX_THIRD_PARTY_DIR}/cereal")
@@ -424,23 +426,23 @@ if(CEREAL_INCLUDE_DIR)
     endif()
 
     # Check if system symlink exists (required for CVEDIX SDK)
-    # Check both /usr/include/cvedix and /opt/cvedix/include/cvedix locations
+    # Check both /usr/include/cvedix and /opt/cvedix-ai-runtime/include/cvedix locations
     set(CEREAL_SYMLINK_FOUND FALSE)
     if(EXISTS "/usr/include/cvedix/third_party/cereal")
         message(STATUS "✓ Cereal symlink found at /usr/include/cvedix/third_party/cereal")
         set(CEREAL_SYMLINK_FOUND TRUE)
-    elseif(EXISTS "/opt/cvedix/include/cvedix/third_party/cereal")
-        message(STATUS "✓ Cereal symlink found at /opt/cvedix/include/cvedix/third_party/cereal")
+    elseif(EXISTS "/opt/cvedix-ai-runtime/include/cvedix/third_party/cereal")
+        message(STATUS "✓ Cereal symlink found at /opt/cvedix-ai-runtime/include/cvedix/third_party/cereal")
         set(CEREAL_SYMLINK_FOUND TRUE)
     endif()
 
     if(NOT CEREAL_SYMLINK_FOUND)
         message(WARNING "")
         message(WARNING "⚠ CVEDIX SDK requires cereal symlink")
-        if(EXISTS "/opt/cvedix/include/cvedix")
-            message(WARNING "  For /opt/cvedix installation:")
-            message(WARNING "    sudo mkdir -p /opt/cvedix/include/cvedix/third_party")
-            message(WARNING "    sudo ln -sf ${CEREAL_INCLUDE_DIR}/cereal /opt/cvedix/include/cvedix/third_party/cereal")
+        if(EXISTS "/opt/cvedix-ai-runtime/include/cvedix")
+            message(WARNING "  For /opt/cvedix-ai-runtime installation:")
+            message(WARNING "    sudo mkdir -p /opt/cvedix-ai-runtime/include/cvedix/third_party")
+            message(WARNING "    sudo ln -sf ${CEREAL_INCLUDE_DIR}/cereal /opt/cvedix-ai-runtime/include/cvedix/third_party/cereal")
         else()
             message(WARNING "  For /usr/include installation:")
             message(WARNING "    Run: sudo bash ${CMAKE_SOURCE_DIR}/scripts/dev_setup.sh --skip-deps --skip-build")
@@ -460,7 +462,7 @@ endif()
 # cpp-base64 (required by CVEDIX SDK)
 # ============================================
 # CVEDIX SDK expects cpp_base64 at ../../../third_party/cpp_base64 relative to its headers
-# This means it looks for /opt/cvedix/include/cvedix/third_party/cpp_base64/base64.h
+# This means it looks for /opt/cvedix-ai-runtime/include/cvedix/third_party/cpp_base64/base64.h
 message(STATUS "Checking for cpp-base64 library...")
 
 # Try to find cpp-base64 in system
@@ -468,7 +470,7 @@ find_path(CPP_BASE64_INCLUDE_DIR base64.h
     PATHS
         /usr/include
         /usr/local/include
-        /opt/cvedix/include/cvedix/third_party/cpp_base64
+        /opt/cvedix-ai-runtime/include/cvedix/third_party/cpp_base64
         ${CMAKE_BINARY_DIR}/_deps/cpp-base64-src
 )
 
@@ -496,8 +498,8 @@ endif()
 if(CPP_BASE64_INCLUDE_DIR)
     message(STATUS "✓ Found cpp-base64: ${CPP_BASE64_INCLUDE_DIR}")
 
-    # CVEDIX SDK expects cpp_base64 at ../../../third_party/cpp_base64 relative to /opt/cvedix/include/cvedix/nodes/broker/
-    # This means it looks for /opt/cvedix/include/cvedix/third_party/cpp_base64/base64.h
+    # CVEDIX SDK expects cpp_base64 at ../../../third_party/cpp_base64 relative to /opt/cvedix-ai-runtime/include/cvedix/nodes/broker/
+    # This means it looks for /opt/cvedix-ai-runtime/include/cvedix/third_party/cpp_base64/base64.h
     # Create the exact directory structure CVEDIX SDK expects in build directory
     set(CVEDIX_THIRD_PARTY_DIR "${CMAKE_BINARY_DIR}/cvedix_third_party")
     set(CVEDIX_CPP_BASE64_DIR "${CVEDIX_THIRD_PARTY_DIR}/cpp_base64")
@@ -520,23 +522,23 @@ if(CPP_BASE64_INCLUDE_DIR)
     endif()
 
     # Check if system symlink exists (required for CVEDIX SDK)
-    # Check both /usr/include/cvedix and /opt/cvedix/include/cvedix locations
+    # Check both /usr/include/cvedix and /opt/cvedix-ai-runtime/include/cvedix locations
     set(CPP_BASE64_SYMLINK_FOUND FALSE)
     if(EXISTS "/usr/include/cvedix/third_party/cpp_base64/base64.h")
         message(STATUS "✓ cpp-base64 symlink found at /usr/include/cvedix/third_party/cpp_base64")
         set(CPP_BASE64_SYMLINK_FOUND TRUE)
-    elseif(EXISTS "/opt/cvedix/include/cvedix/third_party/cpp_base64/base64.h")
-        message(STATUS "✓ cpp-base64 symlink found at /opt/cvedix/include/cvedix/third_party/cpp_base64")
+    elseif(EXISTS "/opt/cvedix-ai-runtime/include/cvedix/third_party/cpp_base64/base64.h")
+        message(STATUS "✓ cpp-base64 symlink found at /opt/cvedix-ai-runtime/include/cvedix/third_party/cpp_base64")
         set(CPP_BASE64_SYMLINK_FOUND TRUE)
     endif()
 
     if(NOT CPP_BASE64_SYMLINK_FOUND)
         message(WARNING "")
         message(WARNING "⚠ CVEDIX SDK requires cpp-base64 symlink")
-        if(EXISTS "/opt/cvedix/include/cvedix")
-            message(WARNING "  For /opt/cvedix installation:")
-            message(WARNING "    sudo mkdir -p /opt/cvedix/include/cvedix/third_party/cpp_base64")
-            message(WARNING "    sudo ln -sf ${CPP_BASE64_INCLUDE_DIR}/base64.h /opt/cvedix/include/cvedix/third_party/cpp_base64/base64.h")
+        if(EXISTS "/opt/cvedix-ai-runtime/include/cvedix")
+            message(WARNING "  For /opt/cvedix-ai-runtime installation:")
+            message(WARNING "    sudo mkdir -p /opt/cvedix-ai-runtime/include/cvedix/third_party/cpp_base64")
+            message(WARNING "    sudo ln -sf ${CPP_BASE64_INCLUDE_DIR}/base64.h /opt/cvedix-ai-runtime/include/cvedix/third_party/cpp_base64/base64.h")
         else()
             message(WARNING "  For /usr/include installation:")
             message(WARNING "    sudo mkdir -p /usr/include/cvedix/third_party/cpp_base64")
@@ -559,8 +561,8 @@ endif()
 #   - Headers: /usr/include/cvedix/
 #   - Libraries: /usr/lib/ (or /usr/lib64/)
 #
-# CVEDIX SDK may also be installed in /opt/cvedix/ (non-standard location)
-# We check both locations and add /opt/cvedix to CMAKE_PREFIX_PATH if it exists
+# CVEDIX SDK may also be installed in /opt/cvedix-ai-runtime/ (non-standard location)
+# We check both locations and add /opt/cvedix-ai-runtime to CMAKE_PREFIX_PATH if it exists
 #
 # Workaround: Define check_required_components if not available
 # (needed for cvedix-config.cmake which uses this function)
@@ -588,19 +590,19 @@ if(NOT COMMAND check_required_components)
     endfunction()
 endif()
 
-# Check if CVEDIX SDK is installed in /opt/cvedix (standard location for this project)
-if(EXISTS "/opt/cvedix/lib/cmake/cvedix/cvedix-config.cmake")
-    message(STATUS "Found CVEDIX SDK in /opt/cvedix, adding to CMAKE_PREFIX_PATH")
-    list(APPEND CMAKE_PREFIX_PATH "/opt/cvedix")
-    message(STATUS "✓ Added /opt/cvedix to CMAKE_PREFIX_PATH")
+# Check if CVEDIX SDK is installed in /opt/cvedix-ai-runtime (standard location for this project)
+if(EXISTS "/opt/cvedix-ai-runtime/lib/cvedix/libcvedix_core.so")
+    message(STATUS "Found CVEDIX SDK in /opt/cvedix-ai-runtime, adding to CMAKE_PREFIX_PATH")
+    list(APPEND CMAKE_PREFIX_PATH "/opt/cvedix-ai-runtime")
+    message(STATUS "✓ Added /opt/cvedix-ai-runtime to CMAKE_PREFIX_PATH")
 
     # Create symlink structure for CVEDIX SDK third_party dependencies
     # CVEDIX SDK headers use relative paths like ../../third_party/cpp_base64/base64.h
-    # We need to create the structure in /opt/cvedix/include/cvedix/third_party/
-    if(CPP_BASE64_INCLUDE_DIR AND NOT EXISTS "/opt/cvedix/include/cvedix/third_party/cpp_base64/base64.h")
+    # We need to create the structure in /opt/cvedix-ai-runtime/include/cvedix/third_party/
+    if(CPP_BASE64_INCLUDE_DIR AND NOT EXISTS "/opt/cvedix-ai-runtime/include/cvedix/third_party/cpp_base64/base64.h")
         message(STATUS "Creating cpp_base64 symlink structure for CVEDIX SDK...")
         execute_process(
-            COMMAND ${CMAKE_COMMAND} -E make_directory "/opt/cvedix/include/cvedix/third_party/cpp_base64"
+            COMMAND ${CMAKE_COMMAND} -E make_directory "/opt/cvedix-ai-runtime/include/cvedix/third_party/cpp_base64"
             RESULT_VARIABLE MKDIR_RESULT
             ERROR_VARIABLE MKDIR_ERROR
             OUTPUT_QUIET
@@ -609,13 +611,13 @@ if(EXISTS "/opt/cvedix/lib/cmake/cvedix/cvedix-config.cmake")
             execute_process(
                 COMMAND ${CMAKE_COMMAND} -E create_symlink
                 "${CPP_BASE64_INCLUDE_DIR}/base64.h"
-                "/opt/cvedix/include/cvedix/third_party/cpp_base64/base64.h"
+                "/opt/cvedix-ai-runtime/include/cvedix/third_party/cpp_base64/base64.h"
                 RESULT_VARIABLE SYMLINK_RESULT
                 ERROR_VARIABLE SYMLINK_ERROR
                 OUTPUT_QUIET
             )
             if(SYMLINK_RESULT EQUAL 0)
-                message(STATUS "✓ Created cpp_base64 symlink in /opt/cvedix/include/cvedix/third_party/cpp_base64/")
+                message(STATUS "✓ Created cpp_base64 symlink in /opt/cvedix-ai-runtime/include/cvedix/third_party/cpp_base64/")
             else()
                 message(WARNING "⚠ Could not create cpp_base64 symlink (may need sudo):")
                 message(WARNING "  Error: ${SYMLINK_ERROR}")
@@ -629,16 +631,16 @@ if(EXISTS "/opt/cvedix/lib/cmake/cvedix/cvedix-config.cmake")
     endif()
 endif()
 
-# Fix tinyexpr library path before find_package
-# CVEDIX SDK expects libtinyexpr.so in /usr/lib but it may be in /opt/cvedix/lib
+# Fix tinyexpr library path before manual SDK setup
+# CVEDIX SDK expects libtinyexpr.so in /usr/lib but it may be in /opt/cvedix-ai-runtime/lib/cvedix
 # Create symlink in build directory to work around this issue
-if(EXISTS "/opt/cvedix/lib/libtinyexpr.so" AND NOT EXISTS "/usr/lib/libtinyexpr.so")
+if(EXISTS "/opt/cvedix-ai-runtime/lib/cvedix/libtinyexpr.so" AND NOT EXISTS "/usr/lib/libtinyexpr.so")
     # Create a symlink in build directory
     set(TINYEXPR_BUILD_LIB "${CMAKE_BINARY_DIR}/libtinyexpr.so")
     if(NOT EXISTS "${TINYEXPR_BUILD_LIB}")
         execute_process(
             COMMAND ${CMAKE_COMMAND} -E create_symlink
-            "/opt/cvedix/lib/libtinyexpr.so"
+            "/opt/cvedix-ai-runtime/lib/cvedix/libtinyexpr.so"
             "${TINYEXPR_BUILD_LIB}"
             RESULT_VARIABLE SYMLINK_RESULT
             ERROR_VARIABLE SYMLINK_ERROR
@@ -653,7 +655,7 @@ if(EXISTS "/opt/cvedix/lib/libtinyexpr.so" AND NOT EXISTS "/usr/lib/libtinyexpr.
     # Also try to create symlink in /usr/lib (may require sudo, but try anyway)
     execute_process(
         COMMAND ${CMAKE_COMMAND} -E create_symlink
-        "/opt/cvedix/lib/libtinyexpr.so"
+        "/opt/cvedix-ai-runtime/lib/cvedix/libtinyexpr.so"
         "/usr/lib/libtinyexpr.so"
         RESULT_VARIABLE SYMLINK_USR_RESULT
         ERROR_VARIABLE SYMLINK_USR_ERROR
@@ -668,7 +670,25 @@ if(EXISTS "/opt/cvedix/lib/libtinyexpr.so" AND NOT EXISTS "/usr/lib/libtinyexpr.
     endif()
 endif()
 
-find_package(cvedix REQUIRED)
+# Manual CVEDIX SDK setup (since CMake config file doesn't exist)
+# Check if CVEDIX SDK is installed in /opt/cvedix-ai-runtime
+if(EXISTS "/opt/cvedix-ai-runtime/lib/cvedix/libcvedix_core.so")
+    message(STATUS "✓ Found CVEDIX SDK in /opt/cvedix-ai-runtime")
+    
+    # Create imported target for CVEDIX SDK
+    if(NOT TARGET cvedix::cvedix_instance_sdk)
+        add_library(cvedix::cvedix_instance_sdk SHARED IMPORTED)
+        set_target_properties(cvedix::cvedix_instance_sdk PROPERTIES
+            IMPORTED_LOCATION "/opt/cvedix-ai-runtime/lib/cvedix/libcvedix_core.so"
+            INTERFACE_INCLUDE_DIRECTORIES "/opt/cvedix-ai-runtime/include"
+        )
+        message(STATUS "✓ Created imported target cvedix::cvedix_instance_sdk")
+    endif()
+else()
+    message(FATAL_ERROR
+        "CVEDIX SDK not found at /opt/cvedix-ai-runtime/lib/cvedix/libcvedix_core.so\n"
+        "Please install CVEDIX SDK (cvedix-ai-runtime) to continue.")
+endif()
 
 # Add all include directories for edge_ai_api target (modern CMake way)
 # Base project include directory
@@ -695,9 +715,9 @@ if(PLOG_INCLUDE_DIR)
     target_include_directories(edge_ai_api PRIVATE ${PLOG_INCLUDE_DIR})
 endif()
 
-# CVEDIX SDK include directory (if installed in /opt/cvedix)
-if(EXISTS "/opt/cvedix/include")
-    target_include_directories(edge_ai_api PRIVATE "/opt/cvedix/include")
+# CVEDIX SDK include directory (if installed in /opt/cvedix-ai-runtime)
+if(EXISTS "/opt/cvedix-ai-runtime/include")
+    target_include_directories(edge_ai_api PRIVATE "/opt/cvedix-ai-runtime/include")
 endif()
 
 # Add cereal and cpp-base64 include paths for CVEDIX SDK
@@ -836,6 +856,7 @@ if(OpenCV_FOUND)
             opencv_videoio
             opencv_highgui
             opencv_dnn
+            opencv_objdetect
         )
 
         # Conditionally add CUDA libraries if available
@@ -1040,7 +1061,7 @@ if(CVEDIX_WITH_MQTT)
             /usr/lib
             /usr/lib/x86_64-linux-gnu
             /usr/local/lib
-            /opt/cvedix/lib
+            /opt/cvedix-ai-runtime/lib/cvedix
     )
 
     if(MOSQUITTO_LIBRARY)
@@ -1112,6 +1133,8 @@ set(CORE_LIB_SOURCES
     src/core/securt_statistics_collector.cpp
     src/core/securt_instance_manager.cpp
     src/core/analytics_entities_manager.cpp
+    src/core/area_storage.cpp
+    src/core/area_manager.cpp
 )
 
 add_library(edge_ai_core SHARED ${CORE_LIB_SOURCES})
@@ -1139,8 +1162,8 @@ if(OpenCV_FOUND)
     endif()
 endif()
 
-if(EXISTS "/opt/cvedix/include")
-    target_include_directories(edge_ai_core PUBLIC "/opt/cvedix/include")
+if(EXISTS "/opt/cvedix-ai-runtime/include")
+    target_include_directories(edge_ai_core PUBLIC "/opt/cvedix-ai-runtime/include")
 endif()
 
 if(PLOG_INCLUDE_DIR)
@@ -1200,8 +1223,8 @@ target_link_libraries(edge_ai_worker PRIVATE pthread)
 set_target_properties(edge_ai_worker PROPERTIES
     BUILD_WITH_INSTALL_RPATH FALSE
     BUILD_RPATH_USE_ORIGIN TRUE
-    BUILD_RPATH "${CMAKE_BINARY_DIR}/lib;${CMAKE_BINARY_DIR};/usr/local/lib;/opt/cvedix/lib"
-    INSTALL_RPATH "${CMAKE_INSTALL_PREFIX}/lib;/usr/local/lib;/opt/cvedix/lib"
+    BUILD_RPATH "${CMAKE_BINARY_DIR}/lib;${CMAKE_BINARY_DIR};/usr/local/lib;/opt/cvedix-ai-runtime/lib/cvedix"
+    INSTALL_RPATH "${CMAKE_INSTALL_PREFIX}/lib;/usr/local/lib;/opt/cvedix-ai-runtime/lib/cvedix"
     INSTALL_RPATH_USE_LINK_PATH TRUE
 )
 

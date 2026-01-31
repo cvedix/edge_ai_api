@@ -4,6 +4,9 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Edge AI API - Scalar Documentation</title>
+    <!-- Load Scalar CSS first to avoid auto-loading warning -->
+    <link rel="stylesheet" href="{{CSS_URL}}">
+    <!-- Using manual initialization method as per Scalar official documentation -->
     <script>
         // Global state to track Scalar loading
         window.scalarLoadState = {
@@ -127,75 +130,8 @@
             return loadPromise;
         }
         
-        // Set initial data-spec-url BEFORE loading Scalar script
-        // This ensures Scalar can auto-initialize when it loads
-        function setInitialSpecUrl() {
-            const apiRef = document.getElementById('api-reference');
-            console.log('[Scalar] setInitialSpecUrl - apiRef:', apiRef);
-            if (apiRef) {
-                // Check if data-spec-url already set by server
-                const existingUrl = apiRef.getAttribute('data-spec-url');
-                console.log('[Scalar] setInitialSpecUrl - existing data-spec-url:', existingUrl);
-                
-                // Get language from URL or default to 'en'
-                const urlParams = new URLSearchParams(window.location.search);
-                const lang = urlParams.get('lang') || localStorage.getItem('api-docs-language') || 'en';
-                const baseUrl = window.location.origin;
-                const version = 'v1';
-                const specUrl = baseUrl + '/' + version + '/openapi/' + lang + '/openapi.yaml';
-                
-                console.log('[Scalar] setInitialSpecUrl - computed specUrl:', specUrl);
-                console.log('[Scalar] setInitialSpecUrl - language:', lang);
-                
-                // Only set if not already set or if different
-                if (!existingUrl || existingUrl !== specUrl) {
-                    apiRef.setAttribute('data-spec-url', specUrl);
-                    console.log('[Scalar] setInitialSpecUrl - Set data-spec-url to:', specUrl);
-                } else {
-                    console.log('[Scalar] setInitialSpecUrl - data-spec-url already correct:', existingUrl);
-                }
-                return true; // Element found and URL set
-            }
-            return false; // Element not found
-        }
-        
-        // Try to set URL immediately if DOM is ready
-        if (document.readyState === 'loading') {
-            // DOM is still loading, wait for DOMContentLoaded
-            document.addEventListener('DOMContentLoaded', function() {
-                console.log('[Scalar] DOMContentLoaded fired');
-                if (setInitialSpecUrl()) {
-                    // Element found and URL set, now load script
-                    console.log('[Scalar] Starting to load Scalar script after DOMContentLoaded');
-                    loadScalarScript().catch(error => {
-                        console.warn('Initial Scalar load attempt failed (will retry on init):', error);
-                    });
-                } else {
-                    console.error('[Scalar] Element #api-reference not found in DOMContentLoaded!');
-                }
-            });
-        } else {
-            // DOM is already ready
-            console.log('[Scalar] DOM already ready, setting URL immediately');
-            if (setInitialSpecUrl()) {
-                // Element found and URL set, now load script
-                console.log('[Scalar] Starting to load Scalar script (DOM already ready)');
-                loadScalarScript().catch(error => {
-                    console.warn('Initial Scalar load attempt failed (will retry on init):', error);
-                });
-            } else {
-                console.error('[Scalar] Element #api-reference not found! Waiting for DOMContentLoaded...');
-                // Wait a bit and try again
-                setTimeout(function() {
-                    if (setInitialSpecUrl()) {
-                        console.log('[Scalar] Element found after delay, loading script');
-                        loadScalarScript().catch(error => {
-                            console.warn('Initial Scalar load attempt failed (will retry on init):', error);
-                        });
-                    }
-                }, 100);
-            }
-        }
+        // No need for setInitialSpecUrl - using official Scalar.createApiReference() method
+        // Scalar will be initialized directly in initializeScalar() function
     </script>
     <style>
         body {
@@ -236,7 +172,12 @@
             border-color: #0066cc;
             box-shadow: 0 0 0 2px rgba(0, 102, 204, 0.1);
         }
+        /* Script tag for Scalar API (hidden, just for configuration) */
         #api-reference {
+            display: none;
+        }
+        /* Container where Scalar will mount */
+        #scalar-container {
             position: relative;
             z-index: 1;
             min-height: 100vh;
@@ -508,7 +449,67 @@
         </select>
     </div>
     
-    <div id="api-reference" data-spec-url="{{INITIAL_SPEC_URL}}"></div>
+    <!-- Container for Scalar API Reference -->
+    <div id="scalar-api-reference"></div>
+    
+    <!-- Script tag for Scalar auto-initialization (data-url will be replaced by server) -->
+    <script id="api-reference" type="application/json" data-url="{{INITIAL_SPEC_URL_ATTR}}" style="display:none;"></script>
+    
+    <!-- Prevent Scalar from auto-detecting and auto-loading CSS -->
+    <script>
+        // Set flags BEFORE Scalar script loads
+        window.__SCALAR_CSS_LOADED__ = true;
+        window.__SCALAR_INITIALIZED__ = false;
+        
+        // Function to initialize Scalar - will be called when script loads
+        window.initScalarAPI = function() {
+            if (window.__SCALAR_INITIALIZED__) {
+                return; // Already initialized
+            }
+            
+            if (typeof Scalar === 'undefined' || typeof Scalar.createApiReference !== 'function') {
+                // Scalar not ready yet, retry
+                setTimeout(window.initScalarAPI, 50);
+                return;
+            }
+            
+            const container = document.getElementById('scalar-api-reference');
+            if (!container) {
+                console.error('[Scalar] Container not found');
+                return;
+            }
+            
+            // Get config from server or use defaults
+            const configScript = document.getElementById('server-config');
+            let specUrl = window.location.origin + '/v1/openapi/en/openapi.yaml'; // Default
+            
+            if (configScript) {
+                try {
+                    const config = JSON.parse(configScript.textContent);
+                    const baseUrl = config.baseUrl || window.location.origin;
+                    const version = config.version || 'v1';
+                    const lang = new URLSearchParams(window.location.search).get('lang') || 
+                                localStorage.getItem('api-docs-language') || 'en';
+                    specUrl = baseUrl + '/' + version + '/openapi/' + lang + '/openapi.yaml';
+                } catch (e) {
+                    console.warn('[Scalar] Failed to parse server config, using default');
+                }
+            }
+            
+            console.log('[Scalar] Initializing with URL:', specUrl);
+            try {
+                Scalar.createApiReference('#scalar-api-reference', {
+                    url: specUrl
+                });
+                window.__SCALAR_INITIALIZED__ = true;
+            } catch (error) {
+                console.error('[Scalar] Initialization failed:', error);
+            }
+        };
+    </script>
+    
+    <!-- Scalar script will be loaded dynamically by loadScalarScript() function -->
+    <!-- This prevents duplicate loading and ensures correct URL path -->
     
     <!-- Server will inject configuration here -->
     <!-- If placeholders are not replaced, the code will use fallback defaults -->
@@ -687,55 +688,23 @@
             console.log('[Scalar] Base URL:', baseUrl);
             console.log('[Scalar] Version:', versionStr);
 
-            // Get the api-reference element
-            const apiRef = document.getElementById('api-reference');
-            if (!apiRef) {
-                console.error('api-reference element not found');
-                return Promise.reject(new Error('api-reference element not found'));
-            }
-
-            // Clear old content completely - force remove element and recreate to ensure clean state
-            console.log('[Scalar] Clearing old content, current innerHTML length:', apiRef.innerHTML.length);
-            
-            // Store parent and position
-            const parent = apiRef.parentNode;
-            const nextSibling = apiRef.nextSibling;
-            
-            // Remove old element completely
-            apiRef.remove();
-            
-            // Create fresh element with new spec URL
-            const newApiRef = document.createElement('div');
-            newApiRef.id = 'api-reference';
-            newApiRef.setAttribute('data-spec-url', specUrl);
-            
-            // Insert at same position
-            if (nextSibling) {
-                parent.insertBefore(newApiRef, nextSibling);
-            } else {
-                parent.appendChild(newApiRef);
+            // Use official Scalar.createApiReference() method
+            // Get the container element
+            const container = document.getElementById('scalar-api-reference');
+            if (!container) {
+                console.error('[Scalar] scalar-api-reference container not found');
+                return Promise.reject(new Error('scalar-api-reference container not found'));
             }
             
-            console.log('[Scalar] Created fresh api-reference element with data-spec-url:', specUrl);
-            console.log('[Scalar] data-spec-url after setting:', newApiRef.getAttribute('data-spec-url'));
-            
-            // Always use manual initialization for better control, especially when switching languages
-            // First ensure Scalar script is loaded, then initialize
+            // Always use manual initialization with official API
             return waitForScalarAndManualInit(specUrl, fallbackUrl, baseUrl);
             
             async function waitForScalarAndManualInit(currentSpecUrl, currentFallbackUrl, currentBaseUrl) {
-                // Get the fresh api-reference element
-                const freshApiRef = document.getElementById('api-reference');
-                if (!freshApiRef) {
-                    console.error('[Scalar] api-reference element not found after recreation');
-                    return Promise.reject(new Error('api-reference element not found'));
-                }
-                
-                // Verify the spec URL is set correctly
-                const elementSpecUrl = freshApiRef.getAttribute('data-spec-url');
-                if (elementSpecUrl !== currentSpecUrl) {
-                    console.warn('[Scalar] Spec URL mismatch. Expected:', currentSpecUrl, 'Got:', elementSpecUrl);
-                    freshApiRef.setAttribute('data-spec-url', currentSpecUrl);
+                // Get the container element
+                const container = document.getElementById('scalar-api-reference');
+                if (!container) {
+                    console.error('[Scalar] scalar-api-reference container not found');
+                    return Promise.reject(new Error('scalar-api-reference container not found'));
                 }
                 
                 // First, ensure Scalar script is loaded
@@ -748,17 +717,14 @@
                     // Continue anyway, might already be loaded
                 }
                 
-                // Wait for ScalarApiReference to be available - check for actual ScalarApiReference object
+                // Wait for Scalar to be available (official API)
                 let retries = 0;
-                const maxRetries = 150; // 15 seconds - give even more time for script to fully load
+                const maxRetries = 150; // 15 seconds
                 while (retries < maxRetries) {
-                    // Check directly for ScalarApiReference (not through helper to avoid loadScalarScript)
-                    if (typeof window.ScalarApiReference !== 'undefined' && 
-                        window.ScalarApiReference !== window.loadScalarScript &&
-                        typeof window.ScalarApiReference === 'object' &&
-                        (window.ScalarApiReference.default || window.ScalarApiReference.ApiReference)) {
-                        console.log('[Scalar] ScalarApiReference found, initializing manually with URL:', currentSpecUrl);
-                        // Always use manual initialization for better control
+                    // Check for official Scalar API
+                    if (typeof window.Scalar !== 'undefined' && 
+                        typeof window.Scalar.createApiReference === 'function') {
+                        console.log('[Scalar] Scalar API found, initializing with URL:', currentSpecUrl);
                         return initScalar(currentSpecUrl, currentFallbackUrl, currentBaseUrl);
                     }
                     await new Promise(resolve => setTimeout(resolve, 100));
@@ -766,19 +732,15 @@
                 }
                 
                 // If Scalar didn't load, try manual initialization anyway
-                console.warn('[Scalar] ScalarApiReference not found after waiting, trying manual init anyway');
+                console.warn('[Scalar] Scalar API not found after waiting, trying manual init anyway');
                 return initScalar(currentSpecUrl, currentFallbackUrl, currentBaseUrl);
             }
 
-            // Helper function to check if Scalar is available - check all possible ways
+            // Helper function to check if Scalar is available (official API)
             function isScalarAvailable() {
-                // Check various possible global names
-                if (typeof ScalarApiReference !== 'undefined') return true;
-                if (typeof window.ScalarApiReference !== 'undefined') return true;
-                if (window.ScalarApiReference) return true;
-                if (typeof Scalar !== 'undefined') return true;
-                if (typeof window.Scalar !== 'undefined') return true;
-                if (window.Scalar) return true;
+                // Check for official Scalar API
+                if (typeof Scalar !== 'undefined' && typeof Scalar.createApiReference === 'function') return true;
+                if (typeof window.Scalar !== 'undefined' && typeof window.Scalar.createApiReference === 'function') return true;
                 
                 // Check if script has loaded by looking for any Scalar-related globals
                 for (let key in window) {
@@ -839,15 +801,12 @@
                     const fallbackUrlToUse = currentFallbackUrl || fallbackUrl;
                     const baseUrlToUse = currentBaseUrl || baseUrl;
                     
-                    // Get fresh reference to api-reference element
-                    const freshApiRef = document.getElementById('api-reference');
-                    if (!freshApiRef) {
-                        throw new Error('api-reference element not found in initScalar');
+                    // Get container element for Scalar (using official method)
+                    const container = document.getElementById('scalar-api-reference');
+                    if (!container) {
+                        throw new Error('scalar-api-reference container not found in initScalar');
                     }
                     
-                    // Verify spec URL is correct
-                    const elementSpecUrl = freshApiRef.getAttribute('data-spec-url');
-                    console.log('[Scalar] initScalar - element spec URL:', elementSpecUrl);
                     console.log('[Scalar] initScalar - parameter spec URL:', specUrlToUse);
                     
                     // Use the URL from parameter (most reliable)
@@ -977,697 +936,191 @@
                         retries++;
                     }
                     
-                    const ScalarRef = getScalarApiReference();
-                    if (!ScalarRef) {
-                        console.warn('ScalarApiReference not found, trying data-configuration method...');
-                        // Configuration will be created later, use default for now
+                    // Use official Scalar API as per GitHub documentation
+                    // Check for Scalar global (official API)
+                    if (typeof Scalar === 'undefined' && typeof window.Scalar === 'undefined') {
+                        console.warn('Scalar not found, trying data-configuration method...');
                         useDataConfigurationMethod();
                         return;
                     }
                     
-                    // Log the structure to understand what we have
-                    console.log('ScalarRef type:', typeof ScalarRef);
-                    console.log('ScalarRef:', ScalarRef);
-                    console.log('ScalarRef.default:', ScalarRef.default);
-                    console.log('ScalarRef keys:', Object.keys(ScalarRef || {}));
+                    const ScalarAPI = window.Scalar || Scalar;
                     
-                    // Scalar đã load, khởi tạo trực tiếp
+                    // Scalar đã load, khởi tạo trực tiếp theo hướng dẫn chính thức
                     try {
-                        console.log('Initializing Scalar with configuration:', configuration);
+                        console.log('[Scalar] Initializing with official API method');
+                        console.log('[Scalar] Configuration:', configuration);
                         
-                        // Try multiple ways to initialize
-                        let scalarInstance = null;
-                        
-                        // Method 1: ScalarRef.default
-                        if (ScalarRef.default && typeof ScalarRef.default === 'function') {
-                            scalarInstance = ScalarRef.default;
-                            console.log('Using ScalarRef.default');
-                        }
-                        // Method 2: ScalarRef itself
-                        else if (typeof ScalarRef === 'function') {
-                            scalarInstance = ScalarRef;
-                            console.log('Using ScalarRef directly');
-                        }
-                        // Method 3: ScalarRef.ApiReference
-                        else if (ScalarRef.ApiReference && typeof ScalarRef.ApiReference === 'function') {
-                            scalarInstance = ScalarRef.ApiReference;
-                            console.log('Using ScalarRef.ApiReference');
-                        }
-                        // Method 4: ScalarRef.create
-                        else if (ScalarRef.create && typeof ScalarRef.create === 'function') {
-                            scalarInstance = ScalarRef.create;
-                            console.log('Using ScalarRef.create');
-                        }
-                        // Method 5: Check for any function property
-                        else {
-                            for (let key in ScalarRef) {
-                                if (typeof ScalarRef[key] === 'function') {
-                                    console.log('Found function property:', key);
-                                    scalarInstance = ScalarRef[key];
-                                    break;
-                                }
-                            }
-                        }
-                        
-                        if (scalarInstance && typeof scalarInstance === 'function') {
-                            const apiRef = document.getElementById('api-reference');
-                            if (!apiRef) {
-                                console.error('api-reference element not found');
-                                return;
-                            }
-                            
-                            // Destroy previous instance if exists
-                            if (window.scalarInstance) {
-                                try {
-                                    console.log('Destroying previous Scalar instance...');
-                                    if (window.scalarInstance.destroy && typeof window.scalarInstance.destroy === 'function') {
-                                        window.scalarInstance.destroy();
-                                    } else if (window.scalarInstance.unmount && typeof window.scalarInstance.unmount === 'function') {
-                                        window.scalarInstance.unmount();
-                                    } else if (window.scalarInstance.app && window.scalarInstance.app.unmount) {
-                                        window.scalarInstance.app.unmount();
-                                    }
-                                } catch (destroyError) {
-                                    console.warn('Error destroying previous instance:', destroyError);
-                                }
-                                window.scalarInstance = null;
-                            }
-                            
-                            // Try multiple ways to call createApiReference
-                            let initialized = false;
-                            
-                            // Method 1: With target selector (try sync and async)
+                        // Destroy previous instance if exists
+                        if (window.scalarInstance) {
                             try {
-                                console.log('Method 1: Calling with target selector');
-                                const result1 = scalarInstance({
-                                    ...configuration,
-                                    target: '#api-reference'
-                                });
-                                
-                                // Store instance reference for cleanup
-                                if (result1) {
-                                    window.scalarInstance = result1;
+                                console.log('[Scalar] Destroying previous instance...');
+                                if (window.scalarInstance.destroy && typeof window.scalarInstance.destroy === 'function') {
+                                    window.scalarInstance.destroy();
+                                } else if (window.scalarInstance.unmount && typeof window.scalarInstance.unmount === 'function') {
+                                    window.scalarInstance.unmount();
+                                } else if (window.scalarInstance.app && window.scalarInstance.app.unmount) {
+                                    window.scalarInstance.app.unmount();
                                 }
-                                
-                                console.log('Method 1 result:', result1);
-                                console.log('Method 1 result keys:', result1 ? Object.keys(result1) : 'null');
-                                
-                                // Check if result has an app that needs mounting
-                                if (result1 && result1.app) {
-                                    console.log('Found app in result, checking if it needs mounting...');
-                                    console.log('app type:', typeof result1.app);
-                                    console.log('app keys:', result1.app ? Object.keys(result1.app) : 'null');
-                                    
-                                    // Try mounting the app if it has a mount method
-                                    if (result1.app && typeof result1.app.mount === 'function') {
-                                        console.log('Mounting app to #api-reference...');
-                                        try {
-                                            result1.app.mount('#api-reference');
-                                            console.log('✅ App mounted successfully to #api-reference');
-                                            initialized = true;
-                                        } catch (mountError) {
-                                            console.warn('Mount to #api-reference failed:', mountError);
-                                            // Try mounting to element directly
-                                            try {
-                                                result1.app.mount(apiRef);
-                                                console.log('✅ App mounted successfully to element');
-                                                initialized = true;
-                                            } catch (mountError2) {
-                                                console.warn('Mount to element also failed:', mountError2);
-                                                // Still mark as initialized, maybe it will work
-                                                initialized = true;
-                                            }
-                                        }
-                                    } else {
-                                        console.log('App does not have mount method or app is null');
-                                        console.log('Result structure:', {
-                                            hasApp: !!result1.app,
-                                            appType: typeof result1.app,
-                                            appKeys: result1.app ? Object.keys(result1.app) : null
-                                        });
-                                        initialized = true;
-                                    }
-                                }
-                                
-                                // Check if it's a promise
-                                if (!initialized && result1 && typeof result1.then === 'function') {
-                                    console.log('Method 1 returned a promise, awaiting...');
-                                    result1.then((resolvedResult) => {
-                                        console.log('Method 1 promise resolved:', resolvedResult);
-                                        // Check if resolved result has app
-                                        if (resolvedResult && resolvedResult.app && typeof resolvedResult.app.mount === 'function') {
-                                            try {
-                                                resolvedResult.app.mount('#api-reference');
-                                                console.log('✅ App mounted from promise');
-                                            } catch (mountErr) {
-                                                console.warn('Mount from promise failed, trying element:', mountErr);
-                                                try {
-                                                    resolvedResult.app.mount(apiRef);
-                                                    console.log('✅ App mounted to element from promise');
-                                                } catch (mountErr2) {
-                                                    console.warn('Mount to element from promise also failed:', mountErr2);
-                                                }
-                                            }
-                                        }
-                                        initialized = true;
-                                    }).catch(err => {
-                                        console.warn('Method 1 promise rejected:', err);
-                                    });
-                                } else if (!initialized) {
-                                    initialized = true;
-                                }
-                            } catch (e1) {
-                                console.warn('Method 1 failed:', e1.message);
+                            } catch (destroyError) {
+                                console.warn('[Scalar] Error destroying previous instance:', destroyError);
                             }
-                            
-                            // Method 2: With element directly (if createApiReference) - try different formats
-                            if (!initialized && scalarInstance === ScalarRef.createApiReference) {
-                                // Helper function to mount app if present
-                                const tryMountApp = (result, methodName) => {
-                                    if (result && result.app && typeof result.app.mount === 'function') {
-                                        console.log(`Mounting app from ${methodName}...`);
-                                        try {
-                                            result.app.mount('#api-reference');
-                                            console.log(`${methodName} app mounted successfully`);
-                                            initialized = true;
-                                            return true;
-                                        } catch (mountErr) {
-                                            console.warn(`${methodName} mount failed, trying element:`, mountErr);
-                                            try {
-                                                result.app.mount(apiRef);
-                                                console.log(`${methodName} app mounted to element successfully`);
-                                                initialized = true;
-                                                return true;
-                                            } catch (mountErr2) {
-                                                console.warn(`${methodName} mount to element also failed:`, mountErr2);
-                                                return false;
-                                            }
-                                        }
-                                    }
-                                    return false;
-                                };
-                                
-                                // Try 2a: element + config object
-                                try {
-                                    console.log('Method 2a: createApiReference(element, config)');
-                                    const result2a = ScalarRef.createApiReference(apiRef, configuration);
-                                    console.log('Method 2a result:', result2a);
-                                    
-                                    // Store instance reference
-                                    if (result2a) {
-                                        window.scalarInstance = result2a;
-                                    }
-                                    
-                                    // Check if it's a promise
-                                    if (result2a && typeof result2a.then === 'function') {
-                                        console.log('Method 2a returned a promise, awaiting...');
-                                        result2a.then((resolvedResult) => {
-                                            console.log('Method 2a promise resolved:', resolvedResult);
-                                            if (resolvedResult) {
-                                                window.scalarInstance = resolvedResult;
-                                            }
-                                            if (!tryMountApp(resolvedResult, 'Method 2a')) {
-                                                initialized = true;
-                                            }
-                                        }).catch(err => {
-                                            console.warn('Method 2a promise rejected:', err);
-                                        });
-                                    } else {
-                                        if (!tryMountApp(result2a, 'Method 2a')) {
-                                            initialized = true;
-                                        }
-                                    }
-                                } catch (e2a) {
-                                    console.warn('Method 2a failed:', e2a.message);
-                                    
-                                    // Try 2b: element + spec URL string
-                                    try {
-                                        console.log('Method 2b: createApiReference(element, specUrl)');
-                                        const result2b = ScalarRef.createApiReference(apiRef, configuration.url);
-                                        console.log('Method 2b result:', result2b);
-                                        
-                                        // Store instance reference
-                                        if (result2b) {
-                                            window.scalarInstance = result2b;
-                                        }
-                                        
-                                        if (result2b && typeof result2b.then === 'function') {
-                                            result2b.then((resolvedResult) => {
-                                                console.log('Method 2b promise resolved:', resolvedResult);
-                                                if (resolvedResult) {
-                                                    window.scalarInstance = resolvedResult;
-                                                }
-                                                if (!tryMountApp(resolvedResult, 'Method 2b')) {
-                                                    initialized = true;
-                                                }
-                                            }).catch(err => {
-                                                console.warn('Method 2b promise rejected:', err);
-                                            });
-                                        } else {
-                                            if (!tryMountApp(result2b, 'Method 2b')) {
-                                                initialized = true;
-                                            }
-                                        }
-                                    } catch (e2b) {
-                                        console.warn('Method 2b failed:', e2b.message);
-                                        
-                                        // Try 2c: just element (maybe it reads from data-configuration)
-                                        try {
-                                            console.log('Method 2c: createApiReference(element)');
-                                            const result2c = ScalarRef.createApiReference(apiRef);
-                                            console.log('Method 2c result:', result2c);
-                                            
-                                            // Store instance reference
-                                            if (result2c) {
-                                                window.scalarInstance = result2c;
-                                            }
-                                            
-                                            if (result2c && typeof result2c.then === 'function') {
-                                                result2c.then((resolvedResult) => {
-                                                    console.log('Method 2c promise resolved:', resolvedResult);
-                                                    if (resolvedResult) {
-                                                        window.scalarInstance = resolvedResult;
-                                                    }
-                                                    if (!tryMountApp(resolvedResult, 'Method 2c')) {
-                                                        initialized = true;
-                                                    }
-                                                }).catch(err => {
-                                                    console.warn('Method 2c promise rejected:', err);
-                                                });
-                                            } else {
-                                                if (!tryMountApp(result2c, 'Method 2c')) {
-                                                    initialized = true;
-                                                }
-                                            }
-                                        } catch (e2c) {
-                                            console.warn('Method 2c failed:', e2c.message);
-                                        }
-                                    }
-                                }
-                            }
-                            
-                            // Method 3: With element and target
-                            if (!initialized) {
-                                try {
-                                    console.log('Method 3: Calling with element in config');
-                                    const result3 = scalarInstance({
-                                        ...configuration,
-                                        target: apiRef
-                                    });
-                                    
-                                    // Store instance reference
-                                    if (result3) {
-                                        window.scalarInstance = result3;
-                                    }
-                                    
-                                    console.log('Method 3 result:', result3);
-                                    initialized = true;
-                                } catch (e3) {
-                                    console.warn('Method 3 failed:', e3.message);
-                                }
-                            }
-                            
-                            // Wait a bit for async operations
-                            setTimeout(async () => {
-                                if (initialized) {
-                                    // Check if element was populated after a delay
-                                    const apiRefCheck = document.getElementById('api-reference');
-                                    if (apiRefCheck) {
-                                        console.log('Checking api-reference after initialization...');
-                                        console.log('api-reference innerHTML length:', apiRefCheck.innerHTML.length);
-                                        console.log('api-reference children count:', apiRefCheck.children.length);
-                                        console.log('api-reference computed style display:', window.getComputedStyle(apiRefCheck).display);
-                                        console.log('api-reference first 500 chars:', apiRefCheck.innerHTML.substring(0, 500));
-                                        
-                                        // Only hide actual skeleton loaders - be very careful not to hide real content
-                                        const hideSkeletons = () => {
-                                            // Only target elements that are clearly skeletons and empty
-                                            const skeletons = apiRefCheck.querySelectorAll('[data-skeleton="true"], [class*="skeleton"]:empty, [aria-label*="loading"][aria-busy="true"]:empty');
-                                            skeletons.forEach(el => {
-                                                // Double check it's actually a skeleton and not content
-                                                if (el && el.parentElement && el.children.length === 0 && el.textContent.trim() === '') {
-                                                    const hasContent = el.querySelector('*');
-                                                    if (!hasContent) {
-                                                        el.style.display = 'none';
-                                                    }
-                                                }
-                                            });
-                                        };
-                                        
-                                        // Only run after content is loaded, and only once
-                                        if (apiRefCheck.innerHTML.length > 100) {
-                                            setTimeout(hideSkeletons, 2000);
-                                        }
-                                        
-                                        if (apiRefCheck.innerHTML.length === 0 || 
-                                            (apiRefCheck.children.length === 0 && apiRefCheck.innerHTML.trim().length < 50)) {
-                                            console.warn('api-reference is still empty after 3 seconds');
-                                            console.warn('Trying data-configuration method as fallback...');
-                                            useDataConfigurationMethod();
-                                        } else {
-                                            console.log('✅ Scalar content rendered successfully!');
-                                            
-                                            // Force visibility - check if content is hidden
-                                            const computedStyle = window.getComputedStyle(apiRefCheck);
-                                            console.log('Element visibility:', {
-                                                display: computedStyle.display,
-                                                visibility: computedStyle.visibility,
-                                                opacity: computedStyle.opacity,
-                                                height: computedStyle.height,
-                                                width: computedStyle.width
-                                            });
-                                            
-                                            // Ensure element is visible
-                                            if (computedStyle.display === 'none') {
-                                                console.warn('Element is hidden, forcing display...');
-                                                apiRefCheck.style.display = 'block';
-                                            }
-                                            if (computedStyle.visibility === 'hidden') {
-                                                console.warn('Element visibility is hidden, forcing visible...');
-                                                apiRefCheck.style.visibility = 'visible';
-                                            }
-                                            if (parseFloat(computedStyle.opacity) === 0) {
-                                                console.warn('Element opacity is 0, forcing opacity...');
-                                                apiRefCheck.style.opacity = '1';
-                                            }
-                                            
-                                            // Force CSS to ensure visibility
-                                            apiRefCheck.style.setProperty('display', 'block', 'important');
-                                            apiRefCheck.style.setProperty('visibility', 'visible', 'important');
-                                            apiRefCheck.style.setProperty('opacity', '1', 'important');
-                                            apiRefCheck.style.setProperty('position', 'relative', 'important');
-                                            apiRefCheck.style.setProperty('z-index', '1', 'important');
-                                            
-                                            // Check if children are visible
-                                            const firstChild = apiRefCheck.firstElementChild;
-                                            if (firstChild) {
-                                                const childStyle = window.getComputedStyle(firstChild);
-                                                console.log('First child visibility:', {
-                                                    display: childStyle.display,
-                                                    visibility: childStyle.visibility,
-                                                    opacity: childStyle.opacity,
-                                                    position: childStyle.position,
-                                                    zIndex: childStyle.zIndex
-                                                });
-                                                
-                                                // Force child visibility
-                                                firstChild.style.setProperty('display', 'block', 'important');
-                                                firstChild.style.setProperty('visibility', 'visible', 'important');
-                                                firstChild.style.setProperty('opacity', '1', 'important');
-                                                
-                                                // Check if element is in viewport
-                                                const rect = apiRefCheck.getBoundingClientRect();
-                                                console.log('Element position in viewport:', {
-                                                    top: rect.top,
-                                                    left: rect.left,
-                                                    bottom: rect.bottom,
-                                                    right: rect.right,
-                                                    width: rect.width,
-                                                    height: rect.height,
-                                                    inViewport: rect.top >= 0 && rect.left >= 0 && 
-                                                               rect.bottom <= window.innerHeight && 
-                                                               rect.right <= window.innerWidth
-                                                });
-                                                
-                                                // Scroll to element if not in viewport
-                                                if (rect.top < 0 || rect.top > window.innerHeight) {
-                                                    console.log('Element not in viewport, scrolling to it...');
-                                                    apiRefCheck.scrollIntoView({ behavior: 'smooth', block: 'start' });
-                                                }
-                                            }
-                                            
-                                            // Check for any overlaying elements
-                                            const elementsAtPoint = document.elementsFromPoint(
-                                                window.innerWidth / 2, 
-                                                window.innerHeight / 2
-                                            );
-                                            console.log('Elements at center of viewport:', elementsAtPoint.slice(0, 5).map(el => ({
-                                                tag: el.tagName,
-                                                id: el.id,
-                                                class: el.className,
-                                                zIndex: window.getComputedStyle(el).zIndex
-                                            })));
-                                        }
-                                    }
-                                } else {
-                                    console.error('All initialization methods failed');
-                                    useDataConfigurationMethod();
-                                }
-                            }, 3000); // Wait 3 seconds for async operations
-                        } else {
-                            console.error('No valid Scalar function found, structure:', ScalarRef);
-                            // Try data-configuration method instead
-                            useDataConfigurationMethod();
-                            return;
+                            window.scalarInstance = null;
                         }
-                    } catch (error) {
-                        console.error('Error initializing Scalar:', error);
-                        // Fallback: thử dùng fallbackUrl với format mới
-                        try {
-                            const fallbackConfig = {
-                                url: fallbackUrl,  // New format - not deprecated
-                                theme: 'default',
-                                layout: 'modern',
-                                // Custom CSS để cải thiện định dạng response body
-                                customCss: configuration.customCss
-                            };
-                            console.log('Trying fallback URL with new format:', fallbackUrl);
-                            const ScalarRef2 = getScalarApiReference();
-                            if (!ScalarRef2) {
-                                throw new Error('ScalarApiReference not available');
-                            }
-                            
-                            // Try the same methods as above
-                            let scalarInstance = ScalarRef2.default || ScalarRef2;
-                            if (ScalarRef2.ApiReference && typeof ScalarRef2.ApiReference === 'function') {
-                                scalarInstance = ScalarRef2.ApiReference;
-                            }
-                            
-                            if (typeof scalarInstance === 'function') {
-                                const fallbackResult = scalarInstance({
-                                    ...fallbackConfig,
-                                    target: '#api-reference'
+                        
+                        // Clear container before initializing
+                        container.innerHTML = '';
+                        
+                        // Use official Scalar.createApiReference() method as per GitHub docs
+                        let initialized = false;
+                        
+                        if (ScalarAPI && typeof ScalarAPI.createApiReference === 'function') {
+                            console.log('[Scalar] Using Scalar.createApiReference()');
+                            try {
+                                const result = ScalarAPI.createApiReference('#scalar-api-reference', {
+                                    url: finalUrl,
+                                    theme: configuration.theme,
+                                    layout: configuration.layout,
+                                    defaultHttpClient: configuration.defaultHttpClient,
+                                    withCredentials: configuration.withCredentials,
+                                    proxy: configuration.proxy,
+                                    fetchOptions: configuration.fetchOptions
                                 });
                                 
-                                // Try mounting app if present
-                                // Store instance reference
-                                if (fallbackResult) {
-                                    window.scalarInstance = fallbackResult;
-                                }
-                                
-                                if (fallbackResult && fallbackResult.app && typeof fallbackResult.app.mount === 'function') {
-                                    try {
-                                        fallbackResult.app.mount('#api-reference');
-                                        console.log('✅ Fallback URL app mounted successfully');
-                                    } catch (mountErr) {
-                                        console.warn('Fallback mount failed:', mountErr);
-                                    }
-                                }
-                                console.log('Fallback URL initialization succeeded');
-                            } else {
-                                throw new Error('Scalar instance is not a function');
+                                window.scalarInstance = result;
+                                console.log('[Scalar] ✅ Successfully initialized with createApiReference()');
+                                initialized = true;
+                            } catch (createError) {
+                                console.error('[Scalar] Error calling createApiReference():', createError);
+                                // Fallback to data-configuration method
+                                useDataConfigurationMethod(configuration);
                             }
-                        } catch (fallbackError) {
-                            console.error('Fallback also failed:', fallbackError);
-                            // Last resort: use data-configuration
-                            console.log('Trying data-configuration method as last resort...');
+                        } else {
+                            console.warn('[Scalar] Scalar.createApiReference not found, using fallback');
                             useDataConfigurationMethod(configuration);
                         }
+                        
+                        if (!initialized) {
+                            console.warn('[Scalar] Initialization failed, using data-configuration method');
+                            useDataConfigurationMethod(configuration);
+                        }
+                    } catch (error) {
+                        console.error('[Scalar] Error in initScalar:', error);
+                        // Last resort: use data-configuration
+                        useDataConfigurationMethod(configuration);
                     }
                 } catch (error) {
-                    console.error('Error in initScalar:', error);
-                    // Last resort: use data-configuration
-                    console.log('Trying data-configuration method as last resort...');
+                    console.error('[Scalar] Outer error in initScalar:', error);
                     useDataConfigurationMethod(configuration);
                 }
             }
             
-            // Use data-configuration method (like the C++ code does)
+            // Legacy code removed - using official Scalar.createApiReference() method above
+            // Old Method 1, 2, 3... code removed for clarity
+            
+            // Use data-configuration method (fallback)
             function useDataConfigurationMethod(configToUse = null) {
-                console.log('Using data-configuration method to initialize Scalar');
-                const apiRef = document.getElementById('api-reference');
+                console.log('[Scalar] Using data-configuration method to initialize Scalar');
+                const container = document.getElementById('scalar-api-reference');
+                if (!container) {
+                    console.error('[Scalar] scalar-api-reference container not found');
+                    return;
+                }
+                
+                // For backward compatibility, also check api-reference
+                const apiRef = document.getElementById('api-reference') || container;
+                
+                // Use provided config or create a default one
+                const defaultCustomCss = `
+                    .scalar-api-reference .response-section {
+                        padding: 20px !important;
+                        background: #ffffff !important;
+                        border: 1px solid #e1e4e8 !important;
+                        border-radius: 6px !important;
+                        margin-top: 16px !important;
+                    }
+                    .scalar-api-reference .response-body {
+                        margin: 12px 0 !important;
+                    }
+                `;
+                
+                const config = configToUse || {
+                    url: fallbackUrl || specUrl,
+                    theme: 'default',
+                    layout: 'modern',
+                    customCss: defaultCustomCss
+                };
+                
+                // Try to use Scalar.createApiReference if available
+                if (typeof Scalar !== 'undefined' && typeof Scalar.createApiReference === 'function') {
+                    try {
+                        const result = Scalar.createApiReference('#scalar-api-reference', config);
+                        window.scalarInstance = result;
+                        console.log('[Scalar] ✅ Initialized using createApiReference() in fallback method');
+                        return;
+                    } catch (error) {
+                        console.warn('[Scalar] createApiReference failed in fallback, trying data-configuration:', error);
+                    }
+                }
+                
+                // Fallback to data-configuration method
                 if (apiRef) {
-                    // Use provided config or create a default one
-                    const defaultCustomCss = `
-                        .scalar-api-reference .response-section {
-                            padding: 20px !important;
-                            background: #ffffff !important;
-                            border: 1px solid #e1e4e8 !important;
-                            border-radius: 6px !important;
-                            margin-top: 16px !important;
-                        }
-                        .scalar-api-reference .response-body {
-                            margin: 12px 0 !important;
-                        }
-                    `;
-                    const config = configToUse || {
-                        url: fallbackUrl || specUrl,
-                        theme: 'default',
-                        layout: 'modern',
-                        customCss: defaultCustomCss
-                    };
-                    
-                    // Don't clear content if it already has content (might be from previous mount)
+                    // Don't clear content if it already has content
                     if (apiRef.innerHTML.trim().length < 100) {
                         apiRef.innerHTML = '';
-                    } else {
-                        console.log('api-reference already has content, keeping it');
                     }
                     
-                    // Remove any existing config script to prevent auto-initialization conflicts
+                    // Remove any existing config script
                     const existingConfig = document.getElementById('api-reference-config');
                     if (existingConfig) {
                         existingConfig.remove();
                     }
                     
-                    // Remove data-configuration from div to prevent auto-initialization
+                    // Remove data-configuration from div
                     apiRef.removeAttribute('data-configuration');
                     
                     // Don't use data-configuration method if we already have content
-                    // Instead, try manual initialization
                     if (apiRef.innerHTML.trim().length > 100) {
-                        console.log('Content already exists, skipping data-configuration method');
+                        console.log('[Scalar] Content already exists, skipping data-configuration method');
                         return;
                     }
+                }
+                
+                // If we get here, data-configuration method is not applicable
+                console.warn('[Scalar] Data-configuration method not applicable, Scalar should auto-initialize');
+            }
+            
+            // All legacy code removed - using official Scalar.createApiReference() method
+            // Scalar is now initialized inline right after script load (see HTML above)
+            
+            // Use data-configuration method (like the C++ code does) - kept for backward compatibility
+            function useDataConfigurationMethod(configToUse = null) {
+                console.log('[Scalar] Using data-configuration method (fallback)');
+                // This method is kept for backward compatibility but should not be needed
+                // since Scalar is initialized inline right after script load
+                const container = document.getElementById('scalar-api-reference');
+                if (container && typeof Scalar !== 'undefined' && typeof Scalar.createApiReference === 'function') {
+                    const configScript = document.getElementById('server-config');
+                    let specUrl = window.location.origin + '/v1/openapi/en/openapi.yaml';
                     
-                    // Try method 1: Set data-configuration on the div itself
-                    apiRef.setAttribute('data-configuration', JSON.stringify(config));
-                    console.log('Set data-configuration on #api-reference div');
-                    
-                    // Try method 2: Also create a script element with data-configuration (like C++ code)
-                    const configScript = document.createElement('script');
-                    configScript.id = 'api-reference-config';
-                    configScript.setAttribute('data-configuration', JSON.stringify(config));
-                    document.body.appendChild(configScript);
-                    console.log('Created data-configuration script element in body');
-                    
-                    // Scalar standalone.js should auto-initialize when it sees this
-                    console.log('Waiting for Scalar to auto-initialize...');
-                    
-                    // Wait a bit and check if Scalar initialized
-                    setTimeout(() => {
-                        // Check if api-reference has content (Scalar initialized)
-                        const hasContent = apiRef.children.length > 0 && 
-                                         !apiRef.querySelector('#api-reference-config') &&
-                                         apiRef.innerHTML.trim().length > 0;
-                        
-                        if (!hasContent) {
-                            console.warn('Scalar did not auto-initialize from data-configuration');
-                            console.log('api-reference content:', apiRef.innerHTML.substring(0, 200));
-                            
-                            // Try to find Scalar and initialize manually
-                            const ScalarRef = getScalarApiReference();
-                            if (ScalarRef) {
-                                console.log('Found ScalarRef, trying manual initialization with all methods...');
-                                try {
-                                    // Try all possible initialization methods
-                                    const methods = [
-                                        () => ScalarRef.default,
-                                        () => ScalarRef,
-                                        () => ScalarRef.ApiReference,
-                                        () => ScalarRef.create,
-                                        () => {
-                                            for (let key in ScalarRef) {
-                                                if (typeof ScalarRef[key] === 'function') {
-                                                    return ScalarRef[key];
-                                                }
-                                            }
-                                            return null;
-                                        }
-                                    ];
-                                    
-                                    let initialized = false;
-                                    for (let getMethod of methods) {
-                                        try {
-                                            const method = getMethod();
-                                            if (method && typeof method === 'function') {
-                                                console.log('Trying initialization method:', getMethod.toString().substring(0, 50));
-                                                const result = method({
-                                                    ...config,
-                                                    target: '#api-reference'
-                                                });
-                                                console.log('Method result:', result);
-                                                
-                                                // Check if result has app that needs mounting
-                                                if (result && result.app && typeof result.app.mount === 'function') {
-                                                    console.log('Mounting app from result...');
-                                                    try {
-                                                        result.app.mount('#api-reference');
-                                                        console.log('App mounted successfully!');
-                                                        initialized = true;
-                                                        break;
-                                                    } catch (mountErr) {
-                                                        console.warn('Mount failed, trying element:', mountErr);
-                                                        try {
-                                                            result.app.mount(apiRef);
-                                                            console.log('App mounted to element successfully!');
-                                                            initialized = true;
-                                                            break;
-                                                        } catch (mountErr2) {
-                                                            console.warn('Mount to element also failed:', mountErr2);
-                                                        }
-                                                    }
-                                                } else {
-                                                    console.log('No app to mount, assuming auto-initialized');
-                                                    initialized = true;
-                                                    break;
-                                                }
-                                            }
-                                        } catch (e) {
-                                            console.warn('Method failed:', e.message);
-                                        }
-                                    }
-                                    
-                                    if (!initialized) {
-                                        throw new Error('All initialization methods failed');
-                                    }
-                                } catch (e) {
-                                    console.error('Manual initialization failed:', e);
-                                    showScalarInitError(e);
-                                }
-                            } else {
-                                console.error('ScalarApiReference still not available');
-                                showScalarLoadError();
-                            }
-                        } else {
-                            console.log('Scalar auto-initialized successfully from data-configuration');
+                    if (configScript) {
+                        try {
+                            const config = JSON.parse(configScript.textContent);
+                            const baseUrl = config.baseUrl || window.location.origin;
+                            const version = config.version || 'v1';
+                            const lang = new URLSearchParams(window.location.search).get('lang') || 
+                                        localStorage.getItem('api-docs-language') || 'en';
+                            specUrl = baseUrl + '/' + version + '/openapi/' + lang + '/openapi.yaml';
+                        } catch (e) {
+                            console.warn('[Scalar] Failed to parse server config');
                         }
-                    }, 3000); // Wait 3 seconds for auto-initialization
+                    }
+                    
+                    Scalar.createApiReference('#scalar-api-reference', { url: specUrl });
                 }
             }
             
-            // Helper function to show load error
-            function showScalarLoadError() {
-                const apiRef = document.getElementById('api-reference');
-                if (apiRef) {
-                    apiRef.innerHTML = 
-                        '<div style="padding: 40px; text-align: center; max-width: 600px; margin: 50px auto;">' +
-                        '<h2 style="color: #d32f2f;">Error loading API documentation</h2>' +
-                        '<p style="color: #666; margin: 20px 0;">Scalar script failed to load from all CDN sources. This could be due to:</p>' +
-                        '<ul style="text-align: left; display: inline-block; color: #666;">' +
-                        '<li>Network connectivity issues</li>' +
-                        '<li>CDN blocking or unavailable (jsdelivr.net, unpkg.com)</li>' +
-                        '<li>Browser tracking prevention blocking the CDN</li>' +
-                        '<li>Firewall/proxy restrictions</li>' +
-                        '</ul>' +
-                        '<p style="color: #666; margin-top: 20px;">Please check your internet connection, disable tracking prevention for this site, or try refreshing the page.</p>' +
-                        '<button onclick="window.location.reload()" style="margin-top: 20px; padding: 10px 20px; background: #0066cc; color: white; border: none; border-radius: 4px; cursor: pointer;">Refresh Page</button>' +
-                        '</div>';
-                }
-            }
-            
-            // Helper function to show init error
-            function showScalarInitError(error) {
-                const apiRef = document.getElementById('api-reference');
-                if (apiRef) {
-                    apiRef.innerHTML = 
-                        '<div style="padding: 20px; text-align: center;">' +
-                        '<h2>Error loading API documentation</h2>' +
-                        '<p>Failed to initialize Scalar. Error: ' + (error?.message || 'Unknown error') + '</p>' +
-                        '<p>Please check browser console for details.</p>' +
-                        '</div>';
-                }
-            }
+            // Legacy code removed - all initialization is now done inline after script load
         }
 
         // Xử lý thay đổi ngôn ngữ
@@ -1681,7 +1134,7 @@
             // Reload page to ensure fresh content (most reliable solution)
             // This ensures:
             // 1. Server renders HTML with correct language parameter
-            // 2. Scalar initializes fresh with correct data-spec-url
+            // 2. Scalar initializes fresh with correct data-url
             // 3. No cache issues or stale content
             // The URL already has ?lang= parameter, so reload will fetch correct content
             window.location.reload();
@@ -1696,13 +1149,13 @@
                 select.addEventListener('change', handleLanguageChange);
             }
             
-            // Set initial data-spec-url immediately so Scalar can auto-initialize when it loads
+            // Set initial data-url immediately so Scalar can auto-initialize when it loads (new API format)
             const apiRef = document.getElementById('api-reference');
             console.log('[Scalar] init() - currentLang:', currentLang);
             console.log('[Scalar] init() - apiRef:', apiRef);
             if (apiRef) {
-                const existingUrl = apiRef.getAttribute('data-spec-url');
-                console.log('[Scalar] init() - existing data-spec-url:', existingUrl);
+                const existingUrl = apiRef.getAttribute('data-url');
+                console.log('[Scalar] init() - existing data-url:', existingUrl);
                 
                 const baseUrl = window.location.origin;
                 const version = 'v1';
@@ -1710,12 +1163,12 @@
                 console.log('[Scalar] init() - computed specUrl:', specUrl);
                 
                 if (!existingUrl || existingUrl !== specUrl) {
-                    apiRef.setAttribute('data-spec-url', specUrl);
-                    console.log('[Scalar] init() - Set data-spec-url to:', specUrl);
+                    apiRef.setAttribute('data-url', specUrl);
+                    console.log('[Scalar] init() - Set data-url to:', specUrl);
                 } else {
-                    console.log('[Scalar] init() - data-spec-url already correct');
+                    console.log('[Scalar] init() - data-url already correct');
                 }
-                console.log('[Scalar] init() - Final data-spec-url:', apiRef.getAttribute('data-spec-url'));
+                console.log('[Scalar] init() - Final data-url:', apiRef.getAttribute('data-url'));
             }
             
             // Also call initializeScalar to handle language switching
