@@ -24,6 +24,8 @@
 #include "api/securt_handler.h"
 #include "api/securt_line_handler.h"
 #include "api/area_handler.h"
+#include "core/exclusion_area_manager.h"
+#include "core/securt_feature_manager.h"
 #include "core/securt_instance_manager.h"
 #include "core/securt_line_manager.h"
 #include "core/analytics_entities_manager.h"
@@ -2608,9 +2610,15 @@ int main(int argc, char *argv[]) {
     static AreaStorage areaStorage;
     static AreaManager areaManager(&areaStorage, &securtInstanceManager);
 
+    // Initialize SecuRT feature managers
+    static SecuRTFeatureManager securtFeatureManager;
+    static ExclusionAreaManager exclusionAreaManager;
+
     // Register SecuRT managers with handlers
     SecuRTHandler::setInstanceManager(&securtInstanceManager);
     SecuRTHandler::setAnalyticsEntitiesManager(&analyticsEntitiesManager);
+    SecuRTHandler::setFeatureManager(&securtFeatureManager);
+    SecuRTHandler::setExclusionAreaManager(&exclusionAreaManager);
     SecuRTLineHandler::setInstanceManager(&securtInstanceManager);
     SecuRTLineHandler::setLineManager(&securtLineManager);
     analyticsEntitiesManager.setLineManager(&securtLineManager);

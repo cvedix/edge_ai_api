@@ -13492,6 +13492,1029 @@ paths:
       responses:
         '200':
           description: CORS preflight response
+  /v1/securt/instance/{instanceId}/motion_area:
+    post:
+      summary: Set motion detection area
+      description: Sets the motion detection area for a SecuRT instance. Motion detection will be limited to this area.
+      operationId: setSecuRTMotionArea
+      tags:
+      - SecuRT Advanced
+      parameters:
+      - name: instanceId
+        in: path
+        required: true
+        schema:
+          type: string
+        description: Instance ID
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+              - coordinates
+              properties:
+                coordinates:
+                  type: array
+                  description: Array of coordinate points defining the motion area polygon
+                  items:
+                    type: object
+                    required:
+                    - x
+                    - y
+                    properties:
+                      x:
+                        type: number
+                        format: double
+                        description: X coordinate (0.0-1.0)
+                        example: 0.0
+                      y:
+                        type: number
+                        format: double
+                        description: Y coordinate (0.0-1.0)
+                        example: 0.0
+                  minItems: 3
+            example:
+              coordinates:
+              - x: 0.0
+                y: 0.0
+              - x: 1.0
+                y: 0.0
+              - x: 1.0
+                y: 1.0
+              - x: 0.0
+                y: 1.0
+      responses:
+        '204':
+          description: Motion area set successfully
+        '400':
+          description: Invalid request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: Instance not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+    options:
+      summary: CORS preflight for motion area
+      operationId: setSecuRTMotionAreaOptions
+      tags:
+      - SecuRT Advanced
+      responses:
+        '200':
+          description: CORS preflight response
+  /v1/securt/instance/{instanceId}/feature_extraction:
+    post:
+      summary: Set feature extraction types
+      description: Sets the feature extraction types for a SecuRT instance. Valid types are Face, Person, and Vehicle.
+      operationId: setSecuRTFeatureExtraction
+      tags:
+      - SecuRT Advanced
+      parameters:
+      - name: instanceId
+        in: path
+        required: true
+        schema:
+          type: string
+        description: Instance ID
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+              - types
+              properties:
+                types:
+                  type: array
+                  description: Array of feature extraction types
+                  items:
+                    type: string
+                    enum:
+                    - Face
+                    - Person
+                    - Vehicle
+                  minItems: 1
+            example:
+              types:
+              - Face
+              - Person
+              - Vehicle
+      responses:
+        '204':
+          description: Feature extraction types set successfully
+        '400':
+          description: Invalid request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: Instance not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+    get:
+      summary: Get feature extraction types
+      description: Gets the current feature extraction types for a SecuRT instance.
+      operationId: getSecuRTFeatureExtraction
+      tags:
+      - SecuRT Advanced
+      parameters:
+      - name: instanceId
+        in: path
+        required: true
+        schema:
+          type: string
+        description: Instance ID
+      responses:
+        '200':
+          description: Feature extraction types retrieved successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  types:
+                    type: array
+                    description: Array of feature extraction types
+                    items:
+                      type: string
+                      enum:
+                      - Face
+                      - Person
+                      - Vehicle
+              example:
+                types:
+                - Face
+                - Person
+        '404':
+          description: Instance not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+    options:
+      summary: CORS preflight for feature extraction
+      operationId: setSecuRTFeatureExtractionOptions
+      tags:
+      - SecuRT Advanced
+      responses:
+        '200':
+          description: CORS preflight response
+  /v1/securt/instance/{instanceId}/attributes_extraction:
+    post:
+      summary: Set attributes extraction mode
+      description: Sets the attributes extraction mode for a SecuRT instance. Valid modes are Off, Person, Vehicle, and Both.
+      operationId: setSecuRTAttributesExtraction
+      tags:
+      - SecuRT Advanced
+      parameters:
+      - name: instanceId
+        in: path
+        required: true
+        schema:
+          type: string
+        description: Instance ID
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+              - mode
+              properties:
+                mode:
+                  type: string
+                  enum:
+                  - Off
+                  - Person
+                  - Vehicle
+                  - Both
+                  description: Attributes extraction mode
+            example:
+              mode: Both
+      responses:
+        '204':
+          description: Attributes extraction mode set successfully
+        '400':
+          description: Invalid request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: Instance not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+    get:
+      summary: Get attributes extraction mode
+      description: Gets the current attributes extraction mode for a SecuRT instance.
+      operationId: getSecuRTAttributesExtraction
+      tags:
+      - SecuRT Advanced
+      parameters:
+      - name: instanceId
+        in: path
+        required: true
+        schema:
+          type: string
+        description: Instance ID
+      responses:
+        '200':
+          description: Attributes extraction mode retrieved successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  mode:
+                    type: string
+                    enum:
+                    - Off
+                    - Person
+                    - Vehicle
+                    - Both
+                    description: Attributes extraction mode
+              example:
+                mode: Both
+        '404':
+          description: Instance not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+    options:
+      summary: CORS preflight for attributes extraction
+      operationId: setSecuRTAttributesExtractionOptions
+      tags:
+      - SecuRT Advanced
+      responses:
+        '200':
+          description: CORS preflight response
+  /v1/securt/instance/{instanceId}/performance_profile:
+    post:
+      summary: Set performance profile
+      description: Sets the performance profile for a SecuRT instance. Valid profiles are Performance, Balanced, and Accurate.
+      operationId: setSecuRTPerformanceProfile
+      tags:
+      - SecuRT Advanced
+      parameters:
+      - name: instanceId
+        in: path
+        required: true
+        schema:
+          type: string
+        description: Instance ID
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+              - profile
+              properties:
+                profile:
+                  type: string
+                  enum:
+                  - Performance
+                  - Balanced
+                  - Accurate
+                  description: Performance profile
+            example:
+              profile: Balanced
+      responses:
+        '204':
+          description: Performance profile set successfully
+        '400':
+          description: Invalid request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: Instance not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+    get:
+      summary: Get performance profile
+      description: Gets the current performance profile for a SecuRT instance.
+      operationId: getSecuRTPerformanceProfile
+      tags:
+      - SecuRT Advanced
+      parameters:
+      - name: instanceId
+        in: path
+        required: true
+        schema:
+          type: string
+        description: Instance ID
+      responses:
+        '200':
+          description: Performance profile retrieved successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  profile:
+                    type: string
+                    enum:
+                    - Performance
+                    - Balanced
+                    - Accurate
+                    description: Performance profile
+              example:
+                profile: Balanced
+        '404':
+          description: Instance not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+    options:
+      summary: CORS preflight for performance profile
+      operationId: setSecuRTPerformanceProfileOptions
+      tags:
+      - SecuRT Advanced
+      responses:
+        '200':
+          description: CORS preflight response
+  /v1/securt/instance/{instanceId}/face_detection:
+    post:
+      summary: Enable or disable face detection
+      description: Enables or disables face detection for a SecuRT instance.
+      operationId: setSecuRTFaceDetection
+      tags:
+      - SecuRT Advanced
+      parameters:
+      - name: instanceId
+        in: path
+        required: true
+        schema:
+          type: string
+        description: Instance ID
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+              - enable
+              properties:
+                enable:
+                  type: boolean
+                  description: Enable face detection
+            example:
+              enable: true
+      responses:
+        '204':
+          description: Face detection setting updated successfully
+        '400':
+          description: Invalid request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: Instance not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+    options:
+      summary: CORS preflight for face detection
+      operationId: setSecuRTFaceDetectionOptions
+      tags:
+      - SecuRT Advanced
+      responses:
+        '200':
+          description: CORS preflight response
+  /v1/securt/instance/{instanceId}/lpr:
+    post:
+      summary: Enable or disable LPR (License Plate Recognition)
+      description: Enables or disables License Plate Recognition for a SecuRT instance.
+      operationId: setSecuRTLPR
+      tags:
+      - SecuRT Advanced
+      parameters:
+      - name: instanceId
+        in: path
+        required: true
+        schema:
+          type: string
+        description: Instance ID
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+              - enable
+              properties:
+                enable:
+                  type: boolean
+                  description: Enable LPR
+            example:
+              enable: true
+      responses:
+        '204':
+          description: LPR setting updated successfully
+        '400':
+          description: Invalid request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: Instance not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+    get:
+      summary: Get LPR enablement status
+      description: Gets the current LPR enablement status for a SecuRT instance.
+      operationId: getSecuRTLPR
+      tags:
+      - SecuRT Advanced
+      parameters:
+      - name: instanceId
+        in: path
+        required: true
+        schema:
+          type: string
+        description: Instance ID
+      responses:
+        '200':
+          description: LPR status retrieved successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  enabled:
+                    type: boolean
+                    description: LPR enabled status
+              example:
+                enabled: true
+        '404':
+          description: Instance not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+    options:
+      summary: CORS preflight for LPR
+      operationId: setSecuRTLPROptions
+      tags:
+      - SecuRT Advanced
+      responses:
+        '200':
+          description: CORS preflight response
+  /v1/securt/instance/{instanceId}/pip:
+    post:
+      summary: Enable or disable PIP (Picture-in-Picture)
+      description: Enables or disables Picture-in-Picture overlay (face and license plate overlay on track thumbnail) for a SecuRT instance.
+      operationId: setSecuRTPIP
+      tags:
+      - SecuRT Advanced
+      parameters:
+      - name: instanceId
+        in: path
+        required: true
+        schema:
+          type: string
+        description: Instance ID
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+              - enable
+              properties:
+                enable:
+                  type: boolean
+                  description: Enable PIP
+            example:
+              enable: true
+      responses:
+        '204':
+          description: PIP setting updated successfully
+        '400':
+          description: Invalid request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: Instance not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+    get:
+      summary: Get PIP enablement status
+      description: Gets the current PIP enablement status for a SecuRT instance.
+      operationId: getSecuRTPIP
+      tags:
+      - SecuRT Advanced
+      parameters:
+      - name: instanceId
+        in: path
+        required: true
+        schema:
+          type: string
+        description: Instance ID
+      responses:
+        '200':
+          description: PIP status retrieved successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  enabled:
+                    type: boolean
+                    description: PIP enabled status
+              example:
+                enabled: true
+        '404':
+          description: Instance not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+    options:
+      summary: CORS preflight for PIP
+      operationId: setSecuRTPIPOptions
+      tags:
+      - SecuRT Advanced
+      responses:
+        '200':
+          description: CORS preflight response
+  /v1/securt/experimental/instance/{instanceId}/surrender_detection:
+    post:
+      summary: Enable or disable surrender detection (Experimental)
+      description: Enables or disables surrender detection for a SecuRT instance. This is an experimental feature.
+      operationId: setSecuRTSurrenderDetection
+      tags:
+      - SecuRT Advanced
+      parameters:
+      - name: instanceId
+        in: path
+        required: true
+        schema:
+          type: string
+        description: Instance ID
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+              - enable
+              properties:
+                enable:
+                  type: boolean
+                  description: Enable surrender detection
+            example:
+              enable: true
+      responses:
+        '204':
+          description: Surrender detection setting updated successfully
+        '400':
+          description: Invalid request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: Instance not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+    get:
+      summary: Get surrender detection status (Experimental)
+      description: Gets the current surrender detection status for a SecuRT instance. This is an experimental feature.
+      operationId: getSecuRTSurrenderDetection
+      tags:
+      - SecuRT Advanced
+      parameters:
+      - name: instanceId
+        in: path
+        required: true
+        schema:
+          type: string
+        description: Instance ID
+      responses:
+        '200':
+          description: Surrender detection status retrieved successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  enabled:
+                    type: boolean
+                    description: Surrender detection enabled status
+              example:
+                enabled: false
+        '404':
+          description: Instance not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+    options:
+      summary: CORS preflight for surrender detection
+      operationId: setSecuRTSurrenderDetectionOptions
+      tags:
+      - SecuRT Advanced
+      responses:
+        '200':
+          description: CORS preflight response
+  /v1/securt/instance/{instanceId}/masking_areas:
+    post:
+      summary: Set masking areas
+      description: Sets masking areas for a SecuRT instance. These areas will be masked in processing.
+      operationId: setSecuRTMaskingAreas
+      tags:
+      - SecuRT Advanced
+      parameters:
+      - name: instanceId
+        in: path
+        required: true
+        schema:
+          type: string
+        description: Instance ID
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+              - areas
+              properties:
+                areas:
+                  type: array
+                  description: Array of masking areas, each area is an array of coordinates
+                  items:
+                    type: array
+                    items:
+                      type: object
+                      required:
+                      - x
+                      - y
+                      properties:
+                        x:
+                          type: number
+                          format: double
+                          description: X coordinate (0.0-1.0)
+                        y:
+                          type: number
+                          format: double
+                          description: Y coordinate (0.0-1.0)
+                    minItems: 3
+            example:
+              areas:
+              - - x: 0.0
+                  y: 0.0
+                - x: 1.0
+                  y: 0.0
+                - x: 1.0
+                  y: 1.0
+                - x: 0.0
+                  y: 1.0
+      responses:
+        '204':
+          description: Masking areas set successfully
+        '400':
+          description: Invalid request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: Instance not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+    options:
+      summary: CORS preflight for masking areas
+      operationId: setSecuRTMaskingAreasOptions
+      tags:
+      - SecuRT Advanced
+      responses:
+        '200':
+          description: CORS preflight response
+  /v1/securt/instance/{instanceId}/exclusion_areas:
+    post:
+      summary: Add exclusion area
+      description: Adds an exclusion area for a SecuRT instance. Objects in exclusion areas will be ignored based on the specified classes.
+      operationId: addSecuRTExclusionArea
+      tags:
+      - SecuRT Advanced
+      parameters:
+      - name: instanceId
+        in: path
+        required: true
+        schema:
+          type: string
+        description: Instance ID
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+              - coordinates
+              - classes
+              properties:
+                coordinates:
+                  type: array
+                  description: Array of coordinate points defining the exclusion area polygon
+                  items:
+                    type: object
+                    required:
+                    - x
+                    - y
+                    properties:
+                      x:
+                        type: number
+                        format: double
+                        description: X coordinate (0.0-1.0)
+                        example: 0.0
+                      y:
+                        type: number
+                        format: double
+                        description: Y coordinate (0.0-1.0)
+                        example: 0.0
+                  minItems: 3
+                classes:
+                  type: array
+                  description: Array of object classes to exclude in this area
+                  items:
+                    type: string
+                    enum:
+                    - Person
+                    - Vehicle
+                  minItems: 1
+            example:
+              coordinates:
+              - x: 0.0
+                y: 0.0
+              - x: 0.5
+                y: 0.0
+              - x: 0.5
+                y: 0.5
+              - x: 0.0
+                y: 0.5
+              classes:
+              - Person
+              - Vehicle
+      responses:
+        '204':
+          description: Exclusion area added successfully
+        '400':
+          description: Invalid request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: Instance not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+    get:
+      summary: Get all exclusion areas
+      description: Gets all exclusion areas configured for a SecuRT instance.
+      operationId: getSecuRTExclusionAreas
+      tags:
+      - SecuRT Advanced
+      parameters:
+      - name: instanceId
+        in: path
+        required: true
+        schema:
+          type: string
+        description: Instance ID
+      responses:
+        '200':
+          description: Exclusion areas retrieved successfully
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  type: object
+                  required:
+                  - coordinates
+                  - classes
+                  properties:
+                    coordinates:
+                      type: array
+                      description: Array of coordinate points
+                      items:
+                        type: object
+                        required:
+                        - x
+                        - y
+                        properties:
+                          x:
+                            type: number
+                            format: double
+                          y:
+                            type: number
+                            format: double
+                    classes:
+                      type: array
+                      description: Array of object classes
+                      items:
+                        type: string
+                        enum:
+                        - Person
+                        - Vehicle
+              example:
+              - coordinates:
+                - x: 0.0
+                  y: 0.0
+                - x: 0.5
+                  y: 0.0
+                - x: 0.5
+                  y: 0.5
+                - x: 0.0
+                  y: 0.5
+                classes:
+                - Person
+        '404':
+          description: Instance not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+    delete:
+      summary: Delete all exclusion areas
+      description: Deletes all exclusion areas for a SecuRT instance.
+      operationId: deleteSecuRTExclusionAreas
+      tags:
+      - SecuRT Advanced
+      parameters:
+      - name: instanceId
+        in: path
+        required: true
+        schema:
+          type: string
+        description: Instance ID
+      responses:
+        '204':
+          description: All exclusion areas deleted successfully
+        '404':
+          description: Instance not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+    options:
+      summary: CORS preflight for exclusion areas
+      operationId: addSecuRTExclusionAreaOptions
+      tags:
+      - SecuRT Advanced
+      responses:
+        '200':
+          description: CORS preflight response
 components:
   schemas:
     HealthResponse:

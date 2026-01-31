@@ -1,8 +1,11 @@
 #include "api/securt_handler.h"
 #include "core/analytics_entities_manager.h"
+#include "core/exclusion_area_manager.h"
 #include "core/logging_flags.h"
 #include "core/logger.h"
 #include "core/metrics_interceptor.h"
+#include "core/securt_feature_config.h"
+#include "core/securt_feature_manager.h"
 #include "core/securt_instance.h"
 #include "core/securt_instance_manager.h"
 #include <chrono>
@@ -11,6 +14,8 @@
 
 SecuRTInstanceManager *SecuRTHandler::instance_manager_ = nullptr;
 AnalyticsEntitiesManager *SecuRTHandler::analytics_entities_manager_ = nullptr;
+SecuRTFeatureManager *SecuRTHandler::feature_manager_ = nullptr;
+ExclusionAreaManager *SecuRTHandler::exclusion_area_manager_ = nullptr;
 
 void SecuRTHandler::setInstanceManager(SecuRTInstanceManager *manager) {
   instance_manager_ = manager;
@@ -19,6 +24,14 @@ void SecuRTHandler::setInstanceManager(SecuRTInstanceManager *manager) {
 void SecuRTHandler::setAnalyticsEntitiesManager(
     AnalyticsEntitiesManager *manager) {
   analytics_entities_manager_ = manager;
+}
+
+void SecuRTHandler::setFeatureManager(SecuRTFeatureManager *manager) {
+  feature_manager_ = manager;
+}
+
+void SecuRTHandler::setExclusionAreaManager(ExclusionAreaManager *manager) {
+  exclusion_area_manager_ = manager;
 }
 
 void SecuRTHandler::createInstance(
@@ -817,5 +830,769 @@ HttpResponsePtr SecuRTHandler::createSuccessResponse(const Json::Value &data,
   resp->addHeader("Access-Control-Allow-Headers", "Content-Type");
 
   return resp;
+}
+
+// Advanced features implementations
+
+void SecuRTHandler::setMotionArea(
+    const HttpRequestPtr &req,
+    std::function<void(const HttpResponsePtr &)> &&callback) {
+  auto start_time = std::chrono::steady_clock::now();
+  std::string instanceId = extractInstanceId(req);
+
+  if (isApiLoggingEnabled()) {
+    PLOG_INFO << "[API] POST /v1/securt/instance/" << instanceId
+              << "/motion_area - Set motion area";
+  }
+
+  try {
+    if (!instance_manager_ || !instance_manager_->hasInstance(instanceId)) {
+      callback(createErrorResponse(404, "Not Found", "Instance does not exist"));
+      return;
+    }
+
+    if (!feature_manager_) {
+      callback(createErrorResponse(500, "Internal server error",
+                                   "Feature manager not initialized"));
+      return;
+    }
+
+    auto json = req->getJsonObject();
+    if (!json || !json->isMember("coordinates") ||
+        !(*json)["coordinates"].isArray()) {
+      callback(createErrorResponse(400, "Invalid request",
+                                   "Request must contain 'coordinates' array"));
+      return;
+    }
+
+    std::vector<Coordinate> coordinates;
+    for (const auto &coord : (*json)["coordinates"]) {
+      coordinates.push_back(Coordinate::fromJson(coord));
+    }
+
+    if (!feature_manager_->setMotionArea(instanceId, coordinates)) {
+      callback(createErrorResponse(400, "Invalid request",
+                                   "Invalid coordinates"));
+      return;
+    }
+
+    auto resp = HttpResponse::newHttpResponse();
+    resp->setStatusCode(k204NoContent);
+    resp->addHeader("Access-Control-Allow-Origin", "*");
+    MetricsInterceptor::callWithMetrics(req, resp, std::move(callback));
+
+  } catch (const std::exception &e) {
+    callback(createErrorResponse(500, "Internal server error", e.what()));
+  }
+}
+
+void SecuRTHandler::setFeatureExtraction(
+    const HttpRequestPtr &req,
+    std::function<void(const HttpResponsePtr &)> &&callback) {
+  auto start_time = std::chrono::steady_clock::now();
+  std::string instanceId = extractInstanceId(req);
+
+  if (isApiLoggingEnabled()) {
+    PLOG_INFO << "[API] POST /v1/securt/instance/" << instanceId
+              << "/feature_extraction - Set feature extraction";
+  }
+
+  try {
+    if (!instance_manager_ || !instance_manager_->hasInstance(instanceId)) {
+      callback(createErrorResponse(404, "Not Found", "Instance does not exist"));
+      return;
+    }
+
+    if (!feature_manager_) {
+      callback(createErrorResponse(500, "Internal server error",
+                                   "Feature manager not initialized"));
+      return;
+    }
+
+    auto json = req->getJsonObject();
+    if (!json || !json->isMember("types") || !(*json)["types"].isArray()) {
+      callback(createErrorResponse(400, "Invalid request",
+                                   "Request must contain 'types' array"));
+      return;
+    }
+
+    std::vector<std::string> types;
+    for (const auto &type : (*json)["types"]) {
+      if (type.isString()) {
+        types.push_back(type.asString());
+      }
+    }
+
+    if (!feature_manager_->setFeatureExtraction(instanceId, types)) {
+      callback(createErrorResponse(400, "Invalid request",
+                                   "Invalid feature extraction types"));
+      return;
+    }
+
+    auto resp = HttpResponse::newHttpResponse();
+    resp->setStatusCode(k204NoContent);
+    resp->addHeader("Access-Control-Allow-Origin", "*");
+    MetricsInterceptor::callWithMetrics(req, resp, std::move(callback));
+
+  } catch (const std::exception &e) {
+    callback(createErrorResponse(500, "Internal server error", e.what()));
+  }
+}
+
+void SecuRTHandler::getFeatureExtraction(
+    const HttpRequestPtr &req,
+    std::function<void(const HttpResponsePtr &)> &&callback) {
+  auto start_time = std::chrono::steady_clock::now();
+  std::string instanceId = extractInstanceId(req);
+
+  if (isApiLoggingEnabled()) {
+    PLOG_INFO << "[API] GET /v1/securt/instance/" << instanceId
+              << "/feature_extraction - Get feature extraction";
+  }
+
+  try {
+    if (!instance_manager_ || !instance_manager_->hasInstance(instanceId)) {
+      callback(createErrorResponse(404, "Not Found", "Instance does not exist"));
+      return;
+    }
+
+    if (!feature_manager_) {
+      callback(createErrorResponse(500, "Internal server error",
+                                   "Feature manager not initialized"));
+      return;
+    }
+
+    auto types = feature_manager_->getFeatureExtraction(instanceId);
+    Json::Value response;
+    Json::Value typesArray(Json::arrayValue);
+    if (types.has_value()) {
+      for (const auto &type : types.value()) {
+        typesArray.append(type);
+      }
+    }
+    response["types"] = typesArray;
+
+    callback(createSuccessResponse(response));
+
+  } catch (const std::exception &e) {
+    callback(createErrorResponse(500, "Internal server error", e.what()));
+  }
+}
+
+void SecuRTHandler::setAttributesExtraction(
+    const HttpRequestPtr &req,
+    std::function<void(const HttpResponsePtr &)> &&callback) {
+  auto start_time = std::chrono::steady_clock::now();
+  std::string instanceId = extractInstanceId(req);
+
+  if (isApiLoggingEnabled()) {
+    PLOG_INFO << "[API] POST /v1/securt/instance/" << instanceId
+              << "/attributes_extraction - Set attributes extraction";
+  }
+
+  try {
+    if (!instance_manager_ || !instance_manager_->hasInstance(instanceId)) {
+      callback(createErrorResponse(404, "Not Found", "Instance does not exist"));
+      return;
+    }
+
+    if (!feature_manager_) {
+      callback(createErrorResponse(500, "Internal server error",
+                                   "Feature manager not initialized"));
+      return;
+    }
+
+    auto json = req->getJsonObject();
+    if (!json || !json->isMember("mode") || !(*json)["mode"].isString()) {
+      callback(createErrorResponse(400, "Invalid request",
+                                   "Request must contain 'mode' string"));
+      return;
+    }
+
+    std::string mode = (*json)["mode"].asString();
+    if (!feature_manager_->setAttributesExtraction(instanceId, mode)) {
+      callback(createErrorResponse(400, "Invalid request", "Invalid mode"));
+      return;
+    }
+
+    auto resp = HttpResponse::newHttpResponse();
+    resp->setStatusCode(k204NoContent);
+    resp->addHeader("Access-Control-Allow-Origin", "*");
+    MetricsInterceptor::callWithMetrics(req, resp, std::move(callback));
+
+  } catch (const std::exception &e) {
+    callback(createErrorResponse(500, "Internal server error", e.what()));
+  }
+}
+
+void SecuRTHandler::getAttributesExtraction(
+    const HttpRequestPtr &req,
+    std::function<void(const HttpResponsePtr &)> &&callback) {
+  auto start_time = std::chrono::steady_clock::now();
+  std::string instanceId = extractInstanceId(req);
+
+  if (isApiLoggingEnabled()) {
+    PLOG_INFO << "[API] GET /v1/securt/instance/" << instanceId
+              << "/attributes_extraction - Get attributes extraction";
+  }
+
+  try {
+    if (!instance_manager_ || !instance_manager_->hasInstance(instanceId)) {
+      callback(createErrorResponse(404, "Not Found", "Instance does not exist"));
+      return;
+    }
+
+    if (!feature_manager_) {
+      callback(createErrorResponse(500, "Internal server error",
+                                   "Feature manager not initialized"));
+      return;
+    }
+
+    auto mode = feature_manager_->getAttributesExtraction(instanceId);
+    Json::Value response;
+    response["mode"] = mode.value_or("Off");
+
+    callback(createSuccessResponse(response));
+
+  } catch (const std::exception &e) {
+    callback(createErrorResponse(500, "Internal server error", e.what()));
+  }
+}
+
+void SecuRTHandler::setPerformanceProfile(
+    const HttpRequestPtr &req,
+    std::function<void(const HttpResponsePtr &)> &&callback) {
+  auto start_time = std::chrono::steady_clock::now();
+  std::string instanceId = extractInstanceId(req);
+
+  if (isApiLoggingEnabled()) {
+    PLOG_INFO << "[API] POST /v1/securt/instance/" << instanceId
+              << "/performance_profile - Set performance profile";
+  }
+
+  try {
+    if (!instance_manager_ || !instance_manager_->hasInstance(instanceId)) {
+      callback(createErrorResponse(404, "Not Found", "Instance does not exist"));
+      return;
+    }
+
+    if (!feature_manager_) {
+      callback(createErrorResponse(500, "Internal server error",
+                                   "Feature manager not initialized"));
+      return;
+    }
+
+    auto json = req->getJsonObject();
+    if (!json || !json->isMember("profile") ||
+        !(*json)["profile"].isString()) {
+      callback(createErrorResponse(400, "Invalid request",
+                                   "Request must contain 'profile' string"));
+      return;
+    }
+
+    std::string profile = (*json)["profile"].asString();
+    if (!feature_manager_->setPerformanceProfile(instanceId, profile)) {
+      callback(createErrorResponse(400, "Invalid request", "Invalid profile"));
+      return;
+    }
+
+    auto resp = HttpResponse::newHttpResponse();
+    resp->setStatusCode(k204NoContent);
+    resp->addHeader("Access-Control-Allow-Origin", "*");
+    MetricsInterceptor::callWithMetrics(req, resp, std::move(callback));
+
+  } catch (const std::exception &e) {
+    callback(createErrorResponse(500, "Internal server error", e.what()));
+  }
+}
+
+void SecuRTHandler::getPerformanceProfile(
+    const HttpRequestPtr &req,
+    std::function<void(const HttpResponsePtr &)> &&callback) {
+  auto start_time = std::chrono::steady_clock::now();
+  std::string instanceId = extractInstanceId(req);
+
+  if (isApiLoggingEnabled()) {
+    PLOG_INFO << "[API] GET /v1/securt/instance/" << instanceId
+              << "/performance_profile - Get performance profile";
+  }
+
+  try {
+    if (!instance_manager_ || !instance_manager_->hasInstance(instanceId)) {
+      callback(createErrorResponse(404, "Not Found", "Instance does not exist"));
+      return;
+    }
+
+    if (!feature_manager_) {
+      callback(createErrorResponse(500, "Internal server error",
+                                   "Feature manager not initialized"));
+      return;
+    }
+
+    auto profile = feature_manager_->getPerformanceProfile(instanceId);
+    Json::Value response;
+    response["profile"] = profile.value_or("Balanced");
+
+    callback(createSuccessResponse(response));
+
+  } catch (const std::exception &e) {
+    callback(createErrorResponse(500, "Internal server error", e.what()));
+  }
+}
+
+void SecuRTHandler::setFaceDetection(
+    const HttpRequestPtr &req,
+    std::function<void(const HttpResponsePtr &)> &&callback) {
+  auto start_time = std::chrono::steady_clock::now();
+  std::string instanceId = extractInstanceId(req);
+
+  if (isApiLoggingEnabled()) {
+    PLOG_INFO << "[API] POST /v1/securt/instance/" << instanceId
+              << "/face_detection - Set face detection";
+  }
+
+  try {
+    if (!instance_manager_ || !instance_manager_->hasInstance(instanceId)) {
+      callback(createErrorResponse(404, "Not Found", "Instance does not exist"));
+      return;
+    }
+
+    if (!feature_manager_) {
+      callback(createErrorResponse(500, "Internal server error",
+                                   "Feature manager not initialized"));
+      return;
+    }
+
+    auto json = req->getJsonObject();
+    if (!json || !json->isMember("enable") || !(*json)["enable"].isBool()) {
+      callback(createErrorResponse(400, "Invalid request",
+                                   "Request must contain 'enable' boolean"));
+      return;
+    }
+
+    bool enable = (*json)["enable"].asBool();
+    feature_manager_->setFaceDetection(instanceId, enable);
+
+    auto resp = HttpResponse::newHttpResponse();
+    resp->setStatusCode(k204NoContent);
+    resp->addHeader("Access-Control-Allow-Origin", "*");
+    MetricsInterceptor::callWithMetrics(req, resp, std::move(callback));
+
+  } catch (const std::exception &e) {
+    callback(createErrorResponse(500, "Internal server error", e.what()));
+  }
+}
+
+void SecuRTHandler::setLPR(
+    const HttpRequestPtr &req,
+    std::function<void(const HttpResponsePtr &)> &&callback) {
+  auto start_time = std::chrono::steady_clock::now();
+  std::string instanceId = extractInstanceId(req);
+
+  if (isApiLoggingEnabled()) {
+    PLOG_INFO << "[API] POST /v1/securt/instance/" << instanceId
+              << "/lpr - Set LPR";
+  }
+
+  try {
+    if (!instance_manager_ || !instance_manager_->hasInstance(instanceId)) {
+      callback(createErrorResponse(404, "Not Found", "Instance does not exist"));
+      return;
+    }
+
+    if (!feature_manager_) {
+      callback(createErrorResponse(500, "Internal server error",
+                                   "Feature manager not initialized"));
+      return;
+    }
+
+    auto json = req->getJsonObject();
+    if (!json || !json->isMember("enable") || !(*json)["enable"].isBool()) {
+      callback(createErrorResponse(400, "Invalid request",
+                                   "Request must contain 'enable' boolean"));
+      return;
+    }
+
+    bool enable = (*json)["enable"].asBool();
+    feature_manager_->setLPR(instanceId, enable);
+
+    auto resp = HttpResponse::newHttpResponse();
+    resp->setStatusCode(k204NoContent);
+    resp->addHeader("Access-Control-Allow-Origin", "*");
+    MetricsInterceptor::callWithMetrics(req, resp, std::move(callback));
+
+  } catch (const std::exception &e) {
+    callback(createErrorResponse(500, "Internal server error", e.what()));
+  }
+}
+
+void SecuRTHandler::getLPR(
+    const HttpRequestPtr &req,
+    std::function<void(const HttpResponsePtr &)> &&callback) {
+  auto start_time = std::chrono::steady_clock::now();
+  std::string instanceId = extractInstanceId(req);
+
+  if (isApiLoggingEnabled()) {
+    PLOG_INFO << "[API] GET /v1/securt/instance/" << instanceId << "/lpr - Get LPR";
+  }
+
+  try {
+    if (!instance_manager_ || !instance_manager_->hasInstance(instanceId)) {
+      callback(createErrorResponse(404, "Not Found", "Instance does not exist"));
+      return;
+    }
+
+    if (!feature_manager_) {
+      callback(createErrorResponse(500, "Internal server error",
+                                   "Feature manager not initialized"));
+      return;
+    }
+
+    auto enabled = feature_manager_->getLPR(instanceId);
+    Json::Value response;
+    response["enabled"] = enabled.value_or(false);
+
+    callback(createSuccessResponse(response));
+
+  } catch (const std::exception &e) {
+    callback(createErrorResponse(500, "Internal server error", e.what()));
+  }
+}
+
+void SecuRTHandler::setPIP(
+    const HttpRequestPtr &req,
+    std::function<void(const HttpResponsePtr &)> &&callback) {
+  auto start_time = std::chrono::steady_clock::now();
+  std::string instanceId = extractInstanceId(req);
+
+  if (isApiLoggingEnabled()) {
+    PLOG_INFO << "[API] POST /v1/securt/instance/" << instanceId
+              << "/pip - Set PIP";
+  }
+
+  try {
+    if (!instance_manager_ || !instance_manager_->hasInstance(instanceId)) {
+      callback(createErrorResponse(404, "Not Found", "Instance does not exist"));
+      return;
+    }
+
+    if (!feature_manager_) {
+      callback(createErrorResponse(500, "Internal server error",
+                                   "Feature manager not initialized"));
+      return;
+    }
+
+    auto json = req->getJsonObject();
+    if (!json || !json->isMember("enable") || !(*json)["enable"].isBool()) {
+      callback(createErrorResponse(400, "Invalid request",
+                                   "Request must contain 'enable' boolean"));
+      return;
+    }
+
+    bool enable = (*json)["enable"].asBool();
+    feature_manager_->setPIP(instanceId, enable);
+
+    auto resp = HttpResponse::newHttpResponse();
+    resp->setStatusCode(k204NoContent);
+    resp->addHeader("Access-Control-Allow-Origin", "*");
+    MetricsInterceptor::callWithMetrics(req, resp, std::move(callback));
+
+  } catch (const std::exception &e) {
+    callback(createErrorResponse(500, "Internal server error", e.what()));
+  }
+}
+
+void SecuRTHandler::getPIP(
+    const HttpRequestPtr &req,
+    std::function<void(const HttpResponsePtr &)> &&callback) {
+  auto start_time = std::chrono::steady_clock::now();
+  std::string instanceId = extractInstanceId(req);
+
+  if (isApiLoggingEnabled()) {
+    PLOG_INFO << "[API] GET /v1/securt/instance/" << instanceId << "/pip - Get PIP";
+  }
+
+  try {
+    if (!instance_manager_ || !instance_manager_->hasInstance(instanceId)) {
+      callback(createErrorResponse(404, "Not Found", "Instance does not exist"));
+      return;
+    }
+
+    if (!feature_manager_) {
+      callback(createErrorResponse(500, "Internal server error",
+                                   "Feature manager not initialized"));
+      return;
+    }
+
+    auto enabled = feature_manager_->getPIP(instanceId);
+    Json::Value response;
+    response["enabled"] = enabled.value_or(false);
+
+    callback(createSuccessResponse(response));
+
+  } catch (const std::exception &e) {
+    callback(createErrorResponse(500, "Internal server error", e.what()));
+  }
+}
+
+void SecuRTHandler::setSurrenderDetection(
+    const HttpRequestPtr &req,
+    std::function<void(const HttpResponsePtr &)> &&callback) {
+  auto start_time = std::chrono::steady_clock::now();
+  std::string instanceId = extractInstanceId(req);
+
+  if (isApiLoggingEnabled()) {
+    PLOG_INFO << "[API] POST /v1/securt/experimental/instance/" << instanceId
+              << "/surrender_detection - Set surrender detection";
+  }
+
+  try {
+    if (!instance_manager_ || !instance_manager_->hasInstance(instanceId)) {
+      callback(createErrorResponse(404, "Not Found", "Instance does not exist"));
+      return;
+    }
+
+    if (!feature_manager_) {
+      callback(createErrorResponse(500, "Internal server error",
+                                   "Feature manager not initialized"));
+      return;
+    }
+
+    auto json = req->getJsonObject();
+    if (!json || !json->isMember("enable") || !(*json)["enable"].isBool()) {
+      callback(createErrorResponse(400, "Invalid request",
+                                   "Request must contain 'enable' boolean"));
+      return;
+    }
+
+    bool enable = (*json)["enable"].asBool();
+    feature_manager_->setSurrenderDetection(instanceId, enable);
+
+    auto resp = HttpResponse::newHttpResponse();
+    resp->setStatusCode(k204NoContent);
+    resp->addHeader("Access-Control-Allow-Origin", "*");
+    MetricsInterceptor::callWithMetrics(req, resp, std::move(callback));
+
+  } catch (const std::exception &e) {
+    callback(createErrorResponse(500, "Internal server error", e.what()));
+  }
+}
+
+void SecuRTHandler::getSurrenderDetection(
+    const HttpRequestPtr &req,
+    std::function<void(const HttpResponsePtr &)> &&callback) {
+  auto start_time = std::chrono::steady_clock::now();
+  std::string instanceId = extractInstanceId(req);
+
+  if (isApiLoggingEnabled()) {
+    PLOG_INFO << "[API] GET /v1/securt/experimental/instance/" << instanceId
+              << "/surrender_detection - Get surrender detection";
+  }
+
+  try {
+    if (!instance_manager_ || !instance_manager_->hasInstance(instanceId)) {
+      callback(createErrorResponse(404, "Not Found", "Instance does not exist"));
+      return;
+    }
+
+    if (!feature_manager_) {
+      callback(createErrorResponse(500, "Internal server error",
+                                   "Feature manager not initialized"));
+      return;
+    }
+
+    auto enabled = feature_manager_->getSurrenderDetection(instanceId);
+    Json::Value response;
+    response["enabled"] = enabled.value_or(false);
+
+    callback(createSuccessResponse(response));
+
+  } catch (const std::exception &e) {
+    callback(createErrorResponse(500, "Internal server error", e.what()));
+  }
+}
+
+void SecuRTHandler::setMaskingAreas(
+    const HttpRequestPtr &req,
+    std::function<void(const HttpResponsePtr &)> &&callback) {
+  auto start_time = std::chrono::steady_clock::now();
+  std::string instanceId = extractInstanceId(req);
+
+  if (isApiLoggingEnabled()) {
+    PLOG_INFO << "[API] POST /v1/securt/instance/" << instanceId
+              << "/masking_areas - Set masking areas";
+  }
+
+  try {
+    if (!instance_manager_ || !instance_manager_->hasInstance(instanceId)) {
+      callback(createErrorResponse(404, "Not Found", "Instance does not exist"));
+      return;
+    }
+
+    if (!feature_manager_) {
+      callback(createErrorResponse(500, "Internal server error",
+                                   "Feature manager not initialized"));
+      return;
+    }
+
+    auto json = req->getJsonObject();
+    if (!json || !json->isMember("areas") || !(*json)["areas"].isArray()) {
+      callback(createErrorResponse(400, "Invalid request",
+                                   "Request must contain 'areas' array"));
+      return;
+    }
+
+    std::vector<std::vector<Coordinate>> areas;
+    for (const auto &area : (*json)["areas"]) {
+      if (!area.isArray()) {
+        callback(createErrorResponse(400, "Invalid request",
+                                     "Each area must be an array"));
+        return;
+      }
+      std::vector<Coordinate> coords;
+      for (const auto &coord : area) {
+        coords.push_back(Coordinate::fromJson(coord));
+      }
+      areas.push_back(coords);
+    }
+
+    if (!feature_manager_->setMaskingAreas(instanceId, areas)) {
+      callback(createErrorResponse(400, "Invalid request",
+                                   "Invalid masking areas"));
+      return;
+    }
+
+    auto resp = HttpResponse::newHttpResponse();
+    resp->setStatusCode(k204NoContent);
+    resp->addHeader("Access-Control-Allow-Origin", "*");
+    MetricsInterceptor::callWithMetrics(req, resp, std::move(callback));
+
+  } catch (const std::exception &e) {
+    callback(createErrorResponse(500, "Internal server error", e.what()));
+  }
+}
+
+void SecuRTHandler::addExclusionArea(
+    const HttpRequestPtr &req,
+    std::function<void(const HttpResponsePtr &)> &&callback) {
+  auto start_time = std::chrono::steady_clock::now();
+  std::string instanceId = extractInstanceId(req);
+
+  if (isApiLoggingEnabled()) {
+    PLOG_INFO << "[API] POST /v1/securt/instance/" << instanceId
+              << "/exclusion_areas - Add exclusion area";
+  }
+
+  try {
+    if (!instance_manager_ || !instance_manager_->hasInstance(instanceId)) {
+      callback(createErrorResponse(404, "Not Found", "Instance does not exist"));
+      return;
+    }
+
+    if (!exclusion_area_manager_) {
+      callback(createErrorResponse(500, "Internal server error",
+                                   "Exclusion area manager not initialized"));
+      return;
+    }
+
+    auto json = req->getJsonObject();
+    if (!json) {
+      callback(createErrorResponse(400, "Invalid request",
+                                   "Request body must be valid JSON"));
+      return;
+    }
+
+    ExclusionArea area = ExclusionArea::fromJson(*json);
+    if (!ExclusionAreaManager::validateExclusionArea(area)) {
+      callback(createErrorResponse(400, "Invalid request",
+                                   "Invalid exclusion area"));
+      return;
+    }
+
+    if (!exclusion_area_manager_->addExclusionArea(instanceId, area)) {
+      callback(createErrorResponse(400, "Invalid request",
+                                   "Failed to add exclusion area"));
+      return;
+    }
+
+    auto resp = HttpResponse::newHttpResponse();
+    resp->setStatusCode(k204NoContent);
+    resp->addHeader("Access-Control-Allow-Origin", "*");
+    MetricsInterceptor::callWithMetrics(req, resp, std::move(callback));
+
+  } catch (const std::exception &e) {
+    callback(createErrorResponse(500, "Internal server error", e.what()));
+  }
+}
+
+void SecuRTHandler::getExclusionAreas(
+    const HttpRequestPtr &req,
+    std::function<void(const HttpResponsePtr &)> &&callback) {
+  auto start_time = std::chrono::steady_clock::now();
+  std::string instanceId = extractInstanceId(req);
+
+  if (isApiLoggingEnabled()) {
+    PLOG_INFO << "[API] GET /v1/securt/instance/" << instanceId
+              << "/exclusion_areas - Get exclusion areas";
+  }
+
+  try {
+    if (!instance_manager_ || !instance_manager_->hasInstance(instanceId)) {
+      callback(createErrorResponse(404, "Not Found", "Instance does not exist"));
+      return;
+    }
+
+    if (!exclusion_area_manager_) {
+      callback(createErrorResponse(500, "Internal server error",
+                                   "Exclusion area manager not initialized"));
+      return;
+    }
+
+    auto areas = exclusion_area_manager_->getExclusionAreas(instanceId);
+    Json::Value response(Json::arrayValue);
+    for (const auto &area : areas) {
+      response.append(area.toJson());
+    }
+
+    callback(createSuccessResponse(response));
+
+  } catch (const std::exception &e) {
+    callback(createErrorResponse(500, "Internal server error", e.what()));
+  }
+}
+
+void SecuRTHandler::deleteExclusionAreas(
+    const HttpRequestPtr &req,
+    std::function<void(const HttpResponsePtr &)> &&callback) {
+  auto start_time = std::chrono::steady_clock::now();
+  std::string instanceId = extractInstanceId(req);
+
+  if (isApiLoggingEnabled()) {
+    PLOG_INFO << "[API] DELETE /v1/securt/instance/" << instanceId
+              << "/exclusion_areas - Delete exclusion areas";
+  }
+
+  try {
+    if (!instance_manager_ || !instance_manager_->hasInstance(instanceId)) {
+      callback(createErrorResponse(404, "Not Found", "Instance does not exist"));
+      return;
+    }
+
+    if (!exclusion_area_manager_) {
+      callback(createErrorResponse(500, "Internal server error",
+                                   "Exclusion area manager not initialized"));
+      return;
+    }
+
+    exclusion_area_manager_->deleteExclusionAreas(instanceId);
+
+    auto resp = HttpResponse::newHttpResponse();
+    resp->setStatusCode(k204NoContent);
+    resp->addHeader("Access-Control-Allow-Origin", "*");
+    MetricsInterceptor::callWithMetrics(req, resp, std::move(callback));
+
+  } catch (const std::exception &e) {
+    callback(createErrorResponse(500, "Internal server error", e.what()));
+  }
 }
 

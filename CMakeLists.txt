@@ -1135,6 +1135,8 @@ set(CORE_LIB_SOURCES
     src/core/securt_instance_manager.cpp
     src/core/securt_line_storage.cpp
     src/core/securt_line_manager.cpp
+    src/core/securt_feature_manager.cpp
+    src/core/exclusion_area_manager.cpp
     src/core/analytics_entities_manager.cpp
     src/core/area_storage.cpp
     src/core/area_manager.cpp
