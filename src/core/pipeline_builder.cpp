@@ -69,7 +69,7 @@
 // cvedix_sface_feature_encoder_node or cvedix_trt_vehicle_feature_encoder
 // instead #include <cvedix/nodes/infers/cvedix_feature_encoder_node.h>
 #include <cvedix/nodes/infers/cvedix_face_swap_node.h>
-#include <cvedix/nodes/infers/cvedix_insight_face_recognition_node.h>
+#include <cvedix/nodes/infers/fr/cvedix_face_recognition_node.h>
 #include <cvedix/nodes/infers/cvedix_lane_detector_node.h>
 #ifdef CVEDIX_WITH_LLM
 #include <cvedix/nodes/infers/cvedix_mllm_analyser_node.h>
@@ -6637,7 +6637,7 @@ PipelineBuilder::createInsightFaceRecognitionNode(
     std::cerr << "  Model path: '" << modelPath << "'" << std::endl;
 
     auto node =
-        std::make_shared<cvedix_nodes::cvedix_insight_face_recognition_node>(
+        std::make_shared<cvedix_nodes::cvedix_face_recognition_node>(
             nodeName, modelPath);
 
     std::cerr << "[PipelineBuilder] ✓ InsightFace recognition node created "

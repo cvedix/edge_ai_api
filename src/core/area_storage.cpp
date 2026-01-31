@@ -1,6 +1,7 @@
 #include "core/area_storage.h"
 #include "core/uuid_generator.h"
 #include <json/json.h>
+#include <iostream>
 
 std::string AreaStorage::createCrossingArea(const std::string &instanceId,
                                              const std::string &areaId,
@@ -11,7 +12,9 @@ std::string AreaStorage::createCrossingArea(const std::string &instanceId,
       areaId.empty() ? UUIDGenerator::generateUUID() : areaId;
 
   // Check if area ID already exists
-  if (hasArea(instanceId, finalAreaId)) {
+  // Use findAreaIndex directly since we already hold the lock
+  auto [type, index] = findAreaIndex(instanceId, finalAreaId);
+  if (index != SIZE_MAX) {
     return ""; // Area already exists
   }
 
@@ -29,6 +32,10 @@ std::string AreaStorage::createCrossingArea(const std::string &instanceId,
   storage_[instanceId][AreaType::Crossing].push_back(
       std::make_shared<CrossingArea>(area));
 
+  std::cerr << "[AreaStorage::createCrossingArea] DEBUG: Stored area ID: " << finalAreaId 
+            << ", Name: " << area.name 
+            << ", Type: Crossing (enum: " << static_cast<int>(AreaType::Crossing) << ")" << std::endl;
+
   return finalAreaId;
 }
 
@@ -40,7 +47,8 @@ std::string AreaStorage::createIntrusionArea(const std::string &instanceId,
   std::string finalAreaId =
       areaId.empty() ? UUIDGenerator::generateUUID() : areaId;
 
-  if (hasArea(instanceId, finalAreaId)) {
+  auto [type, index] = findAreaIndex(instanceId, finalAreaId);
+  if (index != SIZE_MAX) {
     return "";
   }
 
@@ -54,6 +62,10 @@ std::string AreaStorage::createIntrusionArea(const std::string &instanceId,
   storage_[instanceId][AreaType::Intrusion].push_back(
       std::make_shared<IntrusionArea>(area));
 
+  std::cerr << "[AreaStorage::createIntrusionArea] DEBUG: Stored area ID: " << finalAreaId 
+            << ", Name: " << area.name 
+            << ", Type: Intrusion (enum: " << static_cast<int>(AreaType::Intrusion) << ")" << std::endl;
+
   return finalAreaId;
 }
 
@@ -65,7 +77,8 @@ std::string AreaStorage::createLoiteringArea(const std::string &instanceId,
   std::string finalAreaId =
       areaId.empty() ? UUIDGenerator::generateUUID() : areaId;
 
-  if (hasArea(instanceId, finalAreaId)) {
+  auto [type, index] = findAreaIndex(instanceId, finalAreaId);
+  if (index != SIZE_MAX) {
     return "";
   }
 
@@ -80,6 +93,10 @@ std::string AreaStorage::createLoiteringArea(const std::string &instanceId,
   storage_[instanceId][AreaType::Loitering].push_back(
       std::make_shared<LoiteringArea>(area));
 
+  std::cerr << "[AreaStorage::createLoiteringArea] DEBUG: Stored area ID: " << finalAreaId 
+            << ", Name: " << area.name 
+            << ", Type: Loitering (enum: " << static_cast<int>(AreaType::Loitering) << ")" << std::endl;
+
   return finalAreaId;
 }
 
@@ -91,7 +108,8 @@ std::string AreaStorage::createCrowdingArea(const std::string &instanceId,
   std::string finalAreaId =
       areaId.empty() ? UUIDGenerator::generateUUID() : areaId;
 
-  if (hasArea(instanceId, finalAreaId)) {
+  auto [type, index] = findAreaIndex(instanceId, finalAreaId);
+  if (index != SIZE_MAX) {
     return "";
   }
 
@@ -107,6 +125,10 @@ std::string AreaStorage::createCrowdingArea(const std::string &instanceId,
   storage_[instanceId][AreaType::Crowding].push_back(
       std::make_shared<CrowdingArea>(area));
 
+  std::cerr << "[AreaStorage::createCrowdingArea] DEBUG: Stored area ID: " << finalAreaId 
+            << ", Name: " << area.name 
+            << ", Type: Crowding (enum: " << static_cast<int>(AreaType::Crowding) << ")" << std::endl;
+
   return finalAreaId;
 }
 
@@ -118,7 +140,8 @@ std::string AreaStorage::createOccupancyArea(const std::string &instanceId,
   std::string finalAreaId =
       areaId.empty() ? UUIDGenerator::generateUUID() : areaId;
 
-  if (hasArea(instanceId, finalAreaId)) {
+  auto [type, index] = findAreaIndex(instanceId, finalAreaId);
+  if (index != SIZE_MAX) {
     return "";
   }
 
@@ -132,6 +155,10 @@ std::string AreaStorage::createOccupancyArea(const std::string &instanceId,
   storage_[instanceId][AreaType::Occupancy].push_back(
       std::make_shared<OccupancyArea>(area));
 
+  std::cerr << "[AreaStorage::createOccupancyArea] DEBUG: Stored area ID: " << finalAreaId 
+            << ", Name: " << area.name 
+            << ", Type: Occupancy (enum: " << static_cast<int>(AreaType::Occupancy) << ")" << std::endl;
+
   return finalAreaId;
 }
 
@@ -143,7 +170,8 @@ std::string AreaStorage::createCrowdEstimationArea(
   std::string finalAreaId =
       areaId.empty() ? UUIDGenerator::generateUUID() : areaId;
 
-  if (hasArea(instanceId, finalAreaId)) {
+  auto [type, index] = findAreaIndex(instanceId, finalAreaId);
+  if (index != SIZE_MAX) {
     return "";
   }
 
@@ -157,6 +185,10 @@ std::string AreaStorage::createCrowdEstimationArea(
   storage_[instanceId][AreaType::CrowdEstimation].push_back(
       std::make_shared<CrowdEstimationArea>(area));
 
+  std::cerr << "[AreaStorage::createCrowdEstimationArea] DEBUG: Stored area ID: " << finalAreaId 
+            << ", Name: " << area.name 
+            << ", Type: CrowdEstimation (enum: " << static_cast<int>(AreaType::CrowdEstimation) << ")" << std::endl;
+
   return finalAreaId;
 }
 
@@ -168,7 +200,8 @@ std::string AreaStorage::createDwellingArea(const std::string &instanceId,
   std::string finalAreaId =
       areaId.empty() ? UUIDGenerator::generateUUID() : areaId;
 
-  if (hasArea(instanceId, finalAreaId)) {
+  auto [type, index] = findAreaIndex(instanceId, finalAreaId);
+  if (index != SIZE_MAX) {
     return "";
   }
 
@@ -183,6 +216,10 @@ std::string AreaStorage::createDwellingArea(const std::string &instanceId,
   storage_[instanceId][AreaType::Dwelling].push_back(
       std::make_shared<DwellingArea>(area));
 
+  std::cerr << "[AreaStorage::createDwellingArea] DEBUG: Stored area ID: " << finalAreaId 
+            << ", Name: " << area.name 
+            << ", Type: Dwelling (enum: " << static_cast<int>(AreaType::Dwelling) << ")" << std::endl;
+
   return finalAreaId;
 }
 
@@ -194,7 +231,8 @@ std::string AreaStorage::createArmedPersonArea(
   std::string finalAreaId =
       areaId.empty() ? UUIDGenerator::generateUUID() : areaId;
 
-  if (hasArea(instanceId, finalAreaId)) {
+  auto [type, index] = findAreaIndex(instanceId, finalAreaId);
+  if (index != SIZE_MAX) {
     return "";
   }
 
@@ -208,6 +246,10 @@ std::string AreaStorage::createArmedPersonArea(
   storage_[instanceId][AreaType::ArmedPerson].push_back(
       std::make_shared<ArmedPersonArea>(area));
 
+  std::cerr << "[AreaStorage::createArmedPersonArea] DEBUG: Stored area ID: " << finalAreaId 
+            << ", Name: " << area.name 
+            << ", Type: ArmedPerson (enum: " << static_cast<int>(AreaType::ArmedPerson) << ")" << std::endl;
+
   return finalAreaId;
 }
 
@@ -219,7 +261,8 @@ std::string AreaStorage::createObjectLeftArea(const std::string &instanceId,
   std::string finalAreaId =
       areaId.empty() ? UUIDGenerator::generateUUID() : areaId;
 
-  if (hasArea(instanceId, finalAreaId)) {
+  auto [type, index] = findAreaIndex(instanceId, finalAreaId);
+  if (index != SIZE_MAX) {
     return "";
   }
 
@@ -234,6 +277,10 @@ std::string AreaStorage::createObjectLeftArea(const std::string &instanceId,
   storage_[instanceId][AreaType::ObjectLeft].push_back(
       std::make_shared<ObjectLeftArea>(area));
 
+  std::cerr << "[AreaStorage::createObjectLeftArea] DEBUG: Stored area ID: " << finalAreaId 
+            << ", Name: " << area.name 
+            << ", Type: ObjectLeft (enum: " << static_cast<int>(AreaType::ObjectLeft) << ")" << std::endl;
+
   return finalAreaId;
 }
 
@@ -245,7 +292,8 @@ std::string AreaStorage::createObjectRemovedArea(
   std::string finalAreaId =
       areaId.empty() ? UUIDGenerator::generateUUID() : areaId;
 
-  if (hasArea(instanceId, finalAreaId)) {
+  auto [type, index] = findAreaIndex(instanceId, finalAreaId);
+  if (index != SIZE_MAX) {
     return "";
   }
 
@@ -260,6 +308,10 @@ std::string AreaStorage::createObjectRemovedArea(
   storage_[instanceId][AreaType::ObjectRemoved].push_back(
       std::make_shared<ObjectRemovedArea>(area));
 
+  std::cerr << "[AreaStorage::createObjectRemovedArea] DEBUG: Stored area ID: " << finalAreaId 
+            << ", Name: " << area.name 
+            << ", Type: ObjectRemoved (enum: " << static_cast<int>(AreaType::ObjectRemoved) << ")" << std::endl;
+
   return finalAreaId;
 }
 
@@ -271,7 +323,8 @@ std::string AreaStorage::createFallenPersonArea(
   std::string finalAreaId =
       areaId.empty() ? UUIDGenerator::generateUUID() : areaId;
 
-  if (hasArea(instanceId, finalAreaId)) {
+  auto [type, index] = findAreaIndex(instanceId, finalAreaId);
+  if (index != SIZE_MAX) {
     return "";
   }
 
@@ -285,6 +338,10 @@ std::string AreaStorage::createFallenPersonArea(
   storage_[instanceId][AreaType::FallenPerson].push_back(
       std::make_shared<FallenPersonArea>(area));
 
+  std::cerr << "[AreaStorage::createFallenPersonArea] DEBUG: Stored area ID: " << finalAreaId 
+            << ", Name: " << area.name 
+            << ", Type: FallenPerson (enum: " << static_cast<int>(AreaType::FallenPerson) << ")" << std::endl;
+
   return finalAreaId;
 }
 
@@ -296,7 +353,8 @@ std::string AreaStorage::createVehicleGuardArea(
   std::string finalAreaId =
       areaId.empty() ? UUIDGenerator::generateUUID() : areaId;
 
-  if (hasArea(instanceId, finalAreaId)) {
+  auto [type, index] = findAreaIndex(instanceId, finalAreaId);
+  if (index != SIZE_MAX) {
     return "";
   }
 
@@ -310,6 +368,10 @@ std::string AreaStorage::createVehicleGuardArea(
   storage_[instanceId][AreaType::VehicleGuard].push_back(
       std::make_shared<VehicleGuardArea>(area));
 
+  std::cerr << "[AreaStorage::createVehicleGuardArea] DEBUG: Stored area ID: " << finalAreaId 
+            << ", Name: " << area.name 
+            << ", Type: VehicleGuard (enum: " << static_cast<int>(AreaType::VehicleGuard) << ")" << std::endl;
+
   return finalAreaId;
 }
 
@@ -321,7 +383,8 @@ std::string AreaStorage::createFaceCoveredArea(
   std::string finalAreaId =
       areaId.empty() ? UUIDGenerator::generateUUID() : areaId;
 
-  if (hasArea(instanceId, finalAreaId)) {
+  auto [type, index] = findAreaIndex(instanceId, finalAreaId);
+  if (index != SIZE_MAX) {
     return "";
   }
 
@@ -335,6 +398,10 @@ std::string AreaStorage::createFaceCoveredArea(
   storage_[instanceId][AreaType::FaceCovered].push_back(
       std::make_shared<FaceCoveredArea>(area));
 
+  std::cerr << "[AreaStorage::createFaceCoveredArea] DEBUG: Stored area ID: " << finalAreaId 
+            << ", Name: " << area.name 
+            << ", Type: FaceCovered (enum: " << static_cast<int>(AreaType::FaceCovered) << ")" << std::endl;
+
   return finalAreaId;
 }
 
@@ -346,20 +413,38 @@ AreaStorage::getAllAreas(const std::string &instanceId) const {
 
   auto instanceIt = storage_.find(instanceId);
   if (instanceIt == storage_.end()) {
+    std::cerr << "[AreaStorage::getAllAreas] DEBUG: Instance " << instanceId << " not found in storage" << std::endl;
     return result; // Empty result
   }
 
+  std::cerr << "[AreaStorage::getAllAreas] DEBUG: Instance " << instanceId << " found. Total area types in storage: " << instanceIt->second.size() << std::endl;
+
   // Iterate through all area types
   for (const auto &[type, areas] : instanceIt->second) {
+    std::cerr << "[AreaStorage::getAllAreas] DEBUG: Found area type in storage - enum: " << static_cast<int>(type) << ", areas count: " << areas.size() << std::endl;
     std::string typeStr = areaTypeToString(type);
+    std::cerr << "[AreaStorage::getAllAreas] DEBUG: Converted enum " << static_cast<int>(type) << " to string: \"" << typeStr << "\"" << std::endl;
+    
     std::vector<Json::Value> areasJson;
 
     for (const auto &areaPtr : areas) {
-      areasJson.push_back(areaToJson(type, areaPtr));
+      Json::Value areaJson = areaToJson(type, areaPtr);
+      if (areaJson.isMember("id") && areaJson.isMember("name")) {
+        std::cerr << "[AreaStorage::getAllAreas] DEBUG:   - Area ID: " << areaJson["id"].asString() 
+                  << ", Name: " << areaJson["name"].asString() << std::endl;
+      }
+      areasJson.push_back(areaJson);
     }
 
     result[typeStr] = areasJson;
+    std::cerr << "[AreaStorage::getAllAreas] DEBUG: Added " << areasJson.size() << " areas to result with key: " << typeStr << std::endl;
   }
+
+  std::cerr << "[AreaStorage::getAllAreas] DEBUG: Final result map has " << result.size() << " keys: ";
+  for (const auto &[key, value] : result) {
+    std::cerr << key << "(" << value.size() << " areas) ";
+  }
+  std::cerr << std::endl;
 
   return result;
 }

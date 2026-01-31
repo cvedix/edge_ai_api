@@ -6,6 +6,7 @@
 #include "core/metrics_interceptor.h"
 #include <chrono>
 #include <drogon/HttpResponse.h>
+#include <iostream>
 
 AreaManager *AreaHandler::area_manager_ = nullptr;
 
@@ -23,11 +24,16 @@ void AreaHandler::createCrossingArea(
   auto start_time = std::chrono::steady_clock::now();
 
   if (isApiLoggingEnabled()) {
-    PLOG_INFO << "[API] POST /v1/securt/instance/{instanceId}/area/crossing";
+    PLOG_INFO << "[API] POST /v1/securt/instance/{instanceId}/area/crossing - Create crossing area";
+    PLOG_DEBUG << "[API] Request from: " << req->getPeerAddr().toIpPort();
+    PLOG_DEBUG << "[API] Request path: " << req->getPath();
   }
 
   try {
     if (!area_manager_) {
+      if (isApiLoggingEnabled()) {
+        PLOG_ERROR << "[API] POST /v1/securt/instance/{instanceId}/area/crossing - Error: Area manager not initialized";
+      }
       callback(createErrorResponse(500, "Internal server error",
                                    "Area manager not initialized"));
       return;
@@ -35,22 +41,55 @@ void AreaHandler::createCrossingArea(
 
     std::string instanceId = extractInstanceId(req);
     if (instanceId.empty()) {
+      if (isApiLoggingEnabled()) {
+        PLOG_WARNING << "[API] POST /v1/securt/instance/{instanceId}/area/crossing - Error: Instance ID is required";
+      }
       callback(createErrorResponse(400, "Invalid request",
                                    "Instance ID is required"));
       return;
     }
 
+    if (isApiLoggingEnabled()) {
+      PLOG_DEBUG << "[API] POST /v1/securt/instance/" << instanceId << "/area/crossing - Instance ID: " << instanceId;
+    }
+
     auto json = req->getJsonObject();
     if (!json) {
+      if (isApiLoggingEnabled()) {
+        PLOG_WARNING << "[API] POST /v1/securt/instance/" << instanceId << "/area/crossing - Error: Invalid JSON body";
+        PLOG_DEBUG << "[API] Request body: " << req->getBody();
+      }
       callback(createErrorResponse(400, "Invalid request",
                                    "Request body must be valid JSON"));
       return;
     }
 
+    if (isApiLoggingEnabled()) {
+      Json::StreamWriterBuilder builder;
+      builder["indentation"] = "";
+      std::string jsonStr = Json::writeString(builder, *json);
+      PLOG_DEBUG << "[API] POST /v1/securt/instance/" << instanceId << "/area/crossing - Request body: " << jsonStr;
+    }
+
     CrossingAreaWrite write = CrossingAreaWrite::fromJson(*json);
+    if (isApiLoggingEnabled()) {
+      PLOG_DEBUG << "[API] POST /v1/securt/instance/" << instanceId << "/area/crossing - Parsed area data - name: " << write.name
+                 << ", coordinates count: " << write.coordinates.size()
+                 << ", classes count: " << write.classes.size();
+    }
+
+    if (isApiLoggingEnabled()) {
+      PLOG_DEBUG << "[API] POST /v1/securt/instance/" << instanceId << "/area/crossing - Calling area_manager_->createCrossingArea()";
+    }
     std::string areaId = area_manager_->createCrossingArea(instanceId, write);
 
     if (areaId.empty()) {
+      auto end_time = std::chrono::steady_clock::now();
+      auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(
+          end_time - start_time);
+      if (isApiLoggingEnabled()) {
+        PLOG_WARNING << "[API] POST /v1/securt/instance/" << instanceId << "/area/crossing - Failed to create area - " << duration.count() << "ms";
+      }
       callback(createErrorResponse(400, "Invalid request",
                                    "Failed to create area. Check validation errors."));
       return;
@@ -58,6 +97,18 @@ void AreaHandler::createCrossingArea(
 
     Json::Value response;
     response["areaId"] = areaId;
+
+    auto end_time = std::chrono::steady_clock::now();
+    auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(
+        end_time - start_time);
+
+    if (isApiLoggingEnabled()) {
+      PLOG_INFO << "[API] POST /v1/securt/instance/" << instanceId << "/area/crossing - Success: Created area " << areaId << " - " << duration.count() << "ms";
+      Json::StreamWriterBuilder builder;
+      builder["indentation"] = "";
+      std::string responseStr = Json::writeString(builder, response);
+      PLOG_DEBUG << "[API] POST /v1/securt/instance/" << instanceId << "/area/crossing - Response: " << responseStr;
+    }
 
     auto resp = HttpResponse::newHttpJsonResponse(response);
     resp->setStatusCode(k201Created);
@@ -68,8 +119,20 @@ void AreaHandler::createCrossingArea(
     MetricsInterceptor::callWithMetrics(req, resp, std::move(callback));
 
   } catch (const std::exception &e) {
+    auto end_time = std::chrono::steady_clock::now();
+    auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(
+        end_time - start_time);
+    if (isApiLoggingEnabled()) {
+      PLOG_ERROR << "[API] POST /v1/securt/instance/{instanceId}/area/crossing - Exception: " << e.what() << " - " << duration.count() << "ms";
+    }
     callback(createErrorResponse(500, "Internal server error", e.what()));
   } catch (...) {
+    auto end_time = std::chrono::steady_clock::now();
+    auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(
+        end_time - start_time);
+    if (isApiLoggingEnabled()) {
+      PLOG_ERROR << "[API] POST /v1/securt/instance/{instanceId}/area/crossing - Unknown exception - " << duration.count() << "ms";
+    }
     callback(createErrorResponse(500, "Internal server error",
                                  "Unknown error occurred"));
   }
@@ -1295,8 +1358,19 @@ void AreaHandler::createFaceCoveredAreaWithId(
 void AreaHandler::getAllAreas(
     const HttpRequestPtr &req,
     std::function<void(const HttpResponsePtr &)> &&callback) {
+  auto start_time = std::chrono::steady_clock::now();
+
+  if (isApiLoggingEnabled()) {
+    PLOG_INFO << "[API] GET /v1/securt/instance/{instanceId}/areas - Get all areas";
+    PLOG_DEBUG << "[API] Request from: " << req->getPeerAddr().toIpPort();
+    PLOG_DEBUG << "[API] Request path: " << req->getPath();
+  }
+
   try {
     if (!area_manager_) {
+      if (isApiLoggingEnabled()) {
+        PLOG_ERROR << "[API] GET /v1/securt/instance/{instanceId}/areas - Error: Area manager not initialized";
+      }
       callback(createErrorResponse(500, "Internal server error",
                                    "Area manager not initialized"));
       return;
@@ -1304,28 +1378,76 @@ void AreaHandler::getAllAreas(
 
     std::string instanceId = extractInstanceId(req);
     if (instanceId.empty()) {
+      if (isApiLoggingEnabled()) {
+        PLOG_WARNING << "[API] GET /v1/securt/instance/{instanceId}/areas - Error: Instance ID is required";
+      }
       callback(createErrorResponse(400, "Invalid request",
                                    "Instance ID is required"));
       return;
     }
 
+    if (isApiLoggingEnabled()) {
+      PLOG_DEBUG << "[API] GET /v1/securt/instance/" << instanceId << "/areas - Instance ID: " << instanceId;
+      PLOG_DEBUG << "[API] GET /v1/securt/instance/" << instanceId << "/areas - Calling area_manager_->getAllAreas()";
+    }
+
     auto areasMap = area_manager_->getAllAreas(instanceId);
+
+    std::cerr << "[AreaHandler::getAllAreas] DEBUG: Received areasMap from area_manager with " << areasMap.size() << " keys" << std::endl;
+    for (const auto &[type, areas] : areasMap) {
+      std::cerr << "[AreaHandler::getAllAreas] DEBUG:   - Key: \"" << type << "\" has " << areas.size() << " areas" << std::endl;
+    }
 
     // Convert to JSON response
     Json::Value response;
+    size_t totalAreas = 0;
     for (const auto &[type, areas] : areasMap) {
+      std::cerr << "[AreaHandler::getAllAreas] DEBUG: Processing type key: \"" << type << "\" with " << areas.size() << " areas" << std::endl;
       Json::Value areasArray(Json::arrayValue);
       for (const auto &area : areas) {
+        if (area.isMember("id") && area.isMember("name")) {
+          std::cerr << "[AreaHandler::getAllAreas] DEBUG:     - Adding area ID: " << area["id"].asString() 
+                    << ", Name: " << area["name"].asString() << " to key: \"" << type << "\"" << std::endl;
+        }
         areasArray.append(area);
       }
       response[type] = areasArray;
+      totalAreas += areas.size();
+      std::cerr << "[AreaHandler::getAllAreas] DEBUG: Added " << areasArray.size() << " areas to response with key: \"" << type << "\"" << std::endl;
+    }
+
+    std::cerr << "[AreaHandler::getAllAreas] DEBUG: Final response JSON has " << response.size() << " keys: ";
+    for (const auto &key : response.getMemberNames()) {
+      std::cerr << "\"" << key << "\"(" << response[key].size() << " areas) ";
+    }
+    std::cerr << std::endl;
+
+    auto end_time = std::chrono::steady_clock::now();
+    auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(
+        end_time - start_time);
+
+    if (isApiLoggingEnabled()) {
+      PLOG_INFO << "[API] GET /v1/securt/instance/" << instanceId << "/areas - Success: Found " << totalAreas << " areas - " << duration.count() << "ms";
+      PLOG_DEBUG << "[API] GET /v1/securt/instance/" << instanceId << "/areas - Area types: " << areasMap.size();
     }
 
     callback(createSuccessResponse(response));
 
   } catch (const std::exception &e) {
+    auto end_time = std::chrono::steady_clock::now();
+    auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(
+        end_time - start_time);
+    if (isApiLoggingEnabled()) {
+      PLOG_ERROR << "[API] GET /v1/securt/instance/{instanceId}/areas - Exception: " << e.what() << " - " << duration.count() << "ms";
+    }
     callback(createErrorResponse(500, "Internal server error", e.what()));
   } catch (...) {
+    auto end_time = std::chrono::steady_clock::now();
+    auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(
+        end_time - start_time);
+    if (isApiLoggingEnabled()) {
+      PLOG_ERROR << "[API] GET /v1/securt/instance/{instanceId}/areas - Unknown exception - " << duration.count() << "ms";
+    }
     callback(createErrorResponse(500, "Internal server error",
                                  "Unknown error occurred"));
   }
@@ -1334,8 +1456,19 @@ void AreaHandler::getAllAreas(
 void AreaHandler::deleteAllAreas(
     const HttpRequestPtr &req,
     std::function<void(const HttpResponsePtr &)> &&callback) {
+  auto start_time = std::chrono::steady_clock::now();
+
+  if (isApiLoggingEnabled()) {
+    PLOG_INFO << "[API] DELETE /v1/securt/instance/{instanceId}/areas - Delete all areas";
+    PLOG_DEBUG << "[API] Request from: " << req->getPeerAddr().toIpPort();
+    PLOG_DEBUG << "[API] Request path: " << req->getPath();
+  }
+
   try {
     if (!area_manager_) {
+      if (isApiLoggingEnabled()) {
+        PLOG_ERROR << "[API] DELETE /v1/securt/instance/{instanceId}/areas - Error: Area manager not initialized";
+      }
       callback(createErrorResponse(500, "Internal server error",
                                    "Area manager not initialized"));
       return;
@@ -1343,16 +1476,38 @@ void AreaHandler::deleteAllAreas(
 
     std::string instanceId = extractInstanceId(req);
     if (instanceId.empty()) {
+      if (isApiLoggingEnabled()) {
+        PLOG_WARNING << "[API] DELETE /v1/securt/instance/{instanceId}/areas - Error: Instance ID is required";
+      }
       callback(createErrorResponse(400, "Invalid request",
                                    "Instance ID is required"));
       return;
     }
 
+    if (isApiLoggingEnabled()) {
+      PLOG_DEBUG << "[API] DELETE /v1/securt/instance/" << instanceId << "/areas - Instance ID: " << instanceId;
+      PLOG_DEBUG << "[API] DELETE /v1/securt/instance/" << instanceId << "/areas - Calling area_manager_->deleteAllAreas()";
+    }
+
     bool success = area_manager_->deleteAllAreas(instanceId);
     if (!success) {
+      auto end_time = std::chrono::steady_clock::now();
+      auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(
+          end_time - start_time);
+      if (isApiLoggingEnabled()) {
+        PLOG_WARNING << "[API] DELETE /v1/securt/instance/" << instanceId << "/areas - Instance not found - " << duration.count() << "ms";
+      }
       callback(createErrorResponse(404, "Not Found",
                                    "Instance not found"));
       return;
+    }
+
+    auto end_time = std::chrono::steady_clock::now();
+    auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(
+        end_time - start_time);
+
+    if (isApiLoggingEnabled()) {
+      PLOG_INFO << "[API] DELETE /v1/securt/instance/" << instanceId << "/areas - Success: Deleted all areas - " << duration.count() << "ms";
     }
 
     auto resp = HttpResponse::newHttpResponse();
@@ -1364,8 +1519,20 @@ void AreaHandler::deleteAllAreas(
     MetricsInterceptor::callWithMetrics(req, resp, std::move(callback));
 
   } catch (const std::exception &e) {
+    auto end_time = std::chrono::steady_clock::now();
+    auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(
+        end_time - start_time);
+    if (isApiLoggingEnabled()) {
+      PLOG_ERROR << "[API] DELETE /v1/securt/instance/{instanceId}/areas - Exception: " << e.what() << " - " << duration.count() << "ms";
+    }
     callback(createErrorResponse(500, "Internal server error", e.what()));
   } catch (...) {
+    auto end_time = std::chrono::steady_clock::now();
+    auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(
+        end_time - start_time);
+    if (isApiLoggingEnabled()) {
+      PLOG_ERROR << "[API] DELETE /v1/securt/instance/{instanceId}/areas - Unknown exception - " << duration.count() << "ms";
+    }
     callback(createErrorResponse(500, "Internal server error",
                                  "Unknown error occurred"));
   }
@@ -1374,8 +1541,19 @@ void AreaHandler::deleteAllAreas(
 void AreaHandler::deleteArea(
     const HttpRequestPtr &req,
     std::function<void(const HttpResponsePtr &)> &&callback) {
+  auto start_time = std::chrono::steady_clock::now();
+
+  if (isApiLoggingEnabled()) {
+    PLOG_INFO << "[API] DELETE /v1/securt/instance/{instanceId}/area/{areaId} - Delete area";
+    PLOG_DEBUG << "[API] Request from: " << req->getPeerAddr().toIpPort();
+    PLOG_DEBUG << "[API] Request path: " << req->getPath();
+  }
+
   try {
     if (!area_manager_) {
+      if (isApiLoggingEnabled()) {
+        PLOG_ERROR << "[API] DELETE /v1/securt/instance/{instanceId}/area/{areaId} - Error: Area manager not initialized";
+      }
       callback(createErrorResponse(500, "Internal server error",
                                    "Area manager not initialized"));
       return;
@@ -1385,16 +1563,44 @@ void AreaHandler::deleteArea(
     std::string areaId = extractAreaId(req);
 
     if (instanceId.empty() || areaId.empty()) {
+      if (isApiLoggingEnabled()) {
+        PLOG_WARNING << "[API] DELETE /v1/securt/instance/{instanceId}/area/{areaId} - Error: Instance ID and Area ID are required";
+        PLOG_DEBUG << "[API] Instance ID: " << (instanceId.empty() ? "empty" : instanceId)
+                   << ", Area ID: " << (areaId.empty() ? "empty" : areaId);
+      }
       callback(createErrorResponse(400, "Invalid request",
                                    "Instance ID and Area ID are required"));
       return;
     }
 
+    if (isApiLoggingEnabled()) {
+      PLOG_DEBUG << "[API] DELETE /v1/securt/instance/" << instanceId << "/area/" << areaId
+                 << " - Instance ID: " << instanceId << ", Area ID: " << areaId;
+      PLOG_DEBUG << "[API] DELETE /v1/securt/instance/" << instanceId << "/area/" << areaId
+                 << " - Calling area_manager_->deleteArea()";
+    }
+
     bool success = area_manager_->deleteArea(instanceId, areaId);
     if (!success) {
+      auto end_time = std::chrono::steady_clock::now();
+      auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(
+          end_time - start_time);
+      if (isApiLoggingEnabled()) {
+        PLOG_WARNING << "[API] DELETE /v1/securt/instance/" << instanceId << "/area/" << areaId
+                     << " - Area not found - " << duration.count() << "ms";
+      }
       callback(createErrorResponse(404, "Not Found",
                                    "Area not found"));
       return;
+    }
+
+    auto end_time = std::chrono::steady_clock::now();
+    auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(
+        end_time - start_time);
+
+    if (isApiLoggingEnabled()) {
+      PLOG_INFO << "[API] DELETE /v1/securt/instance/" << instanceId << "/area/" << areaId
+                << " - Success: Deleted area - " << duration.count() << "ms";
     }
 
     auto resp = HttpResponse::newHttpResponse();
@@ -1406,8 +1612,20 @@ void AreaHandler::deleteArea(
     MetricsInterceptor::callWithMetrics(req, resp, std::move(callback));
 
   } catch (const std::exception &e) {
+    auto end_time = std::chrono::steady_clock::now();
+    auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(
+        end_time - start_time);
+    if (isApiLoggingEnabled()) {
+      PLOG_ERROR << "[API] DELETE /v1/securt/instance/{instanceId}/area/{areaId} - Exception: " << e.what() << " - " << duration.count() << "ms";
+    }
     callback(createErrorResponse(500, "Internal server error", e.what()));
   } catch (...) {
+    auto end_time = std::chrono::steady_clock::now();
+    auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(
+        end_time - start_time);
+    if (isApiLoggingEnabled()) {
+      PLOG_ERROR << "[API] DELETE /v1/securt/instance/{instanceId}/area/{areaId} - Unknown exception - " << duration.count() << "ms";
+    }
     callback(createErrorResponse(500, "Internal server error",
                                  "Unknown error occurred"));
   }
@@ -1437,6 +1655,8 @@ std::string AreaHandler::extractInstanceId(const HttpRequestPtr &req) const {
   std::string instanceId = req->getParameter("instanceId");
   if (instanceId.empty()) {
     std::string path = req->getPath();
+    std::cerr << "[AreaHandler::extractInstanceId] DEBUG: Path: " << path << std::endl;
+    
     size_t instancePos = path.find("/securt/instance/");
     if (instancePos != std::string::npos) {
       size_t start = instancePos + 17; // length of "/securt/instance/"
@@ -1445,7 +1665,12 @@ std::string AreaHandler::extractInstanceId(const HttpRequestPtr &req) const {
         end = path.length();
       }
       instanceId = path.substr(start, end - start);
+      std::cerr << "[AreaHandler::extractInstanceId] DEBUG: Extracted instanceId: " << instanceId << std::endl;
+    } else {
+      std::cerr << "[AreaHandler::extractInstanceId] DEBUG: /securt/instance/ not found in path" << std::endl;
     }
+  } else {
+    std::cerr << "[AreaHandler::extractInstanceId] DEBUG: Got instanceId from parameter: " << instanceId << std::endl;
   }
   return instanceId;
 }
@@ -1454,21 +1679,36 @@ std::string AreaHandler::extractAreaId(const HttpRequestPtr &req) const {
   std::string areaId = req->getParameter("areaId");
   if (areaId.empty()) {
     std::string path = req->getPath();
-    // Try to find area ID after area type
-    // Pattern: /v1/securt/instance/{instanceId}/area/{areaType}/{areaId}
+    std::cerr << "[AreaHandler::extractAreaId] DEBUG: Path: " << path << std::endl;
+    
+    // Try to find area ID
+    // Pattern 1: /v1/securt/instance/{instanceId}/area/{areaId} (for DELETE)
+    // Pattern 2: /v1/securt/instance/{instanceId}/area/{areaType}/{areaId} (for PUT with ID)
     size_t areaPos = path.find("/area/");
     if (areaPos != std::string::npos) {
       size_t start = areaPos + 6; // length of "/area/"
+      std::cerr << "[AreaHandler::extractAreaId] DEBUG: Found /area/ at position " << areaPos << ", start = " << start << std::endl;
+      
       size_t nextSlash = path.find("/", start);
       if (nextSlash != std::string::npos) {
+        // Pattern 2: /area/{areaType}/{areaId}
         size_t areaIdStart = nextSlash + 1;
         size_t areaIdEnd = path.find("/", areaIdStart);
         if (areaIdEnd == std::string::npos) {
           areaIdEnd = path.length();
         }
         areaId = path.substr(areaIdStart, areaIdEnd - areaIdStart);
+        std::cerr << "[AreaHandler::extractAreaId] DEBUG: Pattern 2 detected, extracted areaId: " << areaId << std::endl;
+      } else {
+        // Pattern 1: /area/{areaId} - areaId is directly after /area/
+        areaId = path.substr(start);
+        std::cerr << "[AreaHandler::extractAreaId] DEBUG: Pattern 1 detected, extracted areaId: " << areaId << std::endl;
       }
+    } else {
+      std::cerr << "[AreaHandler::extractAreaId] DEBUG: /area/ not found in path" << std::endl;
     }
+  } else {
+    std::cerr << "[AreaHandler::extractAreaId] DEBUG: Got areaId from parameter: " << areaId << std::endl;
   }
   return areaId;
 }

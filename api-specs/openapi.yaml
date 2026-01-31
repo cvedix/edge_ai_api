@@ -11252,7 +11252,7 @@ paths:
   /v1/securt/instance/{instanceId}/areas:
     get:
       summary: Get analytics areas for SecuRT instance
-      description: Returns all analytics areas configured for a SecuRT instance. This includes crossing areas, intrusion areas, loitering areas, crowding areas, occupancy areas, crowd estimation areas, dwelling areas, armed person areas, object left areas, object removed areas, and fallen person areas.
+      description: Returns all analytics areas configured for a SecuRT instance. This includes crossing areas, intrusion areas, loitering areas, crowding areas, occupancy areas, crowd estimation areas, dwelling areas, armed person areas, object left areas, object removed areas, fallen person areas, vehicle guard areas (experimental), and face covered areas (experimental).
       operationId: getSecuRTAreas
       tags:
       - Area SecuRT
@@ -11326,6 +11326,16 @@ paths:
                     description: Fallen person areas
                     items:
                       $ref: '#/components/schemas/FallenPersonAreaRead'
+                  vehicleGuard:
+                    type: array
+                    description: Vehicle guard areas (experimental)
+                    items:
+                      $ref: '#/components/schemas/VehicleGuardAreaRead'
+                  faceCovered:
+                    type: array
+                    description: Face covered areas (experimental)
+                    items:
+                      $ref: '#/components/schemas/FaceCoveredAreaRead'
               example:
                 crossing: []
                 intrusion: []
@@ -11338,6 +11348,8 @@ paths:
                 objectLeft: []
                 objectRemoved: []
                 fallenPerson: []
+                vehicleGuard: []
+                faceCovered: []
         '400':
           description: Invalid request
           content:
@@ -12539,6 +12551,226 @@ paths:
     options:
       summary: CORS preflight for fallen person area
       operationId: createFallenPersonAreaOptions
+      tags:
+      - Area SecuRT
+      responses:
+        '200':
+          description: CORS preflight response
+  /v1/securt/instance/{instanceId}/area/vehicleGuard:
+    post:
+      summary: Create vehicle guard area (experimental)
+      description: Creates a new vehicle guard area for a SecuRT instance. This is an experimental feature.
+      operationId: createVehicleGuardArea
+      tags:
+      - Area SecuRT
+      parameters:
+      - name: instanceId
+        in: path
+        required: true
+        schema:
+          type: string
+        description: Instance ID
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/VehicleGuardAreaWrite'
+      responses:
+        '201':
+          description: Vehicle guard area created successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  areaId:
+                    type: string
+                    description: Created area ID
+                    example: 550e8400-e29b-41d4-a716-446655440000
+        '400':
+          description: Invalid request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: Instance not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+    put:
+      summary: Create vehicle guard area with ID (experimental)
+      description: Creates a new vehicle guard area with a specific ID for a SecuRT instance. This is an experimental feature.
+      operationId: createVehicleGuardAreaWithId
+      tags:
+      - Area SecuRT
+      parameters:
+      - name: instanceId
+        in: path
+        required: true
+        schema:
+          type: string
+        description: Instance ID
+      - name: areaId
+        in: path
+        required: true
+        schema:
+          type: string
+        description: Area ID
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/VehicleGuardAreaWrite'
+      responses:
+        '201':
+          description: Vehicle guard area created successfully
+        '400':
+          description: Invalid request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '409':
+          description: Area already exists
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: Instance not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+    options:
+      summary: CORS preflight for vehicle guard area
+      operationId: createVehicleGuardAreaOptions
+      tags:
+      - Area SecuRT
+      responses:
+        '200':
+          description: CORS preflight response
+  /v1/securt/instance/{instanceId}/area/faceCovered:
+    post:
+      summary: Create face covered area (experimental)
+      description: Creates a new face covered area for a SecuRT instance. This is an experimental feature.
+      operationId: createFaceCoveredArea
+      tags:
+      - Area SecuRT
+      parameters:
+      - name: instanceId
+        in: path
+        required: true
+        schema:
+          type: string
+        description: Instance ID
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/FaceCoveredAreaWrite'
+      responses:
+        '201':
+          description: Face covered area created successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  areaId:
+                    type: string
+                    description: Created area ID
+                    example: 550e8400-e29b-41d4-a716-446655440000
+        '400':
+          description: Invalid request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: Instance not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+    put:
+      summary: Create face covered area with ID (experimental)
+      description: Creates a new face covered area with a specific ID for a SecuRT instance. This is an experimental feature.
+      operationId: createFaceCoveredAreaWithId
+      tags:
+      - Area SecuRT
+      parameters:
+      - name: instanceId
+        in: path
+        required: true
+        schema:
+          type: string
+        description: Instance ID
+      - name: areaId
+        in: path
+        required: true
+        schema:
+          type: string
+        description: Area ID
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/FaceCoveredAreaWrite'
+      responses:
+        '201':
+          description: Face covered area created successfully
+        '400':
+          description: Invalid request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '409':
+          description: Area already exists
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: Instance not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+    options:
+      summary: CORS preflight for face covered area
+      operationId: createFaceCoveredAreaOptions
       tags:
       - Area SecuRT
       responses:

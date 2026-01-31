@@ -5,7 +5,7 @@
 #include <string>
 
 // CVEDIX SDK public headers
-#include <cvedix/cvedix_version.h>
+// #include <cvedix/cvedix_version.h>  // File not available in cvedix-ai-runtime SDK
 #include <cvedix/nodes/ba/cvedix_ba_crossline_node.h>
 #include <cvedix/nodes/des/cvedix_rtmp_des_node.h>
 #include <cvedix/nodes/des/cvedix_screen_des_node.h>
@@ -74,9 +74,10 @@ int main() {
   std::cout << "========================================" << std::endl;
   std::cout << "CVEDIX SDK - RTSP Crossline Sample" << std::endl;
   std::cout << "========================================" << std::endl;
-  std::cout << "Version: " << CVEDIX_VERSION << std::endl;
-  std::cout << "Build Time: " << CVEDIX_BUILD_TIME << std::endl;
-  std::cout << "Git Commit: " << CVEDIX_GIT_COMMIT << std::endl;
+  // Version info not available in cvedix-ai-runtime SDK
+  // std::cout << "Version: " << CVEDIX_VERSION << std::endl;
+  // std::cout << "Build Time: " << CVEDIX_BUILD_TIME << std::endl;
+  // std::cout << "Git Commit: " << CVEDIX_GIT_COMMIT << std::endl;
   std::cout << std::endl;
 
   // RTSP / RTMP configuration
