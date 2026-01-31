@@ -2604,15 +2604,11 @@ int main(int argc, char *argv[]) {
     static AnalyticsEntitiesManager analyticsEntitiesManager;
     static SecuRTLineManager securtLineManager;
 
-<<<<<<< HEAD
-    // Register SecuRT managers with handlers
-=======
     // Initialize Area storage and manager
     static AreaStorage areaStorage;
     static AreaManager areaManager(&areaStorage, &securtInstanceManager);
 
-    // Register SecuRT managers with handler
->>>>>>> origin/develop
+    // Register SecuRT managers with handlers
     SecuRTHandler::setInstanceManager(&securtInstanceManager);
     SecuRTHandler::setAnalyticsEntitiesManager(&analyticsEntitiesManager);
     SecuRTLineHandler::setInstanceManager(&securtInstanceManager);
@@ -2636,11 +2632,8 @@ int main(int argc, char *argv[]) {
     static JamsHandler jamsHandler;
     static StopsHandler stopsHandler;
     static SecuRTHandler securtHandler;
-<<<<<<< HEAD
     static SecuRTLineHandler securtLineHandler;
-=======
     static AreaHandler areaHandler;
->>>>>>> origin/develop
 
     // Initialize model upload handler with configurable directory
     // Priority: 1. MODELS_DIR env var, 2. /opt/edge_ai_api/models (with

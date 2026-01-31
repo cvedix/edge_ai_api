@@ -126,6 +126,8 @@ target_sources(edge_ai_api_tests PRIVATE
     ${CMAKE_SOURCE_DIR}/src/core/securt_instance_manager.cpp
     ${CMAKE_SOURCE_DIR}/src/core/securt_instance_registry.cpp
     ${CMAKE_SOURCE_DIR}/src/core/securt_statistics_collector.cpp
+    ${CMAKE_SOURCE_DIR}/src/core/securt_line_manager.cpp
+    ${CMAKE_SOURCE_DIR}/src/core/securt_line_storage.cpp
     ${CMAKE_SOURCE_DIR}/src/core/area_manager.cpp
     ${CMAKE_SOURCE_DIR}/src/core/area_storage.cpp
     ${CMAKE_SOURCE_DIR}/src/core/analytics_entities_manager.cpp
