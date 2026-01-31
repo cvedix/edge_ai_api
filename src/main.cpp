@@ -22,8 +22,10 @@
 #include "api/solution_handler.h"
 #include "api/stops_handler.h"
 #include "api/securt_handler.h"
+#include "api/securt_line_handler.h"
 #include "api/area_handler.h"
 #include "core/securt_instance_manager.h"
+#include "core/securt_line_manager.h"
 #include "core/analytics_entities_manager.h"
 #include "core/area_storage.h"
 #include "core/area_manager.h"
@@ -2600,14 +2602,18 @@ int main(int argc, char *argv[]) {
     // Initialize SecuRT instance manager and analytics entities manager
     static SecuRTInstanceManager securtInstanceManager(instanceManager.get());
     static AnalyticsEntitiesManager analyticsEntitiesManager;
+    static SecuRTLineManager securtLineManager;
 
     // Initialize Area storage and manager
     static AreaStorage areaStorage;
     static AreaManager areaManager(&areaStorage, &securtInstanceManager);
 
-    // Register SecuRT managers with handler
+    // Register SecuRT managers with handlers
     SecuRTHandler::setInstanceManager(&securtInstanceManager);
     SecuRTHandler::setAnalyticsEntitiesManager(&analyticsEntitiesManager);
+    SecuRTLineHandler::setInstanceManager(&securtInstanceManager);
+    SecuRTLineHandler::setLineManager(&securtLineManager);
+    analyticsEntitiesManager.setLineManager(&securtLineManager);
 
     // Register Area manager with handler and analytics entities manager
     AreaHandler::setAreaManager(&areaManager);
@@ -2626,6 +2632,7 @@ int main(int argc, char *argv[]) {
     static JamsHandler jamsHandler;
     static StopsHandler stopsHandler;
     static SecuRTHandler securtHandler;
+    static SecuRTLineHandler securtLineHandler;
     static AreaHandler areaHandler;
 
     // Initialize model upload handler with configurable directory

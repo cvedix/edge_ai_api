@@ -5,6 +5,7 @@
 
 // Forward declarations
 class AreaManager;
+class SecuRTLineManager;
 
 /**
  * @brief Analytics Entities Manager
@@ -19,6 +20,10 @@ public:
    */
   static void setAreaManager(AreaManager *manager);
 
+  /**
+   * @brief Set line manager (dependency injection)
+   */
+  void setLineManager(SecuRTLineManager *manager);
   /**
    * @brief Get all analytics entities for an instance
    * @param instanceId Instance ID
@@ -127,5 +132,6 @@ private:
 
 private:
   static AreaManager *area_manager_;
+  SecuRTLineManager *line_manager_ = nullptr;
 };
 

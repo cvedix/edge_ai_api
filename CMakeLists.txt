@@ -266,6 +266,7 @@ set(SOURCES
     src/api/jams_handler.cpp
     src/api/stops_handler.cpp
     src/api/securt_handler.cpp
+    src/api/securt_line_handler.cpp
     src/api/area_handler.cpp
     src/api/node_handler.cpp
     src/api/recognition_handler.cpp
@@ -1132,6 +1133,8 @@ set(CORE_LIB_SOURCES
     src/core/securt_instance_registry.cpp
     src/core/securt_statistics_collector.cpp
     src/core/securt_instance_manager.cpp
+    src/core/securt_line_storage.cpp
+    src/core/securt_line_manager.cpp
     src/core/analytics_entities_manager.cpp
     src/core/area_storage.cpp
     src/core/area_manager.cpp
