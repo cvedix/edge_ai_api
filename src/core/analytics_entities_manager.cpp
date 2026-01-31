@@ -1,9 +1,7 @@
 #include "core/analytics_entities_manager.h"
+#include "core/securt_line_manager.h"
 #include "instances/instance_manager.h"
 #include <iostream>
-
-// Forward declaration - will be implemented when Areas/Lines managers are ready
-// For now, return empty arrays as placeholders
 
 Json::Value AnalyticsEntitiesManager::getAnalyticsEntities(
     const std::string &instanceId) const {
@@ -107,25 +105,34 @@ Json::Value AnalyticsEntitiesManager::getFallenPersonAreas(
   return areas;
 }
 
+void AnalyticsEntitiesManager::setLineManager(SecuRTLineManager *manager) {
+  line_manager_ = manager;
+}
+
 Json::Value AnalyticsEntitiesManager::getCrossingLines(
     const std::string &instanceId) const {
-  // TODO: Integrate with Lines manager when available (TASK-009)
-  // For now, we can try to use existing LinesHandler if instance supports it
-  Json::Value lines(Json::arrayValue);
-  return lines;
+  if (!line_manager_) {
+    Json::Value lines(Json::arrayValue);
+    return lines;
+  }
+  return line_manager_->getCrossingLines(instanceId);
 }
 
 Json::Value AnalyticsEntitiesManager::getCountingLines(
     const std::string &instanceId) const {
-  // TODO: Integrate with Lines manager when available (TASK-009)
-  Json::Value lines(Json::arrayValue);
-  return lines;
+  if (!line_manager_) {
+    Json::Value lines(Json::arrayValue);
+    return lines;
+  }
+  return line_manager_->getCountingLines(instanceId);
 }
 
 Json::Value AnalyticsEntitiesManager::getTailgatingLines(
     const std::string &instanceId) const {
-  // TODO: Integrate with Lines manager when available (TASK-009)
-  Json::Value lines(Json::arrayValue);
-  return lines;
+  if (!line_manager_) {
+    Json::Value lines(Json::arrayValue);
+    return lines;
+  }
+  return line_manager_->getTailgatingLines(instanceId);
 }
 

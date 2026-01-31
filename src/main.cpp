@@ -21,7 +21,10 @@
 #include "api/solution_handler.h"
 #include "api/stops_handler.h"
 #include "api/securt_handler.h"
+#include "api/securt_line_handler.h"
+#include "core/analytics_entities_manager.h"
 #include "core/securt_instance_manager.h"
+#include "core/securt_line_manager.h"
 #include "core/analytics_entities_manager.h"
 #ifdef ENABLE_METRICS_HANDLER
 #include "api/metrics_handler.h"
@@ -2595,10 +2598,14 @@ int main(int argc, char *argv[]) {
     // Initialize SecuRT instance manager and analytics entities manager
     static SecuRTInstanceManager securtInstanceManager(instanceManager.get());
     static AnalyticsEntitiesManager analyticsEntitiesManager;
+    static SecuRTLineManager securtLineManager;
 
-    // Register SecuRT managers with handler
+    // Register SecuRT managers with handlers
     SecuRTHandler::setInstanceManager(&securtInstanceManager);
     SecuRTHandler::setAnalyticsEntitiesManager(&analyticsEntitiesManager);
+    SecuRTLineHandler::setInstanceManager(&securtInstanceManager);
+    SecuRTLineHandler::setLineManager(&securtLineManager);
+    analyticsEntitiesManager.setLineManager(&securtLineManager);
 
     // CRITICAL: Create handler instances AFTER dependencies are set
     // This ensures handlers are ready when Drogon registers routes
@@ -2613,6 +2620,7 @@ int main(int argc, char *argv[]) {
     static JamsHandler jamsHandler;
     static StopsHandler stopsHandler;
     static SecuRTHandler securtHandler;
+    static SecuRTLineHandler securtLineHandler;
 
     // Initialize model upload handler with configurable directory
     // Priority: 1. MODELS_DIR env var, 2. /opt/edge_ai_api/models (with
