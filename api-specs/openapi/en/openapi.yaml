@@ -8399,7 +8399,7 @@ paths:
         '
       operationId: getAllLines
       tags:
-      - Lines
+      - Lines Core
       parameters:
       - name: instanceId
         in: path
@@ -8446,7 +8446,7 @@ paths:
         '
       operationId: createLine
       tags:
-      - Lines
+      - Lines Core
       parameters:
       - name: instanceId
         in: path
@@ -8564,7 +8564,7 @@ paths:
         '
       operationId: deleteAllLines
       tags:
-      - Lines
+      - Lines Core
       parameters:
       - name: instanceId
         in: path
@@ -8600,7 +8600,7 @@ paths:
       summary: CORS preflight for lines endpoints
       operationId: linesOptions
       tags:
-      - Lines
+      - Lines Core
       responses:
         '200':
           description: CORS preflight response
@@ -8612,7 +8612,7 @@ paths:
         '
       operationId: getLine
       tags:
-      - Lines
+      - Lines Core
       parameters:
       - name: instanceId
         in: path
@@ -8659,7 +8659,7 @@ paths:
         '
       operationId: updateLine
       tags:
-      - Lines
+      - Lines Core
       parameters:
       - name: instanceId
         in: path
@@ -8735,7 +8735,7 @@ paths:
         '
       operationId: deleteLine
       tags:
-      - Lines
+      - Lines Core
       parameters:
       - name: instanceId
         in: path
@@ -8778,7 +8778,7 @@ paths:
       summary: CORS preflight for line endpoints
       operationId: lineOptions
       tags:
-      - Lines
+      - Lines Core
       responses:
         '200':
           description: CORS preflight response
@@ -8791,7 +8791,7 @@ paths:
         '
       operationId: getAllJams
       tags:
-      - Area
+      - Area Core
       parameters:
       - name: instanceId
         in: path
@@ -8837,7 +8837,7 @@ paths:
         '
       operationId: createJam
       tags:
-      - Area
+      - Area Core
       parameters:
       - name: instanceId
         in: path
@@ -8946,7 +8946,7 @@ paths:
         '
       operationId: deleteAllJams
       tags:
-      - Area
+      - Area Core
       parameters:
       - name: instanceId
         in: path
@@ -8982,7 +8982,7 @@ paths:
       summary: CORS preflight for jams endpoints
       operationId: jamsOptions
       tags:
-      - Area
+      - Area Core
       responses:
         '200':
           description: CORS preflight response
@@ -8994,7 +8994,7 @@ paths:
         '
       operationId: getJam
       tags:
-      - Area
+      - Area Core
       parameters:
       - name: instanceId
         in: path
@@ -9036,7 +9036,7 @@ paths:
         '
       operationId: updateJam
       tags:
-      - Area
+      - Area Core
       parameters:
       - name: instanceId
         in: path
@@ -9094,7 +9094,7 @@ paths:
         '
       operationId: deleteJam
       tags:
-      - Area
+      - Area Core
       parameters:
       - name: instanceId
         in: path
@@ -9143,7 +9143,7 @@ paths:
         '
       operationId: getAllStops
       tags:
-      - Area
+      - Area Core
       parameters:
       - name: instanceId
         in: path
@@ -9188,7 +9188,7 @@ paths:
         '
       operationId: createStop
       tags:
-      - Area
+      - Area Core
       parameters:
       - name: instanceId
         in: path
@@ -9299,7 +9299,7 @@ paths:
         '
       operationId: deleteAllStops
       tags:
-      - Area
+      - Area Core
       parameters:
       - name: instanceId
         in: path
@@ -9335,7 +9335,7 @@ paths:
       summary: CORS preflight for stops endpoints
       operationId: stopsOptions
       tags:
-      - Area
+      - Area Core
       responses:
         '200':
           description: CORS preflight response
@@ -9347,7 +9347,7 @@ paths:
         '
       operationId: getStop
       tags:
-      - Area
+      - Area Core
       parameters:
       - name: instanceId
         in: path
@@ -9392,7 +9392,7 @@ paths:
         '
       operationId: updateStop
       tags:
-      - Area
+      - Area Core
       parameters:
       - name: instanceId
         in: path
@@ -9424,7 +9424,7 @@ paths:
         '
       operationId: deleteStop
       tags:
-      - Area
+      - Area Core
       parameters:
       - name: instanceId
         in: path
@@ -9467,7 +9467,7 @@ paths:
       summary: CORS preflight for stops detail endpoint
       operationId: stopOptions
       tags:
-      - Area
+      - Area Core
       responses:
         '200':
           description: CORS preflight response
@@ -11255,7 +11255,7 @@ paths:
       description: Returns all analytics areas configured for a SecuRT instance. This includes crossing areas, intrusion areas, loitering areas, crowding areas, occupancy areas, crowd estimation areas, dwelling areas, armed person areas, object left areas, object removed areas, and fallen person areas.
       operationId: getSecuRTAreas
       tags:
-      - Area
+      - Area SecuRT
       parameters:
       - name: instanceId
         in: path
@@ -11360,7 +11360,7 @@ paths:
       summary: CORS preflight for areas
       operationId: getSecuRTAreasOptions
       tags:
-      - Area
+      - Area SecuRT
       responses:
         '200':
           description: CORS preflight response
@@ -11369,7 +11369,7 @@ paths:
       description: Deletes all analytics areas for a SecuRT instance
       operationId: deleteAllSecuRTAreas
       tags:
-      - Area
+      - Area SecuRT
       parameters:
       - name: instanceId
         in: path
@@ -11404,7 +11404,7 @@ paths:
       description: Creates a new crossing area for a SecuRT instance
       operationId: createCrossingArea
       tags:
-      - Area
+      - Area SecuRT
       parameters:
       - name: instanceId
         in: path
@@ -11453,7 +11453,7 @@ paths:
       description: Creates a crossing area with a specific ID for a SecuRT instance
       operationId: createCrossingAreaWithId
       tags:
-      - Area
+      - Area SecuRT
       parameters:
       - name: instanceId
         in: path
@@ -11504,7 +11504,7 @@ paths:
       summary: CORS preflight for crossing area
       operationId: createCrossingAreaOptions
       tags:
-      - Area
+      - Area SecuRT
       responses:
         '200':
           description: CORS preflight response
@@ -11514,7 +11514,7 @@ paths:
       description: Creates a new intrusion area for a SecuRT instance
       operationId: createIntrusionArea
       tags:
-      - Area
+      - Area SecuRT
       parameters:
       - name: instanceId
         in: path
@@ -11562,7 +11562,7 @@ paths:
       description: Creates an intrusion area with a specific ID
       operationId: createIntrusionAreaWithId
       tags:
-      - Area
+      - Area SecuRT
       parameters:
       - name: instanceId
         in: path
@@ -11611,7 +11611,7 @@ paths:
       summary: CORS preflight for intrusion area
       operationId: createIntrusionAreaOptions
       tags:
-      - Area
+      - Area SecuRT
       responses:
         '200':
           description: CORS preflight response
@@ -11621,7 +11621,7 @@ paths:
       description: Creates a new loitering area for a SecuRT instance
       operationId: createLoiteringArea
       tags:
-      - Area
+      - Area SecuRT
       parameters:
       - name: instanceId
         in: path
@@ -11667,7 +11667,7 @@ paths:
       summary: Create loitering area with ID
       operationId: createLoiteringAreaWithId
       tags:
-      - Area
+      - Area SecuRT
       parameters:
       - name: instanceId
         in: path
@@ -11716,7 +11716,7 @@ paths:
       summary: CORS preflight for loitering area
       operationId: createLoiteringAreaOptions
       tags:
-      - Area
+      - Area SecuRT
       responses:
         '200':
           description: CORS preflight response
@@ -11725,7 +11725,7 @@ paths:
       summary: Create crowding area
       operationId: createCrowdingArea
       tags:
-      - Area
+      - Area SecuRT
       parameters:
       - name: instanceId
         in: path
@@ -11770,7 +11770,7 @@ paths:
       summary: Create crowding area with ID
       operationId: createCrowdingAreaWithId
       tags:
-      - Area
+      - Area SecuRT
       parameters:
       - name: instanceId
         in: path
@@ -11819,7 +11819,7 @@ paths:
       summary: CORS preflight for crowding area
       operationId: createCrowdingAreaOptions
       tags:
-      - Area
+      - Area SecuRT
       responses:
         '200':
           description: CORS preflight response
@@ -11828,7 +11828,7 @@ paths:
       summary: Create occupancy area
       operationId: createOccupancyArea
       tags:
-      - Area
+      - Area SecuRT
       parameters:
       - name: instanceId
         in: path
@@ -11873,7 +11873,7 @@ paths:
       summary: Create occupancy area with ID
       operationId: createOccupancyAreaWithId
       tags:
-      - Area
+      - Area SecuRT
       parameters:
       - name: instanceId
         in: path
@@ -11922,7 +11922,7 @@ paths:
       summary: CORS preflight for occupancy area
       operationId: createOccupancyAreaOptions
       tags:
-      - Area
+      - Area SecuRT
       responses:
         '200':
           description: CORS preflight response
@@ -11931,7 +11931,7 @@ paths:
       summary: Create crowd estimation area
       operationId: createCrowdEstimationArea
       tags:
-      - Area
+      - Area SecuRT
       parameters:
       - name: instanceId
         in: path
@@ -11976,7 +11976,7 @@ paths:
       summary: Create crowd estimation area with ID
       operationId: createCrowdEstimationAreaWithId
       tags:
-      - Area
+      - Area SecuRT
       parameters:
       - name: instanceId
         in: path
@@ -12025,7 +12025,7 @@ paths:
       summary: CORS preflight for crowd estimation area
       operationId: createCrowdEstimationAreaOptions
       tags:
-      - Area
+      - Area SecuRT
       responses:
         '200':
           description: CORS preflight response
@@ -12034,7 +12034,7 @@ paths:
       summary: Create dwelling area
       operationId: createDwellingArea
       tags:
-      - Area
+      - Area SecuRT
       parameters:
       - name: instanceId
         in: path
@@ -12079,7 +12079,7 @@ paths:
       summary: Create dwelling area with ID
       operationId: createDwellingAreaWithId
       tags:
-      - Area
+      - Area SecuRT
       parameters:
       - name: instanceId
         in: path
@@ -12128,7 +12128,7 @@ paths:
       summary: CORS preflight for dwelling area
       operationId: createDwellingAreaOptions
       tags:
-      - Area
+      - Area SecuRT
       responses:
         '200':
           description: CORS preflight response
@@ -12137,7 +12137,7 @@ paths:
       summary: Create armed person area
       operationId: createArmedPersonArea
       tags:
-      - Area
+      - Area SecuRT
       parameters:
       - name: instanceId
         in: path
@@ -12182,7 +12182,7 @@ paths:
       summary: Create armed person area with ID
       operationId: createArmedPersonAreaWithId
       tags:
-      - Area
+      - Area SecuRT
       parameters:
       - name: instanceId
         in: path
@@ -12231,7 +12231,7 @@ paths:
       summary: CORS preflight for armed person area
       operationId: createArmedPersonAreaOptions
       tags:
-      - Area
+      - Area SecuRT
       responses:
         '200':
           description: CORS preflight response
@@ -12240,7 +12240,7 @@ paths:
       summary: Create object left area
       operationId: createObjectLeftArea
       tags:
-      - Area
+      - Area SecuRT
       parameters:
       - name: instanceId
         in: path
@@ -12285,7 +12285,7 @@ paths:
       summary: Create object left area with ID
       operationId: createObjectLeftAreaWithId
       tags:
-      - Area
+      - Area SecuRT
       parameters:
       - name: instanceId
         in: path
@@ -12334,7 +12334,7 @@ paths:
       summary: CORS preflight for object left area
       operationId: createObjectLeftAreaOptions
       tags:
-      - Area
+      - Area SecuRT
       responses:
         '200':
           description: CORS preflight response
@@ -12343,7 +12343,7 @@ paths:
       summary: Create object removed area
       operationId: createObjectRemovedArea
       tags:
-      - Area
+      - Area SecuRT
       parameters:
       - name: instanceId
         in: path
@@ -12388,7 +12388,7 @@ paths:
       summary: Create object removed area with ID
       operationId: createObjectRemovedAreaWithId
       tags:
-      - Area
+      - Area SecuRT
       parameters:
       - name: instanceId
         in: path
@@ -12437,7 +12437,7 @@ paths:
       summary: CORS preflight for object removed area
       operationId: createObjectRemovedAreaOptions
       tags:
-      - Area
+      - Area SecuRT
       responses:
         '200':
           description: CORS preflight response
@@ -12446,7 +12446,7 @@ paths:
       summary: Create fallen person area
       operationId: createFallenPersonArea
       tags:
-      - Area
+      - Area SecuRT
       parameters:
       - name: instanceId
         in: path
@@ -12491,7 +12491,7 @@ paths:
       summary: Create fallen person area with ID
       operationId: createFallenPersonAreaWithId
       tags:
-      - Area
+      - Area SecuRT
       parameters:
       - name: instanceId
         in: path
@@ -12540,7 +12540,7 @@ paths:
       summary: CORS preflight for fallen person area
       operationId: createFallenPersonAreaOptions
       tags:
-      - Area
+      - Area SecuRT
       responses:
         '200':
           description: CORS preflight response
@@ -12550,7 +12550,7 @@ paths:
       description: Deletes a specific area by its ID
       operationId: deleteArea
       tags:
-      - Area
+      - Area SecuRT
       parameters:
       - name: instanceId
         in: path
@@ -12589,7 +12589,7 @@ paths:
       summary: CORS preflight for delete area
       operationId: deleteAreaOptions
       tags:
-      - Area
+      - Area SecuRT
       responses:
         '200':
           description: CORS preflight response
@@ -12599,7 +12599,7 @@ paths:
       description: Returns all analytics lines configured for a SecuRT instance. This includes crossing lines, counting lines, and tailgating lines.
       operationId: getSecuRTLines
       tags:
-      - Lines
+      - Lines SecuRT
       parameters:
       - name: instanceId
         in: path
@@ -12656,7 +12656,7 @@ paths:
       summary: CORS preflight for lines
       operationId: getSecuRTLinesOptions
       tags:
-      - Lines
+      - Lines SecuRT
       responses:
         '200':
           description: CORS preflight response
@@ -15785,7 +15785,7 @@ components:
       $ref: '#/components/schemas/AreaBaseRead'
       x-internal: true
 x-tagGroups:
-  - name: Core API
+  - name: CORE API
     tags:
       - Core
       - Logs
@@ -15798,11 +15798,13 @@ x-tagGroups:
       - Fonts
       - Node
       - AI
-  - name: SecuRT API
+      - Lines Core
+      - Area Core
+  - name: SECURT API
     tags:
       - SecuRT Instance
-      - Lines
-      - Area
+      - Lines SecuRT
+      - Area SecuRT
   - name: ONVIF API
     tags: []
 tags:
@@ -15818,9 +15820,13 @@ tags:
   description: System configuration management endpoints (get, create, update, delete)
 - name: Instances
   description: AI instance management endpoints (create, list, start, stop, delete)
-- name: Lines
+- name: Lines Core
+  description: Core API lines management (crossing lines for ba_crossline instances)
+- name: Lines SecuRT
   description: SecuRT analytics lines management (crossing, counting, tailgating lines)
-- name: Area
+- name: Area Core
+  description: Core API zones management (jam zones, stop zones for ba_jam and ba_stop instances)
+- name: Area SecuRT
   description: SecuRT analytics areas management (crossing, intrusion, loitering, crowding, occupancy, and other area types)
 - name: Solutions
   description: Solution configuration management endpoints (create, list, update, delete)
