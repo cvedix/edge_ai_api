@@ -67,6 +67,7 @@ target_sources(edge_ai_api_tests PRIVATE
     ${CMAKE_SOURCE_DIR}/src/api/health_handler.cpp
     ${CMAKE_SOURCE_DIR}/src/api/version_handler.cpp
     ${CMAKE_SOURCE_DIR}/src/api/swagger_handler.cpp
+    ${CMAKE_SOURCE_DIR}/src/api/scalar_handler.cpp
     ${CMAKE_SOURCE_DIR}/src/api/watchdog_handler.cpp
     ${CMAKE_SOURCE_DIR}/src/api/endpoints_handler.cpp
     ${CMAKE_SOURCE_DIR}/src/api/solution_handler.cpp

@@ -1,9 +1,14 @@
 #include "core/analytics_entities_manager.h"
+#include "core/area_manager.h"
+#include "core/area_storage.h"
 #include "instances/instance_manager.h"
 #include <iostream>
 
-// Forward declaration - will be implemented when Areas/Lines managers are ready
-// For now, return empty arrays as placeholders
+AreaManager *AnalyticsEntitiesManager::area_manager_ = nullptr;
+
+void AnalyticsEntitiesManager::setAreaManager(AreaManager *manager) {
+  area_manager_ = manager;
+}
 
 Json::Value AnalyticsEntitiesManager::getAnalyticsEntities(
     const std::string &instanceId) const {
@@ -32,79 +37,190 @@ Json::Value AnalyticsEntitiesManager::getAnalyticsEntities(
 
 Json::Value AnalyticsEntitiesManager::getCrossingAreas(
     const std::string &instanceId) const {
-  // TODO: Integrate with Areas manager when available (TASK-008)
-  Json::Value areas(Json::arrayValue);
-  return areas;
+  if (!area_manager_) {
+    Json::Value areas(Json::arrayValue);
+    return areas;
+  }
+  auto areasMap = area_manager_->getAllAreas(instanceId);
+  auto it = areasMap.find("crossing");
+  if (it != areasMap.end()) {
+    Json::Value areasArray(Json::arrayValue);
+    for (const auto &area : it->second) {
+      areasArray.append(area);
+    }
+    return areasArray;
+  }
+  return Json::Value(Json::arrayValue);
 }
 
 Json::Value AnalyticsEntitiesManager::getIntrusionAreas(
     const std::string &instanceId) const {
-  // TODO: Integrate with Areas manager when available (TASK-008)
-  Json::Value areas(Json::arrayValue);
-  return areas;
+  if (!area_manager_) {
+    return Json::Value(Json::arrayValue);
+  }
+  auto areasMap = area_manager_->getAllAreas(instanceId);
+  auto it = areasMap.find("intrusion");
+  if (it != areasMap.end()) {
+    Json::Value areasArray(Json::arrayValue);
+    for (const auto &area : it->second) {
+      areasArray.append(area);
+    }
+    return areasArray;
+  }
+  return Json::Value(Json::arrayValue);
 }
 
 Json::Value AnalyticsEntitiesManager::getLoiteringAreas(
     const std::string &instanceId) const {
-  // TODO: Integrate with Areas manager when available (TASK-008)
-  Json::Value areas(Json::arrayValue);
-  return areas;
+  if (!area_manager_) {
+    return Json::Value(Json::arrayValue);
+  }
+  auto areasMap = area_manager_->getAllAreas(instanceId);
+  auto it = areasMap.find("loitering");
+  if (it != areasMap.end()) {
+    Json::Value areasArray(Json::arrayValue);
+    for (const auto &area : it->second) {
+      areasArray.append(area);
+    }
+    return areasArray;
+  }
+  return Json::Value(Json::arrayValue);
 }
 
 Json::Value AnalyticsEntitiesManager::getCrowdingAreas(
     const std::string &instanceId) const {
-  // TODO: Integrate with Areas manager when available (TASK-008)
-  Json::Value areas(Json::arrayValue);
-  return areas;
+  if (!area_manager_) {
+    return Json::Value(Json::arrayValue);
+  }
+  auto areasMap = area_manager_->getAllAreas(instanceId);
+  auto it = areasMap.find("crowding");
+  if (it != areasMap.end()) {
+    Json::Value areasArray(Json::arrayValue);
+    for (const auto &area : it->second) {
+      areasArray.append(area);
+    }
+    return areasArray;
+  }
+  return Json::Value(Json::arrayValue);
 }
 
 Json::Value AnalyticsEntitiesManager::getOccupancyAreas(
     const std::string &instanceId) const {
-  // TODO: Integrate with Areas manager when available (TASK-008)
-  Json::Value areas(Json::arrayValue);
-  return areas;
+  if (!area_manager_) {
+    return Json::Value(Json::arrayValue);
+  }
+  auto areasMap = area_manager_->getAllAreas(instanceId);
+  auto it = areasMap.find("occupancy");
+  if (it != areasMap.end()) {
+    Json::Value areasArray(Json::arrayValue);
+    for (const auto &area : it->second) {
+      areasArray.append(area);
+    }
+    return areasArray;
+  }
+  return Json::Value(Json::arrayValue);
 }
 
 Json::Value AnalyticsEntitiesManager::getCrowdEstimationAreas(
     const std::string &instanceId) const {
-  // TODO: Integrate with Areas manager when available (TASK-008)
-  Json::Value areas(Json::arrayValue);
-  return areas;
+  if (!area_manager_) {
+    return Json::Value(Json::arrayValue);
+  }
+  auto areasMap = area_manager_->getAllAreas(instanceId);
+  auto it = areasMap.find("crowdEstimation");
+  if (it != areasMap.end()) {
+    Json::Value areasArray(Json::arrayValue);
+    for (const auto &area : it->second) {
+      areasArray.append(area);
+    }
+    return areasArray;
+  }
+  return Json::Value(Json::arrayValue);
 }
 
 Json::Value AnalyticsEntitiesManager::getDwellingAreas(
     const std::string &instanceId) const {
-  // TODO: Integrate with Areas manager when available (TASK-008)
-  Json::Value areas(Json::arrayValue);
-  return areas;
+  if (!area_manager_) {
+    return Json::Value(Json::arrayValue);
+  }
+  auto areasMap = area_manager_->getAllAreas(instanceId);
+  auto it = areasMap.find("dwelling");
+  if (it != areasMap.end()) {
+    Json::Value areasArray(Json::arrayValue);
+    for (const auto &area : it->second) {
+      areasArray.append(area);
+    }
+    return areasArray;
+  }
+  return Json::Value(Json::arrayValue);
 }
 
 Json::Value AnalyticsEntitiesManager::getArmedPersonAreas(
     const std::string &instanceId) const {
-  // TODO: Integrate with Areas manager when available (TASK-008)
-  Json::Value areas(Json::arrayValue);
-  return areas;
+  if (!area_manager_) {
+    return Json::Value(Json::arrayValue);
+  }
+  auto areasMap = area_manager_->getAllAreas(instanceId);
+  auto it = areasMap.find("armedPerson");
+  if (it != areasMap.end()) {
+    Json::Value areasArray(Json::arrayValue);
+    for (const auto &area : it->second) {
+      areasArray.append(area);
+    }
+    return areasArray;
+  }
+  return Json::Value(Json::arrayValue);
 }
 
 Json::Value AnalyticsEntitiesManager::getObjectLeftAreas(
     const std::string &instanceId) const {
-  // TODO: Integrate with Areas manager when available (TASK-008)
-  Json::Value areas(Json::arrayValue);
-  return areas;
+  if (!area_manager_) {
+    return Json::Value(Json::arrayValue);
+  }
+  auto areasMap = area_manager_->getAllAreas(instanceId);
+  auto it = areasMap.find("objectLeft");
+  if (it != areasMap.end()) {
+    Json::Value areasArray(Json::arrayValue);
+    for (const auto &area : it->second) {
+      areasArray.append(area);
+    }
+    return areasArray;
+  }
+  return Json::Value(Json::arrayValue);
 }
 
 Json::Value AnalyticsEntitiesManager::getObjectRemovedAreas(
     const std::string &instanceId) const {
-  // TODO: Integrate with Areas manager when available (TASK-008)
-  Json::Value areas(Json::arrayValue);
-  return areas;
+  if (!area_manager_) {
+    return Json::Value(Json::arrayValue);
+  }
+  auto areasMap = area_manager_->getAllAreas(instanceId);
+  auto it = areasMap.find("objectRemoved");
+  if (it != areasMap.end()) {
+    Json::Value areasArray(Json::arrayValue);
+    for (const auto &area : it->second) {
+      areasArray.append(area);
+    }
+    return areasArray;
+  }
+  return Json::Value(Json::arrayValue);
 }
 
 Json::Value AnalyticsEntitiesManager::getFallenPersonAreas(
     const std::string &instanceId) const {
-  // TODO: Integrate with Areas manager when available (TASK-008)
-  Json::Value areas(Json::arrayValue);
-  return areas;
+  if (!area_manager_) {
+    return Json::Value(Json::arrayValue);
+  }
+  auto areasMap = area_manager_->getAllAreas(instanceId);
+  auto it = areasMap.find("fallenPerson");
+  if (it != areasMap.end()) {
+    Json::Value areasArray(Json::arrayValue);
+    for (const auto &area : it->second) {
+      areasArray.append(area);
+    }
+    return areasArray;
+  }
+  return Json::Value(Json::arrayValue);
 }
 
 Json::Value AnalyticsEntitiesManager::getCrossingLines(

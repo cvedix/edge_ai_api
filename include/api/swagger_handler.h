@@ -18,7 +18,6 @@ using namespace drogon;
  * - GET /swagger - Swagger UI interface (all versions)
  * - GET /v1/swagger - Swagger UI for API v1
  * - GET /v2/swagger - Swagger UI for API v2
- * - GET /v1/document - Scalar API documentation for API v1
  * - GET /openapi.yaml - OpenAPI specification file (all versions)
  * - GET /v1/openapi.yaml - OpenAPI specification for v1
  * - GET /v2/openapi.yaml - OpenAPI specification for v2
@@ -31,7 +30,6 @@ public:
   ADD_METHOD_TO(SwaggerHandler::getSwaggerUI, "/swagger", Get);
   ADD_METHOD_TO(SwaggerHandler::getSwaggerUI, "/v1/swagger", Get);
   ADD_METHOD_TO(SwaggerHandler::getSwaggerUI, "/v2/swagger", Get);
-  ADD_METHOD_TO(SwaggerHandler::getScalarDocument, "/v1/document", Get);
   ADD_METHOD_TO(SwaggerHandler::getOpenAPISpec, "/openapi.yaml", Get);
   ADD_METHOD_TO(SwaggerHandler::getOpenAPISpec, "/v1/openapi.yaml", Get);
   ADD_METHOD_TO(SwaggerHandler::getOpenAPISpec, "/v2/openapi.yaml", Get);
@@ -41,7 +39,6 @@ public:
   ADD_METHOD_TO(SwaggerHandler::handleOptions, "/swagger", Options);
   ADD_METHOD_TO(SwaggerHandler::handleOptions, "/v1/swagger", Options);
   ADD_METHOD_TO(SwaggerHandler::handleOptions, "/v2/swagger", Options);
-  ADD_METHOD_TO(SwaggerHandler::handleOptions, "/v1/document", Options);
   ADD_METHOD_TO(SwaggerHandler::handleOptions, "/openapi.yaml", Options);
   ADD_METHOD_TO(SwaggerHandler::handleOptions, "/v1/openapi.yaml", Options);
   ADD_METHOD_TO(SwaggerHandler::handleOptions, "/v2/openapi.yaml", Options);
@@ -54,12 +51,6 @@ public:
    */
   void getSwaggerUI(const HttpRequestPtr &req,
                     std::function<void(const HttpResponsePtr &)> &&callback);
-
-  /**
-   * @brief Serve Scalar API documentation HTML page
-   */
-  void getScalarDocument(const HttpRequestPtr &req,
-                         std::function<void(const HttpResponsePtr &)> &&callback);
 
   /**
    * @brief Serve OpenAPI specification file
@@ -144,12 +135,6 @@ private:
   std::string readOpenAPIFile(const std::string &version = "",
                               const std::string &requestHost = "",
                               const std::string &language = "") const;
-
-  /**
-   * @brief Read Scalar HTML template file
-   * @return HTML content from api-specs/scalar/index.html
-   */
-  std::string readScalarHTMLFile() const;
 
   /**
    * @brief Filter OpenAPI YAML to only include paths for specified version

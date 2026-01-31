@@ -255,6 +255,7 @@ set(SOURCES
     src/api/watchdog_handler.cpp
     src/api/endpoints_handler.cpp
     src/api/swagger_handler.cpp
+    src/api/scalar_handler.cpp
     src/api/create_instance_handler.cpp
     src/api/quick_instance_handler.cpp
     src/api/instance_handler.cpp
@@ -265,6 +266,7 @@ set(SOURCES
     src/api/jams_handler.cpp
     src/api/stops_handler.cpp
     src/api/securt_handler.cpp
+    src/api/area_handler.cpp
     src/api/node_handler.cpp
     src/api/recognition_handler.cpp
     src/api/system_info_handler.cpp
@@ -1112,6 +1114,8 @@ set(CORE_LIB_SOURCES
     src/core/securt_statistics_collector.cpp
     src/core/securt_instance_manager.cpp
     src/core/analytics_entities_manager.cpp
+    src/core/area_storage.cpp
+    src/core/area_manager.cpp
 )
 
 add_library(edge_ai_core SHARED ${CORE_LIB_SOURCES})
