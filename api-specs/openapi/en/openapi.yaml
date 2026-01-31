@@ -8399,7 +8399,7 @@ paths:
         '
       operationId: getAllLines
       tags:
-      - Lines
+      - Lines Core
       parameters:
       - name: instanceId
         in: path
@@ -8446,7 +8446,7 @@ paths:
         '
       operationId: createLine
       tags:
-      - Lines
+      - Lines Core
       parameters:
       - name: instanceId
         in: path
@@ -8564,7 +8564,7 @@ paths:
         '
       operationId: deleteAllLines
       tags:
-      - Lines
+      - Lines Core
       parameters:
       - name: instanceId
         in: path
@@ -8600,7 +8600,7 @@ paths:
       summary: CORS preflight for lines endpoints
       operationId: linesOptions
       tags:
-      - Lines
+      - Lines Core
       responses:
         '200':
           description: CORS preflight response
@@ -8612,7 +8612,7 @@ paths:
         '
       operationId: getLine
       tags:
-      - Lines
+      - Lines Core
       parameters:
       - name: instanceId
         in: path
@@ -8659,7 +8659,7 @@ paths:
         '
       operationId: updateLine
       tags:
-      - Lines
+      - Lines Core
       parameters:
       - name: instanceId
         in: path
@@ -8735,7 +8735,7 @@ paths:
         '
       operationId: deleteLine
       tags:
-      - Lines
+      - Lines Core
       parameters:
       - name: instanceId
         in: path
@@ -8778,7 +8778,7 @@ paths:
       summary: CORS preflight for line endpoints
       operationId: lineOptions
       tags:
-      - Lines
+      - Lines Core
       responses:
         '200':
           description: CORS preflight response
@@ -8791,7 +8791,7 @@ paths:
         '
       operationId: getAllJams
       tags:
-      - Area
+      - Area Core
       parameters:
       - name: instanceId
         in: path
@@ -8837,7 +8837,7 @@ paths:
         '
       operationId: createJam
       tags:
-      - Area
+      - Area Core
       parameters:
       - name: instanceId
         in: path
@@ -8946,7 +8946,7 @@ paths:
         '
       operationId: deleteAllJams
       tags:
-      - Area
+      - Area Core
       parameters:
       - name: instanceId
         in: path
@@ -8982,7 +8982,7 @@ paths:
       summary: CORS preflight for jams endpoints
       operationId: jamsOptions
       tags:
-      - Area
+      - Area Core
       responses:
         '200':
           description: CORS preflight response
@@ -8994,7 +8994,7 @@ paths:
         '
       operationId: getJam
       tags:
-      - Area
+      - Area Core
       parameters:
       - name: instanceId
         in: path
@@ -9036,7 +9036,7 @@ paths:
         '
       operationId: updateJam
       tags:
-      - Area
+      - Area Core
       parameters:
       - name: instanceId
         in: path
@@ -9094,7 +9094,7 @@ paths:
         '
       operationId: deleteJam
       tags:
-      - Area
+      - Area Core
       parameters:
       - name: instanceId
         in: path
@@ -9143,7 +9143,7 @@ paths:
         '
       operationId: getAllStops
       tags:
-      - Area
+      - Area Core
       parameters:
       - name: instanceId
         in: path
@@ -9188,7 +9188,7 @@ paths:
         '
       operationId: createStop
       tags:
-      - Area
+      - Area Core
       parameters:
       - name: instanceId
         in: path
@@ -9299,7 +9299,7 @@ paths:
         '
       operationId: deleteAllStops
       tags:
-      - Area
+      - Area Core
       parameters:
       - name: instanceId
         in: path
@@ -9335,7 +9335,7 @@ paths:
       summary: CORS preflight for stops endpoints
       operationId: stopsOptions
       tags:
-      - Area
+      - Area Core
       responses:
         '200':
           description: CORS preflight response
@@ -9347,7 +9347,7 @@ paths:
         '
       operationId: getStop
       tags:
-      - Area
+      - Area Core
       parameters:
       - name: instanceId
         in: path
@@ -9392,7 +9392,7 @@ paths:
         '
       operationId: updateStop
       tags:
-      - Area
+      - Area Core
       parameters:
       - name: instanceId
         in: path
@@ -9424,7 +9424,7 @@ paths:
         '
       operationId: deleteStop
       tags:
-      - Area
+      - Area Core
       parameters:
       - name: instanceId
         in: path
@@ -9467,7 +9467,7 @@ paths:
       summary: CORS preflight for stops detail endpoint
       operationId: stopOptions
       tags:
-      - Area
+      - Area Core
       responses:
         '200':
           description: CORS preflight response
@@ -11252,10 +11252,10 @@ paths:
   /v1/securt/instance/{instanceId}/areas:
     get:
       summary: Get analytics areas for SecuRT instance
-      description: Returns all analytics areas configured for a SecuRT instance. This includes crossing areas, intrusion areas, loitering areas, crowding areas, occupancy areas, crowd estimation areas, dwelling areas, armed person areas, object left areas, object removed areas, and fallen person areas.
+      description: Returns all analytics areas configured for a SecuRT instance. This includes crossing areas, intrusion areas, loitering areas, crowding areas, occupancy areas, crowd estimation areas, dwelling areas, armed person areas, object left areas, object removed areas, fallen person areas, vehicle guard areas (experimental), and face covered areas (experimental).
       operationId: getSecuRTAreas
       tags:
-      - Area
+      - Area SecuRT
       parameters:
       - name: instanceId
         in: path
@@ -11275,57 +11275,67 @@ paths:
                     type: array
                     description: Crossing areas
                     items:
-                      type: object
+                      $ref: '#/components/schemas/CrossingAreaRead'
                   intrusion:
                     type: array
                     description: Intrusion areas
                     items:
-                      type: object
+                      $ref: '#/components/schemas/IntrusionAreaRead'
                   loitering:
                     type: array
                     description: Loitering areas
                     items:
-                      type: object
+                      $ref: '#/components/schemas/LoiteringAreaRead'
                   crowding:
                     type: array
                     description: Crowding areas
                     items:
-                      type: object
+                      $ref: '#/components/schemas/CrowdingAreaRead'
                   occupancy:
                     type: array
                     description: Occupancy areas
                     items:
-                      type: object
+                      $ref: '#/components/schemas/OccupancyAreaRead'
                   crowdEstimation:
                     type: array
                     description: Crowd estimation areas
                     items:
-                      type: object
+                      $ref: '#/components/schemas/CrowdEstimationAreaRead'
                   dwelling:
                     type: array
                     description: Dwelling areas
                     items:
-                      type: object
+                      $ref: '#/components/schemas/DwellingAreaRead'
                   armedPerson:
                     type: array
                     description: Armed person areas
                     items:
-                      type: object
+                      $ref: '#/components/schemas/ArmedPersonAreaRead'
                   objectLeft:
                     type: array
                     description: Object left areas
                     items:
-                      type: object
+                      $ref: '#/components/schemas/ObjectLeftAreaRead'
                   objectRemoved:
                     type: array
                     description: Object removed areas
                     items:
-                      type: object
+                      $ref: '#/components/schemas/ObjectRemovedAreaRead'
                   fallenPerson:
                     type: array
                     description: Fallen person areas
                     items:
-                      type: object
+                      $ref: '#/components/schemas/FallenPersonAreaRead'
+                  vehicleGuard:
+                    type: array
+                    description: Vehicle guard areas (experimental)
+                    items:
+                      $ref: '#/components/schemas/VehicleGuardAreaRead'
+                  faceCovered:
+                    type: array
+                    description: Face covered areas (experimental)
+                    items:
+                      $ref: '#/components/schemas/FaceCoveredAreaRead'
               example:
                 crossing: []
                 intrusion: []
@@ -11338,6 +11348,8 @@ paths:
                 objectLeft: []
                 objectRemoved: []
                 fallenPerson: []
+                vehicleGuard: []
+                faceCovered: []
         '400':
           description: Invalid request
           content:
@@ -11360,17 +11372,16 @@ paths:
       summary: CORS preflight for areas
       operationId: getSecuRTAreasOptions
       tags:
-      - Area
+      - Area SecuRT
       responses:
         '200':
           description: CORS preflight response
-  /v1/securt/instance/{instanceId}/lines:
-    get:
-      summary: Get analytics lines for SecuRT instance
-      description: Returns all analytics lines configured for a SecuRT instance. This includes crossing lines, counting lines, and tailgating lines.
-      operationId: getSecuRTLines
+    delete:
+      summary: Delete all areas for SecuRT instance
+      description: Deletes all analytics areas for a SecuRT instance
+      operationId: deleteAllSecuRTAreas
       tags:
-      - Lines
+      - Area SecuRT
       parameters:
       - name: instanceId
         in: path
@@ -11379,32 +11390,8 @@ paths:
           type: string
         description: Instance ID
       responses:
-        '200':
-          description: Analytics lines retrieved successfully
-          content:
-            application/json:
-              schema:
-                type: object
-                properties:
-                  countingLines:
-                    type: array
-                    description: Counting lines
-                    items:
-                      $ref: '#/components/schemas/CountingLineRead'
-                  crossingLines:
-                    type: array
-                    description: Crossing lines
-                    items:
-                      $ref: '#/components/schemas/CrossingLineRead'
-                  tailgatingLines:
-                    type: array
-                    description: Tailgating lines
-                    items:
-                      $ref: '#/components/schemas/TailgatingLineRead'
-              example:
-                countingLines: []
-                crossingLines: []
-                tailgatingLines: []
+        '204':
+          description: All areas deleted successfully
         '400':
           description: Invalid request
           content:
@@ -11423,12 +11410,1428 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
-    delete:
-      summary: Delete all analytics lines for SecuRT instance
-      description: Deletes all analytics lines (counting, crossing, and tailgating) for a SecuRT instance.
-      operationId: deleteSecuRTAllLines
+  /v1/securt/instance/{instanceId}/area/crossing:
+    post:
+      summary: Create crossing area
+      description: Creates a new crossing area for a SecuRT instance
+      operationId: createCrossingArea
       tags:
-      - Lines
+      - Area SecuRT
+      parameters:
+      - name: instanceId
+        in: path
+        required: true
+        schema:
+          type: string
+        description: Instance ID
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CrossingAreaWrite'
+      responses:
+        '201':
+          description: Crossing area created successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  areaId:
+                    type: string
+                    description: Created area ID
+                    example: 550e8400-e29b-41d4-a716-446655440000
+        '400':
+          description: Invalid request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: Instance not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+    put:
+      summary: Create crossing area with ID
+      description: Creates a crossing area with a specific ID for a SecuRT instance
+      operationId: createCrossingAreaWithId
+      tags:
+      - Area SecuRT
+      parameters:
+      - name: instanceId
+        in: path
+        required: true
+        schema:
+          type: string
+        description: Instance ID
+      - name: areaId
+        in: path
+        required: true
+        schema:
+          type: string
+        description: Area ID
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CrossingAreaWrite'
+      responses:
+        '201':
+          description: Crossing area created successfully
+        '400':
+          description: Invalid request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '409':
+          description: Area already exists
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: Instance not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+    options:
+      summary: CORS preflight for crossing area
+      operationId: createCrossingAreaOptions
+      tags:
+      - Area SecuRT
+      responses:
+        '200':
+          description: CORS preflight response
+  /v1/securt/instance/{instanceId}/area/intrusion:
+    post:
+      summary: Create intrusion area
+      description: Creates a new intrusion area for a SecuRT instance
+      operationId: createIntrusionArea
+      tags:
+      - Area SecuRT
+      parameters:
+      - name: instanceId
+        in: path
+        required: true
+        schema:
+          type: string
+        description: Instance ID
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/IntrusionAreaWrite'
+      responses:
+        '201':
+          description: Intrusion area created successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  areaId:
+                    type: string
+                    example: 550e8400-e29b-41d4-a716-446655440000
+        '400':
+          description: Invalid request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: Instance not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+    put:
+      summary: Create intrusion area with ID
+      description: Creates an intrusion area with a specific ID
+      operationId: createIntrusionAreaWithId
+      tags:
+      - Area SecuRT
+      parameters:
+      - name: instanceId
+        in: path
+        required: true
+        schema:
+          type: string
+      - name: areaId
+        in: path
+        required: true
+        schema:
+          type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/IntrusionAreaWrite'
+      responses:
+        '201':
+          description: Intrusion area created successfully
+        '400':
+          description: Invalid request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '409':
+          description: Area already exists
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: Instance not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+    options:
+      summary: CORS preflight for intrusion area
+      operationId: createIntrusionAreaOptions
+      tags:
+      - Area SecuRT
+      responses:
+        '200':
+          description: CORS preflight response
+  /v1/securt/instance/{instanceId}/area/loitering:
+    post:
+      summary: Create loitering area
+      description: Creates a new loitering area for a SecuRT instance
+      operationId: createLoiteringArea
+      tags:
+      - Area SecuRT
+      parameters:
+      - name: instanceId
+        in: path
+        required: true
+        schema:
+          type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LoiteringAreaWrite'
+      responses:
+        '201':
+          description: Loitering area created successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  areaId:
+                    type: string
+                    example: 550e8400-e29b-41d4-a716-446655440000
+        '400':
+          description: Invalid request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: Instance not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+    put:
+      summary: Create loitering area with ID
+      operationId: createLoiteringAreaWithId
+      tags:
+      - Area SecuRT
+      parameters:
+      - name: instanceId
+        in: path
+        required: true
+        schema:
+          type: string
+      - name: areaId
+        in: path
+        required: true
+        schema:
+          type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LoiteringAreaWrite'
+      responses:
+        '201':
+          description: Loitering area created successfully
+        '400':
+          description: Invalid request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '409':
+          description: Area already exists
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: Instance not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+    options:
+      summary: CORS preflight for loitering area
+      operationId: createLoiteringAreaOptions
+      tags:
+      - Area SecuRT
+      responses:
+        '200':
+          description: CORS preflight response
+  /v1/securt/instance/{instanceId}/area/crowding:
+    post:
+      summary: Create crowding area
+      operationId: createCrowdingArea
+      tags:
+      - Area SecuRT
+      parameters:
+      - name: instanceId
+        in: path
+        required: true
+        schema:
+          type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CrowdingAreaWrite'
+      responses:
+        '201':
+          description: Crowding area created successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  areaId:
+                    type: string
+        '400':
+          description: Invalid request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: Instance not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+    put:
+      summary: Create crowding area with ID
+      operationId: createCrowdingAreaWithId
+      tags:
+      - Area SecuRT
+      parameters:
+      - name: instanceId
+        in: path
+        required: true
+        schema:
+          type: string
+      - name: areaId
+        in: path
+        required: true
+        schema:
+          type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CrowdingAreaWrite'
+      responses:
+        '201':
+          description: Crowding area created successfully
+        '400':
+          description: Invalid request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '409':
+          description: Area already exists
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: Instance not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+    options:
+      summary: CORS preflight for crowding area
+      operationId: createCrowdingAreaOptions
+      tags:
+      - Area SecuRT
+      responses:
+        '200':
+          description: CORS preflight response
+  /v1/securt/instance/{instanceId}/area/occupancy:
+    post:
+      summary: Create occupancy area
+      operationId: createOccupancyArea
+      tags:
+      - Area SecuRT
+      parameters:
+      - name: instanceId
+        in: path
+        required: true
+        schema:
+          type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/OccupancyAreaWrite'
+      responses:
+        '201':
+          description: Occupancy area created successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  areaId:
+                    type: string
+        '400':
+          description: Invalid request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: Instance not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+    put:
+      summary: Create occupancy area with ID
+      operationId: createOccupancyAreaWithId
+      tags:
+      - Area SecuRT
+      parameters:
+      - name: instanceId
+        in: path
+        required: true
+        schema:
+          type: string
+      - name: areaId
+        in: path
+        required: true
+        schema:
+          type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/OccupancyAreaWrite'
+      responses:
+        '201':
+          description: Occupancy area created successfully
+        '400':
+          description: Invalid request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '409':
+          description: Area already exists
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: Instance not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+    options:
+      summary: CORS preflight for occupancy area
+      operationId: createOccupancyAreaOptions
+      tags:
+      - Area SecuRT
+      responses:
+        '200':
+          description: CORS preflight response
+  /v1/securt/instance/{instanceId}/area/crowdEstimation:
+    post:
+      summary: Create crowd estimation area
+      operationId: createCrowdEstimationArea
+      tags:
+      - Area SecuRT
+      parameters:
+      - name: instanceId
+        in: path
+        required: true
+        schema:
+          type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CrowdEstimationAreaWrite'
+      responses:
+        '201':
+          description: Crowd estimation area created successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  areaId:
+                    type: string
+        '400':
+          description: Invalid request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: Instance not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+    put:
+      summary: Create crowd estimation area with ID
+      operationId: createCrowdEstimationAreaWithId
+      tags:
+      - Area SecuRT
+      parameters:
+      - name: instanceId
+        in: path
+        required: true
+        schema:
+          type: string
+      - name: areaId
+        in: path
+        required: true
+        schema:
+          type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CrowdEstimationAreaWrite'
+      responses:
+        '201':
+          description: Crowd estimation area created successfully
+        '400':
+          description: Invalid request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '409':
+          description: Area already exists
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: Instance not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+    options:
+      summary: CORS preflight for crowd estimation area
+      operationId: createCrowdEstimationAreaOptions
+      tags:
+      - Area SecuRT
+      responses:
+        '200':
+          description: CORS preflight response
+  /v1/securt/instance/{instanceId}/area/dwelling:
+    post:
+      summary: Create dwelling area
+      operationId: createDwellingArea
+      tags:
+      - Area SecuRT
+      parameters:
+      - name: instanceId
+        in: path
+        required: true
+        schema:
+          type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/DwellingAreaWrite'
+      responses:
+        '201':
+          description: Dwelling area created successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  areaId:
+                    type: string
+        '400':
+          description: Invalid request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: Instance not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+    put:
+      summary: Create dwelling area with ID
+      operationId: createDwellingAreaWithId
+      tags:
+      - Area SecuRT
+      parameters:
+      - name: instanceId
+        in: path
+        required: true
+        schema:
+          type: string
+      - name: areaId
+        in: path
+        required: true
+        schema:
+          type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/DwellingAreaWrite'
+      responses:
+        '201':
+          description: Dwelling area created successfully
+        '400':
+          description: Invalid request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '409':
+          description: Area already exists
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: Instance not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+    options:
+      summary: CORS preflight for dwelling area
+      operationId: createDwellingAreaOptions
+      tags:
+      - Area SecuRT
+      responses:
+        '200':
+          description: CORS preflight response
+  /v1/securt/instance/{instanceId}/area/armedPerson:
+    post:
+      summary: Create armed person area
+      operationId: createArmedPersonArea
+      tags:
+      - Area SecuRT
+      parameters:
+      - name: instanceId
+        in: path
+        required: true
+        schema:
+          type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ArmedPersonAreaWrite'
+      responses:
+        '201':
+          description: Armed person area created successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  areaId:
+                    type: string
+        '400':
+          description: Invalid request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: Instance not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+    put:
+      summary: Create armed person area with ID
+      operationId: createArmedPersonAreaWithId
+      tags:
+      - Area SecuRT
+      parameters:
+      - name: instanceId
+        in: path
+        required: true
+        schema:
+          type: string
+      - name: areaId
+        in: path
+        required: true
+        schema:
+          type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ArmedPersonAreaWrite'
+      responses:
+        '201':
+          description: Armed person area created successfully
+        '400':
+          description: Invalid request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '409':
+          description: Area already exists
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: Instance not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+    options:
+      summary: CORS preflight for armed person area
+      operationId: createArmedPersonAreaOptions
+      tags:
+      - Area SecuRT
+      responses:
+        '200':
+          description: CORS preflight response
+  /v1/securt/instance/{instanceId}/area/objectLeft:
+    post:
+      summary: Create object left area
+      operationId: createObjectLeftArea
+      tags:
+      - Area SecuRT
+      parameters:
+      - name: instanceId
+        in: path
+        required: true
+        schema:
+          type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ObjectLeftAreaWrite'
+      responses:
+        '201':
+          description: Object left area created successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  areaId:
+                    type: string
+        '400':
+          description: Invalid request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: Instance not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+    put:
+      summary: Create object left area with ID
+      operationId: createObjectLeftAreaWithId
+      tags:
+      - Area SecuRT
+      parameters:
+      - name: instanceId
+        in: path
+        required: true
+        schema:
+          type: string
+      - name: areaId
+        in: path
+        required: true
+        schema:
+          type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ObjectLeftAreaWrite'
+      responses:
+        '201':
+          description: Object left area created successfully
+        '400':
+          description: Invalid request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '409':
+          description: Area already exists
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: Instance not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+    options:
+      summary: CORS preflight for object left area
+      operationId: createObjectLeftAreaOptions
+      tags:
+      - Area SecuRT
+      responses:
+        '200':
+          description: CORS preflight response
+  /v1/securt/instance/{instanceId}/area/objectRemoved:
+    post:
+      summary: Create object removed area
+      operationId: createObjectRemovedArea
+      tags:
+      - Area SecuRT
+      parameters:
+      - name: instanceId
+        in: path
+        required: true
+        schema:
+          type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ObjectRemovedAreaWrite'
+      responses:
+        '201':
+          description: Object removed area created successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  areaId:
+                    type: string
+        '400':
+          description: Invalid request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: Instance not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+    put:
+      summary: Create object removed area with ID
+      operationId: createObjectRemovedAreaWithId
+      tags:
+      - Area SecuRT
+      parameters:
+      - name: instanceId
+        in: path
+        required: true
+        schema:
+          type: string
+      - name: areaId
+        in: path
+        required: true
+        schema:
+          type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ObjectRemovedAreaWrite'
+      responses:
+        '201':
+          description: Object removed area created successfully
+        '400':
+          description: Invalid request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '409':
+          description: Area already exists
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: Instance not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+    options:
+      summary: CORS preflight for object removed area
+      operationId: createObjectRemovedAreaOptions
+      tags:
+      - Area SecuRT
+      responses:
+        '200':
+          description: CORS preflight response
+  /v1/securt/instance/{instanceId}/area/fallenPerson:
+    post:
+      summary: Create fallen person area
+      operationId: createFallenPersonArea
+      tags:
+      - Area SecuRT
+      parameters:
+      - name: instanceId
+        in: path
+        required: true
+        schema:
+          type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/FallenPersonAreaWrite'
+      responses:
+        '201':
+          description: Fallen person area created successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  areaId:
+                    type: string
+        '400':
+          description: Invalid request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: Instance not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+    put:
+      summary: Create fallen person area with ID
+      operationId: createFallenPersonAreaWithId
+      tags:
+      - Area SecuRT
+      parameters:
+      - name: instanceId
+        in: path
+        required: true
+        schema:
+          type: string
+      - name: areaId
+        in: path
+        required: true
+        schema:
+          type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/FallenPersonAreaWrite'
+      responses:
+        '201':
+          description: Fallen person area created successfully
+        '400':
+          description: Invalid request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '409':
+          description: Area already exists
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: Instance not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+    options:
+      summary: CORS preflight for fallen person area
+      operationId: createFallenPersonAreaOptions
+      tags:
+      - Area SecuRT
+      responses:
+        '200':
+          description: CORS preflight response
+  /v1/securt/instance/{instanceId}/area/vehicleGuard:
+    post:
+      summary: Create vehicle guard area (experimental)
+      description: Creates a new vehicle guard area for a SecuRT instance. This is an experimental feature.
+      operationId: createVehicleGuardArea
+      tags:
+      - Area SecuRT
+      parameters:
+      - name: instanceId
+        in: path
+        required: true
+        schema:
+          type: string
+        description: Instance ID
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/VehicleGuardAreaWrite'
+      responses:
+        '201':
+          description: Vehicle guard area created successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  areaId:
+                    type: string
+                    description: Created area ID
+                    example: 550e8400-e29b-41d4-a716-446655440000
+        '400':
+          description: Invalid request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: Instance not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+    put:
+      summary: Create vehicle guard area with ID (experimental)
+      description: Creates a new vehicle guard area with a specific ID for a SecuRT instance. This is an experimental feature.
+      operationId: createVehicleGuardAreaWithId
+      tags:
+      - Area SecuRT
+      parameters:
+      - name: instanceId
+        in: path
+        required: true
+        schema:
+          type: string
+        description: Instance ID
+      - name: areaId
+        in: path
+        required: true
+        schema:
+          type: string
+        description: Area ID
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/VehicleGuardAreaWrite'
+      responses:
+        '201':
+          description: Vehicle guard area created successfully
+        '400':
+          description: Invalid request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '409':
+          description: Area already exists
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: Instance not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+    options:
+      summary: CORS preflight for vehicle guard area
+      operationId: createVehicleGuardAreaOptions
+      tags:
+      - Area SecuRT
+      responses:
+        '200':
+          description: CORS preflight response
+  /v1/securt/instance/{instanceId}/area/faceCovered:
+    post:
+      summary: Create face covered area (experimental)
+      description: Creates a new face covered area for a SecuRT instance. This is an experimental feature.
+      operationId: createFaceCoveredArea
+      tags:
+      - Area SecuRT
+      parameters:
+      - name: instanceId
+        in: path
+        required: true
+        schema:
+          type: string
+        description: Instance ID
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/FaceCoveredAreaWrite'
+      responses:
+        '201':
+          description: Face covered area created successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  areaId:
+                    type: string
+                    description: Created area ID
+                    example: 550e8400-e29b-41d4-a716-446655440000
+        '400':
+          description: Invalid request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: Instance not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+    put:
+      summary: Create face covered area with ID (experimental)
+      description: Creates a new face covered area with a specific ID for a SecuRT instance. This is an experimental feature.
+      operationId: createFaceCoveredAreaWithId
+      tags:
+      - Area SecuRT
+      parameters:
+      - name: instanceId
+        in: path
+        required: true
+        schema:
+          type: string
+        description: Instance ID
+      - name: areaId
+        in: path
+        required: true
+        schema:
+          type: string
+        description: Area ID
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/FaceCoveredAreaWrite'
+      responses:
+        '201':
+          description: Face covered area created successfully
+        '400':
+          description: Invalid request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '409':
+          description: Area already exists
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: Instance not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+    options:
+      summary: CORS preflight for face covered area
+      operationId: createFaceCoveredAreaOptions
+      tags:
+      - Area SecuRT
+      responses:
+        '200':
+          description: CORS preflight response
+  /v1/securt/instance/{instanceId}/area/{areaId}:
+    delete:
+      summary: Delete area by ID
+      description: Deletes a specific area by its ID
+      operationId: deleteArea
+      tags:
+      - Area SecuRT
+      parameters:
+      - name: instanceId
+        in: path
+        required: true
+        schema:
+          type: string
+        description: Instance ID
+      - name: areaId
+        in: path
+        required: true
+        schema:
+          type: string
+        description: Area ID
+      responses:
+        '204':
+          description: Area deleted successfully
+        '400':
+          description: Invalid request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: Area or instance not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+    options:
+      summary: CORS preflight for delete area
+      operationId: deleteAreaOptions
+      tags:
+      - Area SecuRT
+      responses:
+        '200':
+          description: CORS preflight response
+  /v1/securt/instance/{instanceId}/lines:
+    get:
+      summary: Get analytics lines for SecuRT instance
+      description: Returns all analytics lines configured for a SecuRT instance. This includes crossing lines, counting lines, and tailgating lines.
+      operationId: getSecuRTLines
+      tags:
+      - Lines SecuRT
       parameters:
       - name: instanceId
         in: path
@@ -11437,8 +12840,32 @@ paths:
           type: string
         description: Instance ID
       responses:
-        '204':
-          description: All lines deleted successfully
+        '200':
+          description: Analytics lines retrieved successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  crossing:
+                    type: array
+                    description: Crossing lines
+                    items:
+                      type: object
+                  counting:
+                    type: array
+                    description: Counting lines
+                    items:
+                      type: object
+                  tailgating:
+                    type: array
+                    description: Tailgating lines
+                    items:
+                      type: object
+              example:
+                crossing: []
+                counting: []
+                tailgating: []
         '400':
           description: Invalid request
           content:
@@ -11461,440 +12888,7 @@ paths:
       summary: CORS preflight for lines
       operationId: getSecuRTLinesOptions
       tags:
-      - Lines
-      responses:
-        '200':
-          description: CORS preflight response
-  /v1/securt/instance/{instanceId}/line/counting:
-    post:
-      summary: Create counting line
-      description: Creates a new counting line for a SecuRT instance. Counting lines count objects crossing the line.
-      operationId: createSecuRTCountingLine
-      tags:
-      - Lines
-      parameters:
-      - name: instanceId
-        in: path
-        required: true
-        schema:
-          type: string
-        description: Instance ID
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: '#/components/schemas/LineWrite'
-      responses:
-        '201':
-          description: Counting line created successfully
-          content:
-            application/json:
-              schema:
-                type: object
-                properties:
-                  lineId:
-                    type: string
-                    description: Generated line ID
-                    example: "550e8400-e29b-41d4-a716-446655440000"
-        '400':
-          description: Invalid request
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
-        '404':
-          description: Instance not found
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
-        '500':
-          description: Internal server error
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
-    options:
-      summary: CORS preflight for counting line
-      operationId: createSecuRTCountingLineOptions
-      tags:
-      - Lines
-      responses:
-        '200':
-          description: CORS preflight response
-  /v1/securt/instance/{instanceId}/line/counting/{lineId}:
-    put:
-      summary: Create counting line with ID
-      description: Creates a counting line with a specific ID for a SecuRT instance.
-      operationId: createSecuRTCountingLineWithId
-      tags:
-      - Lines
-      parameters:
-      - name: instanceId
-        in: path
-        required: true
-        schema:
-          type: string
-        description: Instance ID
-      - name: lineId
-        in: path
-        required: true
-        schema:
-          type: string
-        description: Line ID
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: '#/components/schemas/LineWrite'
-      responses:
-        '201':
-          description: Counting line created successfully
-          content:
-            application/json:
-              schema:
-                type: object
-                properties:
-                  lineId:
-                    type: string
-                    description: Line ID
-                    example: "550e8400-e29b-41d4-a716-446655440000"
-        '400':
-          description: Invalid request
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
-        '404':
-          description: Instance not found
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
-        '409':
-          description: Line already exists
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
-        '500':
-          description: Internal server error
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
-    options:
-      summary: CORS preflight for counting line with ID
-      operationId: createSecuRTCountingLineWithIdOptions
-      tags:
-      - Lines
-      responses:
-        '200':
-          description: CORS preflight response
-  /v1/securt/instance/{instanceId}/line/crossing:
-    post:
-      summary: Create crossing line
-      description: Creates a new crossing line for a SecuRT instance. Crossing lines detect objects crossing the line by direction.
-      operationId: createSecuRTCrossingLine
-      tags:
-      - Lines
-      parameters:
-      - name: instanceId
-        in: path
-        required: true
-        schema:
-          type: string
-        description: Instance ID
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: '#/components/schemas/LineWrite'
-      responses:
-        '201':
-          description: Crossing line created successfully
-          content:
-            application/json:
-              schema:
-                type: object
-                properties:
-                  lineId:
-                    type: string
-                    description: Generated line ID
-                    example: "550e8400-e29b-41d4-a716-446655440000"
-        '400':
-          description: Invalid request
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
-        '404':
-          description: Instance not found
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
-        '500':
-          description: Internal server error
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
-    options:
-      summary: CORS preflight for crossing line
-      operationId: createSecuRTCrossingLineOptions
-      tags:
-      - Lines
-      responses:
-        '200':
-          description: CORS preflight response
-  /v1/securt/instance/{instanceId}/line/crossing/{lineId}:
-    put:
-      summary: Create crossing line with ID
-      description: Creates a crossing line with a specific ID for a SecuRT instance.
-      operationId: createSecuRTCrossingLineWithId
-      tags:
-      - Lines
-      parameters:
-      - name: instanceId
-        in: path
-        required: true
-        schema:
-          type: string
-        description: Instance ID
-      - name: lineId
-        in: path
-        required: true
-        schema:
-          type: string
-        description: Line ID
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: '#/components/schemas/LineWrite'
-      responses:
-        '201':
-          description: Crossing line created successfully
-          content:
-            application/json:
-              schema:
-                type: object
-                properties:
-                  lineId:
-                    type: string
-                    description: Line ID
-                    example: "550e8400-e29b-41d4-a716-446655440000"
-        '400':
-          description: Invalid request
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
-        '404':
-          description: Instance not found
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
-        '409':
-          description: Line already exists
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
-        '500':
-          description: Internal server error
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
-    options:
-      summary: CORS preflight for crossing line with ID
-      operationId: createSecuRTCrossingLineWithIdOptions
-      tags:
-      - Lines
-      responses:
-        '200':
-          description: CORS preflight response
-  /v1/securt/instance/{instanceId}/line/tailgating:
-    post:
-      summary: Create tailgating line
-      description: Creates a new tailgating line for a SecuRT instance. Tailgating lines detect multiple objects crossing simultaneously within a time window.
-      operationId: createSecuRTTailgatingLine
-      tags:
-      - Lines
-      parameters:
-      - name: instanceId
-        in: path
-        required: true
-        schema:
-          type: string
-        description: Instance ID
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: '#/components/schemas/TailgatingLineWrite'
-      responses:
-        '201':
-          description: Tailgating line created successfully
-          content:
-            application/json:
-              schema:
-                type: object
-                properties:
-                  lineId:
-                    type: string
-                    description: Generated line ID
-                    example: "550e8400-e29b-41d4-a716-446655440000"
-        '400':
-          description: Invalid request
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
-        '404':
-          description: Instance not found
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
-        '500':
-          description: Internal server error
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
-    options:
-      summary: CORS preflight for tailgating line
-      operationId: createSecuRTTailgatingLineOptions
-      tags:
-      - Lines
-      responses:
-        '200':
-          description: CORS preflight response
-  /v1/securt/instance/{instanceId}/line/tailgating/{lineId}:
-    put:
-      summary: Create tailgating line with ID
-      description: Creates a tailgating line with a specific ID for a SecuRT instance.
-      operationId: createSecuRTTailgatingLineWithId
-      tags:
-      - Lines
-      parameters:
-      - name: instanceId
-        in: path
-        required: true
-        schema:
-          type: string
-        description: Instance ID
-      - name: lineId
-        in: path
-        required: true
-        schema:
-          type: string
-        description: Line ID
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: '#/components/schemas/TailgatingLineWrite'
-      responses:
-        '201':
-          description: Tailgating line created successfully
-          content:
-            application/json:
-              schema:
-                type: object
-                properties:
-                  lineId:
-                    type: string
-                    description: Line ID
-                    example: "550e8400-e29b-41d4-a716-446655440000"
-        '400':
-          description: Invalid request
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
-        '404':
-          description: Instance not found
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
-        '409':
-          description: Line already exists
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
-        '500':
-          description: Internal server error
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
-    options:
-      summary: CORS preflight for tailgating line with ID
-      operationId: createSecuRTTailgatingLineWithIdOptions
-      tags:
-      - Lines
-      responses:
-        '200':
-          description: CORS preflight response
-  /v1/securt/instance/{instanceId}/line/{lineId}:
-    delete:
-      summary: Delete analytics line
-      description: Deletes a specific analytics line by ID from a SecuRT instance.
-      operationId: deleteSecuRTLine
-      tags:
-      - Lines
-      parameters:
-      - name: instanceId
-        in: path
-        required: true
-        schema:
-          type: string
-        description: Instance ID
-      - name: lineId
-        in: path
-        required: true
-        schema:
-          type: string
-        description: Line ID
-      responses:
-        '204':
-          description: Line deleted successfully
-        '400':
-          description: Invalid request
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
-        '404':
-          description: Instance or line not found
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
-        '500':
-          description: Internal server error
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
-    options:
-      summary: CORS preflight for line deletion
-      operationId: deleteSecuRTLineOptions
-      tags:
-      - Lines
+      - Lines SecuRT
       responses:
         '200':
           description: CORS preflight response
@@ -14761,48 +15755,47 @@ components:
           type: boolean
           description: Whether instance is running
           example: true
-    Coordinate:
+    ColorRGBA:
+      type: array
+      items:
+        type: number
+        format: double
+        minimum: 0.0
+        maximum: 1.0
+      minItems: 4
+      maxItems: 4
+      description: Color in RGBA format [r, g, b, a] with values 0.0-1.0
+      example: [0.0, 0.0, 0.0, 1.0]
+    AreaBaseWrite:
       type: object
       required:
-      - x
-      - y
-      properties:
-        x:
-          type: number
-          format: double
-          description: X coordinate (normalized 0.0-1.0 or pixel)
-          example: 0.0
-        y:
-          type: number
-          format: double
-          description: Y coordinate (normalized 0.0-1.0 or pixel)
-          example: 0.0
-    LineWrite:
-      type: object
-      required:
+      - name
       - coordinates
       - classes
       properties:
         name:
           type: string
-          description: Line name
-          example: "Main Entry Line"
+          description: Area name
+          example: Main Entry Area
         coordinates:
           type: array
-          minItems: 2
-          maxItems: 2
-          description: Line coordinates (exactly 2 points: start and end)
+          minItems: 3
+          description: Array of coordinates defining the area polygon
           items:
             $ref: '#/components/schemas/Coordinate'
           example:
-            - x: 0.0
-              y: 0.5
-            - x: 1.0
-              y: 0.5
+          - x: 0.0
+            y: 0.0
+          - x: 1.0
+            y: 0.0
+          - x: 1.0
+            y: 1.0
+          - x: 0.0
+            y: 1.0
         classes:
           type: array
           minItems: 1
-          description: Object classes to detect
+          description: Object classes to detect in this area
           items:
             type: string
             enum:
@@ -14812,40 +15805,83 @@ components:
             - Face
             - Unknown
           example:
-            - Person
-            - Vehicle
-        direction:
-          type: string
-          enum:
-          - Up
-          - Down
-          - Both
-          description: Crossing direction
-          default: Both
-          example: Both
+          - Person
+          - Vehicle
         color:
+          $ref: '#/components/schemas/ColorRGBA'
+    AreaBaseRead:
+      type: object
+      required:
+      - id
+      - name
+      - coordinates
+      - classes
+      properties:
+        id:
+          type: string
+          description: Area ID (UUID)
+          example: 550e8400-e29b-41d4-a716-446655440000
+        name:
+          type: string
+          description: Area name
+          example: Main Entry Area
+        coordinates:
           type: array
-          minItems: 4
-          maxItems: 4
-          description: Line color in RGBA format (0.0-1.0 range)
           items:
-            type: number
-            format: double
-            minimum: 0.0
-            maximum: 1.0
-          default:
-            - 0.0
-            - 0.0
-            - 0.0
-            - 1.0
-          example:
-            - 0.0
-            - 0.0
-            - 0.0
-            - 1.0
-    TailgatingLineWrite:
+            $ref: '#/components/schemas/Coordinate'
+        classes:
+          type: array
+          items:
+            type: string
+            enum:
+            - Person
+            - Animal
+            - Vehicle
+            - Face
+            - Unknown
+        color:
+          $ref: '#/components/schemas/ColorRGBA'
+    CrossingAreaWrite:
       allOf:
-      - $ref: '#/components/schemas/LineWrite'
+      - $ref: '#/components/schemas/AreaBaseWrite'
+      - type: object
+        properties:
+          ignoreStationaryObjects:
+            type: boolean
+            description: Ignore stationary objects
+            default: false
+            example: false
+          areaEvent:
+            type: string
+            enum:
+            - Enter
+            - Exit
+            - Both
+            description: Area event type
+            default: Both
+            example: Both
+    CrossingAreaRead:
+      allOf:
+      - $ref: '#/components/schemas/AreaBaseRead'
+      - type: object
+        properties:
+          ignoreStationaryObjects:
+            type: boolean
+            example: false
+          areaEvent:
+            type: string
+            enum:
+            - Enter
+            - Exit
+            - Both
+            example: Both
+    IntrusionAreaWrite:
+      $ref: '#/components/schemas/AreaBaseWrite'
+    IntrusionAreaRead:
+      $ref: '#/components/schemas/AreaBaseRead'
+    LoiteringAreaWrite:
+      allOf:
+      - $ref: '#/components/schemas/AreaBaseWrite'
       - type: object
         required:
         - seconds
@@ -14853,83 +15889,135 @@ components:
           seconds:
             type: integer
             minimum: 1
-            description: Time window in seconds for tailgating detection
-            example: 2
-    LineRead:
-      type: object
-      required:
-      - id
-      - coordinates
-      - classes
-      - direction
-      - color
-      properties:
-        id:
-          type: string
-          description: Line ID (UUID)
-          example: "550e8400-e29b-41d4-a716-446655440000"
-        name:
-          type: string
-          description: Line name
-          example: "Main Entry Line"
-        coordinates:
-          type: array
-          items:
-            $ref: '#/components/schemas/Coordinate'
-          example:
-            - x: 0.0
-              y: 0.5
-            - x: 1.0
-              y: 0.5
-        classes:
-          type: array
-          items:
-            type: string
-            enum:
-            - Person
-            - Animal
-            - Vehicle
-            - Face
-            - Unknown
-          example:
-            - Person
-            - Vehicle
-        direction:
-          type: string
-          enum:
-          - Up
-          - Down
-          - Both
-          example: Both
-        color:
-          type: array
-          items:
-            type: number
-            format: double
-          example:
-            - 0.0
-            - 0.0
-            - 0.0
-            - 1.0
-    CountingLineRead:
+            description: Duration threshold in seconds
+            example: 5
+    LoiteringAreaRead:
       allOf:
-      - $ref: '#/components/schemas/LineRead'
-    CrossingLineRead:
+      - $ref: '#/components/schemas/AreaBaseRead'
+      - type: object
+        properties:
+          seconds:
+            type: integer
+            example: 5
+    CrowdingAreaWrite:
       allOf:
-      - $ref: '#/components/schemas/LineRead'
-    TailgatingLineRead:
+      - $ref: '#/components/schemas/AreaBaseWrite'
+      - type: object
+        required:
+        - objectCount
+        - seconds
+        properties:
+          objectCount:
+            type: integer
+            minimum: 1
+            description: Crowding threshold (number of objects)
+            example: 5
+          seconds:
+            type: integer
+            minimum: 1
+            description: Duration before trigger in seconds
+            example: 3
+    CrowdingAreaRead:
       allOf:
-      - $ref: '#/components/schemas/LineRead'
+      - $ref: '#/components/schemas/AreaBaseRead'
+      - type: object
+        properties:
+          objectCount:
+            type: integer
+            example: 5
+          seconds:
+            type: integer
+            example: 3
+    OccupancyAreaWrite:
+      $ref: '#/components/schemas/AreaBaseWrite'
+    OccupancyAreaRead:
+      $ref: '#/components/schemas/AreaBaseRead'
+    CrowdEstimationAreaWrite:
+      $ref: '#/components/schemas/AreaBaseWrite'
+    CrowdEstimationAreaRead:
+      $ref: '#/components/schemas/AreaBaseRead'
+    DwellingAreaWrite:
+      allOf:
+      - $ref: '#/components/schemas/AreaBaseWrite'
       - type: object
         required:
         - seconds
         properties:
           seconds:
             type: integer
-            description: Time window in seconds for tailgating detection
-            example: 2
+            minimum: 1
+            description: Duration threshold in seconds
+            example: 10
+    DwellingAreaRead:
+      allOf:
+      - $ref: '#/components/schemas/AreaBaseRead'
+      - type: object
+        properties:
+          seconds:
+            type: integer
+            example: 10
+    ArmedPersonAreaWrite:
+      $ref: '#/components/schemas/AreaBaseWrite'
+    ArmedPersonAreaRead:
+      $ref: '#/components/schemas/AreaBaseRead'
+    ObjectLeftAreaWrite:
+      allOf:
+      - $ref: '#/components/schemas/AreaBaseWrite'
+      - type: object
+        required:
+        - seconds
+        properties:
+          seconds:
+            type: integer
+            minimum: 1
+            description: Duration threshold in seconds
+            example: 5
+    ObjectLeftAreaRead:
+      allOf:
+      - $ref: '#/components/schemas/AreaBaseRead'
+      - type: object
+        properties:
+          seconds:
+            type: integer
+            example: 5
+    ObjectRemovedAreaWrite:
+      allOf:
+      - $ref: '#/components/schemas/AreaBaseWrite'
+      - type: object
+        required:
+        - seconds
+        properties:
+          seconds:
+            type: integer
+            minimum: 1
+            description: Duration threshold in seconds
+            example: 5
+    ObjectRemovedAreaRead:
+      allOf:
+      - $ref: '#/components/schemas/AreaBaseRead'
+      - type: object
+        properties:
+          seconds:
+            type: integer
+            example: 5
+    FallenPersonAreaWrite:
+      $ref: '#/components/schemas/AreaBaseWrite'
+    FallenPersonAreaRead:
+      $ref: '#/components/schemas/AreaBaseRead'
+    VehicleGuardAreaWrite:
+      $ref: '#/components/schemas/AreaBaseWrite'
+      x-internal: true
+    VehicleGuardAreaRead:
+      $ref: '#/components/schemas/AreaBaseRead'
+      x-internal: true
+    FaceCoveredAreaWrite:
+      $ref: '#/components/schemas/AreaBaseWrite'
+      x-internal: true
+    FaceCoveredAreaRead:
+      $ref: '#/components/schemas/AreaBaseRead'
+      x-internal: true
 x-tagGroups:
-  - name: Core API
+  - name: CORE API
     tags:
       - Core
       - Logs
@@ -14942,11 +16030,13 @@ x-tagGroups:
       - Fonts
       - Node
       - AI
-  - name: SecuRT API
+      - Lines Core
+      - Area Core
+  - name: SECURT API
     tags:
       - SecuRT Instance
-      - Lines
-      - Area
+      - Lines SecuRT
+      - Area SecuRT
   - name: ONVIF API
     tags: []
 tags:
@@ -14962,9 +16052,13 @@ tags:
   description: System configuration management endpoints (get, create, update, delete)
 - name: Instances
   description: AI instance management endpoints (create, list, start, stop, delete)
-- name: Lines
+- name: Lines Core
+  description: Core API lines management (crossing lines for ba_crossline instances)
+- name: Lines SecuRT
   description: SecuRT analytics lines management (crossing, counting, tailgating lines)
-- name: Area
+- name: Area Core
+  description: Core API zones management (jam zones, stop zones for ba_jam and ba_stop instances)
+- name: Area SecuRT
   description: SecuRT analytics areas management (crossing, intrusion, loitering, crowding, occupancy, and other area types)
 - name: Solutions
   description: Solution configuration management endpoints (create, list, update, delete)

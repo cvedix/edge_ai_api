@@ -3,7 +3,8 @@
 #include <json/json.h>
 #include <string>
 
-// Forward declaration
+// Forward declarations
+class AreaManager;
 class SecuRTLineManager;
 
 /**
@@ -14,6 +15,11 @@ class SecuRTLineManager;
  */
 class AnalyticsEntitiesManager {
 public:
+  /**
+   * @brief Set area manager (dependency injection)
+   */
+  static void setAreaManager(AreaManager *manager);
+
   /**
    * @brief Set line manager (dependency injection)
    */
@@ -125,6 +131,7 @@ private:
   Json::Value getTailgatingLines(const std::string &instanceId) const;
 
 private:
+  static AreaManager *area_manager_;
   SecuRTLineManager *line_manager_ = nullptr;
 };
 

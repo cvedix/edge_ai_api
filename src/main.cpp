@@ -3,6 +3,7 @@
 #include "api/instance_handler.h"
 #include "api/quick_instance_handler.h"
 #include "api/swagger_handler.h"
+#include "api/scalar_handler.h"
 #include "api/version_handler.h"
 #include "api/watchdog_handler.h"
 #include <drogon/drogon.h>
@@ -22,10 +23,12 @@
 #include "api/stops_handler.h"
 #include "api/securt_handler.h"
 #include "api/securt_line_handler.h"
-#include "core/analytics_entities_manager.h"
+#include "api/area_handler.h"
 #include "core/securt_instance_manager.h"
 #include "core/securt_line_manager.h"
 #include "core/analytics_entities_manager.h"
+#include "core/area_storage.h"
+#include "core/area_manager.h"
 #ifdef ENABLE_METRICS_HANDLER
 #include "api/metrics_handler.h"
 #endif
@@ -2078,6 +2081,7 @@ int main(int argc, char *argv[]) {
     static VersionHandler versionHandler;
     static WatchdogHandler watchdogHandler;
     static SwaggerHandler swaggerHandler;
+    static ScalarHandler scalarHandler;
     static EndpointsHandler endpointsHandler;
     static LogHandler logHandler;
 #ifdef ENABLE_SYSTEM_INFO_HANDLER
@@ -2600,12 +2604,24 @@ int main(int argc, char *argv[]) {
     static AnalyticsEntitiesManager analyticsEntitiesManager;
     static SecuRTLineManager securtLineManager;
 
+<<<<<<< HEAD
     // Register SecuRT managers with handlers
+=======
+    // Initialize Area storage and manager
+    static AreaStorage areaStorage;
+    static AreaManager areaManager(&areaStorage, &securtInstanceManager);
+
+    // Register SecuRT managers with handler
+>>>>>>> origin/develop
     SecuRTHandler::setInstanceManager(&securtInstanceManager);
     SecuRTHandler::setAnalyticsEntitiesManager(&analyticsEntitiesManager);
     SecuRTLineHandler::setInstanceManager(&securtInstanceManager);
     SecuRTLineHandler::setLineManager(&securtLineManager);
     analyticsEntitiesManager.setLineManager(&securtLineManager);
+
+    // Register Area manager with handler and analytics entities manager
+    AreaHandler::setAreaManager(&areaManager);
+    AnalyticsEntitiesManager::setAreaManager(&areaManager);
 
     // CRITICAL: Create handler instances AFTER dependencies are set
     // This ensures handlers are ready when Drogon registers routes
@@ -2620,7 +2636,11 @@ int main(int argc, char *argv[]) {
     static JamsHandler jamsHandler;
     static StopsHandler stopsHandler;
     static SecuRTHandler securtHandler;
+<<<<<<< HEAD
     static SecuRTLineHandler securtLineHandler;
+=======
+    static AreaHandler areaHandler;
+>>>>>>> origin/develop
 
     // Initialize model upload handler with configurable directory
     // Priority: 1. MODELS_DIR env var, 2. /opt/edge_ai_api/models (with

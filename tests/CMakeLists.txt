@@ -42,6 +42,8 @@ set(TEST_SOURCES
     test_stops_handler.cpp
     test_ba_jam_detection_params.cpp
     test_ba_jam_pipeline.cpp
+    test_securt_handler.cpp
+    test_area_handler.cpp
     # test_ai_handler.cpp  # Commented out: requires C++20 for counting_semaphore, but project uses C++17
     test_main.cpp
 )
@@ -67,6 +69,7 @@ target_sources(edge_ai_api_tests PRIVATE
     ${CMAKE_SOURCE_DIR}/src/api/health_handler.cpp
     ${CMAKE_SOURCE_DIR}/src/api/version_handler.cpp
     ${CMAKE_SOURCE_DIR}/src/api/swagger_handler.cpp
+    ${CMAKE_SOURCE_DIR}/src/api/scalar_handler.cpp
     ${CMAKE_SOURCE_DIR}/src/api/watchdog_handler.cpp
     ${CMAKE_SOURCE_DIR}/src/api/endpoints_handler.cpp
     ${CMAKE_SOURCE_DIR}/src/api/solution_handler.cpp
@@ -81,6 +84,8 @@ target_sources(edge_ai_api_tests PRIVATE
     ${CMAKE_SOURCE_DIR}/src/api/lines_handler.cpp
     ${CMAKE_SOURCE_DIR}/src/api/jams_handler.cpp
     ${CMAKE_SOURCE_DIR}/src/api/stops_handler.cpp
+    ${CMAKE_SOURCE_DIR}/src/api/securt_handler.cpp
+    ${CMAKE_SOURCE_DIR}/src/api/area_handler.cpp
     # ${CMAKE_SOURCE_DIR}/src/api/ai_handler.cpp  # Commented out: requires C++20 for counting_semaphore, but project uses C++17
     ${CMAKE_SOURCE_DIR}/src/core/watchdog.cpp
     ${CMAKE_SOURCE_DIR}/src/core/health_monitor.cpp
@@ -118,6 +123,12 @@ target_sources(edge_ai_api_tests PRIVATE
     ${CMAKE_SOURCE_DIR}/src/core/ai_cache.cpp
     ${CMAKE_SOURCE_DIR}/src/core/rate_limiter.cpp
     ${CMAKE_SOURCE_DIR}/src/core/resource_manager.cpp
+    ${CMAKE_SOURCE_DIR}/src/core/securt_instance_manager.cpp
+    ${CMAKE_SOURCE_DIR}/src/core/securt_instance_registry.cpp
+    ${CMAKE_SOURCE_DIR}/src/core/securt_statistics_collector.cpp
+    ${CMAKE_SOURCE_DIR}/src/core/area_manager.cpp
+    ${CMAKE_SOURCE_DIR}/src/core/area_storage.cpp
+    ${CMAKE_SOURCE_DIR}/src/core/analytics_entities_manager.cpp
 )
 
 # Link jsoncpp if available
@@ -250,6 +261,7 @@ endif()
 if(OpenCV_FOUND)
     if(TARGET opencv_core)
         # CVEDIX SDK requires opencv_dnn module (for cv::dnn::Net)
+        # opencv_objdetect is required for cv::FaceDetectorYN
         set(OPENCV_BASE_LIBS
             opencv_core
             opencv_imgproc
@@ -257,6 +269,7 @@ if(OpenCV_FOUND)
             opencv_videoio
             opencv_highgui
             opencv_dnn
+            opencv_objdetect
         )
 
         # Conditionally add CUDA libraries if available
