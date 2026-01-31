@@ -16318,6 +16318,15 @@ components:
     TailgatingLineWrite:
       allOf:
       - $ref: '#/components/schemas/LineWrite'
+      - type: object
+        required:
+        - seconds
+        properties:
+          seconds:
+            type: integer
+            minimum: 1
+            description: Time window in seconds for tailgating detection
+            example: 2
     AreaBaseWrite:
       type: object
       required:
@@ -16509,6 +16518,14 @@ components:
     TailgatingLineRead:
       allOf:
       - $ref: '#/components/schemas/LineRead'
+      - type: object
+        required:
+        - seconds
+        properties:
+          seconds:
+            type: integer
+            description: Time window in seconds for tailgating detection
+            example: 2
     LoiteringAreaRead:
       allOf:
       - $ref: '#/components/schemas/AreaBaseRead'
