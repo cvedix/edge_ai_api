@@ -12889,7 +12889,7 @@ paths:
       description: Deletes all analytics lines (counting, crossing, and tailgating) for a SecuRT instance.
       operationId: deleteSecuRTAllLines
       tags:
-      - Lines
+      - Lines SecuRT
       parameters:
       - name: instanceId
         in: path
@@ -12932,7 +12932,7 @@ paths:
       description: Creates a new counting line for a SecuRT instance. Counting lines count objects crossing the line.
       operationId: createSecuRTCountingLine
       tags:
-      - Lines
+      - Lines SecuRT
       parameters:
       - name: instanceId
         in: path
@@ -12980,7 +12980,7 @@ paths:
       summary: CORS preflight for counting line
       operationId: createSecuRTCountingLineOptions
       tags:
-      - Lines
+      - Lines SecuRT
       responses:
         '200':
           description: CORS preflight response
@@ -12990,7 +12990,7 @@ paths:
       description: Creates a counting line with a specific ID for a SecuRT instance.
       operationId: createSecuRTCountingLineWithId
       tags:
-      - Lines
+      - Lines SecuRT
       parameters:
       - name: instanceId
         in: path
@@ -13050,7 +13050,7 @@ paths:
       summary: CORS preflight for counting line with ID
       operationId: createSecuRTCountingLineWithIdOptions
       tags:
-      - Lines
+      - Lines SecuRT
       responses:
         '200':
           description: CORS preflight response
@@ -13060,7 +13060,7 @@ paths:
       description: Creates a new crossing line for a SecuRT instance. Crossing lines detect objects crossing the line by direction.
       operationId: createSecuRTCrossingLine
       tags:
-      - Lines
+      - Lines SecuRT
       parameters:
       - name: instanceId
         in: path
@@ -13108,7 +13108,7 @@ paths:
       summary: CORS preflight for crossing line
       operationId: createSecuRTCrossingLineOptions
       tags:
-      - Lines
+      - Lines SecuRT
       responses:
         '200':
           description: CORS preflight response
@@ -13118,7 +13118,7 @@ paths:
       description: Creates a crossing line with a specific ID for a SecuRT instance.
       operationId: createSecuRTCrossingLineWithId
       tags:
-      - Lines
+      - Lines SecuRT
       parameters:
       - name: instanceId
         in: path
@@ -13178,7 +13178,7 @@ paths:
       summary: CORS preflight for crossing line with ID
       operationId: createSecuRTCrossingLineWithIdOptions
       tags:
-      - Lines
+      - Lines SecuRT
       responses:
         '200':
           description: CORS preflight response
@@ -13188,7 +13188,7 @@ paths:
       description: Creates a new tailgating line for a SecuRT instance. Tailgating lines detect multiple objects crossing simultaneously within a time window.
       operationId: createSecuRTTailgatingLine
       tags:
-      - Lines
+      - Lines SecuRT
       parameters:
       - name: instanceId
         in: path
@@ -13236,7 +13236,7 @@ paths:
       summary: CORS preflight for tailgating line
       operationId: createSecuRTTailgatingLineOptions
       tags:
-      - Lines
+      - Lines SecuRT
       responses:
         '200':
           description: CORS preflight response
@@ -13246,7 +13246,7 @@ paths:
       description: Creates a tailgating line with a specific ID for a SecuRT instance.
       operationId: createSecuRTTailgatingLineWithId
       tags:
-      - Lines
+      - Lines SecuRT
       parameters:
       - name: instanceId
         in: path
@@ -13306,7 +13306,7 @@ paths:
       summary: CORS preflight for tailgating line with ID
       operationId: createSecuRTTailgatingLineWithIdOptions
       tags:
-      - Lines
+      - Lines SecuRT
       responses:
         '200':
           description: CORS preflight response
@@ -13316,7 +13316,7 @@ paths:
       description: Deletes a specific analytics line by ID from a SecuRT instance.
       operationId: deleteSecuRTLine
       tags:
-      - Lines
+      - Lines SecuRT
       parameters:
       - name: instanceId
         in: path
@@ -13355,7 +13355,7 @@ paths:
       summary: CORS preflight for line deletion
       operationId: deleteSecuRTLineOptions
       tags:
-      - Lines
+      - Lines SecuRT
       responses:
         '200':
           description: CORS preflight response
@@ -16606,6 +16606,22 @@ components:
             rtsp_url: rtsp://localhost:8554/stream2
             channel: '0'
             resize_ratio: '0.5'
+    Coordinate:
+      type: object
+      required:
+      - x
+      - y
+      properties:
+        x:
+          type: number
+          format: double
+          description: The x coordinate
+          example: 100.0
+        y:
+          type: number
+          format: double
+          description: The y coordinate
+          example: 300.0
     FaceDatabaseConnectionConfig:
       type: object
       required:
@@ -17229,22 +17245,6 @@ components:
           type: boolean
           description: Whether instance is running
           example: true
-    Coordinate:
-      type: object
-      required:
-      - x
-      - y
-      properties:
-        x:
-          type: number
-          format: double
-          description: X coordinate (normalized 0.0-1.0 or pixel)
-          example: 0.0
-        y:
-          type: number
-          format: double
-          description: Y coordinate (normalized 0.0-1.0 or pixel)
-          example: 0.0
     ColorRGBA:
       type: array
       items:
@@ -17256,84 +17256,6 @@ components:
       maxItems: 4
       description: Color in RGBA format [r, g, b, a] with values 0.0-1.0
       example: [0.0, 0.0, 0.0, 1.0]
-    LineWrite:
-      type: object
-      required:
-      - coordinates
-      - classes
-      properties:
-        name:
-          type: string
-          description: Line name
-          example: "Main Entry Line"
-        coordinates:
-          type: array
-          minItems: 2
-          maxItems: 2
-          description: "Line coordinates (exactly 2 points: start and end)"
-          items:
-            $ref: '#/components/schemas/Coordinate'
-          example:
-            - x: 0.0
-              y: 0.5
-            - x: 1.0
-              y: 0.5
-        classes:
-          type: array
-          minItems: 1
-          description: Object classes to detect
-          items:
-            type: string
-            enum:
-            - Person
-            - Animal
-            - Vehicle
-            - Face
-            - Unknown
-          example:
-            - Person
-            - Vehicle
-        direction:
-          type: string
-          enum:
-          - Up
-          - Down
-          - Both
-          description: Crossing direction
-          default: Both
-          example: Both
-        color:
-          type: array
-          minItems: 4
-          maxItems: 4
-          description: Line color in RGBA format (0.0-1.0 range)
-          items:
-            type: number
-            format: double
-            minimum: 0.0
-            maximum: 1.0
-          default:
-            - 0.0
-            - 0.0
-            - 0.0
-            - 1.0
-          example:
-            - 0.0
-            - 0.0
-            - 0.0
-            - 1.0
-    TailgatingLineWrite:
-      allOf:
-      - $ref: '#/components/schemas/LineWrite'
-      - type: object
-        required:
-        - seconds
-        properties:
-          seconds:
-            type: integer
-            minimum: 1
-            description: Time window in seconds for tailgating detection
-            example: 2
     AreaBaseWrite:
       type: object
       required:
@@ -17457,81 +17379,8 @@ components:
           seconds:
             type: integer
             minimum: 1
-            description: Time window in seconds for tailgating detection
-            example: 2
-    LineRead:
-      type: object
-      required:
-      - id
-      - coordinates
-      - classes
-      - direction
-      - color
-      properties:
-        id:
-          type: string
-          description: Line ID (UUID)
-          example: "550e8400-e29b-41d4-a716-446655440000"
-        name:
-          type: string
-          description: Line name
-          example: "Main Entry Line"
-        coordinates:
-          type: array
-          items:
-            $ref: '#/components/schemas/Coordinate'
-          example:
-            - x: 0.0
-              y: 0.5
-            - x: 1.0
-              y: 0.5
-        classes:
-          type: array
-          items:
-            type: string
-            enum:
-            - Person
-            - Animal
-            - Vehicle
-            - Face
-            - Unknown
-          example:
-            - Person
-            - Vehicle
-        direction:
-          type: string
-          enum:
-          - Up
-          - Down
-          - Both
-          example: Both
-        color:
-          type: array
-          items:
-            type: number
-            format: double
-          example:
-            - 0.0
-            - 0.0
-            - 0.0
-            - 1.0
-    CountingLineRead:
-      allOf:
-      - $ref: '#/components/schemas/LineRead'
-    CrossingLineRead:
-      allOf:
-      - $ref: '#/components/schemas/LineRead'
-    TailgatingLineRead:
-      allOf:
-      - $ref: '#/components/schemas/LineRead'
-      - type: object
-        required:
-        - seconds
-        properties:
-          seconds:
-            type: integer
-            description: Time window in seconds for tailgating detection
-            example: 2
+            description: Duration threshold in seconds
+            example: 5
     LoiteringAreaRead:
       allOf:
       - $ref: '#/components/schemas/AreaBaseRead'
@@ -17657,6 +17506,157 @@ components:
     FaceCoveredAreaRead:
       $ref: '#/components/schemas/AreaBaseRead'
       x-internal: true
+    LineWrite:
+      type: object
+      required:
+      - coordinates
+      - classes
+      properties:
+        name:
+          type: string
+          description: Line name
+          example: "Main Entry Line"
+        coordinates:
+          type: array
+          minItems: 2
+          maxItems: 2
+          description: "Line coordinates (exactly 2 points: start and end)"
+          items:
+            $ref: '#/components/schemas/Coordinate'
+          example:
+            - x: 0.0
+              y: 0.5
+            - x: 1.0
+              y: 0.5
+        classes:
+          type: array
+          minItems: 1
+          description: Object classes to detect
+          items:
+            type: string
+            enum:
+            - Person
+            - Animal
+            - Vehicle
+            - Face
+            - Unknown
+          example:
+            - Person
+            - Vehicle
+        direction:
+          type: string
+          enum:
+          - Up
+          - Down
+          - Both
+          description: Crossing direction
+          default: Both
+          example: Both
+        color:
+          type: array
+          minItems: 4
+          maxItems: 4
+          description: Line color in RGBA format (0.0-1.0 range)
+          items:
+            type: number
+            format: double
+            minimum: 0.0
+            maximum: 1.0
+          default:
+            - 0.0
+            - 0.0
+            - 0.0
+            - 1.0
+          example:
+            - 0.0
+            - 0.0
+            - 0.0
+            - 1.0
+    TailgatingLineWrite:
+      allOf:
+      - $ref: '#/components/schemas/LineWrite'
+      - type: object
+        required:
+        - seconds
+        properties:
+          seconds:
+            type: integer
+            minimum: 1
+            description: Time window in seconds for tailgating detection
+            example: 2
+    LineRead:
+      type: object
+      required:
+      - id
+      - coordinates
+      - classes
+      - direction
+      - color
+      properties:
+        id:
+          type: string
+          description: Line ID (UUID)
+          example: "550e8400-e29b-41d4-a716-446655440000"
+        name:
+          type: string
+          description: Line name
+          example: "Main Entry Line"
+        coordinates:
+          type: array
+          items:
+            $ref: '#/components/schemas/Coordinate'
+          example:
+            - x: 0.0
+              y: 0.5
+            - x: 1.0
+              y: 0.5
+        classes:
+          type: array
+          items:
+            type: string
+            enum:
+            - Person
+            - Animal
+            - Vehicle
+            - Face
+            - Unknown
+          example:
+            - Person
+            - Vehicle
+        direction:
+          type: string
+          enum:
+          - Up
+          - Down
+          - Both
+          example: Both
+        color:
+          type: array
+          items:
+            type: number
+            format: double
+          example:
+            - 0.0
+            - 0.0
+            - 0.0
+            - 1.0
+    CountingLineRead:
+      allOf:
+      - $ref: '#/components/schemas/LineRead'
+    CrossingLineRead:
+      allOf:
+      - $ref: '#/components/schemas/LineRead'
+    TailgatingLineRead:
+      allOf:
+      - $ref: '#/components/schemas/LineRead'
+      - type: object
+        required:
+        - seconds
+        properties:
+          seconds:
+            type: integer
+            description: Time window in seconds for tailgating detection
+            example: 2
 x-tagGroups:
   - name: CORE API
     tags:
