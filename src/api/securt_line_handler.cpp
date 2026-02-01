@@ -81,6 +81,21 @@ void SecuRTLineHandler::createCountingLine(
       return;
     }
 
+    // Try runtime update first (without restart)
+    if (updateLinesRuntime(instanceId)) {
+      if (isApiLoggingEnabled()) {
+        PLOG_INFO << "[API] POST /v1/securt/instance/" << instanceId
+                  << "/line/counting - Lines updated runtime without restart";
+      }
+    } else {
+      // Fallback to restart if runtime update failed
+      if (isApiLoggingEnabled()) {
+        PLOG_WARNING << "[API] POST /v1/securt/instance/" << instanceId
+                     << "/line/counting - Runtime update failed, falling back to restart";
+      }
+      restartInstanceForLineUpdate(instanceId);
+    }
+
     // Build response
     Json::Value response;
     response["lineId"] = lineId;
@@ -184,6 +199,21 @@ void SecuRTLineHandler::createCountingLineWithId(
       return;
     }
 
+    // Try runtime update first (without restart)
+    if (updateLinesRuntime(instanceId)) {
+      if (isApiLoggingEnabled()) {
+        PLOG_INFO << "[API] PUT /v1/securt/instance/" << instanceId
+                  << "/line/counting/" << lineId << " - Lines updated runtime without restart";
+      }
+    } else {
+      // Fallback to restart if runtime update failed
+      if (isApiLoggingEnabled()) {
+        PLOG_WARNING << "[API] PUT /v1/securt/instance/" << instanceId
+                     << "/line/counting/" << lineId << " - Runtime update failed, falling back to restart";
+      }
+      restartInstanceForLineUpdate(instanceId);
+    }
+
     // Build response
     Json::Value response;
     response["lineId"] = createdId;
@@ -277,6 +307,21 @@ void SecuRTLineHandler::createCrossingLine(
       callback(createErrorResponse(400, "Invalid request",
                                    "Line validation failed"));
       return;
+    }
+
+    // Try runtime update first (without restart)
+    if (updateLinesRuntime(instanceId)) {
+      if (isApiLoggingEnabled()) {
+        PLOG_INFO << "[API] POST /v1/securt/instance/" << instanceId
+                  << "/line/crossing - Lines updated runtime without restart";
+      }
+    } else {
+      // Fallback to restart if runtime update failed
+      if (isApiLoggingEnabled()) {
+        PLOG_WARNING << "[API] POST /v1/securt/instance/" << instanceId
+                     << "/line/crossing - Runtime update failed, falling back to restart";
+      }
+      restartInstanceForLineUpdate(instanceId);
     }
 
     // Build response
@@ -382,6 +427,21 @@ void SecuRTLineHandler::createCrossingLineWithId(
       return;
     }
 
+    // Try runtime update first (without restart)
+    if (updateLinesRuntime(instanceId)) {
+      if (isApiLoggingEnabled()) {
+        PLOG_INFO << "[API] PUT /v1/securt/instance/" << instanceId
+                  << "/line/crossing/" << lineId << " - Lines updated runtime without restart";
+      }
+    } else {
+      // Fallback to restart if runtime update failed
+      if (isApiLoggingEnabled()) {
+        PLOG_WARNING << "[API] PUT /v1/securt/instance/" << instanceId
+                     << "/line/crossing/" << lineId << " - Runtime update failed, falling back to restart";
+      }
+      restartInstanceForLineUpdate(instanceId);
+    }
+
     // Build response
     Json::Value response;
     response["lineId"] = createdId;
@@ -475,6 +535,21 @@ void SecuRTLineHandler::createTailgatingLine(
       callback(createErrorResponse(400, "Invalid request",
                                    "Line validation failed"));
       return;
+    }
+
+    // Try runtime update first (without restart)
+    if (updateLinesRuntime(instanceId)) {
+      if (isApiLoggingEnabled()) {
+        PLOG_INFO << "[API] POST /v1/securt/instance/" << instanceId
+                  << "/line/tailgating - Lines updated runtime without restart";
+      }
+    } else {
+      // Fallback to restart if runtime update failed
+      if (isApiLoggingEnabled()) {
+        PLOG_WARNING << "[API] POST /v1/securt/instance/" << instanceId
+                     << "/line/tailgating - Runtime update failed, falling back to restart";
+      }
+      restartInstanceForLineUpdate(instanceId);
     }
 
     // Build response
@@ -578,6 +653,21 @@ void SecuRTLineHandler::createTailgatingLineWithId(
       callback(createErrorResponse(400, "Invalid request",
                                    "Line validation failed"));
       return;
+    }
+
+    // Try runtime update first (without restart)
+    if (updateLinesRuntime(instanceId)) {
+      if (isApiLoggingEnabled()) {
+        PLOG_INFO << "[API] PUT /v1/securt/instance/" << instanceId
+                  << "/line/tailgating/" << lineId << " - Lines updated runtime without restart";
+      }
+    } else {
+      // Fallback to restart if runtime update failed
+      if (isApiLoggingEnabled()) {
+        PLOG_WARNING << "[API] PUT /v1/securt/instance/" << instanceId
+                     << "/line/tailgating/" << lineId << " - Runtime update failed, falling back to restart";
+      }
+      restartInstanceForLineUpdate(instanceId);
     }
 
     // Build response
@@ -729,6 +819,21 @@ void SecuRTLineHandler::deleteAllLines(
     // Delete all lines
     line_manager_->deleteAllLines(instanceId);
 
+    // Try runtime update first (without restart)
+    if (updateLinesRuntime(instanceId)) {
+      if (isApiLoggingEnabled()) {
+        PLOG_INFO << "[API] DELETE /v1/securt/instance/" << instanceId
+                  << "/lines - Lines updated runtime without restart";
+      }
+    } else {
+      // Fallback to restart if runtime update failed
+      if (isApiLoggingEnabled()) {
+        PLOG_WARNING << "[API] DELETE /v1/securt/instance/" << instanceId
+                     << "/lines - Runtime update failed, falling back to restart";
+      }
+      restartInstanceForLineUpdate(instanceId);
+    }
+
     auto end_time = std::chrono::steady_clock::now();
     auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(
         end_time - start_time);
@@ -816,6 +921,21 @@ void SecuRTLineHandler::deleteLine(
       callback(createErrorResponse(404, "Not Found",
                                    "Line does not exist"));
       return;
+    }
+
+    // Try runtime update first (without restart)
+    if (updateLinesRuntime(instanceId)) {
+      if (isApiLoggingEnabled()) {
+        PLOG_INFO << "[API] DELETE /v1/securt/instance/" << instanceId
+                  << "/line/" << lineId << " - Lines updated runtime without restart";
+      }
+    } else {
+      // Fallback to restart if runtime update failed
+      if (isApiLoggingEnabled()) {
+        PLOG_WARNING << "[API] DELETE /v1/securt/instance/" << instanceId
+                     << "/line/" << lineId << " - Runtime update failed, falling back to restart";
+      }
+      restartInstanceForLineUpdate(instanceId);
     }
 
     auto end_time = std::chrono::steady_clock::now();
@@ -952,5 +1072,244 @@ HttpResponsePtr SecuRTLineHandler::createSuccessResponse(const Json::Value &data
   resp->addHeader("Access-Control-Allow-Headers", "Content-Type");
 
   return resp;
+}
+
+bool SecuRTLineHandler::updateLinesRuntime(const std::string &instanceId) const {
+  if (!instance_manager_ || !line_manager_) {
+    return false;
+  }
+
+  // Get core instance manager
+  auto *coreInstanceManager = instance_manager_->getCoreInstanceManager();
+  if (!coreInstanceManager) {
+    if (isApiLoggingEnabled()) {
+      PLOG_DEBUG << "[API] updateLinesRuntime: Core instance manager not available";
+    }
+    return false;
+  }
+
+  // Check if instance is running
+  auto optInfo = coreInstanceManager->getInstance(instanceId);
+  if (!optInfo.has_value()) {
+    if (isApiLoggingEnabled()) {
+      PLOG_DEBUG << "[API] updateLinesRuntime: Instance " << instanceId << " not found";
+    }
+    return false;
+  }
+
+  if (!optInfo.value().running) {
+    if (isApiLoggingEnabled()) {
+      PLOG_DEBUG << "[API] updateLinesRuntime: Instance " << instanceId
+                 << " is not running, no need to update runtime";
+    }
+    return true; // Not an error - instance not running, config will apply on next start
+  }
+
+  // Check if we're in subprocess mode
+  if (coreInstanceManager->isSubprocessMode()) {
+    if (isApiLoggingEnabled()) {
+      PLOG_DEBUG << "[API] updateLinesRuntime: Subprocess mode - cannot update runtime";
+    }
+    return false; // Fallback to restart
+  }
+
+  // In in-process mode, try to access ba_crossline_node
+  try {
+    auto *inProcessManager =
+        dynamic_cast<InProcessInstanceManager *>(coreInstanceManager);
+    if (!inProcessManager) {
+      if (isApiLoggingEnabled()) {
+        PLOG_DEBUG << "[API] updateLinesRuntime: Cannot cast to InProcessInstanceManager";
+      }
+      return false;
+    }
+
+    // Get nodes from registry
+    auto &registry = inProcessManager->getRegistry();
+    auto nodes = registry.getInstanceNodes(instanceId);
+
+    if (nodes.empty()) {
+      if (isApiLoggingEnabled()) {
+        PLOG_DEBUG << "[API] updateLinesRuntime: No nodes found for instance " << instanceId;
+      }
+      return false;
+    }
+
+    // Search for ba_crossline_node in pipeline
+    std::shared_ptr<cvedix_nodes::cvedix_ba_crossline_node> baCrosslineNode;
+    for (const auto &node : nodes) {
+      if (!node) continue;
+
+      auto crosslineNode =
+          std::dynamic_pointer_cast<cvedix_nodes::cvedix_ba_crossline_node>(node);
+      if (crosslineNode) {
+        baCrosslineNode = crosslineNode;
+        break;
+      }
+    }
+
+    if (!baCrosslineNode) {
+      if (isApiLoggingEnabled()) {
+        PLOG_DEBUG << "[API] updateLinesRuntime: ba_crossline_node not found in pipeline";
+      }
+      return false; // Fallback to restart
+    }
+
+    // Get all SecuRT lines and convert to CrossingLines format
+    std::string crossingLinesJson =
+        SecuRTPipelineIntegration::convertLinesToCrossingLinesFormat(
+            line_manager_, instanceId);
+
+    if (crossingLinesJson.empty()) {
+      // No lines - clear all lines
+      bool success = baCrosslineNode->set_lines(
+          std::map<int, cvedix_objects::cvedix_line>());
+      if (success) {
+        if (isApiLoggingEnabled()) {
+          PLOG_INFO << "[API] updateLinesRuntime: ✓ Successfully cleared all lines via hot reload";
+        }
+        return true;
+      }
+      return false;
+    }
+
+    // Parse lines from JSON
+    Json::Reader reader;
+    Json::Value linesArray;
+    if (!reader.parse(crossingLinesJson, linesArray) || !linesArray.isArray()) {
+      if (isApiLoggingEnabled()) {
+        PLOG_WARNING << "[API] updateLinesRuntime: Failed to parse lines JSON";
+      }
+      return false;
+    }
+
+    // Convert to map<int, cvedix_line>
+    std::map<int, cvedix_objects::cvedix_line> lines;
+    for (Json::ArrayIndex i = 0; i < linesArray.size(); ++i) {
+      const Json::Value &lineObj = linesArray[i];
+      if (!lineObj.isMember("coordinates") || !lineObj["coordinates"].isArray() ||
+          lineObj["coordinates"].size() < 2) {
+        continue;
+      }
+
+      const Json::Value &coords = lineObj["coordinates"];
+      const Json::Value &startCoord = coords[0];
+      const Json::Value &endCoord = coords[coords.size() - 1];
+
+      if (!startCoord.isMember("x") || !startCoord.isMember("y") ||
+          !endCoord.isMember("x") || !endCoord.isMember("y")) {
+        continue;
+      }
+
+      int start_x = startCoord["x"].asInt();
+      int start_y = startCoord["y"].asInt();
+      int end_x = endCoord["x"].asInt();
+      int end_y = endCoord["y"].asInt();
+
+      cvedix_objects::cvedix_point start(start_x, start_y);
+      cvedix_objects::cvedix_point end(end_x, end_y);
+      lines[static_cast<int>(i)] = cvedix_objects::cvedix_line(start, end);
+    }
+
+    // Use SDK's set_lines() API for hot reload!
+    bool success = baCrosslineNode->set_lines(lines);
+    if (success) {
+      if (isApiLoggingEnabled()) {
+        PLOG_INFO << "[API] updateLinesRuntime: ✓ Successfully updated "
+                  << lines.size() << " line(s) via hot reload (no restart needed)";
+      }
+      return true;
+    } else {
+      if (isApiLoggingEnabled()) {
+        PLOG_WARNING << "[API] updateLinesRuntime: SDK set_lines() returned false";
+      }
+      return false;
+    }
+  } catch (const std::exception &e) {
+    if (isApiLoggingEnabled()) {
+      PLOG_ERROR << "[API] updateLinesRuntime: Exception: " << e.what();
+    }
+    return false;
+  }
+}
+
+bool SecuRTLineHandler::restartInstanceForLineUpdate(
+    const std::string &instanceId) const {
+  if (!instance_manager_) {
+    return false;
+  }
+
+  // Get core instance manager
+  auto *coreInstanceManager = instance_manager_->getCoreInstanceManager();
+  if (!coreInstanceManager) {
+    return false;
+  }
+
+  // Check if instance is running
+  auto optInfo = coreInstanceManager->getInstance(instanceId);
+  if (!optInfo.has_value() || !optInfo.value().running) {
+    // Instance not running, no need to restart
+    return true;
+  }
+
+  // Restart instance in background thread to apply line changes
+  std::thread restartThread([this, instanceId, coreInstanceManager]() {
+    try {
+      if (isApiLoggingEnabled()) {
+        PLOG_INFO << "[API] ========================================";
+        PLOG_INFO << "[API] Restarting SecuRT instance " << instanceId
+                  << " to apply line changes";
+        PLOG_INFO << "[API] This will rebuild pipeline with new lines from SecuRT Line Manager";
+        PLOG_INFO << "[API] ========================================";
+      }
+
+      // Stop instance
+      if (isApiLoggingEnabled()) {
+        PLOG_INFO << "[API] Step 1/3: Stopping instance " << instanceId;
+      }
+      coreInstanceManager->stopInstance(instanceId);
+
+      // Wait for cleanup
+      if (isApiLoggingEnabled()) {
+        PLOG_INFO << "[API] Step 2/3: Waiting for pipeline cleanup (500ms)";
+      }
+      std::this_thread::sleep_for(std::chrono::milliseconds(500));
+
+      // Start instance again (will rebuild pipeline with new lines)
+      if (isApiLoggingEnabled()) {
+        PLOG_INFO << "[API] Step 3/3: Starting instance " << instanceId
+                  << " (will rebuild pipeline with new lines)";
+      }
+      bool startSuccess = coreInstanceManager->startInstance(instanceId, true);
+
+      if (startSuccess) {
+        if (isApiLoggingEnabled()) {
+          PLOG_INFO << "[API] ========================================";
+          PLOG_INFO << "[API] ✓ Instance " << instanceId
+                    << " restarted successfully for line update";
+          PLOG_INFO << "[API] Pipeline rebuilt with new lines";
+          PLOG_INFO << "[API] ========================================";
+        }
+      } else {
+        if (isApiLoggingEnabled()) {
+          PLOG_ERROR << "[API] ✗ Failed to start instance " << instanceId
+                     << " after restart";
+        }
+      }
+    } catch (const std::exception &e) {
+      if (isApiLoggingEnabled()) {
+        PLOG_ERROR << "[API] ✗ Exception restarting instance " << instanceId
+                   << " for line update: " << e.what();
+      }
+    } catch (...) {
+      if (isApiLoggingEnabled()) {
+        PLOG_ERROR << "[API] ✗ Unknown error restarting instance " << instanceId
+                   << " for line update";
+      }
+    }
+  });
+  restartThread.detach();
+
+  return true;
 }
 

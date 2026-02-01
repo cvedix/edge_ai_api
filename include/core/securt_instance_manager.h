@@ -70,6 +70,12 @@ public:
    */
   bool hasInstance(const std::string &instanceId) const;
 
+  /**
+   * @brief Get core instance manager (for restart/runtime operations)
+   * @return Core instance manager pointer
+   */
+  IInstanceManager *getCoreInstanceManager() const { return instance_manager_; }
+
 private:
   IInstanceManager *instance_manager_;
   SecuRTInstanceRegistry registry_;

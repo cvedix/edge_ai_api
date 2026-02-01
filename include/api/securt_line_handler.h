@@ -185,5 +185,19 @@ private:
    */
   HttpResponsePtr createSuccessResponse(const Json::Value &data,
                                         int statusCode = 200) const;
+
+  /**
+   * @brief Restart instance to apply line changes (if instance is running)
+   * @param instanceId Instance ID
+   * @return true if restart initiated, false otherwise
+   */
+  bool restartInstanceForLineUpdate(const std::string &instanceId) const;
+
+  /**
+   * @brief Try to update lines at runtime without restart (in-process mode only)
+   * @param instanceId Instance ID
+   * @return true if update successful, false if fallback to restart needed
+   */
+  bool updateLinesRuntime(const std::string &instanceId) const;
 };
 

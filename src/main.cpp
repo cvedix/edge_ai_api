@@ -2627,6 +2627,10 @@ int main(int argc, char *argv[]) {
     AreaHandler::setAreaManager(&areaManager);
     AnalyticsEntitiesManager::setAreaManager(&areaManager);
 
+    // Register Area and Line managers with PipelineBuilder for SecuRT integration
+    PipelineBuilder::setAreaManager(&areaManager);
+    PipelineBuilder::setLineManager(&securtLineManager);
+
     // CRITICAL: Create handler instances AFTER dependencies are set
     // This ensures handlers are ready when Drogon registers routes
     // Handlers created here depend on dependencies set above
@@ -3798,14 +3802,17 @@ int main(int argc, char *argv[]) {
     // thread to avoid blocking if instances fail to start, hang, or crash
     auto *loop = app.getLoop();
     if (loop) {
-      loop->runAfter(2.0, [&instanceManager]() {
+      // Capture pointer to static variable to avoid warning about capturing
+      // non-automatic storage duration variable
+      IInstanceManager *instanceManagerPtr = instanceManager.get();
+      loop->runAfter(2.0, [instanceManagerPtr]() {
         PLOG_INFO << "[Main] Server is ready - starting auto-start process in "
                      "separate thread";
         // Start auto-start in a separate thread to avoid blocking the event
         // loop Even if instances fail, hang, or crash, the main program
         // continues running
-        std::thread autoStartThread([&instanceManager]() {
-          autoStartInstances(instanceManager.get());
+        std::thread autoStartThread([instanceManagerPtr]() {
+          autoStartInstances(instanceManagerPtr);
         });
         autoStartThread.detach(); // Detach so it runs independently
       });

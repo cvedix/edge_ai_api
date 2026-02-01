@@ -4,6 +4,7 @@
 #include "core/metrics_interceptor.h"
 #include "core/uuid_generator.h"
 #include "instances/instance_manager.h"
+#include "instances/inprocess_instance_manager.h"
 #include <algorithm>
 #include <cctype>
 #include <chrono>
@@ -1763,14 +1764,61 @@ LinesHandler::findBACrosslineNode(const std::string &instanceId) const {
   }
 
   // In in-process mode, try to access nodes via InstanceRegistry
-  // This requires casting to InProcessInstanceManager to access registry
-  // For now, return nullptr and let updateLinesRuntime() handle via restart
-  // TODO: Add getInstanceNodes() to IInstanceManager interface if needed
-  if (isApiLoggingEnabled()) {
-    PLOG_DEBUG << "[API] findBACrosslineNode: Direct node access not "
-                  "available, will use restart fallback";
+  try {
+    // Cast to InProcessInstanceManager to access registry
+    auto *inProcessManager =
+        dynamic_cast<InProcessInstanceManager *>(instance_manager_);
+    if (!inProcessManager) {
+      if (isApiLoggingEnabled()) {
+        PLOG_DEBUG << "[API] findBACrosslineNode: Cannot cast to "
+                      "InProcessInstanceManager";
+      }
+      return nullptr;
+    }
+
+    // Get nodes from registry
+    auto &registry = inProcessManager->getRegistry();
+    auto nodes = registry.getInstanceNodes(instanceId);
+
+    if (nodes.empty()) {
+      if (isApiLoggingEnabled()) {
+        PLOG_DEBUG << "[API] findBACrosslineNode: No nodes found for instance "
+                   << instanceId;
+      }
+      return nullptr;
+    }
+
+    // Search for ba_crossline_node in pipeline
+    for (const auto &node : nodes) {
+      if (!node)
+        continue;
+
+      auto crosslineNode =
+          std::dynamic_pointer_cast<cvedix_nodes::cvedix_ba_crossline_node>(
+              node);
+      if (crosslineNode) {
+        if (isApiLoggingEnabled()) {
+          PLOG_DEBUG << "[API] findBACrosslineNode: Found ba_crossline_node for "
+                        "instance "
+                     << instanceId;
+        }
+        return crosslineNode;
+      }
+    }
+
+    if (isApiLoggingEnabled()) {
+      PLOG_DEBUG << "[API] findBACrosslineNode: ba_crossline_node not found in "
+                    "pipeline for instance "
+                 << instanceId;
+    }
+    return nullptr;
+  } catch (const std::exception &e) {
+    if (isApiLoggingEnabled()) {
+      PLOG_WARNING << "[API] findBACrosslineNode: Exception accessing nodes: "
+                   << e.what();
+    }
+    return nullptr;
   }
-  return nullptr;
 }
 
 std::map<int, cvedix_objects::cvedix_line>
@@ -1902,34 +1950,31 @@ bool LinesHandler::updateLinesRuntime(const std::string &instanceId,
   }
 
   // Try to update lines via SDK API
-  // NOTE: CVEDIX SDK's ba_crossline_node stores lines in member variable
-  // 'all_lines' We'll try to access and update it directly if possible
+  // SDK has set_lines() API for hot reload!
   try {
-    // Attempt: Try to access all_lines member and update it directly
-    // Based on SDK header, ba_crossline_node has: std::map<int, cvedix_line>
-    // all_lines; We'll try to access it through public interface or friend
-    // class
-
-    // Since we don't have direct access to private members, we need to use
-    // restart However, we can verify that lines are correctly saved to config
-    // first
-
     if (isApiLoggingEnabled()) {
       PLOG_INFO << "[API] updateLinesRuntime: Found ba_crossline_node, "
                    "attempting to update "
-                << lines.size() << " line(s)";
-      PLOG_INFO << "[API] updateLinesRuntime: Lines parsed successfully, will "
-                   "apply via restart";
-      PLOG_INFO << "[API] updateLinesRuntime: Note - Direct runtime update "
-                   "requires SDK API access";
+                << lines.size() << " line(s) via SDK set_lines() API";
     }
 
     // Verify lines were parsed correctly
     if (lines.empty() && linesArray.isArray() && linesArray.size() == 0) {
-      // Empty array is valid (delete all lines)
-      if (isApiLoggingEnabled()) {
-        PLOG_INFO << "[API] updateLinesRuntime: Empty lines array - will clear "
-                     "all lines via restart";
+      // Empty array is valid (delete all lines) - pass empty map to set_lines()
+      bool success = baCrosslineNode->set_lines(
+          std::map<int, cvedix_objects::cvedix_line>());
+      if (success) {
+        if (isApiLoggingEnabled()) {
+          PLOG_INFO << "[API] updateLinesRuntime: ✓ Successfully cleared all "
+                       "lines via hot reload";
+        }
+        return true;
+      } else {
+        if (isApiLoggingEnabled()) {
+          PLOG_WARNING << "[API] updateLinesRuntime: Failed to clear lines via "
+                          "SDK API, fallback to restart";
+        }
+        return false;
       }
     } else if (lines.empty()) {
       // Parse failed
@@ -1940,18 +1985,22 @@ bool LinesHandler::updateLinesRuntime(const std::string &instanceId,
       return false;
     }
 
-    // Since SDK doesn't expose runtime update API, we need to restart
-    // But we've verified that lines are correctly parsed and saved to config
-    // The restart will rebuild pipeline with new lines from
-    // additionalParams["CrossingLines"]
-    if (isApiLoggingEnabled()) {
-      PLOG_INFO << "[API] updateLinesRuntime: Lines configuration saved, "
-                   "restarting instance to apply changes";
+    // Use SDK's set_lines() API for hot reload
+    // This updates lines at runtime without restart!
+    bool success = baCrosslineNode->set_lines(lines);
+    if (success) {
+      if (isApiLoggingEnabled()) {
+        PLOG_INFO << "[API] updateLinesRuntime: ✓ Successfully updated "
+                  << lines.size() << " line(s) via hot reload (no restart needed)";
+      }
+      return true;
+    } else {
+      if (isApiLoggingEnabled()) {
+        PLOG_WARNING << "[API] updateLinesRuntime: SDK set_lines() returned "
+                       "false, fallback to restart";
+      }
+      return false;
     }
-
-    // Return false to trigger fallback to restart
-    // This ensures lines are applied correctly through pipeline rebuild
-    return false;
 
   } catch (const std::exception &e) {
     if (isApiLoggingEnabled()) {

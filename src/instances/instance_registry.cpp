@@ -6,6 +6,7 @@
 #include "core/logging_flags.h"
 #include "core/timeout_constants.h"
 #include "core/uuid_generator.h"
+#include "core/pipeline_builder_destination_nodes.h"
 #include "models/update_instance_request.h"
 #include "utils/gstreamer_checker.h"
 #include "utils/mp4_directory_watcher.h"
@@ -112,7 +113,7 @@ std::string InstanceRegistry::createInstance(const CreateInstanceRequest &req) {
         
         // Extract RTMP stream key if RTMP URL is configured
         if (!info.rtmpUrl.empty()) {
-          std::string streamKey = pipeline_builder_.extractRTMPStreamKey(info.rtmpUrl);
+          std::string streamKey = PipelineBuilderDestinationNodes::extractRTMPStreamKey(info.rtmpUrl);
           if (!streamKey.empty()) {
             existingRTMPStreamKeys.insert(streamKey);
           }
@@ -121,7 +122,7 @@ std::string InstanceRegistry::createInstance(const CreateInstanceRequest &req) {
         // Also check additionalParams for RTMP_URL
         auto rtmpIt = info.additionalParams.find("RTMP_URL");
         if (rtmpIt != info.additionalParams.end() && !rtmpIt->second.empty()) {
-          std::string streamKey = pipeline_builder_.extractRTMPStreamKey(rtmpIt->second);
+          std::string streamKey = PipelineBuilderDestinationNodes::extractRTMPStreamKey(rtmpIt->second);
           if (!streamKey.empty()) {
             existingRTMPStreamKeys.insert(streamKey);
           }
@@ -130,7 +131,7 @@ std::string InstanceRegistry::createInstance(const CreateInstanceRequest &req) {
         // Check RTMP_DES_URL as well
         auto rtmpDesIt = info.additionalParams.find("RTMP_DES_URL");
         if (rtmpDesIt != info.additionalParams.end() && !rtmpDesIt->second.empty()) {
-          std::string streamKey = pipeline_builder_.extractRTMPStreamKey(rtmpDesIt->second);
+          std::string streamKey = PipelineBuilderDestinationNodes::extractRTMPStreamKey(rtmpDesIt->second);
           if (!streamKey.empty()) {
             existingRTMPStreamKeys.insert(streamKey);
           }
@@ -4184,7 +4185,7 @@ bool InstanceRegistry::rebuildPipelineFromInstanceInfo(
         
         // Extract RTMP stream key if RTMP URL is configured
         if (!info.rtmpUrl.empty()) {
-          std::string streamKey = pipeline_builder_.extractRTMPStreamKey(info.rtmpUrl);
+          std::string streamKey = PipelineBuilderDestinationNodes::extractRTMPStreamKey(info.rtmpUrl);
           if (!streamKey.empty()) {
             existingRTMPStreamKeys.insert(streamKey);
           }
@@ -4193,7 +4194,7 @@ bool InstanceRegistry::rebuildPipelineFromInstanceInfo(
         // Also check additionalParams for RTMP_URL
         auto rtmpIt = info.additionalParams.find("RTMP_URL");
         if (rtmpIt != info.additionalParams.end() && !rtmpIt->second.empty()) {
-          std::string streamKey = pipeline_builder_.extractRTMPStreamKey(rtmpIt->second);
+          std::string streamKey = PipelineBuilderDestinationNodes::extractRTMPStreamKey(rtmpIt->second);
           if (!streamKey.empty()) {
             existingRTMPStreamKeys.insert(streamKey);
           }
@@ -4202,7 +4203,7 @@ bool InstanceRegistry::rebuildPipelineFromInstanceInfo(
         // Check RTMP_DES_URL as well
         auto rtmpDesIt = info.additionalParams.find("RTMP_DES_URL");
         if (rtmpDesIt != info.additionalParams.end() && !rtmpDesIt->second.empty()) {
-          std::string streamKey = pipeline_builder_.extractRTMPStreamKey(rtmpDesIt->second);
+          std::string streamKey = PipelineBuilderDestinationNodes::extractRTMPStreamKey(rtmpDesIt->second);
           if (!streamKey.empty()) {
             existingRTMPStreamKeys.insert(streamKey);
           }

@@ -1718,8 +1718,44 @@ void SolutionRegistry::registerSecuRTSolution() {
   fileSrc.parameters["file_path"] =
       "${FILE_PATH}"; // Can be file path or RTSP/RTMP URL
   fileSrc.parameters["channel"] = "0";
-  fileSrc.parameters["resize_ratio"] = "1.0";
+  fileSrc.parameters["resize_ratio"] = "${RESIZE_RATIO}";
   config.pipeline.push_back(fileSrc);
+
+  // YOLO Detector Node (for object detection)
+  SolutionConfig::NodeConfig yoloDetector;
+  yoloDetector.nodeType = "yolo_detector";
+  yoloDetector.nodeName = "yolo_detector_{instanceId}";
+  yoloDetector.parameters["weights_path"] = "${WEIGHTS_PATH}";
+  yoloDetector.parameters["config_path"] = "${CONFIG_PATH}";
+  yoloDetector.parameters["labels_path"] = "${LABELS_PATH}";
+  yoloDetector.parameters["score_threshold"] = "${detectionSensitivity}";
+  yoloDetector.parameters["nms_threshold"] = "0.4";
+  config.pipeline.push_back(yoloDetector);
+
+  // SORT Tracker Node (for object tracking)
+  SolutionConfig::NodeConfig sortTrack;
+  sortTrack.nodeType = "sort_track";
+  sortTrack.nodeName = "sort_tracker_{instanceId}";
+  config.pipeline.push_back(sortTrack);
+
+  // BA Crossline Node (for line-based analytics - counting, crossing, tailgating)
+  // Lines will be passed via CrossingLines parameter from SecuRT lines
+  SolutionConfig::NodeConfig baCrossline;
+  baCrossline.nodeType = "ba_crossline";
+  baCrossline.nodeName = "ba_crossline_{instanceId}";
+  // Lines will be dynamically set from SecuRT lines via additionalParams["CrossingLines"]
+  baCrossline.parameters["line_channel"] = "0";
+  baCrossline.parameters["line_start_x"] = "${CROSSLINE_START_X}";
+  baCrossline.parameters["line_start_y"] = "${CROSSLINE_START_Y}";
+  baCrossline.parameters["line_end_x"] = "${CROSSLINE_END_X}";
+  baCrossline.parameters["line_end_y"] = "${CROSSLINE_END_Y}";
+  config.pipeline.push_back(baCrossline);
+
+  // BA Crossline OSD Node (for visualization)
+  SolutionConfig::NodeConfig baCrosslineOSD;
+  baCrosslineOSD.nodeType = "ba_crossline_osd";
+  baCrosslineOSD.nodeName = "osd_{instanceId}";
+  config.pipeline.push_back(baCrosslineOSD);
 
   // File Destination Node
   SolutionConfig::NodeConfig fileDes;
@@ -1735,6 +1771,7 @@ void SolutionRegistry::registerSecuRTSolution() {
   config.defaults["detectionSensitivity"] = "Medium";
   config.defaults["movementSensitivity"] = "Medium";
   config.defaults["sensorModality"] = "RGB";
+  config.defaults["RESIZE_RATIO"] = "1.0";
 
   registerSolution(config);
 }
