@@ -295,6 +295,9 @@ set(SOURCES
     src/solutions/solution_registry.cpp
     src/groups/group_registry.cpp
     src/core/pipeline_builder.cpp
+    src/core/pipeline_builder_source_nodes.cpp
+    src/core/pipeline_builder_destination_nodes.cpp
+    src/core/pipeline_builder_detector_nodes.cpp
     src/core/cvedix_validator.cpp
     src/utils/cvedix_mqtt_client_impl.cpp
     src/utils/gstreamer_checker.cpp
@@ -1118,6 +1121,11 @@ target_sources(edge_ai_api PRIVATE ${WORKER_IPC_SOURCES})
 # the main server and worker processes
 set(CORE_LIB_SOURCES
     src/core/pipeline_builder.cpp
+    src/core/pipeline_builder_model_resolver.cpp
+    src/core/pipeline_builder_request_utils.cpp
+    src/core/pipeline_builder_source_nodes.cpp
+    src/core/pipeline_builder_destination_nodes.cpp
+    src/core/securt_pipeline_integration.cpp
     src/core/cvedix_validator.cpp
     src/solutions/solution_registry.cpp
     src/solutions/solution_storage.cpp
