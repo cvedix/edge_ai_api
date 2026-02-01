@@ -16606,22 +16606,6 @@ components:
             rtsp_url: rtsp://localhost:8554/stream2
             channel: '0'
             resize_ratio: '0.5'
-    Coordinate:
-      type: object
-      required:
-      - x
-      - y
-      properties:
-        x:
-          type: number
-          format: double
-          description: The x coordinate
-          example: 100.0
-        y:
-          type: number
-          format: double
-          description: The y coordinate
-          example: 300.0
     FaceDatabaseConnectionConfig:
       type: object
       required:
@@ -17286,7 +17270,7 @@ components:
           type: array
           minItems: 2
           maxItems: 2
-          description: Line coordinates (exactly 2 points: start and end)
+          description: "Line coordinates (exactly 2 points: start and end)"
           items:
             $ref: '#/components/schemas/Coordinate'
           example:
@@ -17466,7 +17450,6 @@ components:
     LoiteringAreaWrite:
       allOf:
       - $ref: '#/components/schemas/AreaBaseWrite'
->>>>>>> origin/develop
       - type: object
         required:
         - seconds
@@ -17674,7 +17657,6 @@ components:
     FaceCoveredAreaRead:
       $ref: '#/components/schemas/AreaBaseRead'
       x-internal: true
->>>>>>> origin/develop
 x-tagGroups:
   - name: CORE API
     tags:

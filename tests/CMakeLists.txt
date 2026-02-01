@@ -101,6 +101,10 @@ target_sources(edge_ai_api_tests PRIVATE
     ${CMAKE_SOURCE_DIR}/src/core/pipeline_builder_request_utils.cpp
     ${CMAKE_SOURCE_DIR}/src/core/pipeline_builder_source_nodes.cpp
     ${CMAKE_SOURCE_DIR}/src/core/pipeline_builder_destination_nodes.cpp
+    ${CMAKE_SOURCE_DIR}/src/core/pipeline_builder_detector_nodes.cpp
+    ${CMAKE_SOURCE_DIR}/src/core/pipeline_builder_broker_nodes.cpp
+    ${CMAKE_SOURCE_DIR}/src/core/pipeline_builder_behavior_analysis_nodes.cpp
+    ${CMAKE_SOURCE_DIR}/src/core/pipeline_builder_other_nodes.cpp
     ${CMAKE_SOURCE_DIR}/src/core/securt_pipeline_integration.cpp
     ${CMAKE_SOURCE_DIR}/src/core/cvedix_validator.cpp
     ${CMAKE_SOURCE_DIR}/src/utils/cvedix_mqtt_client_impl.cpp

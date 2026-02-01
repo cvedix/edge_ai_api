@@ -1,5 +1,6 @@
 #include "core/pipeline_builder_other_nodes.h"
 #include "core/pipeline_builder_model_resolver.h"
+#include "core/env_config.h"
 #include <iostream>
 #include <stdexcept>
 #include <cvedix/nodes/track/cvedix_sort_track_node.h>

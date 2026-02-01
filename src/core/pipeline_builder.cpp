@@ -95,6 +95,7 @@
 #include <cvedix/nodes/infers/cvedix_trt_insight_face_recognition_node.h>
 #endif
 #include <atomic>
+#include <tuple>
 #include <vector>
 
 // Broker Nodes
@@ -471,270 +472,14 @@ PipelineBuilder::buildPipeline(const SolutionConfig &solution,
   // ========================================================================
   // Create mutable copy of request for SecuRT integration
   CreateInstanceRequest mutableReq = req;
-  
-  if (solution.solutionId == "securt") {
-    std::cerr << "[PipelineBuilder] SecuRT solution detected - loading areas and lines"
-              << std::endl;
-
-    // Load lines from SecuRT Line Manager and convert to CrossingLines format
-    if (line_manager_) {
-      std::string crossingLinesJson =
-          SecuRTPipelineIntegration::convertLinesToCrossingLinesFormat(
-              line_manager_, instanceId);
-      if (!crossingLinesJson.empty()) {
-        // Add to additionalParams if not already set (API takes priority)
-        if (mutableReq.additionalParams.find("CrossingLines") ==
-            mutableReq.additionalParams.end()) {
-          mutableReq.additionalParams["CrossingLines"] = crossingLinesJson;
-          std::cerr << "[PipelineBuilder] ✓ Loaded " << crossingLinesJson.length()
-                    << " bytes of lines data from SecuRT Line Manager"
-                    << std::endl;
-        } else {
-          std::cerr << "[PipelineBuilder] NOTE: CrossingLines already set in "
-                       "request, keeping API value"
-                    << std::endl;
-        }
-      } else {
-        std::cerr << "[PipelineBuilder] No lines found in SecuRT Line Manager"
-                  << std::endl;
-      }
-    } else {
-      std::cerr << "[PipelineBuilder] WARNING: Line Manager not set for SecuRT"
-                << std::endl;
-    }
-
-    // Load areas from Area Manager (for future use - areas may need different
-    // SDK nodes)
-    if (area_manager_) {
-      std::string areasJson =
-          SecuRTPipelineIntegration::convertAreasToJsonFormat(area_manager_,
-                                                              instanceId);
-      if (!areasJson.empty()) {
-        // Store areas in additionalParams for potential future use
-        mutableReq.additionalParams["SecuRTAreas"] = areasJson;
-        std::cerr << "[PipelineBuilder] ✓ Loaded " << areasJson.length()
-                  << " bytes of areas data from SecuRT Area Manager"
-                  << std::endl;
-      } else {
-        std::cerr << "[PipelineBuilder] No areas found in SecuRT Area Manager"
-                  << std::endl;
-      }
-    } else {
-      std::cerr << "[PipelineBuilder] WARNING: Area Manager not set for SecuRT"
-                << std::endl;
-    }
-  }
+  loadSecuRTData(solution, mutableReq, instanceId);
 
   std::vector<std::shared_ptr<cvedix_nodes::cvedix_node>> nodes;
   std::vector<std::string> nodeTypes; // Track node types for connection logic
 
   // Check for multiple video sources (FILE_PATHS or RTSP_URLS array)
-  std::vector<std::shared_ptr<cvedix_nodes::cvedix_node>> multipleSourceNodes;
-  bool hasMultipleSources = false;
-  bool hasCustomSourceNodes = false; // Track if we created source nodes from FILE_PATHS/RTSP_URLS (even single)
-  std::string multipleSourceType = ""; // "file_src" or "rtsp_src"
-  
-  // Check FILE_PATHS first
-  auto filePathsIt = mutableReq.additionalParams.find("FILE_PATHS");
-  if (filePathsIt != mutableReq.additionalParams.end() && !filePathsIt->second.empty()) {
-    try {
-      Json::Value filePathsJson;
-      Json::Reader reader;
-      if (reader.parse(filePathsIt->second, filePathsJson) && filePathsJson.isArray() && filePathsJson.size() >= 1) {
-        hasMultipleSources = (filePathsJson.size() > 1);
-        hasCustomSourceNodes = true; // Mark that we created source nodes from FILE_PATHS
-        multipleSourceType = "file_src";
-        std::cerr << "[PipelineBuilder] Detected FILE_PATHS array with " << filePathsJson.size() << " video source(s)" << std::endl;
-        
-        // Create multiple file_src nodes
-        for (Json::ArrayIndex i = 0; i < filePathsJson.size(); ++i) {
-          std::string filePath;
-          int channel = static_cast<int>(i);
-          float resizeRatio = 0.4f; // Default
-          
-          if (filePathsJson[i].isString()) {
-            // Simple format: ["path1", "path2"]
-            filePath = filePathsJson[i].asString();
-          } else if (filePathsJson[i].isObject()) {
-            // Advanced format: [{"file_path": "path1", "channel": 0, "resize_ratio": 0.5}, ...]
-            if (filePathsJson[i].isMember("file_path")) {
-              filePath = filePathsJson[i]["file_path"].asString();
-            }
-            if (filePathsJson[i].isMember("channel")) {
-              channel = filePathsJson[i]["channel"].asInt();
-            }
-            if (filePathsJson[i].isMember("resize_ratio")) {
-              resizeRatio = filePathsJson[i]["resize_ratio"].asFloat();
-            }
-          }
-          
-          if (!filePath.empty()) {
-            // Auto-detect input type (RTSP, RTMP, or file)
-            std::string inputType = PipelineBuilderSourceNodes::detectInputType(filePath);
-            
-            if (inputType == "rtsp") {
-              // Auto-detect RTSP source from FILE_PATHS
-              std::string nodeName = "rtsp_src_" + instanceId + "_" + std::to_string(channel);
-              std::cerr << "[PipelineBuilder] Auto-detected RTSP source from FILE_PATHS[" << i << "]" << std::endl;
-              std::cerr << "[PipelineBuilder] Creating RTSP source node " << (i + 1) << "/" << filePathsJson.size() 
-                        << ": channel=" << channel << ", url='" << filePath << "', resize_ratio=" << resizeRatio << std::endl;
-              
-              // Default RTSP parameters
-              std::string gstDecoderName = "avdec_h264";
-              int skipInterval = 0;
-              std::string codecType = "h264";
-              
-              // Check if advanced format provides decoder info
-              if (filePathsJson[i].isObject()) {
-                if (filePathsJson[i].isMember("gst_decoder_name")) {
-                  gstDecoderName = filePathsJson[i]["gst_decoder_name"].asString();
-                }
-                if (filePathsJson[i].isMember("skip_interval")) {
-                  skipInterval = filePathsJson[i]["skip_interval"].asInt();
-                }
-                if (filePathsJson[i].isMember("codec_type")) {
-                  codecType = filePathsJson[i]["codec_type"].asString();
-                }
-              }
-              
-              auto rtspSrcNode = std::make_shared<cvedix_nodes::cvedix_rtsp_src_node>(
-                  nodeName, channel, filePath, resizeRatio, gstDecoderName, skipInterval, codecType);
-              multipleSourceNodes.push_back(rtspSrcNode);
-              nodes.push_back(rtspSrcNode);
-              nodeTypes.push_back("rtsp_src");
-            } else if (inputType == "rtmp") {
-              // Auto-detect RTMP source from FILE_PATHS
-              std::string nodeName = "rtmp_src_" + instanceId + "_" + std::to_string(channel);
-              std::cerr << "[PipelineBuilder] Auto-detected RTMP source from FILE_PATHS[" << i << "]" << std::endl;
-              std::cerr << "[PipelineBuilder] Creating RTMP source node " << (i + 1) << "/" << filePathsJson.size() 
-                        << ": channel=" << channel << ", url='" << filePath << "', resize_ratio=" << resizeRatio << std::endl;
-              
-              // Default RTMP parameters
-              std::string gstDecoderName = "avdec_h264";
-              int skipInterval = 0;
-              
-              // Check if advanced format provides decoder info
-              if (filePathsJson[i].isObject()) {
-                if (filePathsJson[i].isMember("gst_decoder_name")) {
-                  gstDecoderName = filePathsJson[i]["gst_decoder_name"].asString();
-                }
-                if (filePathsJson[i].isMember("skip_interval")) {
-                  skipInterval = filePathsJson[i]["skip_interval"].asInt();
-                }
-              }
-              
-              auto rtmpSrcNode = std::make_shared<cvedix_nodes::cvedix_rtmp_src_node>(
-                  nodeName, channel, filePath, resizeRatio, gstDecoderName, skipInterval);
-              multipleSourceNodes.push_back(rtmpSrcNode);
-              nodes.push_back(rtmpSrcNode);
-              nodeTypes.push_back("rtmp_src");
-            } else {
-              // Regular file source
-              std::string nodeName = "file_src_" + instanceId + "_" + std::to_string(channel);
-              std::cerr << "[PipelineBuilder] Creating file source node " << (i + 1) << "/" << filePathsJson.size() 
-                        << ": channel=" << channel << ", path='" << filePath << "', resize_ratio=" << resizeRatio << std::endl;
-              
-              auto fileSrcNode = std::make_shared<cvedix_nodes::cvedix_file_src_node>(
-                  nodeName, channel, filePath, resizeRatio);
-              multipleSourceNodes.push_back(fileSrcNode);
-              nodes.push_back(fileSrcNode);
-              nodeTypes.push_back("file_src");
-            }
-          }
-        }
-        
-        // Count different source types
-        int rtspCount = 0, rtmpCount = 0, fileCount = 0;
-        for (const auto &type : nodeTypes) {
-          if (type == "rtsp_src") rtspCount++;
-          else if (type == "rtmp_src") rtmpCount++;
-          else if (type == "file_src") fileCount++;
-        }
-        
-        std::cerr << "[PipelineBuilder] ✓ Created " << multipleSourceNodes.size() << " source node(s) for multi-channel processing:";
-        if (rtspCount > 0) std::cerr << " " << rtspCount << " RTSP";
-        if (rtmpCount > 0) std::cerr << " " << rtmpCount << " RTMP";
-        if (fileCount > 0) std::cerr << " " << fileCount << " file";
-        std::cerr << std::endl;
-      }
-    } catch (const std::exception &e) {
-      std::cerr << "[PipelineBuilder] Warning: Failed to parse FILE_PATHS: " << e.what() 
-                << ", falling back to single source" << std::endl;
-      hasMultipleSources = false;
-    }
-  }
-  
-  // Check RTSP_URLS if FILE_PATHS not found
-  if (!hasMultipleSources) {
-    auto rtspUrlsIt = mutableReq.additionalParams.find("RTSP_URLS");
-    if (rtspUrlsIt != mutableReq.additionalParams.end() && !rtspUrlsIt->second.empty()) {
-      try {
-        Json::Value rtspUrlsJson;
-        Json::Reader reader;
-        if (reader.parse(rtspUrlsIt->second, rtspUrlsJson) && rtspUrlsJson.isArray() && rtspUrlsJson.size() >= 1) {
-          hasMultipleSources = (rtspUrlsJson.size() > 1);
-          hasCustomSourceNodes = true; // Mark that we created source nodes from RTSP_URLS
-          multipleSourceType = "rtsp_src";
-          std::cerr << "[PipelineBuilder] Detected RTSP_URLS array with " << rtspUrlsJson.size() << " RTSP stream(s)" << std::endl;
-          
-          // Create multiple rtsp_src nodes
-          for (Json::ArrayIndex i = 0; i < rtspUrlsJson.size(); ++i) {
-            std::string rtspUrl;
-            int channel = static_cast<int>(i);
-            float resizeRatio = 0.6f; // Default for RTSP
-            std::string gstDecoderName = "avdec_h264"; // Default
-            int skipInterval = 0;
-            std::string codecType = "h264";
-            
-            if (rtspUrlsJson[i].isString()) {
-              // Simple format: ["rtsp://url1", "rtsp://url2"]
-              rtspUrl = rtspUrlsJson[i].asString();
-            } else if (rtspUrlsJson[i].isObject()) {
-              // Advanced format: [{"rtsp_url": "rtsp://url1", "channel": 0, "resize_ratio": 0.6, ...}, ...]
-              if (rtspUrlsJson[i].isMember("rtsp_url")) {
-                rtspUrl = rtspUrlsJson[i]["rtsp_url"].asString();
-              } else if (rtspUrlsJson[i].isMember("url")) {
-                rtspUrl = rtspUrlsJson[i]["url"].asString();
-              }
-              if (rtspUrlsJson[i].isMember("channel")) {
-                channel = rtspUrlsJson[i]["channel"].asInt();
-              }
-              if (rtspUrlsJson[i].isMember("resize_ratio")) {
-                resizeRatio = rtspUrlsJson[i]["resize_ratio"].asFloat();
-              }
-              if (rtspUrlsJson[i].isMember("gst_decoder_name")) {
-                gstDecoderName = rtspUrlsJson[i]["gst_decoder_name"].asString();
-              }
-              if (rtspUrlsJson[i].isMember("skip_interval")) {
-                skipInterval = rtspUrlsJson[i]["skip_interval"].asInt();
-              }
-              if (rtspUrlsJson[i].isMember("codec_type")) {
-                codecType = rtspUrlsJson[i]["codec_type"].asString();
-              }
-            }
-            
-            if (!rtspUrl.empty()) {
-              std::string nodeName = "rtsp_src_" + instanceId + "_" + std::to_string(channel);
-              std::cerr << "[PipelineBuilder] Creating RTSP source node " << (i + 1) << "/" << rtspUrlsJson.size() 
-                        << ": channel=" << channel << ", url='" << rtspUrl << "', resize_ratio=" << resizeRatio << std::endl;
-              
-              auto rtspSrcNode = std::make_shared<cvedix_nodes::cvedix_rtsp_src_node>(
-                  nodeName, channel, rtspUrl, resizeRatio, gstDecoderName, skipInterval, codecType);
-              multipleSourceNodes.push_back(rtspSrcNode);
-              nodes.push_back(rtspSrcNode);
-              nodeTypes.push_back("rtsp_src");
-            }
-          }
-          
-          std::cerr << "[PipelineBuilder] ✓ Created " << multipleSourceNodes.size() << " RTSP source nodes for multi-channel processing" << std::endl;
-        }
-      } catch (const std::exception &e) {
-        std::cerr << "[PipelineBuilder] Warning: Failed to parse RTSP_URLS: " << e.what() 
-                  << ", falling back to single source" << std::endl;
-        hasMultipleSources = false;
-      }
-    }
-  }
+  auto [hasMultipleSources, hasCustomSourceNodes, multipleSourceType, multipleSourceNodes] =
+      handleMultipleSources(mutableReq, instanceId, nodes, nodeTypes);
 
   // Check if pipeline has OSD node (for RTMP node OSD auto-enable logic)
   bool hasOSDNode = false;
@@ -1873,13 +1618,7 @@ PipelineBuilder::createNode(const SolutionConfig::NodeConfig &nodeConfig,
                             const std::set<std::string> &existingRTMPStreamKeys) {
 
   // Get node name with instanceId substituted
-  std::string nodeName = nodeConfig.nodeName;
-  std::string placeholder = "{instanceId}";
-  size_t pos = nodeName.find(placeholder);
-  while (pos != std::string::npos) {
-    nodeName.replace(pos, placeholder.length(), instanceId);
-    pos = nodeName.find(placeholder, pos + instanceId.length());
-  }
+  std::string nodeName = substituteNodeName(nodeConfig.nodeName, instanceId);
 
   // Debug: log the final node name
   std::cerr << "[PipelineBuilder] Original node name template: '"
@@ -1888,497 +1627,13 @@ PipelineBuilder::createNode(const SolutionConfig::NodeConfig &nodeConfig,
             << "'" << std::endl;
 
   // Build parameter map with substitutions
-  std::map<std::string, std::string> params;
-  for (const auto &param : nodeConfig.parameters) {
-    std::string value = param.second;
-
-    // Replace {instanceId}
-    std::string placeholder = "{instanceId}";
-    size_t pos = value.find(placeholder);
-    while (pos != std::string::npos) {
-      value.replace(pos, placeholder.length(), instanceId);
-      pos = value.find(placeholder, pos + instanceId.length());
-    }
-
-    // Replace ${variable} from request
-    // Map detectionSensitivity to threshold value
-    if (param.first == "score_threshold" &&
-        value == "${detectionSensitivity}") {
-      double threshold = PipelineBuilderModelResolver::mapDetectionSensitivity(req.detectionSensitivity);
-      std::ostringstream oss;
-      oss << threshold;
-      value = oss.str();
-    } else if (value == "${frameRateLimit}") {
-      std::ostringstream oss;
-      oss << req.frameRateLimit;
-      value = oss.str();
-    } else if (value == "${RTSP_URL}") {
-      value = PipelineBuilderRequestUtils::getRTSPUrl(req);
-    } else if (value == "${FILE_PATH}") {
-      value = PipelineBuilderRequestUtils::getFilePath(req);
-    } else if (value == "${RTMP_URL}" || value == "${RTMP_DES_URL}") {
-      value = PipelineBuilderRequestUtils::getRTMPUrl(req);
-    } else if (value == "${WEIGHTS_PATH}") {
-      auto it = req.additionalParams.find("WEIGHTS_PATH");
-      if (it != req.additionalParams.end() && !it->second.empty()) {
-        value = it->second;
-      }
-    } else if (value == "${CONFIG_PATH}") {
-      auto it = req.additionalParams.find("CONFIG_PATH");
-      if (it != req.additionalParams.end() && !it->second.empty()) {
-        value = it->second;
-      }
-    } else if (value == "${LABELS_PATH}") {
-      auto it = req.additionalParams.find("LABELS_PATH");
-      if (it != req.additionalParams.end() && !it->second.empty()) {
-        value = it->second;
-      }
-    } else if (value == "${ENABLE_SCREEN_DES}") {
-      auto it = req.additionalParams.find("ENABLE_SCREEN_DES");
-      if (it != req.additionalParams.end() && !it->second.empty()) {
-        value = it->second;
-      } else {
-        // Default: empty string means enabled if display available
-        value = "";
-      }
-    } else if (param.first == "model_path" && value == "${MODEL_PATH}") {
-      // Priority: MODEL_NAME > MODEL_PATH > default
-      std::string modelPath;
-
-      // 1. Check MODEL_NAME first (allows user to select model by name)
-      auto modelNameIt = req.additionalParams.find("MODEL_NAME");
-      if (modelNameIt != req.additionalParams.end() &&
-          !modelNameIt->second.empty()) {
-        std::string modelName = modelNameIt->second;
-        std::string category = "face"; // Default category
-
-        // Check if category is specified (format: "category:modelname" or just
-        // "modelname")
-        size_t colonPos = modelName.find(':');
-        if (colonPos != std::string::npos) {
-          category = modelName.substr(0, colonPos);
-          modelName = modelName.substr(colonPos + 1);
-        }
-
-        modelPath = PipelineBuilderModelResolver::resolveModelByName(modelName, category);
-        if (!modelPath.empty()) {
-          std::cerr << "[PipelineBuilder] Using model by name: '"
-                    << modelNameIt->second << "' -> " << modelPath << std::endl;
-          value = modelPath;
-        } else {
-          std::cerr << "[PipelineBuilder] WARNING: Model name '"
-                    << modelNameIt->second
-                    << "' not found, falling back to default" << std::endl;
-        }
-      }
-
-      // 2. If MODEL_NAME not found or not provided, check MODEL_PATH
-      if (modelPath.empty()) {
-        auto it = req.additionalParams.find("MODEL_PATH");
-        if (it != req.additionalParams.end() && !it->second.empty()) {
-          value = it->second;
-        } else {
-          // Default to yunet.onnx - resolve path intelligently
-          value = PipelineBuilderModelResolver::resolveModelPath("models/face/yunet.onnx");
-        }
-      } else {
-        value = modelPath;
-      }
-    } else if (param.first == "model_path" && value == "${SFACE_MODEL_PATH}") {
-      // Handle SFace model path
-      std::string modelPath;
-
-      // 1. Check SFACE_MODEL_NAME first
-      auto modelNameIt = req.additionalParams.find("SFACE_MODEL_NAME");
-      if (modelNameIt != req.additionalParams.end() &&
-          !modelNameIt->second.empty()) {
-        std::string modelName = modelNameIt->second;
-        std::string category = "face";
-
-        size_t colonPos = modelName.find(':');
-        if (colonPos != std::string::npos) {
-          category = modelName.substr(0, colonPos);
-          modelName = modelName.substr(colonPos + 1);
-        }
-
-        modelPath = PipelineBuilderModelResolver::resolveModelByName(modelName, category);
-        if (!modelPath.empty()) {
-          value = modelPath;
-        }
-      }
-
-      // 2. If SFACE_MODEL_NAME not found, check SFACE_MODEL_PATH
-      if (modelPath.empty()) {
-        auto it = req.additionalParams.find("SFACE_MODEL_PATH");
-        if (it != req.additionalParams.end() && !it->second.empty()) {
-          value = it->second;
-        } else {
-          // Default to sface model - resolve path intelligently
-          value = PipelineBuilderModelResolver::resolveModelPath(
-              "models/face/face_recognition_sface_2021dec.onnx");
-        }
-      } else {
-        value = modelPath;
-      }
-    }
-
-    // Override model_path if provided in additionalParams (even if not using
-    // ${MODEL_PATH} placeholder)
-    if (param.first == "model_path") {
-      // Priority: MODEL_NAME > MODEL_PATH
-      std::string modelPath;
-
-      auto modelNameIt = req.additionalParams.find("MODEL_NAME");
-      if (modelNameIt != req.additionalParams.end() &&
-          !modelNameIt->second.empty()) {
-        std::string modelName = modelNameIt->second;
-        std::string category = "face";
-
-        size_t colonPos = modelName.find(':');
-        if (colonPos != std::string::npos) {
-          category = modelName.substr(0, colonPos);
-          modelName = modelName.substr(colonPos + 1);
-        }
-
-        modelPath = PipelineBuilderModelResolver::resolveModelByName(modelName, category);
-        if (!modelPath.empty()) {
-          value = modelPath;
-        }
-      }
-
-      if (modelPath.empty()) {
-        auto it = req.additionalParams.find("MODEL_PATH");
-        if (it != req.additionalParams.end() && !it->second.empty()) {
-          value = it->second;
-        }
-      } else {
-        value = modelPath;
-      }
-    }
-
-    // Generic placeholder substitution: Replace ${VARIABLE_NAME} with values
-    // from additionalParams This handles placeholders that weren't explicitly
-    // handled above (e.g., ${BROKE_FOR})
-    std::regex placeholderPattern("\\$\\{([A-Za-z0-9_]+)\\}");
-    std::sregex_iterator iter(value.begin(), value.end(), placeholderPattern);
-    std::sregex_iterator end;
-    std::set<std::string> processedVars; // Track processed variables to avoid
-                                         // duplicate replacements
-
-    for (; iter != end; ++iter) {
-      std::string varName = (*iter)[1].str();
-
-      // Skip if already processed
-      if (processedVars.find(varName) != processedVars.end()) {
-        continue;
-      }
-      processedVars.insert(varName);
-
-      auto it = req.additionalParams.find(varName);
-      if (it != req.additionalParams.end() && !it->second.empty()) {
-        // Replace all occurrences of this placeholder
-        value = std::regex_replace(
-            value, std::regex("\\$\\{" + varName + "\\}"), it->second);
-        std::cerr << "[PipelineBuilder] Replaced ${" << varName
-                  << "} with: " << it->second << std::endl;
-      } else {
-        // Placeholder not found in additionalParams - leave as is
-        std::cerr << "[PipelineBuilder] WARNING: Placeholder ${" << varName
-                  << "} not found in additionalParams, leaving as literal"
-                  << std::endl;
-      }
-    }
-
-    params[param.first] = value;
-  }
+  std::map<std::string, std::string> params = buildParameterMap(nodeConfig, req, instanceId);
 
   // Create node based on type
   try {
     // Source nodes - Auto-detect source type for file_src based on FILE_PATH or
     // explicit parameters
-    std::string actualNodeType = nodeConfig.nodeType;
-    if (nodeConfig.nodeType == "file_src") {
-      // Priority 1: Check explicit source URL parameters
-      auto rtspSrcIt = req.additionalParams.find("RTSP_SRC_URL");
-      auto rtspIt =
-          req.additionalParams.find("RTSP_URL"); // Backward compatibility
-      auto rtmpSrcIt = req.additionalParams.find("RTMP_SRC_URL");
-      auto rtmpIt = req.additionalParams.find(
-          "RTMP_URL"); // Backward compatibility (for input)
-      auto hlsIt = req.additionalParams.find("HLS_URL");
-      auto httpIt = req.additionalParams.find("HTTP_URL");
-
-      // Validate and trim URLs before checking
-      // RTSP: Check RTSP_SRC_URL first, then RTSP_URL for backward
-      // compatibility
-      std::string rtspUrl = "";
-      if (rtspSrcIt != req.additionalParams.end() &&
-          !rtspSrcIt->second.empty()) {
-        rtspUrl = rtspSrcIt->second;
-      } else if (rtspIt != req.additionalParams.end() &&
-                 !rtspIt->second.empty()) {
-        rtspUrl = rtspIt->second; // Backward compatibility: RTSP_URL can be
-                                  // used for input
-      }
-
-      // RTMP: Check RTMP_SRC_URL first, then RTMP_URL (but only if not used for
-      // output)
-      std::string rtmpUrl = "";
-      if (rtmpSrcIt != req.additionalParams.end() &&
-          !rtmpSrcIt->second.empty()) {
-        // RTMP_SRC_URL always means input (highest priority)
-        rtmpUrl = rtmpSrcIt->second;
-      } else if (rtmpIt != req.additionalParams.end() &&
-                 !rtmpIt->second.empty()) {
-        // RTMP_URL can be used for input OR output
-        // Priority: Check RTMP_DES_URL first - if provided, RTMP_URL should be
-        // for output
-        auto rtmpDesIt = req.additionalParams.find("RTMP_DES_URL");
-        bool rtmpUrlUsedForOutput = false;
-        if (rtmpDesIt != req.additionalParams.end() &&
-            !rtmpDesIt->second.empty()) {
-          // RTMP_DES_URL is provided, so RTMP_URL should be for output, not
-          // input
-          rtmpUrlUsedForOutput = true;
-          std::cerr << "[PipelineBuilder] RTMP_DES_URL detected, RTMP_URL will "
-                       "be used for output (rtmp_des), not input"
-                    << std::endl;
-        } else {
-          // Check if FILE_PATH is provided - if yes, RTMP_URL is likely for
-          // output
-          auto filePathIt = req.additionalParams.find("FILE_PATH");
-          if (filePathIt != req.additionalParams.end() &&
-              !filePathIt->second.empty()) {
-            std::string filePath = filePathIt->second;
-            filePath.erase(0, filePath.find_first_not_of(" \t\n\r"));
-            filePath.erase(filePath.find_last_not_of(" \t\n\r") + 1);
-            // If FILE_PATH is not an RTMP URL, then RTMP_URL is likely for
-            // output
-            if (!filePath.empty() && PipelineBuilderSourceNodes::detectInputType(filePath) != "rtmp") {
-              rtmpUrlUsedForOutput = true;
-              std::cerr
-                  << "[PipelineBuilder] FILE_PATH detected (not RTMP), "
-                     "RTMP_URL will be used for output (rtmp_des), not input"
-                  << std::endl;
-            }
-          }
-        }
-        // If RTMP_URL is not used for output, use it for input (backward
-        // compatibility)
-        if (!rtmpUrlUsedForOutput) {
-          rtmpUrl = rtmpIt->second;
-        }
-      }
-
-      std::string hlsUrl =
-          (hlsIt != req.additionalParams.end() && !hlsIt->second.empty())
-              ? hlsIt->second
-              : "";
-      std::string httpUrl =
-          (httpIt != req.additionalParams.end() && !httpIt->second.empty())
-              ? httpIt->second
-              : "";
-
-      // Trim whitespace
-      if (!rtspUrl.empty()) {
-        rtspUrl.erase(0, rtspUrl.find_first_not_of(" \t\n\r"));
-        rtspUrl.erase(rtspUrl.find_last_not_of(" \t\n\r") + 1);
-      }
-      if (!rtmpUrl.empty()) {
-        rtmpUrl.erase(0, rtmpUrl.find_first_not_of(" \t\n\r"));
-        rtmpUrl.erase(rtmpUrl.find_last_not_of(" \t\n\r") + 1);
-      }
-      if (!hlsUrl.empty()) {
-        hlsUrl.erase(0, hlsUrl.find_first_not_of(" \t\n\r"));
-        hlsUrl.erase(hlsUrl.find_last_not_of(" \t\n\r") + 1);
-      }
-      if (!httpUrl.empty()) {
-        httpUrl.erase(0, httpUrl.find_first_not_of(" \t\n\r"));
-        httpUrl.erase(httpUrl.find_last_not_of(" \t\n\r") + 1);
-      }
-
-      if (!rtspUrl.empty()) {
-        // Check if RTMP_URL also provided (potential conflict)
-        if (!rtmpUrl.empty()) {
-          std::cerr << "[PipelineBuilder] ⚠ WARNING: Both RTSP_URL and RTMP_URL are provided." << std::endl;
-          std::cerr << "[PipelineBuilder] ⚠ Using RTSP_URL (priority). RTMP_URL will be ignored for input." << std::endl;
-        }
-        // Check if FILE_PATH also contains RTSP URL (potential conflict)
-        auto filePathIt = req.additionalParams.find("FILE_PATH");
-        if (filePathIt != req.additionalParams.end() &&
-            !filePathIt->second.empty()) {
-          std::string filePath = filePathIt->second;
-          filePath.erase(0, filePath.find_first_not_of(" \t\n\r"));
-          filePath.erase(filePath.find_last_not_of(" \t\n\r") + 1);
-          if (!filePath.empty() && PipelineBuilderSourceNodes::detectInputType(filePath) == "rtsp") {
-            std::cerr << "[PipelineBuilder] ⚠ WARNING: Both RTSP_SRC_URL and "
-                         "FILE_PATH (with RTSP URL) are provided."
-                      << std::endl;
-            std::cerr << "[PipelineBuilder] ⚠ Using RTSP_SRC_URL (priority). "
-                         "FILE_PATH will be ignored."
-                      << std::endl;
-          }
-        }
-        std::cerr << "[PipelineBuilder] Auto-detected RTSP source from "
-                     "RTSP_SRC_URL parameter, overriding file_src"
-                  << std::endl;
-        actualNodeType = "rtsp_src";
-        params["rtsp_url"] = rtspUrl;
-        size_t fileSrcPos = nodeName.find("file_src");
-        if (fileSrcPos != std::string::npos) {
-          nodeName.replace(fileSrcPos, 8, "rtsp_src");
-          std::cerr
-              << "[PipelineBuilder] Updated node name to reflect RTSP source: '"
-              << nodeName << "'" << std::endl;
-        }
-      } else if (!rtmpUrl.empty()) {
-        // Check if FILE_PATH also contains RTMP URL (potential conflict)
-        auto filePathIt = req.additionalParams.find("FILE_PATH");
-        if (filePathIt != req.additionalParams.end() &&
-            !filePathIt->second.empty()) {
-          std::string filePath = filePathIt->second;
-          filePath.erase(0, filePath.find_first_not_of(" \t\n\r"));
-          filePath.erase(filePath.find_last_not_of(" \t\n\r") + 1);
-          if (!filePath.empty() && PipelineBuilderSourceNodes::detectInputType(filePath) == "rtmp") {
-            std::cerr << "[PipelineBuilder] ⚠ WARNING: Both RTMP_SRC_URL and "
-                         "FILE_PATH (with RTMP URL) are provided."
-                      << std::endl;
-            std::cerr << "[PipelineBuilder] ⚠ Using RTMP_SRC_URL (priority). "
-                         "FILE_PATH will be ignored."
-                      << std::endl;
-          }
-        }
-        std::cerr << "[PipelineBuilder] Auto-detected RTMP source from "
-                     "RTMP_SRC_URL parameter, overriding file_src"
-                  << std::endl;
-        actualNodeType = "rtmp_src";
-        params["rtmp_url"] = rtmpUrl;
-        size_t fileSrcPos = nodeName.find("file_src");
-        if (fileSrcPos != std::string::npos) {
-          nodeName.replace(fileSrcPos, 8, "rtmp_src");
-          std::cerr
-              << "[PipelineBuilder] Updated node name to reflect RTMP source: '"
-              << nodeName << "'" << std::endl;
-        }
-      } else if (!hlsUrl.empty()) {
-        // Check if FILE_PATH also contains HLS URL (potential conflict)
-        auto filePathIt = req.additionalParams.find("FILE_PATH");
-        if (filePathIt != req.additionalParams.end() &&
-            !filePathIt->second.empty()) {
-          std::string filePath = filePathIt->second;
-          filePath.erase(0, filePath.find_first_not_of(" \t\n\r"));
-          filePath.erase(filePath.find_last_not_of(" \t\n\r") + 1);
-          if (!filePath.empty() && (PipelineBuilderSourceNodes::detectInputType(filePath) == "hls" ||
-                                    PipelineBuilderSourceNodes::detectInputType(filePath) == "http")) {
-            std::cerr << "[PipelineBuilder] ⚠ WARNING: Both HLS_URL and "
-                         "FILE_PATH (with HLS/HTTP URL) are provided."
-                      << std::endl;
-            std::cerr << "[PipelineBuilder] ⚠ Using HLS_URL (priority). "
-                         "FILE_PATH will be ignored."
-                      << std::endl;
-          }
-        }
-        std::cerr << "[PipelineBuilder] Auto-detected HLS source from HLS_URL "
-                     "parameter, using ff_src"
-                  << std::endl;
-        actualNodeType = "ff_src";
-        params["uri"] = hlsUrl;
-        size_t fileSrcPos = nodeName.find("file_src");
-        if (fileSrcPos != std::string::npos) {
-          nodeName.replace(fileSrcPos, 8, "ff_src");
-          std::cerr << "[PipelineBuilder] Updated node name to reflect FFmpeg "
-                       "source: '"
-                    << nodeName << "'" << std::endl;
-        }
-      } else if (!httpUrl.empty()) {
-        // Check if FILE_PATH also contains HTTP URL (potential conflict)
-        auto filePathIt = req.additionalParams.find("FILE_PATH");
-        if (filePathIt != req.additionalParams.end() &&
-            !filePathIt->second.empty()) {
-          std::string filePath = filePathIt->second;
-          filePath.erase(0, filePath.find_first_not_of(" \t\n\r"));
-          filePath.erase(filePath.find_last_not_of(" \t\n\r") + 1);
-          if (!filePath.empty() && (PipelineBuilderSourceNodes::detectInputType(filePath) == "hls" ||
-                                    PipelineBuilderSourceNodes::detectInputType(filePath) == "http")) {
-            std::cerr << "[PipelineBuilder] ⚠ WARNING: Both HTTP_URL and "
-                         "FILE_PATH (with HLS/HTTP URL) are provided."
-                      << std::endl;
-            std::cerr << "[PipelineBuilder] ⚠ Using HTTP_URL (priority). "
-                         "FILE_PATH will be ignored."
-                      << std::endl;
-          }
-        }
-        std::cerr << "[PipelineBuilder] Auto-detected HTTP source from "
-                     "HTTP_URL parameter, using ff_src"
-                  << std::endl;
-        actualNodeType = "ff_src";
-        params["uri"] = httpUrl;
-        size_t fileSrcPos = nodeName.find("file_src");
-        if (fileSrcPos != std::string::npos) {
-          nodeName.replace(fileSrcPos, 8, "ff_src");
-          std::cerr << "[PipelineBuilder] Updated node name to reflect FFmpeg "
-                       "source: '"
-                    << nodeName << "'" << std::endl;
-        }
-      } else {
-        // Priority 2: Auto-detect from FILE_PATH
-        std::string filePath =
-            params.count("file_path") ? params.at("file_path") : "";
-        if (filePath.empty()) {
-          auto filePathIt = req.additionalParams.find("FILE_PATH");
-          if (filePathIt != req.additionalParams.end() &&
-              !filePathIt->second.empty()) {
-            filePath = filePathIt->second;
-          }
-        }
-
-        // Trim whitespace from filePath
-        if (!filePath.empty()) {
-          filePath.erase(0, filePath.find_first_not_of(" \t\n\r"));
-          filePath.erase(filePath.find_last_not_of(" \t\n\r") + 1);
-        }
-
-        if (!filePath.empty()) {
-          std::string inputType = PipelineBuilderSourceNodes::detectInputType(filePath);
-          if (inputType == "rtsp") {
-            std::cerr << "[PipelineBuilder] Auto-detected RTSP source from "
-                         "FILE_PATH: '"
-                      << filePath << "'" << std::endl;
-            actualNodeType = "rtsp_src";
-            params["rtsp_url"] = filePath;
-            size_t fileSrcPos = nodeName.find("file_src");
-            if (fileSrcPos != std::string::npos) {
-              nodeName.replace(fileSrcPos, 8, "rtsp_src");
-            }
-          } else if (inputType == "rtmp") {
-            std::cerr << "[PipelineBuilder] Auto-detected RTMP source from "
-                         "FILE_PATH: '"
-                      << filePath << "'" << std::endl;
-            actualNodeType = "rtmp_src";
-            params["rtmp_url"] = filePath;
-            size_t fileSrcPos = nodeName.find("file_src");
-            if (fileSrcPos != std::string::npos) {
-              nodeName.replace(fileSrcPos, 8, "rtmp_src");
-            }
-          } else if (inputType == "hls" || inputType == "http") {
-            std::cerr << "[PipelineBuilder] Auto-detected " << inputType
-                      << " source from FILE_PATH: '" << filePath
-                      << "', using ff_src" << std::endl;
-            actualNodeType = "ff_src";
-            params["uri"] = filePath;
-            size_t fileSrcPos = nodeName.find("file_src");
-            if (fileSrcPos != std::string::npos) {
-              nodeName.replace(fileSrcPos, 8, "ff_src");
-            }
-          } else {
-            // If inputType == "file" or "udp", keep as file_src (default)
-            std::cerr << "[PipelineBuilder] Using file_src for FILE_PATH: '"
-                      << filePath << "' (detected type: " << inputType << ")"
-                      << std::endl;
-          }
-        }
-      }
-    }
+    std::string actualNodeType = detectSourceType(nodeConfig, req, nodeName, params);
 
     // Source nodes
     if (actualNodeType == "rtsp_src") {
@@ -2635,9 +1890,751 @@ PipelineBuilder::createNode(const SolutionConfig::NodeConfig &nodeConfig,
   }
 }
 
+// ========== Helper Methods for createNode() ==========
+
+std::string PipelineBuilder::substituteNodeName(const std::string &nodeName,
+                                                  const std::string &instanceId) {
+  std::string result = nodeName;
+  std::string placeholder = "{instanceId}";
+  size_t pos = result.find(placeholder);
+  while (pos != std::string::npos) {
+    result.replace(pos, placeholder.length(), instanceId);
+    pos = result.find(placeholder, pos + instanceId.length());
+  }
+  return result;
+}
+
+std::map<std::string, std::string>
+PipelineBuilder::buildParameterMap(const SolutionConfig::NodeConfig &nodeConfig,
+                                    const CreateInstanceRequest &req,
+                                    const std::string &instanceId) {
+  std::map<std::string, std::string> params;
+  
+  for (const auto &param : nodeConfig.parameters) {
+    std::string value = param.second;
+
+    // Replace {instanceId}
+    value = substituteNodeName(value, instanceId);
+
+    // Replace ${variable} from request
+    // Map detectionSensitivity to threshold value
+    if (param.first == "score_threshold" &&
+        value == "${detectionSensitivity}") {
+      double threshold = PipelineBuilderModelResolver::mapDetectionSensitivity(req.detectionSensitivity);
+      std::ostringstream oss;
+      oss << threshold;
+      value = oss.str();
+    } else if (value == "${frameRateLimit}") {
+      std::ostringstream oss;
+      oss << req.frameRateLimit;
+      value = oss.str();
+    } else if (value == "${RTSP_URL}") {
+      value = PipelineBuilderRequestUtils::getRTSPUrl(req);
+    } else if (value == "${FILE_PATH}") {
+      value = PipelineBuilderRequestUtils::getFilePath(req);
+    } else if (value == "${RTMP_URL}" || value == "${RTMP_DES_URL}") {
+      value = PipelineBuilderRequestUtils::getRTMPUrl(req);
+    } else if (value == "${WEIGHTS_PATH}") {
+      auto it = req.additionalParams.find("WEIGHTS_PATH");
+      if (it != req.additionalParams.end() && !it->second.empty()) {
+        value = it->second;
+      }
+    } else if (value == "${CONFIG_PATH}") {
+      auto it = req.additionalParams.find("CONFIG_PATH");
+      if (it != req.additionalParams.end() && !it->second.empty()) {
+        value = it->second;
+      }
+    } else if (value == "${LABELS_PATH}") {
+      auto it = req.additionalParams.find("LABELS_PATH");
+      if (it != req.additionalParams.end() && !it->second.empty()) {
+        value = it->second;
+      }
+    } else if (value == "${ENABLE_SCREEN_DES}") {
+      auto it = req.additionalParams.find("ENABLE_SCREEN_DES");
+      if (it != req.additionalParams.end() && !it->second.empty()) {
+        value = it->second;
+      } else {
+        // Default: empty string means enabled if display available
+        value = "";
+      }
+    } else if (param.first == "model_path" && value == "${MODEL_PATH}") {
+      // Priority: MODEL_NAME > MODEL_PATH > default
+      std::string modelPath;
+
+      // 1. Check MODEL_NAME first (allows user to select model by name)
+      auto modelNameIt = req.additionalParams.find("MODEL_NAME");
+      if (modelNameIt != req.additionalParams.end() &&
+          !modelNameIt->second.empty()) {
+        std::string modelName = modelNameIt->second;
+        std::string category = "face"; // Default category
+
+        // Check if category is specified (format: "category:modelname" or just
+        // "modelname")
+        size_t colonPos = modelName.find(':');
+        if (colonPos != std::string::npos) {
+          category = modelName.substr(0, colonPos);
+          modelName = modelName.substr(colonPos + 1);
+        }
+
+        modelPath = PipelineBuilderModelResolver::resolveModelByName(modelName, category);
+        if (!modelPath.empty()) {
+          std::cerr << "[PipelineBuilder] Using model by name: '"
+                    << modelNameIt->second << "' -> " << modelPath << std::endl;
+          value = modelPath;
+        } else {
+          std::cerr << "[PipelineBuilder] WARNING: Model name '"
+                    << modelNameIt->second
+                    << "' not found, falling back to default" << std::endl;
+        }
+      }
+
+      // 2. If MODEL_NAME not found or not provided, check MODEL_PATH
+      if (modelPath.empty()) {
+        auto it = req.additionalParams.find("MODEL_PATH");
+        if (it != req.additionalParams.end() && !it->second.empty()) {
+          value = it->second;
+        } else {
+          // Default to yunet.onnx - resolve path intelligently
+          value = PipelineBuilderModelResolver::resolveModelPath("models/face/yunet.onnx");
+        }
+      } else {
+        value = modelPath;
+      }
+    } else if (param.first == "model_path" && value == "${SFACE_MODEL_PATH}") {
+      // Handle SFace model path
+      std::string modelPath;
+
+      // 1. Check SFACE_MODEL_NAME first
+      auto modelNameIt = req.additionalParams.find("SFACE_MODEL_NAME");
+      if (modelNameIt != req.additionalParams.end() &&
+          !modelNameIt->second.empty()) {
+        std::string modelName = modelNameIt->second;
+        std::string category = "face";
+
+        size_t colonPos = modelName.find(':');
+        if (colonPos != std::string::npos) {
+          category = modelName.substr(0, colonPos);
+          modelName = modelName.substr(colonPos + 1);
+        }
+
+        modelPath = PipelineBuilderModelResolver::resolveModelByName(modelName, category);
+        if (!modelPath.empty()) {
+          value = modelPath;
+        }
+      }
+
+      // 2. If SFACE_MODEL_NAME not found, check SFACE_MODEL_PATH
+      if (modelPath.empty()) {
+        auto it = req.additionalParams.find("SFACE_MODEL_PATH");
+        if (it != req.additionalParams.end() && !it->second.empty()) {
+          value = it->second;
+        } else {
+          // Default to sface model - resolve path intelligently
+          value = PipelineBuilderModelResolver::resolveModelPath(
+              "models/face/face_recognition_sface_2021dec.onnx");
+        }
+      } else {
+        value = modelPath;
+      }
+    }
+
+    // Override model_path if provided in additionalParams (even if not using
+    // ${MODEL_PATH} placeholder)
+    if (param.first == "model_path") {
+      // Priority: MODEL_NAME > MODEL_PATH
+      std::string modelPath;
+
+      auto modelNameIt = req.additionalParams.find("MODEL_NAME");
+      if (modelNameIt != req.additionalParams.end() &&
+          !modelNameIt->second.empty()) {
+        std::string modelName = modelNameIt->second;
+        std::string category = "face";
+
+        size_t colonPos = modelName.find(':');
+        if (colonPos != std::string::npos) {
+          category = modelName.substr(0, colonPos);
+          modelName = modelName.substr(colonPos + 1);
+        }
+
+        modelPath = PipelineBuilderModelResolver::resolveModelByName(modelName, category);
+        if (!modelPath.empty()) {
+          value = modelPath;
+        }
+      }
+
+      if (modelPath.empty()) {
+        auto it = req.additionalParams.find("MODEL_PATH");
+        if (it != req.additionalParams.end() && !it->second.empty()) {
+          value = it->second;
+        }
+      } else {
+        value = modelPath;
+      }
+    }
+
+    // Generic placeholder substitution: Replace ${VARIABLE_NAME} with values
+    // from additionalParams This handles placeholders that weren't explicitly
+    // handled above (e.g., ${BROKE_FOR})
+    std::regex placeholderPattern("\\$\\{([A-Za-z0-9_]+)\\}");
+    std::sregex_iterator iter(value.begin(), value.end(), placeholderPattern);
+    std::sregex_iterator end;
+    std::set<std::string> processedVars; // Track processed variables to avoid
+                                         // duplicate replacements
+
+    for (; iter != end; ++iter) {
+      std::string varName = (*iter)[1].str();
+
+      // Skip if already processed
+      if (processedVars.find(varName) != processedVars.end()) {
+        continue;
+      }
+      processedVars.insert(varName);
+
+      auto it = req.additionalParams.find(varName);
+      if (it != req.additionalParams.end() && !it->second.empty()) {
+        // Replace all occurrences of this placeholder
+        value = std::regex_replace(
+            value, std::regex("\\$\\{" + varName + "\\}"), it->second);
+        std::cerr << "[PipelineBuilder] Replaced ${" << varName
+                  << "} with: " << it->second << std::endl;
+      } else {
+        // Placeholder not found in additionalParams - leave as is
+        std::cerr << "[PipelineBuilder] WARNING: Placeholder ${" << varName
+                  << "} not found in additionalParams, leaving as literal"
+                  << std::endl;
+      }
+    }
+
+    params[param.first] = value;
+  }
+  
+  return params;
+}
+
+std::string PipelineBuilder::detectSourceType(const SolutionConfig::NodeConfig &nodeConfig,
+                                               const CreateInstanceRequest &req,
+                                               std::string &nodeName,
+                                               std::map<std::string, std::string> &params) {
+  std::string actualNodeType = nodeConfig.nodeType;
+  
+  if (nodeConfig.nodeType != "file_src") {
+    return actualNodeType;
+  }
+
+  // Priority 1: Check explicit source URL parameters
+  auto rtspSrcIt = req.additionalParams.find("RTSP_SRC_URL");
+  auto rtspIt = req.additionalParams.find("RTSP_URL"); // Backward compatibility
+  auto rtmpSrcIt = req.additionalParams.find("RTMP_SRC_URL");
+  auto rtmpIt = req.additionalParams.find("RTMP_URL"); // Backward compatibility (for input)
+  auto hlsIt = req.additionalParams.find("HLS_URL");
+  auto httpIt = req.additionalParams.find("HTTP_URL");
+
+  // Validate and trim URLs before checking
+  // RTSP: Check RTSP_SRC_URL first, then RTSP_URL for backward compatibility
+  std::string rtspUrl = "";
+  if (rtspSrcIt != req.additionalParams.end() && !rtspSrcIt->second.empty()) {
+    rtspUrl = rtspSrcIt->second;
+  } else if (rtspIt != req.additionalParams.end() && !rtspIt->second.empty()) {
+    rtspUrl = rtspIt->second; // Backward compatibility: RTSP_URL can be used for input
+  }
+
+  // RTMP: Check RTMP_SRC_URL first, then RTMP_URL (but only if not used for output)
+  std::string rtmpUrl = "";
+  if (rtmpSrcIt != req.additionalParams.end() && !rtmpSrcIt->second.empty()) {
+    // RTMP_SRC_URL always means input (highest priority)
+    rtmpUrl = rtmpSrcIt->second;
+  } else if (rtmpIt != req.additionalParams.end() && !rtmpIt->second.empty()) {
+    // RTMP_URL can be used for input OR output
+    // Priority: Check RTMP_DES_URL first - if provided, RTMP_URL should be for output
+    auto rtmpDesIt = req.additionalParams.find("RTMP_DES_URL");
+    bool rtmpUrlUsedForOutput = false;
+    if (rtmpDesIt != req.additionalParams.end() && !rtmpDesIt->second.empty()) {
+      // RTMP_DES_URL is provided, so RTMP_URL should be for output, not input
+      rtmpUrlUsedForOutput = true;
+      std::cerr << "[PipelineBuilder] RTMP_DES_URL detected, RTMP_URL will "
+                   "be used for output (rtmp_des), not input"
+                << std::endl;
+    } else {
+      // Check if FILE_PATH is provided - if yes, RTMP_URL is likely for output
+      auto filePathIt = req.additionalParams.find("FILE_PATH");
+      if (filePathIt != req.additionalParams.end() && !filePathIt->second.empty()) {
+        std::string filePath = filePathIt->second;
+        filePath.erase(0, filePath.find_first_not_of(" \t\n\r"));
+        filePath.erase(filePath.find_last_not_of(" \t\n\r") + 1);
+        // If FILE_PATH is not an RTMP URL, then RTMP_URL is likely for output
+        if (!filePath.empty() && PipelineBuilderSourceNodes::detectInputType(filePath) != "rtmp") {
+          rtmpUrlUsedForOutput = true;
+          std::cerr << "[PipelineBuilder] FILE_PATH detected (not RTMP), "
+                       "RTMP_URL will be used for output (rtmp_des), not input"
+                    << std::endl;
+        }
+      }
+    }
+    // If RTMP_URL is not used for output, use it for input (backward compatibility)
+    if (!rtmpUrlUsedForOutput) {
+      rtmpUrl = rtmpIt->second;
+    }
+  }
+
+  std::string hlsUrl = (hlsIt != req.additionalParams.end() && !hlsIt->second.empty()) ? hlsIt->second : "";
+  std::string httpUrl = (httpIt != req.additionalParams.end() && !httpIt->second.empty()) ? httpIt->second : "";
+
+  // Trim whitespace
+  if (!rtspUrl.empty()) {
+    rtspUrl.erase(0, rtspUrl.find_first_not_of(" \t\n\r"));
+    rtspUrl.erase(rtspUrl.find_last_not_of(" \t\n\r") + 1);
+  }
+  if (!rtmpUrl.empty()) {
+    rtmpUrl.erase(0, rtmpUrl.find_first_not_of(" \t\n\r"));
+    rtmpUrl.erase(rtmpUrl.find_last_not_of(" \t\n\r") + 1);
+  }
+  if (!hlsUrl.empty()) {
+    hlsUrl.erase(0, hlsUrl.find_first_not_of(" \t\n\r"));
+    hlsUrl.erase(hlsUrl.find_last_not_of(" \t\n\r") + 1);
+  }
+  if (!httpUrl.empty()) {
+    httpUrl.erase(0, httpUrl.find_first_not_of(" \t\n\r"));
+    httpUrl.erase(httpUrl.find_last_not_of(" \t\n\r") + 1);
+  }
+
+  if (!rtspUrl.empty()) {
+    // Check if RTMP_URL also provided (potential conflict)
+    if (!rtmpUrl.empty()) {
+      std::cerr << "[PipelineBuilder] ⚠ WARNING: Both RTSP_URL and RTMP_URL are provided." << std::endl;
+      std::cerr << "[PipelineBuilder] ⚠ Using RTSP_URL (priority). RTMP_URL will be ignored for input." << std::endl;
+    }
+    // Check if FILE_PATH also contains RTSP URL (potential conflict)
+    auto filePathIt = req.additionalParams.find("FILE_PATH");
+    if (filePathIt != req.additionalParams.end() && !filePathIt->second.empty()) {
+      std::string filePath = filePathIt->second;
+      filePath.erase(0, filePath.find_first_not_of(" \t\n\r"));
+      filePath.erase(filePath.find_last_not_of(" \t\n\r") + 1);
+      if (!filePath.empty() && PipelineBuilderSourceNodes::detectInputType(filePath) == "rtsp") {
+        std::cerr << "[PipelineBuilder] ⚠ WARNING: Both RTSP_SRC_URL and "
+                     "FILE_PATH (with RTSP URL) are provided."
+                  << std::endl;
+        std::cerr << "[PipelineBuilder] ⚠ Using RTSP_SRC_URL (priority). "
+                     "FILE_PATH will be ignored."
+                  << std::endl;
+      }
+    }
+    std::cerr << "[PipelineBuilder] Auto-detected RTSP source from "
+                 "RTSP_SRC_URL parameter, overriding file_src"
+              << std::endl;
+    actualNodeType = "rtsp_src";
+    params["rtsp_url"] = rtspUrl;
+    size_t fileSrcPos = nodeName.find("file_src");
+    if (fileSrcPos != std::string::npos) {
+      nodeName.replace(fileSrcPos, 8, "rtsp_src");
+      std::cerr << "[PipelineBuilder] Updated node name to reflect RTSP source: '"
+                << nodeName << "'" << std::endl;
+    }
+  } else if (!rtmpUrl.empty()) {
+    // Check if FILE_PATH also contains RTMP URL (potential conflict)
+    auto filePathIt = req.additionalParams.find("FILE_PATH");
+    if (filePathIt != req.additionalParams.end() && !filePathIt->second.empty()) {
+      std::string filePath = filePathIt->second;
+      filePath.erase(0, filePath.find_first_not_of(" \t\n\r"));
+      filePath.erase(filePath.find_last_not_of(" \t\n\r") + 1);
+      if (!filePath.empty() && PipelineBuilderSourceNodes::detectInputType(filePath) == "rtmp") {
+        std::cerr << "[PipelineBuilder] ⚠ WARNING: Both RTMP_SRC_URL and "
+                     "FILE_PATH (with RTMP URL) are provided."
+                  << std::endl;
+        std::cerr << "[PipelineBuilder] ⚠ Using RTMP_SRC_URL (priority). "
+                     "FILE_PATH will be ignored."
+                  << std::endl;
+      }
+    }
+    std::cerr << "[PipelineBuilder] Auto-detected RTMP source from "
+                 "RTMP_SRC_URL parameter, overriding file_src"
+              << std::endl;
+    actualNodeType = "rtmp_src";
+    params["rtmp_url"] = rtmpUrl;
+    size_t fileSrcPos = nodeName.find("file_src");
+    if (fileSrcPos != std::string::npos) {
+      nodeName.replace(fileSrcPos, 8, "rtmp_src");
+      std::cerr << "[PipelineBuilder] Updated node name to reflect RTMP source: '"
+                << nodeName << "'" << std::endl;
+    }
+  } else if (!hlsUrl.empty()) {
+    // Check if FILE_PATH also contains HLS URL (potential conflict)
+    auto filePathIt = req.additionalParams.find("FILE_PATH");
+    if (filePathIt != req.additionalParams.end() && !filePathIt->second.empty()) {
+      std::string filePath = filePathIt->second;
+      filePath.erase(0, filePath.find_first_not_of(" \t\n\r"));
+      filePath.erase(filePath.find_last_not_of(" \t\n\r") + 1);
+      if (!filePath.empty() && (PipelineBuilderSourceNodes::detectInputType(filePath) == "hls" ||
+                                PipelineBuilderSourceNodes::detectInputType(filePath) == "http")) {
+        std::cerr << "[PipelineBuilder] ⚠ WARNING: Both HLS_URL and "
+                     "FILE_PATH (with HLS/HTTP URL) are provided."
+                  << std::endl;
+        std::cerr << "[PipelineBuilder] ⚠ Using HLS_URL (priority). "
+                     "FILE_PATH will be ignored."
+                  << std::endl;
+      }
+    }
+    std::cerr << "[PipelineBuilder] Auto-detected HLS source from HLS_URL "
+                 "parameter, using ff_src"
+              << std::endl;
+    actualNodeType = "ff_src";
+    params["uri"] = hlsUrl;
+    size_t fileSrcPos = nodeName.find("file_src");
+    if (fileSrcPos != std::string::npos) {
+      nodeName.replace(fileSrcPos, 8, "ff_src");
+      std::cerr << "[PipelineBuilder] Updated node name to reflect FFmpeg source: '"
+                << nodeName << "'" << std::endl;
+    }
+  } else if (!httpUrl.empty()) {
+    // Check if FILE_PATH also contains HTTP URL (potential conflict)
+    auto filePathIt = req.additionalParams.find("FILE_PATH");
+    if (filePathIt != req.additionalParams.end() && !filePathIt->second.empty()) {
+      std::string filePath = filePathIt->second;
+      filePath.erase(0, filePath.find_first_not_of(" \t\n\r"));
+      filePath.erase(filePath.find_last_not_of(" \t\n\r") + 1);
+      if (!filePath.empty() && (PipelineBuilderSourceNodes::detectInputType(filePath) == "hls" ||
+                                PipelineBuilderSourceNodes::detectInputType(filePath) == "http")) {
+        std::cerr << "[PipelineBuilder] ⚠ WARNING: Both HTTP_URL and "
+                     "FILE_PATH (with HLS/HTTP URL) are provided."
+                  << std::endl;
+        std::cerr << "[PipelineBuilder] ⚠ Using HTTP_URL (priority). "
+                     "FILE_PATH will be ignored."
+                  << std::endl;
+      }
+    }
+    std::cerr << "[PipelineBuilder] Auto-detected HTTP source from "
+                 "HTTP_URL parameter, using ff_src"
+              << std::endl;
+    actualNodeType = "ff_src";
+    params["uri"] = httpUrl;
+    size_t fileSrcPos = nodeName.find("file_src");
+    if (fileSrcPos != std::string::npos) {
+      nodeName.replace(fileSrcPos, 8, "ff_src");
+      std::cerr << "[PipelineBuilder] Updated node name to reflect FFmpeg source: '"
+                << nodeName << "'" << std::endl;
+    }
+  } else {
+    // Priority 2: Auto-detect from FILE_PATH
+    std::string filePath = params.count("file_path") ? params.at("file_path") : "";
+    if (filePath.empty()) {
+      auto filePathIt = req.additionalParams.find("FILE_PATH");
+      if (filePathIt != req.additionalParams.end() && !filePathIt->second.empty()) {
+        filePath = filePathIt->second;
+      }
+    }
+
+    // Trim whitespace from filePath
+    if (!filePath.empty()) {
+      filePath.erase(0, filePath.find_first_not_of(" \t\n\r"));
+      filePath.erase(filePath.find_last_not_of(" \t\n\r") + 1);
+    }
+
+    if (!filePath.empty()) {
+      std::string inputType = PipelineBuilderSourceNodes::detectInputType(filePath);
+      if (inputType == "rtsp") {
+        std::cerr << "[PipelineBuilder] Auto-detected RTSP source from "
+                     "FILE_PATH: '"
+                  << filePath << "'" << std::endl;
+        actualNodeType = "rtsp_src";
+        params["rtsp_url"] = filePath;
+        size_t fileSrcPos = nodeName.find("file_src");
+        if (fileSrcPos != std::string::npos) {
+          nodeName.replace(fileSrcPos, 8, "rtsp_src");
+        }
+      } else if (inputType == "rtmp") {
+        std::cerr << "[PipelineBuilder] Auto-detected RTMP source from "
+                     "FILE_PATH: '"
+                  << filePath << "'" << std::endl;
+        actualNodeType = "rtmp_src";
+        params["rtmp_url"] = filePath;
+        size_t fileSrcPos = nodeName.find("file_src");
+        if (fileSrcPos != std::string::npos) {
+          nodeName.replace(fileSrcPos, 8, "rtmp_src");
+        }
+      } else if (inputType == "hls" || inputType == "http") {
+        std::cerr << "[PipelineBuilder] Auto-detected " << inputType
+                  << " source from FILE_PATH: '" << filePath
+                  << "', using ff_src" << std::endl;
+        actualNodeType = "ff_src";
+        params["uri"] = filePath;
+        size_t fileSrcPos = nodeName.find("file_src");
+        if (fileSrcPos != std::string::npos) {
+          nodeName.replace(fileSrcPos, 8, "ff_src");
+        }
+      } else {
+        // If inputType == "file" or "udp", keep as file_src (default)
+        std::cerr << "[PipelineBuilder] Using file_src for FILE_PATH: '"
+                  << filePath << "' (detected type: " << inputType << ")"
+                  << std::endl;
+      }
+    }
+  }
+  
+  return actualNodeType;
+}
+
+// ========== Helper Methods for buildPipeline() ==========
+
+void PipelineBuilder::loadSecuRTData(const SolutionConfig &solution,
+                                      CreateInstanceRequest &req,
+                                      const std::string &instanceId) {
+  if (solution.solutionId != "securt") {
+    return;
+  }
+
+  std::cerr << "[PipelineBuilder] SecuRT solution detected - loading areas and lines"
+            << std::endl;
+
+  // Load lines from SecuRT Line Manager and convert to CrossingLines format
+  if (line_manager_) {
+    std::string crossingLinesJson =
+        SecuRTPipelineIntegration::convertLinesToCrossingLinesFormat(
+            line_manager_, instanceId);
+    if (!crossingLinesJson.empty()) {
+      // Add to additionalParams if not already set (API takes priority)
+      if (req.additionalParams.find("CrossingLines") ==
+          req.additionalParams.end()) {
+        req.additionalParams["CrossingLines"] = crossingLinesJson;
+        std::cerr << "[PipelineBuilder] ✓ Loaded " << crossingLinesJson.length()
+                  << " bytes of lines data from SecuRT Line Manager"
+                  << std::endl;
+      } else {
+        std::cerr << "[PipelineBuilder] NOTE: CrossingLines already set in "
+                     "request, keeping API value"
+                  << std::endl;
+      }
+    } else {
+      std::cerr << "[PipelineBuilder] No lines found in SecuRT Line Manager"
+                << std::endl;
+    }
+  } else {
+    std::cerr << "[PipelineBuilder] WARNING: Line Manager not set for SecuRT"
+              << std::endl;
+  }
+
+  // Load areas from Area Manager (for future use - areas may need different
+  // SDK nodes)
+  if (area_manager_) {
+    std::string areasJson =
+        SecuRTPipelineIntegration::convertAreasToJsonFormat(area_manager_,
+                                                            instanceId);
+    if (!areasJson.empty()) {
+      // Store areas in additionalParams for potential future use
+      req.additionalParams["SecuRTAreas"] = areasJson;
+      std::cerr << "[PipelineBuilder] ✓ Loaded " << areasJson.length()
+                << " bytes of areas data from SecuRT Area Manager"
+                << std::endl;
+    } else {
+      std::cerr << "[PipelineBuilder] No areas found in SecuRT Area Manager"
+                << std::endl;
+    }
+  } else {
+    std::cerr << "[PipelineBuilder] WARNING: Area Manager not set for SecuRT"
+              << std::endl;
+  }
+}
+
+std::tuple<bool, bool, std::string, std::vector<std::shared_ptr<cvedix_nodes::cvedix_node>>>
+PipelineBuilder::handleMultipleSources(const CreateInstanceRequest &req,
+                                        const std::string &instanceId,
+                                        std::vector<std::shared_ptr<cvedix_nodes::cvedix_node>> &nodes,
+                                        std::vector<std::string> &nodeTypes) {
+  std::vector<std::shared_ptr<cvedix_nodes::cvedix_node>> multipleSourceNodes;
+  bool hasMultipleSources = false;
+  bool hasCustomSourceNodes = false;
+  std::string multipleSourceType = "";
+
+  // Check FILE_PATHS first
+  auto filePathsIt = req.additionalParams.find("FILE_PATHS");
+  if (filePathsIt != req.additionalParams.end() && !filePathsIt->second.empty()) {
+    try {
+      Json::Value filePathsJson;
+      Json::Reader reader;
+      if (reader.parse(filePathsIt->second, filePathsJson) && filePathsJson.isArray() && filePathsJson.size() >= 1) {
+        hasMultipleSources = (filePathsJson.size() > 1);
+        hasCustomSourceNodes = true;
+        multipleSourceType = "file_src";
+        std::cerr << "[PipelineBuilder] Detected FILE_PATHS array with " << filePathsJson.size() << " video source(s)" << std::endl;
+        
+        // Create multiple file_src nodes
+        for (Json::ArrayIndex i = 0; i < filePathsJson.size(); ++i) {
+          std::string filePath;
+          int channel = static_cast<int>(i);
+          float resizeRatio = 0.4f; // Default
+          
+          if (filePathsJson[i].isString()) {
+            filePath = filePathsJson[i].asString();
+          } else if (filePathsJson[i].isObject()) {
+            if (filePathsJson[i].isMember("file_path")) {
+              filePath = filePathsJson[i]["file_path"].asString();
+            }
+            if (filePathsJson[i].isMember("channel")) {
+              channel = filePathsJson[i]["channel"].asInt();
+            }
+            if (filePathsJson[i].isMember("resize_ratio")) {
+              resizeRatio = filePathsJson[i]["resize_ratio"].asFloat();
+            }
+          }
+          
+          if (!filePath.empty()) {
+            std::string inputType = PipelineBuilderSourceNodes::detectInputType(filePath);
+            
+            if (inputType == "rtsp") {
+              std::string nodeName = "rtsp_src_" + instanceId + "_" + std::to_string(channel);
+              std::cerr << "[PipelineBuilder] Auto-detected RTSP source from FILE_PATHS[" << i << "]" << std::endl;
+              std::cerr << "[PipelineBuilder] Creating RTSP source node " << (i + 1) << "/" << filePathsJson.size() 
+                        << ": channel=" << channel << ", url='" << filePath << "', resize_ratio=" << resizeRatio << std::endl;
+              
+              std::string gstDecoderName = "avdec_h264";
+              int skipInterval = 0;
+              std::string codecType = "h264";
+              
+              if (filePathsJson[i].isObject()) {
+                if (filePathsJson[i].isMember("gst_decoder_name")) {
+                  gstDecoderName = filePathsJson[i]["gst_decoder_name"].asString();
+                }
+                if (filePathsJson[i].isMember("skip_interval")) {
+                  skipInterval = filePathsJson[i]["skip_interval"].asInt();
+                }
+                if (filePathsJson[i].isMember("codec_type")) {
+                  codecType = filePathsJson[i]["codec_type"].asString();
+                }
+              }
+              
+              auto rtspSrcNode = std::make_shared<cvedix_nodes::cvedix_rtsp_src_node>(
+                  nodeName, channel, filePath, resizeRatio, gstDecoderName, skipInterval, codecType);
+              multipleSourceNodes.push_back(rtspSrcNode);
+              nodes.push_back(rtspSrcNode);
+              nodeTypes.push_back("rtsp_src");
+            } else if (inputType == "rtmp") {
+              std::string nodeName = "rtmp_src_" + instanceId + "_" + std::to_string(channel);
+              std::cerr << "[PipelineBuilder] Auto-detected RTMP source from FILE_PATHS[" << i << "]" << std::endl;
+              std::cerr << "[PipelineBuilder] Creating RTMP source node " << (i + 1) << "/" << filePathsJson.size() 
+                        << ": channel=" << channel << ", url='" << filePath << "', resize_ratio=" << resizeRatio << std::endl;
+              
+              std::string gstDecoderName = "avdec_h264";
+              int skipInterval = 0;
+              
+              if (filePathsJson[i].isObject()) {
+                if (filePathsJson[i].isMember("gst_decoder_name")) {
+                  gstDecoderName = filePathsJson[i]["gst_decoder_name"].asString();
+                }
+                if (filePathsJson[i].isMember("skip_interval")) {
+                  skipInterval = filePathsJson[i]["skip_interval"].asInt();
+                }
+              }
+              
+              auto rtmpSrcNode = std::make_shared<cvedix_nodes::cvedix_rtmp_src_node>(
+                  nodeName, channel, filePath, resizeRatio, gstDecoderName, skipInterval);
+              multipleSourceNodes.push_back(rtmpSrcNode);
+              nodes.push_back(rtmpSrcNode);
+              nodeTypes.push_back("rtmp_src");
+            } else {
+              std::string nodeName = "file_src_" + instanceId + "_" + std::to_string(channel);
+              std::cerr << "[PipelineBuilder] Creating file source node " << (i + 1) << "/" << filePathsJson.size() 
+                        << ": channel=" << channel << ", path='" << filePath << "', resize_ratio=" << resizeRatio << std::endl;
+              
+              auto fileSrcNode = std::make_shared<cvedix_nodes::cvedix_file_src_node>(
+                  nodeName, channel, filePath, resizeRatio);
+              multipleSourceNodes.push_back(fileSrcNode);
+              nodes.push_back(fileSrcNode);
+              nodeTypes.push_back("file_src");
+            }
+          }
+        }
+        
+        int rtspCount = 0, rtmpCount = 0, fileCount = 0;
+        for (const auto &type : nodeTypes) {
+          if (type == "rtsp_src") rtspCount++;
+          else if (type == "rtmp_src") rtmpCount++;
+          else if (type == "file_src") fileCount++;
+        }
+        
+        std::cerr << "[PipelineBuilder] ✓ Created " << multipleSourceNodes.size() << " source node(s) for multi-channel processing:";
+        if (rtspCount > 0) std::cerr << " " << rtspCount << " RTSP";
+        if (rtmpCount > 0) std::cerr << " " << rtmpCount << " RTMP";
+        if (fileCount > 0) std::cerr << " " << fileCount << " file";
+        std::cerr << std::endl;
+      }
+    } catch (const std::exception &e) {
+      std::cerr << "[PipelineBuilder] Warning: Failed to parse FILE_PATHS: " << e.what() 
+                << ", falling back to single source" << std::endl;
+      hasMultipleSources = false;
+    }
+  }
+  
+  // Check RTSP_URLS if FILE_PATHS not found
+  if (!hasMultipleSources) {
+    auto rtspUrlsIt = req.additionalParams.find("RTSP_URLS");
+    if (rtspUrlsIt != req.additionalParams.end() && !rtspUrlsIt->second.empty()) {
+      try {
+        Json::Value rtspUrlsJson;
+        Json::Reader reader;
+        if (reader.parse(rtspUrlsIt->second, rtspUrlsJson) && rtspUrlsJson.isArray() && rtspUrlsJson.size() >= 1) {
+          hasMultipleSources = (rtspUrlsJson.size() > 1);
+          hasCustomSourceNodes = true;
+          multipleSourceType = "rtsp_src";
+          std::cerr << "[PipelineBuilder] Detected RTSP_URLS array with " << rtspUrlsJson.size() << " RTSP stream(s)" << std::endl;
+          
+          for (Json::ArrayIndex i = 0; i < rtspUrlsJson.size(); ++i) {
+            std::string rtspUrl;
+            int channel = static_cast<int>(i);
+            float resizeRatio = 0.6f;
+            std::string gstDecoderName = "avdec_h264";
+            int skipInterval = 0;
+            std::string codecType = "h264";
+            
+            if (rtspUrlsJson[i].isString()) {
+              rtspUrl = rtspUrlsJson[i].asString();
+            } else if (rtspUrlsJson[i].isObject()) {
+              if (rtspUrlsJson[i].isMember("rtsp_url")) {
+                rtspUrl = rtspUrlsJson[i]["rtsp_url"].asString();
+              } else if (rtspUrlsJson[i].isMember("url")) {
+                rtspUrl = rtspUrlsJson[i]["url"].asString();
+              }
+              if (rtspUrlsJson[i].isMember("channel")) {
+                channel = rtspUrlsJson[i]["channel"].asInt();
+              }
+              if (rtspUrlsJson[i].isMember("resize_ratio")) {
+                resizeRatio = rtspUrlsJson[i]["resize_ratio"].asFloat();
+              }
+              if (rtspUrlsJson[i].isMember("gst_decoder_name")) {
+                gstDecoderName = rtspUrlsJson[i]["gst_decoder_name"].asString();
+              }
+              if (rtspUrlsJson[i].isMember("skip_interval")) {
+                skipInterval = rtspUrlsJson[i]["skip_interval"].asInt();
+              }
+              if (rtspUrlsJson[i].isMember("codec_type")) {
+                codecType = rtspUrlsJson[i]["codec_type"].asString();
+              }
+            }
+            
+            if (!rtspUrl.empty()) {
+              std::string nodeName = "rtsp_src_" + instanceId + "_" + std::to_string(channel);
+              std::cerr << "[PipelineBuilder] Creating RTSP source node " << (i + 1) << "/" << rtspUrlsJson.size() 
+                        << ": channel=" << channel << ", url='" << rtspUrl << "', resize_ratio=" << resizeRatio << std::endl;
+              
+              auto rtspSrcNode = std::make_shared<cvedix_nodes::cvedix_rtsp_src_node>(
+                  nodeName, channel, rtspUrl, resizeRatio, gstDecoderName, skipInterval, codecType);
+              multipleSourceNodes.push_back(rtspSrcNode);
+              nodes.push_back(rtspSrcNode);
+              nodeTypes.push_back("rtsp_src");
+            }
+          }
+          
+          std::cerr << "[PipelineBuilder] ✓ Created " << multipleSourceNodes.size() << " RTSP source nodes for multi-channel processing" << std::endl;
+        }
+      } catch (const std::exception &e) {
+        std::cerr << "[PipelineBuilder] Warning: Failed to parse RTSP_URLS: " << e.what() 
+                  << ", falling back to single source" << std::endl;
+        hasMultipleSources = false;
+      }
+    }
+  }
+
+  return std::make_tuple(hasMultipleSources, hasCustomSourceNodes, multipleSourceType, multipleSourceNodes);
+}
+
 // Note: createRTSPSourceNode has been moved to PipelineBuilderSourceNodes
-
-
 
 // Note: mapDetectionSensitivity, getRTSPUrl, getRTMPUrl, getFilePath, 
 // resolveModelPath, resolveModelByName, and listAvailableModels have been 

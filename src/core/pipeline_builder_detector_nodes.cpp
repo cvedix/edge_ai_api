@@ -450,6 +450,7 @@ PipelineBuilderDetectorNodes::createSFaceEncoderNode(
   }
 }
 
+#ifdef CVEDIX_WITH_TRT
 std::shared_ptr<cvedix_nodes::cvedix_node>
 PipelineBuilderDetectorNodes::createTRTYOLOv8DetectorNode(
     const std::string &nodeName,
@@ -1078,7 +1079,9 @@ PipelineBuilderDetectorNodes::createTRTInsightFaceRecognitionNode(
     throw;
   }
 }
+#endif // CVEDIX_WITH_TRT
 
+#ifdef CVEDIX_WITH_RKNN
 std::shared_ptr<cvedix_nodes::cvedix_node>
 PipelineBuilderDetectorNodes::createRKNNYOLOv8DetectorNode(
     const std::string &nodeName,
@@ -1257,6 +1260,7 @@ PipelineBuilderDetectorNodes::createRKNNYOLOv11DetectorNode(
     throw;
   }
 }
+#endif // CVEDIX_WITH_RKNN
 
 std::shared_ptr<cvedix_nodes::cvedix_node>
 PipelineBuilderDetectorNodes::createYOLODetectorNode(
@@ -1668,6 +1672,7 @@ PipelineBuilderDetectorNodes::createLaneDetectorNode(
   }
 }
 
+#ifdef CVEDIX_WITH_PADDLE
 std::shared_ptr<cvedix_nodes::cvedix_node>
 PipelineBuilderDetectorNodes::createPaddleOCRTextDetectorNode(
     const std::string &nodeName,
@@ -1715,6 +1720,7 @@ PipelineBuilderDetectorNodes::createPaddleOCRTextDetectorNode(
     throw;
   }
 }
+#endif // CVEDIX_WITH_PADDLE
 
 std::shared_ptr<cvedix_nodes::cvedix_node>
 PipelineBuilderDetectorNodes::createRestorationNode(
@@ -1917,13 +1923,12 @@ PipelineBuilderDetectorNodes::createInsightFaceRecognitionNode(
   }
 }
 
+#ifdef CVEDIX_WITH_LLM
 std::shared_ptr<cvedix_nodes::cvedix_node>
 PipelineBuilderDetectorNodes::createMLLMAnalyserNode(
     const std::string &nodeName,
     const std::map<std::string, std::string> &params,
     const CreateInstanceRequest &req) {
-
-#ifdef CVEDIX_WITH_LLM
   try {
     std::string modelName =
         params.count("model_name") ? params.at("model_name") : "";
@@ -1991,8 +1996,5 @@ PipelineBuilderDetectorNodes::createMLLMAnalyserNode(
               << e.what() << std::endl;
     throw;
   }
-#else
-  throw std::runtime_error(
-      "MLLM analyser node is not available (CVEDIX_WITH_LLM not defined)");
-#endif
 }
+#endif // CVEDIX_WITH_LLM
