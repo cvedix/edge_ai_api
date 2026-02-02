@@ -22,10 +22,14 @@ public:
   ADD_METHOD_TO(ScalarHandler::getScalarDocument, "/v2/document", Get);
   ADD_METHOD_TO(ScalarHandler::getScalarCSS, "/v1/scalar/standalone.css", Get);
   ADD_METHOD_TO(ScalarHandler::getScalarCSS, "/v2/scalar/standalone.css", Get);
+  ADD_METHOD_TO(ScalarHandler::listExampleBodies, "/v1/document/examples", Get);
+  ADD_METHOD_TO(ScalarHandler::getExampleBody, "/v1/document/examples/{path}", Get);
   ADD_METHOD_TO(ScalarHandler::handleOptions, "/v1/document", Options);
   ADD_METHOD_TO(ScalarHandler::handleOptions, "/v2/document", Options);
   ADD_METHOD_TO(ScalarHandler::handleOptions, "/v1/scalar/standalone.css", Options);
   ADD_METHOD_TO(ScalarHandler::handleOptions, "/v2/scalar/standalone.css", Options);
+  ADD_METHOD_TO(ScalarHandler::handleOptions, "/v1/document/examples", Options);
+  ADD_METHOD_TO(ScalarHandler::handleOptions, "/v1/document/examples/{path}", Options);
   METHOD_LIST_END
 
   /**
@@ -44,6 +48,18 @@ public:
    * @brief Handle OPTIONS request for CORS preflight
    */
   void handleOptions(const HttpRequestPtr &req,
+                     std::function<void(const HttpResponsePtr &)> &&callback);
+
+  /**
+   * @brief List available example body files
+   */
+  void listExampleBodies(const HttpRequestPtr &req,
+                         std::function<void(const HttpResponsePtr &)> &&callback);
+
+  /**
+   * @brief Get a specific example body file content
+   */
+  void getExampleBody(const HttpRequestPtr &req,
                      std::function<void(const HttpResponsePtr &)> &&callback);
 
   /**
@@ -88,5 +104,27 @@ private:
    * @return CSS content from api-specs/scalar/standalone.css or empty if not found
    */
   std::string readScalarCSSFile() const;
+
+  /**
+   * @brief Get the examples/instances directory path
+   * @return Path to examples/instances directory
+   */
+  std::string getExamplesInstancesDir() const;
+
+  /**
+   * @brief Recursively list all JSON files in examples/instances directory
+   * @param dir Directory to search
+   * @param basePath Base path for relative file paths
+   * @return Vector of relative file paths
+   */
+  std::vector<std::string> listExampleFiles(const std::filesystem::path &dir,
+                                            const std::filesystem::path &basePath) const;
+
+  /**
+   * @brief Sanitize file path to prevent path traversal
+   * @param path Path to sanitize
+   * @return Sanitized path or empty if invalid
+   */
+  std::string sanitizePath(const std::string &path) const;
 };
 

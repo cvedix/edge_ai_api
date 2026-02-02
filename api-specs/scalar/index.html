@@ -137,6 +137,7 @@
         body {
             margin: 0;
             padding: 0;
+            background: #fafafa;
         }
         .language-selector {
             position: fixed;
@@ -162,7 +163,8 @@
             border-radius: 4px;
             font-size: 14px;
             cursor: pointer;
-            background: white;
+            background: #ffffff !important;
+            color: #333 !important;
         }
         .language-selector select:hover {
             border-color: #999;
@@ -192,6 +194,7 @@
             margin: 0;
             padding: 0;
             overflow-x: hidden;
+            background: #fafafa;
         }
         
         /* ============================================
@@ -437,6 +440,45 @@
             .json-code-content {
                 padding-left: 16px;
             }
+        }
+        
+        /* Override Scalar background colors */
+        html,
+        body,
+        #scalar-api-reference,
+        #scalar-api-reference > div,
+        .scalar-api-reference,
+        .scalar-api-reference > div {
+            background: #fafafa !important;
+        }
+        
+        /* Change background for select/dropdown elements */
+        select,
+        .language-selector select,
+        .scalar-api-reference select,
+        .scalar-api-reference [role="combobox"],
+        .scalar-api-reference [class*="select"],
+        .scalar-api-reference [class*="Select"] {
+            background: #ffffff !important;
+            color: #333 !important;
+            border: 1px solid #ddd !important;
+        }
+        
+        /* Change text color for better contrast */
+        .scalar-api-reference,
+        .scalar-api-reference * {
+            color: #333 !important;
+        }
+        
+        /* Override specific Scalar components */
+        .scalar-api-reference [class*="sidebar"],
+        .scalar-api-reference [class*="Sidebar"] {
+            background: #f5f5f5 !important;
+        }
+        
+        .scalar-api-reference [class*="content"],
+        .scalar-api-reference [class*="Content"] {
+            background: #fafafa !important;
         }
     </style>
 </head>
@@ -888,6 +930,21 @@
                         // Custom CSS để cải thiện định dạng response body
                         // Note: JSON enhancement được xử lý bởi script riêng
                         customCss: `
+                            /* Thay đổi màu nền chính */
+                            html, body, #scalar-api-reference, .scalar-api-reference {
+                                background: #fafafa !important;
+                            }
+                            
+                            /* Thay đổi màu nền cho select/dropdown */
+                            .scalar-api-reference select,
+                            .scalar-api-reference [role="combobox"],
+                            .scalar-api-reference [class*="select"],
+                            .scalar-api-reference [class*="Select"] {
+                                background: #ffffff !important;
+                                color: #333 !important;
+                                border: 1px solid #ddd !important;
+                            }
+                            
                             /* Cải thiện hiển thị response section tổng thể */
                             .scalar-api-reference .response-section {
                                 padding: 20px !important;
@@ -984,7 +1041,8 @@
                                     defaultHttpClient: configuration.defaultHttpClient,
                                     withCredentials: configuration.withCredentials,
                                     proxy: configuration.proxy,
-                                    fetchOptions: configuration.fetchOptions
+                                    fetchOptions: configuration.fetchOptions,
+                                    customCss: configuration.customCss
                                 });
                                 
                                 window.scalarInstance = result;
@@ -1032,6 +1090,21 @@
                 
                 // Use provided config or create a default one
                 const defaultCustomCss = `
+                    /* Thay đổi màu nền chính */
+                    html, body, #scalar-api-reference, .scalar-api-reference {
+                        background: #fafafa !important;
+                    }
+                    
+                    /* Thay đổi màu nền cho select/dropdown */
+                    .scalar-api-reference select,
+                    .scalar-api-reference [role="combobox"],
+                    .scalar-api-reference [class*="select"],
+                    .scalar-api-reference [class*="Select"] {
+                        background: #ffffff !important;
+                        color: #333 !important;
+                        border: 1px solid #ddd !important;
+                    }
+                    
                     .scalar-api-reference .response-section {
                         padding: 20px !important;
                         background: #ffffff !important;
@@ -1518,6 +1591,151 @@
                 console.log('[JSON Enhancement] Manual trigger');
                 return enhanceAllJsonDisplays();
             };
+        })();
+    </script>
+    
+    <!-- Path Parameters Sync Script -->
+    <script>
+        (function() {
+            'use strict';
+            
+            console.log('[Path Parameters Sync] Initializing path parameters synchronization...');
+            
+            /**
+             * Sync path parameters from Variables section to URL
+             * This fixes the issue where Scalar shows path parameters in Variables
+             * but doesn't update the URL when values change
+             */
+            function syncPathParametersToURL() {
+                // Wait for Scalar to fully load
+                const maxRetries = 50;
+                let retries = 0;
+                
+                const checkAndSync = setInterval(function() {
+                    retries++;
+                    
+                    // Find all request URL inputs in Scalar
+                    const urlInputs = document.querySelectorAll('input[type="text"][placeholder*="URL"], input[type="text"][class*="url"], input[type="text"][id*="url"]');
+                    
+                    // Find Variables section
+                    const variablesSections = document.querySelectorAll('[class*="variable"], [class*="Variable"], [data-testid*="variable"]');
+                    
+                    if (urlInputs.length > 0 && variablesSections.length > 0) {
+                        console.log('[Path Parameters Sync] Found URL inputs and variables sections');
+                        
+                        // For each variable section, check if it contains path parameter names
+                        variablesSections.forEach(function(variableSection) {
+                            // Look for instanceId or other path parameters
+                            const instanceIdInput = variableSection.querySelector('input[value*="-"], input[placeholder*="instance"], input[name*="instanceId"]');
+                            
+                            if (instanceIdInput) {
+                                const instanceIdValue = instanceIdInput.value || instanceIdInput.getAttribute('value');
+                                
+                                if (instanceIdValue) {
+                                    // Find the corresponding URL input
+                                    urlInputs.forEach(function(urlInput) {
+                                        const currentUrl = urlInput.value || '';
+                                        
+                                        // Check if URL contains instanceId pattern
+                                        const instanceIdPattern = /\/instance\/([a-f0-9-]+)\//i;
+                                        const match = currentUrl.match(instanceIdPattern);
+                                        
+                                        if (match && match[1] !== instanceIdValue) {
+                                            console.log('[Path Parameters Sync] Syncing instanceId:', match[1], '->', instanceIdValue);
+                                            
+                                            // Update URL with new instanceId
+                                            const newUrl = currentUrl.replace(instanceIdPattern, '/instance/' + instanceIdValue + '/');
+                                            urlInput.value = newUrl;
+                                            
+                                            // Trigger input event to notify Scalar
+                                            const event = new Event('input', { bubbles: true });
+                                            urlInput.dispatchEvent(event);
+                                            
+                                            // Also trigger change event
+                                            const changeEvent = new Event('change', { bubbles: true });
+                                            urlInput.dispatchEvent(changeEvent);
+                                        }
+                                    });
+                                }
+                            }
+                        });
+                    }
+                    
+                    if (retries >= maxRetries) {
+                        clearInterval(checkAndSync);
+                        console.log('[Path Parameters Sync] Stopped checking after', maxRetries, 'retries');
+                    }
+                }, 1000); // Check every second
+            }
+            
+            /**
+             * Monitor changes in Variables section and sync to URL
+             */
+            function setupPathParameterSync() {
+                // Use MutationObserver to watch for changes in Variables section
+                const observer = new MutationObserver(function(mutations) {
+                    let shouldSync = false;
+                    
+                    mutations.forEach(function(mutation) {
+                        if (mutation.type === 'childList' || mutation.type === 'attributes' || mutation.type === 'characterData') {
+                            // Check if the change is in a variables section
+                            const target = mutation.target;
+                            if (target.closest && (
+                                target.closest('[class*="variable"]') ||
+                                target.closest('[class*="Variable"]') ||
+                                target.closest('[data-testid*="variable"]')
+                            )) {
+                                shouldSync = true;
+                            }
+                        }
+                    });
+                    
+                    if (shouldSync) {
+                        // Debounce: wait a bit for Scalar to finish updating
+                        setTimeout(function() {
+                            syncPathParametersToURL();
+                        }, 500);
+                    }
+                });
+                
+                // Start observing when DOM is ready
+                if (document.readyState === 'loading') {
+                    document.addEventListener('DOMContentLoaded', function() {
+                        observer.observe(document.body, {
+                            childList: true,
+                            subtree: true,
+                            attributes: true,
+                            attributeFilter: ['value', 'placeholder']
+                        });
+                        
+                        // Also run initial sync after a delay
+                        setTimeout(syncPathParametersToURL, 2000);
+                    });
+                } else {
+                    observer.observe(document.body, {
+                        childList: true,
+                        subtree: true,
+                        attributes: true,
+                        attributeFilter: ['value', 'placeholder']
+                    });
+                    
+                    // Run initial sync after a delay
+                    setTimeout(syncPathParametersToURL, 2000);
+                }
+            }
+            
+            // Initialize
+            setupPathParameterSync();
+            
+            // Also run sync when window loads (after Scalar initializes)
+            window.addEventListener('load', function() {
+                setTimeout(syncPathParametersToURL, 3000);
+            });
+            
+            // Expose function for manual sync
+            window.syncPathParameters = syncPathParametersToURL;
+            
+            console.log('[Path Parameters Sync] Setup complete. Use window.syncPathParameters() to manually sync.');
         })();
     </script>
 </body>

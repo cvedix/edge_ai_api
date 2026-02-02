@@ -475,6 +475,11 @@ SwaggerHandler::generateSwaggerUIHTML(const std::string &version,
                         },
                         onComplete: function() {
                             console.log("Swagger UI loaded successfully");
+                            
+                            // Add example body selector functionality
+                            setTimeout(function() {
+                                addExampleBodySelector();
+                            }, 1000);
                         },
                         onFailure: function(data) {
                             console.error("Swagger UI failed to load:", data);
