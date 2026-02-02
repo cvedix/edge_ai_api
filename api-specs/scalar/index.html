@@ -1610,6 +1610,8 @@
                 // Wait for Scalar to fully load
                 const maxRetries = 50;
                 let retries = 0;
+                let elementsFound = false;
+                let syncPerformed = false;
                 
                 const checkAndSync = setInterval(function() {
                     retries++;
@@ -1621,7 +1623,7 @@
                     const variablesSections = document.querySelectorAll('[class*="variable"], [class*="Variable"], [data-testid*="variable"]');
                     
                     if (urlInputs.length > 0 && variablesSections.length > 0) {
-                        console.log('[Path Parameters Sync] Found URL inputs and variables sections');
+                        elementsFound = true;
                         
                         // For each variable section, check if it contains path parameter names
                         variablesSections.forEach(function(variableSection) {
@@ -1654,16 +1656,28 @@
                                             // Also trigger change event
                                             const changeEvent = new Event('change', { bubbles: true });
                                             urlInput.dispatchEvent(changeEvent);
+                                            
+                                            syncPerformed = true;
                                         }
                                     });
                                 }
                             }
                         });
+                        
+                        // If we found elements and checked them, we can stop early
+                        // Only continue if we haven't found elements yet (page still loading)
+                        if (elementsFound && retries >= 5) {
+                            clearInterval(checkAndSync);
+                            return;
+                        }
                     }
                     
                     if (retries >= maxRetries) {
                         clearInterval(checkAndSync);
-                        console.log('[Path Parameters Sync] Stopped checking after', maxRetries, 'retries');
+                        // Only log warning if we never found elements (likely an issue)
+                        if (!elementsFound) {
+                            console.warn('[Path Parameters Sync] Stopped checking after', maxRetries, 'retries - elements not found');
+                        }
                     }
                 }, 1000); // Check every second
             }
@@ -1738,5 +1752,374 @@
             console.log('[Path Parameters Sync] Setup complete. Use window.syncPathParameters() to manually sync.');
         })();
     </script>
+    
+    <!-- Example Copy Button Script -->
+    <script>
+        (function() {
+            'use strict';
+            
+            console.log('[Example Copy] Initializing example copy button...');
+            
+            // Cache for example values
+            const exampleCache = new Map();
+            let currentExampleValue = null;
+            let copyButton = null;
+            
+            /**
+             * Get example value from OpenAPI spec
+             */
+            async function getExampleValue(exampleKey) {
+                // Check cache
+                if (exampleCache.has(exampleKey)) {
+                    return exampleCache.get(exampleKey);
+                }
+                
+                // Try to fetch from OpenAPI spec as JSON
+                const specUrl = document.getElementById('api-reference')?.getAttribute('data-url') ||
+                              window.location.origin + '/v1/openapi.yaml';
+                
+                const jsonSpecUrl = specUrl.replace(/\.yaml$/, '.json');
+                try {
+                    const response = await fetch(jsonSpecUrl);
+                    if (response.ok) {
+                        const jsonSpec = await response.json();
+                        const operation = jsonSpec.paths?.['/v1/core/instance']?.post;
+                        if (operation?.requestBody?.content?.['application/json']?.examples?.[exampleKey]) {
+                            const example = operation.requestBody.content['application/json'].examples[exampleKey];
+                            const value = example.value || null;
+                            if (value) {
+                                exampleCache.set(exampleKey, value);
+                                return value;
+                            }
+                        }
+                    }
+                } catch (e) {
+                    console.log('[Example Copy] JSON spec not available');
+                }
+                
+                return null;
+            }
+            
+            /**
+             * Create copy button
+             */
+            function createCopyButton() {
+                if (copyButton) {
+                    return copyButton;
+                }
+                
+                const button = document.createElement('button');
+                button.innerHTML = '📋 Copy Body';
+                button.style.cssText = `
+                    margin-left: 8px;
+                    padding: 6px 12px;
+                    background: #3b82f6;
+                    color: white;
+                    border: none;
+                    border-radius: 4px;
+                    cursor: pointer;
+                    font-size: 13px;
+                    font-weight: 500;
+                    transition: background 0.2s;
+                `;
+                
+                button.addEventListener('mouseenter', () => {
+                    button.style.background = '#2563eb';
+                });
+                
+                button.addEventListener('mouseleave', () => {
+                    button.style.background = '#3b82f6';
+                });
+                
+                button.addEventListener('click', async () => {
+                    if (!currentExampleValue) {
+                        console.warn('[Example Copy] No example value to copy');
+                        return;
+                    }
+                    
+                    try {
+                        // Format JSON with proper indentation (2 spaces)
+                        const jsonString = JSON.stringify(currentExampleValue, null, 2);
+                        
+                        // Copy only the JSON body (not the curl command)
+                        await navigator.clipboard.writeText(jsonString);
+                        
+                        // Show feedback
+                        const originalText = button.innerHTML;
+                        button.innerHTML = '✓ Copied!';
+                        button.style.background = '#10b981';
+                        
+                        setTimeout(() => {
+                            button.innerHTML = originalText;
+                            button.style.background = '#3b82f6';
+                        }, 2000);
+                        
+                        console.log('[Example Copy] JSON body copied to clipboard');
+                        console.log('[Example Copy] Copied content (first 100 chars):', jsonString.substring(0, 100));
+                    } catch (err) {
+                        console.error('[Example Copy] Failed to copy:', err);
+                        button.innerHTML = '✗ Error';
+                        setTimeout(() => {
+                            button.innerHTML = '📋 Copy Body';
+                        }, 2000);
+                    }
+                });
+                
+                copyButton = button;
+                return button;
+            }
+            
+            /**
+             * Find and attach to example selector
+             */
+            function setupExampleCopyButton() {
+                const maxRetries = 100;
+                let retries = 0;
+                let lastProcessedCount = 0;
+                let stableCount = 0;
+                
+                const checkAndSetup = setInterval(() => {
+                    retries++;
+                    
+                    // Find example selector in request sections - try multiple approaches
+                    const requestSections = document.querySelectorAll('[class*="request"], [class*="Request"], [class*="operation"], [class*="Operation"]');
+                    
+                    let processedThisRound = 0;
+                    
+                    for (const section of requestSections) {
+                        // Skip response sections
+                        if (section.closest('[class*="response"], [class*="Response"]')) {
+                            continue;
+                        }
+                        
+                        // Find ALL select elements in request section (Scalar might use different structures)
+                        const selects = section.querySelectorAll('select');
+                        for (const select of selects) {
+                            // Check if already attached
+                            if (select.hasAttribute('data-copy-button-attached')) {
+                                continue;
+                            }
+                            
+                            // More lenient check - if it's a select in request area, it might be example selector
+                            const text = (select.textContent || '').toLowerCase();
+                            const ariaLabel = (select.getAttribute('aria-label') || '').toLowerCase();
+                            const className = (select.className || '').toLowerCase();
+                            const id = (select.id || '').toLowerCase();
+                            
+                            // Check options for example patterns
+                            let hasExampleOptions = false;
+                            let optionCount = 0;
+                            if (select.options && select.options.length > 0) {
+                                optionCount = select.options.length;
+                                for (let i = 0; i < select.options.length; i++) {
+                                    const optionText = select.options[i].text || '';
+                                    const optionValue = select.options[i].value || '';
+                                    // Example keys often contain "___" or are descriptive
+                                    if (optionValue.includes('___') || 
+                                        optionText.length > 20 ||
+                                        optionText.includes('Example') ||
+                                        optionText.includes(' - ')) {
+                                        hasExampleOptions = true;
+                                        break;
+                                    }
+                                }
+                            }
+                            
+                            // More lenient: if select has multiple options and is in request area, treat as example selector
+                            // But exclude client/shell selectors (they have ~36 options and specific values)
+                            const isClientSelector = select.value && (
+                                select.value.includes('"targetKey"') ||
+                                select.value.includes('"clientKey"') ||
+                                text.includes('client') ||
+                                text.includes('shell')
+                            );
+                            
+                            const isExampleSelector = !isClientSelector && (
+                                text.includes('example') || 
+                                ariaLabel.includes('example') || 
+                                className.includes('example') ||
+                                id.includes('example') ||
+                                (hasExampleOptions && optionCount > 1) ||
+                                (optionCount > 3 && optionCount < 50 && !text.includes('method') && !text.includes('http'))
+                            );
+                            
+                            if (isExampleSelector) {
+                                console.log('[Example Copy] Found example selector:', select, 'Options:', optionCount);
+                                select.setAttribute('data-copy-button-attached', 'true');
+                                processedThisRound++;
+                                
+                                // Create copy button for this select
+                                const btn = createCopyButton();
+                                
+                                // Find the best place to insert button
+                                // Try to find a container that holds the select and related elements
+                                let container = select.parentElement;
+                                
+                                // Look for a flex container or div that contains the select
+                                while (container && container !== section) {
+                                    const containerClass = (container.className || '').toLowerCase();
+                                    if (containerClass.includes('example') || 
+                                        containerClass.includes('select') ||
+                                        container.tagName === 'DIV') {
+                                        break;
+                                    }
+                                    container = container.parentElement;
+                                }
+                                
+                                if (!container) {
+                                    container = select.parentElement;
+                                }
+                                
+                                // Check if button already exists for this select
+                                const existingBtn = container.querySelector(`[data-example-copy-button="${select.id || 'default'}"]`);
+                                if (existingBtn) {
+                                    continue;
+                                }
+                                
+                                btn.setAttribute('data-example-copy-button', select.id || 'default');
+                                
+                                // Try multiple insertion strategies
+                                try {
+                                    // Strategy 1: Insert right after select
+                                    select.insertAdjacentElement('afterend', btn);
+                                } catch (e1) {
+                                    try {
+                                        // Strategy 2: Insert in parent container
+                                        container.appendChild(btn);
+                                    } catch (e2) {
+                                        // Strategy 3: Insert before select's next sibling
+                                        if (select.nextSibling) {
+                                            container.insertBefore(btn, select.nextSibling);
+                                        } else {
+                                            container.appendChild(btn);
+                                        }
+                                    }
+                                }
+                                
+                                // Show button initially if an example is already selected
+                                if (select.value && select.value.trim()) {
+                                    // Check if current selection is an example
+                                    const currentValue = select.value;
+                                    getExampleValue(currentValue).then(exampleValue => {
+                                        if (exampleValue) {
+                                            currentExampleValue = exampleValue;
+                                            btn.style.display = 'inline-block';
+                                        } else {
+                                            btn.style.display = 'none';
+                                        }
+                                    });
+                                } else {
+                                    btn.style.display = 'none';
+                                }
+                                
+                                // Listen for example selection
+                                select.addEventListener('change', async (e) => {
+                                    const selectedValue = e.target.value;
+                                    const selectedText = e.target.options[e.target.selectedIndex]?.text;
+                                    
+                                    if (!selectedValue || selectedValue.trim() === '') {
+                                        currentExampleValue = null;
+                                        btn.style.display = 'none';
+                                        return;
+                                    }
+                                    
+                                    // Get example value
+                                    const exampleValue = await getExampleValue(selectedValue);
+                                    
+                                    if (exampleValue) {
+                                        currentExampleValue = exampleValue;
+                                        // Show copy button
+                                        btn.style.display = 'inline-block';
+                                    } else {
+                                        currentExampleValue = null;
+                                        // Hide copy button
+                                        btn.style.display = 'none';
+                                    }
+                                });
+                            }
+                        }
+                    }
+                    
+                    // Check if we're stable (no new elements processed for a few rounds)
+                    if (processedThisRound === lastProcessedCount) {
+                        stableCount++;
+                    } else {
+                        stableCount = 0;
+                    }
+                    lastProcessedCount = processedThisRound;
+                    
+                    // Stop early if we've been stable for 3 rounds and found elements, or if we've processed elements and no new ones appear
+                    if ((stableCount >= 3 && retries >= 5) || (retries >= 10 && processedThisRound === 0 && lastProcessedCount > 0)) {
+                        clearInterval(checkAndSetup);
+                        return;
+                    }
+                    
+                    if (retries >= maxRetries) {
+                        clearInterval(checkAndSetup);
+                        // Only log warning if we never processed anything
+                        if (lastProcessedCount === 0) {
+                            console.warn('[Example Copy] Stopped checking after', maxRetries, 'retries - no example selectors found');
+                        }
+                    }
+                }, 1000);
+            }
+            
+            // Setup MutationObserver to watch for new elements
+            const observer = new MutationObserver((mutations) => {
+                let shouldCheck = false;
+                mutations.forEach((mutation) => {
+                    if (mutation.addedNodes.length > 0) {
+                        for (const node of mutation.addedNodes) {
+                            if (node.nodeType === 1) { // Element node
+                                // Check if it's a select or contains a select
+                                if (node.tagName === 'SELECT' || node.querySelector('select')) {
+                                    shouldCheck = true;
+                                    break;
+                                }
+                            }
+                        }
+                    }
+                });
+                
+                if (shouldCheck) {
+                    // Debounce
+                    setTimeout(setupExampleCopyButton, 500);
+                }
+            });
+            
+            // Initialize
+            if (document.readyState === 'loading') {
+                document.addEventListener('DOMContentLoaded', () => {
+                    setTimeout(setupExampleCopyButton, 2000);
+                    // Start observing
+                    observer.observe(document.body, {
+                        childList: true,
+                        subtree: true
+                    });
+                });
+            } else {
+                setTimeout(setupExampleCopyButton, 2000);
+                // Start observing
+                observer.observe(document.body, {
+                    childList: true,
+                    subtree: true
+                });
+            }
+            
+            // Also run when window loads
+            window.addEventListener('load', () => {
+                setTimeout(setupExampleCopyButton, 3000);
+            });
+            
+            // Periodic check as fallback
+            setInterval(() => {
+                setupExampleCopyButton();
+            }, 5000);
+            
+            console.log('[Example Copy] Setup complete');
+            console.log('[Example Copy] Looking for example selectors in request sections...');
+        })();
+    </script>
 </body>
 </html>
+

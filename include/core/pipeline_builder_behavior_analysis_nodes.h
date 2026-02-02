@@ -50,7 +50,8 @@ public:
    */
   static std::shared_ptr<cvedix_nodes::cvedix_node>
   createBACrosslineOSDNode(const std::string &nodeName,
-                           const std::map<std::string, std::string> &params);
+                           const std::map<std::string, std::string> &params,
+                           const CreateInstanceRequest &req);
 
   /**
    * @brief Create BA jam OSD node

@@ -4004,9 +4004,9 @@ paths:
                   additionalParams:
                     input:
                       FILE_PATH: /opt/edge_ai_api/videos/vehicle_count.mp4
-                      WEIGHTS_PATH: /opt/edge_ai_api/models/yolov3-tiny-2022-0721_best.weights
-                      CONFIG_PATH: /opt/edge_ai_api/models/yolov3-tiny-2022-0721.cfg
-                      LABELS_PATH: /opt/edge_ai_api/models/yolov3_tiny_5classes.txt
+                      WEIGHTS_PATH: /opt/edge_ai_api/models/det_cls/yolov3-tiny-2022-0721_best.weights
+                      CONFIG_PATH: /opt/edge_ai_api/models/det_cls/yolov3-tiny-2022-0721.cfg
+                      LABELS_PATH: /opt/edge_ai_api/models/det_cls/yolov3_tiny_5classes.txt
                       RESIZE_RATIO: '0.5'
                     output:
                       ENABLE_SCREEN_DES: 'false'
@@ -4028,9 +4028,9 @@ paths:
                   additionalParams:
                     input:
                       FILE_PATH: /home/cvedix/project/edge_ai_api/cvedix_data/test_video/vehicle_count.mp4
-                      WEIGHTS_PATH: /home/cvedix/project/edge_ai_api/cvedix_data/models/det_cls/yolov3-tiny-2022-0721_best.weights
-                      CONFIG_PATH: /home/cvedix/project/edge_ai_api/cvedix_data/models/det_cls/yolov3-tiny-2022-0721.cfg
-                      LABELS_PATH: /home/cvedix/project/edge_ai_api/cvedix_data/models/det_cls/yolov3_tiny_5classes.txt
+                      WEIGHTS_PATH: /opt/edge_ai_api/models/det_cls/yolov3-tiny-2022-0721_best.weights
+                      CONFIG_PATH: /opt/edge_ai_api/models/det_cls/yolov3-tiny-2022-0721.cfg
+                      LABELS_PATH: /opt/edge_ai_api/models/det_cls/yolov3_tiny_5classes.txt
                       RESIZE_RATIO: '1.0'
                     output:
                       ENABLE_SCREEN_DES: 'false'
@@ -4055,9 +4055,9 @@ paths:
                   additionalParams:
                     input:
                       FILE_PATH: /home/cvedix/project/edge_ai_api/cvedix_data/test_video/vehicle.mp4
-                      WEIGHTS_PATH: /home/cvedix/project/edge_ai_api/cvedix_data/models/det_cls/yolov3-tiny-2022-0721_best.weights
-                      CONFIG_PATH: /home/cvedix/project/edge_ai_api/cvedix_data/models/det_cls/yolov3-tiny-2022-0721.cfg
-                      LABELS_PATH: /home/cvedix/project/edge_ai_api/cvedix_data/models/det_cls/yolov3_tiny_5classes.txt
+                      WEIGHTS_PATH: /opt/edge_ai_api/models/det_cls/yolov3-tiny-2022-0721_best.weights
+                      CONFIG_PATH: /opt/edge_ai_api/models/det_cls/yolov3-tiny-2022-0721.cfg
+                      LABELS_PATH: /opt/edge_ai_api/models/det_cls/yolov3_tiny_5classes.txt
                     output:
                       RTMP_URL: rtmp://localhost:1935/live/camera_demo_1
                       RTMP_DES_URL: rtmp://localhost:1935/live/camera_demo_1
@@ -4072,9 +4072,9 @@ paths:
                   additionalParams:
                     input:
                       FILE_PATH: /home/cvedix/project/edge_ai_sdk/cvedix_data/test_video/vehicle_count.mp4
-                      WEIGHTS_PATH: /home/cvedix/project/edge_ai_sdk/cvedix_data/models/det_cls/yolov3-tiny-2022-0721_best.weights
-                      CONFIG_PATH: /home/cvedix/project/edge_ai_sdk/cvedix_data/models/det_cls/yolov3-tiny-2022-0721.cfg
-                      LABELS_PATH: /home/cvedix/project/edge_ai_sdk/cvedix_data/models/det_cls/yolov3_tiny_5classes.txt
+                      WEIGHTS_PATH: /opt/edge_ai_api/models/det_cls/yolov3-tiny-2022-0721_best.weights
+                      CONFIG_PATH: /opt/edge_ai_api/models/det_cls/yolov3-tiny-2022-0721.cfg
+                      LABELS_PATH: /opt/edge_ai_api/models/det_cls/yolov3_tiny_5classes.txt
                     output:
                       RTMP_URL: rtmp://localhost:1935/live/sang_camera_demo_1
                       RTMP_DES_URL: rtmp://localhost:1935/live/sang_camera_demo_1
@@ -4095,9 +4095,9 @@ paths:
                   additionalParams:
                     input:
                       FILE_PATH: /home/cvedix/project/edge_ai_api/cvedix_data/test_video/vehicle.mp4
-                      WEIGHTS_PATH: /home/cvedix/project/edge_ai_api/cvedix_data/models/det_cls/yolov3-tiny-2022-0721_best.weights
-                      CONFIG_PATH: /home/cvedix/project/edge_ai_api/cvedix_data/models/det_cls/yolov3-tiny-2022-0721.cfg
-                      LABELS_PATH: /home/cvedix/project/edge_ai_api/cvedix_data/models/det_cls/yolov3_tiny_5classes.txt
+                      WEIGHTS_PATH: /opt/edge_ai_api/models/det_cls/yolov3-tiny-2022-0721_best.weights
+                      CONFIG_PATH: /opt/edge_ai_api/models/det_cls/yolov3-tiny-2022-0721.cfg
+                      LABELS_PATH: /opt/edge_ai_api/models/det_cls/yolov3_tiny_5classes.txt
                     output:
                       RTMP_URL: rtmp://localhost:1935/live/camera_demo_1
                       RTMP_DES_URL: rtmp://localhost:1935/live/camera_demo_1
@@ -4115,9 +4115,9 @@ paths:
                   additionalParams:
                     input:
                       FILE_PATH: /opt/edge_ai_api/videos/vehicle_count.mp4
-                      WEIGHTS_PATH: /opt/edge_ai_api/models/yolov3-tiny-2022-0721_best.weights
-                      CONFIG_PATH: /opt/edge_ai_api/models/yolov3-tiny-2022-0721.cfg
-                      LABELS_PATH: /opt/edge_ai_api/models/yolov3_tiny_5classes.txt
+                      WEIGHTS_PATH: /opt/edge_ai_api/models/det_cls/yolov3-tiny-2022-0721_best.weights
+                      CONFIG_PATH: /opt/edge_ai_api/models/det_cls/yolov3-tiny-2022-0721.cfg
+                      LABELS_PATH: /opt/edge_ai_api/models/det_cls/yolov3_tiny_5classes.txt
                       RESIZE_RATIO: '0.5'
                     output:
                       ENABLE_SCREEN_DES: 'true'
@@ -4217,9 +4217,9 @@ paths:
                   additionalParams:
                     input:
                       RTSP_SRC_URL: rtsp://localhost:8554/mystream
-                      WEIGHTS_PATH: /home/cvedix/project/edge_ai_api/cvedix_data/models/det_cls/yolov3-tiny-2022-0721_best.weights
-                      CONFIG_PATH: /home/cvedix/project/edge_ai_api/cvedix_data/models/det_cls/yolov3-tiny-2022-0721.cfg
-                      LABELS_PATH: /home/cvedix/project/edge_ai_api/cvedix_data/models/det_cls/yolov3_tiny_5classes.txt
+                      WEIGHTS_PATH: /opt/edge_ai_api/models/det_cls/yolov3-tiny-2022-0721_best.weights
+                      CONFIG_PATH: /opt/edge_ai_api/models/det_cls/yolov3-tiny-2022-0721.cfg
+                      LABELS_PATH: /opt/edge_ai_api/models/det_cls/yolov3_tiny_5classes.txt
                       RESIZE_RATIO: '0.05'
                       RTSP_TRANSPORT: tcp
                       GST_DECODER_NAME: avdec_h264
@@ -4245,9 +4245,9 @@ paths:
                   additionalParams:
                     input:
                       RTSP_SRC_URL: rtsp://localhost:8554/mystream
-                      WEIGHTS_PATH: /home/cvedix/project/edge_ai_api/cvedix_data/models/det_cls/yolov3-tiny-2022-0721_best.weights
-                      CONFIG_PATH: /home/cvedix/project/edge_ai_api/cvedix_data/models/det_cls/yolov3-tiny-2022-0721.cfg
-                      LABELS_PATH: /home/cvedix/project/edge_ai_api/cvedix_data/models/det_cls/yolov3_tiny_5classes.txt
+                      WEIGHTS_PATH: /opt/edge_ai_api/models/det_cls/yolov3-tiny-2022-0721_best.weights
+                      CONFIG_PATH: /opt/edge_ai_api/models/det_cls/yolov3-tiny-2022-0721.cfg
+                      LABELS_PATH: /opt/edge_ai_api/models/det_cls/yolov3_tiny_5classes.txt
                       RESIZE_RATIO: '1.0'
                       RTSP_TRANSPORT: udp
                       GST_DECODER_NAME: avdec_h264
@@ -4266,9 +4266,9 @@ paths:
                   additionalParams:
                     input:
                       RTSP_SRC_URL: rtsp://localhost:8554/mystream
-                      WEIGHTS_PATH: /home/cvedix/project/edge_ai_api/cvedix_data/models/det_cls/yolov3-tiny-2022-0721_best.weights
-                      CONFIG_PATH: /home/cvedix/project/edge_ai_api/cvedix_data/models/det_cls/yolov3-tiny-2022-0721.cfg
-                      LABELS_PATH: /home/cvedix/project/edge_ai_api/cvedix_data/models/det_cls/yolov3_tiny_5classes.txt
+                      WEIGHTS_PATH: /opt/edge_ai_api/models/det_cls/yolov3-tiny-2022-0721_best.weights
+                      CONFIG_PATH: /opt/edge_ai_api/models/det_cls/yolov3-tiny-2022-0721.cfg
+                      LABELS_PATH: /opt/edge_ai_api/models/det_cls/yolov3_tiny_5classes.txt
                       RESIZE_RATIO: '1.0'
                       GST_DECODER_NAME: avdec_h264
                       SKIP_INTERVAL: '0'
@@ -4293,9 +4293,9 @@ paths:
                   additionalParams:
                     input:
                       RTSP_SRC_URL: rtsp://localhost:8554/mystream
-                      WEIGHTS_PATH: /home/cvedix/project/edge_ai_api/cvedix_data/models/det_cls/yolov3-tiny-2022-0721_best.weights
-                      CONFIG_PATH: /home/cvedix/project/edge_ai_api/cvedix_data/models/det_cls/yolov3-tiny-2022-0721.cfg
-                      LABELS_PATH: /home/cvedix/project/edge_ai_api/cvedix_data/models/det_cls/yolov3_tiny_5classes.txt
+                      WEIGHTS_PATH: /opt/edge_ai_api/models/det_cls/yolov3-tiny-2022-0721_best.weights
+                      CONFIG_PATH: /opt/edge_ai_api/models/det_cls/yolov3-tiny-2022-0721.cfg
+                      LABELS_PATH: /opt/edge_ai_api/models/det_cls/yolov3_tiny_5classes.txt
                       RESIZE_RATIO: '1.0'
                       RTSP_TRANSPORT: udp
                       GST_DECODER_NAME: avdec_h264
@@ -4316,9 +4316,9 @@ paths:
                   additionalParams:
                     input:
                       FILE_PATH: /home/cvedix/project/edge_ai_api/cvedix_data/test_video/vehicle_count.mp4
-                      WEIGHTS_PATH: /home/cvedix/project/edge_ai_api/cvedix_data/models/det_cls/yolov3-tiny-2022-0721_best.weights
-                      CONFIG_PATH: /home/cvedix/project/edge_ai_api/cvedix_data/models/det_cls/yolov3-tiny-2022-0721.cfg
-                      LABELS_PATH: /home/cvedix/project/edge_ai_api/cvedix_data/models/det_cls/yolov3_tiny_5classes.txt
+                      WEIGHTS_PATH: /opt/edge_ai_api/models/det_cls/yolov3-tiny-2022-0721_best.weights
+                      CONFIG_PATH: /opt/edge_ai_api/models/det_cls/yolov3-tiny-2022-0721.cfg
+                      LABELS_PATH: /opt/edge_ai_api/models/det_cls/yolov3_tiny_5classes.txt
                       RESIZE_RATIO: '0.4'
                     output:
                       ENABLE_SCREEN_DES: 'true'
@@ -4334,9 +4334,9 @@ paths:
                   additionalParams:
                     input:
                       FILE_PATH: /home/cvedix/project/edge_ai_api/cvedix_data/test_video/vehicle_count.mp4
-                      WEIGHTS_PATH: /home/cvedix/project/edge_ai_api/cvedix_data/models/det_cls/yolov3-tiny-2022-0721_best.weights
-                      CONFIG_PATH: /home/cvedix/project/edge_ai_api/cvedix_data/models/det_cls/yolov3-tiny-2022-0721.cfg
-                      LABELS_PATH: /home/cvedix/project/edge_ai_api/cvedix_data/models/det_cls/yolov3_tiny_5classes.txt
+                      WEIGHTS_PATH: /opt/edge_ai_api/models/det_cls/yolov3-tiny-2022-0721_best.weights
+                      CONFIG_PATH: /opt/edge_ai_api/models/det_cls/yolov3-tiny-2022-0721.cfg
+                      LABELS_PATH: /opt/edge_ai_api/models/det_cls/yolov3_tiny_5classes.txt
                       RESIZE_RATIO: '0.4'
                     output:
                       ENABLE_SCREEN_DES: 'true'
@@ -4357,9 +4357,9 @@ paths:
                   additionalParams:
                     input:
                       RTMP_SRC_URL: rtmp://localhost:1935/live/input_stream
-                      WEIGHTS_PATH: /home/cvedix/project/edge_ai_api/cvedix_data/models/det_cls/yolov3-tiny-2022-0721_best.weights
-                      CONFIG_PATH: /home/cvedix/project/edge_ai_api/cvedix_data/models/det_cls/yolov3-tiny-2022-0721.cfg
-                      LABELS_PATH: /home/cvedix/project/edge_ai_api/cvedix_data/models/det_cls/yolov3_tiny_5classes.txt
+                      WEIGHTS_PATH: /opt/edge_ai_api/models/det_cls/yolov3-tiny-2022-0721_best.weights
+                      CONFIG_PATH: /opt/edge_ai_api/models/det_cls/yolov3-tiny-2022-0721.cfg
+                      LABELS_PATH: /opt/edge_ai_api/models/det_cls/yolov3_tiny_5classes.txt
                       RESIZE_RATIO: '1.0'
                     output:
                       RTMP_URL: rtmp://localhost:1935/live/output_stream
@@ -4382,9 +4382,9 @@ paths:
                   additionalParams:
                     input:
                       RTSP_SRC_URL: rtsp://localhost:8554/mystream
-                      WEIGHTS_PATH: /opt/edge_ai_api/models/yolov3-tiny-2022-0721_best.weights
-                      CONFIG_PATH: /opt/edge_ai_api/models/yolov3-tiny-2022-0721.cfg
-                      LABELS_PATH: /opt/edge_ai_api/models/yolov3_tiny_5classes.txt
+                      WEIGHTS_PATH: /opt/edge_ai_api/models/det_cls/yolov3-tiny-2022-0721_best.weights
+                      CONFIG_PATH: /opt/edge_ai_api/models/det_cls/yolov3-tiny-2022-0721.cfg
+                      LABELS_PATH: /opt/edge_ai_api/models/det_cls/yolov3_tiny_5classes.txt
                       RESIZE_RATIO: '1.0'
                       GST_DECODER_NAME: avdec_h264
                     output:
@@ -4403,9 +4403,9 @@ paths:
                   additionalParams:
                     input:
                       FILE_PATH: /home/cvedix/project/edge_ai_api/cvedix_data/test_video/vehicle_count.mp4
-                      WEIGHTS_PATH: /home/cvedix/project/edge_ai_api/cvedix_data/models/det_cls/yolov3-tiny-2022-0721_best.weights
-                      CONFIG_PATH: /home/cvedix/project/edge_ai_api/cvedix_data/models/det_cls/yolov3-tiny-2022-0721.cfg
-                      LABELS_PATH: /home/cvedix/project/edge_ai_api/cvedix_data/models/det_cls/yolov3_tiny_5classes.txt
+                      WEIGHTS_PATH: /opt/edge_ai_api/models/det_cls/yolov3-tiny-2022-0721_best.weights
+                      CONFIG_PATH: /opt/edge_ai_api/models/det_cls/yolov3-tiny-2022-0721.cfg
+                      LABELS_PATH: /opt/edge_ai_api/models/det_cls/yolov3_tiny_5classes.txt
                       RESIZE_RATIO: '0.1'
                     output:
                       ENABLE_SCREEN_DES: 'false'
@@ -4429,9 +4429,9 @@ paths:
                   additionalParams:
                     input:
                       FILE_PATH: /home/cvedix/project/edge_ai_api/cvedix_data/test_video/vehicle_count.mp4
-                      WEIGHTS_PATH: /home/cvedix/project/edge_ai_api/cvedix_data/models/det_cls/yolov3-tiny-2022-0721_best.weights
-                      CONFIG_PATH: /home/cvedix/project/edge_ai_api/cvedix_data/models/det_cls/yolov3-tiny-2022-0721.cfg
-                      LABELS_PATH: /home/cvedix/project/edge_ai_api/cvedix_data/models/det_cls/yolov3_tiny_5classes.txt
+                      WEIGHTS_PATH: /opt/edge_ai_api/models/det_cls/yolov3-tiny-2022-0721_best.weights
+                      CONFIG_PATH: /opt/edge_ai_api/models/det_cls/yolov3-tiny-2022-0721.cfg
+                      LABELS_PATH: /opt/edge_ai_api/models/det_cls/yolov3_tiny_5classes.txt
                       CROSSLINE_START_X: '0'
                       CROSSLINE_START_Y: '250'
                       CROSSLINE_END_X: '700'
@@ -4453,9 +4453,9 @@ paths:
                   additionalParams:
                     input:
                       FILE_PATH: /home/cvedix/project/edge_ai_api/cvedix_data/test_video/vehicle_count.mp4
-                      WEIGHTS_PATH: /home/cvedix/project/edge_ai_api/cvedix_data/models/det_cls/yolov3-tiny-2022-0721_best.weights
-                      CONFIG_PATH: /home/cvedix/project/edge_ai_api/cvedix_data/models/det_cls/yolov3-tiny-2022-0721.cfg
-                      LABELS_PATH: /home/cvedix/project/edge_ai_api/cvedix_data/models/det_cls/yolov3_tiny_5classes.txt
+                      WEIGHTS_PATH: /opt/edge_ai_api/models/det_cls/yolov3-tiny-2022-0721_best.weights
+                      CONFIG_PATH: /opt/edge_ai_api/models/det_cls/yolov3-tiny-2022-0721.cfg
+                      LABELS_PATH: /opt/edge_ai_api/models/det_cls/yolov3_tiny_5classes.txt
                       CROSSLINE_START_X: '0'
                       CROSSLINE_START_Y: '250'
                       CROSSLINE_END_X: '700'
@@ -4483,9 +4483,9 @@ paths:
                   additionalParams:
                     input:
                       RTSP_SRC_URL: rtsp://localhost:8554/mystream
-                      WEIGHTS_PATH: /home/cvedix/project/edge_ai_api/cvedix_data/models/det_cls/yolov3-tiny-2022-0721_best.weights
-                      CONFIG_PATH: /home/cvedix/project/edge_ai_api/cvedix_data/models/det_cls/yolov3-tiny-2022-0721.cfg
-                      LABELS_PATH: /home/cvedix/project/edge_ai_api/cvedix_data/models/det_cls/yolov3_tiny_5classes.txt
+                      WEIGHTS_PATH: /opt/edge_ai_api/models/det_cls/yolov3-tiny-2022-0721_best.weights
+                      CONFIG_PATH: /opt/edge_ai_api/models/det_cls/yolov3-tiny-2022-0721.cfg
+                      LABELS_PATH: /opt/edge_ai_api/models/det_cls/yolov3_tiny_5classes.txt
                       CROSSLINE_START_X: '0'
                       CROSSLINE_START_Y: '250'
                       CROSSLINE_END_X: '700'
@@ -4510,9 +4510,9 @@ paths:
                   additionalParams:
                     input:
                       RTSP_SRC_URL: rtsp://localhost:8554/mystream
-                      WEIGHTS_PATH: /home/cvedix/project/edge_ai_api/cvedix_data/models/det_cls/yolov3-tiny-2022-0721_best.weights
-                      CONFIG_PATH: /home/cvedix/project/edge_ai_api/cvedix_data/models/det_cls/yolov3-tiny-2022-0721.cfg
-                      LABELS_PATH: /home/cvedix/project/edge_ai_api/cvedix_data/models/det_cls/yolov3_tiny_5classes.txt
+                      WEIGHTS_PATH: /opt/edge_ai_api/models/det_cls/yolov3-tiny-2022-0721_best.weights
+                      CONFIG_PATH: /opt/edge_ai_api/models/det_cls/yolov3-tiny-2022-0721.cfg
+                      LABELS_PATH: /opt/edge_ai_api/models/det_cls/yolov3_tiny_5classes.txt
                       CROSSLINE_START_X: '0'
                       CROSSLINE_START_Y: '250'
                       CROSSLINE_END_X: '700'
@@ -4544,9 +4544,9 @@ paths:
                   additionalParams:
                     input:
                       RTSP_SRC_URL: rtsp://localhost:8554/mystream
-                      WEIGHTS_PATH: /home/cvedix/project/edge_ai_api/cvedix_data/models/det_cls/yolov3-tiny-2022-0721_best.weights
-                      CONFIG_PATH: /home/cvedix/project/edge_ai_api/cvedix_data/models/det_cls/yolov3-tiny-2022-0721.cfg
-                      LABELS_PATH: /home/cvedix/project/edge_ai_api/cvedix_data/models/det_cls/yolov3_tiny_5classes.txt
+                      WEIGHTS_PATH: /opt/edge_ai_api/models/det_cls/yolov3-tiny-2022-0721_best.weights
+                      CONFIG_PATH: /opt/edge_ai_api/models/det_cls/yolov3-tiny-2022-0721.cfg
+                      LABELS_PATH: /opt/edge_ai_api/models/det_cls/yolov3_tiny_5classes.txt
                       CROSSLINE_START_X: '0'
                       CROSSLINE_START_Y: '250'
                       CROSSLINE_END_X: '700'
@@ -4574,9 +4574,9 @@ paths:
                   additionalParams:
                     input:
                       FILE_PATH: /home/cvedix/project/edge_ai_api/cvedix_data/test_video/vehicle.mp4
-                      WEIGHTS_PATH: /home/cvedix/project/edge_ai_api/cvedix_data/models/det_cls/yolov3-tiny-2022-0721_best.weights
-                      CONFIG_PATH: /home/cvedix/project/edge_ai_api/cvedix_data/models/det_cls/yolov3-tiny-2022-0721.cfg
-                      LABELS_PATH: /home/cvedix/project/edge_ai_api/cvedix_data/models/det_cls/yolov3_tiny_5classes.txt
+                      WEIGHTS_PATH: /opt/edge_ai_api/models/det_cls/yolov3-tiny-2022-0721_best.weights
+                      CONFIG_PATH: /opt/edge_ai_api/models/det_cls/yolov3-tiny-2022-0721.cfg
+                      LABELS_PATH: /opt/edge_ai_api/models/det_cls/yolov3_tiny_5classes.txt
                     output:
                       ENABLE_SCREEN_DES: 'false'
                       BROKE_FOR: NORMAL
@@ -4594,9 +4594,9 @@ paths:
                   additionalParams:
                     input:
                       RTSP_URLS: '["rtsp://camera1.example.com:8554/stream1", "rtsp://camera2.example.com:8554/stream2"]'
-                      WEIGHTS_PATH: /home/cvedix/project/edge_ai_api/cvedix_data/models/det_cls/yolov3-tiny-2022-0721_best.weights
-                      CONFIG_PATH: /home/cvedix/project/edge_ai_api/cvedix_data/models/det_cls/yolov3-tiny-2022-0721.cfg
-                      LABELS_PATH: /home/cvedix/project/edge_ai_api/cvedix_data/models/det_cls/yolov3_tiny_5classes.txt
+                      WEIGHTS_PATH: /opt/edge_ai_api/models/det_cls/yolov3-tiny-2022-0721_best.weights
+                      CONFIG_PATH: /opt/edge_ai_api/models/det_cls/yolov3-tiny-2022-0721.cfg
+                      LABELS_PATH: /opt/edge_ai_api/models/det_cls/yolov3_tiny_5classes.txt
                     output:
                       ENABLE_SCREEN_DES: 'false'
                     JamZones: '[{"id":"zone1","name":"Camera 1 Jam Zone","roi":[{"x":20,"y":360},{"x":400,"y":250},{"x":535,"y":250},{"x":555,"y":560},{"x":30,"y":550}],"check_interval_frames":20,"check_min_hit_frames":50,"check_max_distance":8,"check_min_stops":8,"check_notify_interval":10},{"id":"zone2","name":"Camera
@@ -4611,9 +4611,9 @@ paths:
                   additionalParams:
                     input:
                       RTSP_URLS: '[{"rtsp_url":"rtsp://camera1.example.com:8554/stream1","channel":0,"resize_ratio":0.6,"gst_decoder_name":"avdec_h264","codec_type":"h264"},{"rtsp_url":"rtsp://camera2.example.com:8554/stream2","channel":1,"resize_ratio":0.5,"gst_decoder_name":"avdec_h265","codec_type":"h265"}]'
-                      WEIGHTS_PATH: /home/cvedix/project/edge_ai_api/cvedix_data/models/det_cls/yolov3-tiny-2022-0721_best.weights
-                      CONFIG_PATH: /home/cvedix/project/edge_ai_api/cvedix_data/models/det_cls/yolov3-tiny-2022-0721.cfg
-                      LABELS_PATH: /home/cvedix/project/edge_ai_api/cvedix_data/models/det_cls/yolov3_tiny_5classes.txt
+                      WEIGHTS_PATH: /opt/edge_ai_api/models/det_cls/yolov3-tiny-2022-0721_best.weights
+                      CONFIG_PATH: /opt/edge_ai_api/models/det_cls/yolov3-tiny-2022-0721.cfg
+                      LABELS_PATH: /opt/edge_ai_api/models/det_cls/yolov3_tiny_5classes.txt
                     output:
                       ENABLE_SCREEN_DES: 'false'
                     JamZones: '[{"id":"zone1","name":"Camera 1 Jam Zone","roi":[{"x":20,"y":360},{"x":400,"y":250},{"x":535,"y":250},{"x":555,"y":560},{"x":30,"y":550}],"check_interval_frames":20,"check_min_hit_frames":50,"check_max_distance":8,"check_min_stops":8,"check_notify_interval":10},{"id":"zone2","name":"Camera
@@ -4628,9 +4628,9 @@ paths:
                   additionalParams:
                     input:
                       FILE_PATHS: '["/home/cvedix/project/edge_ai_api/cvedix_data/test_video/jam.mp4", "/home/cvedix/project/edge_ai_api/cvedix_data/test_video/jam2.mp4"]'
-                      WEIGHTS_PATH: /home/cvedix/project/edge_ai_api/cvedix_data/models/det_cls/yolov3-tiny-2022-0721_best.weights
-                      CONFIG_PATH: /home/cvedix/project/edge_ai_api/cvedix_data/models/det_cls/yolov3-tiny-2022-0721.cfg
-                      LABELS_PATH: /home/cvedix/project/edge_ai_api/cvedix_data/models/det_cls/yolov3_tiny_5classes.txt
+                      WEIGHTS_PATH: /opt/edge_ai_api/models/det_cls/yolov3-tiny-2022-0721_best.weights
+                      CONFIG_PATH: /opt/edge_ai_api/models/det_cls/yolov3-tiny-2022-0721.cfg
+                      LABELS_PATH: /opt/edge_ai_api/models/det_cls/yolov3_tiny_5classes.txt
                     output:
                       ENABLE_SCREEN_DES: 'false'
                     JamZones: '[{"id":"zone1","name":"Channel 0 Jam Zone","roi":[{"x":20,"y":360},{"x":400,"y":250},{"x":535,"y":250},{"x":555,"y":560},{"x":30,"y":550}],"check_interval_frames":20,"check_min_hit_frames":50,"check_max_distance":8,"check_min_stops":8,"check_notify_interval":10},{"id":"zone2","name":"Channel
@@ -4645,9 +4645,9 @@ paths:
                   additionalParams:
                     input:
                       FILE_PATHS: '[{"file_path":"/home/cvedix/project/edge_ai_api/cvedix_data/test_video/jam.mp4","channel":0,"resize_ratio":0.5},{"file_path":"/home/cvedix/project/edge_ai_api/cvedix_data/test_video/jam2.mp4","channel":1,"resize_ratio":0.6}]'
-                      WEIGHTS_PATH: /home/cvedix/project/edge_ai_api/cvedix_data/models/det_cls/yolov3-tiny-2022-0721_best.weights
-                      CONFIG_PATH: /home/cvedix/project/edge_ai_api/cvedix_data/models/det_cls/yolov3-tiny-2022-0721.cfg
-                      LABELS_PATH: /home/cvedix/project/edge_ai_api/cvedix_data/models/det_cls/yolov3_tiny_5classes.txt
+                      WEIGHTS_PATH: /opt/edge_ai_api/models/det_cls/yolov3-tiny-2022-0721_best.weights
+                      CONFIG_PATH: /opt/edge_ai_api/models/det_cls/yolov3-tiny-2022-0721.cfg
+                      LABELS_PATH: /opt/edge_ai_api/models/det_cls/yolov3_tiny_5classes.txt
                     output:
                       ENABLE_SCREEN_DES: 'false'
                     JamZones: '[{"id":"zone1","name":"Channel 0 Jam Zone","roi":[{"x":20,"y":360},{"x":400,"y":250},{"x":535,"y":250},{"x":555,"y":560},{"x":30,"y":550}],"check_interval_frames":20,"check_min_hit_frames":50,"check_max_distance":8,"check_min_stops":8,"check_notify_interval":10},{"id":"zone2","name":"Channel
@@ -4662,9 +4662,9 @@ paths:
                   additionalParams:
                     input:
                       FILE_PATHS: '["/home/cvedix/project/edge_ai_api/cvedix_data/test_video/jam.mp4", "/home/cvedix/project/edge_ai_api/cvedix_data/test_video/jam2.mp4"]'
-                      WEIGHTS_PATH: /home/cvedix/project/edge_ai_api/cvedix_data/models/det_cls/yolov3-tiny-2022-0721_best.weights
-                      CONFIG_PATH: /home/cvedix/project/edge_ai_api/cvedix_data/models/det_cls/yolov3-tiny-2022-0721.cfg
-                      LABELS_PATH: /home/cvedix/project/edge_ai_api/cvedix_data/models/det_cls/yolov3_tiny_5classes.txt
+                      WEIGHTS_PATH: /opt/edge_ai_api/models/det_cls/yolov3-tiny-2022-0721_best.weights
+                      CONFIG_PATH: /opt/edge_ai_api/models/det_cls/yolov3-tiny-2022-0721.cfg
+                      LABELS_PATH: /opt/edge_ai_api/models/det_cls/yolov3_tiny_5classes.txt
                     output:
                       RTMP_URL: rtmp://localhost:1935/live/ba_jam_multiple
                       RTMP_DES_URL: rtmp://localhost:1935/live/ba_jam_multiple
@@ -4681,9 +4681,9 @@ paths:
                   additionalParams:
                     input:
                       FILE_PATH: /home/cvedix/project/edge_ai_api/cvedix_data/test_video/vehicle.mp4
-                      WEIGHTS_PATH: /home/cvedix/project/edge_ai_api/cvedix_data/models/det_cls/yolov3-tiny-2022-0721_best.weights
-                      CONFIG_PATH: /home/cvedix/project/edge_ai_api/cvedix_data/models/det_cls/yolov3-tiny-2022-0721.cfg
-                      LABELS_PATH: /home/cvedix/project/edge_ai_api/cvedix_data/models/det_cls/yolov3_tiny_5classes.txt
+                      WEIGHTS_PATH: /opt/edge_ai_api/models/det_cls/yolov3-tiny-2022-0721_best.weights
+                      CONFIG_PATH: /opt/edge_ai_api/models/det_cls/yolov3-tiny-2022-0721.cfg
+                      LABELS_PATH: /opt/edge_ai_api/models/det_cls/yolov3_tiny_5classes.txt
                     output:
                       RTMP_URL: rtmp://localhost:1935/live/ba_jam_demo
                       RTMP_DES_URL: rtmp://localhost:1935/live/ba_jam_demo
@@ -4719,7 +4719,7 @@ paths:
                   additionalParams:
                     input:
                       RTSP_SRC_URL: rtsp://localhost:8554/mystream
-                      TRT_PATH: ../../cvedix_data/models/vehicle/vehicle_v8.5.trt
+                      TRT_PATH: /opt/edge_ai_api/models/vehicle/vehicle_v8.5.trt
                       JAM_REGION_X_1: '20'
                       JAM_REGION_Y_1: '360'
                       JAM_REGION_X_2: '400'
@@ -4756,9 +4756,9 @@ paths:
                   additionalParams:
                     input:
                       FILE_PATH: /home/cvedix/project/edge_ai_api/cvedix_data/test_video/vehicle.mp4
-                      WEIGHTS_PATH: /home/cvedix/project/edge_ai_api/cvedix_data/models/det_cls/yolov3-tiny-2022-0721_best.weights
-                      CONFIG_PATH: /home/cvedix/project/edge_ai_api/cvedix_data/models/det_cls/yolov3-tiny-2022-0721.cfg
-                      LABELS_PATH: /home/cvedix/project/edge_ai_api/cvedix_data/models/det_cls/yolov3_tiny_5classes.txt
+                      WEIGHTS_PATH: /opt/edge_ai_api/models/det_cls/yolov3-tiny-2022-0721_best.weights
+                      CONFIG_PATH: /opt/edge_ai_api/models/det_cls/yolov3-tiny-2022-0721.cfg
+                      LABELS_PATH: /opt/edge_ai_api/models/det_cls/yolov3_tiny_5classes.txt
                     output:
                       ENABLE_SCREEN_DES: 'false'
                       BROKE_FOR: NORMAL
@@ -4776,9 +4776,9 @@ paths:
                   additionalParams:
                     input:
                       RTSP_URLS: '["rtsp://camera1.example.com:8554/stream1", "rtsp://camera2.example.com:8554/stream2"]'
-                      WEIGHTS_PATH: /home/cvedix/project/edge_ai_api/cvedix_data/models/det_cls/yolov3-tiny-2022-0721_best.weights
-                      CONFIG_PATH: /home/cvedix/project/edge_ai_api/cvedix_data/models/det_cls/yolov3-tiny-2022-0721.cfg
-                      LABELS_PATH: /home/cvedix/project/edge_ai_api/cvedix_data/models/det_cls/yolov3_tiny_5classes.txt
+                      WEIGHTS_PATH: /opt/edge_ai_api/models/det_cls/yolov3-tiny-2022-0721_best.weights
+                      CONFIG_PATH: /opt/edge_ai_api/models/det_cls/yolov3-tiny-2022-0721.cfg
+                      LABELS_PATH: /opt/edge_ai_api/models/det_cls/yolov3_tiny_5classes.txt
                     output:
                       ENABLE_SCREEN_DES: 'false'
                     StopZones: '[{"id":"zone1","name":"Camera 1 Stop Zone","roi":[{"x":20,"y":30},{"x":600,"y":40},{"x":600,"y":300},{"x":10,"y":300}],"min_stop_seconds":3,"check_interval_frames":20,"check_min_hit_frames":50,"check_max_distance":5},{"id":"zone2","name":"Camera
@@ -4793,9 +4793,9 @@ paths:
                   additionalParams:
                     input:
                       FILE_PATHS: '["/home/cvedix/project/edge_ai_api/cvedix_data/test_video/vehicle_stop.mp4", "/home/cvedix/project/edge_ai_api/cvedix_data/test_video/vehicle_stop.mp4"]'
-                      WEIGHTS_PATH: /home/cvedix/project/edge_ai_api/cvedix_data/models/det_cls/yolov3-tiny-2022-0721_best.weights
-                      CONFIG_PATH: /home/cvedix/project/edge_ai_api/cvedix_data/models/det_cls/yolov3-tiny-2022-0721.cfg
-                      LABELS_PATH: /home/cvedix/project/edge_ai_api/cvedix_data/models/det_cls/yolov3_tiny_5classes.txt
+                      WEIGHTS_PATH: /opt/edge_ai_api/models/det_cls/yolov3-tiny-2022-0721_best.weights
+                      CONFIG_PATH: /opt/edge_ai_api/models/det_cls/yolov3-tiny-2022-0721.cfg
+                      LABELS_PATH: /opt/edge_ai_api/models/det_cls/yolov3_tiny_5classes.txt
                     output:
                       ENABLE_SCREEN_DES: 'false'
                     StopZones: '[{"id":"zone1","name":"Channel 0 Stop Zone","roi":[{"x":20,"y":30},{"x":600,"y":40},{"x":600,"y":300},{"x":10,"y":300}],"min_stop_seconds":3,"check_interval_frames":20,"check_min_hit_frames":50,"check_max_distance":5},{"id":"zone2","name":"Channel
@@ -4810,9 +4810,9 @@ paths:
                   additionalParams:
                     input:
                       FILE_PATHS: '[{"file_path":"/home/cvedix/project/edge_ai_api/cvedix_data/test_video/vehicle_stop.mp4","channel":0,"resize_ratio":0.6},{"file_path":"/home/cvedix/project/edge_ai_api/cvedix_data/test_video/vehicle_stop.mp4","channel":1,"resize_ratio":0.6}]'
-                      WEIGHTS_PATH: /home/cvedix/project/edge_ai_api/cvedix_data/models/det_cls/yolov3-tiny-2022-0721_best.weights
-                      CONFIG_PATH: /home/cvedix/project/edge_ai_api/cvedix_data/models/det_cls/yolov3-tiny-2022-0721.cfg
-                      LABELS_PATH: /home/cvedix/project/edge_ai_api/cvedix_data/models/det_cls/yolov3_tiny_5classes.txt
+                      WEIGHTS_PATH: /opt/edge_ai_api/models/det_cls/yolov3-tiny-2022-0721_best.weights
+                      CONFIG_PATH: /opt/edge_ai_api/models/det_cls/yolov3-tiny-2022-0721.cfg
+                      LABELS_PATH: /opt/edge_ai_api/models/det_cls/yolov3_tiny_5classes.txt
                     output:
                       ENABLE_SCREEN_DES: 'false'
                     StopZones: '[{"id":"zone1","name":"Channel 0 Stop Zone","roi":[{"x":20,"y":30},{"x":600,"y":40},{"x":600,"y":300},{"x":10,"y":300}],"min_stop_seconds":3,"check_interval_frames":20,"check_min_hit_frames":50,"check_max_distance":5},{"id":"zone2","name":"Channel
@@ -4827,9 +4827,9 @@ paths:
                   additionalParams:
                     input:
                       FILE_PATH: /home/cvedix/project/edge_ai_api/cvedix_data/test_video/vehicle.mp4
-                      WEIGHTS_PATH: /home/cvedix/project/edge_ai_api/cvedix_data/models/det_cls/yolov3-tiny-2022-0721_best.weights
-                      CONFIG_PATH: /home/cvedix/project/edge_ai_api/cvedix_data/models/det_cls/yolov3-tiny-2022-0721.cfg
-                      LABELS_PATH: /home/cvedix/project/edge_ai_api/cvedix_data/models/det_cls/yolov3_tiny_5classes.txt
+                      WEIGHTS_PATH: /opt/edge_ai_api/models/det_cls/yolov3-tiny-2022-0721_best.weights
+                      CONFIG_PATH: /opt/edge_ai_api/models/det_cls/yolov3-tiny-2022-0721.cfg
+                      LABELS_PATH: /opt/edge_ai_api/models/det_cls/yolov3_tiny_5classes.txt
                     output:
                       RTMP_URL: rtmp://localhost:1935/live/ba_stop_demo
                       RTMP_DES_URL: rtmp://localhost:1935/live/ba_stop_demo
@@ -4865,9 +4865,9 @@ paths:
                   additionalParams:
                     input:
                       RTSP_SRC_URL: rtsp://localhost:8554/mystream
-                      WEIGHTS_PATH: /home/cvedix/project/edge_ai_api/cvedix_data/models/det_cls/yolov3-tiny-2022-0721_best.weights
-                      CONFIG_PATH: /home/cvedix/project/edge_ai_api/cvedix_data/models/det_cls/yolov3-tiny-2022-0721.cfg
-                      LABELS_PATH: /home/cvedix/project/edge_ai_api/cvedix_data/models/det_cls/yolov3_tiny_5classes.txt
+                      WEIGHTS_PATH: /opt/edge_ai_api/models/det_cls/yolov3-tiny-2022-0721_best.weights
+                      CONFIG_PATH: /opt/edge_ai_api/models/det_cls/yolov3-tiny-2022-0721.cfg
+                      LABELS_PATH: /opt/edge_ai_api/models/det_cls/yolov3_tiny_5classes.txt
                       RESIZE_RATIO: '1.0'
                       GST_DECODER_NAME: avdec_h264
                       SKIP_INTERVAL: '0'
@@ -4896,8 +4896,8 @@ paths:
                   additionalParams:
                     input:
                       FILE_PATH: /opt/edge_ai_api/videos/face.mp4
-                      MODEL_PATH: /opt/edge_ai_api/models/face_detection_yunet_2022mar.onnx
-                      SFACE_MODEL_PATH: /opt/edge_ai_api/models/face_recognition_sface_2021dec.onnx
+                      MODEL_PATH: /opt/edge_ai_api/models/face/face_detection_yunet_2022mar.onnx
+                      SFACE_MODEL_PATH: /opt/edge_ai_api/models/face/face_recognition_sface_2021dec.onnx
                       RESIZE_RATIO: '1.0'
                     output:
                       RTMP_URL: rtmp://localhost:1935/live/camera_demo_1
@@ -4970,8 +4970,8 @@ paths:
                   additionalParams:
                     input:
                       FILE_PATH: /home/cvedix/project/edge_ai_api/cvedix_data/test_video/face.mp4
-                      MODEL_PATH: /home/cvedix/project/edge_ai_api/cvedix_data/models/face/face_detection_yunet_2022mar.onnx
-                      SFACE_MODEL_PATH: /home/cvedix/project/edge_ai_api/cvedix_data/models/face/face_recognition_sface_2021dec.onnx
+                      MODEL_PATH: /opt/edge_ai_api/models/face/face_detection_yunet_2022mar.onnx
+                      SFACE_MODEL_PATH: /opt/edge_ai_api/models/face/face_recognition_sface_2021dec.onnx
                       RESIZE_RATIO: '1.0'
                     output:
                       ENABLE_SCREEN_DES: 'true'
@@ -4987,8 +4987,8 @@ paths:
                   additionalParams:
                     input:
                       FILE_PATH: /home/cvedix/project/edge_ai_api/cvedix_data/test_video/face.mp4
-                      MODEL_PATH: /home/cvedix/project/edge_ai_api/cvedix_data/models/face/face_detection_yunet_2022mar.onnx
-                      SFACE_MODEL_PATH: /home/cvedix/project/edge_ai_api/cvedix_data/models/face/face_recognition_sface_2021dec.onnx
+                      MODEL_PATH: /opt/edge_ai_api/models/face/face_detection_yunet_2022mar.onnx
+                      SFACE_MODEL_PATH: /opt/edge_ai_api/models/face/face_recognition_sface_2021dec.onnx
                       RESIZE_RATIO: '1.0'
                     output:
                       ENABLE_SCREEN_DES: 'true'
@@ -5011,8 +5011,8 @@ paths:
                   additionalParams:
                     input:
                       FILE_PATH: /home/cvedix/project/edge_ai_api/cvedix_data/test_video/face.mp4
-                      MODEL_PATH: /home/cvedix/project/edge_ai_api/cvedix_data/models/face/face_detection_yunet_2022mar.onnx
-                      SFACE_MODEL_PATH: /home/cvedix/project/edge_ai_api/cvedix_data/models/face/face_recognition_sface_2021dec.onnx
+                      MODEL_PATH: /opt/edge_ai_api/models/face/face_detection_yunet_2022mar.onnx
+                      SFACE_MODEL_PATH: /opt/edge_ai_api/models/face/face_recognition_sface_2021dec.onnx
                       RESIZE_RATIO: '1.0'
                     output:
                       RTMP_URL: rtmp://localhost:1935/live/face_stream
@@ -5030,8 +5030,8 @@ paths:
                   additionalParams:
                     input:
                       RTSP_SRC_URL: rtsp://localhost:8554/mystream
-                      MODEL_PATH: /home/cvedix/project/edge_ai_api/cvedix_data/models/face/face_detection_yunet_2022mar.onnx
-                      SFACE_MODEL_PATH: /home/cvedix/project/edge_ai_api/cvedix_data/models/face/face_recognition_sface_2021dec.onnx
+                      MODEL_PATH: /opt/edge_ai_api/models/face/face_detection_yunet_2022mar.onnx
+                      SFACE_MODEL_PATH: /opt/edge_ai_api/models/face/face_recognition_sface_2021dec.onnx
                       RESIZE_RATIO: '1.0'
                     output:
                       ENABLE_SCREEN_DES: 'true'
@@ -5063,7 +5063,7 @@ paths:
                   detectionSensitivity: Medium
                   additionalParams:
                     input:
-                      MODEL_PATH: ./cvedix_data/models/face/face_detection_yunet_2022mar.onnx
+                      MODEL_PATH: /opt/edge_ai_api/models/face/face_detection_yunet_2022mar.onnx
                       CHANNEL: '0'
               infer_nodes___other___ba_socket_broker:
                 summary: Infer Nodes - Other - Ba Socket Broker
@@ -5112,8 +5112,8 @@ paths:
                   additionalParams:
                     input:
                       FILE_PATH: ./cvedix_data/test_video/face.mp4
-                      MODEL_PATH: ./cvedix_data/models/face/face_detection_yunet_2022mar.onnx
-                      SFACE_MODEL_PATH: ./cvedix_data/models/face/face_recognition_sface_2021dec.onnx
+                      MODEL_PATH: /opt/edge_ai_api/models/face/face_detection_yunet_2022mar.onnx
+                      SFACE_MODEL_PATH: /opt/edge_ai_api/models/face/face_recognition_sface_2021dec.onnx
                       EMBEDDINGS_SOCKET_IP: 127.0.0.1
                       EMBEDDINGS_SOCKET_PORT: '8080'
                       CROPPED_DIR: cropped_images
@@ -5167,8 +5167,8 @@ paths:
                   additionalParams:
                     input:
                       FILE_PATH: ./cvedix_data/test_video/face.mp4
-                      MODEL_PATH: ./cvedix_data/models/face/face_detection_yunet_2022mar.onnx
-                      SFACE_MODEL_PATH: ./cvedix_data/models/face/face_recognition_sface_2021dec.onnx
+                      MODEL_PATH: /opt/edge_ai_api/models/face/face_detection_yunet_2022mar.onnx
+                      SFACE_MODEL_PATH: /opt/edge_ai_api/models/face/face_recognition_sface_2021dec.onnx
                     output:
                       BROKE_FOR: FACE
               infer_nodes___other___json_kafka_broker:
@@ -5183,8 +5183,8 @@ paths:
                   additionalParams:
                     input:
                       FILE_PATH: ./cvedix_data/test_video/face.mp4
-                      MODEL_PATH: ./cvedix_data/models/face/face_detection_yunet_2022mar.onnx
-                      SFACE_MODEL_PATH: ./cvedix_data/models/face/face_recognition_sface_2021dec.onnx
+                      MODEL_PATH: /opt/edge_ai_api/models/face/face_detection_yunet_2022mar.onnx
+                      SFACE_MODEL_PATH: /opt/edge_ai_api/models/face/face_recognition_sface_2021dec.onnx
                       KAFKA_SERVERS: 192.168.77.87:9092
                       KAFKA_TOPIC: videopipe_topic
                     output:
@@ -5201,8 +5201,8 @@ paths:
                   additionalParams:
                     input:
                       FILE_PATH: ./cvedix_data/test_video/face.mp4
-                      MODEL_PATH: ./cvedix_data/models/face/face_detection_yunet_2022mar.onnx
-                      SFACE_MODEL_PATH: ./cvedix_data/models/face/face_recognition_sface_2021dec.onnx
+                      MODEL_PATH: /opt/edge_ai_api/models/face/face_detection_yunet_2022mar.onnx
+                      SFACE_MODEL_PATH: /opt/edge_ai_api/models/face/face_recognition_sface_2021dec.onnx
                     output:
                       BROKE_FOR: FACE
                       MQTT_BROKER_URL: localhost
@@ -5235,7 +5235,7 @@ paths:
                   additionalParams:
                     input:
                       FILE_PATH: ./cvedix_data/test_video/face.mp4
-                      MODEL_PATH: ./cvedix_data/models/face/face_detection_yunet_2022mar.onnx
+                      MODEL_PATH: /opt/edge_ai_api/models/face/face_detection_yunet_2022mar.onnx
                     output:
                       BROKE_FOR: FACE
               infer_nodes___other___plate_socket_broker:
@@ -5287,7 +5287,7 @@ paths:
                     input:
                       RTMP_SRC_URL: rtmp://localhost:1935/live/stream
                       RESIZE_RATIO: '1.0'
-                      MODEL_PATH: ./cvedix_data/models/face/face_detection_yunet_2022mar.onnx
+                      MODEL_PATH: /opt/edge_ai_api/models/face/face_detection_yunet_2022mar.onnx
                       SKIP_INTERVAL: '0'
               infer_nodes___other___udp_src:
                 summary: Infer Nodes - Other - Udp Src
@@ -5301,7 +5301,7 @@ paths:
                   additionalParams:
                     input:
                       RESIZE_RATIO: '1.0'
-                      MODEL_PATH: ./cvedix_data/models/face/face_detection_yunet_2022mar.onnx
+                      MODEL_PATH: /opt/edge_ai_api/models/face/face_detection_yunet_2022mar.onnx
                       UDP_PORT: '6000'
                       SKIP_INTERVAL: '0'
               infer_nodes___other___xml_file_broker:
@@ -5316,8 +5316,8 @@ paths:
                   additionalParams:
                     input:
                       FILE_PATH: ./cvedix_data/test_video/face.mp4
-                      MODEL_PATH: ./cvedix_data/models/face/face_detection_yunet_2022mar.onnx
-                      SFACE_MODEL_PATH: ./cvedix_data/models/face/face_recognition_sface_2021dec.onnx
+                      MODEL_PATH: /opt/edge_ai_api/models/face/face_detection_yunet_2022mar.onnx
+                      SFACE_MODEL_PATH: /opt/edge_ai_api/models/face/face_recognition_sface_2021dec.onnx
                       XML_FILE_PATH: ./output/broker_output.xml
                     output:
                       BROKE_FOR: FACE
@@ -5333,8 +5333,8 @@ paths:
                   additionalParams:
                     input:
                       FILE_PATH: ./cvedix_data/test_video/face.mp4
-                      MODEL_PATH: ./cvedix_data/models/face/face_detection_yunet_2022mar.onnx
-                      SFACE_MODEL_PATH: ./cvedix_data/models/face/face_recognition_sface_2021dec.onnx
+                      MODEL_PATH: /opt/edge_ai_api/models/face/face_detection_yunet_2022mar.onnx
+                      SFACE_MODEL_PATH: /opt/edge_ai_api/models/face/face_recognition_sface_2021dec.onnx
                       XML_SOCKET_IP: 127.0.0.1
                       XML_SOCKET_PORT: '8080'
                     output:
@@ -5351,7 +5351,7 @@ paths:
                   additionalParams:
                     input:
                       FILE_PATH: ./cvedix_data/test_video/face_multis.mp4
-                      MODEL_PATH: ./cvedix_data/models/face/yolov8n_face_detection.rknn
+                      MODEL_PATH: /opt/edge_ai_api/models/face/yolov8n_face_detection.rknn
                       SCORE_THRESHOLD: '0.5'
                       INPUT_WIDTH: '640'
                       INPUT_HEIGHT: '640'
@@ -5374,7 +5374,7 @@ paths:
                       FILE_PATH: ./cvedix_data/test_video/object.mp4
                       MODEL_PATH: ./cvedix_data/models/mask_rcnn/mask_rcnn_inception_v2_coco.pb
                       MODEL_CONFIG_PATH: ./cvedix_data/models/mask_rcnn/mask_rcnn_inception_v2_coco.pbtxt
-                      LABELS_PATH: ./cvedix_data/models/coco_80classes.txt
+                      LABELS_PATH: /opt/edge_ai_api/models/coco_80classes.txt
                       INPUT_WIDTH: '416'
                       INPUT_HEIGHT: '416'
                       SCORE_THRESHOLD: '0.5'
@@ -5418,7 +5418,7 @@ paths:
                     input:
                       RTSP_URL: rtsp://localhost:8554/stream
                       MODEL_PATH: ./cvedix_data/models/trt/others/yolov8s_v8.5.engine
-                      LABELS_PATH: ./cvedix_data/models/coco_80classes.txt
+                      LABELS_PATH: /opt/edge_ai_api/models/coco_80classes.txt
                     output:
                       RTMP_URL: rtmp://localhost:1935/live/yolov8_detector
                       RTMP_DES_URL: rtmp://localhost:1935/live/yolov8_detector
@@ -5448,7 +5448,7 @@ paths:
                     input:
                       FILE_PATH: ./cvedix_data/test_video/face2.mp4
                       MODEL_PATH: ./cvedix_data/models/trt/others/yolov8s-seg_v8.5.engine
-                      LABELS_PATH: ./cvedix_data/models/coco_80classes.txt
+                      LABELS_PATH: /opt/edge_ai_api/models/coco_80classes.txt
               infer_nodes___yolo___yolo_detector:
                 summary: Infer Nodes - Yolo - Yolo Detector
                 value:
@@ -5463,7 +5463,7 @@ paths:
                       RTSP_URL: rtsp://localhost:8554/stream
                       MODEL_PATH: ./cvedix_data/models/yolo/yolov3.weights
                       MODEL_CONFIG_PATH: ./cvedix_data/models/yolo/yolov3.cfg
-                      LABELS_PATH: ./cvedix_data/models/coco_80classes.txt
+                      LABELS_PATH: /opt/edge_ai_api/models/coco_80classes.txt
                       INPUT_WIDTH: '416'
                       INPUT_HEIGHT: '416'
                       SCORE_THRESHOLD: '0.5'
@@ -5483,7 +5483,7 @@ paths:
                       FILE_PATH: ./cvedix_data/test_video/mask_rcnn.mp4
                       MODEL_PATH: ./cvedix_data/models/mask_rcnn/frozen_inference_graph.pb
                       MODEL_CONFIG_PATH: ./cvedix_data/models/mask_rcnn/mask_rcnn_inception_v2_coco_2018_01_28.pbtxt
-                      LABELS_PATH: ./cvedix_data/models/coco_80classes.txt
+                      LABELS_PATH: /opt/edge_ai_api/models/coco_80classes.txt
                       INPUT_WIDTH: '416'
                       INPUT_HEIGHT: '416'
                       SCORE_THRESHOLD: '0.5'
@@ -5595,7 +5595,7 @@ paths:
                       FILE_PATH: /home/cvedix/project/edge_ai_api/cvedix_data/test_video/mask_rcnn.mp4
                       MODEL_PATH: /home/cvedix/project/edge_ai_api/cvedix_data/models/mask_rcnn/frozen_inference_graph.pb
                       MODEL_CONFIG_PATH: /home/cvedix/project/edge_ai_api/cvedix_data/models/mask_rcnn/mask_rcnn_inception_v2_coco_2018_01_28.pbtxt
-                      LABELS_PATH: /home/cvedix/project/edge_ai_api/cvedix_data/models/coco_80classes.txt
+                      LABELS_PATH: /opt/edge_ai_api/models/coco_80classes.txt
                       INPUT_WIDTH: '416'
                       INPUT_HEIGHT: '416'
                       SCORE_THRESHOLD: '0.5'
@@ -5616,7 +5616,7 @@ paths:
                       FILE_PATH: /home/cvedix/project/edge_ai_api/cvedix_data/test_video/mask_rcnn.mp4
                       MODEL_PATH: /home/cvedix/project/edge_ai_api/cvedix_data/models/mask_rcnn/frozen_inference_graph.pb
                       MODEL_CONFIG_PATH: /home/cvedix/project/edge_ai_api/cvedix_data/models/mask_rcnn/mask_rcnn_inception_v2_coco_2018_01_28.pbtxt
-                      LABELS_PATH: /home/cvedix/project/edge_ai_api/cvedix_data/models/coco_80classes.txt
+                      LABELS_PATH: /opt/edge_ai_api/models/coco_80classes.txt
                       INPUT_WIDTH: '416'
                       INPUT_HEIGHT: '416'
                       SCORE_THRESHOLD: '0.5'
@@ -5637,11 +5637,11 @@ paths:
                   additionalParams:
                     input:
                       RTSP_URL: rtsp://localhost:8554/stream
-                      FACE_DETECTION_MODEL_PATH: /opt/cvedix/models/face/yunet.onnx
-                      BUFFALO_L_FACE_ENCODING_MODEL: /opt/cvedix/models/face/buffalo_l.onnx
-                      EMAP_FILE_FOR_EMBEDDINGS: /opt/cvedix/models/face/emap.onnx
-                      FACE_SWAP_MODEL_PATH: /opt/cvedix/models/face/face_swap.onnx
-                      SWAP_SOURCE_IMAGE: /opt/cvedix/models/face/source_face.jpg
+                      FACE_DETECTION_MODEL_PATH: /opt/edge_ai_api/models/face/yunet.onnx
+                      BUFFALO_L_FACE_ENCODING_MODEL: /opt/edge_ai_api/models/face/buffalo_l.onnx
+                      EMAP_FILE_FOR_EMBEDDINGS: /opt/edge_ai_api/models/face/emap.onnx
+                      FACE_SWAP_MODEL_PATH: /opt/edge_ai_api/models/face/face_swap.onnx
+                      SWAP_SOURCE_IMAGE: /opt/edge_ai_api/models/face/source_face.jpg
                     output:
                       RTMP_URL: rtmp://localhost:1935/live/face_swap_stream
                       RTMP_DES_URL: rtmp://localhost:1935/live/face_swap_stream
@@ -5657,8 +5657,8 @@ paths:
                   additionalParams:
                     input:
                       RTSP_URL: rtsp://localhost:8554/stream
-                      FACE_DETECTION_MODEL_PATH: /opt/cvedix/models/face/yunet.onnx
-                      FACE_RECOGNITION_MODEL_PATH: /opt/cvedix/models/face/insightface.onnx
+                      FACE_DETECTION_MODEL_PATH: /opt/edge_ai_api/models/face/yunet.onnx
+                      FACE_RECOGNITION_MODEL_PATH: /opt/edge_ai_api/models/face/insightface.onnx
                       SAVE_DIR: /tmp/output/insightface_recognition
               other_solutions___onnx___yolov11_detection:
                 summary: Other Solutions - Onnx - Yolov11 Detection
@@ -5672,7 +5672,7 @@ paths:
                   additionalParams:
                     input:
                       RTSP_URL: rtsp://localhost:8554/stream
-                      MODEL_PATH: /opt/cvedix/models/yolov11/yolov11n.onnx
+                      MODEL_PATH: /opt/edge_ai_api/models/yolov11/yolov11n.onnx
                       SAVE_DIR: /tmp/output/yolov11_detection
               other_solutions___other___mllm_analysis:
                 summary: Other Solutions - Other - Mllm Analysis
@@ -5702,7 +5702,7 @@ paths:
                   additionalParams:
                     input:
                       RTSP_URL: rtsp://localhost:8554/stream
-                      MODEL_PATH: /opt/cvedix/models/yolov11/yolov11n.rknn
+                      MODEL_PATH: /opt/edge_ai_api/models/yolov11/yolov11n.rknn
                       SAVE_DIR: /tmp/output/rknn_yolov11_detection
               other_solutions___tensorrt___full_config:
                 summary: Other Solutions - Tensorrt - Full Config
@@ -5746,8 +5746,8 @@ paths:
                   additionalParams:
                     input:
                       RTSP_URL: rtsp://localhost:8554/stream
-                      FACE_DETECTION_MODEL_PATH: /opt/cvedix/models/face/yunet.onnx
-                      FACE_RECOGNITION_MODEL_PATH: /opt/cvedix/models/face/insightface.trt
+                      FACE_DETECTION_MODEL_PATH: /opt/edge_ai_api/models/face/yunet.onnx
+                      FACE_RECOGNITION_MODEL_PATH: /opt/edge_ai_api/models/face/insightface.trt
                       SAVE_DIR: /tmp/output/trt_insightface_recognition
               tests___test_set_config_examples:
                 summary: 'Tests - Test: Set Config Examples'
@@ -5865,15 +5865,15 @@ paths:
                   additionalParams:
                     input:
                       RTSP_URL: rtsp://localhost:8554/stream
-                      MODEL_PATH: /opt/cvedix/models/face/yunet.onnx
+                      MODEL_PATH: /opt/edge_ai_api/models/face/yunet.onnx
                       SAVE_DIR: /tmp/output
               update___update_change_model_path:
                 summary: Update - Update Change Model Path
                 value:
                   additionalParams:
                     input:
-                      MODEL_PATH: /usr/share/cvedix/cvedix_data/models/face/face_detection_yunet_2022mar.onnx
-                      SFACE_MODEL_PATH: /usr/share/cvedix/cvedix_data/models/face/face_recognition_sface_2021dec.onnx
+                      MODEL_PATH: /opt/edge_ai_api/models/face/face_detection_yunet_2022mar.onnx
+                      SFACE_MODEL_PATH: /opt/edge_ai_api/models/face/face_recognition_sface_2021dec.onnx
               update___update_change_name_group:
                 summary: Update - Update Change Name Group
                 value:

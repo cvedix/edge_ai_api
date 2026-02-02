@@ -646,15 +646,15 @@ void SolutionRegistry::registerFaceSwapSolution() {
   // variables.
   config.defaults["RTSP_URL"] = "rtsp://localhost:8554/stream";
   config.defaults["FACE_DETECTION_MODEL_PATH"] =
-      "/opt/cvedix/models/face/yunet.onnx";
+      "/opt/edge_ai_api/models/face/yunet.onnx";
   config.defaults["BUFFALO_L_FACE_ENCODING_MODEL"] =
-      "/opt/cvedix/models/face/buffalo_l.onnx";
+      "/opt/edge_ai_api/models/face/buffalo_l.onnx";
   config.defaults["EMAP_FILE_FOR_EMBEDDINGS"] =
-      "/opt/cvedix/models/face/emap.onnx";
+      "/opt/edge_ai_api/models/face/emap.onnx";
   config.defaults["FACE_SWAP_MODEL_PATH"] =
-      "/opt/cvedix/models/face/face_swap.onnx";
+      "/opt/edge_ai_api/models/face/face_swap.onnx";
   config.defaults["SWAP_SOURCE_IMAGE"] =
-      "/opt/cvedix/models/face/source_face.jpg";
+      "/opt/edge_ai_api/models/face/source_face.jpg";
   config.defaults["RTMP_URL"] = "rtmp://localhost:1935/live/stream";
   config.defaults["detectorMode"] = "SmartDetection";
   config.defaults["detectionSensitivity"] = "0.7";
@@ -713,9 +713,9 @@ void SolutionRegistry::registerInsightFaceRecognitionSolution() {
   // Default configurations
   config.defaults["RTSP_URL"] = "rtsp://localhost:8554/stream";
   config.defaults["FACE_DETECTION_MODEL_PATH"] =
-      "/opt/cvedix/models/face/yunet.onnx";
+      "/opt/edge_ai_api/models/face/yunet.onnx";
   config.defaults["FACE_RECOGNITION_MODEL_PATH"] =
-      "/opt/cvedix/models/face/insightface.onnx";
+      "/opt/edge_ai_api/models/face/insightface.onnx";
   config.defaults["SAVE_DIR"] = "/tmp/output";
   config.defaults["detectorMode"] = "SmartDetection";
   config.defaults["detectionSensitivity"] = "0.7";
@@ -819,7 +819,7 @@ void SolutionRegistry::registerRKNNYOLOv11DetectionSolution() {
 
   // Default configurations
   config.defaults["RTSP_URL"] = "rtsp://localhost:8554/stream";
-  config.defaults["MODEL_PATH"] = "/opt/cvedix/models/yolov11/yolov11n.rknn";
+  config.defaults["MODEL_PATH"] = "/opt/edge_ai_api/models/yolov11/yolov11n.rknn";
   config.defaults["SAVE_DIR"] = "/tmp/output";
   config.defaults["detectorMode"] = "SmartDetection";
   config.defaults["detectionSensitivity"] = "0.7";
@@ -880,9 +880,9 @@ void SolutionRegistry::registerTRTInsightFaceRecognitionSolution() {
   // Default configurations
   config.defaults["RTSP_URL"] = "rtsp://localhost:8554/stream";
   config.defaults["FACE_DETECTION_MODEL_PATH"] =
-      "/opt/cvedix/models/face/yunet.onnx";
+      "/opt/edge_ai_api/models/face/yunet.onnx";
   config.defaults["FACE_RECOGNITION_MODEL_PATH"] =
-      "/opt/cvedix/models/face/insightface.trt";
+      "/opt/edge_ai_api/models/face/insightface.trt";
   config.defaults["SAVE_DIR"] = "/tmp/output";
   config.defaults["detectorMode"] = "SmartDetection";
   config.defaults["detectionSensitivity"] = "0.7";
@@ -1565,7 +1565,7 @@ void SolutionRegistry::registerYOLOv11DetectionSolution() {
 
   // Default configurations
   config.defaults["RTSP_URL"] = "rtsp://localhost:8554/stream";
-  config.defaults["MODEL_PATH"] = "/opt/cvedix/models/yolov11/yolov11n.onnx";
+  config.defaults["MODEL_PATH"] = "/opt/edge_ai_api/models/yolov11/yolov11n.onnx";
   config.defaults["SAVE_DIR"] = "/tmp/output";
   config.defaults["detectorMode"] = "SmartDetection";
   config.defaults["detectionSensitivity"] = "0.7";

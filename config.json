@@ -1,22 +1,22 @@
 {
   "auto_device_list": [
+    "openvino.CPU",
+    "armnn.CpuAcc",
+    "armnn.CpuRef",
+    "memx.cpu",
+    "openvino.GPU",
     "tensorrt.1",
     "tensorrt.2",
-    "openvino.GPU",
     "hailo.auto",
     "blaize.auto",
     "rknn.auto",
     "cavalry",
     "openvino.VPU",
-    "openvino.CPU",
     "snpe.dsp",
     "snpe.aip",
     "mnn.auto",
     "armnn.GpuAcc",
-    "armnn.CpuAcc",
-    "armnn.CpuRef",
-    "memx.memx",
-    "memx.cpu"
+    "memx.memx"
   ],
   "decoder_priority_list": [
     "blaize.auto",

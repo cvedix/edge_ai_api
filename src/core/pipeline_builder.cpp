@@ -1755,7 +1755,7 @@ PipelineBuilder::createNode(const SolutionConfig::NodeConfig &nodeConfig,
     } else if (nodeConfig.nodeType == "osd_v3") {
       return PipelineBuilderOtherNodes::createOSDv3Node(nodeName, params, req);
     } else if (nodeConfig.nodeType == "ba_crossline_osd") {
-      return PipelineBuilderBehaviorAnalysisNodes::createBACrosslineOSDNode(nodeName, params);
+      return PipelineBuilderBehaviorAnalysisNodes::createBACrosslineOSDNode(nodeName, params, req);
     } else if (nodeConfig.nodeType == "ba_jam_osd") {
       return PipelineBuilderBehaviorAnalysisNodes::createBAJamOSDNode(nodeName, params);
     } else if (nodeConfig.nodeType == "ba_stop_osd") {

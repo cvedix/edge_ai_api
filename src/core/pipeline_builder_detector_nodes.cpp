@@ -6,6 +6,9 @@
 #include <filesystem>
 #include <iostream>
 #include <stdexcept>
+#include <algorithm>
+#include <cctype>
+#include <cstring>
 #include <cvedix/nodes/infers/cvedix_sface_feature_encoder_node.h>
 #include <cvedix/nodes/infers/cvedix_yunet_face_detector_node.h>
 #include <cvedix/nodes/infers/cvedix_yolo_detector_node.h>
@@ -129,6 +132,86 @@ void PipelineBuilderDetectorNodes::logGPUAvailability() {
 
   std::cerr << "[PipelineBuilderDetectorNodes] ========================================"
             << std::endl;
+}
+
+// Helper function to ensure CPU devices are prioritized in auto_device_list
+// This helps prevent CUDA compatibility issues by falling back to CPU
+static void ensureCPUFirstInDeviceList() {
+  try {
+    auto &systemConfig = SystemConfig::getInstance();
+    auto deviceList = systemConfig.getAutoDeviceList();
+    
+    if (deviceList.empty()) {
+      return; // Use default
+    }
+    
+    // Check if CPU devices are already first
+    bool cpuFirst = false;
+    std::vector<std::string> cpuDevices = {
+      "openvino.CPU", "armnn.CpuAcc", "armnn.CpuRef", "memx.cpu"
+    };
+    
+    for (const auto &cpuDevice : cpuDevices) {
+      if (!deviceList.empty() && deviceList[0] == cpuDevice) {
+        cpuFirst = true;
+        break;
+      }
+    }
+    
+    // If CPU is not first, check if we should prioritize it
+    // Only do this if there's a risk of CUDA compatibility issues
+    const char *force_cpu = std::getenv("FORCE_CPU_INFERENCE");
+    if (force_cpu && (std::string(force_cpu) == "1" || std::string(force_cpu) == "true")) {
+      if (!cpuFirst) {
+        std::cerr << "[PipelineBuilderDetectorNodes] FORCE_CPU_INFERENCE=1 detected - "
+                     "prioritizing CPU devices"
+                  << std::endl;
+        
+        // Create new device list with CPU first
+        std::vector<std::string> newDeviceList;
+        
+        // Add CPU devices first
+        for (const auto &cpuDevice : cpuDevices) {
+          if (std::find(deviceList.begin(), deviceList.end(), cpuDevice) != deviceList.end()) {
+            newDeviceList.push_back(cpuDevice);
+          }
+        }
+        
+        // Add other devices (excluding CPU devices already added)
+        for (const auto &device : deviceList) {
+          bool isCPU = false;
+          for (const auto &cpuDevice : cpuDevices) {
+            if (device == cpuDevice) {
+              isCPU = true;
+              break;
+            }
+          }
+          if (!isCPU) {
+            newDeviceList.push_back(device);
+          }
+        }
+        
+        // Update config
+        systemConfig.setAutoDeviceList(newDeviceList);
+        std::cerr << "[PipelineBuilderDetectorNodes] ✓ Updated auto_device_list to prioritize CPU"
+                  << std::endl;
+      }
+    }
+  } catch (...) {
+    // Ignore errors - use default config
+  }
+}
+
+// Helper function to check if error is CUDA-related
+static bool isCUDAError(const std::exception &e) {
+  std::string errorMsg = e.what();
+  std::transform(errorMsg.begin(), errorMsg.end(), errorMsg.begin(), ::tolower);
+  
+  return errorMsg.find("cuda") != std::string::npos ||
+         errorMsg.find("gpu") != std::string::npos ||
+         errorMsg.find("tensorrt") != std::string::npos ||
+         errorMsg.find("forward compatibility") != std::string::npos ||
+         errorMsg.find("managedptr") != std::string::npos;
 }
 
 
@@ -296,6 +379,9 @@ PipelineBuilderDetectorNodes::createFaceDetectorNode(
     // Create the YuNet face detector node
     // Log GPU availability before creating node
     PipelineBuilderDetectorNodes::logGPUAvailability();
+    
+    // Ensure CPU is prioritized if FORCE_CPU_INFERENCE is set
+    ensureCPUFirstInDeviceList();
 
     std::shared_ptr<cvedix_nodes::cvedix_yunet_face_detector_node> node;
     try {
@@ -362,6 +448,30 @@ PipelineBuilderDetectorNodes::createFaceDetectorNode(
     } catch (const std::exception &e) {
       std::cerr << "[PipelineBuilderDetectorNodes] Standard exception in constructor: "
                 << e.what() << std::endl;
+      
+      // Check if this is a CUDA error and suggest CPU fallback
+      if (isCUDAError(e)) {
+        std::cerr << "[PipelineBuilderDetectorNodes] ========================================"
+                  << std::endl;
+        std::cerr << "[PipelineBuilderDetectorNodes] ⚠ CUDA/GPU error detected!"
+                  << std::endl;
+        std::cerr << "[PipelineBuilderDetectorNodes] Error: " << e.what() << std::endl;
+        std::cerr << "[PipelineBuilderDetectorNodes] ========================================"
+                  << std::endl;
+        std::cerr << "[PipelineBuilderDetectorNodes] SOLUTION:" << std::endl;
+        std::cerr << "[PipelineBuilderDetectorNodes]   1. Set environment variable to force CPU:"
+                  << std::endl;
+        std::cerr << "[PipelineBuilderDetectorNodes]      export FORCE_CPU_INFERENCE=1"
+                  << std::endl;
+        std::cerr << "[PipelineBuilderDetectorNodes]   2. Or modify config.json to prioritize CPU:"
+                  << std::endl;
+        std::cerr << "[PipelineBuilderDetectorNodes]      Move 'openvino.CPU' to first in auto_device_list"
+                  << std::endl;
+        std::cerr << "[PipelineBuilderDetectorNodes]   3. Restart the service"
+                  << std::endl;
+        std::cerr << "[PipelineBuilderDetectorNodes] ========================================"
+                  << std::endl;
+      }
       throw;
     } catch (...) {
       std::cerr << "[PipelineBuilderDetectorNodes] Non-standard exception in "

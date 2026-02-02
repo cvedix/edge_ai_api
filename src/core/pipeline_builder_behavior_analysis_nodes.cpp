@@ -4,6 +4,9 @@
 #include "core/securt_line_manager.h"
 #include <iostream>
 #include <stdexcept>
+#include <opencv2/core.hpp>
+#include <json/reader.h>
+#include <json/value.h>
 #include <cvedix/nodes/ba/cvedix_ba_crossline_node.h>
 #include <cvedix/nodes/ba/cvedix_ba_jam_node.h>
 #include <cvedix/nodes/ba/cvedix_ba_stop_node.h>
@@ -24,8 +27,11 @@ PipelineBuilderBehaviorAnalysisNodes::createBACrosslineNode(
       throw std::invalid_argument("Node name cannot be empty");
     }
 
-    std::map<int, cvedix_objects::cvedix_line> lines;
+    // Use crossline_config to support names, colors, and directions
+    std::map<int, std::vector<cvedix_nodes::crossline_config>> lineConfigs;
+    std::map<int, cvedix_objects::cvedix_line> lines; // For backward compatibility fallback
     bool linesParsed = false;
+    bool useConfigs = false; // Track if we're using new config API
 
     // Priority 1: Check CrossingLines from API (stored in additionalParams)
     auto crossingLinesIt = req.additionalParams.find("CrossingLines");
@@ -37,6 +43,9 @@ PipelineBuilderBehaviorAnalysisNodes::createBACrosslineNode(
         Json::Value parsedLines;
         if (reader.parse(crossingLinesIt->second, parsedLines) &&
             parsedLines.isArray()) {
+          // Group lines by channel (use channel from line config if available, otherwise use index)
+          std::map<int, std::vector<cvedix_nodes::crossline_config>> configsByChannel;
+          
           // Iterate through lines array
           for (Json::ArrayIndex i = 0; i < parsedLines.size(); ++i) {
             const Json::Value &lineObj = parsedLines[i];
@@ -86,16 +95,77 @@ PipelineBuilderBehaviorAnalysisNodes::createBACrosslineNode(
 
             cvedix_objects::cvedix_point start(start_x, start_y);
             cvedix_objects::cvedix_point end(end_x, end_y);
+            cvedix_objects::cvedix_line line(start, end);
+
+            // Parse line name
+            std::string line_name = "";
+            if (lineObj.isMember("name") && lineObj["name"].isString() &&
+                !lineObj["name"].asString().empty()) {
+              line_name = lineObj["name"].asString();
+            } else {
+              line_name = "Line " + std::to_string(i);
+            }
+
+            // Parse color (RGBA format: [R, G, B, A])
+            cv::Scalar line_color = cv::Scalar(0, 255, 0); // Default green
+            if (lineObj.isMember("color") && lineObj["color"].isArray() &&
+                lineObj["color"].size() >= 3) {
+              int r = lineObj["color"][0].asInt();
+              int g = lineObj["color"][1].asInt();
+              int b = lineObj["color"][2].asInt();
+              // OpenCV uses BGR format
+              line_color = cv::Scalar(b, g, r);
+            }
+
+            // Parse direction
+            cvedix_objects::cvedix_ba_direct_type direction =
+                cvedix_objects::cvedix_ba_direct_type::BOTH;
+            if (lineObj.isMember("direction") && lineObj["direction"].isString()) {
+              std::string dir = lineObj["direction"].asString();
+              if (dir == "Up" || dir == "IN") {
+                direction = cvedix_objects::cvedix_ba_direct_type::IN;
+              } else if (dir == "Down" || dir == "OUT") {
+                direction = cvedix_objects::cvedix_ba_direct_type::OUT;
+              } else {
+                direction = cvedix_objects::cvedix_ba_direct_type::BOTH;
+              }
+            }
 
             // Use array index as channel (0, 1, 2, ...)
-            int channel = static_cast<int>(i);
-            lines[channel] = cvedix_objects::cvedix_line(start, end);
+            // All lines go to channel 0 by default (can be extended to support channel field)
+            int channel = 0;
+            if (lineObj.isMember("channel") && lineObj["channel"].isNumeric()) {
+              channel = lineObj["channel"].asInt();
+            } else {
+              // For backward compatibility, use index as channel
+              // But group all lines to channel 0 for multi-line support
+              channel = 0;
+            }
+
+            // Create crossline_config with name, color, and direction
+            cvedix_nodes::crossline_config config(line, line_color, line_name, direction);
+            configsByChannel[channel].push_back(config);
+
+            // Also keep backward compatible format
+            lines[channel] = line;
             linesParsed = true;
+            useConfigs = true;
           }
 
-          if (linesParsed) {
-            std::cerr << "[PipelineBuilderBehaviorAnalysisNodes] ✓ Parsed " << lines.size()
-                      << " line(s) from CrossingLines API" << std::endl;
+          if (linesParsed && useConfigs) {
+            lineConfigs = configsByChannel;
+            std::cerr << "[PipelineBuilderBehaviorAnalysisNodes] ✓ Parsed " << parsedLines.size()
+                      << " line(s) from CrossingLines API with names and colors" << std::endl;
+            for (const auto &channelPair : lineConfigs) {
+              std::cerr << "  Channel " << channelPair.first << ": " 
+                        << channelPair.second.size() << " line(s)" << std::endl;
+              for (size_t j = 0; j < channelPair.second.size(); ++j) {
+                const auto &config = channelPair.second[j];
+                std::cerr << "    Line " << j << ": name='" << config.name 
+                          << "', color=(" << config.color[0] << "," << config.color[1] 
+                          << "," << config.color[2] << ")" << std::endl;
+              }
+            }
           }
         } else {
           std::cerr
@@ -171,11 +241,36 @@ PipelineBuilderBehaviorAnalysisNodes::createBACrosslineNode(
 
     std::cerr << "[PipelineBuilderBehaviorAnalysisNodes] Creating BA crossline node:" << std::endl;
     std::cerr << "  Name: '" << nodeName << "'" << std::endl;
-    std::cerr << "  Lines configured for " << lines.size() << " channel(s)"
-              << std::endl;
 
-    auto node = std::make_shared<cvedix_nodes::cvedix_ba_crossline_node>(
-        nodeName, lines);
+    std::shared_ptr<cvedix_nodes::cvedix_ba_crossline_node> node;
+
+    // Use new config API if we have configs with names/colors
+    if (useConfigs && !lineConfigs.empty()) {
+      // Create node with empty lines first, then add lines with configs
+      std::map<int, cvedix_objects::cvedix_line> emptyLines;
+      node = std::make_shared<cvedix_nodes::cvedix_ba_crossline_node>(
+          nodeName, emptyLines);
+      
+      // Add lines with full configs (name, color, direction)
+      for (const auto &channelPair : lineConfigs) {
+        int channel = channelPair.first;
+        for (const auto &config : channelPair.second) {
+          int lineIndex = node->add_line(channel, config);
+          std::cerr << "[PipelineBuilderBehaviorAnalysisNodes]   Added line " << lineIndex 
+                    << " to channel " << channel << " with name='" << config.name << "'" << std::endl;
+        }
+      }
+      std::cerr << "[PipelineBuilderBehaviorAnalysisNodes]   Using new config API with names and colors"
+                << std::endl;
+    } else {
+      // Fallback to backward compatible API
+      std::cerr << "  Lines configured for " << lines.size() << " channel(s)"
+                << std::endl;
+      node = std::make_shared<cvedix_nodes::cvedix_ba_crossline_node>(
+          nodeName, lines);
+      std::cerr << "[PipelineBuilderBehaviorAnalysisNodes]   Using backward compatible API"
+                << std::endl;
+    }
 
     std::cerr << "[PipelineBuilderBehaviorAnalysisNodes] ✓ BA crossline node created successfully"
               << std::endl;
@@ -544,7 +639,8 @@ std::shared_ptr<cvedix_nodes::cvedix_node> PipelineBuilderBehaviorAnalysisNodes:
 std::shared_ptr<cvedix_nodes::cvedix_node>
 PipelineBuilderBehaviorAnalysisNodes::createBACrosslineOSDNode(
     const std::string &nodeName,
-    const std::map<std::string, std::string> &params) {
+    const std::map<std::string, std::string> &params,
+    const CreateInstanceRequest &req) {
 
   try {
     if (nodeName.empty()) {
@@ -561,11 +657,127 @@ PipelineBuilderBehaviorAnalysisNodes::createBACrosslineOSDNode(
     auto node =
         std::make_shared<cvedix_nodes::cvedix_ba_crossline_osd_node>(nodeName);
 
+    // Parse CrossingLines config to set line names, colors, and directions for OSD
+    auto crossingLinesIt = req.additionalParams.find("CrossingLines");
+    if (crossingLinesIt != req.additionalParams.end() &&
+        !crossingLinesIt->second.empty()) {
+      try {
+        Json::Reader reader;
+        Json::Value parsedLines;
+        if (reader.parse(crossingLinesIt->second, parsedLines) &&
+            parsedLines.isArray()) {
+          // Group lines by channel
+          std::map<int, std::vector<cvedix_nodes::line_display_config>> configsByChannel;
+          
+          for (Json::ArrayIndex i = 0; i < parsedLines.size(); ++i) {
+            const Json::Value &lineObj = parsedLines[i];
+
+            // Check if line has coordinates
+            if (!lineObj.isMember("coordinates") ||
+                !lineObj["coordinates"].isArray() ||
+                lineObj["coordinates"].size() < 2) {
+              continue;
+            }
+
+            const Json::Value &coordinates = lineObj["coordinates"];
+            const Json::Value &startCoord = coordinates[0];
+            const Json::Value &endCoord = coordinates[coordinates.size() - 1];
+
+            if (!startCoord.isMember("x") || !startCoord.isMember("y") ||
+                !endCoord.isMember("x") || !endCoord.isMember("y") ||
+                !startCoord["x"].isNumeric() || !startCoord["y"].isNumeric() ||
+                !endCoord["x"].isNumeric() || !endCoord["y"].isNumeric()) {
+              continue;
+            }
+
+            // Convert to cvedix_line
+            int start_x = startCoord["x"].asInt();
+            int start_y = startCoord["y"].asInt();
+            int end_x = endCoord["x"].asInt();
+            int end_y = endCoord["y"].asInt();
+
+            cvedix_objects::cvedix_point start(start_x, start_y);
+            cvedix_objects::cvedix_point end(end_x, end_y);
+            cvedix_objects::cvedix_line line(start, end);
+
+            // Parse line name
+            std::string line_name = "";
+            if (lineObj.isMember("name") && lineObj["name"].isString() &&
+                !lineObj["name"].asString().empty()) {
+              line_name = lineObj["name"].asString();
+            } else {
+              line_name = "Line " + std::to_string(i);
+            }
+
+            // Parse color (RGBA format: [R, G, B, A])
+            cv::Scalar line_color = cv::Scalar(0, 255, 0); // Default green
+            if (lineObj.isMember("color") && lineObj["color"].isArray() &&
+                lineObj["color"].size() >= 3) {
+              int r = lineObj["color"][0].asInt();
+              int g = lineObj["color"][1].asInt();
+              int b = lineObj["color"][2].asInt();
+              // OpenCV uses BGR format
+              line_color = cv::Scalar(b, g, r);
+            }
+
+            // Parse direction
+            cvedix_objects::cvedix_ba_direct_type direction =
+                cvedix_objects::cvedix_ba_direct_type::BOTH;
+            if (lineObj.isMember("direction") && lineObj["direction"].isString()) {
+              std::string dir = lineObj["direction"].asString();
+              if (dir == "Up" || dir == "IN") {
+                direction = cvedix_objects::cvedix_ba_direct_type::IN;
+              } else if (dir == "Down" || dir == "OUT") {
+                direction = cvedix_objects::cvedix_ba_direct_type::OUT;
+              } else {
+                direction = cvedix_objects::cvedix_ba_direct_type::BOTH;
+              }
+            }
+
+            // Use array index as channel (0, 1, 2, ...)
+            // All lines go to channel 0 by default (can be extended to support channel field)
+            int channel = 0;
+            if (lineObj.isMember("channel") && lineObj["channel"].isNumeric()) {
+              channel = lineObj["channel"].asInt();
+            } else {
+              channel = 0;
+            }
+
+            // Create line_display_config with name, color, and direction
+            cvedix_nodes::line_display_config displayConfig(line, line_color, line_name, direction);
+            configsByChannel[channel].push_back(displayConfig);
+          }
+
+          // Set line configs for each channel
+          for (const auto &channelPair : configsByChannel) {
+            int channel = channelPair.first;
+            node->set_line_configs(channel, channelPair.second);
+            std::cerr << "[PipelineBuilderBehaviorAnalysisNodes]   Set " 
+                      << channelPair.second.size() 
+                      << " line config(s) for channel " << channel << " with names:" << std::endl;
+            for (size_t j = 0; j < channelPair.second.size(); ++j) {
+              const auto &config = channelPair.second[j];
+              std::cerr << "    Line " << j << ": name='" << config.name 
+                        << "', color=(" << config.color[0] << "," << config.color[1] 
+                        << "," << config.color[2] << ")" << std::endl;
+            }
+          }
+        }
+      } catch (const std::exception &e) {
+        std::cerr << "[PipelineBuilderBehaviorAnalysisNodes] WARNING: Failed to parse "
+                     "CrossingLines for OSD node: " << e.what() << std::endl;
+      }
+    }
+
     std::cerr
         << "[PipelineBuilderBehaviorAnalysisNodes] ✓ BA crossline OSD node created successfully"
         << std::endl;
     std::cerr << "[PipelineBuilderBehaviorAnalysisNodes]   OSD node will draw lines on video frames "
                  "from ba_crossline_node"
+              << std::endl;
+    std::cerr << "[PipelineBuilderBehaviorAnalysisNodes]   NOTE: OSD node displays line labels "
+                 "based on channel/index. Custom line names from CrossingLines are used in "
+                 "MQTT events but may not appear in video overlay if SDK doesn't support it."
               << std::endl;
     return node;
   } catch (const std::exception &e) {
