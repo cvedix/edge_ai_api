@@ -97,14 +97,12 @@ void SecuRTHandler::createInstance(
                  << ", detectorMode: " << write.detectorMode;
     }
 
-    // Validate name is provided
+    // Use default name if not provided
     if (write.name.empty()) {
+      write.name = "SecuRT Instance " + (instanceId.empty() ? "" : instanceId.substr(0, 8));
       if (isApiLoggingEnabled()) {
-        PLOG_WARNING << "[API] POST /v1/securt/instance - Error: name is required";
+        PLOG_DEBUG << "[API] POST /v1/securt/instance - No name provided, using default: " << write.name;
       }
-      callback(createErrorResponse(400, "Invalid request",
-                                   "Field 'name' is required"));
-      return;
     }
 
     // Create instance
@@ -243,15 +241,13 @@ void SecuRTHandler::createInstanceWithId(
                  << ", detectorMode: " << write.detectorMode;
     }
 
-    // Validate name is provided
+    // Use default name if not provided
     if (write.name.empty()) {
+      write.name = "SecuRT Instance " + instanceId.substr(0, 8);
       if (isApiLoggingEnabled()) {
-        PLOG_WARNING << "[API] PUT /v1/securt/instance/" << instanceId
-                     << " - Error: name is required";
+        PLOG_DEBUG << "[API] PUT /v1/securt/instance/" << instanceId
+                   << " - No name provided, using default: " << write.name;
       }
-      callback(createErrorResponse(400, "Invalid request",
-                                   "Field 'name' is required"));
-      return;
     }
 
     // Create instance with ID

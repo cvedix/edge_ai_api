@@ -2564,7 +2564,8 @@ InstanceRegistry::createInstanceInfo(const std::string &instanceId,
 
   InstanceInfo info;
   info.instanceId = instanceId;
-  info.displayName = req.name;
+  // Use default name if not provided
+  info.displayName = req.name.empty() ? ("Instance " + instanceId.substr(0, 8)) : req.name;
   info.group = req.group;
   info.persistent = req.persistent;
   info.frameRateLimit = req.frameRateLimit;

@@ -169,15 +169,44 @@ PipelineBuilderSourceNodes::createRTSPSourceNode(
     // Only override if RESIZE_RATIO was NOT set in additionalParams (highest
     // priority)
     if (!resizeRatioFromAdditionalParams) {
+      // Helper function to check if a string is a placeholder
+      auto isPlaceholder = [](const std::string &str) -> bool {
+        return str.size() > 3 && str[0] == '$' && str[1] == '{' && str.back() == '}';
+      };
+      
       if (params.count("resize_ratio")) {
-        resize_ratio = std::stof(params.at("resize_ratio"));
-        std::cerr
-            << "[PipelineBuilderSourceNodes] Using resize_ratio from solution config: "
-            << resize_ratio << std::endl;
+        std::string resizeRatioStr = params.at("resize_ratio");
+        // Check if it's a placeholder that wasn't replaced
+        if (isPlaceholder(resizeRatioStr)) {
+          std::cerr << "[PipelineBuilderSourceNodes] Warning: resize_ratio is placeholder "
+                    << resizeRatioStr << " (not replaced), keeping current value" << std::endl;
+        } else {
+          try {
+            resize_ratio = std::stof(resizeRatioStr);
+            std::cerr
+                << "[PipelineBuilderSourceNodes] Using resize_ratio from solution config: "
+                << resize_ratio << std::endl;
+          } catch (const std::exception &e) {
+            std::cerr << "[PipelineBuilderSourceNodes] Warning: Invalid resize_ratio value: "
+                      << resizeRatioStr << ", keeping current value" << std::endl;
+          }
+        }
       } else if (params.count("scale")) {
-        resize_ratio = std::stof(params.at("scale"));
-        std::cerr << "[PipelineBuilderSourceNodes] Using scale from solution config: "
-                  << resize_ratio << std::endl;
+        std::string scaleStr = params.at("scale");
+        // Check if it's a placeholder that wasn't replaced
+        if (isPlaceholder(scaleStr)) {
+          std::cerr << "[PipelineBuilderSourceNodes] Warning: scale is placeholder "
+                    << scaleStr << " (not replaced), keeping current value" << std::endl;
+        } else {
+          try {
+            resize_ratio = std::stof(scaleStr);
+            std::cerr << "[PipelineBuilderSourceNodes] Using scale from solution config: "
+                      << resize_ratio << std::endl;
+          } catch (const std::exception &e) {
+            std::cerr << "[PipelineBuilderSourceNodes] Warning: Invalid scale value: "
+                      << scaleStr << ", keeping current value" << std::endl;
+          }
+        }
       }
     }
 
@@ -509,6 +538,11 @@ PipelineBuilderSourceNodes::createFileSourceNode(
     float resizeRatio =
         0.25f; // Default to 0.25 for fixed size (320x180 from 1280x720)
 
+    // Helper function to check if a string is a placeholder
+    auto isPlaceholder = [](const std::string &str) -> bool {
+      return str.size() > 3 && str[0] == '$' && str[1] == '{' && str.back() == '}';
+    };
+
     // First check additionalParams (highest priority - allows runtime override)
     auto it = req.additionalParams.find("RESIZE_RATIO");
     if (it != req.additionalParams.end() && !it->second.empty()) {
@@ -523,19 +557,43 @@ PipelineBuilderSourceNodes::createFileSourceNode(
                   << it->second << ", trying params..." << std::endl;
         // Fall through to check params
         if (params.count("resize_ratio")) {
-          resizeRatio = std::stof(params.at("resize_ratio"));
-          std::cerr
-              << "[PipelineBuilderSourceNodes] Using resize_ratio from solution config: "
-              << resizeRatio << std::endl;
+          std::string resizeRatioStr = params.at("resize_ratio");
+          // Check if it's a placeholder that wasn't replaced
+          if (isPlaceholder(resizeRatioStr)) {
+            std::cerr << "[PipelineBuilderSourceNodes] Warning: resize_ratio is placeholder "
+                      << resizeRatioStr << " (not replaced), using default" << std::endl;
+          } else {
+            try {
+              resizeRatio = std::stof(resizeRatioStr);
+              std::cerr
+                  << "[PipelineBuilderSourceNodes] Using resize_ratio from solution config: "
+                  << resizeRatio << std::endl;
+            } catch (const std::exception &e2) {
+              std::cerr << "[PipelineBuilderSourceNodes] Warning: Invalid resize_ratio value: "
+                        << resizeRatioStr << ", using default" << std::endl;
+            }
+          }
         }
       }
     } else {
       // RESIZE_RATIO not in additionalParams, check params
       if (params.count("resize_ratio")) {
-        resizeRatio = std::stof(params.at("resize_ratio"));
-        std::cerr
-            << "[PipelineBuilderSourceNodes] Using resize_ratio from solution config: "
-            << resizeRatio << std::endl;
+        std::string resizeRatioStr = params.at("resize_ratio");
+        // Check if it's a placeholder that wasn't replaced
+        if (isPlaceholder(resizeRatioStr)) {
+          std::cerr << "[PipelineBuilderSourceNodes] Warning: resize_ratio is placeholder "
+                    << resizeRatioStr << " (not replaced), using default" << std::endl;
+        } else {
+          try {
+            resizeRatio = std::stof(resizeRatioStr);
+            std::cerr
+                << "[PipelineBuilderSourceNodes] Using resize_ratio from solution config: "
+                << resizeRatio << std::endl;
+          } catch (const std::exception &e) {
+            std::cerr << "[PipelineBuilderSourceNodes] Warning: Invalid resize_ratio value: "
+                      << resizeRatioStr << ", using default" << std::endl;
+          }
+        }
       } else {
         std::cerr << "[PipelineBuilderSourceNodes] Using default resize_ratio: "
                   << resizeRatio << std::endl;
@@ -620,9 +678,25 @@ PipelineBuilderSourceNodes::createImageSourceNode(
         params.count("port_or_location") ? params.at("port_or_location") : "";
     int interval =
         params.count("interval") ? std::stoi(params.at("interval")) : 1;
-    float resizeRatio = params.count("resize_ratio")
-                            ? std::stof(params.at("resize_ratio"))
-                            : 1.0f;
+    // Helper function to check if a string is a placeholder
+    auto isPlaceholder = [](const std::string &str) -> bool {
+      return str.size() > 3 && str[0] == '$' && str[1] == '{' && str.back() == '}';
+    };
+    float resizeRatio = 1.0f; // Default
+    if (params.count("resize_ratio")) {
+      std::string resizeRatioStr = params.at("resize_ratio");
+      if (isPlaceholder(resizeRatioStr)) {
+        std::cerr << "[PipelineBuilderSourceNodes] Warning: resize_ratio is placeholder "
+                  << resizeRatioStr << " (not replaced), using default 1.0" << std::endl;
+      } else {
+        try {
+          resizeRatio = std::stof(resizeRatioStr);
+        } catch (const std::exception &e) {
+          std::cerr << "[PipelineBuilderSourceNodes] Warning: Invalid resize_ratio value: "
+                    << resizeRatioStr << ", using default 1.0" << std::endl;
+        }
+      }
+    }
     bool cycle = params.count("cycle") ? (params.at("cycle") == "true" ||
                                           params.at("cycle") == "1")
                                        : true;
@@ -706,9 +780,25 @@ PipelineBuilderSourceNodes::createRTMPSourceNode(
     int channelIndex =
         params.count("channel") ? std::stoi(params.at("channel")) : 0;
     std::string rtmpUrl = params.count("rtmp_url") ? params.at("rtmp_url") : "";
-    float resizeRatio = params.count("resize_ratio")
-                            ? std::stof(params.at("resize_ratio"))
-                            : 1.0f;
+    // Helper function to check if a string is a placeholder
+    auto isPlaceholder = [](const std::string &str) -> bool {
+      return str.size() > 3 && str[0] == '$' && str[1] == '{' && str.back() == '}';
+    };
+    float resizeRatio = 1.0f; // Default
+    if (params.count("resize_ratio")) {
+      std::string resizeRatioStr = params.at("resize_ratio");
+      if (isPlaceholder(resizeRatioStr)) {
+        std::cerr << "[PipelineBuilderSourceNodes] Warning: resize_ratio is placeholder "
+                  << resizeRatioStr << " (not replaced), using default 1.0" << std::endl;
+      } else {
+        try {
+          resizeRatio = std::stof(resizeRatioStr);
+        } catch (const std::exception &e) {
+          std::cerr << "[PipelineBuilderSourceNodes] Warning: Invalid resize_ratio value: "
+                    << resizeRatioStr << ", using default 1.0" << std::endl;
+        }
+      }
+    }
     // Get decoder from config priority list if not specified
     std::string defaultDecoder = "avdec_h264";
     std::string gstDecoderName =
@@ -778,9 +868,25 @@ PipelineBuilderSourceNodes::createUDPSourceNode(
     int channelIndex =
         params.count("channel") ? std::stoi(params.at("channel")) : 0;
     int port = params.count("port") ? std::stoi(params.at("port")) : 6000;
-    float resizeRatio = params.count("resize_ratio")
-                            ? std::stof(params.at("resize_ratio"))
-                            : 1.0f;
+    // Helper function to check if a string is a placeholder
+    auto isPlaceholder = [](const std::string &str) -> bool {
+      return str.size() > 3 && str[0] == '$' && str[1] == '{' && str.back() == '}';
+    };
+    float resizeRatio = 1.0f; // Default
+    if (params.count("resize_ratio")) {
+      std::string resizeRatioStr = params.at("resize_ratio");
+      if (isPlaceholder(resizeRatioStr)) {
+        std::cerr << "[PipelineBuilderSourceNodes] Warning: resize_ratio is placeholder "
+                  << resizeRatioStr << " (not replaced), using default 1.0" << std::endl;
+      } else {
+        try {
+          resizeRatio = std::stof(resizeRatioStr);
+        } catch (const std::exception &e) {
+          std::cerr << "[PipelineBuilderSourceNodes] Warning: Invalid resize_ratio value: "
+                    << resizeRatioStr << ", using default 1.0" << std::endl;
+        }
+      }
+    }
     // Get decoder from config priority list if not specified
     std::string defaultDecoder = "avdec_h264";
     std::string gstDecoderName =
@@ -868,9 +974,25 @@ PipelineBuilderSourceNodes::createFFmpegSourceNode(
     }
 
     int channel = params.count("channel") ? std::stoi(params.at("channel")) : 0;
-    float resizeRatio = params.count("resize_ratio")
-                            ? std::stof(params.at("resize_ratio"))
-                            : 1.0f;
+    // Helper function to check if a string is a placeholder
+    auto isPlaceholder = [](const std::string &str) -> bool {
+      return str.size() > 3 && str[0] == '$' && str[1] == '{' && str.back() == '}';
+    };
+    float resizeRatio = 1.0f; // Default
+    if (params.count("resize_ratio")) {
+      std::string resizeRatioStr = params.at("resize_ratio");
+      if (isPlaceholder(resizeRatioStr)) {
+        std::cerr << "[PipelineBuilderSourceNodes] Warning: resize_ratio is placeholder "
+                  << resizeRatioStr << " (not replaced), using default 1.0" << std::endl;
+      } else {
+        try {
+          resizeRatio = std::stof(resizeRatioStr);
+        } catch (const std::exception &e) {
+          std::cerr << "[PipelineBuilderSourceNodes] Warning: Invalid resize_ratio value: "
+                    << resizeRatioStr << ", using default 1.0" << std::endl;
+        }
+      }
+    }
 
     // Get resize_ratio from additionalParams if available
     auto resizeIt = req.additionalParams.find("RESIZE_RATIO");
