@@ -51,6 +51,14 @@ public:
                    const std::map<std::string, std::string> &params);
 
   /**
+   * @brief Create RTSP destination node (requires CVEDIX_WITH_GSTREAMER)
+   */
+  static std::shared_ptr<cvedix_nodes::cvedix_node>
+  createRTSPDestinationNode(const std::string &nodeName,
+                            const std::map<std::string, std::string> &params,
+                            const std::string &instanceId);
+
+  /**
    * @brief Extract stream key from RTMP URL
    * @param rtmpUrl RTMP URL (e.g., rtmp://host:port/path/stream_key)
    * @return Stream key or empty string if invalid

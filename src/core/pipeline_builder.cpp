@@ -37,6 +37,8 @@
 #include <cvedix/nodes/src/cvedix_rtsp_src_node.h>
 #include <cvedix/nodes/src/cvedix_udp_src_node.h>
 #include <cvedix/nodes/track/cvedix_sort_track_node.h>
+#include <cvedix/nodes/track/cvedix_bytetrack_node.h>
+#include <cvedix/nodes/track/cvedix_ocsort_track_node.h>
 #include <cvedix/objects/shapes/cvedix_line.h>
 #include <cvedix/objects/shapes/cvedix_point.h>
 #include <cvedix/objects/shapes/cvedix_size.h>
@@ -114,17 +116,18 @@
 #ifdef CVEDIX_WITH_KAFKA
 // #include <cvedix/nodes/broker/cvedix_json_kafka_broker_node.h>
 #endif
-// Temporarily disabled all broker nodes due to cereal dependency issue
-// TODO: Re-enable after fixing cereal symlink or CVEDIX SDK update
-// #include <cvedix/nodes/broker/cvedix_xml_file_broker_node.h>
-// #include <cvedix/nodes/broker/cvedix_xml_socket_broker_node.h>
-// #include <cvedix/nodes/broker/cvedix_msg_broker_node.h>
-// #include <cvedix/nodes/broker/cvedix_ba_socket_broker_node.h>
-// #include <cvedix/nodes/broker/cvedix_embeddings_socket_broker_node.h>
-// #include
-// <cvedix/nodes/broker/cvedix_embeddings_properties_socket_broker_node.h>
-// #include <cvedix/nodes/broker/cvedix_plate_socket_broker_node.h>
-// #include <cvedix/nodes/broker/cvedix_expr_socket_broker_node.h>
+// Broker nodes (require cereal - now enabled)
+#include <cvedix/nodes/broker/cvedix_xml_file_broker_node.h>
+#include <cvedix/nodes/broker/cvedix_xml_socket_broker_node.h>
+#include <cvedix/nodes/broker/cvedix_msg_broker_node.h>
+#include <cvedix/nodes/broker/cvedix_ba_socket_broker_node.h>
+#include <cvedix/nodes/broker/cvedix_embeddings_socket_broker_node.h>
+#include <cvedix/nodes/broker/cvedix_embeddings_properties_socket_broker_node.h>
+#include <cvedix/nodes/broker/cvedix_plate_socket_broker_node.h>
+#include <cvedix/nodes/broker/cvedix_expr_socket_broker_node.h>
+#ifdef CVEDIX_WITH_KAFKA
+#include <cvedix/nodes/broker/cvedix_json_kafka_broker_node.h>
+#endif
 #include <algorithm>
 #include <cctype>
 #include <cmath>
@@ -550,6 +553,7 @@ PipelineBuilder::buildPipeline(const SolutionConfig &solution,
           // Check if current node is a destination node
           bool isDestNode = (nodeConfig.nodeType == "file_des" ||
                              nodeConfig.nodeType == "rtmp_des" ||
+                             nodeConfig.nodeType == "rtsp_des" ||
                              nodeConfig.nodeType == "screen_des");
 
           // Special handling for BA OSD nodes: attach to their respective BA
@@ -629,12 +633,14 @@ PipelineBuilder::buildPipeline(const SolutionConfig &solution,
               // Check if previous node is also a destination node
               bool prevIsDestNode = (nodeTypes[attachIndex] == "file_des" ||
                                      nodeTypes[attachIndex] == "rtmp_des" ||
+                                     nodeTypes[attachIndex] == "rtsp_des" ||
                                      nodeTypes[attachIndex] == "screen_des");
               if (prevIsDestNode) {
                 // Find the last non-destination node
                 for (int i = static_cast<int>(attachIndex) - 1; i >= 0; --i) {
                   bool nodeIsDest = (nodeTypes[i] == "file_des" ||
                                      nodeTypes[i] == "rtmp_des" ||
+                                     nodeTypes[i] == "rtsp_des" ||
                                      nodeTypes[i] == "screen_des");
                   if (!nodeIsDest) {
                     attachIndex = i;
@@ -663,6 +669,7 @@ PipelineBuilder::buildPipeline(const SolutionConfig &solution,
         bool isOptionalNode =
             (nodeConfig.nodeType == "screen_des" ||
              nodeConfig.nodeType == "rtmp_des" ||
+             nodeConfig.nodeType == "rtsp_des" ||
              nodeConfig.nodeType == "json_console_broker" ||
              nodeConfig.nodeType == "json_enhanced_console_broker" ||
              nodeConfig.nodeType == "json_mqtt_broker" ||
@@ -738,7 +745,7 @@ PipelineBuilder::buildPipeline(const SolutionConfig &solution,
 
       if (fileDesNode && !nodes.empty()) {
         // Find the last non-destination node to attach to
-        // Destination nodes (file_des, rtmp_des, screen_des) don't forward
+        // Destination nodes (file_des, rtmp_des, rtsp_des, screen_des) don't forward
         // frames, so we need to attach to the source node (usually OSD node)
         std::shared_ptr<cvedix_nodes::cvedix_node> attachTarget = nullptr;
         for (int i = static_cast<int>(nodes.size()) - 1; i >= 0; --i) {
@@ -749,6 +756,10 @@ PipelineBuilder::buildPipeline(const SolutionConfig &solution,
                   node) ||
               std::dynamic_pointer_cast<cvedix_nodes::cvedix_rtmp_des_node>(
                   node) ||
+#ifdef CVEDIX_WITH_GSTREAMER
+              std::dynamic_pointer_cast<cvedix_nodes::cvedix_rtsp_des_node>(
+                  node) ||
+#endif
               std::dynamic_pointer_cast<cvedix_nodes::cvedix_screen_des_node>(
                   node);
           if (!isDestNode) {
@@ -964,7 +975,7 @@ PipelineBuilder::buildPipeline(const SolutionConfig &solution,
     for (int i = static_cast<int>(nodes.size()) - 1; i >= 0; --i) {
       bool isDestNode =
           (nodeTypes[i] == "file_des" || nodeTypes[i] == "rtmp_des" ||
-           nodeTypes[i] == "screen_des" || nodeTypes[i] == "app_des");
+           nodeTypes[i] == "rtsp_des" || nodeTypes[i] == "screen_des" || nodeTypes[i] == "app_des");
       // Also exclude broker nodes (they should be in sequence, not parallel)
       bool isBrokerNode = (nodeTypes[i] == "json_mqtt_broker" ||
                            nodeTypes[i] == "json_crossline_mqtt_broker" ||
@@ -995,7 +1006,7 @@ PipelineBuilder::buildPipeline(const SolutionConfig &solution,
     for (int i = static_cast<int>(nodes.size()) - 1; i >= 0; --i) {
       bool isDestNode =
           (nodeTypes[i] == "file_des" || nodeTypes[i] == "rtmp_des" ||
-           nodeTypes[i] == "screen_des" || nodeTypes[i] == "app_des");
+           nodeTypes[i] == "rtsp_des" || nodeTypes[i] == "screen_des" || nodeTypes[i] == "app_des");
       // Also exclude broker nodes (they should be in sequence, not parallel)
       bool isBrokerNode = (nodeTypes[i] == "json_mqtt_broker" ||
                            nodeTypes[i] == "json_jam_mqtt_broker" ||
@@ -1026,7 +1037,7 @@ PipelineBuilder::buildPipeline(const SolutionConfig &solution,
     for (int i = static_cast<int>(nodes.size()) - 1; i >= 0; --i) {
       bool isDestNode =
           (nodeTypes[i] == "file_des" || nodeTypes[i] == "rtmp_des" ||
-           nodeTypes[i] == "screen_des" || nodeTypes[i] == "app_des");
+           nodeTypes[i] == "rtsp_des" || nodeTypes[i] == "screen_des" || nodeTypes[i] == "app_des");
       // Also exclude broker nodes (they should be in sequence, not parallel)
       bool isBrokerNode = (nodeTypes[i] == "json_mqtt_broker" ||
                            nodeTypes[i] == "json_stop_mqtt_broker" ||
@@ -1045,7 +1056,7 @@ PipelineBuilder::buildPipeline(const SolutionConfig &solution,
     for (int i = static_cast<int>(nodes.size()) - 1; i >= 0; --i) {
       bool isDestNode =
           (nodeTypes[i] == "file_des" || nodeTypes[i] == "rtmp_des" ||
-           nodeTypes[i] == "screen_des" || nodeTypes[i] == "app_des");
+           nodeTypes[i] == "rtsp_des" || nodeTypes[i] == "screen_des" || nodeTypes[i] == "app_des");
       if (!isDestNode) {
         return nodes[i];
       }
@@ -1736,10 +1747,18 @@ PipelineBuilder::createNode(const SolutionConfig::NodeConfig &nodeConfig,
 #endif
     } else if (nodeConfig.nodeType == "restoration") {
       return PipelineBuilderDetectorNodes::createRestorationNode(nodeName, params, req);
+    } else if (nodeConfig.nodeType == "frame_fusion") {
+      return PipelineBuilderOtherNodes::createFrameFusionNode(nodeName, params, req);
+    } else if (nodeConfig.nodeType == "record") {
+      return PipelineBuilderOtherNodes::createRecordNode(nodeName, params, req);
     }
     // Tracking nodes
     else if (nodeConfig.nodeType == "sort_track") {
       return PipelineBuilderOtherNodes::createSORTTrackNode(nodeName, params);
+    } else if (nodeConfig.nodeType == "bytetrack" || nodeConfig.nodeType == "bytetrack_track") {
+      return PipelineBuilderOtherNodes::createByteTrackNode(nodeName, params);
+    } else if (nodeConfig.nodeType == "ocsort" || nodeConfig.nodeType == "ocsort_track") {
+      return PipelineBuilderOtherNodes::createOCSortTrackNode(nodeName, params);
     }
     // Behavior Analysis nodes
     else if (nodeConfig.nodeType == "ba_crossline") {
@@ -1765,10 +1784,8 @@ PipelineBuilder::createNode(const SolutionConfig::NodeConfig &nodeConfig,
     else if (nodeConfig.nodeType == "json_console_broker") {
       return PipelineBuilderBrokerNodes::createJSONConsoleBrokerNode(nodeName, params, req);
     } else if (nodeConfig.nodeType == "json_enhanced_console_broker") {
-      std::cerr << "[PipelineBuilder] json_enhanced_console_broker is "
-                   "temporarily disabled due to cereal dependency issue"
-                << std::endl;
-      return nullptr;
+      // json_enhanced_console_broker requires cereal - now enabled
+      return PipelineBuilderBrokerNodes::createJSONEnhancedConsoleBrokerNode(nodeName, params, req);
     } else if (nodeConfig.nodeType == "json_mqtt_broker") {
 #ifdef CVEDIX_WITH_MQTT
       // CRITICAL: cvedix_json_mqtt_broker_node is currently broken and causes
@@ -1819,56 +1836,44 @@ PipelineBuilder::createNode(const SolutionConfig::NodeConfig &nodeConfig,
       return nullptr;
 #endif
     } else if (nodeConfig.nodeType == "json_kafka_broker") {
-      std::cerr << "[PipelineBuilder] json_kafka_broker is temporarily "
-                   "disabled due to cereal dependency issue"
+#ifdef CVEDIX_WITH_KAFKA
+      return PipelineBuilderBrokerNodes::createJSONKafkaBrokerNode(nodeName, params, req);
+#else
+      std::cerr << "[PipelineBuilder] json_kafka_broker requires "
+                   "CVEDIX_WITH_KAFKA to be enabled"
                 << std::endl;
       return nullptr;
+#endif
+    } else if (nodeConfig.nodeType == "sse_broker") {
+      return PipelineBuilderBrokerNodes::createSSEBrokerNode(nodeName, params, req);
     } else if (nodeConfig.nodeType == "xml_file_broker") {
-      std::cerr << "[PipelineBuilder] xml_file_broker is temporarily disabled "
-                   "due to cereal dependency issue"
-                << std::endl;
-      return nullptr;
+      return PipelineBuilderBrokerNodes::createXMLFileBrokerNode(nodeName, params, req);
     } else if (nodeConfig.nodeType == "xml_socket_broker") {
-      std::cerr << "[PipelineBuilder] xml_socket_broker is temporarily "
-                   "disabled due to cereal dependency issue"
-                << std::endl;
-      return nullptr;
+      return PipelineBuilderBrokerNodes::createXMLSocketBrokerNode(nodeName, params, req);
     } else if (nodeConfig.nodeType == "msg_broker") {
-      std::cerr << "[PipelineBuilder] msg_broker is temporarily disabled due "
-                   "to cereal dependency issue"
+      // msg_broker is abstract class, cannot be instantiated
+      std::cerr << "[PipelineBuilder] msg_broker is an abstract class and cannot be instantiated. "
+                   "Use specific broker types (xml_file_broker, xml_socket_broker, etc.) instead."
                 << std::endl;
       return nullptr;
     } else if (nodeConfig.nodeType == "ba_socket_broker") {
-      std::cerr << "[PipelineBuilder] ba_socket_broker is temporarily disabled "
-                   "due to cereal dependency issue"
-                << std::endl;
-      return nullptr;
+      return PipelineBuilderBrokerNodes::createBASocketBrokerNode(nodeName, params, req);
     } else if (nodeConfig.nodeType == "embeddings_socket_broker") {
-      std::cerr << "[PipelineBuilder] embeddings_socket_broker is temporarily "
-                   "disabled due to cereal dependency issue"
-                << std::endl;
-      return nullptr;
+      return PipelineBuilderBrokerNodes::createEmbeddingsSocketBrokerNode(nodeName, params, req);
     } else if (nodeConfig.nodeType == "embeddings_properties_socket_broker") {
-      std::cerr << "[PipelineBuilder] embeddings_properties_socket_broker is "
-                   "temporarily disabled due to cereal dependency issue"
-                << std::endl;
-      return nullptr;
+      return PipelineBuilderBrokerNodes::createEmbeddingsPropertiesSocketBrokerNode(nodeName, params, req);
     } else if (nodeConfig.nodeType == "plate_socket_broker") {
-      std::cerr << "[PipelineBuilder] plate_socket_broker is temporarily "
-                   "disabled due to cereal dependency issue"
-                << std::endl;
-      return nullptr;
+      return PipelineBuilderBrokerNodes::createPlateSocketBrokerNode(nodeName, params, req);
     } else if (nodeConfig.nodeType == "expr_socket_broker") {
-      std::cerr << "[PipelineBuilder] expr_socket_broker is temporarily "
-                   "disabled due to cereal dependency issue"
-                << std::endl;
-      return nullptr;
+      return PipelineBuilderBrokerNodes::createExpressionSocketBrokerNode(nodeName, params, req);
     }
     // Destination nodes
     else if (nodeConfig.nodeType == "file_des") {
       return PipelineBuilderDestinationNodes::createFileDestinationNode(nodeName, params, instanceId);
     } else if (nodeConfig.nodeType == "rtmp_des") {
       return PipelineBuilderDestinationNodes::createRTMPDestinationNode(nodeName, params, req, instanceId, existingRTMPStreamKeys);
+    } else if (nodeConfig.nodeType == "rtsp_des") {
+      return PipelineBuilderDestinationNodes::createRTSPDestinationNode(nodeName, params, instanceId);
     } else if (nodeConfig.nodeType == "screen_des") {
       return PipelineBuilderDestinationNodes::createScreenDestinationNode(nodeName, params);
     } else {
@@ -4023,9 +4028,7 @@ public:
 
 #endif
 // Note: Broker node implementations have been moved to PipelineBuilderBrokerNodes
-
-// Temporarily disabled all broker node implementations due to cereal dependency
-// issue
+// All broker nodes are now enabled (cereal dependency resolved)
 /*
 
 

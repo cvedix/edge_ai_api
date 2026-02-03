@@ -5,6 +5,9 @@
 #include <cvedix/nodes/des/cvedix_file_des_node.h>
 #include <cvedix/nodes/des/cvedix_rtmp_des_node.h>
 #include <cvedix/nodes/des/cvedix_screen_des_node.h>
+#ifdef CVEDIX_WITH_GSTREAMER
+#include <cvedix/nodes/des/cvedix_rtsp_des_node.h>
+#endif
 #include <cvedix/objects/shapes/cvedix_size.h>
 #include <filesystem>
 #include <algorithm>
@@ -479,5 +482,89 @@ PipelineBuilderDestinationNodes::createAppDesNode(
               << std::endl;
     throw std::runtime_error("Unknown error creating app_des node");
   }
+}
+
+std::shared_ptr<cvedix_nodes::cvedix_node>
+PipelineBuilderDestinationNodes::createRTSPDestinationNode(
+    const std::string &nodeName,
+    const std::map<std::string, std::string> &params,
+    const std::string &instanceId) {
+
+#ifdef CVEDIX_WITH_GSTREAMER
+  try {
+    // Get parameters with defaults
+    // Constructor: cvedix_rtsp_des_node(node_name, channel_index, rtsp_port, 
+    //                                   rtsp_name, resolution_w_h, bitrate, osd, gst_encoder_name)
+    int channelIndex = params.count("channel") ? std::stoi(params.at("channel")) : 0;
+    int rtspPort = params.count("rtsp_port") ? std::stoi(params.at("rtsp_port")) : 9000;
+    std::string rtspName = params.count("rtsp_name") ? params.at("rtsp_name") : 
+                          (params.count("stream_name") ? params.at("stream_name") : 
+                           ("stream_" + instanceId));
+    int bitrate = params.count("bitrate") ? std::stoi(params.at("bitrate")) : 512;
+    bool osd = params.count("osd") && 
+               (params.at("osd") == "true" || params.at("osd") == "1");
+    std::string encoderName = params.count("encoder") ? params.at("encoder") : "x264enc";
+
+    // Parse resolution if provided (format: "widthxheight" or "width,height")
+    cvedix_objects::cvedix_size resolution = {};
+    if (params.count("resolution")) {
+      std::string resStr = params.at("resolution");
+      size_t xPos = resStr.find('x');
+      size_t commaPos = resStr.find(',');
+      if (xPos != std::string::npos) {
+        resolution.width = std::stoi(resStr.substr(0, xPos));
+        resolution.height = std::stoi(resStr.substr(xPos + 1));
+      } else if (commaPos != std::string::npos) {
+        resolution.width = std::stoi(resStr.substr(0, commaPos));
+        resolution.height = std::stoi(resStr.substr(commaPos + 1));
+      }
+    }
+
+    // Validate node name
+    if (nodeName.empty()) {
+      throw std::invalid_argument("Node name cannot be empty");
+    }
+
+    // Validate RTSP port
+    if (rtspPort < 1 || rtspPort > 65535) {
+      throw std::invalid_argument("RTSP port must be between 1 and 65535");
+    }
+
+    std::cerr << "[PipelineBuilderDestinationNodes] Creating RTSP destination node:" << std::endl;
+    std::cerr << "  Name: '" << nodeName << "'" << std::endl;
+    std::cerr << "  Channel: " << channelIndex << std::endl;
+    std::cerr << "  RTSP Port: " << rtspPort << std::endl;
+    std::cerr << "  Stream Name: '" << rtspName << "'" << std::endl;
+    std::cerr << "  Bitrate: " << bitrate << " kbps" << std::endl;
+    std::cerr << "  OSD: " << (osd ? "enabled" : "disabled") << std::endl;
+    if (resolution.width > 0 && resolution.height > 0) {
+      std::cerr << "  Resolution: " << resolution.width << "x" << resolution.height << std::endl;
+    }
+
+    auto node = std::make_shared<cvedix_nodes::cvedix_rtsp_des_node>(
+        nodeName, channelIndex, rtspPort, rtspName, resolution, bitrate, osd, encoderName);
+
+    std::cerr << "[PipelineBuilderDestinationNodes] ✓ RTSP destination node created successfully" << std::endl;
+    std::cerr << "[PipelineBuilderDestinationNodes] Stream URL: rtsp://localhost:" << rtspPort 
+              << "/" << rtspName << std::endl;
+    return node;
+  } catch (const std::exception &e) {
+    std::cerr << "[PipelineBuilderDestinationNodes] Exception in createRTSPDestinationNode: "
+              << e.what() << std::endl;
+    throw;
+  } catch (...) {
+    std::cerr << "[PipelineBuilderDestinationNodes] Unknown exception in createRTSPDestinationNode"
+              << std::endl;
+    throw std::runtime_error("Unknown error creating rtsp_des node");
+  }
+#else
+  std::cerr << "[PipelineBuilderDestinationNodes] ⚠ RTSP destination node requires "
+               "CVEDIX_WITH_GSTREAMER to be enabled" << std::endl;
+  std::cerr << "[PipelineBuilderDestinationNodes] ⚠ Install: sudo apt-get install "
+               "libgstrtspserver-1.0-dev gstreamer1.0-rtsp" << std::endl;
+  std::cerr << "[PipelineBuilderDestinationNodes] ⚠ Recompile with -DCVEDIX_WITH_GSTREAMER" 
+            << std::endl;
+  return nullptr;
+#endif
 }
 
