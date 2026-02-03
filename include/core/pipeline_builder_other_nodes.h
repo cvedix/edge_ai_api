@@ -26,6 +26,20 @@ public:
   createSORTTrackNode(const std::string &nodeName,
                       const std::map<std::string, std::string> &params);
 
+  /**
+   * @brief Create ByteTrack tracker node
+   */
+  static std::shared_ptr<cvedix_nodes::cvedix_node>
+  createByteTrackNode(const std::string &nodeName,
+                      const std::map<std::string, std::string> &params);
+
+  /**
+   * @brief Create OCSort tracker node
+   */
+  static std::shared_ptr<cvedix_nodes::cvedix_node>
+  createOCSortTrackNode(const std::string &nodeName,
+                        const std::map<std::string, std::string> &params);
+
   // ========== OSD Nodes ==========
 
   /**
@@ -42,5 +56,23 @@ public:
   createOSDv3Node(const std::string &nodeName,
                   const std::map<std::string, std::string> &params,
                   const CreateInstanceRequest &req);
+
+  // ========== Processing Nodes ==========
+
+  /**
+   * @brief Create frame fusion node
+   */
+  static std::shared_ptr<cvedix_nodes::cvedix_node>
+  createFrameFusionNode(const std::string &nodeName,
+                        const std::map<std::string, std::string> &params,
+                        const CreateInstanceRequest &req);
+
+  /**
+   * @brief Create record node
+   */
+  static std::shared_ptr<cvedix_nodes::cvedix_node>
+  createRecordNode(const std::string &nodeName,
+                   const std::map<std::string, std::string> &params,
+                   const CreateInstanceRequest &req);
 };
 
