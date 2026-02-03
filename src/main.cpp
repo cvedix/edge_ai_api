@@ -10,6 +10,7 @@
 #ifdef ENABLE_SYSTEM_INFO_HANDLER
 #include "api/system_info_handler.h"
 #endif
+#include "api/license_handler.h"
 #include "api/ai_websocket.h"
 #include "api/config_handler.h"
 #include "api/endpoints_handler.h"
@@ -2089,6 +2090,7 @@ int main(int argc, char *argv[]) {
 #ifdef ENABLE_SYSTEM_INFO_HANDLER
     static SystemInfoHandler systemInfoHandler;
 #endif
+    static LicenseHandler licenseHandler;
 #ifdef ENABLE_METRICS_HANDLER
     static MetricsHandler metricsHandler;
 #endif
