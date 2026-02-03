@@ -271,6 +271,7 @@ set(SOURCES
     src/api/node_handler.cpp
     src/api/recognition_handler.cpp
     src/api/system_info_handler.cpp
+    src/api/license_handler.cpp
     src/api/log_handler.cpp
     src/models/model_upload_handler.cpp
     src/videos/video_upload_handler.cpp
