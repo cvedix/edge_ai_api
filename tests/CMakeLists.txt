@@ -250,7 +250,7 @@ if(CVEDIX_WITH_MQTT)
             /usr/lib
             /usr/lib/x86_64-linux-gnu
             /usr/local/lib
-            /opt/cvedix/lib
+            /opt/cvedix-ai-runtime/lib/cvedix
     )
 
     if(MOSQUITTO_LIBRARY)

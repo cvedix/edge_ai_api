@@ -28,7 +28,12 @@ if [ -d "$BUILD_LIB_DIR" ]; then
 fi
 
 # Copy CVEDIX SDK libraries if available
-if [ -d "/opt/cvedix/lib" ]; then
+# Copy CVEDIX SDK libraries if available
+# Check both old and new SDK locations for compatibility
+if [ -d "/opt/cvedix-ai-runtime/lib/cvedix" ]; then
+    cp -L /opt/cvedix-ai-runtime/lib/cvedix/libcvedix*.so* "$LIB_TEMP_DIR/" 2>/dev/null || true
+    cp -L /opt/cvedix-ai-runtime/lib/cvedix/libtinyexpr.so* "$LIB_TEMP_DIR/" 2>/dev/null || true
+elif [ -d "/opt/cvedix/lib" ]; then
     cp -L /opt/cvedix/lib/libcvedix*.so* "$LIB_TEMP_DIR/" 2>/dev/null || true
     cp -L /opt/cvedix/lib/libtinyexpr.so* "$LIB_TEMP_DIR/" 2>/dev/null || true
 fi
