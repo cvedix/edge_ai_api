@@ -127,6 +127,11 @@ void SolutionRegistry::initializeDefaultSolutions() {
   registerBAStopMQTTDefaultSolution();          // ba_stop_mqtt_default
   registerSecuRTSolution();                     // securt
 
+  // Register specialized detection solutions
+  registerFireSmokeDetectionSolution();          // fire_smoke_detection
+  registerObstacleDetectionSolution();           // obstacle_detection
+  registerWrongWayDetectionSolution();           // wrong_way_detection
+
 #ifdef CVEDIX_WITH_RKNN
   registerRKNNYOLOv11DetectionSolution();
 #endif
@@ -1770,6 +1775,168 @@ void SolutionRegistry::registerSecuRTSolution() {
   config.defaults["detectorMode"] = "SmartDetection";
   config.defaults["detectionSensitivity"] = "Medium";
   config.defaults["movementSensitivity"] = "Medium";
+  config.defaults["sensorModality"] = "RGB";
+  config.defaults["RESIZE_RATIO"] = "1.0";
+
+  registerSolution(config);
+}
+
+void SolutionRegistry::registerFireSmokeDetectionSolution() {
+  SolutionConfig config;
+  config.solutionId = "fire_smoke_detection";
+  config.solutionName = "Fire/Smoke Detection";
+  config.solutionType = "object_detection";
+  config.isDefault = true;
+
+  // File Source Node
+  SolutionConfig::NodeConfig fileSrc;
+  fileSrc.nodeType = "file_src";
+  fileSrc.nodeName = "file_src_{instanceId}";
+  fileSrc.parameters["file_path"] = "${FILE_PATH}";
+  fileSrc.parameters["channel"] = "0";
+  fileSrc.parameters["resize_ratio"] = "${RESIZE_RATIO}";
+  config.pipeline.push_back(fileSrc);
+
+  // YOLO Detector Node (for fire/smoke detection)
+  SolutionConfig::NodeConfig yoloDetector;
+  yoloDetector.nodeType = "yolo_detector";
+  yoloDetector.nodeName = "fire_smoke_detector_{instanceId}";
+  yoloDetector.parameters["weights_path"] = "${MODEL_PATH}";
+  yoloDetector.parameters["config_path"] = "${CONFIG_PATH}";
+  yoloDetector.parameters["labels_path"] = "${LABELS_PATH}";
+  yoloDetector.parameters["score_threshold"] = "${detectionSensitivity}";
+  yoloDetector.parameters["nms_threshold"] = "0.4";
+  config.pipeline.push_back(yoloDetector);
+
+  // OSD v3 Node
+  SolutionConfig::NodeConfig osd;
+  osd.nodeType = "osd_v3";
+  osd.nodeName = "osd_{instanceId}";
+  osd.parameters["labels_path"] = "${LABELS_PATH}";
+  config.pipeline.push_back(osd);
+
+  // File Destination Node
+  SolutionConfig::NodeConfig fileDes;
+  fileDes.nodeType = "file_des";
+  fileDes.nodeName = "file_des_{instanceId}";
+  fileDes.parameters["save_dir"] = "./output/{instanceId}";
+  fileDes.parameters["name_prefix"] = "fire_smoke_detection";
+  fileDes.parameters["osd"] = "true";
+  config.pipeline.push_back(fileDes);
+
+  // Default configurations
+  config.defaults["detectorMode"] = "SmartDetection";
+  config.defaults["detectionSensitivity"] = "0.5";
+  config.defaults["sensorModality"] = "RGB";
+  config.defaults["RESIZE_RATIO"] = "1.0";
+
+  registerSolution(config);
+}
+
+void SolutionRegistry::registerObstacleDetectionSolution() {
+  SolutionConfig config;
+  config.solutionId = "obstacle_detection";
+  config.solutionName = "Obstacle Detection";
+  config.solutionType = "object_detection";
+  config.isDefault = true;
+
+  // File Source Node
+  SolutionConfig::NodeConfig fileSrc;
+  fileSrc.nodeType = "file_src";
+  fileSrc.nodeName = "file_src_{instanceId}";
+  fileSrc.parameters["file_path"] = "${FILE_PATH}";
+  fileSrc.parameters["channel"] = "0";
+  fileSrc.parameters["resize_ratio"] = "${RESIZE_RATIO}";
+  config.pipeline.push_back(fileSrc);
+
+  // YOLO Detector Node (for obstacle detection)
+  SolutionConfig::NodeConfig yoloDetector;
+  yoloDetector.nodeType = "yolo_detector";
+  yoloDetector.nodeName = "obstacle_detector_{instanceId}";
+  yoloDetector.parameters["weights_path"] = "${MODEL_PATH}";
+  yoloDetector.parameters["config_path"] = "${CONFIG_PATH}";
+  yoloDetector.parameters["labels_path"] = "${LABELS_PATH}";
+  yoloDetector.parameters["score_threshold"] = "${detectionSensitivity}";
+  yoloDetector.parameters["nms_threshold"] = "0.4";
+  config.pipeline.push_back(yoloDetector);
+
+  // OSD v3 Node
+  SolutionConfig::NodeConfig osd;
+  osd.nodeType = "osd_v3";
+  osd.nodeName = "osd_{instanceId}";
+  osd.parameters["labels_path"] = "${LABELS_PATH}";
+  config.pipeline.push_back(osd);
+
+  // File Destination Node
+  SolutionConfig::NodeConfig fileDes;
+  fileDes.nodeType = "file_des";
+  fileDes.nodeName = "file_des_{instanceId}";
+  fileDes.parameters["save_dir"] = "./output/{instanceId}";
+  fileDes.parameters["name_prefix"] = "obstacle_detection";
+  fileDes.parameters["osd"] = "true";
+  config.pipeline.push_back(fileDes);
+
+  // Default configurations
+  config.defaults["detectorMode"] = "SmartDetection";
+  config.defaults["detectionSensitivity"] = "0.5";
+  config.defaults["sensorModality"] = "RGB";
+  config.defaults["RESIZE_RATIO"] = "1.0";
+
+  registerSolution(config);
+}
+
+void SolutionRegistry::registerWrongWayDetectionSolution() {
+  SolutionConfig config;
+  config.solutionId = "wrong_way_detection";
+  config.solutionName = "Wrong Way Detection";
+  config.solutionType = "object_detection";
+  config.isDefault = true;
+
+  // File Source Node
+  SolutionConfig::NodeConfig fileSrc;
+  fileSrc.nodeType = "file_src";
+  fileSrc.nodeName = "file_src_{instanceId}";
+  fileSrc.parameters["file_path"] = "${FILE_PATH}";
+  fileSrc.parameters["channel"] = "0";
+  fileSrc.parameters["resize_ratio"] = "${RESIZE_RATIO}";
+  config.pipeline.push_back(fileSrc);
+
+  // YOLO Detector Node (for vehicle detection)
+  SolutionConfig::NodeConfig yoloDetector;
+  yoloDetector.nodeType = "yolo_detector";
+  yoloDetector.nodeName = "vehicle_detector_{instanceId}";
+  yoloDetector.parameters["weights_path"] = "${MODEL_PATH}";
+  yoloDetector.parameters["config_path"] = "${CONFIG_PATH}";
+  yoloDetector.parameters["labels_path"] = "${LABELS_PATH}";
+  yoloDetector.parameters["score_threshold"] = "${detectionSensitivity}";
+  yoloDetector.parameters["nms_threshold"] = "0.4";
+  config.pipeline.push_back(yoloDetector);
+
+  // SORT Tracker Node (for tracking vehicles)
+  SolutionConfig::NodeConfig sortTrack;
+  sortTrack.nodeType = "sort_track";
+  sortTrack.nodeName = "vehicle_tracker_{instanceId}";
+  config.pipeline.push_back(sortTrack);
+
+  // OSD v3 Node
+  SolutionConfig::NodeConfig osd;
+  osd.nodeType = "osd_v3";
+  osd.nodeName = "osd_{instanceId}";
+  osd.parameters["labels_path"] = "${LABELS_PATH}";
+  config.pipeline.push_back(osd);
+
+  // File Destination Node
+  SolutionConfig::NodeConfig fileDes;
+  fileDes.nodeType = "file_des";
+  fileDes.nodeName = "file_des_{instanceId}";
+  fileDes.parameters["save_dir"] = "./output/{instanceId}";
+  fileDes.parameters["name_prefix"] = "wrong_way_detection";
+  fileDes.parameters["osd"] = "true";
+  config.pipeline.push_back(fileDes);
+
+  // Default configurations
+  config.defaults["detectorMode"] = "SmartDetection";
+  config.defaults["detectionSensitivity"] = "0.5";
   config.defaults["sensorModality"] = "RGB";
   config.defaults["RESIZE_RATIO"] = "1.0";
 
