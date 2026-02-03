@@ -144,5 +144,15 @@ public:
       const std::string &nodeName,
       const std::map<std::string, std::string> &params,
       const CreateInstanceRequest &req);
+
+  // ========== SSE Broker Nodes ==========
+
+  /**
+   * @brief Create SSE broker node
+   */
+  static std::shared_ptr<cvedix_nodes::cvedix_node>
+  createSSEBrokerNode(const std::string &nodeName,
+                      const std::map<std::string, std::string> &params,
+                      const CreateInstanceRequest &req);
 };
 

@@ -35,17 +35,20 @@ class cvedix_json_stop_mqtt_broker_node;
 #ifdef CVEDIX_WITH_KAFKA
 // #include <cvedix/nodes/broker/cvedix_json_kafka_broker_node.h>
 #endif
-// Temporarily disabled all broker nodes due to cereal dependency issue
-// TODO: Re-enable after fixing cereal symlink or CVEDIX SDK update
-// #include <cvedix/nodes/broker/cvedix_xml_file_broker_node.h>
-// #include <cvedix/nodes/broker/cvedix_xml_socket_broker_node.h>
-// #include <cvedix/nodes/broker/cvedix_msg_broker_node.h>
-// #include <cvedix/nodes/broker/cvedix_ba_socket_broker_node.h>
-// #include <cvedix/nodes/broker/cvedix_embeddings_socket_broker_node.h>
-// #include
-// <cvedix/nodes/broker/cvedix_embeddings_properties_socket_broker_node.h>
-// #include <cvedix/nodes/broker/cvedix_plate_socket_broker_node.h>
-// #include <cvedix/nodes/broker/cvedix_expr_socket_broker_node.h>
+// Broker nodes (require cereal - now enabled)
+#include <cvedix/nodes/broker/cvedix_xml_file_broker_node.h>
+#include <cvedix/nodes/broker/cvedix_xml_socket_broker_node.h>
+#include <cvedix/nodes/broker/cvedix_msg_broker_node.h>
+#include <cvedix/nodes/broker/cvedix_ba_socket_broker_node.h>
+#include <cvedix/nodes/broker/cvedix_embeddings_socket_broker_node.h>
+#include <cvedix/nodes/broker/cvedix_embeddings_properties_socket_broker_node.h>
+#include <cvedix/nodes/broker/cvedix_plate_socket_broker_node.h>
+#include <cvedix/nodes/broker/cvedix_expr_socket_broker_node.h>
+// SSE broker node (doesn't require cereal)
+#include <cvedix/nodes/broker/cvedix_sse_broker_node.h>
+#ifdef CVEDIX_WITH_KAFKA
+#include <cvedix/nodes/broker/cvedix_json_kafka_broker_node.h>
+#endif
 
 namespace fs = std::filesystem;
 
@@ -916,17 +919,14 @@ PipelineBuilderBrokerNodes::createJSONKafkaBrokerNode(
     std::cerr << "  Topic name: '" << topicName << "'" << std::endl;
     std::cerr << "  Broke for: " << brokeForStr << std::endl;
 
-    // Note: cvedix_json_kafka_broker_node is not available in CVEDIX SDK
-    throw std::runtime_error("JSON Kafka broker node is not available in CVEDIX SDK");
-    
-    // auto node = std::make_shared<cvedix_nodes::cvedix_json_kafka_broker_node>(
-    //     nodeName, kafkaServers, topicName, brokeFor, warnThreshold,
-    //     ignoreThreshold);
+#ifdef CVEDIX_WITH_KAFKA
+    auto node = std::make_shared<cvedix_nodes::cvedix_json_kafka_broker_node>(
+        nodeName, kafkaServers, topicName, brokeFor, warnThreshold,
+        ignoreThreshold);
 
-    // std::cerr
-    //     << "[PipelineBuilderBrokerNodes] ✓ JSON Kafka broker node created successfully"
-    //     << std::endl;
-    // return node;
+    std::cerr << "[PipelineBuilderBrokerNodes] ✓ JSON Kafka broker node created successfully"
+        << std::endl;
+    return node;
   } catch (const std::exception &e) {
     std::cerr << "[PipelineBuilderBrokerNodes] Exception in createJSONKafkaBrokerNode: "
               << e.what() << std::endl;
@@ -934,17 +934,13 @@ PipelineBuilderBrokerNodes::createJSONKafkaBrokerNode(
   }
 }
 
-// Note: XML file broker node is not available in CVEDIX SDK
-// Commenting out until it's available
-/*
 std::shared_ptr<cvedix_nodes::cvedix_node>
 PipelineBuilderBrokerNodes::createXMLFileBrokerNode( const std::string& nodeName, const
 std::map<std::string, std::string>& params, const CreateInstanceRequest& req) {
 
     try {
-        std::string brokeForStr = params.count("broke_for") ?
-params.at("broke_for") : "NORMAL"; cvedix_nodes::cvedix_broke_for brokeFor =
-cvedix_nodes::cvedix_broke_for::NORMAL;
+        std::string brokeForStr = params.count("broke_for") ? params.at("broke_for") : "NORMAL"; 
+        cvedix_nodes::cvedix_broke_for brokeFor = cvedix_nodes::cvedix_broke_for::NORMAL;
 
         if (brokeForStr == "FACE") {
             brokeFor = cvedix_nodes::cvedix_broke_for::FACE;
@@ -954,18 +950,20 @@ cvedix_nodes::cvedix_broke_for::NORMAL;
             brokeFor = cvedix_nodes::cvedix_broke_for::POSE;
         }
 
-        std::string filePath = params.count("file_path") ?
-params.at("file_path") : ""; if (filePath.empty()) { auto it =
-req.additionalParams.find("XML_FILE_PATH"); if (it != req.additionalParams.end()
-&& !it->second.empty()) { filePath = it->second; } else {
-                // Default fake data
+        std::string filePath = params.count("file_path") ? params.at("file_path") : ""; 
+        if (filePath.empty()) { 
+            auto it = req.additionalParams.find("XML_FILE_PATH"); 
+            if (it != req.additionalParams.end() && !it->second.empty()) { 
+                filePath = it->second; 
+            } else {
+                // Default path
                 filePath = "./output/broker_output.xml";
             }
         }
 
         int warnThreshold = params.count("broking_cache_warn_threshold") ?
-std::stoi(params.at("broking_cache_warn_threshold")) : 50; int ignoreThreshold =
-params.count("broking_cache_ignore_threshold") ?
+std::stoi(params.at("broking_cache_warn_threshold")) : 50; 
+        int ignoreThreshold = params.count("broking_cache_ignore_threshold") ?
 std::stoi(params.at("broking_cache_ignore_threshold")) : 200;
 
         if (nodeName.empty()) {
@@ -989,14 +987,9 @@ std::stoi(params.at("broking_cache_ignore_threshold")) : 200;
         return node;
     } catch (const std::exception &e) {
         std::cerr << "[PipelineBuilderBrokerNodes] Exception in createXMLFileBrokerNode: "
-<< e.what() << std::endl; throw;
+<< e.what() << std::endl; 
+        throw;
     }
-}
-*/
-std::shared_ptr<cvedix_nodes::cvedix_node>
-PipelineBuilderBrokerNodes::createXMLFileBrokerNode( const std::string& nodeName, const
-std::map<std::string, std::string>& params, const CreateInstanceRequest& req) {
-    throw std::runtime_error("XML file broker node is not available in CVEDIX SDK");
 }
 
 std::shared_ptr<cvedix_nodes::cvedix_node>
@@ -1057,19 +1050,12 @@ std::stoi(params.at("broking_cache_ignore_threshold")) : 200;
         std::cerr << "  Destination port: " << desPort << std::endl;
         std::cerr << "  Broke for: " << brokeForStr << std::endl;
 
-        // Note: cvedix_xml_socket_broker_node is not available in CVEDIX SDK
-        throw std::runtime_error("XML socket broker node is not available in CVEDIX SDK");
-        
-        // auto node =
-        // std::make_shared<cvedix_nodes::cvedix_xml_socket_broker_node>( nodeName, desIp,
-        //     desPort,
-        //     brokeFor,
-        //     warnThreshold,
-        //     ignoreThreshold
-        // );
+        auto node = std::make_shared<cvedix_nodes::cvedix_xml_socket_broker_node>(
+            nodeName, desIp, desPort, brokeFor, warnThreshold, ignoreThreshold
+        );
 
-        // std::cerr << "[PipelineBuilderBrokerNodes] ✓ XML socket broker node created successfully" << std::endl;
-        // return node;
+        std::cerr << "[PipelineBuilderBrokerNodes] ✓ XML socket broker node created successfully" << std::endl;
+        return node;
     } catch (const std::exception &e) {
         std::cerr << "[PipelineBuilderBrokerNodes] Exception in createXMLSocketBrokerNode: " << e.what() << std::endl;
         throw;
@@ -1181,19 +1167,12 @@ std::stoi(params.at("broking_cache_ignore_threshold")) : 200;
         std::cerr << "  Destination port: " << desPort << std::endl;
         std::cerr << "  Broke for: " << brokeForStr << std::endl;
 
-        // Note: cvedix_ba_socket_broker_node is not available in CVEDIX SDK
-        throw std::runtime_error("BA socket broker node is not available in CVEDIX SDK");
-        
-        // auto node =
-        // std::make_shared<cvedix_nodes::cvedix_ba_socket_broker_node>( nodeName, desIp,
-        //     desPort,
-        //     brokeFor,
-        //     warnThreshold,
-        //     ignoreThreshold
-        // );
+        auto node = std::make_shared<cvedix_nodes::cvedix_ba_socket_broker_node>(
+            nodeName, desIp, desPort, brokeFor, warnThreshold, ignoreThreshold
+        );
 
-        // std::cerr << "[PipelineBuilderBrokerNodes] ✓ BA socket broker node created successfully" << std::endl;
-        // return node;
+        std::cerr << "[PipelineBuilderBrokerNodes] ✓ BA socket broker node created successfully" << std::endl;
+        return node;
     } catch (const std::exception &e) {
         std::cerr << "[PipelineBuilderBrokerNodes] Exception in createBASocketBrokerNode: " << e.what() << std::endl;
         throw;
@@ -1264,24 +1243,13 @@ std::stoi(params.at("broking_cache_ignore_threshold")) : 200;
         std::cerr << "  Destination port: " << desPort << std::endl;
         std::cerr << "  Cropped dir: '" << croppedDir << "'" << std::endl;
 
-        // Note: cvedix_embeddings_socket_broker_node is not available in CVEDIX SDK
-        throw std::runtime_error("Embeddings socket broker node is not available in CVEDIX SDK");
-        
-        // auto node =
-        // std::make_shared<cvedix_nodes::cvedix_embeddings_socket_broker_node>( nodeName,
-        //     desIp,
-        //     desPort,
-        //     croppedDir,
-        //     minCropWidth,
-        //     minCropHeight,
-        //     brokeFor,
-        //     onlyForTracked,
-        //     warnThreshold,
-        //     ignoreThreshold
-        // );
+        auto node = std::make_shared<cvedix_nodes::cvedix_embeddings_socket_broker_node>(
+            nodeName, desIp, desPort, croppedDir, minCropWidth, minCropHeight,
+            brokeFor, onlyForTracked, warnThreshold, ignoreThreshold
+        );
 
-        // std::cerr << "[PipelineBuilderBrokerNodes] ✓ Embeddings socket broker node created successfully" << std::endl;
-        // return node;
+        std::cerr << "[PipelineBuilderBrokerNodes] ✓ Embeddings socket broker node created successfully" << std::endl;
+        return node;
     } catch (const std::exception &e) {
         std::cerr << "[PipelineBuilderBrokerNodes] Exception in createEmbeddingsSocketBrokerNode: " << e.what() << std::endl;
         throw;
@@ -1348,25 +1316,13 @@ std::stoi(params.at("broking_cache_ignore_threshold")) : 200;
         std::cerr << "  Destination IP: '" << desIp << "'" << std::endl;
         std::cerr << "  Destination port: " << desPort << std::endl;
 
-        // Note: cvedix_embeddings_properties_socket_broker_node is not available in CVEDIX SDK
-        throw std::runtime_error("Embeddings properties socket broker node is not available in CVEDIX SDK");
-        
-        // auto node =
-        // std::make_shared<cvedix_nodes::cvedix_embeddings_properties_socket_broker_node>(
-        //     nodeName,
-        //     desIp,
-        //     desPort,
-        //     croppedDir,
-        //     minCropWidth,
-        //     minCropHeight,
-        //     brokeFor,
-        //     onlyForTracked,
-        //     warnThreshold,
-        //     ignoreThreshold
-        // );
+        auto node = std::make_shared<cvedix_nodes::cvedix_embeddings_properties_socket_broker_node>(
+            nodeName, desIp, desPort, croppedDir, minCropWidth, minCropHeight,
+            brokeFor, onlyForTracked, warnThreshold, ignoreThreshold
+        );
 
-        // std::cerr << "[PipelineBuilderBrokerNodes] ✓ Embeddings properties socket broker node created successfully" << std::endl;
-        // return node;
+        std::cerr << "[PipelineBuilderBrokerNodes] ✓ Embeddings properties socket broker node created successfully" << std::endl;
+        return node;
     } catch (const std::exception &e) {
         std::cerr << "[PipelineBuilderBrokerNodes] Exception in createEmbeddingsPropertiesSocketBrokerNode: " << e.what() << std::endl;
         throw;
@@ -1436,24 +1392,13 @@ std::stoi(params.at("broking_cache_ignore_threshold")) : 200;
         std::cerr << "  Destination port: " << desPort << std::endl;
         std::cerr << "  Plates dir: '" << platesDir << "'" << std::endl;
 
-        // Note: cvedix_plate_socket_broker_node is not available in CVEDIX SDK
-        throw std::runtime_error("Plate socket broker node is not available in CVEDIX SDK");
-        
-        // auto node =
-        // std::make_shared<cvedix_nodes::cvedix_plate_socket_broker_node>( nodeName,
-        //     desIp,
-        //     desPort,
-        //     platesDir,
-        //     minCropWidth,
-        //     minCropHeight,
-        //     brokeFor,
-        //     onlyForTracked,
-        //     warnThreshold,
-        //     ignoreThreshold
-        // );
+        auto node = std::make_shared<cvedix_nodes::cvedix_plate_socket_broker_node>(
+            nodeName, desIp, desPort, platesDir, minCropWidth, minCropHeight,
+            brokeFor, onlyForTracked, warnThreshold, ignoreThreshold
+        );
 
-        // std::cerr << "[PipelineBuilderBrokerNodes] ✓ Plate socket broker node created successfully" << std::endl;
-        // return node;
+        std::cerr << "[PipelineBuilderBrokerNodes] ✓ Plate socket broker node created successfully" << std::endl;
+        return node;
     } catch (const std::exception &e) {
         std::cerr << "[PipelineBuilderBrokerNodes] Exception in createPlateSocketBrokerNode: " << e.what() << std::endl;
         throw;
@@ -1521,16 +1466,99 @@ std::stoi(params.at("broking_cache_ignore_threshold")) : 200;
         std::cerr << "  Destination port: " << desPort << std::endl;
         std::cerr << "  Screenshot dir: '" << screenshotDir << "'" << std::endl;
 
-        // Note: cvedix_expr_socket_broker_node is not available in CVEDIX SDK
-        throw std::runtime_error("Expression socket broker node is not available in CVEDIX SDK");
-        
-        // auto node = std::make_shared<cvedix_nodes::cvedix_expr_socket_broker_node>(
-        //     nodeName, desIp, desPort, screenshotDir, brokeFor, warnThreshold, ignoreThreshold);
+        auto node = std::make_shared<cvedix_nodes::cvedix_expr_socket_broker_node>(
+            nodeName, desIp, desPort, screenshotDir, brokeFor, warnThreshold, ignoreThreshold);
 
-        // std::cerr << "[PipelineBuilderBrokerNodes] ✓ Expression socket broker node created successfully" << std::endl;
-        // return node;
+        std::cerr << "[PipelineBuilderBrokerNodes] ✓ Expression socket broker node created successfully" << std::endl;
+        return node;
     } catch (const std::exception &e) {
         std::cerr << "[PipelineBuilderBrokerNodes] Exception in createExpressionSocketBrokerNode: " << e.what() << std::endl;
         throw;
     }
+}
+
+std::shared_ptr<cvedix_nodes::cvedix_node>
+PipelineBuilderBrokerNodes::createSSEBrokerNode(
+    const std::string &nodeName,
+    const std::map<std::string, std::string> &params,
+    const CreateInstanceRequest &req) {
+
+  try {
+    if (nodeName.empty()) {
+      throw std::invalid_argument("Node name cannot be empty");
+    }
+
+    std::cerr << "[PipelineBuilderBrokerNodes] Creating SSE broker node:" << std::endl;
+    std::cerr << "  Name: '" << nodeName << "'" << std::endl;
+
+    // Parse parameters with defaults
+    cvedix_broke_for broke_for = cvedix_broke_for::NORMAL;
+    int broking_cache_warn_threshold = 50;
+    int broking_cache_ignore_threshold = 200;
+    int port = 8090;
+    std::string endpoint = "/events";
+
+    // Parse broke_for (optional)
+    if (params.count("broke_for")) {
+      std::string broke_for_str = params.at("broke_for");
+      if (broke_for_str == "FACE") {
+        broke_for = cvedix_broke_for::FACE;
+      } else if (broke_for_str == "VEHICLE") {
+        broke_for = cvedix_broke_for::VEHICLE;
+      } else if (broke_for_str == "PERSON") {
+        broke_for = cvedix_broke_for::PERSON;
+      }
+      // Default to NORMAL
+    }
+
+    // Parse broking_cache_warn_threshold
+    if (params.count("broking_cache_warn_threshold")) {
+      try {
+        broking_cache_warn_threshold = std::stoi(params.at("broking_cache_warn_threshold"));
+      } catch (...) {
+        std::cerr << "[PipelineBuilderBrokerNodes] Invalid broking_cache_warn_threshold, using default: 50" << std::endl;
+      }
+    }
+
+    // Parse broking_cache_ignore_threshold
+    if (params.count("broking_cache_ignore_threshold")) {
+      try {
+        broking_cache_ignore_threshold = std::stoi(params.at("broking_cache_ignore_threshold"));
+      } catch (...) {
+        std::cerr << "[PipelineBuilderBrokerNodes] Invalid broking_cache_ignore_threshold, using default: 200" << std::endl;
+      }
+    }
+
+    // Parse port
+    if (params.count("port")) {
+      try {
+        port = std::stoi(params.at("port"));
+      } catch (...) {
+        std::cerr << "[PipelineBuilderBrokerNodes] Invalid port, using default: 8090" << std::endl;
+      }
+    }
+
+    // Parse endpoint
+    if (params.count("endpoint")) {
+      endpoint = params.at("endpoint");
+    }
+
+    std::cerr << "  Port: " << port << std::endl;
+    std::cerr << "  Endpoint: '" << endpoint << "'" << std::endl;
+    std::cerr << "  Broke for: " << static_cast<int>(broke_for) << std::endl;
+    std::cerr << "  Cache warn threshold: " << broking_cache_warn_threshold << std::endl;
+    std::cerr << "  Cache ignore threshold: " << broking_cache_ignore_threshold << std::endl;
+
+    auto node = std::make_shared<cvedix_nodes::cvedix_sse_broker_node>(
+        nodeName, broke_for, broking_cache_warn_threshold,
+        broking_cache_ignore_threshold, port, endpoint);
+
+    std::cerr << "[PipelineBuilderBrokerNodes] ✓ SSE broker node created successfully" << std::endl;
+    std::cerr << "[PipelineBuilderBrokerNodes] SSE server will be available at: http://0.0.0.0:" << port << endpoint << std::endl;
+    return node;
+  } catch (const std::exception &e) {
+    std::cerr << "[PipelineBuilderBrokerNodes] Exception in createSSEBrokerNode: "
+              << e.what() << std::endl;
+    throw;
+  }
 }
