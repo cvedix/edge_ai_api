@@ -147,7 +147,7 @@ if [ -d "$BUILD_LIB_DIR" ]; then
 fi
 
 # Bundle libopencv_freetype.so.410 (required for CVEDIX SDK compatibility)
-# This file is created from OpenCV 4.10's libopencv_freetype.so.4.10.0 (preferred) or OpenCV 4.6's libopencv_freetype.so.4.6.0 (fallback)
+# This file is created from OpenCV 4.10's libopencv_freetype.so.4.10.0 (REQUIRED - OpenCV 4.6 is NOT supported)
 # Must be bundled early to ensure it's not overwritten by other OpenCV libraries
 echo "Bundling libopencv_freetype.so.410 (CVEDIX SDK compatibility)..."
 FREETYPE_410_BUNDLED=false
@@ -163,7 +163,7 @@ else
         cp -L "$BUILD_LIB_DIR/libopencv_freetype.so.410" "$LIB_TEMP_DIR/" 2>/dev/null && FREETYPE_410_BUNDLED=true || true
     fi
     
-    # If not found in build/lib, try to copy from system OpenCV 4.10 (preferred) or OpenCV 4.6 (fallback)
+    # If not found in build/lib, try to copy from system OpenCV 4.10 (REQUIRED - OpenCV 4.6 is NOT supported)
     if [ "$FREETYPE_410_BUNDLED" = false ] && [ ! -f "$LIB_TEMP_DIR/libopencv_freetype.so.410" ]; then
         # Priority 1: OpenCV 4.10 (preferred - includes .4.10.0, .4.10, .410 variants)
         FREETYPE_SOURCES=(
@@ -176,13 +176,6 @@ else
             "/usr/lib/libopencv_freetype.so.4.10.0"
             "/usr/lib/libopencv_freetype.so.4.10"
             "/usr/lib/libopencv_freetype.so.410"
-            # Priority 2: OpenCV 4.6 (fallback)
-            "/usr/lib/x86_64-linux-gnu/libopencv_freetype.so.4.6.0"
-            "/usr/lib/x86_64-linux-gnu/libopencv_freetype.so.406"
-            "/usr/local/lib/libopencv_freetype.so.4.6.0"
-            "/usr/local/lib/libopencv_freetype.so.406"
-            "/usr/lib/libopencv_freetype.so.4.6.0"
-            "/usr/lib/libopencv_freetype.so.406"
         )
         
         for source in "${FREETYPE_SOURCES[@]}"; do
@@ -211,7 +204,7 @@ else
     echo "  ⚠ Warning: libopencv_freetype.so.410 not found"
     echo "    This file is required for CVEDIX SDK compatibility"
     echo "    The service may fail to start without this file"
-    echo "    Ensure OpenCV 4.10 (preferred) or OpenCV 4.6 is installed on build machine"
+    echo "    Ensure OpenCV 4.10 is installed on build machine (OpenCV 4.6 is NOT supported)"
     echo "    Or ensure CMakeLists.txt creates this file"
 fi
 
@@ -1229,7 +1222,7 @@ if [ "$SKIP_BUILD" = false ]; then
     mkdir -p lib
     FREETYPE_410_PATH="lib/libopencv_freetype.so.410"
     if [ ! -f "$FREETYPE_410_PATH" ]; then
-        # Try to copy from various sources (OpenCV 4.10 preferred, OpenCV 4.6 fallback)
+        # Try to copy from various sources (OpenCV 4.10 REQUIRED - OpenCV 4.6 is NOT supported)
         FREETYPE_SOURCES=(
             # Priority 1: OpenCV 4.10 (preferred - includes .4.10.0, .4.10, .410 variants)
             "/usr/local/lib/libopencv_freetype.so.4.10.0"
@@ -1241,13 +1234,6 @@ if [ "$SKIP_BUILD" = false ]; then
             "/usr/lib/libopencv_freetype.so.4.10.0"
             "/usr/lib/libopencv_freetype.so.4.10"
             "/usr/lib/libopencv_freetype.so.410"
-            # Priority 2: OpenCV 4.6 (fallback)
-            "/usr/lib/x86_64-linux-gnu/libopencv_freetype.so.4.6.0"
-            "/usr/lib/x86_64-linux-gnu/libopencv_freetype.so.406"
-            "/usr/local/lib/libopencv_freetype.so.4.6.0"
-            "/usr/local/lib/libopencv_freetype.so.406"
-            "/usr/lib/libopencv_freetype.so.4.6.0"
-            "/usr/lib/libopencv_freetype.so.406"
         )
         
         FREETYPE_COPIED=false

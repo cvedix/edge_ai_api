@@ -111,17 +111,24 @@ override_dh_auto_install:
 				echo "  ✓ libopencv_freetype.so.410 bundled from build/lib"; \
 			fi; \
 		fi; \
-		# Try system OpenCV 4.6 if not found in build/lib \
+		# Try system OpenCV 4.10 if not found in build/lib (REQUIRED - OpenCV 4.6 is NOT supported) \
 		if [ "$$FREETYPE_COPIED" = false ]; then \
-			FREETYPE_SOURCES="/usr/lib/x86_64-linux-gnu/libopencv_freetype.so.4.6.0 /usr/lib/x86_64-linux-gnu/libopencv_freetype.so.406 /usr/local/lib/libopencv_freetype.so.4.6.0 /usr/local/lib/libopencv_freetype.so.406 /usr/lib/libopencv_freetype.so.4.6.0 /usr/lib/libopencv_freetype.so.406"; \
+			FREETYPE_SOURCES="/usr/local/lib/libopencv_freetype.so.4.10.0 /usr/local/lib/libopencv_freetype.so.4.10 /usr/local/lib/libopencv_freetype.so.410 /usr/lib/x86_64-linux-gnu/libopencv_freetype.so.4.10.0 /usr/lib/x86_64-linux-gnu/libopencv_freetype.so.4.10 /usr/lib/x86_64-linux-gnu/libopencv_freetype.so.410 /usr/lib/libopencv_freetype.so.4.10.0 /usr/lib/libopencv_freetype.so.4.10 /usr/lib/libopencv_freetype.so.410"; \
 			for source in $$FREETYPE_SOURCES; do \
-				if [ -f "$$source" ]; then \
+				if [ -f "$$source" ] || [ -L "$$source" ]; then \
 					echo "Copying libopencv_freetype.so.410 from $$source..."; \
+					# Resolve symlink if needed \
+					if [ -L "$$source" ]; then \
+						resolved=$$(readlink -f "$$source" 2>/dev/null || echo ""); \
+						if [ -n "$$resolved" ] && [ -f "$$resolved" ]; then \
+							source="$$resolved"; \
+						fi; \
+					fi; \
 					cp -L "$$source" "$$LIB_TEMP_DIR/libopencv_freetype.so.410" 2>/dev/null && FREETYPE_COPIED=true && break || true; \
 				fi; \
 			done; \
 			if [ "$$FREETYPE_COPIED" = true ]; then \
-				echo "  ✓ libopencv_freetype.so.410 bundled from system OpenCV 4.6"; \
+				echo "  ✓ libopencv_freetype.so.410 bundled from system OpenCV 4.10"; \
 			fi; \
 		fi; \
 		# Try SDK extract directory if available \
@@ -140,7 +147,7 @@ override_dh_auto_install:
 		if [ "$$FREETYPE_COPIED" = false ]; then \
 			echo "  ✗ ERROR: libopencv_freetype.so.410 not found in any source"; \
 			echo "  This file is REQUIRED for CVEDIX SDK compatibility"; \
-			echo "  Please ensure OpenCV 4.6 is installed on build machine or file exists in build/lib"; \
+			echo "  Please ensure OpenCV 4.10 is installed on build machine (OpenCV 4.6 is NOT supported)"; \
 			echo "  The package will be built but service may fail to start"; \
 		fi; \
 	fi; \
@@ -251,6 +258,10 @@ override_dh_auto_install:
 	# Install OpenCV build script for user to install OpenCV 4.10 if needed
 	if [ -f $(CURDIR)/scripts/build_opencv_safe.sh ]; then \
 		install -m 755 $(CURDIR)/scripts/build_opencv_safe.sh $(CURDIR)/debian/$(PACKAGE_NAME)$(INSTALL_DIR)/scripts/build_opencv_safe.sh; \
+	fi
+	# Install fix_freetype script for fixing OpenCV freetype library issues
+	if [ -f $(CURDIR)/scripts/fix_freetype.sh ]; then \
+		install -m 755 $(CURDIR)/scripts/fix_freetype.sh $(CURDIR)/debian/$(PACKAGE_NAME)$(INSTALL_DIR)/scripts/fix_freetype.sh; \
 	fi
 
 	# ============================================
