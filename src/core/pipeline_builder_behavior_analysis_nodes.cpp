@@ -29,6 +29,8 @@ PipelineBuilderBehaviorAnalysisNodes::createBACrosslineNode(
 
     // Use crossline_config to support names, colors, and directions
     std::map<int, std::vector<cvedix_nodes::crossline_config>> lineConfigs;
+    // Also prepare lines map for constructor (multi-line per channel support)
+    std::map<int, std::vector<cvedix_objects::cvedix_line>> linesMultiChannel;
     std::map<int, cvedix_objects::cvedix_line> lines; // For backward compatibility fallback
     bool linesParsed = false;
     bool useConfigs = false; // Track if we're using new config API
@@ -131,22 +133,24 @@ PipelineBuilderBehaviorAnalysisNodes::createBACrosslineNode(
               }
             }
 
-            // Use array index as channel (0, 1, 2, ...)
-            // All lines go to channel 0 by default (can be extended to support channel field)
-            int channel = 0;
+            // Determine channel: use channel from config if available, otherwise use channel 0
+            // All lines go to channel 0 by default to support multiple lines per channel
+            // This allows all lines to be displayed on the same video stream (typically channel 0)
+            int channel = 0; // Default: all lines on channel 0 for multi-line support
             if (lineObj.isMember("channel") && lineObj["channel"].isNumeric()) {
               channel = lineObj["channel"].asInt();
-            } else {
-              // For backward compatibility, use index as channel
-              // But group all lines to channel 0 for multi-line support
-              channel = 0;
             }
 
             // Create crossline_config with name, color, and direction
             cvedix_nodes::crossline_config config(line, line_color, line_name, direction);
             configsByChannel[channel].push_back(config);
 
-            // Also keep backward compatible format
+            // Also prepare lines for multi-channel constructor (vector of lines per channel)
+            linesMultiChannel[channel].push_back(line);
+
+            // Also keep backward compatible format (for fallback if config API fails)
+            // Note: If multiple lines share same channel, only last one is kept in this map
+            // But we use configsByChannel and linesMultiChannel for the actual node creation
             lines[channel] = line;
             linesParsed = true;
             useConfigs = true;
@@ -154,8 +158,12 @@ PipelineBuilderBehaviorAnalysisNodes::createBACrosslineNode(
 
           if (linesParsed && useConfigs) {
             lineConfigs = configsByChannel;
-            std::cerr << "[PipelineBuilderBehaviorAnalysisNodes] ✓ Parsed " << parsedLines.size()
-                      << " line(s) from CrossingLines API with names and colors" << std::endl;
+            int totalLinesParsed = 0;
+            for (const auto &pair : configsByChannel) {
+              totalLinesParsed += static_cast<int>(pair.second.size());
+            }
+            std::cerr << "[PipelineBuilderBehaviorAnalysisNodes] ✓ Parsed " << totalLinesParsed
+                      << " line(s) from CrossingLines API (supports unlimited lines per channel)" << std::endl;
             for (const auto &channelPair : lineConfigs) {
               std::cerr << "  Channel " << channelPair.first << ": " 
                         << channelPair.second.size() << " line(s)" << std::endl;
@@ -245,23 +253,37 @@ PipelineBuilderBehaviorAnalysisNodes::createBACrosslineNode(
     std::shared_ptr<cvedix_nodes::cvedix_ba_crossline_node> node;
 
     // Use new config API if we have configs with names/colors
-    if (useConfigs && !lineConfigs.empty()) {
-      // Create node with empty lines first, then add lines with configs
-      std::map<int, cvedix_objects::cvedix_line> emptyLines;
+    if (useConfigs && !lineConfigs.empty() && !linesMultiChannel.empty()) {
+      // Create node with empty lines first, then add lines with full configs (names, colors, directions)
+      // This ensures names are stored in ba_crossline_node (for events) and OSD node
+      std::map<int, std::vector<cvedix_objects::cvedix_line>> emptyLines;
       node = std::make_shared<cvedix_nodes::cvedix_ba_crossline_node>(
-          nodeName, emptyLines);
+          nodeName, emptyLines, true, false);
       
-      // Add lines with full configs (name, color, direction)
+      std::cerr << "[PipelineBuilderBehaviorAnalysisNodes]   Created node, adding lines with configs" << std::endl;
+      
+      // Add lines with full configs (name, color, direction) using add_line API
+      // This ensures names are stored in ba_crossline_node's all_configs
+      int totalLinesAdded = 0;
       for (const auto &channelPair : lineConfigs) {
         int channel = channelPair.first;
+        std::cerr << "[PipelineBuilderBehaviorAnalysisNodes]   Adding " 
+                  << channelPair.second.size() << " line(s) to channel " << channel << std::endl;
+        
         for (const auto &config : channelPair.second) {
           int lineIndex = node->add_line(channel, config);
-          std::cerr << "[PipelineBuilderBehaviorAnalysisNodes]   Added line " << lineIndex 
-                    << " to channel " << channel << " with name='" << config.name << "'" << std::endl;
+          totalLinesAdded++;
+          std::cerr << "[PipelineBuilderBehaviorAnalysisNodes]     ✓ Added line index " << lineIndex 
+                    << " to channel " << channel << " with name='" << config.name 
+                    << "', color=(" << config.color[0] << "," << config.color[1] 
+                    << "," << config.color[2] << "), direction=" 
+                    << (config.direction == cvedix_objects::cvedix_ba_direct_type::IN ? "IN" :
+                        config.direction == cvedix_objects::cvedix_ba_direct_type::OUT ? "OUT" : "BOTH")
+                    << std::endl;
         }
       }
-      std::cerr << "[PipelineBuilderBehaviorAnalysisNodes]   Using new config API with names and colors"
-                << std::endl;
+      std::cerr << "[PipelineBuilderBehaviorAnalysisNodes]   ✓ Total " << totalLinesAdded 
+                << " line(s) added with names, colors, and directions" << std::endl;
     } else {
       // Fallback to backward compatible API
       std::cerr << "  Lines configured for " << lines.size() << " channel(s)"
@@ -734,13 +756,12 @@ PipelineBuilderBehaviorAnalysisNodes::createBACrosslineOSDNode(
               }
             }
 
-            // Use array index as channel (0, 1, 2, ...)
-            // All lines go to channel 0 by default (can be extended to support channel field)
-            int channel = 0;
+            // Determine channel: use channel from config if available, otherwise use channel 0
+            // All lines go to channel 0 by default to support multiple lines per channel
+            // This allows all lines to be displayed on the same video stream (typically channel 0)
+            int channel = 0; // Default: all lines on channel 0 for multi-line support
             if (lineObj.isMember("channel") && lineObj["channel"].isNumeric()) {
               channel = lineObj["channel"].asInt();
-            } else {
-              channel = 0;
             }
 
             // Create line_display_config with name, color, and direction
@@ -749,19 +770,23 @@ PipelineBuilderBehaviorAnalysisNodes::createBACrosslineOSDNode(
           }
 
           // Set line configs for each channel
+          int totalConfigsSet = 0;
           for (const auto &channelPair : configsByChannel) {
             int channel = channelPair.first;
             node->set_line_configs(channel, channelPair.second);
-            std::cerr << "[PipelineBuilderBehaviorAnalysisNodes]   Set " 
+            totalConfigsSet += channelPair.second.size();
+            std::cerr << "[PipelineBuilderBehaviorAnalysisNodes]   ✓ Set " 
                       << channelPair.second.size() 
                       << " line config(s) for channel " << channel << " with names:" << std::endl;
             for (size_t j = 0; j < channelPair.second.size(); ++j) {
               const auto &config = channelPair.second[j];
-              std::cerr << "    Line " << j << ": name='" << config.name 
-                        << "', color=(" << config.color[0] << "," << config.color[1] 
+              std::cerr << "[PipelineBuilderBehaviorAnalysisNodes]     Line " << j << ": name='" 
+                        << config.name << "', color=(" << config.color[0] << "," << config.color[1] 
                         << "," << config.color[2] << ")" << std::endl;
             }
           }
+          std::cerr << "[PipelineBuilderBehaviorAnalysisNodes]   ✓ Total " << totalConfigsSet 
+                    << " line config(s) set for OSD node" << std::endl;
         }
       } catch (const std::exception &e) {
         std::cerr << "[PipelineBuilderBehaviorAnalysisNodes] WARNING: Failed to parse "
