@@ -10601,12 +10601,22 @@ paths:
                 inUse: false
                 parameters:
                   channel: '0'
-                  port: '8000'
+                  rtsp_port: '9000'
+                  rtsp_name: 'stream'
+                  stream_name: 'stream'
+                  bitrate: '512'
+                  osd: 'false'
+                  encoder: 'x264enc'
                 requiredParameters:
-                - port
+                - rtsp_port
                 optionalParameters:
                 - channel
+                - rtsp_name
                 - stream_name
+                - resolution
+                - bitrate
+                - osd
+                - encoder
                 templateDetailUrl: /v1/core/node/template/rtsp_des_template
                 input:
                 - type: video_frames
@@ -10619,17 +10629,37 @@ paths:
                 - type: rtsp_stream
                   description: RTSP video stream
                   protocol: RTSP
-                  accessInfo: 'Access via RTSP URL: rtsp://<host>:8000/stream (default: rtsp://localhost:8000/stream)'
-                  example: rtsp://localhost:8000/stream
+                  accessInfo: 'Access via RTSP URL: rtsp://<host>:9000/stream (default: rtsp://localhost:9000/stream)'
+                  example: rtsp://localhost:9000/stream
                   configurableParameters:
-                  - name: port
-                    description: RTSP server port
-                    default: '8000'
+                  - name: rtsp_port
+                    description: RTSP server port (1-65535)
+                    default: '9000'
                     affects: RTSP URL port
-                  - name: stream_name
-                    description: RTSP stream name/path
+                  - name: rtsp_name
+                    description: RTSP stream name/path (alternative to stream_name)
                     default: stream
                     affects: RTSP URL path
+                  - name: stream_name
+                    description: RTSP stream name/path (alternative to rtsp_name)
+                    default: stream
+                    affects: RTSP URL path
+                  - name: resolution
+                    description: Output resolution (format: widthxheight or width,height)
+                    default: source resolution
+                    affects: Stream resolution
+                  - name: bitrate
+                    description: Video bitrate in kbps
+                    default: '512'
+                    affects: Stream quality and bandwidth
+                  - name: osd
+                    description: Enable on-screen display overlay (true/false)
+                    default: 'false'
+                    affects: Stream content (with/without overlays)
+                  - name: encoder
+                    description: GStreamer encoder name (x264enc, openh264enc, etc.)
+                    default: x264enc
+                    affects: Encoding method
                 createdAt: '2025-12-16T11:33:52Z'
         '404':
           description: Node not found
