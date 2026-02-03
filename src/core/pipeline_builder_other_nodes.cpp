@@ -5,7 +5,8 @@
 #include <stdexcept>
 #include <cvedix/nodes/track/cvedix_sort_track_node.h>
 #include <cvedix/nodes/track/cvedix_bytetrack_node.h>
-#include <cvedix/nodes/track/cvedix_ocsort_track_node.h>
+// TEMPORARILY DISABLED: cereal/rapidxml macro conflict issue in CVEDIX SDK
+// #include <cvedix/nodes/track/cvedix_ocsort_track_node.h>
 #include <cvedix/nodes/osd/cvedix_face_osd_node_v2.h>
 #include <cvedix/nodes/osd/cvedix_osd_node_v3.h>
 #include <cvedix/nodes/proc/cvedix_frame_fusion_node.h>
@@ -68,7 +69,7 @@ PipelineBuilderOtherNodes::createByteTrackNode(
     float match_thresh = 0.8f;
     int track_buffer = 30;
     int frame_rate = 30;
-    cvedix_track_for track_for = cvedix_track_for::NORMAL;
+    cvedix_nodes::cvedix_track_for track_for = cvedix_nodes::cvedix_track_for::NORMAL;
 
     // Parse track_thresh
     if (params.count("track_thresh")) {
@@ -120,7 +121,7 @@ PipelineBuilderOtherNodes::createByteTrackNode(
     if (params.count("track_for")) {
       std::string track_for_str = params.at("track_for");
       if (track_for_str == "FACE") {
-        track_for = cvedix_track_for::FACE;
+        track_for = cvedix_nodes::cvedix_track_for::FACE;
       }
       // All other values default to NORMAL
     }
@@ -144,11 +145,16 @@ PipelineBuilderOtherNodes::createByteTrackNode(
   }
 }
 
+// TEMPORARILY DISABLED: cereal/rapidxml macro conflict issue in CVEDIX SDK
 std::shared_ptr<cvedix_nodes::cvedix_node>
 PipelineBuilderOtherNodes::createOCSortTrackNode(
     const std::string &nodeName,
     const std::map<std::string, std::string> &params) {
 
+  // TEMPORARILY DISABLED: cereal/rapidxml macro conflict issue in CVEDIX SDK
+  throw std::runtime_error("OCSort track node is temporarily disabled due to CVEDIX SDK cereal/rapidxml issue");
+  
+  /* DISABLED CODE - cereal/rapidxml issue
   try {
     if (nodeName.empty()) {
       throw std::invalid_argument("Node name cannot be empty");
@@ -158,7 +164,7 @@ PipelineBuilderOtherNodes::createOCSortTrackNode(
     std::cerr << "  Name: '" << nodeName << "'" << std::endl;
 
     // Parse parameters with defaults
-    cvedix_track_for track_for = cvedix_track_for::NORMAL;
+    cvedix_nodes::cvedix_track_for track_for = cvedix_nodes::cvedix_track_for::NORMAL;
     float det_thresh = 0.25f;
     int max_age = 30;
     int min_hits = 3;
@@ -173,7 +179,7 @@ PipelineBuilderOtherNodes::createOCSortTrackNode(
     if (params.count("track_for")) {
       std::string track_for_str = params.at("track_for");
       if (track_for_str == "FACE") {
-        track_for = cvedix_track_for::FACE;
+        track_for = cvedix_nodes::cvedix_track_for::FACE;
       }
       // All other values default to NORMAL
     }
@@ -264,6 +270,7 @@ PipelineBuilderOtherNodes::createOCSortTrackNode(
               << e.what() << std::endl;
     throw;
   }
+  */
 }
 
 std::shared_ptr<cvedix_nodes::cvedix_node> PipelineBuilderOtherNodes::createFaceOSDNode(
@@ -435,261 +442,6 @@ std::shared_ptr<cvedix_nodes::cvedix_node> PipelineBuilderOtherNodes::createOSDv
   } catch (const std::exception &e) {
     std::cerr << "[PipelineBuilderOtherNodes] Exception in createOSDv3Node: " << e.what()
               << std::endl;
-    throw;
-  }
-}
-
-std::shared_ptr<cvedix_nodes::cvedix_node>
-PipelineBuilderOtherNodes::createFrameFusionNode(
-    const std::string &nodeName,
-    const std::map<std::string, std::string> &params,
-    const CreateInstanceRequest &req) {
-
-  try {
-    if (nodeName.empty()) {
-      throw std::invalid_argument("Node name cannot be empty");
-    }
-
-    std::cerr << "[PipelineBuilderOtherNodes] Creating frame fusion node:" << std::endl;
-    std::cerr << "  Name: '" << nodeName << "'" << std::endl;
-
-    // Parse calibration points
-    // src_cali_points and des_cali_points should be JSON arrays of 4 points
-    // Format: [{"x": 0, "y": 0}, {"x": 100, "y": 0}, {"x": 100, "y": 100}, {"x": 0, "y": 100}]
-    std::vector<cvedix_objects::cvedix_point> src_points;
-    std::vector<cvedix_objects::cvedix_point> des_points;
-
-    // Get src_cali_points
-    std::string src_cali_points_str = "";
-    if (params.count("src_cali_points")) {
-      src_cali_points_str = params.at("src_cali_points");
-    } else {
-      auto it = req.additionalParams.find("SRC_CALI_POINTS");
-      if (it != req.additionalParams.end()) {
-        src_cali_points_str = it->second;
-      }
-    }
-
-    // Get des_cali_points
-    std::string des_cali_points_str = "";
-    if (params.count("des_cali_points")) {
-      des_cali_points_str = params.at("des_cali_points");
-    } else {
-      auto it = req.additionalParams.find("DES_CALI_POINTS");
-      if (it != req.additionalParams.end()) {
-        des_cali_points_str = it->second;
-      }
-    }
-
-    // Parse src_cali_points
-    if (!src_cali_points_str.empty()) {
-      Json::Reader reader;
-      Json::Value src_points_json;
-      if (reader.parse(src_cali_points_str, src_points_json) && src_points_json.isArray() && src_points_json.size() == 4) {
-        for (Json::ArrayIndex i = 0; i < 4; ++i) {
-          const Json::Value &point = src_points_json[i];
-          if (point.isObject() && point.isMember("x") && point.isMember("y")) {
-            cvedix_objects::cvedix_point p;
-            p.x = point["x"].asInt();
-            p.y = point["y"].asInt();
-            src_points.push_back(p);
-          }
-        }
-      }
-    }
-
-    // Parse des_cali_points
-    if (!des_cali_points_str.empty()) {
-      Json::Reader reader;
-      Json::Value des_points_json;
-      if (reader.parse(des_cali_points_str, des_points_json) && des_points_json.isArray() && des_points_json.size() == 4) {
-        for (Json::ArrayIndex i = 0; i < 4; ++i) {
-          const Json::Value &point = des_points_json[i];
-          if (point.isObject() && point.isMember("x") && point.isMember("y")) {
-            cvedix_objects::cvedix_point p;
-            p.x = point["x"].asInt();
-            p.y = point["y"].asInt();
-            des_points.push_back(p);
-          }
-        }
-      }
-    }
-
-    // Validate points
-    if (src_points.size() != 4) {
-      throw std::runtime_error("src_cali_points must contain exactly 4 points in format: [{\"x\": 0, \"y\": 0}, ...]");
-    }
-    if (des_points.size() != 4) {
-      throw std::runtime_error("des_cali_points must contain exactly 4 points in format: [{\"x\": 0, \"y\": 0}, ...]");
-    }
-
-    // Parse channel indices (optional)
-    int src_channel_index = 0;
-    int des_channel_index = 1;
-    if (params.count("src_channel_index")) {
-      try {
-        src_channel_index = std::stoi(params.at("src_channel_index"));
-      } catch (...) {
-        std::cerr << "[PipelineBuilderOtherNodes] Invalid src_channel_index, using default: 0" << std::endl;
-      }
-    }
-    if (params.count("des_channel_index")) {
-      try {
-        des_channel_index = std::stoi(params.at("des_channel_index"));
-      } catch (...) {
-        std::cerr << "[PipelineBuilderOtherNodes] Invalid des_channel_index, using default: 1" << std::endl;
-      }
-    }
-
-    std::cerr << "  Source channel: " << src_channel_index << std::endl;
-    std::cerr << "  Destination channel: " << des_channel_index << std::endl;
-
-    auto node = std::make_shared<cvedix_nodes::cvedix_frame_fusion_node>(
-        nodeName, src_points, des_points, src_channel_index, des_channel_index);
-
-    std::cerr << "[PipelineBuilderOtherNodes] ✓ Frame fusion node created successfully" << std::endl;
-    return node;
-  } catch (const std::exception &e) {
-    std::cerr << "[PipelineBuilderOtherNodes] Exception in createFrameFusionNode: "
-              << e.what() << std::endl;
-    throw;
-  }
-}
-
-std::shared_ptr<cvedix_nodes::cvedix_node>
-PipelineBuilderOtherNodes::createRecordNode(
-    const std::string &nodeName,
-    const std::map<std::string, std::string> &params,
-    const CreateInstanceRequest &req) {
-
-  try {
-    if (nodeName.empty()) {
-      throw std::invalid_argument("Node name cannot be empty");
-    }
-
-    std::cerr << "[PipelineBuilderOtherNodes] Creating record node:" << std::endl;
-    std::cerr << "  Name: '" << nodeName << "'" << std::endl;
-
-    // Parse required parameters
-    std::string video_save_dir = "";
-    std::string image_save_dir = "";
-
-    // Get video_save_dir
-    if (params.count("video_dir")) {
-      video_save_dir = params.at("video_dir");
-    } else if (params.count("video_save_dir")) {
-      video_save_dir = params.at("video_save_dir");
-    } else {
-      auto it = req.additionalParams.find("VIDEO_DIR");
-      if (it != req.additionalParams.end()) {
-        video_save_dir = it->second;
-      }
-    }
-
-    // Get image_save_dir
-    if (params.count("image_dir")) {
-      image_save_dir = params.at("image_dir");
-    } else if (params.count("image_save_dir")) {
-      image_save_dir = params.at("image_save_dir");
-    } else {
-      auto it = req.additionalParams.find("IMAGE_DIR");
-      if (it != req.additionalParams.end()) {
-        image_save_dir = it->second;
-      }
-    }
-
-    // At least one directory must be provided
-    if (video_save_dir.empty() && image_save_dir.empty()) {
-      throw std::runtime_error("Either video_dir or image_dir must be provided");
-    }
-
-    // Use default directories if not provided
-    if (video_save_dir.empty()) {
-      video_save_dir = "./recordings/video";
-    }
-    if (image_save_dir.empty()) {
-      image_save_dir = "./recordings/image";
-    }
-
-    // Parse optional parameters
-    cvedix_objects::cvedix_size resolution_w_h = {};
-    bool osd = false;
-    int pre_record_video_duration = 5;
-    int record_video_duration = 20;
-    bool auto_sub_dir = true;
-    int bitrate = 1024;
-
-    // Parse resolution (format: "width,height" or "widthxheight")
-    if (params.count("resolution")) {
-      std::string resolution_str = params.at("resolution");
-      size_t comma_pos = resolution_str.find(',');
-      size_t x_pos = resolution_str.find('x');
-      if (comma_pos != std::string::npos) {
-        resolution_w_h.width = std::stoi(resolution_str.substr(0, comma_pos));
-        resolution_w_h.height = std::stoi(resolution_str.substr(comma_pos + 1));
-      } else if (x_pos != std::string::npos) {
-        resolution_w_h.width = std::stoi(resolution_str.substr(0, x_pos));
-        resolution_w_h.height = std::stoi(resolution_str.substr(x_pos + 1));
-      }
-    }
-
-    // Parse osd
-    if (params.count("osd")) {
-      std::string osd_str = params.at("osd");
-      osd = (osd_str == "true" || osd_str == "1" || osd_str == "yes");
-    }
-
-    // Parse pre_record_video_duration
-    if (params.count("pre_record_video_duration")) {
-      try {
-        pre_record_video_duration = std::stoi(params.at("pre_record_video_duration"));
-      } catch (...) {
-        std::cerr << "[PipelineBuilderOtherNodes] Invalid pre_record_video_duration, using default: 5" << std::endl;
-      }
-    }
-
-    // Parse record_video_duration
-    if (params.count("record_video_duration")) {
-      try {
-        record_video_duration = std::stoi(params.at("record_video_duration"));
-      } catch (...) {
-        std::cerr << "[PipelineBuilderOtherNodes] Invalid record_video_duration, using default: 20" << std::endl;
-      }
-    }
-
-    // Parse auto_sub_dir
-    if (params.count("auto_sub_dir")) {
-      std::string auto_sub_dir_str = params.at("auto_sub_dir");
-      auto_sub_dir = (auto_sub_dir_str == "true" || auto_sub_dir_str == "1" || auto_sub_dir_str == "yes");
-    }
-
-    // Parse bitrate
-    if (params.count("bitrate")) {
-      try {
-        bitrate = std::stoi(params.at("bitrate"));
-      } catch (...) {
-        std::cerr << "[PipelineBuilderOtherNodes] Invalid bitrate, using default: 1024" << std::endl;
-      }
-    }
-
-    std::cerr << "  Video directory: '" << video_save_dir << "'" << std::endl;
-    std::cerr << "  Image directory: '" << image_save_dir << "'" << std::endl;
-    std::cerr << "  Resolution: " << resolution_w_h.width << "x" << resolution_w_h.height << std::endl;
-    std::cerr << "  OSD: " << (osd ? "true" : "false") << std::endl;
-    std::cerr << "  Pre-record duration: " << pre_record_video_duration << "s" << std::endl;
-    std::cerr << "  Record duration: " << record_video_duration << "s" << std::endl;
-    std::cerr << "  Auto sub-directory: " << (auto_sub_dir ? "true" : "false") << std::endl;
-    std::cerr << "  Bitrate: " << bitrate << " kbps" << std::endl;
-
-    auto node = std::make_shared<cvedix_nodes::cvedix_record_node>(
-        nodeName, video_save_dir, image_save_dir, resolution_w_h, osd,
-        pre_record_video_duration, record_video_duration, auto_sub_dir, bitrate);
-
-    std::cerr << "[PipelineBuilderOtherNodes] ✓ Record node created successfully" << std::endl;
-    return node;
-  } catch (const std::exception &e) {
-    std::cerr << "[PipelineBuilderOtherNodes] Exception in createRecordNode: "
-              << e.what() << std::endl;
     throw;
   }
 }

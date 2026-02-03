@@ -23,7 +23,8 @@ class cvedix_json_stop_mqtt_broker_node;
 #ifdef CVEDIX_WITH_MQTT
 #include <chrono>
 #include <ctime>
-#include <cvedix/nodes/broker/cereal_archive/cvedix_objects_cereal_archive.h>
+// TEMPORARILY DISABLED: cereal/rapidxml macro conflict issue in CVEDIX SDK
+// #include <cvedix/nodes/broker/cereal_archive/cvedix_objects_cereal_archive.h>
 #include <cvedix/nodes/broker/cvedix_json_enhanced_console_broker_node.h>
 #include <cvedix/nodes/broker/cvedix_json_mqtt_broker_node.h>
 #include <cvedix/utils/mqtt_client/cvedix_mqtt_client.h>
@@ -36,8 +37,9 @@ class cvedix_json_stop_mqtt_broker_node;
 // #include <cvedix/nodes/broker/cvedix_json_kafka_broker_node.h>
 #endif
 // Broker nodes (require cereal - now enabled)
-#include <cvedix/nodes/broker/cvedix_xml_file_broker_node.h>
-#include <cvedix/nodes/broker/cvedix_xml_socket_broker_node.h>
+// TEMPORARILY DISABLED: cereal/rapidxml macro conflict issue in CVEDIX SDK
+// #include <cvedix/nodes/broker/cvedix_xml_file_broker_node.h>
+// #include <cvedix/nodes/broker/cvedix_xml_socket_broker_node.h>
 #include <cvedix/nodes/broker/cvedix_msg_broker_node.h>
 #include <cvedix/nodes/broker/cvedix_ba_socket_broker_node.h>
 #include <cvedix/nodes/broker/cvedix_embeddings_socket_broker_node.h>
@@ -45,7 +47,8 @@ class cvedix_json_stop_mqtt_broker_node;
 #include <cvedix/nodes/broker/cvedix_plate_socket_broker_node.h>
 #include <cvedix/nodes/broker/cvedix_expr_socket_broker_node.h>
 // SSE broker node (doesn't require cereal)
-#include <cvedix/nodes/broker/cvedix_sse_broker_node.h>
+// TEMPORARILY DISABLED: ASIO dependency issue in CVEDIX SDK
+// #include <cvedix/nodes/broker/cvedix_sse_broker_node.h>
 #ifdef CVEDIX_WITH_KAFKA
 #include <cvedix/nodes/broker/cvedix_json_kafka_broker_node.h>
 #endif
@@ -328,11 +331,17 @@ PipelineBuilderBrokerNodes::createJSONMQTTBrokerNode(
   }
 }
 
+// TEMPORARILY DISABLED: cereal/rapidxml macro conflict issue in CVEDIX SDK
 std::shared_ptr<cvedix_nodes::cvedix_node>
 PipelineBuilderBrokerNodes::createJSONCrosslineMQTTBrokerNode(
     const std::string &nodeName,
     const std::map<std::string, std::string> &params,
     const CreateInstanceRequest &req, const std::string &instanceId) {
+  
+  // TEMPORARILY DISABLED: cereal/rapidxml macro conflict issue in CVEDIX SDK
+  throw std::runtime_error("JSON Crossline MQTT broker node is temporarily disabled due to CVEDIX SDK cereal/rapidxml issue");
+  
+  /* DISABLED CODE - cereal/rapidxml issue
   (void)params; // Parameters may be used in future implementations
 
   try {
@@ -506,11 +515,17 @@ PipelineBuilderBrokerNodes::createJSONCrosslineMQTTBrokerNode(
   }
 }
 
+// TEMPORARILY DISABLED: cereal/rapidxml macro conflict issue in CVEDIX SDK
 std::shared_ptr<cvedix_nodes::cvedix_node>
 PipelineBuilderBrokerNodes::createJSONJamMQTTBrokerNode(
     const std::string &nodeName,
     const std::map<std::string, std::string> &params,
     const CreateInstanceRequest &req, const std::string &instanceId) {
+  
+  // TEMPORARILY DISABLED: cereal/rapidxml macro conflict issue in CVEDIX SDK
+  throw std::runtime_error("JSON Jam MQTT broker node is temporarily disabled due to CVEDIX SDK cereal/rapidxml issue");
+  
+  /* DISABLED CODE - cereal/rapidxml issue
   (void)params; // Parameters may be used in future implementations
 
   try {
@@ -681,6 +696,7 @@ PipelineBuilderBrokerNodes::createJSONJamMQTTBrokerNode(
               << e.what() << std::endl;
     throw;
   }
+  */
 }
 
 std::shared_ptr<cvedix_nodes::cvedix_node>
@@ -927,6 +943,12 @@ PipelineBuilderBrokerNodes::createJSONKafkaBrokerNode(
     std::cerr << "[PipelineBuilderBrokerNodes] ✓ JSON Kafka broker node created successfully"
         << std::endl;
     return node;
+#else
+    std::cerr << "[PipelineBuilderBrokerNodes] JSON Kafka broker node requires "
+                 "CVEDIX_WITH_KAFKA to be enabled"
+              << std::endl;
+    return nullptr;
+#endif
   } catch (const std::exception &e) {
     std::cerr << "[PipelineBuilderBrokerNodes] Exception in createJSONKafkaBrokerNode: "
               << e.what() << std::endl;
@@ -934,10 +956,15 @@ PipelineBuilderBrokerNodes::createJSONKafkaBrokerNode(
   }
 }
 
+// TEMPORARILY DISABLED: cereal/rapidxml macro conflict issue in CVEDIX SDK
 std::shared_ptr<cvedix_nodes::cvedix_node>
 PipelineBuilderBrokerNodes::createXMLFileBrokerNode( const std::string& nodeName, const
 std::map<std::string, std::string>& params, const CreateInstanceRequest& req) {
 
+  // TEMPORARILY DISABLED: cereal/rapidxml macro conflict issue in CVEDIX SDK
+  throw std::runtime_error("XML file broker node is temporarily disabled due to CVEDIX SDK cereal/rapidxml issue");
+  
+  /* DISABLED CODE - cereal/rapidxml issue
     try {
         std::string brokeForStr = params.count("broke_for") ? params.at("broke_for") : "NORMAL"; 
         cvedix_nodes::cvedix_broke_for brokeFor = cvedix_nodes::cvedix_broke_for::NORMAL;
@@ -990,12 +1017,18 @@ std::stoi(params.at("broking_cache_ignore_threshold")) : 200;
 << e.what() << std::endl; 
         throw;
     }
+    */
 }
 
+// TEMPORARILY DISABLED: cereal/rapidxml macro conflict issue in CVEDIX SDK
 std::shared_ptr<cvedix_nodes::cvedix_node>
 PipelineBuilderBrokerNodes::createXMLSocketBrokerNode( const std::string& nodeName, const
 std::map<std::string, std::string>& params, const CreateInstanceRequest& req) {
 
+  // TEMPORARILY DISABLED: cereal/rapidxml macro conflict issue in CVEDIX SDK
+  throw std::runtime_error("XML socket broker node is temporarily disabled due to CVEDIX SDK cereal/rapidxml issue");
+  
+  /* DISABLED CODE - cereal/rapidxml issue
     try {
         std::string desIp = params.count("des_ip") ? params.at("des_ip") : "";
         int desPort = params.count("des_port") ?
@@ -1060,6 +1093,7 @@ std::stoi(params.at("broking_cache_ignore_threshold")) : 200;
         std::cerr << "[PipelineBuilderBrokerNodes] Exception in createXMLSocketBrokerNode: " << e.what() << std::endl;
         throw;
     }
+    */
 }
 
 std::shared_ptr<cvedix_nodes::cvedix_node>
@@ -1477,12 +1511,17 @@ std::stoi(params.at("broking_cache_ignore_threshold")) : 200;
     }
 }
 
+// TEMPORARILY DISABLED: ASIO dependency issue in CVEDIX SDK
 std::shared_ptr<cvedix_nodes::cvedix_node>
 PipelineBuilderBrokerNodes::createSSEBrokerNode(
     const std::string &nodeName,
     const std::map<std::string, std::string> &params,
     const CreateInstanceRequest &req) {
 
+  // SSE broker node temporarily disabled due to ASIO dependency issue
+  throw std::runtime_error("SSE broker node is temporarily disabled due to CVEDIX SDK ASIO dependency issue");
+  
+  /* DISABLED CODE - ASIO dependency issue
   try {
     if (nodeName.empty()) {
       throw std::invalid_argument("Node name cannot be empty");
@@ -1561,4 +1600,5 @@ PipelineBuilderBrokerNodes::createSSEBrokerNode(
               << e.what() << std::endl;
     throw;
   }
+  */
 }

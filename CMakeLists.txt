@@ -1185,6 +1185,8 @@ endif()
 
 if(EXISTS "/opt/cvedix-ai-runtime/include")
     target_include_directories(edge_ai_core PUBLIC "/opt/cvedix-ai-runtime/include")
+    # Add ASIO include path (required for SSE broker node)
+    target_include_directories(edge_ai_core PUBLIC "/opt/cvedix-ai-runtime/include/cvedix/third_party/asio/include")
 endif()
 
 if(PLOG_INCLUDE_DIR)
@@ -1202,6 +1204,44 @@ endif()
 
 if(GSTREAMER_FOUND OR GSTREAMER_LIBRARY)
     target_compile_definitions(edge_ai_core PUBLIC CVEDIX_WITH_GSTREAMER)
+    # Add GStreamer include directories and libraries
+    if(GSTREAMER_FOUND)
+        target_include_directories(edge_ai_core PUBLIC ${GSTREAMER_INCLUDE_DIRS})
+        target_link_libraries(edge_ai_core PUBLIC ${GSTREAMER_LIBRARIES})
+    else()
+        # Fallback: try to find GStreamer headers manually
+        find_path(GSTREAMER_INCLUDE_DIR
+            NAMES gst/gst.h
+            PATHS
+                /usr/include/gstreamer-1.0
+                /usr/local/include/gstreamer-1.0
+                /opt/cvedix-ai-runtime/include/gstreamer-1.0
+        )
+        if(GSTREAMER_INCLUDE_DIR)
+            target_include_directories(edge_ai_core PUBLIC ${GSTREAMER_INCLUDE_DIR})
+        endif()
+        if(GSTREAMER_LIBRARY)
+            target_link_libraries(edge_ai_core PUBLIC ${GSTREAMER_LIBRARY})
+        endif()
+    endif()
+endif()
+
+# Check for Eigen library (required by BYTETracker)
+find_path(EIGEN3_INCLUDE_DIR
+    NAMES Eigen/Core
+    PATHS
+        /usr/include/eigen3
+        /usr/local/include/eigen3
+        /opt/cvedix-ai-runtime/include/eigen3
+        /usr/include
+        /usr/local/include
+)
+if(EIGEN3_INCLUDE_DIR)
+    target_include_directories(edge_ai_core PUBLIC ${EIGEN3_INCLUDE_DIR})
+    message(STATUS "✓ Found Eigen3: ${EIGEN3_INCLUDE_DIR}")
+else()
+    message(WARNING "⚠ Eigen3 not found. BYTETracker may not compile.")
+    message(WARNING "  To install: sudo apt-get install libeigen3-dev")
 endif()
 
 if(CVEDIX_WITH_MQTT)

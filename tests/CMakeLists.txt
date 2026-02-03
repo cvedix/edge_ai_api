@@ -322,6 +322,13 @@ if(DEFINED CEREAL_INCLUDE_DIR AND CEREAL_INCLUDE_DIR)
     target_include_directories(edge_ai_api_tests PRIVATE "${CEREAL_INCLUDE_DIR}")
 endif()
 
+# Add CVEDIX SDK include directories (required for broker nodes with ASIO)
+if(EXISTS "/opt/cvedix-ai-runtime/include")
+    target_include_directories(edge_ai_api_tests PRIVATE "/opt/cvedix-ai-runtime/include")
+    # Add ASIO include path (required for SSE broker node)
+    target_include_directories(edge_ai_api_tests PRIVATE "/opt/cvedix-ai-runtime/include/cvedix/third_party/asio/include")
+endif()
+
 # Add Plog include directory (same as main project)
 if(DEFINED PLOG_INCLUDE_DIR AND PLOG_INCLUDE_DIR)
     target_include_directories(edge_ai_api_tests PRIVATE ${PLOG_INCLUDE_DIR})
@@ -359,6 +366,8 @@ if(PkgConfig_FOUND)
     pkg_check_modules(GSTREAMER QUIET gstreamer-1.0)
     if(GSTREAMER_FOUND)
         target_compile_definitions(edge_ai_api_tests PRIVATE CVEDIX_WITH_GSTREAMER)
+        target_include_directories(edge_ai_api_tests PRIVATE ${GSTREAMER_INCLUDE_DIRS})
+        target_link_libraries(edge_ai_api_tests PRIVATE ${GSTREAMER_LIBRARIES})
     endif()
 else()
     find_library(GSTREAMER_LIBRARY
@@ -370,6 +379,37 @@ else()
     )
     if(GSTREAMER_LIBRARY)
         target_compile_definitions(edge_ai_api_tests PRIVATE CVEDIX_WITH_GSTREAMER)
+        # Fallback: try to find GStreamer headers manually
+        find_path(GSTREAMER_INCLUDE_DIR
+            NAMES gst/gst.h
+            PATHS
+                /usr/include/gstreamer-1.0
+                /usr/local/include/gstreamer-1.0
+                /opt/cvedix-ai-runtime/include/gstreamer-1.0
+        )
+        if(GSTREAMER_INCLUDE_DIR)
+            target_include_directories(edge_ai_api_tests PRIVATE ${GSTREAMER_INCLUDE_DIR})
+        endif()
+        target_link_libraries(edge_ai_api_tests PRIVATE ${GSTREAMER_LIBRARY})
+    endif()
+endif()
+
+# Add Eigen include directory (required by BYTETracker)
+if(DEFINED EIGEN3_INCLUDE_DIR AND EIGEN3_INCLUDE_DIR)
+    target_include_directories(edge_ai_api_tests PRIVATE ${EIGEN3_INCLUDE_DIR})
+else()
+    # Try to find Eigen if not already found
+    find_path(EIGEN3_INCLUDE_DIR
+        NAMES Eigen/Core
+        PATHS
+            /usr/include/eigen3
+            /usr/local/include/eigen3
+            /opt/cvedix-ai-runtime/include/eigen3
+            /usr/include
+            /usr/local/include
+    )
+    if(EIGEN3_INCLUDE_DIR)
+        target_include_directories(edge_ai_api_tests PRIVATE ${EIGEN3_INCLUDE_DIR})
     endif()
 endif()
 

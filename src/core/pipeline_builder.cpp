@@ -23,6 +23,9 @@
 #include <cvedix/nodes/des/cvedix_file_des_node.h>
 #include <cvedix/nodes/des/cvedix_rtmp_des_node.h>
 #include <cvedix/nodes/des/cvedix_screen_des_node.h>
+#ifdef CVEDIX_WITH_GSTREAMER
+#include <cvedix/nodes/des/cvedix_rtsp_des_node.h>
+#endif
 #include <cvedix/nodes/infers/cvedix_sface_feature_encoder_node.h>
 #include <cvedix/nodes/infers/cvedix_yunet_face_detector_node.h>
 #include <cvedix/nodes/osd/cvedix_ba_crossline_osd_node.h>
@@ -38,7 +41,8 @@
 #include <cvedix/nodes/src/cvedix_udp_src_node.h>
 #include <cvedix/nodes/track/cvedix_sort_track_node.h>
 #include <cvedix/nodes/track/cvedix_bytetrack_node.h>
-#include <cvedix/nodes/track/cvedix_ocsort_track_node.h>
+// TEMPORARILY DISABLED: cereal/rapidxml macro conflict issue in CVEDIX SDK
+// #include <cvedix/nodes/track/cvedix_ocsort_track_node.h>
 #include <cvedix/objects/shapes/cvedix_line.h>
 #include <cvedix/objects/shapes/cvedix_point.h>
 #include <cvedix/objects/shapes/cvedix_size.h>
@@ -104,7 +108,8 @@
 #ifdef CVEDIX_WITH_MQTT
 #include <chrono>
 #include <ctime>
-#include <cvedix/nodes/broker/cereal_archive/cvedix_objects_cereal_archive.h>
+// TEMPORARILY DISABLED: cereal/rapidxml macro conflict issue in CVEDIX SDK
+// #include <cvedix/nodes/broker/cereal_archive/cvedix_objects_cereal_archive.h>
 #include <cvedix/nodes/broker/cvedix_json_enhanced_console_broker_node.h>
 #include <cvedix/nodes/broker/cvedix_json_mqtt_broker_node.h>
 #include <cvedix/utils/mqtt_client/cvedix_mqtt_client.h>
@@ -117,8 +122,9 @@
 // #include <cvedix/nodes/broker/cvedix_json_kafka_broker_node.h>
 #endif
 // Broker nodes (require cereal - now enabled)
-#include <cvedix/nodes/broker/cvedix_xml_file_broker_node.h>
-#include <cvedix/nodes/broker/cvedix_xml_socket_broker_node.h>
+// TEMPORARILY DISABLED: cereal/rapidxml macro conflict issue in CVEDIX SDK
+// #include <cvedix/nodes/broker/cvedix_xml_file_broker_node.h>
+// #include <cvedix/nodes/broker/cvedix_xml_socket_broker_node.h>
 #include <cvedix/nodes/broker/cvedix_msg_broker_node.h>
 #include <cvedix/nodes/broker/cvedix_ba_socket_broker_node.h>
 #include <cvedix/nodes/broker/cvedix_embeddings_socket_broker_node.h>
@@ -130,7 +136,6 @@
 #endif
 #include <algorithm>
 #include <cctype>
-#include <cmath>
 #include <cstdlib>
 #include <cstring>
 #include <exception>
@@ -143,6 +148,9 @@
 #include <sstream>
 #include <stdexcept>
 #include <typeinfo>
+// Include cmath AFTER CVEDIX SDK headers to avoid macro conflict with rapidxml
+// The macro 'pi' from cmath conflicts with variable 'pi' in rapidxml
+#include <cmath>
 // Use standard filesystem (C++17)
 #include <filesystem>
 namespace fs = std::filesystem;
@@ -1114,8 +1122,12 @@ PipelineBuilder::buildPipeline(const SolutionConfig &solution,
             pos = mqttNodeName.find("{instanceId}", pos + instanceId.length());
           }
 
-          auto mqttNode = PipelineBuilderBrokerNodes::createJSONCrosslineMQTTBrokerNode(
-              mqttNodeName, mqttConfig.parameters, req, instanceId);
+          // TEMPORARILY DISABLED: cereal/rapidxml macro conflict issue in CVEDIX SDK
+          std::cerr << "[PipelineBuilder] json_crossline_mqtt_broker is temporarily disabled due to CVEDIX SDK cereal/rapidxml issue"
+                    << std::endl;
+          // auto mqttNode = PipelineBuilderBrokerNodes::createJSONCrosslineMQTTBrokerNode(
+          //     mqttNodeName, mqttConfig.parameters, req, instanceId);
+          std::shared_ptr<cvedix_nodes::cvedix_node> mqttNode = nullptr;
           if (mqttNode) {
             // Find ba_crossline node to attach to (like in sample code)
             auto attachTarget = findAttachTargetForBrokerCrossline(true);
@@ -1190,8 +1202,12 @@ PipelineBuilder::buildPipeline(const SolutionConfig &solution,
             pos = mqttNodeName.find("{instanceId}", pos + instanceId.length());
           }
 
-          auto mqttNode = PipelineBuilderBrokerNodes::createJSONJamMQTTBrokerNode(
-              mqttNodeName, mqttConfig.parameters, req, instanceId);
+          // TEMPORARILY DISABLED: cereal/rapidxml macro conflict issue in CVEDIX SDK
+          std::cerr << "[PipelineBuilder] json_jam_mqtt_broker is temporarily disabled due to CVEDIX SDK cereal/rapidxml issue"
+                    << std::endl;
+          // auto mqttNode = PipelineBuilderBrokerNodes::createJSONJamMQTTBrokerNode(
+          //     mqttNodeName, mqttConfig.parameters, req, instanceId);
+          std::shared_ptr<cvedix_nodes::cvedix_node> mqttNode = nullptr;
           if (mqttNode) {
             // Find ba_jam node to attach to (like in sample code)
             auto attachTarget = findAttachTargetForBrokerJam(true);
@@ -1758,7 +1774,11 @@ PipelineBuilder::createNode(const SolutionConfig::NodeConfig &nodeConfig,
     } else if (nodeConfig.nodeType == "bytetrack" || nodeConfig.nodeType == "bytetrack_track") {
       return PipelineBuilderOtherNodes::createByteTrackNode(nodeName, params);
     } else if (nodeConfig.nodeType == "ocsort" || nodeConfig.nodeType == "ocsort_track") {
-      return PipelineBuilderOtherNodes::createOCSortTrackNode(nodeName, params);
+      // TEMPORARILY DISABLED: cereal/rapidxml macro conflict issue in CVEDIX SDK
+      std::cerr << "[PipelineBuilder] ocsort_track is temporarily disabled due to CVEDIX SDK cereal/rapidxml issue"
+                << std::endl;
+      return nullptr;
+      // return PipelineBuilderOtherNodes::createOCSortTrackNode(nodeName, params);
     }
     // Behavior Analysis nodes
     else if (nodeConfig.nodeType == "ba_crossline") {
@@ -1806,8 +1826,12 @@ PipelineBuilder::createNode(const SolutionConfig::NodeConfig &nodeConfig,
 #endif
     } else if (nodeConfig.nodeType == "json_crossline_mqtt_broker") {
 #ifdef CVEDIX_WITH_MQTT
-      return PipelineBuilderBrokerNodes::createJSONCrosslineMQTTBrokerNode(nodeName, params, req,
-                                               instanceId);
+      // TEMPORARILY DISABLED: cereal/rapidxml macro conflict issue in CVEDIX SDK
+      std::cerr << "[PipelineBuilder] json_crossline_mqtt_broker is temporarily disabled due to CVEDIX SDK cereal/rapidxml issue"
+                << std::endl;
+      return nullptr;
+      // return PipelineBuilderBrokerNodes::createJSONCrosslineMQTTBrokerNode(nodeName, params, req,
+      //                                          instanceId);
 #else
       std::cerr << "[PipelineBuilder] json_crossline_mqtt_broker requires "
                    "CVEDIX_WITH_MQTT to be enabled"
@@ -1845,11 +1869,23 @@ PipelineBuilder::createNode(const SolutionConfig::NodeConfig &nodeConfig,
       return nullptr;
 #endif
     } else if (nodeConfig.nodeType == "sse_broker") {
-      return PipelineBuilderBrokerNodes::createSSEBrokerNode(nodeName, params, req);
+      // TEMPORARILY DISABLED: ASIO dependency issue in CVEDIX SDK
+      std::cerr << "[PipelineBuilder] sse_broker is temporarily disabled due to CVEDIX SDK ASIO dependency issue"
+                << std::endl;
+      return nullptr;
+      // return PipelineBuilderBrokerNodes::createSSEBrokerNode(nodeName, params, req);
     } else if (nodeConfig.nodeType == "xml_file_broker") {
-      return PipelineBuilderBrokerNodes::createXMLFileBrokerNode(nodeName, params, req);
+      // TEMPORARILY DISABLED: cereal/rapidxml macro conflict issue in CVEDIX SDK
+      std::cerr << "[PipelineBuilder] xml_file_broker is temporarily disabled due to CVEDIX SDK cereal/rapidxml issue"
+                << std::endl;
+      return nullptr;
+      // return PipelineBuilderBrokerNodes::createXMLFileBrokerNode(nodeName, params, req);
     } else if (nodeConfig.nodeType == "xml_socket_broker") {
-      return PipelineBuilderBrokerNodes::createXMLSocketBrokerNode(nodeName, params, req);
+      // TEMPORARILY DISABLED: cereal/rapidxml macro conflict issue in CVEDIX SDK
+      std::cerr << "[PipelineBuilder] xml_socket_broker is temporarily disabled due to CVEDIX SDK cereal/rapidxml issue"
+                << std::endl;
+      return nullptr;
+      // return PipelineBuilderBrokerNodes::createXMLSocketBrokerNode(nodeName, params, req);
     } else if (nodeConfig.nodeType == "msg_broker") {
       // msg_broker is abstract class, cannot be instantiated
       std::cerr << "[PipelineBuilder] msg_broker is an abstract class and cannot be instantiated. "
@@ -2124,6 +2160,64 @@ std::string PipelineBuilder::detectSourceType(const SolutionConfig::NodeConfig &
   
   if (nodeConfig.nodeType != "file_src") {
     return actualNodeType;
+  }
+
+  // Priority 0: Check INPUT_SRC (auto-detect input type from single source parameter)
+  auto inputSrcIt = req.additionalParams.find("INPUT_SRC");
+  if (inputSrcIt != req.additionalParams.end() && !inputSrcIt->second.empty()) {
+    std::string inputSrc = inputSrcIt->second;
+    // Trim whitespace
+    inputSrc.erase(0, inputSrc.find_first_not_of(" \t\n\r"));
+    inputSrc.erase(inputSrc.find_last_not_of(" \t\n\r") + 1);
+    
+    if (!inputSrc.empty()) {
+      std::string inputType = PipelineBuilderSourceNodes::detectInputType(inputSrc);
+      std::cerr << "[PipelineBuilder] INPUT_SRC detected: '" << inputSrc 
+                << "' (auto-detected type: " << inputType << ")" << std::endl;
+      
+      if (inputType == "rtsp") {
+        std::cerr << "[PipelineBuilder] Auto-detected RTSP source from INPUT_SRC, using rtsp_src" << std::endl;
+        actualNodeType = "rtsp_src";
+        params["rtsp_url"] = inputSrc;
+        size_t fileSrcPos = nodeName.find("file_src");
+        if (fileSrcPos != std::string::npos) {
+          nodeName.replace(fileSrcPos, 8, "rtsp_src");
+          std::cerr << "[PipelineBuilder] Updated node name to reflect RTSP source: '"
+                    << nodeName << "'" << std::endl;
+        }
+        return actualNodeType;
+      } else if (inputType == "rtmp") {
+        std::cerr << "[PipelineBuilder] Auto-detected RTMP source from INPUT_SRC, using rtmp_src" << std::endl;
+        actualNodeType = "rtmp_src";
+        params["rtmp_url"] = inputSrc;
+        size_t fileSrcPos = nodeName.find("file_src");
+        if (fileSrcPos != std::string::npos) {
+          nodeName.replace(fileSrcPos, 8, "rtmp_src");
+          std::cerr << "[PipelineBuilder] Updated node name to reflect RTMP source: '"
+                    << nodeName << "'" << std::endl;
+        }
+        return actualNodeType;
+      } else if (inputType == "hls" || inputType == "http") {
+        std::cerr << "[PipelineBuilder] Auto-detected " << inputType 
+                  << " source from INPUT_SRC, using ff_src" << std::endl;
+        actualNodeType = "ff_src";
+        params["uri"] = inputSrc;
+        size_t fileSrcPos = nodeName.find("file_src");
+        if (fileSrcPos != std::string::npos) {
+          nodeName.replace(fileSrcPos, 8, "ff_src");
+          std::cerr << "[PipelineBuilder] Updated node name to reflect FFmpeg source: '"
+                    << nodeName << "'" << std::endl;
+        }
+        return actualNodeType;
+      } else {
+        // If inputType == "file" or "udp", use file_src (default)
+        std::cerr << "[PipelineBuilder] Using file_src for INPUT_SRC: '"
+                  << inputSrc << "' (detected type: " << inputType << ")" << std::endl;
+        // Set file_path parameter for file_src node
+        params["file_path"] = inputSrc;
+        return actualNodeType;
+      }
+    }
   }
 
   // Priority 1: Check explicit source URL parameters
