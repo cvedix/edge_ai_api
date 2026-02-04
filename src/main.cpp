@@ -18,6 +18,7 @@
 #include "api/lines_handler.h"
 #include "api/log_handler.h"
 #include "api/node_handler.h"
+#include "api/onvif_handler.h"
 #include "api/recognition_handler.h"
 #include "api/solution_handler.h"
 #include "api/stops_handler.h"
@@ -2622,6 +2623,7 @@ int main(int argc, char *argv[]) {
     static SolutionHandler solutionHandler;
     static GroupHandler groupHandler;
     static NodeHandler nodeHandler;
+    static ONVIFHandler onvifHandler;
     static LinesHandler linesHandler;
     static JamsHandler jamsHandler;
     static StopsHandler stopsHandler;
