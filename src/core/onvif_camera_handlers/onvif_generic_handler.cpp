@@ -11,6 +11,7 @@ ONVIFGenericHandler::ONVIFGenericHandler() {
 
 bool ONVIFGenericHandler::supports(const ONVIFCamera &camera) const {
   // Generic handler supports all cameras (used as fallback)
+  (void)camera;  // Suppress unused parameter warning
   PLOG_DEBUG << "[ONVIFGenericHandler] supports() called - always returns true (fallback handler)";
   return true;
 }
