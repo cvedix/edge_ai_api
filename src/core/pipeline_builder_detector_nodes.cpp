@@ -1201,7 +1201,6 @@ PipelineBuilderDetectorNodes::createTRTInsightFaceRecognitionNode(
 
 // YOLOv11 TensorRT Face Detector
 // Note: Uncomment the include at top of file when SDK supports this node
-#ifdef CVEDIX_WITH_TRT
 std::shared_ptr<cvedix_nodes::cvedix_node>
 PipelineBuilderDetectorNodes::createTRTYOLOv11FaceDetectorNode(
     const std::string &nodeName,
@@ -1371,7 +1370,6 @@ PipelineBuilderDetectorNodes::createYOLOv11PlateDetectorNode(
     throw;
   }
 }
-#endif
 
 #ifdef CVEDIX_WITH_RKNN
 std::shared_ptr<cvedix_nodes::cvedix_node>
