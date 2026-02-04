@@ -17,6 +17,8 @@ Manual/
 ├── Instance_Management/ # Manual tests cho Instance Management
 │
 ├── Core_API/           # Manual tests cho Core API
+│   ├── SYSTEM_CONFIG_MANUAL_TEST.md
+│   └── SYSTEM_CONFIG_QUICK_TEST.md
 │
 ├── Solutions/          # Manual tests cho Solutions
 │
@@ -58,6 +60,15 @@ Manual tests được thiết kế để:
   - Tìm kiếm khuôn mặt
   - Quản lý subjects
   - Cấu hình database
+
+### Core API - System Config
+- **SYSTEM_CONFIG_MANUAL_TEST.md**: Hướng dẫn test chi tiết System Config & Preferences API, bao gồm:
+  - Get/Update System Configuration
+  - Get System Preferences từ rtconfig.json
+  - Get System Decoders (NVIDIA/Intel)
+  - Get Registry Key Value
+  - System Shutdown
+- **SYSTEM_CONFIG_QUICK_TEST.md**: Các lệnh nhanh để test System Config API
 
 ## Thêm Manual Test Mới
 
