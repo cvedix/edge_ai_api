@@ -184,3 +184,84 @@ SecuRTPipelineIntegration::convertNormalizedToPixel(const Json::Value &coords,
   return pixelCoords;
 }
 
+std::string SecuRTPipelineIntegration::convertAreasToStopZonesFormat(
+    const AreaManager *areaManager, const std::string &instanceId) {
+  if (!areaManager) {
+    return "";
+  }
+
+  // Get all areas grouped by type
+  auto areasMap = areaManager->getAllAreas(instanceId);
+  if (areasMap.empty()) {
+    return "";
+  }
+
+  Json::Value stopZonesArray(Json::arrayValue);
+
+  // Convert all areas to StopZones format (ba_stop node format)
+  // Each area becomes a zone with roi (polygon coordinates)
+  for (const auto &[areaType, areas] : areasMap) {
+    for (const auto &area : areas) {
+      if (!area.isObject() || !area.isMember("coordinates") ||
+          !area["coordinates"].isArray() || area["coordinates"].size() < 3) {
+        continue; // Skip invalid areas
+      }
+
+      Json::Value zone(Json::objectValue);
+
+      // Copy id if exists
+      if (area.isMember("id") && area["id"].isString()) {
+        zone["id"] = area["id"];
+      }
+
+      // Copy name if exists
+      if (area.isMember("name") && area["name"].isString()) {
+        zone["name"] = area["name"];
+      } else {
+        zone["name"] = areaType + " Area";
+      }
+
+      // Convert coordinates to roi format (ba_stop uses "roi" field)
+      Json::Value roi(Json::arrayValue);
+      const auto &coords = area["coordinates"];
+      for (const auto &coord : coords) {
+        if (coord.isObject() && coord.isMember("x") && coord.isMember("y")) {
+          Json::Value point(Json::objectValue);
+          // Convert to pixel coordinates if normalized
+          double x = coord["x"].asDouble();
+          double y = coord["y"].asDouble();
+          
+          // If normalized (0.0-1.0), convert to pixel (assume 1920x1080 default)
+          // Otherwise use as-is (already in pixels)
+          if (x <= 1.0 && y <= 1.0 && x >= 0.0 && y >= 0.0) {
+            // Normalized coordinates - convert to pixels
+            // Note: Actual frame size will be determined at runtime
+            // For now, use default 1920x1080
+            point["x"] = static_cast<int>(x * 1920);
+            point["y"] = static_cast<int>(y * 1080);
+          } else {
+            // Already in pixels
+            point["x"] = static_cast<int>(x);
+            point["y"] = static_cast<int>(y);
+          }
+          roi.append(point);
+        }
+      }
+
+      if (roi.size() >= 3) {
+        zone["roi"] = roi;
+        stopZonesArray.append(zone);
+      }
+    }
+  }
+
+  if (stopZonesArray.empty()) {
+    return "";
+  }
+
+  // Convert to JSON string
+  Json::StreamWriterBuilder builder;
+  builder["indentation"] = "";
+  return Json::writeString(builder, stopZonesArray);
+}
+

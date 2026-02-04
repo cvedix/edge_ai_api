@@ -31,6 +31,15 @@ public:
       const AreaManager *areaManager, const std::string &instanceId);
 
   /**
+   * @brief Convert SecuRT areas to StopZones format for ba_stop node
+   * @param areaManager Area manager instance
+   * @param instanceId Instance ID
+   * @return JSON string in StopZones format, empty if no areas
+   */
+  static std::string convertAreasToStopZonesFormat(
+      const AreaManager *areaManager, const std::string &instanceId);
+
+  /**
    * @brief Get all lines as JSON array for API response
    * @param lineManager Line manager instance
    * @param instanceId Instance ID
