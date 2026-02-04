@@ -9414,6 +9414,31 @@ paths:
           application/json:
             schema:
               $ref: '#/components/schemas/CreateStopRequest'
+      responses:
+        '200':
+          description: Stop zone updated successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StopZone'
+        '400':
+          description: Invalid request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: Instance or stop zone not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
     delete:
       summary: Delete a specific stop zone
       description: 'Deletes a specific stop zone by ID for a ba_stop instance.
