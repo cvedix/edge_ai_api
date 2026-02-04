@@ -1720,6 +1720,10 @@ PipelineBuilder::createNode(const SolutionConfig::NodeConfig &nodeConfig,
       return PipelineBuilderDetectorNodes::createTRTVehicleScannerNode(nodeName, params, req);
     } else if (nodeConfig.nodeType == "trt_insight_face_recognition") {
       return PipelineBuilderDetectorNodes::createTRTInsightFaceRecognitionNode(nodeName, params, req);
+    } else if (nodeConfig.nodeType == "trt_yolov11_face_detector") {
+      return PipelineBuilderDetectorNodes::createTRTYOLOv11FaceDetectorNode(nodeName, params, req);
+    } else if (nodeConfig.nodeType == "trt_yolov11_plate_detector") {
+      return PipelineBuilderDetectorNodes::createTRTYOLOv11PlateDetectorNode(nodeName, params, req);
     }
 #endif
 #ifdef CVEDIX_WITH_RKNN
@@ -1737,6 +1741,8 @@ PipelineBuilder::createNode(const SolutionConfig::NodeConfig &nodeConfig,
       return PipelineBuilderDetectorNodes::createYOLODetectorNode(nodeName, params, req);
     } else if (nodeConfig.nodeType == "yolov11_detector") {
       return PipelineBuilderDetectorNodes::createYOLOv11DetectorNode(nodeName, params, req);
+    } else if (nodeConfig.nodeType == "yolov11_plate_detector") {
+      return PipelineBuilderDetectorNodes::createYOLOv11PlateDetectorNode(nodeName, params, req);
     } else if (nodeConfig.nodeType == "enet_seg") {
       return PipelineBuilderDetectorNodes::createENetSegNode(nodeName, params, req);
     } else if (nodeConfig.nodeType == "mask_rcnn_detector") {

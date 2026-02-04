@@ -20,6 +20,10 @@
 #include <cvedix/nodes/infers/fr/cvedix_face_recognition_node.h>
 #include <cvedix/nodes/infers/cvedix_lane_detector_node.h>
 #include <cvedix/nodes/infers/cvedix_restoration_node.h>
+// YOLOv11 ONNX nodes
+// Note: This header may not be available in all SDK versions
+// If compilation fails, this node will not be available
+// #include <cvedix/nodes/infers/cvedix_yolov11_plate_detector_node.h>
 
 // TensorRT Inference Nodes
 #ifdef CVEDIX_WITH_TRT
@@ -35,6 +39,11 @@
 #include <cvedix/nodes/infers/cvedix_trt_yolov8_pose_detector.h>
 #include <cvedix/nodes/infers/cvedix_trt_yolov8_seg_detector.h>
 #include <cvedix/nodes/infers/cvedix_trt_insight_face_recognition_node.h>
+// YOLOv11 TensorRT nodes
+// Note: These headers may not be available in all SDK versions
+// If compilation fails, these nodes will not be available
+// #include <cvedix/nodes/infers/cvedix_trt_yolov11_face_detector_node.h>
+// #include <cvedix/nodes/infers/cvedix_trt_yolov11_plate_detector_node.h>
 #endif
 
 // RKNN Inference Nodes
@@ -1189,7 +1198,180 @@ PipelineBuilderDetectorNodes::createTRTInsightFaceRecognitionNode(
     throw;
   }
 }
+
+// YOLOv11 TensorRT Face Detector
+// Note: Uncomment the include at top of file when SDK supports this node
+#ifdef CVEDIX_WITH_TRT
+std::shared_ptr<cvedix_nodes::cvedix_node>
+PipelineBuilderDetectorNodes::createTRTYOLOv11FaceDetectorNode(
+    const std::string &nodeName,
+    const std::map<std::string, std::string> &params,
+    const CreateInstanceRequest &req) {
+
+  try {
+    std::string modelPath =
+        params.count("model_path") ? params.at("model_path") : "";
+    float confThreshold = params.count("conf_threshold")
+                             ? std::stof(params.at("conf_threshold"))
+                             : 0.5f;
+    float nmsThreshold = params.count("nms_threshold")
+                            ? std::stof(params.at("nms_threshold"))
+                            : 0.45f;
+
+    if (modelPath.empty()) {
+      auto it = req.additionalParams.find("MODEL_PATH");
+      if (it != req.additionalParams.end() && !it->second.empty()) {
+        modelPath = it->second;
+      }
+    }
+
+    if (nodeName.empty() || modelPath.empty()) {
+      throw std::invalid_argument("Node name and model path are required");
+    }
+
+    std::cerr << "[PipelineBuilderDetectorNodes] Creating TRT YOLOv11 face detector node:"
+              << std::endl;
+    std::cerr << "  Name: '" << nodeName << "'" << std::endl;
+    std::cerr << "  Model path: '" << modelPath << "'" << std::endl;
+    std::cerr << "  Confidence threshold: " << confThreshold << std::endl;
+    std::cerr << "  NMS threshold: " << nmsThreshold << std::endl;
+
+    // Note: Uncomment when SDK header is available
+    // auto node = std::make_shared<cvedix_nodes::cvedix_trt_yolov11_face_detector_node>(
+    //     nodeName, modelPath, confThreshold, nmsThreshold);
+    // std::cerr
+    //     << "[PipelineBuilderDetectorNodes] ✓ TRT YOLOv11 face detector node created successfully"
+    //     << std::endl;
+    // return node;
+    
+    throw std::runtime_error("trt_yolov11_face_detector is not available. "
+                             "Please uncomment the SDK header include and implementation "
+                             "when SDK supports this node type.");
+  } catch (const std::exception &e) {
+    std::cerr << "[PipelineBuilderDetectorNodes] Exception in createTRTYOLOv11FaceDetectorNode: "
+              << e.what() << std::endl;
+    throw;
+  }
+}
+
+std::shared_ptr<cvedix_nodes::cvedix_node>
+PipelineBuilderDetectorNodes::createTRTYOLOv11PlateDetectorNode(
+    const std::string &nodeName,
+    const std::map<std::string, std::string> &params,
+    const CreateInstanceRequest &req) {
+
+  try {
+    std::string modelPath =
+        params.count("model_path") ? params.at("model_path") : "";
+    float confThreshold = params.count("conf_threshold")
+                             ? std::stof(params.at("conf_threshold"))
+                             : 0.25f;
+    float nmsThreshold = params.count("nms_threshold")
+                            ? std::stof(params.at("nms_threshold"))
+                            : 0.45f;
+
+    if (modelPath.empty()) {
+      auto it = req.additionalParams.find("MODEL_PATH");
+      if (it != req.additionalParams.end() && !it->second.empty()) {
+        modelPath = it->second;
+      }
+    }
+
+    if (nodeName.empty() || modelPath.empty()) {
+      throw std::invalid_argument("Node name and model path are required");
+    }
+
+    std::cerr << "[PipelineBuilderDetectorNodes] Creating TRT YOLOv11 plate detector node:"
+              << std::endl;
+    std::cerr << "  Name: '" << nodeName << "'" << std::endl;
+    std::cerr << "  Model path: '" << modelPath << "'" << std::endl;
+    std::cerr << "  Confidence threshold: " << confThreshold << std::endl;
+    std::cerr << "  NMS threshold: " << nmsThreshold << std::endl;
+
+    // Note: Uncomment when SDK header is available
+    // auto node = std::make_shared<cvedix_nodes::cvedix_trt_yolov11_plate_detector_node>(
+    //     nodeName, modelPath, confThreshold, nmsThreshold);
+    // std::cerr
+    //     << "[PipelineBuilderDetectorNodes] ✓ TRT YOLOv11 plate detector node created successfully"
+    //     << std::endl;
+    // return node;
+    
+    throw std::runtime_error("trt_yolov11_plate_detector is not available. "
+                             "Please uncomment the SDK header include and implementation "
+                             "when SDK supports this node type.");
+  } catch (const std::exception &e) {
+    std::cerr << "[PipelineBuilderDetectorNodes] Exception in createTRTYOLOv11PlateDetectorNode: "
+              << e.what() << std::endl;
+    throw;
+  }
+}
 #endif // CVEDIX_WITH_TRT
+
+// YOLOv11 Plate Detector (ONNX)
+// Note: Uncomment the include at top of file when SDK supports this node
+std::shared_ptr<cvedix_nodes::cvedix_node>
+PipelineBuilderDetectorNodes::createYOLOv11PlateDetectorNode(
+    const std::string &nodeName,
+    const std::map<std::string, std::string> &params,
+    const CreateInstanceRequest &req) {
+
+  try {
+    std::string modelPath =
+        params.count("model_path") ? params.at("model_path") : "";
+    int inputWidth =
+        params.count("input_width") ? std::stoi(params.at("input_width")) : 640;
+    int inputHeight = params.count("input_height")
+                         ? std::stoi(params.at("input_height"))
+                         : 640;
+    int numClasses =
+        params.count("num_classes") ? std::stoi(params.at("num_classes")) : 1;
+    float scoreThreshold = params.count("score_threshold")
+                              ? std::stof(params.at("score_threshold"))
+                              : 0.25f;
+    float nmsThreshold = params.count("nms_threshold")
+                            ? std::stof(params.at("nms_threshold"))
+                            : 0.45f;
+
+    if (modelPath.empty()) {
+      auto it = req.additionalParams.find("MODEL_PATH");
+      if (it != req.additionalParams.end() && !it->second.empty()) {
+        modelPath = it->second;
+      }
+    }
+
+    if (nodeName.empty() || modelPath.empty()) {
+      throw std::invalid_argument("Node name and model path are required");
+    }
+
+    std::cerr << "[PipelineBuilderDetectorNodes] Creating YOLOv11 plate detector node:"
+              << std::endl;
+    std::cerr << "  Name: '" << nodeName << "'" << std::endl;
+    std::cerr << "  Model path: '" << modelPath << "'" << std::endl;
+    std::cerr << "  Input size: " << inputWidth << "x" << inputHeight
+              << std::endl;
+    std::cerr << "  Num classes: " << numClasses << std::endl;
+    std::cerr << "  Score threshold: " << scoreThreshold << std::endl;
+    std::cerr << "  NMS threshold: " << nmsThreshold << std::endl;
+
+    // Note: Uncomment when SDK header is available
+    // auto node = std::make_shared<cvedix_nodes::cvedix_yolov11_plate_detector_node>(
+    //     nodeName, modelPath, inputWidth, inputHeight, numClasses,
+    //     scoreThreshold, nmsThreshold);
+    // std::cerr
+    //     << "[PipelineBuilderDetectorNodes] ✓ YOLOv11 plate detector node created successfully"
+    //     << std::endl;
+    // return node;
+    
+    throw std::runtime_error("yolov11_plate_detector is not available. "
+                             "Please uncomment the SDK header include and implementation "
+                             "when SDK supports this node type.");
+  } catch (const std::exception &e) {
+    std::cerr << "[PipelineBuilderDetectorNodes] Exception in createYOLOv11PlateDetectorNode: "
+              << e.what() << std::endl;
+    throw;
+  }
+}
+#endif
 
 #ifdef CVEDIX_WITH_RKNN
 std::shared_ptr<cvedix_nodes::cvedix_node>

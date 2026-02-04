@@ -4,6 +4,77 @@ REST API server cho CVEDIX Edge AI SDK, cho phép điều khiển và giám sát
 
 ![Edge AI Workflow](docs/image.png)
 
+## 🎯 Các Bài Toán & Tính Năng Được Hỗ Trợ
+
+API hỗ trợ các tính năng từ CVEDIX SDK với **43+ processing nodes**, bao gồm:
+
+### 👤 Nhận Diện & Phân Tích Khuôn Mặt
+- ✅ **Face Detection** - Phát hiện khuôn mặt (YuNet, YOLOv11, RKNN)
+- ✅ **Face Recognition** - Nhận diện khuôn mặt (InsightFace, TensorRT)
+- ✅ **Face Tracking** - Theo dõi khuôn mặt (SORT, ByteTrack, OCSort)
+- ✅ **Face Feature Encoding** - Trích xuất đặc trưng khuôn mặt
+- ✅ **Face Swap** - Hoán đổi khuôn mặt
+- ✅ **Face Database Management** - Quản lý database khuôn mặt
+
+### 🚗 Phát Hiện & Phân Tích Phương Tiện
+- ✅ **Vehicle Detection** - Phát hiện phương tiện (TensorRT, YOLO)
+- ✅ **Vehicle Plate Detection & Recognition** - Phát hiện và nhận diện biển số xe
+- ✅ **Vehicle Tracking** - Theo dõi phương tiện
+- ✅ **Vehicle Classification** - Phân loại màu, loại xe (TensorRT)
+- ✅ **Vehicle Feature Encoding** - Trích xuất đặc trưng xe
+- ✅ **Vehicle Body Scan** - Quét thân xe
+- ✅ **Vehicle Clustering** - Phân nhóm xe
+
+### 🎯 Phát Hiện Vật Thể & Phân Tích
+- ✅ **Object Detection** - Phát hiện vật thể (YOLO, YOLOv8, YOLOv11)
+- ✅ **Instance Segmentation** - Phân đoạn instance (Mask R-CNN, YOLOv8)
+- ✅ **Semantic Segmentation** - Phân đoạn ngữ nghĩa (ENet)
+- ✅ **Pose Estimation** - Ước lượng tư thế (OpenPose, YOLOv8)
+- ✅ **Image Classification** - Phân loại ảnh
+- ✅ **Text Detection** - Phát hiện văn bản (PaddleOCR)
+
+### 🚦 Phân Tích Hành Vi (Behavior Analysis)
+- ✅ **Crossline Detection** - Phát hiện vượt đường line (đếm đối tượng)
+- ✅ **Multi-line Crossline** - Nhiều đường crossline
+- ✅ **Traffic Jam Detection** - Phát hiện kẹt xe
+- ✅ **Stop Detection** - Phát hiện dừng tại stop-line
+- ✅ **Wrong Way Detection** - Phát hiện đi ngược chiều
+- ✅ **Obstacle Detection** - Phát hiện chướng ngại vật
+
+### 🔥 Phát Hiện An Toàn & Bất Thường
+- ✅ **Fire/Smoke Detection** - Phát hiện lửa/khói
+- ✅ **Video Restoration** - Khôi phục video chất lượng cao
+- ✅ **Lane Detection** - Phát hiện làn đường
+
+### 📹 Nguồn Video & Đầu Ra
+- ✅ **Source**: RTSP, RTMP, File, Image, App, UDP, FFmpeg
+- ✅ **Destination**: RTSP, RTMP, File, Image, Screen, App, FFmpeg
+- ✅ **Broker**: MQTT, Kafka, Socket, Console, File, SSE
+
+### 🔄 Xử Lý & Tối Ưu
+- ✅ **Object Tracking** - SORT, ByteTrack, OCSort
+- ✅ **Frame Processing** - Fusion, Sync, Split, Skip
+- ✅ **Recording** - Ghi lại video/ảnh
+- ✅ **Clustering** - Phân nhóm đối tượng
+- ✅ **OSD** - Vẽ overlay kết quả
+
+### 🤖 AI Models & Hardware
+- ✅ **TensorRT** - NVIDIA GPU (YOLOv8, Vehicle, InsightFace)
+- ✅ **RKNN** - Rockchip NPU (YOLOv8, YOLOv11, Face)
+- ✅ **ONNX Runtime** - Cross-platform
+- ✅ **OpenCV DNN** - YOLO, Caffe, TensorFlow
+- ✅ **PaddlePaddle** - OCR
+
+### 🔧 Tính Năng Nâng Cao
+- ✅ **Multi-Channel Pipelines** - Xử lý nhiều nguồn đồng thời
+- ✅ **Dynamic Pipeline** - Thay đổi pipeline trong runtime
+- ✅ **Multi-Detector** - Nhiều detector trong một pipeline
+- ✅ **MLLM Analysis** - Phân tích đa phương thức
+
+Xem chi tiết: [ReleaseNotes.md](ReleaseNotes.md#-các-bài-toán--tính-năng-được-hỗ-trợ)
+
+---
+
 ## 🚀 Quick Start
 
 ### Development Setup

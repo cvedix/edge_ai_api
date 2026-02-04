@@ -136,6 +136,24 @@ public:
       const std::string &nodeName,
       const std::map<std::string, std::string> &params,
       const CreateInstanceRequest &req);
+
+  /**
+   * @brief Create TensorRT YOLOv11 face detector node
+   */
+  static std::shared_ptr<cvedix_nodes::cvedix_node>
+  createTRTYOLOv11FaceDetectorNode(
+      const std::string &nodeName,
+      const std::map<std::string, std::string> &params,
+      const CreateInstanceRequest &req);
+
+  /**
+   * @brief Create TensorRT YOLOv11 plate detector node
+   */
+  static std::shared_ptr<cvedix_nodes::cvedix_node>
+  createTRTYOLOv11PlateDetectorNode(
+      const std::string &nodeName,
+      const std::map<std::string, std::string> &params,
+      const CreateInstanceRequest &req);
 #endif
 
   // ========== RKNN Inference Nodes ==========
@@ -241,6 +259,14 @@ public:
   createYOLOv11DetectorNode(const std::string &nodeName,
                             const std::map<std::string, std::string> &params,
                             const CreateInstanceRequest &req);
+
+  /**
+   * @brief Create YOLOv11 plate detector node (ONNX)
+   */
+  static std::shared_ptr<cvedix_nodes::cvedix_node>
+  createYOLOv11PlateDetectorNode(const std::string &nodeName,
+                                 const std::map<std::string, std::string> &params,
+                                 const CreateInstanceRequest &req);
 
   /**
    * @brief Create face swap node
