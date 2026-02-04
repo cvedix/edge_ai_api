@@ -3871,6 +3871,8 @@ int main(int argc, char *argv[]) {
     PLOG_INFO << "[Server] Starting HTTP server on " << host << ":" << port;
     PLOG_INFO << "[Server] Access http://" << host << ":" << port
               << "/v1/swagger to view all APIs";
+    PLOG_INFO << "[Server] Access http://" << host << ":" << port
+              << "/v1/document to view API documentation";
 
     // Initialize current server config for auto-reload detection
     systemConfig.initializeCurrentServerConfig(webServerConfig);
