@@ -17,35 +17,51 @@ FetchContent_MakeAvailable(googletest)
 # Include directories
 include_directories(${CMAKE_SOURCE_DIR}/include ${CMAKE_SOURCE_DIR}/src)
 
-# Test sources
+# Test sources - organized by feature in Auto/ subdirectories
 set(TEST_SOURCES
-    test_health_handler.cpp
-    test_version_handler.cpp
-    test_swagger_handler.cpp
-    test_watchdog_handler.cpp
-    test_endpoints_handler.cpp
-    test_instance_storage.cpp
-    test_instance_update.cpp
-    test_instance_status_summary.cpp
-    test_instance_get_config.cpp
-    test_instance_configure_stream.cpp
-    test_solution_handler.cpp
-    test_recognition_handler.cpp
-    test_config_handler.cpp
-    test_system_info_handler.cpp
-    test_metrics_handler.cpp
-    test_node_handler.cpp
-    test_group_handler.cpp
-    test_create_instance_handler.cpp
-    test_lines_handler.cpp
-    test_jams_handler.cpp
-    test_stops_handler.cpp
-    test_ba_jam_detection_params.cpp
-    test_ba_jam_pipeline.cpp
-    test_securt_handler.cpp
-    test_area_handler.cpp
-    # test_ai_handler.cpp  # Commented out: requires C++20 for counting_semaphore, but project uses C++17
-    test_main.cpp
+    # Core API tests
+    Auto/Core_API/test_health_handler.cpp
+    Auto/Core_API/test_version_handler.cpp
+    Auto/Core_API/test_swagger_handler.cpp
+    Auto/Core_API/test_watchdog_handler.cpp
+    Auto/Core_API/test_endpoints_handler.cpp
+    Auto/Core_API/test_config_handler.cpp
+    Auto/Core_API/test_system_info_handler.cpp
+    Auto/Core_API/test_metrics_handler.cpp
+    
+    # Instance Management tests
+    Auto/Instance_Management/test_instance_storage.cpp
+    Auto/Instance_Management/test_instance_update.cpp
+    Auto/Instance_Management/test_instance_status_summary.cpp
+    Auto/Instance_Management/test_instance_get_config.cpp
+    Auto/Instance_Management/test_instance_configure_stream.cpp
+    Auto/Instance_Management/test_create_instance_handler.cpp
+    
+    # Recognition tests
+    Auto/Recognition/test_recognition_handler.cpp
+    
+    # Solutions tests
+    Auto/Solutions/test_solution_handler.cpp
+    
+    # Groups tests
+    Auto/Groups/test_group_handler.cpp
+    
+    # Nodes tests
+    Auto/Nodes/test_node_handler.cpp
+    Auto/Nodes/test_node_pool_handler.cpp
+    
+    # Analytics tests
+    Auto/Analytics/test_lines_handler.cpp
+    Auto/Analytics/test_jams_handler.cpp
+    Auto/Analytics/test_stops_handler.cpp
+    Auto/Analytics/test_ba_jam_detection_params.cpp
+    Auto/Analytics/test_ba_jam_pipeline.cpp
+    Auto/Analytics/test_securt_handler.cpp
+    Auto/Analytics/test_area_handler.cpp
+    # Auto/Analytics/test_ai_handler.cpp  # Commented out: requires C++20 for counting_semaphore, but project uses C++17
+    
+    # Main test entry point
+    Auto/test_main.cpp
 )
 
 # Create test executable
