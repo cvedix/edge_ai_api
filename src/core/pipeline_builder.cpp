@@ -801,6 +801,132 @@ PipelineBuilder::buildPipeline(const SolutionConfig &solution,
     }
   }
 
+  // Auto-add ba_stop node if StopZones are present (for SecuRT areas)
+  // Check if StopZones exist and ba_stop node is not already in pipeline
+  auto stopZonesIt = mutableReq.additionalParams.find("StopZones");
+  bool hasStopZones = (stopZonesIt != mutableReq.additionalParams.end() &&
+                       !stopZonesIt->second.empty());
+  bool hasBAStopNode = false;
+  for (const auto &type : nodeTypes) {
+    if (type == "ba_stop") {
+      hasBAStopNode = true;
+      break;
+    }
+  }
+
+  if (hasStopZones && !hasBAStopNode && solution.solutionId == "securt") {
+    std::cerr << "[PipelineBuilder] StopZones detected for SecuRT areas - "
+                 "auto-adding ba_stop node..."
+              << std::endl;
+
+    try {
+      // Create ba_stop node config
+      SolutionConfig::NodeConfig baStopConfig;
+      baStopConfig.nodeType = "ba_stop";
+      baStopConfig.nodeName = "ba_stop_{instanceId}";
+      baStopConfig.parameters.clear(); // Parameters will come from StopZones in additionalParams
+
+      // Substitute {instanceId} in node name
+      std::string baStopNodeName = baStopConfig.nodeName;
+      size_t pos = baStopNodeName.find("{instanceId}");
+      while (pos != std::string::npos) {
+        baStopNodeName.replace(pos, 12, instanceId);
+        pos = baStopNodeName.find("{instanceId}", pos + instanceId.length());
+      }
+
+      // Create ba_stop node (it will read StopZones from mutableReq.additionalParams)
+      auto baStopNode = PipelineBuilderBehaviorAnalysisNodes::createBAStopNode(
+          baStopNodeName, baStopConfig.parameters, mutableReq);
+
+      if (baStopNode && !nodes.empty()) {
+        // Find sort_track node to attach to (ba_stop needs tracked objects)
+        std::shared_ptr<cvedix_nodes::cvedix_node> attachTarget = nullptr;
+        for (int i = static_cast<int>(nodes.size()) - 1; i >= 0; --i) {
+          if (nodeTypes[i] == "sort_track" || nodeTypes[i] == "sort_tracker") {
+            attachTarget = nodes[i];
+            break;
+          }
+        }
+
+        // Fallback to last non-destination node
+        if (!attachTarget) {
+          for (int i = static_cast<int>(nodes.size()) - 1; i >= 0; --i) {
+            bool isDestNode = (nodeTypes[i] == "file_des" ||
+                               nodeTypes[i] == "rtmp_des" ||
+                               nodeTypes[i] == "rtsp_des" ||
+                               nodeTypes[i] == "screen_des" ||
+                               nodeTypes[i] == "app_des");
+            if (!isDestNode) {
+              attachTarget = nodes[i];
+              break;
+            }
+          }
+          // Final fallback to last node if no non-destination node found
+          if (!attachTarget && !nodes.empty()) {
+            attachTarget = nodes.back();
+          }
+        }
+
+        if (attachTarget) {
+          baStopNode->attach_to({attachTarget});
+          nodes.push_back(baStopNode);
+          nodeTypes.push_back("ba_stop");
+          std::cerr << "[PipelineBuilder] ✓ Auto-added ba_stop node for area "
+                       "detection"
+                    << std::endl;
+
+          // Also auto-add ba_stop_osd node for visualization
+          std::cerr << "[PipelineBuilder] Auto-adding ba_stop_osd node for area "
+                       "visualization..."
+                    << std::endl;
+
+          SolutionConfig::NodeConfig baStopOSDConfig;
+          baStopOSDConfig.nodeType = "ba_stop_osd";
+          baStopOSDConfig.nodeName = "ba_stop_osd_{instanceId}";
+          baStopOSDConfig.parameters.clear();
+
+          std::string baStopOSDNodeName = baStopOSDConfig.nodeName;
+          pos = baStopOSDNodeName.find("{instanceId}");
+          while (pos != std::string::npos) {
+            baStopOSDNodeName.replace(pos, 12, instanceId);
+            pos = baStopOSDNodeName.find("{instanceId}", pos + instanceId.length());
+          }
+
+          auto baStopOSDNode =
+              PipelineBuilderBehaviorAnalysisNodes::createBAStopOSDNode(
+                  baStopOSDNodeName, baStopOSDConfig.parameters);
+
+          if (baStopOSDNode) {
+            // Attach OSD node to ba_stop node
+            baStopOSDNode->attach_to({baStopNode});
+            nodes.push_back(baStopOSDNode);
+            nodeTypes.push_back("ba_stop_osd");
+            hasOSDNode = true; // Update hasOSDNode flag
+            std::cerr << "[PipelineBuilder] ✓ Auto-added ba_stop_osd node for "
+                         "area visualization"
+                      << std::endl;
+          } else {
+            std::cerr << "[PipelineBuilder] ⚠ Failed to create ba_stop_osd node"
+                      << std::endl;
+          }
+        } else {
+          std::cerr << "[PipelineBuilder] ⚠ Failed to find node to attach ba_stop "
+                       "node to"
+                    << std::endl;
+        }
+      } else {
+        std::cerr << "[PipelineBuilder] ⚠ Failed to create ba_stop node"
+                  << std::endl;
+      }
+    } catch (const std::exception &e) {
+      std::cerr << "[PipelineBuilder] ⚠ Exception auto-adding ba_stop node: "
+                << e.what() << std::endl;
+      std::cerr << "[PipelineBuilder] ⚠ Area detection will not be available, "
+                   "but pipeline will continue"
+                << std::endl;
+    }
+  }
+
   // Check if pipeline has app_des_node for frame capture
   bool hasAppDesNode = false;
   for (const auto &node : nodes) {
@@ -2547,21 +2673,31 @@ void PipelineBuilder::loadSecuRTData(const SolutionConfig &solution,
               << std::endl;
   }
 
-  // Load areas from Area Manager (for future use - areas may need different
-  // SDK nodes)
+  // Load areas from Area Manager and convert to StopZones format for ba_stop node
   if (area_manager_) {
-    std::string areasJson =
-        SecuRTPipelineIntegration::convertAreasToJsonFormat(area_manager_,
-                                                            instanceId);
-    if (!areasJson.empty()) {
-      // Store areas in additionalParams for potential future use
-      req.additionalParams["SecuRTAreas"] = areasJson;
-      std::cerr << "[PipelineBuilder] ✓ Loaded " << areasJson.length()
-                << " bytes of areas data from SecuRT Area Manager"
+    // Convert areas to StopZones format (for ba_stop node processing)
+    std::string stopZonesJson =
+        SecuRTPipelineIntegration::convertAreasToStopZonesFormat(area_manager_,
+                                                                 instanceId);
+    if (!stopZonesJson.empty()) {
+      // Store StopZones in additionalParams for ba_stop node
+      req.additionalParams["StopZones"] = stopZonesJson;
+      std::cerr << "[PipelineBuilder] ✓ Loaded " << stopZonesJson.length()
+                << " bytes of areas data from SecuRT Area Manager (converted to StopZones format)"
+                << std::endl;
+      std::cerr << "[PipelineBuilder] Areas will be processed by ba_stop node in pipeline"
                 << std::endl;
     } else {
       std::cerr << "[PipelineBuilder] No areas found in SecuRT Area Manager"
                 << std::endl;
+    }
+
+    // Also store original areas JSON for reference
+    std::string areasJson =
+        SecuRTPipelineIntegration::convertAreasToJsonFormat(area_manager_,
+                                                            instanceId);
+    if (!areasJson.empty()) {
+      req.additionalParams["SecuRTAreas"] = areasJson;
     }
   } else {
     std::cerr << "[PipelineBuilder] WARNING: Area Manager not set for SecuRT"
