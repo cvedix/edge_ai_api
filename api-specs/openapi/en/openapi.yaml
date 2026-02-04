@@ -152,6 +152,202 @@ paths:
       responses:
         '200':
           description: CORS preflight response
+  /v1/core/system/config:
+    get:
+      summary: Get system configuration entities
+      description: Returns system configuration entities with fieldId, displayName, type, value, group, and availableValues
+      operationId: coreGetSystemConfigV1
+      tags:
+      - Core
+      responses:
+        '200':
+          description: System configuration entities
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SystemConfigResponse'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+    put:
+      summary: Update system configuration
+      description: Update system configuration entities
+      operationId: corePutSystemConfigV1
+      tags:
+      - Core
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SystemConfigUpdateRequest'
+      responses:
+        '200':
+          description: Configuration updated successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: success
+                  message:
+                    type: string
+                    example: System config updated successfully
+        '406':
+          description: Not Acceptable - Invalid configuration
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+    options:
+      summary: CORS preflight for system config
+      operationId: coreSystemConfigOptions
+      tags:
+      - Core
+      responses:
+        '200':
+          description: CORS preflight response
+  /v1/core/system/preferences:
+    get:
+      summary: Get system preferences
+      description: Returns system preferences from rtconfig.json. These settings affect VMS plugins UI and Web Panel.
+      operationId: coreGetPreferencesV1
+      tags:
+      - Core
+      responses:
+        '200':
+          description: System preferences
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SystemPreferencesResponse'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+    options:
+      summary: CORS preflight for system preferences
+      operationId: coreSystemPreferencesOptions
+      tags:
+      - Core
+      responses:
+        '200':
+          description: CORS preflight response
+  /v1/core/system/decoders:
+    get:
+      summary: Get available system decoders
+      description: Returns information about available hardware and software decoders in the system
+      operationId: coreGetDecodersV1
+      tags:
+      - Core
+      responses:
+        '200':
+          description: Decoder information
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SystemDecodersResponse'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+    options:
+      summary: CORS preflight for system decoders
+      operationId: coreSystemDecodersOptions
+      tags:
+      - Core
+      responses:
+        '200':
+          description: CORS preflight response
+  /v1/core/system/registry:
+    get:
+      summary: Get registry key value
+      description: Returns registry key value from the system
+      operationId: coreGetRegistryKeyValueV1
+      tags:
+      - Core
+      parameters:
+      - name: key
+        in: query
+        required: true
+        schema:
+          type: string
+        description: Registry key path
+        example: test
+      responses:
+        '200':
+          description: Registry key value
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+                example:
+                  test:
+                    value_bool: true
+                    value_float: 3.14
+                    value_int: 42
+                    value_string: hello
+                  system:
+                    version: 1.0.0
+        '404':
+          description: Registry key not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+    options:
+      summary: CORS preflight for system registry
+      operationId: coreSystemRegistryOptions
+      tags:
+      - Core
+      responses:
+        '200':
+          description: CORS preflight response
+  /v1/core/system/shutdown:
+    post:
+      summary: Shutdown system
+      description: Initiates system shutdown
+      operationId: corePostShutdownV1
+      tags:
+      - Core
+      responses:
+        '200':
+          description: Shutdown initiated
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: success
+                  message:
+                    type: string
+                    example: System shutdown initiated
+    options:
+      summary: CORS preflight for system shutdown
+      operationId: coreSystemShutdownOptions
+      tags:
+      - Core
+      responses:
+        '200':
+          description: CORS preflight response
   /v1/core/config:
     get:
       summary: Get system configuration
@@ -13991,6 +14187,113 @@ components:
           format: int64
           description: System uptime in seconds
           example: 86400
+    SystemConfigResponse:
+      type: object
+      description: System configuration entities response
+      properties:
+        systemConfig:
+          type: array
+          description: Array of system configuration entities
+          items:
+            type: object
+            properties:
+              fieldId:
+                type: string
+                description: Configuration field identifier
+                example: voice6
+              displayName:
+                type: string
+                description: Human-readable display name
+                example: voice n. 6
+              type:
+                type: string
+                description: Configuration type (options, string, number, boolean)
+                example: options
+              value:
+                type: string
+                description: Current configuration value
+                example: solutions
+              group:
+                type: string
+                description: Configuration group name
+                example: groupBy
+              availableValues:
+                type: array
+                description: Available values for options type
+                items:
+                  type: object
+                  properties:
+                    displayName:
+                      type: string
+                      example: securt 1 version 1.0
+                    value:
+                      type: string
+                      example: securt
+    SystemConfigUpdateRequest:
+      type: object
+      description: System configuration update request
+      required:
+      - systemConfig
+      properties:
+        systemConfig:
+          type: array
+          description: Array of configuration updates
+          items:
+            type: object
+            required:
+            - fieldId
+            - value
+            properties:
+              fieldId:
+                type: string
+                description: Configuration field identifier to update
+                example: voice6
+              value:
+                type: string
+                description: New configuration value
+                example: securt
+    SystemPreferencesResponse:
+      type: object
+      description: System preferences from rtconfig.json
+      additionalProperties:
+        oneOf:
+        - type: boolean
+        - type: string
+        - type: number
+      example:
+        vms.show_area_crossing: true
+        vms.show_line_crossing: true
+        vms.show_intrusion: true
+        vms.show_crowding: true
+        vms.show_loitering: true
+        vms.show_object_left: true
+        vms.show_object_guarding: true
+        vms.show_tailgating: true
+        vms.show_fallen_person: true
+        vms.show_armed_person: true
+        vms.show_access_control_plate: true
+        vms.show_access_control_face: true
+        vms.show_appearance_search: true
+        vms.show_identities: true
+        vms.show_remote_mode: true
+        vms.show_thermal_support: true
+        vms.show_active_detection: true
+        vms.show_error_reporting: true
+        vms.show_trial_licenses: true
+        vms.hardware_decoding: true
+        global.default_performance_mode: Performance
+    SystemDecodersResponse:
+      type: object
+      description: Available system decoders information
+      additionalProperties:
+        type: object
+        additionalProperties:
+          type: integer
+          description: Number of available decoders for the codec
+      example:
+        nvidia:
+          hevc: 1
+          h264: 1
     CreateInstanceRequest:
       type: object
       required:
