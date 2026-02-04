@@ -314,6 +314,7 @@ set(SOURCES
     src/api/securt_line_handler.cpp
     src/api/area_handler.cpp
     src/api/node_handler.cpp
+    src/api/onvif_handler.cpp
     src/api/recognition_handler.cpp
     src/api/system_info_handler.cpp
     src/api/license_handler.cpp
@@ -362,6 +363,18 @@ set(SOURCES
     src/core/uuid_generator.cpp
     src/core/platform_detector.cpp
     src/core/log_manager.cpp
+    src/core/onvif_camera_registry.cpp
+    src/core/onvif_credentials_manager.cpp
+    src/core/onvif_discovery.cpp
+    src/core/onvif_stream_manager.cpp
+    src/core/onvif_soap_builder.cpp
+    src/core/onvif_xml_parser.cpp
+    src/core/onvif_http_client.cpp
+    src/core/onvif_digest_auth.cpp
+    src/core/onvif_camera_whitelist.cpp
+    src/core/onvif_camera_handler_factory.cpp
+    src/core/onvif_camera_handlers/onvif_generic_handler.cpp
+    src/core/onvif_camera_handlers/onvif_tapo_handler.cpp
     src/models/create_instance_request.cpp
     src/models/update_instance_request.cpp
     src/models/solution_config.cpp
@@ -1038,10 +1051,10 @@ else()
 endif()
 
 # Additional libraries (if needed)
-# target_link_libraries(edge_ai_api PRIVATE
-#     OpenSSL::SSL      # Uncomment when using cache
-#     OpenSSL::Crypto   # Uncomment when using cache
-# )
+# OpenSSL::Crypto is required for ai_cache SHA256 hashing
+if(OpenSSL_FOUND)
+    target_link_libraries(edge_ai_api PRIVATE OpenSSL::Crypto)
+endif()
 
 # ============================================
 # Git commit information

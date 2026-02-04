@@ -1,17 +1,18 @@
 # Hướng Dẫn Phát Triển - Edge AI API
 
-Tài liệu này bao gồm setup môi trường, hướng dẫn phát triển API, và pre-commit hooks.
+Tài liệu này bao gồm setup môi trường, hướng dẫn phát triển API, tổ chức tests, và các tính năng như Swagger/Scalar documentation.
 
 ## 📋 Mục Lục
 
 1. [Setup Môi Trường](#setup-môi-trường)
-2. [Build Project](#build-project)
-3. [Tạo API Handler Mới](#tạo-api-handler-mới)
-4. [Viết Unit Tests](#viết-unit-tests)
-5. [Cập Nhật Swagger/OpenAPI](#cập-nhật-swaggeropenapi)
-6. [Pre-commit Hooks](#pre-commit-hooks)
-7. [Best Practices](#best-practices)
-8. [Troubleshooting](#troubleshooting)
+2. [Cấu Trúc Project](#cấu-trúc-project)
+3. [Build Project](#build-project)
+4. [Tạo API Handler Mới](#tạo-api-handler-mới)
+5. [Tổ Chức Tests](#tổ-chức-tests)
+6. [API Documentation (Swagger & Scalar)](#api-documentation-swagger--scalar)
+7. [Pre-commit Hooks](#pre-commit-hooks)
+8. [Best Practices](#best-practices)
+9. [Troubleshooting](#troubleshooting)
 
 ---
 
@@ -24,13 +25,13 @@ Tài liệu này bao gồm setup môi trường, hướng dẫn phát triển AP
 git clone https://github.com/cvedix/edge_ai_api.git
 cd edge_ai_api
 
-# Development setup
+# Development setup (cài dependencies, tạo thư mục, setup environment)
 ./scripts/dev_setup.sh
 
-# Chạy server
+# Load environment variables và chạy server
 ./scripts/load_env.sh
 
-# Production setup
+# Production setup (nếu cần)
 sudo ./scripts/prod_setup.sh
 ```
 
@@ -40,6 +41,7 @@ Xem chi tiết: [docs/SCRIPTS.md](SCRIPTS.md)
 
 - **OS**: Ubuntu 20.04+ / Debian 10+
 - **CMake**: 3.14+
+- **C++ Standard**: C++17
 - **Dependencies**: build-essential, libssl-dev, zlib1g-dev, libjsoncpp-dev, uuid-dev
 
 ### Cài Dependencies Thủ Công
@@ -52,9 +54,105 @@ sudo apt-get install -y \
     libssl-dev zlib1g-dev libjsoncpp-dev uuid-dev
 ```
 
+### Environment Variables
+
+Tạo file `.env` hoặc export các biến môi trường:
+
+```bash
+# API Configuration
+export API_HOST=0.0.0.0
+export API_PORT=8080
+
+# CVEDIX SDK Path
+export CVEDIX_SDK_PATH=/opt/cvedix
+
+# Logging
+export LOG_LEVEL=INFO
+```
+
+Xem chi tiết: [docs/ENVIRONMENT_VARIABLES.md](ENVIRONMENT_VARIABLES.md)
+
+---
+
+## 📁 Cấu Trúc Project
+
+### Tổng Quan
+
+```
+api/
+├── include/              # Header files
+│   ├── api/             # API handlers headers
+│   ├── core/            # Core functionality
+│   ├── instances/       # Instance management
+│   ├── solutions/      # Solution management
+│   ├── groups/          # Group management
+│   ├── nodes/           # Node management
+│   ├── models/          # Model management
+│   ├── videos/          # Video management
+│   ├── config/          # Configuration
+│   └── worker/          # Worker threads
+│
+├── src/                 # Source files (cùng cấu trúc với include/)
+│   ├── api/            # API handlers implementation
+│   ├── core/           # Core implementation
+│   ├── main.cpp        # Entry point
+│   └── ...
+│
+├── tests/               # Tests directory
+│   ├── Auto/           # Unit tests (Google Test)
+│   │   ├── Core_API/
+│   │   ├── Instance_Management/
+│   │   ├── Recognition/
+│   │   ├── Solutions/
+│   │   ├── Groups/
+│   │   ├── Nodes/
+│   │   ├── Analytics/
+│   │   └── test_main.cpp
+│   │
+│   ├── Manual/         # Manual test guides
+│   │   ├── ONVIF/
+│   │   ├── Recognition/
+│   │   ├── Instance_Management/
+│   │   └── ...
+│   │
+│   └── CMakeLists.txt  # Test build configuration
+│
+├── api-specs/          # API documentation
+│   ├── openapi/        # OpenAPI specifications
+│   │   ├── en/        # English version
+│   │   └── vi/        # Vietnamese version
+│   ├── scalar/         # Scalar documentation files
+│   └── postman/        # Postman collections
+│
+├── examples/           # Example configurations
+│   ├── instances/      # Instance examples
+│   └── solutions/     # Solution examples
+│
+├── scripts/            # Helper scripts
+│   ├── dev_setup.sh   # Development setup
+│   ├── load_env.sh    # Load environment
+│   ├── run_tests.sh   # Run tests
+│   └── ...
+│
+├── CMakeLists.txt      # Main build configuration
+├── main.cpp           # Application entry point
+└── README.md          # Project README
+```
+
+### Quy Tắc Tổ Chức Code
+
+1. **Header Files**: Tất cả headers trong `include/`, giữ nguyên cấu trúc thư mục
+2. **Source Files**: Tất cả sources trong `src/`, giữ nguyên cấu trúc thư mục
+3. **API Handlers**: Mỗi handler có 2 files:
+   - `include/api/xxx_handler.h` - Header
+   - `src/api/xxx_handler.cpp` - Implementation
+4. **Tests**: Tổ chức theo tính năng trong `tests/Auto/<Feature>/`
+
 ---
 
 ## 🏗️ Build Project
+
+### Build Cơ Bản
 
 ```bash
 mkdir build && cd build
@@ -65,19 +163,36 @@ make -j$(nproc)
 ### Build với Tests
 
 ```bash
+cd build
 cmake .. -DBUILD_TESTS=ON
 make -j$(nproc)
-./bin/edge_ai_api_tests
+```
+
+### Build Options
+
+```bash
+# Tự động download dependencies nếu thiếu
+cmake .. -DAUTO_DOWNLOAD_DEPENDENCIES=ON
+
+# Build với tests
+cmake .. -DBUILD_TESTS=ON
+
+# Kết hợp cả hai
+cmake .. -DAUTO_DOWNLOAD_DEPENDENCIES=ON -DBUILD_TESTS=ON
 ```
 
 ### Chạy Server
 
 ```bash
-# Development
+# Development (sử dụng script - khuyến nghị)
 ./scripts/load_env.sh
 
-# Hoặc trực tiếp
-./build/bin/edge_ai_api
+# Hoặc chạy trực tiếp
+cd build
+./bin/edge_ai_api
+
+# Với logging options
+./bin/edge_ai_api --log-api --log-instance --log-sdk-output
 ```
 
 ---
@@ -96,6 +211,13 @@ Tạo `include/api/my_handler.h`:
 
 using namespace drogon;
 
+/**
+ * @brief My Feature Handler
+ * 
+ * Endpoints:
+ * - GET /v1/my/feature - Get feature data
+ * - POST /v1/my/feature - Create feature
+ */
 class MyHandler : public drogon::HttpController<MyHandler> {
 public:
     METHOD_LIST_BEGIN
@@ -103,8 +225,15 @@ public:
         ADD_METHOD_TO(MyHandler::createFeature, "/v1/my/feature", Post);
     METHOD_LIST_END
 
+    /**
+     * @brief Get feature data
+     */
     void getFeature(const HttpRequestPtr &req,
                    std::function<void(const HttpResponsePtr &)> &&callback);
+
+    /**
+     * @brief Create new feature
+     */
     void createFeature(const HttpRequestPtr &req,
                       std::function<void(const HttpResponsePtr &)> &&callback);
 };
@@ -116,10 +245,14 @@ Tạo `src/api/my_handler.cpp`:
 
 ```cpp
 #include "api/my_handler.h"
+#include "core/metrics_interceptor.h"  // Cho metrics tracking
 
 void MyHandler::getFeature(const HttpRequestPtr &req,
                           std::function<void(const HttpResponsePtr &)> &&callback)
 {
+    // Set handler start time for metrics
+    MetricsInterceptor::setHandlerStartTime(req);
+    
     try {
         auto id = req->getParameter("id");
         if (id.empty()) {
@@ -127,7 +260,8 @@ void MyHandler::getFeature(const HttpRequestPtr &req,
             error["error"] = "Missing parameter: id";
             auto resp = HttpResponse::newHttpJsonResponse(error);
             resp->setStatusCode(k400BadRequest);
-            callback(resp);
+            resp->addHeader("Access-Control-Allow-Origin", "*");
+            MetricsInterceptor::callWithMetrics(req, resp, std::move(callback));
             return;
         }
 
@@ -138,28 +272,71 @@ void MyHandler::getFeature(const HttpRequestPtr &req,
         auto resp = HttpResponse::newHttpJsonResponse(response);
         resp->setStatusCode(k200OK);
         resp->addHeader("Access-Control-Allow-Origin", "*");
-        callback(resp);
+        MetricsInterceptor::callWithMetrics(req, resp, std::move(callback));
 
     } catch (const std::exception& e) {
         Json::Value error;
         error["error"] = e.what();
         auto resp = HttpResponse::newHttpJsonResponse(error);
         resp->setStatusCode(k500InternalServerError);
-        callback(resp);
+        resp->addHeader("Access-Control-Allow-Origin", "*");
+        MetricsInterceptor::callWithMetrics(req, resp, std::move(callback));
+    }
+}
+
+void MyHandler::createFeature(const HttpRequestPtr &req,
+                             std::function<void(const HttpResponsePtr &)> &&callback)
+{
+    MetricsInterceptor::setHandlerStartTime(req);
+    
+    try {
+        auto json = req->getJsonObject();
+        if (!json || !json->isMember("name")) {
+            Json::Value error;
+            error["error"] = "Missing required field: name";
+            auto resp = HttpResponse::newHttpJsonResponse(error);
+            resp->setStatusCode(k400BadRequest);
+            resp->addHeader("Access-Control-Allow-Origin", "*");
+            MetricsInterceptor::callWithMetrics(req, resp, std::move(callback));
+            return;
+        }
+
+        // Business logic here
+        Json::Value response;
+        response["id"] = "new-id";
+        response["name"] = (*json)["name"].asString();
+        response["status"] = "created";
+
+        auto resp = HttpResponse::newHttpJsonResponse(response);
+        resp->setStatusCode(k201Created);
+        resp->addHeader("Access-Control-Allow-Origin", "*");
+        MetricsInterceptor::callWithMetrics(req, resp, std::move(callback));
+
+    } catch (const std::exception& e) {
+        Json::Value error;
+        error["error"] = e.what();
+        auto resp = HttpResponse::newHttpJsonResponse(error);
+        resp->setStatusCode(k500InternalServerError);
+        resp->addHeader("Access-Control-Allow-Origin", "*");
+        MetricsInterceptor::callWithMetrics(req, resp, std::move(callback));
     }
 }
 ```
 
 ### Bước 3: Đăng Ký trong main.cpp
 
+Thêm vào `src/main.cpp`:
+
 ```cpp
 #include "api/my_handler.h"
 
-// Trong main()
+// Trong hàm main(), sau khi app được khởi tạo
 static MyHandler myHandler;
 ```
 
 ### Bước 4: Thêm vào CMakeLists.txt
+
+Thêm vào `CMakeLists.txt` trong phần `SOURCES`:
 
 ```cmake
 set(SOURCES
@@ -168,16 +345,123 @@ set(SOURCES
 )
 ```
 
+### Bước 5: Cập Nhật OpenAPI Specification
+
+Thêm endpoint vào `api-specs/openapi/en/openapi.yaml` và `api-specs/openapi/vi/openapi.yaml`:
+
+```yaml
+paths:
+  /v1/my/feature:
+    get:
+      summary: Get feature data
+      description: Retrieve feature information by ID
+      operationId: getFeature
+      tags:
+        - My Feature
+      parameters:
+        - name: id
+          in: query
+          required: true
+          schema:
+            type: string
+          description: Feature ID
+      responses:
+        '200':
+          description: Success
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  id:
+                    type: string
+                  data:
+                    type: string
+        '400':
+          description: Bad Request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+    
+    post:
+      summary: Create new feature
+      description: Create a new feature
+      operationId: createFeature
+      tags:
+        - My Feature
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - name
+              properties:
+                name:
+                  type: string
+      responses:
+        '201':
+          description: Created
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  id:
+                    type: string
+                  name:
+                    type: string
+                  status:
+                    type: string
+```
+
 ---
 
-## 🧪 Viết Unit Tests
+## 🧪 Tổ Chức Tests
 
-Tạo `tests/test_my_handler.cpp`:
+Project sử dụng 2 loại tests: **Auto Tests** (Unit tests) và **Manual Tests** (Test guides).
+
+### Cấu Trúc Tests
+
+```
+tests/
+├── Auto/                    # Unit tests tự động (Google Test)
+│   ├── Core_API/           # Tests cho Core API
+│   ├── Instance_Management/ # Tests cho Instance Management
+│   ├── Recognition/        # Tests cho Recognition
+│   ├── Solutions/          # Tests cho Solutions
+│   ├── Groups/             # Tests cho Groups
+│   ├── Nodes/              # Tests cho Nodes
+│   ├── Analytics/          # Tests cho Analytics
+│   └── test_main.cpp       # Entry point
+│
+├── Manual/                  # Manual test guides
+│   ├── ONVIF/              # ONVIF test guides
+│   ├── Recognition/        # Recognition test guides
+│   └── ...                 # Các tính năng khác
+│
+└── CMakeLists.txt          # Test build configuration
+```
+
+### Auto Tests (Unit Tests)
+
+#### Tổ Chức
+
+- Mỗi tính năng có thư mục riêng trong `tests/Auto/<Feature>/`
+- Mỗi handler có file test riêng: `test_<handler_name>.cpp`
+- Entry point: `tests/Auto/test_main.cpp`
+
+#### Viết Unit Test Mới
+
+Tạo `tests/Auto/Core_API/test_my_handler.cpp`:
 
 ```cpp
 #include <gtest/gtest.h>
 #include "api/my_handler.h"
 #include <drogon/HttpRequest.h>
+#include <drogon/HttpResponse.h>
 #include <thread>
 #include <chrono>
 
@@ -188,6 +472,11 @@ protected:
     void SetUp() override {
         handler_ = std::make_unique<MyHandler>();
     }
+    
+    void TearDown() override {
+        // Cleanup if needed
+    }
+    
     std::unique_ptr<MyHandler> handler_;
 };
 
@@ -205,6 +494,7 @@ TEST_F(MyHandlerTest, GetFeatureReturnsValidJson) {
         response = resp;
     });
 
+    // Wait for async callback
     std::this_thread::sleep_for(std::chrono::milliseconds(100));
 
     ASSERT_TRUE(callbackCalled);
@@ -214,45 +504,202 @@ TEST_F(MyHandlerTest, GetFeatureReturnsValidJson) {
     ASSERT_NE(json, nullptr);
     EXPECT_EQ((*json)["id"].asString(), "123");
 }
+
+TEST_F(MyHandlerTest, GetFeatureMissingIdReturns400) {
+    bool callbackCalled = false;
+    HttpResponsePtr response;
+
+    auto req = HttpRequest::newHttpRequest();
+    req->setPath("/v1/my/feature");
+    req->setMethod(Get);
+    // Không set parameter "id"
+
+    handler_->getFeature(req, [&](const HttpResponsePtr &resp) {
+        callbackCalled = true;
+        response = resp;
+    });
+
+    std::this_thread::sleep_for(std::chrono::milliseconds(100));
+
+    ASSERT_TRUE(callbackCalled);
+    EXPECT_EQ(response->statusCode(), k400BadRequest);
+}
 ```
 
-### Chạy Tests
+#### Thêm Test vào CMakeLists.txt
+
+Thêm vào `tests/CMakeLists.txt` trong phần `TEST_SOURCES`:
+
+```cmake
+set(TEST_SOURCES
+    # ... existing tests ...
+    Auto/Core_API/test_my_handler.cpp
+)
+```
+
+#### Chạy Tests
 
 ```bash
+# Build tests
 cd build
+cmake .. -DBUILD_TESTS=ON
+make -j$(nproc)
+
+# Chạy tất cả tests
+./bin/edge_ai_api_tests
+
+# Chạy tests cụ thể
 ./bin/edge_ai_api_tests --gtest_filter=MyHandlerTest.*
+
+# Sử dụng script (khuyến nghị)
+./scripts/run_tests.sh
+
+# Sử dụng CTest
+cd build
+ctest --output-on-failure
 ```
+
+### Manual Tests
+
+Manual tests là các tài liệu hướng dẫn test thủ công cho từng tính năng.
+
+#### Tổ Chức
+
+- Mỗi tính năng có thư mục riêng trong `tests/Manual/<Feature>/`
+- Mỗi file markdown mô tả cách test tính năng đó
+
+#### Ví dụ: Tạo Manual Test Guide
+
+Tạo `tests/Manual/Core_API/MY_FEATURE_TEST_GUIDE.md`:
+
+```markdown
+# My Feature Manual Test Guide
+
+## Prerequisites
+- API server đang chạy tại http://localhost:8080
+- curl hoặc Postman để test
+
+## Test Cases
+
+### 1. Get Feature - Success
+```bash
+curl -X GET "http://localhost:8080/v1/my/feature?id=123"
+```
+
+**Expected**: Status 200, JSON response với id và data
+
+### 2. Get Feature - Missing ID
+```bash
+curl -X GET "http://localhost:8080/v1/my/feature"
+```
+
+**Expected**: Status 400, error message
+```
+
+Xem thêm: [tests/README.md](../tests/README.md)
 
 ---
 
-## 📝 Cập Nhật Swagger/OpenAPI
+## 📚 API Documentation (Swagger & Scalar)
 
-Thêm vào `openapi.yaml`:
+Project hỗ trợ 2 loại API documentation: **Swagger UI** và **Scalar API Reference**.
 
-```yaml
-paths:
-  /v1/my/feature:
-    get:
-      summary: Get feature data
-      operationId: getFeature
-      tags:
-        - My Feature
-      parameters:
-        - name: id
-          in: query
-          required: true
-          schema:
-            type: string
-      responses:
-        '200':
-          description: Success
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/FeatureResponse'
+### Swagger UI
+
+Swagger UI cung cấp giao diện web để test và explore API.
+
+#### Truy Cập Swagger UI
+
+```bash
+# Khi server đang chạy
+http://localhost:8080/swagger          # Tất cả versions
+http://localhost:8080/v1/swagger       # API v1
+http://localhost:8080/v2/swagger      # API v2
 ```
 
-Truy cập `http://localhost:8080/swagger` để xem.
+#### Endpoints
+
+- `GET /swagger` - Swagger UI (all versions)
+- `GET /v1/swagger` - Swagger UI cho v1
+- `GET /v2/swagger` - Swagger UI cho v2
+- `GET /openapi.yaml` - OpenAPI spec (all versions)
+- `GET /v1/openapi.yaml` - OpenAPI spec cho v1
+- `GET /v2/openapi.yaml` - OpenAPI spec cho v2
+- `GET /v1/openapi/{lang}/openapi.yaml` - OpenAPI spec với ngôn ngữ (en/vi)
+- `GET /v1/openapi/{lang}/openapi.json` - OpenAPI spec JSON format
+
+#### Cập Nhật Swagger Documentation
+
+1. Cập nhật `api-specs/openapi/en/openapi.yaml` (file chính)
+2. Đồng bộ sang `api-specs/openapi/vi/openapi.yaml` (dịch nếu cần)
+3. Server tự động load và serve các file này
+
+### Scalar API Reference
+
+Scalar cung cấp giao diện documentation hiện đại hơn với hỗ trợ đa ngôn ngữ.
+
+#### Truy Cập Scalar Documentation
+
+```bash
+# Khi server đang chạy
+http://localhost:8080/v1/document      # API v1
+http://localhost:8080/v2/document      # API v2
+
+# Với ngôn ngữ
+http://localhost:8080/v1/document?lang=en  # English
+http://localhost:8080/v1/document?lang=vi  # Tiếng Việt
+```
+
+#### Endpoints
+
+- `GET /v1/document` - Scalar documentation cho v1
+- `GET /v2/document` - Scalar documentation cho v2
+- `GET /v1/scalar/standalone.css` - Scalar CSS file
+- `GET /v1/document/examples` - List example files
+- `GET /v1/document/examples/{path}` - Get example file content
+
+#### Tính Năng Scalar
+
+- ✅ Hỗ trợ đa ngôn ngữ (English/Tiếng Việt)
+- ✅ Giao diện hiện đại và dễ sử dụng
+- ✅ Tự động lưu ngôn ngữ đã chọn
+- ✅ Deep linking với query parameter `?lang=en` hoặc `?lang=vi`
+- ✅ Tích hợp examples từ `examples/instances/`
+
+#### Cấu Trúc Files
+
+```
+api-specs/
+├── openapi/
+│   ├── en/
+│   │   └── openapi.yaml        # OpenAPI spec (English)
+│   └── vi/
+│       └── openapi.yaml        # OpenAPI spec (Tiếng Việt)
+├── scalar/
+│   ├── index.html              # Scalar HTML template
+│   └── standalone.css         # Scalar CSS (optional, có thể dùng CDN)
+```
+
+#### Cập Nhật Scalar Documentation
+
+1. **Cập nhật OpenAPI spec**: Sửa `api-specs/openapi/en/openapi.yaml`
+2. **Đồng bộ sang tiếng Việt**: Cập nhật `api-specs/openapi/vi/openapi.yaml`
+3. **Kiểm tra**: Truy cập `/v1/document` và kiểm tra cả hai ngôn ngữ
+
+#### Scalar Files Setup
+
+Nếu chưa có Scalar files:
+
+```bash
+# Download Scalar CSS (nếu cần offline)
+mkdir -p api-specs/scalar
+curl -o api-specs/scalar/standalone.css \
+  https://cdn.jsdelivr.net/npm/@scalar/api-reference@1.24.0/dist/browser/standalone.css
+
+# Scalar HTML template sẽ được generate tự động bởi ScalarHandler
+```
+
+Xem chi tiết: [api-specs/README.md](../api-specs/README.md)
 
 ---
 
@@ -309,7 +756,7 @@ pre-commit run clang-format --all-files
 # Chạy tests
 pre-commit run run-tests --hook-stage pre-push
 
-# Skip hooks (khẩn cấp)
+# Skip hooks (khẩn cấp - không khuyến nghị)
 git commit --no-verify
 git push --no-verify
 
@@ -321,6 +768,13 @@ pre-commit autoupdate
 
 ## ✅ Best Practices
 
+### Code Organization
+
+1. **Mỗi handler một file**: Mỗi API handler có 2 files riêng (header + source)
+2. **Tổ chức theo tính năng**: Code được tổ chức theo tính năng lớn
+3. **Consistent naming**: Tuân thủ naming conventions
+4. **Documentation**: Comment rõ ràng cho public APIs
+
 ### Error Handling
 
 ```cpp
@@ -331,17 +785,21 @@ try {
     error["error"] = e.what();
     auto resp = HttpResponse::newHttpJsonResponse(error);
     resp->setStatusCode(k500InternalServerError);
-    callback(resp);
+    resp->addHeader("Access-Control-Allow-Origin", "*");
+    MetricsInterceptor::callWithMetrics(req, resp, std::move(callback));
 }
 ```
 
 ### Input Validation
 
 ```cpp
+// Validate query parameters
+auto id = req->getParameter("id");
 if (id.empty()) {
     // Return 400 Bad Request
 }
 
+// Validate JSON body
 auto json = req->getJsonObject();
 if (!json || !json->isMember("required_field")) {
     // Return 400 Bad Request
@@ -351,7 +809,7 @@ if (!json || !json->isMember("required_field")) {
 ### HTTP Status Codes
 
 - `200 OK`: Success
-- `201 Created`: Resource created
+- `201 Created`: Resource created successfully
 - `400 Bad Request`: Invalid input
 - `404 Not Found`: Resource not found
 - `500 Internal Server Error`: Server error
@@ -360,8 +818,44 @@ if (!json || !json->isMember("required_field")) {
 
 - **Handlers**: `XxxHandler` (PascalCase)
 - **Files**: `xxx_handler.h/cpp` (snake_case)
-- **Endpoints**: `/v1/xxx/yyy` (lowercase)
+- **Endpoints**: `/v1/xxx/yyy` (lowercase, kebab-case)
 - **Methods**: `getXxx`, `createXxx` (camelCase)
+- **Variables**: `variable_name` (snake_case)
+
+### Metrics Tracking
+
+Luôn sử dụng `MetricsInterceptor` để track metrics:
+
+```cpp
+// Đầu handler
+MetricsInterceptor::setHandlerStartTime(req);
+
+// Cuối handler (trong callback)
+MetricsInterceptor::callWithMetrics(req, resp, std::move(callback));
+```
+
+### CORS Headers
+
+Luôn thêm CORS headers cho responses:
+
+```cpp
+resp->addHeader("Access-Control-Allow-Origin", "*");
+```
+
+### Testing
+
+1. **Viết tests cho mọi handler mới**
+2. **Test cả success và failure cases**
+3. **Test edge cases**
+4. **Giữ tests độc lập**
+5. **Cleanup trong TearDown()**
+
+### Documentation
+
+1. **Cập nhật OpenAPI spec khi thêm endpoint mới**
+2. **Đồng bộ cả tiếng Anh và tiếng Việt**
+3. **Thêm examples vào OpenAPI spec**
+4. **Cập nhật manual test guides nếu cần**
 
 ---
 
@@ -383,6 +877,16 @@ make -j$(nproc)
 sudo apt-get install libssl-dev
 ```
 
+### Lỗi "Could NOT find jsoncpp"
+
+```bash
+# Tự động download (khuyến nghị)
+cmake .. -DAUTO_DOWNLOAD_DEPENDENCIES=ON
+
+# Hoặc cài thủ công
+sudo apt-get install libjsoncpp-dev
+```
+
 ### Lỗi CVEDIX SDK symlinks
 
 ```bash
@@ -401,8 +905,29 @@ pre-commit install --hook-type pre-push
 ### Tests fail
 
 ```bash
+# Xem chi tiết lỗi
 cd build
-ctest --output-on-failure
+./bin/edge_ai_api_tests --gtest_output=xml
+
+# Hoặc với CTest
+ctest --output-on-failure -V
+```
+
+### Swagger/Scalar không hiển thị
+
+1. Kiểm tra server đang chạy
+2. Kiểm tra file OpenAPI spec tồn tại: `api-specs/openapi/en/openapi.yaml`
+3. Kiểm tra log server để xem lỗi
+4. Kiểm tra file Scalar HTML: `api-specs/scalar/index.html` (nếu có)
+
+### Port đã được sử dụng
+
+```bash
+# Kill process trên port 8080
+./scripts/kill_port_8080.sh
+
+# Hoặc thủ công
+lsof -ti:8080 | xargs kill -9
 ```
 
 ---
@@ -412,5 +937,53 @@ ctest --output-on-failure
 - [Hướng Dẫn Khởi Động](GETTING_STARTED.md)
 - [Architecture](ARCHITECTURE.md)
 - [Environment Variables](ENVIRONMENT_VARIABLES.md)
+- [Scripts Documentation](SCRIPTS.md)
+- [Tests Documentation](../tests/README.md)
+- [API Specifications](../api-specs/README.md)
 - [Drogon Framework](https://drogon.docsforge.com/)
 - [Google Test](https://google.github.io/googletest/)
+- [OpenAPI Specification](https://swagger.io/specification/)
+- [Scalar API Reference](https://github.com/scalar/scalar)
+
+---
+
+## 🎯 Quick Start cho Developer Mới
+
+1. **Clone và setup**:
+   ```bash
+   git clone <repo-url>
+   cd edge_ai_api
+   ./scripts/dev_setup.sh
+   ```
+
+2. **Build project**:
+   ```bash
+   mkdir build && cd build
+   cmake .. -DBUILD_TESTS=ON
+   make -j$(nproc)
+   ```
+
+3. **Chạy tests**:
+   ```bash
+   ./bin/edge_ai_api_tests
+   ```
+
+4. **Chạy server**:
+   ```bash
+   cd ..
+   ./scripts/load_env.sh
+   ```
+
+5. **Xem API documentation**:
+   - Swagger: http://localhost:8080/swagger
+   - Scalar: http://localhost:8080/v1/document
+
+6. **Tạo handler mới**: Làm theo hướng dẫn ở [Tạo API Handler Mới](#tạo-api-handler-mới)
+
+7. **Viết tests**: Làm theo hướng dẫn ở [Tổ Chức Tests](#tổ-chức-tests)
+
+8. **Cập nhật documentation**: Cập nhật OpenAPI spec và test guides
+
+---
+
+**Chúc bạn phát triển thành công! 🚀**
