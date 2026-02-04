@@ -4,6 +4,18 @@ REST API server cho CVEDIX Edge AI SDK, cho phép điều khiển và giám sát
 
 ![Edge AI Workflow](docs/image.png)
 
+---
+
+## 🏗️ Kiến Trúc
+
+![Architecture](asset/architecture.png)
+```
+[Client] → [REST API Server] → [Instance Manager] → [CVEDIX SDK]
+                                      ↓
+                              [Data Broker] → [Output]
+                              
+```
+
 ## 🎯 Các Bài Toán & Tính Năng Được Hỗ Trợ
 
 API hỗ trợ các tính năng từ CVEDIX SDK với **43+ processing nodes**, bao gồm:
