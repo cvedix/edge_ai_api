@@ -1957,3 +1957,363 @@ paths:
                     type: string
                   count:
                     type: integer
+  /v1/onvif/discover:
+    post:
+      summary: Khám phá camera ONVIF
+      description: 'Khám phá các camera ONVIF trên mạng bằng giao thức WS-Discovery.
+
+        Endpoint này khởi động quá trình khám phá bất đồng bộ để tìm kiếm các camera tuân thủ ONVIF trên mạng cục bộ.
+
+        **Tham số Timeout:**
+        - Tham số truy vấn tùy chọn `timeout` (1-30 giây, mặc định: 5)
+        - Điều khiển thời gian chờ phản hồi từ camera trong quá trình khám phá
+
+        **Phản hồi:**
+        - Trả về 204 No Content khi quá trình khám phá được khởi động
+        - Sử dụng GET /v1/onvif/cameras để lấy danh sách camera đã khám phá sau khi hoàn tất
+        '
+      operationId: discoverONVIFCameras
+      tags:
+      - ONVIF
+      parameters:
+      - name: timeout
+        in: query
+        required: false
+        schema:
+          type: integer
+          minimum: 1
+          maximum: 30
+          default: 5
+        description: 'Thời gian chờ khám phá tính bằng giây (1-30, mặc định: 5)'
+        example: 5
+      responses:
+        '204':
+          description: Quá trình khám phá đã được khởi động thành công
+        '500':
+          description: Lỗi máy chủ
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+    options:
+      summary: CORS preflight cho khám phá ONVIF
+      operationId: discoverONVIFCamerasOptions
+      tags:
+      - ONVIF
+      responses:
+        '200':
+          description: Phản hồi CORS preflight
+  /v1/onvif/cameras:
+    get:
+      summary: Lấy danh sách tất cả camera ONVIF đã khám phá
+      description: 'Lấy danh sách tất cả các camera ONVIF đã được khám phá trên mạng.
+
+        **Thông tin Camera:**
+        - Mỗi camera bao gồm địa chỉ IP, UUID, nhà sản xuất, model và số serial
+        - Camera được lọc dựa trên whitelist hỗ trợ (nếu được cấu hình)
+        - Chỉ các camera vượt qua kiểm tra whitelist mới được trả về
+
+        **Cách sử dụng:**
+        1. Đầu tiên gọi POST /v1/onvif/discover để khám phá camera
+        2. Sau đó gọi endpoint này để lấy danh sách camera đã khám phá
+        3. Sử dụng camera ID (IP hoặc UUID) để lấy streams hoặc thiết lập credentials
+        '
+      operationId: getONVIFCameras
+      tags:
+      - ONVIF
+      responses:
+        '200':
+          description: Danh sách camera ONVIF đã khám phá
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/ONVIFCamera'
+              example:
+                - ip: 192.168.1.100
+                  uuid: 00000000-0000-0000-0000-000000000000
+                  manufacturer: Hikvision
+                  model: DS-2CD2347G1-LU
+                  serialNumber: ABC123456
+                - ip: 192.168.1.101
+                  uuid: 11111111-1111-1111-1111-111111111111
+                  manufacturer: Axis
+                  model: P3245-LVE
+                  serialNumber: DEF789012
+        '500':
+          description: Lỗi máy chủ
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+    options:
+      summary: CORS preflight cho camera ONVIF
+      operationId: getONVIFCamerasOptions
+      tags:
+      - ONVIF
+      responses:
+        '200':
+          description: Phản hồi CORS preflight
+  /v1/onvif/streams/{cameraid}:
+    get:
+      summary: Lấy streams cho một camera ONVIF
+      description: 'Lấy các video streams có sẵn cho một camera ONVIF cụ thể.
+
+        **Camera ID:**
+        - Có thể là địa chỉ IP của camera (ví dụ: "192.168.1.100") hoặc UUID
+        - Định dạng địa chỉ IP: 0-255.0-255.0-255.0-255
+
+        **Thông tin Stream:**
+        - Mỗi stream bao gồm profile token, độ phân giải (width/height), frame rate (fps) và RTSP URI
+        - Streams được lấy bằng dịch vụ ONVIF Media
+        - Credentials của camera phải được thiết lập trước khi lấy streams (nếu yêu cầu xác thực)
+
+        **Cách sử dụng:**
+        1. Khám phá camera bằng POST /v1/onvif/discover
+        2. Lấy danh sách camera bằng GET /v1/onvif/cameras
+        3. Thiết lập credentials bằng POST /v1/onvif/camera/{cameraid}/credentials (nếu cần)
+        4. Lấy streams bằng endpoint này
+        '
+      operationId: getONVIFStreams
+      tags:
+      - ONVIF
+      parameters:
+      - name: cameraid
+        in: path
+        required: true
+        schema:
+          type: string
+        description: Định danh camera (địa chỉ IP hoặc UUID)
+        example: 192.168.1.100
+      responses:
+        '200':
+          description: Danh sách streams có sẵn cho camera
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/ONVIFStream'
+              example:
+                - token: Profile_1
+                  width: 1920
+                  height: 1080
+                  fps: 30
+                  uri: rtsp://192.168.1.100:554/Streaming/Channels/101
+                - token: Profile_2
+                  width: 640
+                  height: 480
+                  fps: 15
+                  uri: rtsp://192.168.1.100:554/Streaming/Channels/102
+        '400':
+          description: Yêu cầu không hợp lệ (thiếu hoặc không hợp lệ camera ID)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: Không tìm thấy camera
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Lỗi máy chủ
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+    options:
+      summary: CORS preflight cho streams ONVIF
+      operationId: getONVIFStreamsOptions
+      tags:
+      - ONVIF
+      responses:
+        '200':
+          description: Phản hồi CORS preflight
+  /v1/onvif/camera/{cameraid}/credentials:
+    post:
+      summary: Thiết lập credentials cho một camera ONVIF
+      description: 'Thiết lập thông tin xác thực cho một camera ONVIF cụ thể.
+
+        **Camera ID:**
+        - Có thể là địa chỉ IP của camera (ví dụ: "192.168.1.100") hoặc UUID
+        - Định dạng địa chỉ IP: 0-255.0-255.0-255.0-255
+
+        **Credentials:**
+        - Username và password là bắt buộc
+        - Credentials được lưu trữ an toàn và được sử dụng cho các thao tác ONVIF tiếp theo
+        - Nếu camera không được tìm thấy, có thể được đề xuất nếu phát hiện IP tương tự
+
+        **Cách sử dụng:**
+        1. Khám phá camera bằng POST /v1/onvif/discover
+        2. Lấy danh sách camera bằng GET /v1/onvif/cameras
+        3. Thiết lập credentials bằng endpoint này
+        4. Lấy streams bằng GET /v1/onvif/streams/{cameraid}
+        '
+      operationId: setONVIFCredentials
+      tags:
+      - ONVIF
+      parameters:
+      - name: cameraid
+        in: path
+        required: true
+        schema:
+          type: string
+        description: Định danh camera (địa chỉ IP hoặc UUID)
+        example: 192.168.1.100
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ONVIFCredentialsRequest'
+            example:
+              username: admin
+              password: password123
+      responses:
+        '204':
+          description: Credentials đã được thiết lập thành công
+        '400':
+          description: Yêu cầu không hợp lệ (thiếu username hoặc password, JSON không hợp lệ)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: Không tìm thấy camera
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Lỗi máy chủ
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+    options:
+      summary: CORS preflight cho credentials ONVIF
+      operationId: setONVIFCredentialsOptions
+      tags:
+      - ONVIF
+      responses:
+        '200':
+          description: Phản hồi CORS preflight
+components:
+  schemas:
+    ErrorResponse:
+      type: object
+      properties:
+        error:
+          type: string
+        message:
+          type: string
+    HealthResponse:
+      type: object
+      properties:
+        status:
+          type: string
+        timestamp:
+          type: string
+        uptime:
+          type: integer
+        service:
+          type: string
+        version:
+          type: string
+    VersionResponse:
+      type: object
+      properties:
+        version:
+          type: string
+        build_time:
+          type: string
+        git_commit:
+          type: string
+        api_version:
+          type: string
+        service:
+          type: string
+    SystemInfoResponse:
+      type: object
+      additionalProperties: true
+    SystemStatusResponse:
+      type: object
+      additionalProperties: true
+    LogFilesResponse:
+      type: object
+      additionalProperties: true
+    LogsResponse:
+      type: object
+      additionalProperties: true
+    LogsByDateResponse:
+      type: object
+      additionalProperties: true
+    ONVIFCamera:
+      type: object
+      description: Thông tin camera ONVIF
+      properties:
+        ip:
+          type: string
+          format: ipv4
+          description: Địa chỉ IP camera
+          example: 192.168.1.100
+        uuid:
+          type: string
+          description: UUID camera (định danh duy nhất)
+          example: 00000000-0000-0000-0000-000000000000
+        manufacturer:
+          type: string
+          description: Tên nhà sản xuất camera
+          example: Hikvision
+        model:
+          type: string
+          description: Tên model camera
+          example: DS-2CD2347G1-LU
+        serialNumber:
+          type: string
+          description: Số serial camera
+          example: ABC123456
+    ONVIFStream:
+      type: object
+      description: Thông tin video stream ONVIF
+      properties:
+        token:
+          type: string
+          description: Token profile stream
+          example: Profile_1
+        width:
+          type: integer
+          description: Độ rộng stream tính bằng pixel
+          example: 1920
+        height:
+          type: integer
+          description: Độ cao stream tính bằng pixel
+          example: 1080
+        fps:
+          type: integer
+          description: Frame rate (số khung hình mỗi giây)
+          example: 30
+        uri:
+          type: string
+          format: uri
+          description: RTSP stream URI
+          example: rtsp://192.168.1.100:554/Streaming/Channels/101
+    ONVIFCredentialsRequest:
+      type: object
+      required:
+      - username
+      - password
+      description: Credentials camera ONVIF
+      properties:
+        username:
+          type: string
+          description: Username camera
+          example: admin
+        password:
+          type: string
+          format: password
+          description: Password camera
+          example: password123

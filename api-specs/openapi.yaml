@@ -13025,6 +13025,250 @@ paths:
       responses:
         '200':
           description: CORS preflight response
+  /v1/onvif/discover:
+    post:
+      summary: Discover ONVIF cameras
+      description: 'Discover ONVIF cameras on the network using WS-Discovery protocol.
+
+        This endpoint initiates an asynchronous discovery process that searches for ONVIF-compliant cameras on the local network.
+
+        **Timeout Parameter:**
+        - Optional query parameter `timeout` (1-30 seconds, default: 5)
+        - Controls how long to wait for camera responses during discovery
+
+        **Response:**
+        - Returns 204 No Content when discovery is initiated
+        - Use GET /v1/onvif/cameras to retrieve discovered cameras after discovery completes
+        '
+      operationId: discoverONVIFCameras
+      tags:
+      - ONVIF
+      parameters:
+      - name: timeout
+        in: query
+        required: false
+        schema:
+          type: integer
+          minimum: 1
+          maximum: 30
+          default: 5
+        description: 'Discovery timeout in seconds (1-30, default: 5)'
+        example: 5
+      responses:
+        '204':
+          description: Discovery process started successfully
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+    options:
+      summary: CORS preflight for ONVIF discovery
+      operationId: discoverONVIFCamerasOptions
+      tags:
+      - ONVIF
+      responses:
+        '200':
+          description: CORS preflight response
+  /v1/onvif/cameras:
+    get:
+      summary: Get all discovered ONVIF cameras
+      description: 'Retrieve a list of all ONVIF cameras that have been discovered on the network.
+
+        **Camera Information:**
+        - Each camera includes IP address, UUID, manufacturer, model, and serial number
+        - Cameras are filtered based on whitelist support (if configured)
+        - Only cameras that pass whitelist validation are returned
+
+        **Usage:**
+        1. First call POST /v1/onvif/discover to discover cameras
+        2. Then call this endpoint to retrieve the list of discovered cameras
+        3. Use the camera ID (IP or UUID) to get streams or set credentials
+        '
+      operationId: getONVIFCameras
+      tags:
+      - ONVIF
+      responses:
+        '200':
+          description: List of discovered ONVIF cameras
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/ONVIFCamera'
+              example:
+                - ip: 192.168.1.100
+                  uuid: 00000000-0000-0000-0000-000000000000
+                  manufacturer: Hikvision
+                  model: DS-2CD2347G1-LU
+                  serialNumber: ABC123456
+                - ip: 192.168.1.101
+                  uuid: 11111111-1111-1111-1111-111111111111
+                  manufacturer: Axis
+                  model: P3245-LVE
+                  serialNumber: DEF789012
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+    options:
+      summary: CORS preflight for ONVIF cameras
+      operationId: getONVIFCamerasOptions
+      tags:
+      - ONVIF
+      responses:
+        '200':
+          description: CORS preflight response
+  /v1/onvif/streams/{cameraid}:
+    get:
+      summary: Get streams for an ONVIF camera
+      description: 'Retrieve available video streams for a specific ONVIF camera.
+
+        **Camera ID:**
+        - Can be either the camera IP address (e.g., "192.168.1.100") or UUID
+        - IP address format: 0-255.0-255.0-255.0-255
+
+        **Stream Information:**
+        - Each stream includes profile token, resolution (width/height), frame rate (fps), and RTSP URI
+        - Streams are retrieved using ONVIF Media service
+        - Camera credentials must be set before retrieving streams (if authentication is required)
+
+        **Usage:**
+        1. Discover cameras using POST /v1/onvif/discover
+        2. Get camera list using GET /v1/onvif/cameras
+        3. Set credentials using POST /v1/onvif/camera/{cameraid}/credentials (if needed)
+        4. Get streams using this endpoint
+        '
+      operationId: getONVIFStreams
+      tags:
+      - ONVIF
+      parameters:
+      - name: cameraid
+        in: path
+        required: true
+        schema:
+          type: string
+        description: Camera identifier (IP address or UUID)
+        example: 192.168.1.100
+      responses:
+        '200':
+          description: List of available streams for the camera
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/ONVIFStream'
+              example:
+                - token: Profile_1
+                  width: 1920
+                  height: 1080
+                  fps: 30
+                  uri: rtsp://192.168.1.100:554/Streaming/Channels/101
+                - token: Profile_2
+                  width: 640
+                  height: 480
+                  fps: 15
+                  uri: rtsp://192.168.1.100:554/Streaming/Channels/102
+        '400':
+          description: Bad request (missing or invalid camera ID)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: Camera not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+    options:
+      summary: CORS preflight for ONVIF streams
+      operationId: getONVIFStreamsOptions
+      tags:
+      - ONVIF
+      responses:
+        '200':
+          description: CORS preflight response
+  /v1/onvif/camera/{cameraid}/credentials:
+    post:
+      summary: Set credentials for an ONVIF camera
+      description: 'Set authentication credentials for a specific ONVIF camera.
+
+        **Camera ID:**
+        - Can be either the camera IP address (e.g., "192.168.1.100") or UUID
+        - IP address format: 0-255.0-255.0-255.0-255
+
+        **Credentials:**
+        - Username and password are required
+        - Credentials are stored securely and used for subsequent ONVIF operations
+        - If camera is not found, a suggestion may be provided if a similar IP is detected
+
+        **Usage:**
+        1. Discover cameras using POST /v1/onvif/discover
+        2. Get camera list using GET /v1/onvif/cameras
+        3. Set credentials using this endpoint
+        4. Get streams using GET /v1/onvif/streams/{cameraid}
+        '
+      operationId: setONVIFCredentials
+      tags:
+      - ONVIF
+      parameters:
+      - name: cameraid
+        in: path
+        required: true
+        schema:
+          type: string
+        description: Camera identifier (IP address or UUID)
+        example: 192.168.1.100
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ONVIFCredentialsRequest'
+            example:
+              username: admin
+              password: password123
+      responses:
+        '204':
+          description: Credentials set successfully
+        '400':
+          description: Bad request (missing username or password, invalid JSON)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: Camera not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+    options:
+      summary: CORS preflight for ONVIF credentials
+      operationId: setONVIFCredentialsOptions
+      tags:
+      - ONVIF
+      responses:
+        '200':
+          description: CORS preflight response
 components:
   schemas:
     HealthResponse:
@@ -16016,6 +16260,72 @@ components:
     FaceCoveredAreaRead:
       $ref: '#/components/schemas/AreaBaseRead'
       x-internal: true
+    ONVIFCamera:
+      type: object
+      description: ONVIF camera information
+      properties:
+        ip:
+          type: string
+          format: ipv4
+          description: Camera IP address
+          example: 192.168.1.100
+        uuid:
+          type: string
+          description: Camera UUID (unique identifier)
+          example: 00000000-0000-0000-0000-000000000000
+        manufacturer:
+          type: string
+          description: Camera manufacturer name
+          example: Hikvision
+        model:
+          type: string
+          description: Camera model name
+          example: DS-2CD2347G1-LU
+        serialNumber:
+          type: string
+          description: Camera serial number
+          example: ABC123456
+    ONVIFStream:
+      type: object
+      description: ONVIF video stream information
+      properties:
+        token:
+          type: string
+          description: Stream profile token
+          example: Profile_1
+        width:
+          type: integer
+          description: Stream width in pixels
+          example: 1920
+        height:
+          type: integer
+          description: Stream height in pixels
+          example: 1080
+        fps:
+          type: integer
+          description: Frame rate (frames per second)
+          example: 30
+        uri:
+          type: string
+          format: uri
+          description: RTSP stream URI
+          example: rtsp://192.168.1.100:554/Streaming/Channels/101
+    ONVIFCredentialsRequest:
+      type: object
+      required:
+      - username
+      - password
+      description: ONVIF camera credentials
+      properties:
+        username:
+          type: string
+          description: Camera username
+          example: admin
+        password:
+          type: string
+          format: password
+          description: Camera password
+          example: password123
 x-tagGroups:
   - name: CORE API
     tags:
@@ -16038,7 +16348,8 @@ x-tagGroups:
       - Lines SecuRT
       - Area SecuRT
   - name: ONVIF API
-    tags: []
+    tags:
+      - ONVIF
 tags:
 - name: Core
   description: Core API endpoints for health and version information
@@ -16073,3 +16384,5 @@ tags:
 - name: Node
   description: Node pool management endpoints for pre-configured nodes and templates (create, list, update, delete, templates,
     stats)
+- name: ONVIF
+  description: ONVIF camera discovery and management endpoints (discover cameras, get cameras list, get streams, set credentials)
