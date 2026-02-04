@@ -112,7 +112,21 @@ target_sources(edge_ai_api_tests PRIVATE
     ${CMAKE_SOURCE_DIR}/src/instances/instance_registry.cpp
     ${CMAKE_SOURCE_DIR}/src/instances/instance_state_manager.cpp
     ${CMAKE_SOURCE_DIR}/src/instances/inprocess_instance_manager.cpp
+    ${CMAKE_SOURCE_DIR}/src/instances/subprocess_instance_manager.cpp
+    ${CMAKE_SOURCE_DIR}/src/instances/instance_manager_factory.cpp
+    ${CMAKE_SOURCE_DIR}/src/worker/worker_supervisor.cpp
+    ${CMAKE_SOURCE_DIR}/src/worker/unix_socket.cpp
+    ${CMAKE_SOURCE_DIR}/src/worker/ipc_protocol.cpp
     ${CMAKE_SOURCE_DIR}/src/core/pipeline_builder.cpp
+    ${CMAKE_SOURCE_DIR}/src/core/pipeline_builder_model_resolver.cpp
+    ${CMAKE_SOURCE_DIR}/src/core/pipeline_builder_request_utils.cpp
+    ${CMAKE_SOURCE_DIR}/src/core/pipeline_builder_source_nodes.cpp
+    ${CMAKE_SOURCE_DIR}/src/core/pipeline_builder_destination_nodes.cpp
+    ${CMAKE_SOURCE_DIR}/src/core/pipeline_builder_detector_nodes.cpp
+    ${CMAKE_SOURCE_DIR}/src/core/pipeline_builder_broker_nodes.cpp
+    ${CMAKE_SOURCE_DIR}/src/core/pipeline_builder_behavior_analysis_nodes.cpp
+    ${CMAKE_SOURCE_DIR}/src/core/pipeline_builder_other_nodes.cpp
+    ${CMAKE_SOURCE_DIR}/src/core/securt_pipeline_integration.cpp
     ${CMAKE_SOURCE_DIR}/src/core/cvedix_validator.cpp
     ${CMAKE_SOURCE_DIR}/src/utils/cvedix_mqtt_client_impl.cpp
     ${CMAKE_SOURCE_DIR}/src/utils/mp4_finalizer.cpp
@@ -142,6 +156,10 @@ target_sources(edge_ai_api_tests PRIVATE
     ${CMAKE_SOURCE_DIR}/src/core/securt_instance_manager.cpp
     ${CMAKE_SOURCE_DIR}/src/core/securt_instance_registry.cpp
     ${CMAKE_SOURCE_DIR}/src/core/securt_statistics_collector.cpp
+    ${CMAKE_SOURCE_DIR}/src/core/securt_line_manager.cpp
+    ${CMAKE_SOURCE_DIR}/src/core/securt_line_storage.cpp
+    ${CMAKE_SOURCE_DIR}/src/core/securt_feature_manager.cpp
+    ${CMAKE_SOURCE_DIR}/src/core/exclusion_area_manager.cpp
     ${CMAKE_SOURCE_DIR}/src/core/area_manager.cpp
     ${CMAKE_SOURCE_DIR}/src/core/area_storage.cpp
     ${CMAKE_SOURCE_DIR}/src/core/analytics_entities_manager.cpp
@@ -253,7 +271,7 @@ if(CVEDIX_WITH_MQTT)
             /usr/lib
             /usr/lib/x86_64-linux-gnu
             /usr/local/lib
-            /opt/cvedix/lib
+            /opt/cvedix-ai-runtime/lib/cvedix
     )
 
     if(MOSQUITTO_LIBRARY)
@@ -325,6 +343,13 @@ if(DEFINED CEREAL_INCLUDE_DIR AND CEREAL_INCLUDE_DIR)
     target_include_directories(edge_ai_api_tests PRIVATE "${CEREAL_INCLUDE_DIR}")
 endif()
 
+# Add CVEDIX SDK include directories (required for broker nodes with ASIO)
+if(EXISTS "/opt/cvedix-ai-runtime/include")
+    target_include_directories(edge_ai_api_tests PRIVATE "/opt/cvedix-ai-runtime/include")
+    # Add ASIO include path (required for SSE broker node)
+    target_include_directories(edge_ai_api_tests PRIVATE "/opt/cvedix-ai-runtime/include/cvedix/third_party/asio/include")
+endif()
+
 # Add Plog include directory (same as main project)
 if(DEFINED PLOG_INCLUDE_DIR AND PLOG_INCLUDE_DIR)
     target_include_directories(edge_ai_api_tests PRIVATE ${PLOG_INCLUDE_DIR})
@@ -362,6 +387,8 @@ if(PkgConfig_FOUND)
     pkg_check_modules(GSTREAMER QUIET gstreamer-1.0)
     if(GSTREAMER_FOUND)
         target_compile_definitions(edge_ai_api_tests PRIVATE CVEDIX_WITH_GSTREAMER)
+        target_include_directories(edge_ai_api_tests PRIVATE ${GSTREAMER_INCLUDE_DIRS})
+        target_link_libraries(edge_ai_api_tests PRIVATE ${GSTREAMER_LIBRARIES})
     endif()
 else()
     find_library(GSTREAMER_LIBRARY
@@ -373,6 +400,37 @@ else()
     )
     if(GSTREAMER_LIBRARY)
         target_compile_definitions(edge_ai_api_tests PRIVATE CVEDIX_WITH_GSTREAMER)
+        # Fallback: try to find GStreamer headers manually
+        find_path(GSTREAMER_INCLUDE_DIR
+            NAMES gst/gst.h
+            PATHS
+                /usr/include/gstreamer-1.0
+                /usr/local/include/gstreamer-1.0
+                /opt/cvedix-ai-runtime/include/gstreamer-1.0
+        )
+        if(GSTREAMER_INCLUDE_DIR)
+            target_include_directories(edge_ai_api_tests PRIVATE ${GSTREAMER_INCLUDE_DIR})
+        endif()
+        target_link_libraries(edge_ai_api_tests PRIVATE ${GSTREAMER_LIBRARY})
+    endif()
+endif()
+
+# Add Eigen include directory (required by BYTETracker)
+if(DEFINED EIGEN3_INCLUDE_DIR AND EIGEN3_INCLUDE_DIR)
+    target_include_directories(edge_ai_api_tests PRIVATE ${EIGEN3_INCLUDE_DIR})
+else()
+    # Try to find Eigen if not already found
+    find_path(EIGEN3_INCLUDE_DIR
+        NAMES Eigen/Core
+        PATHS
+            /usr/include/eigen3
+            /usr/local/include/eigen3
+            /opt/cvedix-ai-runtime/include/eigen3
+            /usr/include
+            /usr/local/include
+    )
+    if(EIGEN3_INCLUDE_DIR)
+        target_include_directories(edge_ai_api_tests PRIVATE ${EIGEN3_INCLUDE_DIR})
     endif()
 endif()
 

@@ -203,7 +203,26 @@ SecuRTInstanceManager::getStatistics(const std::string &instanceId) const {
 }
 
 bool SecuRTInstanceManager::hasInstance(const std::string &instanceId) const {
-  return registry_.hasInstance(instanceId);
+  // First check SecuRT registry
+  if (registry_.hasInstance(instanceId)) {
+    return true;
+  }
+
+  // If not in SecuRT registry, check core instance manager
+  // and verify if solution is compatible
+  if (instance_manager_) {
+    auto optInfo = instance_manager_->getInstance(instanceId);
+    if (optInfo.has_value()) {
+      const InstanceInfo &info = optInfo.value();
+      // Check if solution is compatible with SecuRT APIs
+      if (isCompatibleSolution(info.solutionId)) {
+        // Auto-register compatible instance (need non-const access)
+        return const_cast<SecuRTInstanceManager*>(this)->autoRegisterInstance(instanceId);
+      }
+    }
+  }
+
+  return false;
 }
 
 std::string SecuRTInstanceManager::generateInstanceId() const {
@@ -213,8 +232,10 @@ std::string SecuRTInstanceManager::generateInstanceId() const {
 CreateInstanceRequest SecuRTInstanceManager::createCoreInstanceRequest(
     const std::string &instanceId, const SecuRTInstanceWrite &write) const {
   CreateInstanceRequest req;
-  req.name = write.name;
-  req.solution = "securt"; // Set solution to securt
+  req.name = write.name.empty() ? "SecuRT Instance" : write.name;
+  // Solution is optional - allow creating instance without solution
+  // User can update later via API
+  req.solution = "securt"; // Default to securt, but can be empty if user wants
   req.frameRateLimit = static_cast<int>(write.frameRateLimit);
   req.metadataMode = write.metadataMode;
   req.statisticsMode = write.statisticsMode;
@@ -231,5 +252,71 @@ CreateInstanceRequest SecuRTInstanceManager::createCoreInstanceRequest(
   // We'll need to ensure the ID matches after creation.
   
   return req;
+}
+
+bool SecuRTInstanceManager::isCompatibleSolution(const std::string &solutionId) {
+  // Solutions compatible with SecuRT APIs
+  // These solutions support lines/areas management
+  if (solutionId == "securt" || solutionId == "ba_crossline" || 
+      solutionId == "ba_jam" || solutionId == "ba_stop") {
+    return true;
+  }
+  
+  // Also check for default solution variants
+  if (solutionId.find("ba_crossline") != std::string::npos ||
+      solutionId.find("ba_jam") != std::string::npos ||
+      solutionId.find("ba_stop") != std::string::npos) {
+    return true;
+  }
+  
+  return false;
+}
+
+bool SecuRTInstanceManager::autoRegisterInstance(const std::string &instanceId) {
+  // Check if already registered
+  if (registry_.hasInstance(instanceId)) {
+    return true;
+  }
+
+  // Get instance info from core manager
+  if (!instance_manager_) {
+    return false;
+  }
+
+  auto optInfo = instance_manager_->getInstance(instanceId);
+  if (!optInfo.has_value()) {
+    return false;
+  }
+
+  const InstanceInfo &info = optInfo.value();
+  
+  // Verify solution is compatible
+  if (!isCompatibleSolution(info.solutionId)) {
+    return false;
+  }
+
+  // Create SecuRT instance from core instance info
+  SecuRTInstance securtInstance;
+  securtInstance.instanceId = instanceId;
+  securtInstance.name = info.displayName;
+  securtInstance.detectorMode = info.detectorMode;
+  securtInstance.detectionSensitivity = info.detectionSensitivity;
+  securtInstance.movementSensitivity = info.movementSensitivity;
+  securtInstance.sensorModality = info.sensorModality;
+  securtInstance.frameRateLimit = static_cast<double>(info.frameRateLimit);
+  securtInstance.metadataMode = info.metadataMode;
+  securtInstance.statisticsMode = info.statisticsMode;
+  securtInstance.diagnosticsMode = info.diagnosticsMode;
+  securtInstance.debugMode = info.debugMode;
+
+  // Register in SecuRT registry
+  if (!registry_.createInstance(instanceId, securtInstance)) {
+    return false;
+  }
+  
+  // Start statistics tracking
+  statistics_collector_.startTracking(instanceId);
+
+  return true;
 }
 

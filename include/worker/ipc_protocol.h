@@ -36,6 +36,10 @@ enum class MessageType : uint8_t {
   GET_LAST_FRAME = 24,
   GET_LAST_FRAME_RESPONSE = 25,
 
+  // Runtime updates (without restart)
+  UPDATE_LINES = 26,
+  UPDATE_LINES_RESPONSE = 27,
+
   // Events (worker -> supervisor)
   INSTANCE_STATE_CHANGED = 30,
   INSTANCE_ERROR = 31,

@@ -5,13 +5,18 @@
 #include <algorithm>
 #include <cctype>
 #include <cstdlib>
+#include <ctime>
 #include <drogon/HttpResponse.h>
 #include <filesystem>
 #include <fstream>
+#include <json/json.h>
 #include <regex>
 #include <sstream>
 #include <stdexcept>
 #include <vector>
+#ifdef YAML_CPP_FOUND
+#include <yaml-cpp/yaml.h>
+#endif
 
 // Static cache members
 std::unordered_map<std::string, SwaggerHandler::CacheEntry>
@@ -198,11 +203,33 @@ void SwaggerHandler::getOpenAPISpecWithLang(
 
     std::string yaml = readOpenAPIFile(version, requestHost, language);
 
+    // Check if request is for JSON format
+    bool isJsonRequest = path.find(".json") != std::string::npos;
+    
     auto resp = HttpResponse::newHttpResponse();
     resp->setStatusCode(k200OK);
-    resp->setContentTypeCode(CT_TEXT_PLAIN);
-    resp->addHeader("Content-Type", "text/yaml; charset=utf-8");
-    resp->setBody(yaml);
+    
+    if (isJsonRequest) {
+      // Convert YAML to JSON
+      std::string json = yamlToJson(yaml);
+      if (json.empty()) {
+        // Conversion failed, return error
+        resp->setStatusCode(k500InternalServerError);
+        resp->setBody("Failed to convert YAML to JSON");
+        resp->addHeader("Access-Control-Allow-Origin", "*");
+        resp->addHeader("Access-Control-Allow-Methods", "GET, OPTIONS");
+        resp->addHeader("Access-Control-Allow-Headers", "Content-Type");
+        MetricsInterceptor::callWithMetrics(req, resp, std::move(callback));
+        return;
+      }
+      resp->setContentTypeCode(CT_APPLICATION_JSON);
+      resp->addHeader("Content-Type", "application/json; charset=utf-8");
+      resp->setBody(json);
+    } else {
+      resp->setContentTypeCode(CT_TEXT_PLAIN);
+      resp->addHeader("Content-Type", "text/yaml; charset=utf-8");
+      resp->setBody(yaml);
+    }
 
     // Add CORS headers (restrictive for production)
     resp->addHeader("Access-Control-Allow-Origin", "*");
@@ -475,6 +502,11 @@ SwaggerHandler::generateSwaggerUIHTML(const std::string &version,
                         },
                         onComplete: function() {
                             console.log("Swagger UI loaded successfully");
+                            
+                            // Add example body selector functionality
+                            setTimeout(function() {
+                                addExampleBodySelector();
+                            }, 1000);
                         },
                         onFailure: function(data) {
                             console.error("Swagger UI failed to load:", data);
@@ -1015,5 +1047,97 @@ void SwaggerHandler::handleOptions(
 
   // Record metrics and call callback
   MetricsInterceptor::callWithMetrics(req, resp, std::move(callback));
+}
+
+// Helper function to convert YAML::Node to Json::Value
+#ifdef YAML_CPP_FOUND
+Json::Value yamlNodeToJsonValue(const YAML::Node &node) {
+  Json::Value jsonValue;
+
+  if (node.IsNull()) {
+    jsonValue = Json::nullValue;
+  } else if (node.IsScalar()) {
+    // Try to determine the type and convert appropriately
+    std::string scalar = node.as<std::string>();
+    
+    // Try to parse as number
+    try {
+      if (scalar.find('.') != std::string::npos) {
+        // Try double
+        double d = node.as<double>();
+        jsonValue = d;
+      } else {
+        // Try int first, then fallback to string
+        try {
+          int64_t i = node.as<int64_t>();
+          jsonValue = static_cast<Json::Int64>(i);
+        } catch (...) {
+          // Try bool
+          if (scalar == "true" || scalar == "True") {
+            jsonValue = true;
+          } else if (scalar == "false" || scalar == "False") {
+            jsonValue = false;
+          } else {
+            jsonValue = scalar;
+          }
+        }
+      }
+    } catch (...) {
+      // Fallback to string
+      jsonValue = scalar;
+    }
+  } else if (node.IsSequence()) {
+    jsonValue = Json::arrayValue;
+    for (const auto &item : node) {
+      jsonValue.append(yamlNodeToJsonValue(item));
+    }
+  } else if (node.IsMap()) {
+    jsonValue = Json::objectValue;
+    for (const auto &pair : node) {
+      std::string key = pair.first.as<std::string>();
+      jsonValue[key] = yamlNodeToJsonValue(pair.second);
+    }
+  }
+
+  return jsonValue;
+}
+#endif
+
+std::string SwaggerHandler::yamlToJson(const std::string &yamlContent) const {
+#ifdef YAML_CPP_FOUND
+  try {
+    // Parse YAML
+    YAML::Node yamlNode;
+    try {
+      yamlNode = YAML::Load(yamlContent);
+    } catch (const YAML::Exception &e) {
+      PLOG_ERROR << "[OpenAPI] Failed to parse YAML: " << e.what();
+      return "";
+    }
+
+    // Convert YAML::Node to Json::Value
+    Json::Value jsonValue = yamlNodeToJsonValue(yamlNode);
+
+    // Serialize to JSON string
+    Json::StreamWriterBuilder builder;
+    builder["indentation"] = "  ";
+    builder["commentStyle"] = "None";
+    std::unique_ptr<Json::StreamWriter> writer(builder.newStreamWriter());
+    std::ostringstream oss;
+    writer->write(jsonValue, &oss);
+    
+    return oss.str();
+  } catch (const std::exception &e) {
+    PLOG_ERROR << "[OpenAPI] Exception in yamlToJson: " << e.what();
+    return "";
+  } catch (...) {
+    PLOG_ERROR << "[OpenAPI] Unknown exception in yamlToJson";
+    return "";
+  }
+#else
+  PLOG_ERROR << "[OpenAPI] yaml-cpp not available. Cannot convert YAML to JSON.";
+  PLOG_ERROR << "[OpenAPI] Please install yaml-cpp or enable AUTO_DOWNLOAD_DEPENDENCIES";
+  return "";
+#endif
 }
 

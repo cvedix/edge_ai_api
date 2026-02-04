@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.14)
-project(edge_ai_api VERSION 2026.0.1.44)
+project(edge_ai_api VERSION 2026.0.1.50)
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -125,6 +125,51 @@ if(NOT Jsoncpp_FOUND)
     endif()
 else()
     message(STATUS "✓ Found system Jsoncpp")
+endif()
+
+# Check for yaml-cpp - try to download if not found
+find_package(yaml-cpp QUIET)
+if(NOT yaml-cpp_FOUND)
+    if(AUTO_DOWNLOAD_DEPENDENCIES)
+        message(STATUS "yaml-cpp not found. Attempting to download using FetchContent...")
+        if(NOT FetchContent_Declare)
+            include(FetchContent)
+        endif()
+
+        FetchContent_Declare(
+            yaml-cpp
+            GIT_REPOSITORY https://github.com/jbeder/yaml-cpp.git
+            GIT_TAG        yaml-cpp-0.7.0
+            GIT_SHALLOW    TRUE
+        )
+
+        # Set yaml-cpp build options
+        set(YAML_CPP_BUILD_TESTS OFF CACHE BOOL "" FORCE)
+        set(YAML_CPP_BUILD_TOOLS OFF CACHE BOOL "" FORCE)
+        set(YAML_CPP_BUILD_CONTRIB OFF CACHE BOOL "" FORCE)
+        set(BUILD_SHARED_LIBS ON CACHE BOOL "" FORCE)
+
+        FetchContent_MakeAvailable(yaml-cpp)
+
+        # Ensure yaml-cpp is built with -fPIC
+        if(TARGET yaml-cpp)
+            set_target_properties(yaml-cpp PROPERTIES
+                POSITION_INDEPENDENT_CODE ON
+            )
+        endif()
+
+        set(YAML_CPP_INCLUDE_DIRS "${CMAKE_BINARY_DIR}/_deps/yaml-cpp-src/include" CACHE PATH "yaml-cpp include directories" FORCE)
+        set(yaml-cpp_FOUND TRUE CACHE BOOL "yaml-cpp found" FORCE)
+
+        message(STATUS "✓ yaml-cpp downloaded and configured successfully")
+        message(STATUS "  Include: ${YAML_CPP_INCLUDE_DIRS}")
+    else()
+        message(STATUS "yaml-cpp not found. JSON endpoint will not work.\n"
+                       "To install: sudo apt-get install libyaml-cpp-dev\n"
+                       "Or enable auto-download: cmake .. -DAUTO_DOWNLOAD_DEPENDENCIES=ON")
+    endif()
+else()
+    message(STATUS "✓ Found system yaml-cpp")
 endif()
 
 # ============================================
@@ -266,11 +311,13 @@ set(SOURCES
     src/api/jams_handler.cpp
     src/api/stops_handler.cpp
     src/api/securt_handler.cpp
+    src/api/securt_line_handler.cpp
     src/api/area_handler.cpp
     src/api/node_handler.cpp
     src/api/onvif_handler.cpp
     src/api/recognition_handler.cpp
     src/api/system_info_handler.cpp
+    src/api/license_handler.cpp
     src/api/log_handler.cpp
     src/models/model_upload_handler.cpp
     src/videos/video_upload_handler.cpp
@@ -295,6 +342,12 @@ set(SOURCES
     src/solutions/solution_registry.cpp
     src/groups/group_registry.cpp
     src/core/pipeline_builder.cpp
+    src/core/pipeline_builder_source_nodes.cpp
+    src/core/pipeline_builder_destination_nodes.cpp
+    src/core/pipeline_builder_detector_nodes.cpp
+    src/core/pipeline_builder_broker_nodes.cpp
+    src/core/pipeline_builder_behavior_analysis_nodes.cpp
+    src/core/pipeline_builder_other_nodes.cpp
     src/core/cvedix_validator.cpp
     src/utils/cvedix_mqtt_client_impl.cpp
     src/utils/gstreamer_checker.cpp
@@ -1130,6 +1183,15 @@ target_sources(edge_ai_api PRIVATE ${WORKER_IPC_SOURCES})
 # the main server and worker processes
 set(CORE_LIB_SOURCES
     src/core/pipeline_builder.cpp
+    src/core/pipeline_builder_model_resolver.cpp
+    src/core/pipeline_builder_request_utils.cpp
+    src/core/pipeline_builder_source_nodes.cpp
+    src/core/pipeline_builder_destination_nodes.cpp
+    src/core/pipeline_builder_detector_nodes.cpp
+    src/core/pipeline_builder_broker_nodes.cpp
+    src/core/pipeline_builder_behavior_analysis_nodes.cpp
+    src/core/pipeline_builder_other_nodes.cpp
+    src/core/securt_pipeline_integration.cpp
     src/core/cvedix_validator.cpp
     src/solutions/solution_registry.cpp
     src/solutions/solution_storage.cpp
@@ -1145,6 +1207,10 @@ set(CORE_LIB_SOURCES
     src/core/securt_instance_registry.cpp
     src/core/securt_statistics_collector.cpp
     src/core/securt_instance_manager.cpp
+    src/core/securt_line_storage.cpp
+    src/core/securt_line_manager.cpp
+    src/core/securt_feature_manager.cpp
+    src/core/exclusion_area_manager.cpp
     src/core/analytics_entities_manager.cpp
     src/core/area_storage.cpp
     src/core/area_manager.cpp
@@ -1177,6 +1243,8 @@ endif()
 
 if(EXISTS "/opt/cvedix-ai-runtime/include")
     target_include_directories(edge_ai_core PUBLIC "/opt/cvedix-ai-runtime/include")
+    # Add ASIO include path (required for SSE broker node)
+    target_include_directories(edge_ai_core PUBLIC "/opt/cvedix-ai-runtime/include/cvedix/third_party/asio/include")
 endif()
 
 if(PLOG_INCLUDE_DIR)
@@ -1194,6 +1262,44 @@ endif()
 
 if(GSTREAMER_FOUND OR GSTREAMER_LIBRARY)
     target_compile_definitions(edge_ai_core PUBLIC CVEDIX_WITH_GSTREAMER)
+    # Add GStreamer include directories and libraries
+    if(GSTREAMER_FOUND)
+        target_include_directories(edge_ai_core PUBLIC ${GSTREAMER_INCLUDE_DIRS})
+        target_link_libraries(edge_ai_core PUBLIC ${GSTREAMER_LIBRARIES})
+    else()
+        # Fallback: try to find GStreamer headers manually
+        find_path(GSTREAMER_INCLUDE_DIR
+            NAMES gst/gst.h
+            PATHS
+                /usr/include/gstreamer-1.0
+                /usr/local/include/gstreamer-1.0
+                /opt/cvedix-ai-runtime/include/gstreamer-1.0
+        )
+        if(GSTREAMER_INCLUDE_DIR)
+            target_include_directories(edge_ai_core PUBLIC ${GSTREAMER_INCLUDE_DIR})
+        endif()
+        if(GSTREAMER_LIBRARY)
+            target_link_libraries(edge_ai_core PUBLIC ${GSTREAMER_LIBRARY})
+        endif()
+    endif()
+endif()
+
+# Check for Eigen library (required by BYTETracker)
+find_path(EIGEN3_INCLUDE_DIR
+    NAMES Eigen/Core
+    PATHS
+        /usr/include/eigen3
+        /usr/local/include/eigen3
+        /opt/cvedix-ai-runtime/include/eigen3
+        /usr/include
+        /usr/local/include
+)
+if(EIGEN3_INCLUDE_DIR)
+    target_include_directories(edge_ai_core PUBLIC ${EIGEN3_INCLUDE_DIR})
+    message(STATUS "✓ Found Eigen3: ${EIGEN3_INCLUDE_DIR}")
+else()
+    message(WARNING "⚠ Eigen3 not found. BYTETracker may not compile.")
+    message(WARNING "  To install: sudo apt-get install libeigen3-dev")
 endif()
 
 if(CVEDIX_WITH_MQTT)
@@ -1209,6 +1315,19 @@ message(STATUS "✓ Edge AI Core library configured")
 
 # Link edge_ai_core to edge_ai_api
 target_link_libraries(edge_ai_api PRIVATE edge_ai_core)
+
+# Link yaml-cpp if available
+if(TARGET yaml-cpp)
+    target_link_libraries(edge_ai_api PRIVATE yaml-cpp)
+    target_include_directories(edge_ai_api PRIVATE ${YAML_CPP_INCLUDE_DIRS})
+    target_compile_definitions(edge_ai_api PRIVATE YAML_CPP_FOUND)
+    message(STATUS "✓ yaml-cpp linked to edge_ai_api")
+elseif(yaml-cpp_FOUND)
+    target_link_libraries(edge_ai_api PRIVATE yaml-cpp)
+    target_compile_definitions(edge_ai_api PRIVATE YAML_CPP_FOUND)
+    message(STATUS "✓ yaml-cpp linked to edge_ai_api")
+endif()
+
 message(STATUS "✓ edge_ai_api linked to edge_ai_core")
 
 # ============================================

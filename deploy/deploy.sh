@@ -538,6 +538,18 @@ else
     echo -e "${YELLOW}⚠${NC}  File openapi.yaml không tồn tại. Swagger UI sẽ không hoạt động."
 fi
 
+# Copy api-specs/scalar directory (required for Scalar documentation)
+if [ -d "$PROJECT_ROOT/api-specs/scalar" ]; then
+    mkdir -p "$INSTALL_DIR/api-specs/scalar"
+    cp -r "$PROJECT_ROOT/api-specs/scalar"/* "$INSTALL_DIR/api-specs/scalar/"
+    chown -R "$SERVICE_USER:$SERVICE_GROUP" "$INSTALL_DIR/api-specs"
+    chmod -R 644 "$INSTALL_DIR/api-specs/scalar"/* 2>/dev/null || true
+    find "$INSTALL_DIR/api-specs/scalar" -type f -exec chmod 644 {} \;
+    echo -e "${GREEN}✓${NC} Đã copy api-specs/scalar directory"
+else
+    echo -e "${YELLOW}⚠${NC}  Thư mục api-specs/scalar không tồn tại. Scalar documentation sẽ không hoạt động."
+fi
+
 echo ""
 
 # ============================================
