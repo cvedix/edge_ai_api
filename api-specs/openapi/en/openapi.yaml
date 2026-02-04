@@ -2636,7 +2636,6 @@ paths:
           The endpoint will automatically detect the type of identifier.
 
           '
-        example: 6b135f5b-a365-4522-b1f1-4c9ac2dd0728
       responses:
         '200':
           description: Face subject(s) deleted successfully
@@ -6157,7 +6156,6 @@ paths:
         schema:
           type: string
         description: Instance ID (UUID)
-        example: 291a85b8-d4c0-5765-dcb2-48c9b51f48d0
       requestBody:
         required: true
         content:
@@ -7617,7 +7615,6 @@ paths:
         schema:
           type: string
         description: Unique identifier of the instance (UUID)
-        example: 291a85b8-d4c0-5765-dcb2-48c9b51f48d0
       responses:
         '200':
           description: Instance configuration
@@ -7695,7 +7692,6 @@ paths:
         schema:
           type: string
         description: Unique identifier of the instance (UUID)
-        example: 00000000-0000-0000-0000-000000000000
       requestBody:
         required: true
         content:
@@ -7781,7 +7777,6 @@ paths:
         schema:
           type: string
         description: Unique identifier of the instance (UUID)
-        example: 291a85b8-d4c0-5765-dcb2-48c9b51f48d0
       responses:
         '204':
           description: Instance loaded successfully
@@ -7856,7 +7851,6 @@ paths:
         schema:
           type: string
         description: Unique identifier of the instance (UUID)
-        example: 291a85b8-d4c0-5765-dcb2-48c9b51f48d0
       responses:
         '204':
           description: Instance unloaded successfully
@@ -7936,7 +7930,6 @@ paths:
         schema:
           type: string
         description: Unique identifier of the instance (UUID)
-        example: 291a85b8-d4c0-5765-dcb2-48c9b51f48d0
       responses:
         '200':
           description: Instance state retrieved successfully
@@ -8051,7 +8044,6 @@ paths:
         schema:
           type: string
         description: Unique identifier of the instance (UUID)
-        example: 291a85b8-d4c0-5765-dcb2-48c9b51f48d0
       requestBody:
         required: true
         content:
@@ -8165,7 +8157,6 @@ paths:
         schema:
           type: string
         description: Instance ID (UUID)
-        example: a5204fc9-9a59-f80f-fb9f-bf3b42214943
       responses:
         '200':
           description: Statistics retrieved successfully
@@ -8246,7 +8237,6 @@ paths:
         schema:
           type: string
         description: The unique identifier of the instance
-        example: a5204fc9-9a59-f80f-fb9f-bf3b42214943
       responses:
         '200':
           description: Stream output configuration
@@ -8333,7 +8323,6 @@ paths:
         schema:
           type: string
         description: The unique identifier of the instance
-        example: a5204fc9-9a59-f80f-fb9f-bf3b42214943
       requestBody:
         required: true
         content:
@@ -8407,7 +8396,6 @@ paths:
         schema:
           type: string
         description: The unique identifier of the instance
-        example: a5204fc9-9a59-f80f-fb9f-bf3b42214943
       responses:
         '200':
           description: List of crossing lines
@@ -8454,7 +8442,6 @@ paths:
         schema:
           type: string
         description: The unique identifier of the instance
-        example: a5204fc9-9a59-f80f-fb9f-bf3b42214943
       requestBody:
         required: true
         content:
@@ -8572,7 +8559,6 @@ paths:
         schema:
           type: string
         description: The unique identifier of the instance
-        example: a5204fc9-9a59-f80f-fb9f-bf3b42214943
       responses:
         '200':
           description: All lines deleted successfully
@@ -8620,14 +8606,12 @@ paths:
         schema:
           type: string
         description: The unique identifier of the instance
-        example: a5204fc9-9a59-f80f-fb9f-bf3b42214943
       - name: lineId
         in: path
         required: true
         schema:
           type: string
         description: The unique identifier of the line to retrieve
-        example: b1234567-89ab-cdef-0123-456789abcdef
       responses:
         '200':
           description: Line retrieved successfully
@@ -8667,14 +8651,12 @@ paths:
         schema:
           type: string
         description: The unique identifier of the instance
-        example: a5204fc9-9a59-f80f-fb9f-bf3b42214943
       - name: lineId
         in: path
         required: true
         schema:
           type: string
         description: The unique identifier of the line to update
-        example: b1234567-89ab-cdef-0123-456789abcdef
       requestBody:
         required: true
         content:
@@ -8743,14 +8725,12 @@ paths:
         schema:
           type: string
         description: The unique identifier of the instance
-        example: a5204fc9-9a59-f80f-fb9f-bf3b42214943
       - name: lineId
         in: path
         required: true
         schema:
           type: string
         description: The unique identifier of the line to delete
-        example: b1234567-89ab-cdef-0123-456789abcdef
       responses:
         '200':
           description: Line deleted successfully
@@ -8799,7 +8779,6 @@ paths:
         schema:
           type: string
         description: The unique identifier of the instance
-        example: a5204fc9-9a59-f80f-fb9f-bf3b42214943
       responses:
         '200':
           description: List of jam zones
@@ -8845,7 +8824,6 @@ paths:
         schema:
           type: string
         description: The unique identifier of the instance
-        example: a5204fc9-9a59-f80f-fb9f-bf3b42214943
       requestBody:
         required: true
         content:
@@ -8954,7 +8932,6 @@ paths:
         schema:
           type: string
         description: The unique identifier of the instance
-        example: a5204fc9-9a59-f80f-fb9f-bf3b42214943
       responses:
         '200':
           description: All zones deleted successfully
@@ -9002,14 +8979,12 @@ paths:
         schema:
           type: string
         description: The unique identifier of the instance
-        example: a5204fc9-9a59-f80f-fb9f-bf3b42214943
       - name: jamId
         in: path
         required: true
         schema:
           type: string
         description: The unique identifier of the jam zone to retrieve
-        example: b1234567-89ab-cdef-0123-456789abcdef
       responses:
         '200':
           description: Jam zone retrieved successfully
@@ -9044,14 +9019,12 @@ paths:
         schema:
           type: string
         description: The unique identifier of the instance
-        example: a5204fc9-9a59-f80f-fb9f-bf3b42214943
       - name: jamId
         in: path
         required: true
         schema:
           type: string
         description: The unique identifier of the jam zone to update
-        example: b1234567-89ab-cdef-0123-456789abcdef
       requestBody:
         required: true
         content:
@@ -9102,14 +9075,12 @@ paths:
         schema:
           type: string
         description: The unique identifier of the instance
-        example: a5204fc9-9a59-f80f-fb9f-bf3b42214943
       - name: jamId
         in: path
         required: true
         schema:
           type: string
         description: The unique identifier of the jam zone to delete
-        example: b1234567-89ab-cdef-0123-456789abcdef
       responses:
         '200':
           description: Jam zone deleted successfully
@@ -9151,7 +9122,6 @@ paths:
         schema:
           type: string
         description: The unique identifier of the instance
-        example: a5204fc9-9a59-f80f-fb9f-bf3b42214943
       responses:
         '200':
           description: List of stop zones
@@ -9196,7 +9166,6 @@ paths:
         schema:
           type: string
         description: The unique identifier of the instance
-        example: a5204fc9-9a59-f80f-fb9f-bf3b42214943
       requestBody:
         required: true
         content:
@@ -9307,7 +9276,6 @@ paths:
         schema:
           type: string
         description: The unique identifier of the instance
-        example: a5204fc9-9a59-f80f-fb9f-bf3b42214943
       responses:
         '200':
           description: All stops deleted successfully
@@ -9355,14 +9323,12 @@ paths:
         schema:
           type: string
         description: The unique identifier of the instance
-        example: a5204fc9-9a59-f80f-fb9f-bf3b42214943
       - name: stopId
         in: path
         required: true
         schema:
           type: string
         description: The unique identifier of the stop zone to retrieve
-        example: b1234567-89ab-cdef-0123-456789abcdef
       responses:
         '200':
           description: Stop zone retrieved successfully
@@ -9400,14 +9366,12 @@ paths:
         schema:
           type: string
         description: The unique identifier of the instance
-        example: a5204fc9-9a59-f80f-fb9f-bf3b42214943
       - name: stopId
         in: path
         required: true
         schema:
           type: string
         description: The unique identifier of the stop zone to update
-        example: b1234567-89ab-cdef-0123-456789abcdef
       requestBody:
         required: true
         content:
@@ -9432,14 +9396,12 @@ paths:
         schema:
           type: string
         description: The unique identifier of the instance
-        example: a5204fc9-9a59-f80f-fb9f-bf3b42214943
       - name: stopId
         in: path
         required: true
         schema:
           type: string
         description: The unique identifier of the stop zone to delete
-        example: b1234567-89ab-cdef-0123-456789abcdef
       responses:
         '200':
           description: Stop zone deleted successfully
