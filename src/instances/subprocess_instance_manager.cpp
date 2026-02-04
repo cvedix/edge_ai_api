@@ -640,10 +640,18 @@ bool SubprocessInstanceManager::updateInstance(const std::string &instanceId,
             it->second.additionalParams[key] = params[key].asString();
           }
           // Update URLs from AdditionalParams
-          if (it->second.additionalParams.count("RTSP_URL")) {
+          // Check RTSP_DES_URL first (for output), then RTSP_SRC_URL (for input), then RTSP_URL (backward compatibility)
+          if (it->second.additionalParams.count("RTSP_DES_URL")) {
+            it->second.rtspUrl = it->second.additionalParams.at("RTSP_DES_URL");
+          } else if (it->second.additionalParams.count("RTSP_SRC_URL")) {
+            it->second.rtspUrl = it->second.additionalParams.at("RTSP_SRC_URL");
+          } else if (it->second.additionalParams.count("RTSP_URL")) {
             it->second.rtspUrl = it->second.additionalParams.at("RTSP_URL");
           }
-          if (it->second.additionalParams.count("RTMP_URL")) {
+          // Check RTMP_DES_URL first (new format), then RTMP_URL (backward compatibility)
+          if (it->second.additionalParams.count("RTMP_DES_URL")) {
+            it->second.rtmpUrl = it->second.additionalParams.at("RTMP_DES_URL");
+          } else if (it->second.additionalParams.count("RTMP_URL")) {
             it->second.rtmpUrl = it->second.additionalParams.at("RTMP_URL");
           }
           if (it->second.additionalParams.count("FILE_PATH")) {

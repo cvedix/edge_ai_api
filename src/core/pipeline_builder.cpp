@@ -1345,16 +1345,33 @@ PipelineBuilder::buildPipeline(const SolutionConfig &solution,
   }
 #endif
 
-  // 2. Auto-add RTMP destination if RTMP_URL is provided but not in pipeline
+  // 2. Auto-add RTMP destination if RTMP_URL or RTMP_DES_URL is provided but not in pipeline
+  // Check RTMP_DES_URL first (new format), then RTMP_URL (backward compatibility)
+  auto rtmpDesUrlIt = req.additionalParams.find("RTMP_DES_URL");
   auto rtmpUrlIt = req.additionalParams.find("RTMP_URL");
-  if (rtmpUrlIt != req.additionalParams.end() && !rtmpUrlIt->second.empty()) {
-    std::string rtmpUrl = rtmpUrlIt->second;
+  
+  // Determine which RTMP URL parameter to use
+  std::string rtmpUrl;
+  std::string rtmpUrlParamName = "RTMP_URL"; // Default placeholder name
+  bool hasRtmpUrl = false;
+  
+  if (rtmpDesUrlIt != req.additionalParams.end() && !rtmpDesUrlIt->second.empty()) {
+    rtmpUrl = rtmpDesUrlIt->second;
+    rtmpUrlParamName = "RTMP_DES_URL";
+    hasRtmpUrl = true;
+  } else if (rtmpUrlIt != req.additionalParams.end() && !rtmpUrlIt->second.empty()) {
+    rtmpUrl = rtmpUrlIt->second;
+    rtmpUrlParamName = "RTMP_URL";
+    hasRtmpUrl = true;
+  }
+  
+  if (hasRtmpUrl) {
     rtmpUrl.erase(0, rtmpUrl.find_first_not_of(" \t\n\r"));
     rtmpUrl.erase(rtmpUrl.find_last_not_of(" \t\n\r") + 1);
 
     if (!rtmpUrl.empty() && !hasNodeType("rtmp_des")) {
       std::cerr
-          << "[PipelineBuilder] Auto-adding rtmp_des node (RTMP_URL detected)"
+          << "[PipelineBuilder] Auto-adding rtmp_des node (" << rtmpUrlParamName << " detected)"
           << std::endl;
       try {
         // Check if pipeline has OSD node (face_osd_v2, osd_v3,
@@ -1428,7 +1445,8 @@ PipelineBuilder::buildPipeline(const SolutionConfig &solution,
         SolutionConfig::NodeConfig rtmpConfig;
         rtmpConfig.nodeType = "rtmp_des";
         rtmpConfig.nodeName = "rtmp_des_{instanceId}";
-        rtmpConfig.parameters["rtmp_url"] = "${RTMP_URL}";
+        // Use the appropriate placeholder based on which parameter was found
+        rtmpConfig.parameters["rtmp_url"] = "${" + rtmpUrlParamName + "}";
         rtmpConfig.parameters["channel"] = "0";
         // Don't enable OSD in RTMP node - use OSD node instead
 
@@ -1441,10 +1459,10 @@ PipelineBuilder::buildPipeline(const SolutionConfig &solution,
 
         std::cerr << "[PipelineBuilder] Attempting to create RTMP destination node with parameters:" << std::endl;
         std::cerr << "  rtmp_url param: '" << rtmpConfig.parameters.at("rtmp_url") << "'" << std::endl;
-        std::cerr << "  RTMP_URL from req.additionalParams: ";
-        auto rtmpUrlIt = req.additionalParams.find("RTMP_URL");
-        if (rtmpUrlIt != req.additionalParams.end()) {
-          std::cerr << "'" << rtmpUrlIt->second << "'" << std::endl;
+        std::cerr << "  " << rtmpUrlParamName << " from req.additionalParams: ";
+        auto rtmpParamIt = req.additionalParams.find(rtmpUrlParamName);
+        if (rtmpParamIt != req.additionalParams.end()) {
+          std::cerr << "'" << rtmpParamIt->second << "'" << std::endl;
         } else {
           std::cerr << "NOT FOUND" << std::endl;
         }

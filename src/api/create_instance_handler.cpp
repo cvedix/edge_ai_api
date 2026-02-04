@@ -3,6 +3,7 @@
 #include "core/logger.h"
 #include "core/logging_flags.h"
 #include "core/metrics_interceptor.h"
+#include "core/pipeline_builder_destination_nodes.h"
 #include "instances/instance_info.h"
 #include "instances/instance_manager.h"
 #include "models/create_instance_request.h"
@@ -683,6 +684,13 @@ CreateInstanceHandler::instanceInfoToJson(const InstanceInfo &info) const {
   // Add streaming URLs if available
   if (!info.rtmpUrl.empty()) {
     json["rtmpUrl"] = info.rtmpUrl;
+    
+    // Extract RTMP prefix (stream key without _0 suffix)
+    // RTMP node automatically adds _0 suffix, so we extract the original stream key
+    std::string streamKey = PipelineBuilderDestinationNodes::extractRTMPStreamKey(info.rtmpUrl);
+    if (!streamKey.empty()) {
+      json["prefix"] = streamKey;
+    }
   }
   if (!info.rtspUrl.empty()) {
     json["rtspUrl"] = info.rtspUrl;

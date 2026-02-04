@@ -2339,10 +2339,21 @@ bool InstanceRegistry::updateInstance(const std::string &instanceId,
       }
       hasChanges = true;
 
-      // Update RTSP URL if changed
-      auto rtspIt = req.additionalParams.find("RTSP_URL");
-      if (rtspIt != req.additionalParams.end() && !rtspIt->second.empty()) {
-        info.rtspUrl = rtspIt->second;
+      // Update RTSP URL if changed - check RTSP_DES_URL first (for output), 
+      // then RTSP_SRC_URL (for input), then RTSP_URL (backward compatibility)
+      auto rtspDesIt = req.additionalParams.find("RTSP_DES_URL");
+      if (rtspDesIt != req.additionalParams.end() && !rtspDesIt->second.empty()) {
+        info.rtspUrl = rtspDesIt->second;
+      } else {
+        auto rtspSrcIt = req.additionalParams.find("RTSP_SRC_URL");
+        if (rtspSrcIt != req.additionalParams.end() && !rtspSrcIt->second.empty()) {
+          info.rtspUrl = rtspSrcIt->second;
+        } else {
+          auto rtspIt = req.additionalParams.find("RTSP_URL");
+          if (rtspIt != req.additionalParams.end() && !rtspIt->second.empty()) {
+            info.rtspUrl = rtspIt->second;
+          }
+        }
       }
 
       // Update RTMP URL if changed - check RTMP_DES_URL first, then RTMP_URL
@@ -4195,10 +4206,12 @@ bool InstanceRegistry::rebuildPipelineFromInstanceInfo(
   req.additionalParams = info.additionalParams;
 
   // Also restore individual fields for backward compatibility
-  // Use originator.address as RTSP URL if available
+  // Use originator.address as RTSP URL if available (typically input source)
   if (!info.originator.address.empty() &&
+      req.additionalParams.find("RTSP_SRC_URL") == req.additionalParams.end() &&
+      req.additionalParams.find("RTSP_DES_URL") == req.additionalParams.end() &&
       req.additionalParams.find("RTSP_URL") == req.additionalParams.end()) {
-    req.additionalParams["RTSP_URL"] = info.originator.address;
+    req.additionalParams["RTSP_SRC_URL"] = info.originator.address;
   }
 
   // Restore RTMP URL if available (override if not in additionalParams)
