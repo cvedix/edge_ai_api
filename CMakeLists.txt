@@ -127,6 +127,51 @@ else()
     message(STATUS "✓ Found system Jsoncpp")
 endif()
 
+# Check for yaml-cpp - try to download if not found
+find_package(yaml-cpp QUIET)
+if(NOT yaml-cpp_FOUND)
+    if(AUTO_DOWNLOAD_DEPENDENCIES)
+        message(STATUS "yaml-cpp not found. Attempting to download using FetchContent...")
+        if(NOT FetchContent_Declare)
+            include(FetchContent)
+        endif()
+
+        FetchContent_Declare(
+            yaml-cpp
+            GIT_REPOSITORY https://github.com/jbeder/yaml-cpp.git
+            GIT_TAG        yaml-cpp-0.7.0
+            GIT_SHALLOW    TRUE
+        )
+
+        # Set yaml-cpp build options
+        set(YAML_CPP_BUILD_TESTS OFF CACHE BOOL "" FORCE)
+        set(YAML_CPP_BUILD_TOOLS OFF CACHE BOOL "" FORCE)
+        set(YAML_CPP_BUILD_CONTRIB OFF CACHE BOOL "" FORCE)
+        set(BUILD_SHARED_LIBS ON CACHE BOOL "" FORCE)
+
+        FetchContent_MakeAvailable(yaml-cpp)
+
+        # Ensure yaml-cpp is built with -fPIC
+        if(TARGET yaml-cpp)
+            set_target_properties(yaml-cpp PROPERTIES
+                POSITION_INDEPENDENT_CODE ON
+            )
+        endif()
+
+        set(YAML_CPP_INCLUDE_DIRS "${CMAKE_BINARY_DIR}/_deps/yaml-cpp-src/include" CACHE PATH "yaml-cpp include directories" FORCE)
+        set(yaml-cpp_FOUND TRUE CACHE BOOL "yaml-cpp found" FORCE)
+
+        message(STATUS "✓ yaml-cpp downloaded and configured successfully")
+        message(STATUS "  Include: ${YAML_CPP_INCLUDE_DIRS}")
+    else()
+        message(STATUS "yaml-cpp not found. JSON endpoint will not work.\n"
+                       "To install: sudo apt-get install libyaml-cpp-dev\n"
+                       "Or enable auto-download: cmake .. -DAUTO_DOWNLOAD_DEPENDENCIES=ON")
+    endif()
+else()
+    message(STATUS "✓ Found system yaml-cpp")
+endif()
+
 # ============================================
 # Drogon HTTP Framework
 # ============================================
@@ -1257,6 +1302,19 @@ message(STATUS "✓ Edge AI Core library configured")
 
 # Link edge_ai_core to edge_ai_api
 target_link_libraries(edge_ai_api PRIVATE edge_ai_core)
+
+# Link yaml-cpp if available
+if(TARGET yaml-cpp)
+    target_link_libraries(edge_ai_api PRIVATE yaml-cpp)
+    target_include_directories(edge_ai_api PRIVATE ${YAML_CPP_INCLUDE_DIRS})
+    target_compile_definitions(edge_ai_api PRIVATE YAML_CPP_FOUND)
+    message(STATUS "✓ yaml-cpp linked to edge_ai_api")
+elseif(yaml-cpp_FOUND)
+    target_link_libraries(edge_ai_api PRIVATE yaml-cpp)
+    target_compile_definitions(edge_ai_api PRIVATE YAML_CPP_FOUND)
+    message(STATUS "✓ yaml-cpp linked to edge_ai_api")
+endif()
+
 message(STATUS "✓ edge_ai_api linked to edge_ai_core")
 
 # ============================================

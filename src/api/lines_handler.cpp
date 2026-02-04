@@ -5,6 +5,7 @@
 #include "core/uuid_generator.h"
 #include "instances/instance_manager.h"
 #include "instances/inprocess_instance_manager.h"
+#include "instances/subprocess_instance_manager.h"
 #include <algorithm>
 #include <cctype>
 #include <chrono>
@@ -14,6 +15,7 @@
 #include <drogon/HttpResponse.h>
 #include <json/reader.h>
 #include <json/writer.h>
+#include <opencv2/core.hpp>
 #include <sstream>
 #include <thread>
 
@@ -1898,6 +1900,128 @@ LinesHandler::parseLinesFromJson(const Json::Value &linesArray) const {
   return lines;
 }
 
+std::map<int, std::vector<cvedix_nodes::crossline_config>>
+LinesHandler::parseLinesFromJsonWithConfigs(const Json::Value &linesArray) const {
+  std::map<int, std::vector<cvedix_nodes::crossline_config>> configsByChannel;
+
+  if (!linesArray.isArray()) {
+    if (isApiLoggingEnabled()) {
+      PLOG_WARNING << "[API] parseLinesFromJsonWithConfigs: Input is not a JSON array";
+    }
+    return configsByChannel;
+  }
+
+  // Iterate through lines array
+  for (Json::ArrayIndex i = 0; i < linesArray.size(); ++i) {
+    const Json::Value &lineObj = linesArray[i];
+
+    // Check if line has coordinates
+    if (!lineObj.isMember("coordinates") || !lineObj["coordinates"].isArray()) {
+      if (isApiLoggingEnabled()) {
+        PLOG_WARNING << "[API] parseLinesFromJsonWithConfigs: Line at index " << i
+                     << " missing or invalid 'coordinates' field, skipping";
+      }
+      continue;
+    }
+
+    const Json::Value &coordinates = lineObj["coordinates"];
+    if (coordinates.size() < 2) {
+      if (isApiLoggingEnabled()) {
+        PLOG_WARNING << "[API] parseLinesFromJsonWithConfigs: Line at index " << i
+                     << " has less than 2 coordinates, skipping";
+      }
+      continue;
+    }
+
+    // Get first and last coordinates
+    const Json::Value &startCoord = coordinates[0];
+    const Json::Value &endCoord = coordinates[coordinates.size() - 1];
+
+    if (!startCoord.isMember("x") || !startCoord.isMember("y") ||
+        !endCoord.isMember("x") || !endCoord.isMember("y")) {
+      if (isApiLoggingEnabled()) {
+        PLOG_WARNING << "[API] parseLinesFromJsonWithConfigs: Line at index " << i
+                     << " has invalid coordinate format, skipping";
+      }
+      continue;
+    }
+
+    if (!startCoord["x"].isNumeric() || !startCoord["y"].isNumeric() ||
+        !endCoord["x"].isNumeric() || !endCoord["y"].isNumeric()) {
+      if (isApiLoggingEnabled()) {
+        PLOG_WARNING << "[API] parseLinesFromJsonWithConfigs: Line at index " << i
+                     << " has non-numeric coordinates, skipping";
+      }
+      continue;
+    }
+
+    // Convert to cvedix_line
+    int start_x = startCoord["x"].asInt();
+    int start_y = startCoord["y"].asInt();
+    int end_x = endCoord["x"].asInt();
+    int end_y = endCoord["y"].asInt();
+
+    cvedix_objects::cvedix_point start(start_x, start_y);
+    cvedix_objects::cvedix_point end(end_x, end_y);
+    cvedix_objects::cvedix_line line(start, end);
+
+    // Parse line name
+    std::string line_name = "";
+    if (lineObj.isMember("name") && lineObj["name"].isString() &&
+        !lineObj["name"].asString().empty()) {
+      line_name = lineObj["name"].asString();
+    } else {
+      line_name = "Line " + std::to_string(i + 1);
+    }
+
+    // Parse color (RGBA format: [R, G, B, A])
+    cv::Scalar line_color = cv::Scalar(0, 255, 0); // Default green
+    if (lineObj.isMember("color") && lineObj["color"].isArray() &&
+        lineObj["color"].size() >= 3) {
+      int r = lineObj["color"][0].asInt();
+      int g = lineObj["color"][1].asInt();
+      int b = lineObj["color"][2].asInt();
+      // OpenCV uses BGR format
+      line_color = cv::Scalar(b, g, r);
+    }
+
+    // Parse direction
+    cvedix_objects::cvedix_ba_direct_type direction =
+        cvedix_objects::cvedix_ba_direct_type::BOTH;
+    if (lineObj.isMember("direction") && lineObj["direction"].isString()) {
+      std::string dir = lineObj["direction"].asString();
+      if (dir == "Up" || dir == "IN") {
+        direction = cvedix_objects::cvedix_ba_direct_type::IN;
+      } else if (dir == "Down" || dir == "OUT") {
+        direction = cvedix_objects::cvedix_ba_direct_type::OUT;
+      } else {
+        direction = cvedix_objects::cvedix_ba_direct_type::BOTH;
+      }
+    }
+
+    // All lines go to channel 0 by default (as per original design in pipeline_builder)
+    int channel = 0;
+    if (lineObj.isMember("channel") && lineObj["channel"].isNumeric()) {
+      channel = lineObj["channel"].asInt();
+    }
+
+    // Create crossline_config with name, color, and direction
+    cvedix_nodes::crossline_config config(line, line_color, line_name, direction);
+    configsByChannel[channel].push_back(config);
+  }
+
+  if (isApiLoggingEnabled() && !configsByChannel.empty()) {
+    int totalLines = 0;
+    for (const auto &pair : configsByChannel) {
+      totalLines += static_cast<int>(pair.second.size());
+    }
+    PLOG_DEBUG << "[API] parseLinesFromJsonWithConfigs: Parsed " << totalLines
+               << " line(s) with configs from JSON";
+  }
+
+  return configsByChannel;
+}
+
 bool LinesHandler::updateLinesRuntime(const std::string &instanceId,
                                       const Json::Value &linesArray) const {
   if (!instance_manager_) {
@@ -1927,7 +2051,51 @@ bool LinesHandler::updateLinesRuntime(const std::string &instanceId,
                  // next start
   }
 
-  // Find ba_crossline_node in pipeline
+  // Check if we're in subprocess mode
+  if (instance_manager_->isSubprocessMode()) {
+    // In subprocess mode, send IPC message to worker process
+    if (isApiLoggingEnabled()) {
+      PLOG_INFO << "[API] updateLinesRuntime: Subprocess mode detected, "
+                   "sending UPDATE_LINES IPC message to worker";
+    }
+
+    try {
+      // Cast to SubprocessInstanceManager to call updateLines()
+      auto *subprocessManager =
+          dynamic_cast<SubprocessInstanceManager *>(instance_manager_);
+      if (!subprocessManager) {
+        if (isApiLoggingEnabled()) {
+          PLOG_WARNING << "[API] updateLinesRuntime: Cannot cast to "
+                         "SubprocessInstanceManager";
+        }
+        return false;
+      }
+
+      // Send UPDATE_LINES IPC message to worker
+      bool success = subprocessManager->updateLines(instanceId, linesArray);
+      if (success) {
+        if (isApiLoggingEnabled()) {
+          PLOG_INFO << "[API] updateLinesRuntime: ✓ Successfully updated lines "
+                       "via IPC (no restart needed)";
+        }
+        return true;
+      } else {
+        if (isApiLoggingEnabled()) {
+          PLOG_WARNING << "[API] updateLinesRuntime: IPC update failed, "
+                          "fallback to restart";
+        }
+        return false; // Fallback to restart
+      }
+    } catch (const std::exception &e) {
+      if (isApiLoggingEnabled()) {
+        PLOG_ERROR << "[API] updateLinesRuntime: Exception in subprocess mode: "
+                   << e.what();
+      }
+      return false;
+    }
+  }
+
+  // In-process mode: find ba_crossline_node in pipeline
   auto baCrosslineNode = findBACrosslineNode(instanceId);
   if (!baCrosslineNode) {
     if (isApiLoggingEnabled()) {
@@ -1938,9 +2106,14 @@ bool LinesHandler::updateLinesRuntime(const std::string &instanceId,
     return false; // Fallback to restart
   }
 
-  // Parse lines from JSON
-  auto lines = parseLinesFromJson(linesArray);
-  if (lines.empty() && linesArray.isArray() && linesArray.size() > 0) {
+  // Parse lines from JSON with full configs (name, color, direction)
+  auto configsByChannel = parseLinesFromJsonWithConfigs(linesArray);
+  
+  // Check if we have valid lines or empty array
+  bool isEmptyArray = linesArray.isArray() && linesArray.size() == 0;
+  bool hasValidLines = !configsByChannel.empty();
+  
+  if (!isEmptyArray && !hasValidLines) {
     // Parse failed but array is not empty - error
     if (isApiLoggingEnabled()) {
       PLOG_WARNING << "[API] updateLinesRuntime: Failed to parse lines from "
@@ -1950,20 +2123,29 @@ bool LinesHandler::updateLinesRuntime(const std::string &instanceId,
   }
 
   // Try to update lines via SDK API
-  // SDK has set_lines() API for hot reload!
+  // Strategy: Use set_lines() with all lines (simpler and more reliable)
+  // This ensures consistency - we replace all lines at once
   try {
     if (isApiLoggingEnabled()) {
-      PLOG_INFO << "[API] updateLinesRuntime: Found ba_crossline_node, "
-                   "attempting to update "
-                << lines.size() << " line(s) via SDK set_lines() API";
+      if (isEmptyArray) {
+        PLOG_INFO << "[API] updateLinesRuntime: Found ba_crossline_node, "
+                     "attempting to clear all lines";
+      } else {
+        int totalLines = 0;
+        for (const auto &pair : configsByChannel) {
+          totalLines += static_cast<int>(pair.second.size());
+        }
+        PLOG_INFO << "[API] updateLinesRuntime: Found ba_crossline_node, "
+                     "attempting to update "
+                  << totalLines << " line(s) via SDK set_lines() API (hot reload)";
+      }
     }
 
-    // Verify lines were parsed correctly
-    if (lines.empty() && linesArray.isArray() && linesArray.size() == 0) {
-      // Empty array is valid (delete all lines) - pass empty map to set_lines()
-      bool success = baCrosslineNode->set_lines(
-          std::map<int, cvedix_objects::cvedix_line>());
-      if (success) {
+    if (isEmptyArray) {
+      // Empty array - clear all lines
+      std::map<int, cvedix_objects::cvedix_line> emptyLines;
+      bool clearSuccess = baCrosslineNode->set_lines(emptyLines);
+      if (clearSuccess) {
         if (isApiLoggingEnabled()) {
           PLOG_INFO << "[API] updateLinesRuntime: ✓ Successfully cleared all "
                        "lines via hot reload";
@@ -1971,33 +2153,57 @@ bool LinesHandler::updateLinesRuntime(const std::string &instanceId,
         return true;
       } else {
         if (isApiLoggingEnabled()) {
-          PLOG_WARNING << "[API] updateLinesRuntime: Failed to clear lines via "
-                          "SDK API, fallback to restart";
+          PLOG_WARNING << "[API] updateLinesRuntime: Failed to clear lines, "
+                          "fallback to restart";
         }
         return false;
       }
-    } else if (lines.empty()) {
-      // Parse failed
-      if (isApiLoggingEnabled()) {
-        PLOG_WARNING << "[API] updateLinesRuntime: Failed to parse lines, "
-                        "fallback to restart";
-      }
-      return false;
     }
 
-    // Use SDK's set_lines() API for hot reload
-    // This updates lines at runtime without restart!
-    bool success = baCrosslineNode->set_lines(lines);
-    if (success) {
-      if (isApiLoggingEnabled()) {
-        PLOG_INFO << "[API] updateLinesRuntime: ✓ Successfully updated "
-                  << lines.size() << " line(s) via hot reload (no restart needed)";
+    // For non-empty array: Use set_lines() to replace all lines
+    // This is the most reliable approach - it ensures config and runtime are always in sync
+    // Note: set_lines() doesn't preserve names/colors/directions, but it's the only reliable way
+    // to update lines at runtime without knowing the current state
+    
+    // Parse lines in format for set_lines() (basic line info only)
+    auto lines = parseLinesFromJson(linesArray);
+    if (!lines.empty()) {
+      // Wrap set_lines() call in try-catch to handle potential crashes
+      // when node is under heavy load (queue full)
+      try {
+        bool success = baCrosslineNode->set_lines(lines);
+        if (success) {
+          if (isApiLoggingEnabled()) {
+            PLOG_INFO << "[API] updateLinesRuntime: ✓ Successfully updated "
+                      << lines.size() << " line(s) via set_lines() API (no restart needed)";
+            PLOG_WARNING << "[API] updateLinesRuntime: NOTE: set_lines() API updates line coordinates only. "
+                            "Line names, colors, and directions are preserved in config but may not be "
+                            "reflected in runtime until instance restart. For full feature support, "
+                            "consider restarting instance.";
+          }
+          return true;
+        } else {
+          if (isApiLoggingEnabled()) {
+            PLOG_WARNING << "[API] updateLinesRuntime: set_lines() returned false, fallback to restart";
+          }
+          return false;
+        }
+      } catch (const std::exception &e) {
+        if (isApiLoggingEnabled()) {
+          PLOG_ERROR << "[API] updateLinesRuntime: Exception calling set_lines(): " << e.what()
+                     << " - Node may be under heavy load (queue full). Fallback to restart.";
+        }
+        return false; // Fallback to restart for safety
+      } catch (...) {
+        if (isApiLoggingEnabled()) {
+          PLOG_ERROR << "[API] updateLinesRuntime: Unknown exception calling set_lines() - "
+                        "Node may be under heavy load. Fallback to restart.";
+        }
+        return false; // Fallback to restart for safety
       }
-      return true;
     } else {
       if (isApiLoggingEnabled()) {
-        PLOG_WARNING << "[API] updateLinesRuntime: SDK set_lines() returned "
-                       "false, fallback to restart";
+        PLOG_WARNING << "[API] updateLinesRuntime: Failed to parse lines, fallback to restart";
       }
       return false;
     }

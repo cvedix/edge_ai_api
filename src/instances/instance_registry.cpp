@@ -11,6 +11,8 @@
 #include "utils/gstreamer_checker.h"
 #include "utils/mp4_directory_watcher.h"
 #include "utils/mp4_finalizer.h"
+#include <drogon/drogon.h>
+#include <drogon/HttpClient.h>
 #include <algorithm>
 #include <atomic>
 #include <chrono>
@@ -221,6 +223,52 @@ std::string InstanceRegistry::createInstance(const CreateInstanceRequest &req) {
 
   // Create instance info (no lock needed)
   InstanceInfo info = createInstanceInfo(instanceId, req, solution);
+  
+  // Update RTMP URL with actual URL used (may have been modified for conflict resolution)
+  std::string actualRtmpUrl = PipelineBuilder::getActualRTMPUrl(instanceId);
+  if (!actualRtmpUrl.empty()) {
+    std::cerr << "[InstanceRegistry] Updating RTMP URL from '" << info.rtmpUrl 
+              << "' to actual URL: '" << actualRtmpUrl << "'" << std::endl;
+    
+    // RTMP node automatically adds suffix (_0, _1, _2, ...) to stream key
+    // We add "_0" as default suffix to match the actual stream path
+    // Note: If server assigns a different suffix (_1, _2, etc.), the actual path may differ
+    std::string finalRtmpUrl = actualRtmpUrl;
+    size_t lastSlash = finalRtmpUrl.find_last_of('/');
+    if (lastSlash != std::string::npos && lastSlash < finalRtmpUrl.length() - 1) {
+      std::string streamKey = finalRtmpUrl.substr(lastSlash + 1);
+      // Only add "_0" if not already present
+      if (streamKey.length() < 2 || streamKey.substr(streamKey.length() - 2) != "_0") {
+        finalRtmpUrl += "_0";
+        std::cerr << "[InstanceRegistry] Added '_0' suffix to RTMP URL (RTMP node automatically adds this): '" 
+                  << finalRtmpUrl << "'" << std::endl;
+        std::cerr << "[InstanceRegistry] NOTE: If server assigns a different suffix (_1, _2, etc.), check server logs or API to get actual path" << std::endl;
+      }
+    }
+    
+    info.rtmpUrl = finalRtmpUrl;
+    // Also update additionalParams
+    info.additionalParams["RTMP_URL"] = finalRtmpUrl;
+    
+    // Update RTSP URL to match RTMP URL (including instanceId in stream key)
+    // Always update to ensure RTSP URL has the same stream key as RTMP URL
+    std::string rtspUrl = finalRtmpUrl;
+    size_t protocolPos = rtspUrl.find("rtmp://");
+    if (protocolPos != std::string::npos) {
+      rtspUrl.replace(protocolPos, 7, "rtsp://");
+      // Replace port 1935 with 8554 (common RTSP port for conversion)
+      size_t portPos = rtspUrl.find(":1935");
+      if (portPos != std::string::npos) {
+        rtspUrl.replace(portPos, 5, ":8554");
+      }
+      info.rtspUrl = rtspUrl;
+      std::cerr << "[InstanceRegistry] Updated RTSP URL to match RTMP URL (with instanceId): '" 
+                << rtspUrl << "'" << std::endl;
+    }
+    
+    // Clear from map after use
+    PipelineBuilder::clearActualRTMPUrl(instanceId);
+  }
 
   // Store instance (need lock briefly)
   {
@@ -2667,12 +2715,12 @@ InstanceRegistry::createInstanceInfo(const std::string &instanceId,
 
   // Only generate RTSP URL from RTMP URL if RTSP URL is not already set
   // This prevents overriding user's RTSP_SRC_URL
+  // RTSP URL will have the same stream key as RTMP URL (including instanceId if present)
   if (info.rtspUrl.empty() && !info.rtmpUrl.empty()) {
 
     // Generate RTSP URL from RTMP URL
-    // Pattern: rtmp://host:1935/live/stream_key ->
-    // rtsp://host:8554/live/stream_key_0 RTMP node automatically adds "_0"
-    // suffix to stream key
+    // Keep the same stream key as RTMP URL (including instanceId and "_0" suffix if present)
+    // Pattern: rtmp://host:1935/live/stream_key -> rtsp://host:8554/live/stream_key
     std::string rtmpUrl = info.rtmpUrl;
 
     // Replace RTMP protocol and port with RTSP
@@ -2689,17 +2737,11 @@ InstanceRegistry::createInstanceInfo(const std::string &instanceId,
         rtspUrl.replace(portPos, 5, ":8554");
       }
 
-      // Add "_0" suffix to stream key if not already present
-      // RTMP node automatically adds this suffix
-      size_t lastSlash = rtspUrl.find_last_of('/');
-      if (lastSlash != std::string::npos) {
-        std::string streamKey = rtspUrl.substr(lastSlash + 1);
-        if (streamKey.find("_0") == std::string::npos && !streamKey.empty()) {
-          rtspUrl += "_0";
-        }
-      }
-
+      // Keep the same stream key as RTMP URL (no modification needed)
+      // RTMP URL already includes instanceId and "_0" suffix if applicable
       info.rtspUrl = rtspUrl;
+      std::cerr << "[InstanceRegistry] Generated RTSP URL from RTMP URL (same stream key): '" 
+                << rtspUrl << "'" << std::endl;
     }
   }
 
@@ -7180,3 +7222,7 @@ bool InstanceRegistry::reconnectRTSPStream(
     return false;
   }
 }
+
+// Note: queryActualStreamPath() removed - API query may be blocked by server
+// We use default "_0" suffix instead. If server assigns different suffix (_1, _2, etc.),
+// the actual stream path may differ from the URL in response.

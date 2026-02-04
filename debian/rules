@@ -267,20 +267,32 @@ override_dh_auto_install:
 	# ============================================
 	# Install CVEDIX SDK from extracted .deb
 	# Copy ALL files from SDK package to edge-ai-api package
+	# Exclude README.md to avoid conflicts with cvedix-ai-runtime package
 	# ============================================
 	@echo "Installing CVEDIX SDK from extracted package..."; \
 	if [ -d $(SDK_EXTRACT_DIR) ]; then \
 		echo "  Copying entire CVEDIX SDK directory structure..."; \
 		# Copy entire SDK directory structure to /opt/cvedix-ai-runtime \
 		# Note: SDK package may have /opt/cvedix structure, we copy it to /opt/cvedix-ai-runtime \
+		# Exclude README.md to avoid conflicts with existing cvedix-ai-runtime package \
 		if [ -d $(SDK_EXTRACT_DIR)/opt/cvedix ]; then \
 			install -d $(CURDIR)/debian/$(PACKAGE_NAME)$(CVEDIX_INSTALL_DIR); \
-			cp -r $(SDK_EXTRACT_DIR)/opt/cvedix/* $(CURDIR)/debian/$(PACKAGE_NAME)$(CVEDIX_INSTALL_DIR)/ 2>/dev/null || true; \
-			echo "  ✓ CVEDIX SDK fully integrated into package at $(CVEDIX_INSTALL_DIR)"; \
+			# Copy all files/directories except README.md \
+			for item in $(SDK_EXTRACT_DIR)/opt/cvedix/*; do \
+				if [ -e "$$item" ] && [ "$$(basename $$item)" != "README.md" ]; then \
+					cp -r "$$item" $(CURDIR)/debian/$(PACKAGE_NAME)$(CVEDIX_INSTALL_DIR)/ 2>/dev/null || true; \
+				fi; \
+			done; \
+			echo "  ✓ CVEDIX SDK fully integrated into package at $(CVEDIX_INSTALL_DIR) (README.md excluded to avoid conflicts)"; \
 		elif [ -d $(SDK_EXTRACT_DIR)/opt/cvedix-ai-runtime ]; then \
 			install -d $(CURDIR)/debian/$(PACKAGE_NAME)$(CVEDIX_INSTALL_DIR); \
-			cp -r $(SDK_EXTRACT_DIR)/opt/cvedix-ai-runtime/* $(CURDIR)/debian/$(PACKAGE_NAME)$(CVEDIX_INSTALL_DIR)/ 2>/dev/null || true; \
-			echo "  ✓ CVEDIX SDK fully integrated into package at $(CVEDIX_INSTALL_DIR)"; \
+			# Copy all files/directories except README.md \
+			for item in $(SDK_EXTRACT_DIR)/opt/cvedix-ai-runtime/*; do \
+				if [ -e "$$item" ] && [ "$$(basename $$item)" != "README.md" ]; then \
+					cp -r "$$item" $(CURDIR)/debian/$(PACKAGE_NAME)$(CVEDIX_INSTALL_DIR)/ 2>/dev/null || true; \
+				fi; \
+			done; \
+			echo "  ✓ CVEDIX SDK fully integrated into package at $(CVEDIX_INSTALL_DIR) (README.md excluded to avoid conflicts)"; \
 		else \
 			echo "  ⚠  Warning: /opt/cvedix or /opt/cvedix-ai-runtime not found in SDK extract directory"; \
 		fi; \

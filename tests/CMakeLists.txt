@@ -96,6 +96,11 @@ target_sources(edge_ai_api_tests PRIVATE
     ${CMAKE_SOURCE_DIR}/src/instances/instance_registry.cpp
     ${CMAKE_SOURCE_DIR}/src/instances/instance_state_manager.cpp
     ${CMAKE_SOURCE_DIR}/src/instances/inprocess_instance_manager.cpp
+    ${CMAKE_SOURCE_DIR}/src/instances/subprocess_instance_manager.cpp
+    ${CMAKE_SOURCE_DIR}/src/instances/instance_manager_factory.cpp
+    ${CMAKE_SOURCE_DIR}/src/worker/worker_supervisor.cpp
+    ${CMAKE_SOURCE_DIR}/src/worker/unix_socket.cpp
+    ${CMAKE_SOURCE_DIR}/src/worker/ipc_protocol.cpp
     ${CMAKE_SOURCE_DIR}/src/core/pipeline_builder.cpp
     ${CMAKE_SOURCE_DIR}/src/core/pipeline_builder_model_resolver.cpp
     ${CMAKE_SOURCE_DIR}/src/core/pipeline_builder_request_utils.cpp

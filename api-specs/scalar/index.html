@@ -492,10 +492,11 @@
     </div>
     
     <!-- Container for Scalar API Reference -->
-    <div id="scalar-api-reference"></div>
-    
-    <!-- Script tag for Scalar auto-initialization (data-url will be replaced by server) -->
-    <script id="api-reference" type="application/json" data-url="{{INITIAL_SPEC_URL_ATTR}}" style="display:none;"></script>
+    <div id="scalar-api-reference">
+        <!-- Script tag for Scalar auto-initialization -->
+        <!-- Scalar will auto-detect script tags with id="api-reference" and data-url attribute -->
+        <script id="api-reference" type="application/json" data-url="{{INITIAL_SPEC_URL_ATTR}}"></script>
+    </div>
     
     <!-- Prevent Scalar from auto-detecting and auto-loading CSS -->
     <script>
@@ -550,8 +551,78 @@
         };
     </script>
     
-    <!-- Scalar script will be loaded dynamically by loadScalarScript() function -->
-    <!-- This prevents duplicate loading and ensures correct URL path -->
+    <!-- Load Scalar script from CDN (with fallback) -->
+    <script>
+        // Track script loading state
+        window.scalarScriptLoaded = false;
+        window.scalarScriptError = false;
+        
+        function loadScalarScript() {
+            const script = document.createElement('script');
+            script.src = 'https://cdn.jsdelivr.net/npm/@scalar/api-reference@1.24.0/dist/browser/standalone.js';
+            script.async = true;
+            script.crossOrigin = 'anonymous';
+            
+            script.onload = function() {
+                console.log('[Scalar] Script loaded from primary CDN');
+                window.scalarScriptLoaded = true;
+                // Check if Scalar is available after load
+                setTimeout(function() {
+                    console.log('[Scalar] After load - window.Scalar:', typeof window.Scalar);
+                    console.log('[Scalar] After load - Scalar:', typeof Scalar);
+                    // Try to find Scalar in window
+                    for (let key in window) {
+                        if (key.toLowerCase().includes('scalar') && 
+                            key !== 'scalarScriptLoaded' && 
+                            key !== 'scalarScriptError' &&
+                            key !== 'scalarLoadState' &&
+                            key !== 'scalarInstance') {
+                            const obj = window[key];
+                            console.log('[Scalar] Found in window:', key, typeof obj);
+                            if (obj && typeof obj === 'object') {
+                                console.log('[Scalar] Object keys:', Object.keys(obj));
+                                if (obj.createApiReference) {
+                                    console.log('[Scalar] ✅ Found createApiReference in:', key);
+                                }
+                            }
+                        }
+                    }
+                    // Check if data-configuration auto-initialized
+                    const container = document.getElementById('scalar-api-reference');
+                    if (container) {
+                        console.log('[Scalar] Container children:', container.children.length);
+                        console.log('[Scalar] Container innerHTML length:', container.innerHTML.length);
+                    }
+                }, 500); // Wait longer for Scalar to initialize
+            };
+            
+            script.onerror = function() {
+                console.error('[Scalar] Failed to load from primary CDN, trying fallback...');
+                const fallback = document.createElement('script');
+                fallback.src = 'https://unpkg.com/@scalar/api-reference@1.24.0/dist/browser/standalone.js';
+                fallback.async = true;
+                fallback.crossOrigin = 'anonymous';
+                fallback.onload = function() {
+                    console.log('[Scalar] Script loaded from fallback CDN');
+                    window.scalarScriptLoaded = true;
+                };
+                fallback.onerror = function() {
+                    console.error('[Scalar] Failed to load from fallback CDN');
+                    window.scalarScriptError = true;
+                };
+                document.head.appendChild(fallback);
+            };
+            
+            document.head.appendChild(script);
+        }
+        
+        // Load script when DOM is ready
+        if (document.readyState === 'loading') {
+            document.addEventListener('DOMContentLoaded', loadScalarScript);
+        } else {
+            loadScalarScript();
+        }
+    </script>
     
     <!-- Server will inject configuration here -->
     <!-- If placeholders are not replaced, the code will use fallback defaults -->
@@ -1222,45 +1293,170 @@
                 select.addEventListener('change', handleLanguageChange);
             }
             
-            // Set initial data-url immediately so Scalar can auto-initialize when it loads (new API format)
+            // Set initial data-url immediately so Scalar can auto-initialize when it loads
+            const container = document.getElementById('scalar-api-reference');
             const apiRef = document.getElementById('api-reference');
             console.log('[Scalar] init() - currentLang:', currentLang);
+            console.log('[Scalar] init() - container:', container);
             console.log('[Scalar] init() - apiRef:', apiRef);
-            if (apiRef) {
-                const existingUrl = apiRef.getAttribute('data-url');
-                console.log('[Scalar] init() - existing data-url:', existingUrl);
-                
+            
+            if (container) {
                 const baseUrl = window.location.origin;
                 const version = 'v1';
                 const specUrl = baseUrl + '/' + version + '/openapi/' + currentLang + '/openapi.yaml';
                 console.log('[Scalar] init() - computed specUrl:', specUrl);
                 
-                if (!existingUrl || existingUrl !== specUrl) {
-                    apiRef.setAttribute('data-url', specUrl);
-                    console.log('[Scalar] init() - Set data-url to:', specUrl);
-                } else {
-                    console.log('[Scalar] init() - data-url already correct');
+                // Find or create script tag with id="api-reference" and data-url
+                let scriptTag = apiRef || container.querySelector('script#api-reference');
+                if (!scriptTag) {
+                    scriptTag = document.createElement('script');
+                    scriptTag.id = 'api-reference';
+                    scriptTag.type = 'application/json';
+                    container.appendChild(scriptTag);
                 }
-                console.log('[Scalar] init() - Final data-url:', apiRef.getAttribute('data-url'));
+                scriptTag.setAttribute('data-url', specUrl);
+                console.log('[Scalar] init() - Set data-url to:', specUrl);
             }
             
-            // Also call initializeScalar to handle language switching
-            // Đợi window load xong (bao gồm cả external scripts)
-            if (document.readyState === 'complete') {
-                // Page already fully loaded
-                setTimeout(function() {
+            // Wait for Scalar script to load before initializing
+            let retryCount = 0;
+            const maxRetries = 200; // 20 seconds max
+            
+            function waitForScalarAndInit() {
+                retryCount++;
+                
+                // Check if script has loaded
+                if (!window.scalarScriptLoaded && !window.scalarScriptError && retryCount < 50) {
+                    // Still waiting for script to load
+                    if (retryCount % 10 === 0) {
+                        console.log('[Scalar] Waiting for script to load... (attempt ' + retryCount + ')');
+                    }
+                    setTimeout(waitForScalarAndInit, 100);
+                    return;
+                }
+                
+                // Check multiple ways Scalar might be exposed
+                let scalarAPI = null;
+                
+                // Method 1: window.Scalar
+                if (typeof window.Scalar !== 'undefined' && typeof window.Scalar.createApiReference === 'function') {
+                    scalarAPI = window.Scalar;
+                    console.log('[Scalar] Found via window.Scalar');
+                }
+                // Method 2: Scalar (global)
+                else if (typeof Scalar !== 'undefined' && typeof Scalar.createApiReference === 'function') {
+                    scalarAPI = Scalar;
+                    console.log('[Scalar] Found via global Scalar');
+                }
+                // Method 3: Check for any Scalar-related global
+                else {
+                    for (let key in window) {
+                        if (key.toLowerCase().includes('scalar') && key !== 'scalarScriptLoaded' && key !== 'scalarScriptError') {
+                            const obj = window[key];
+                            if (obj && typeof obj === 'object') {
+                                if (typeof obj.createApiReference === 'function') {
+                                    scalarAPI = obj;
+                                    console.log('[Scalar] Found Scalar API as:', key);
+                                    break;
+                                }
+                                // Also check if it's a default export
+                                if (obj.default && typeof obj.default.createApiReference === 'function') {
+                                    scalarAPI = obj.default;
+                                    console.log('[Scalar] Found Scalar API as:', key + '.default');
+                                    break;
+                                }
+                            }
+                        }
+                    }
+                }
+                
+                // Check if Scalar has auto-initialized via data-url method
+                const container = document.getElementById('scalar-api-reference');
+                const apiRef = document.getElementById('api-reference');
+                
+                if (container && apiRef) {
+                    // Check multiple ways to see if Scalar initialized
+                    const hasContent = container.children.length > 1 || // More than just the script tag
+                                     (container.innerHTML.trim().length > 200) ||
+                                     container.querySelector('[class*="scalar"]') ||
+                                     container.querySelector('[id*="scalar"]') ||
+                                     container.querySelector('iframe') ||
+                                     container.querySelector('[role="main"]') ||
+                                     container.querySelector('div[class*="theme"]') ||
+                                     container.querySelector('div[class*="layout"]');
+                    
+                    if (hasContent) {
+                        console.log('[Scalar] ✅ Scalar initialized via data-url auto-detection');
+                        console.log('[Scalar] Container has content:', container.children.length, 'children');
+                        console.log('[Scalar] Container innerHTML length:', container.innerHTML.length);
+                        return; // Already initialized
+                    } else if (retryCount < 100) {
+                        console.log('[Scalar] Container has script tag but no content yet, waiting for auto-initialization... (attempt ' + retryCount + ')');
+                        // Wait a bit more for auto-initialization
+                        setTimeout(waitForScalarAndInit, 200);
+                        return;
+                    }
+                }
+                
+                if (scalarAPI) {
+                    console.log('[Scalar] Scalar API found, initializing programmatically...');
                     initializeScalar(currentLang).catch(err => {
                         console.error('Failed to initialize Scalar:', err);
                     });
-                }, 500);
+                } else if (retryCount < maxRetries) {
+                    // Retry after a short delay
+                    if (retryCount % 10 === 0) {
+                        console.log('[Scalar] Waiting for Scalar API... (attempt ' + retryCount + '/' + maxRetries + ')');
+                        // Debug: log what's available
+                        console.log('[Scalar] Debug - window.Scalar:', typeof window.Scalar);
+                        console.log('[Scalar] Debug - Scalar:', typeof Scalar);
+                        console.log('[Scalar] Debug - script loaded:', window.scalarScriptLoaded);
+                        console.log('[Scalar] Debug - script error:', window.scalarScriptError);
+                    }
+                    setTimeout(waitForScalarAndInit, 100);
+                } else {
+                    console.error('[Scalar] Failed to find Scalar API after ' + maxRetries + ' attempts.');
+                    console.error('[Scalar] Script loaded:', window.scalarScriptLoaded);
+                    console.error('[Scalar] Script error:', window.scalarScriptError);
+                    console.error('[Scalar] Available globals with "scalar":', Object.keys(window).filter(k => k.toLowerCase().includes('scalar')));
+                    
+                    // Check one more time if container has content (Scalar might have auto-initialized)
+                    const container = document.getElementById('scalar-api-reference');
+                    if (container && (container.children.length > 0 || container.innerHTML.trim().length > 100)) {
+                        console.log('[Scalar] ✅ Container has content - Scalar may have auto-initialized via data-configuration');
+                        return; // Already initialized
+                    }
+                    
+                    // Last resort: try to manually trigger data-configuration initialization
+                    console.log('[Scalar] Trying to manually trigger data-configuration initialization...');
+                    const apiRef = document.getElementById('api-reference');
+                    if (apiRef && apiRef.hasAttribute('data-configuration')) {
+                        // Re-set the attribute to trigger Scalar's auto-detection
+                        const config = apiRef.getAttribute('data-configuration');
+                        apiRef.removeAttribute('data-configuration');
+                        setTimeout(() => {
+                            apiRef.setAttribute('data-configuration', config);
+                            console.log('[Scalar] Re-set data-configuration attribute');
+                        }, 100);
+                    }
+                    
+                    // Also try programmatic initialization as fallback
+                    console.log('[Scalar] Trying programmatic initialization as fallback...');
+                    initializeScalar(currentLang).catch(err => {
+                        console.error('Failed to initialize Scalar:', err);
+                    });
+                }
+            }
+            
+            // Start waiting for Scalar to load
+            // Đợi window load xong (bao gồm cả external scripts)
+            if (document.readyState === 'complete') {
+                // Page already fully loaded
+                setTimeout(waitForScalarAndInit, 100);
             } else {
                 // Wait for window load event (fires after all resources loaded)
                 window.addEventListener('load', function() {
-                    setTimeout(function() {
-                        initializeScalar(currentLang).catch(err => {
-                            console.error('Failed to initialize Scalar:', err);
-                        });
-                    }, 500);
+                    setTimeout(waitForScalarAndInit, 100);
                 });
             }
         }

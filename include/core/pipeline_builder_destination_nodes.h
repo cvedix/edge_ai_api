@@ -28,13 +28,15 @@ public:
 
   /**
    * @brief Create RTMP destination node
+   * @param actualRtmpUrl Output parameter: will contain the actual RTMP URL used (may be modified for conflict resolution)
    */
   static std::shared_ptr<cvedix_nodes::cvedix_node>
   createRTMPDestinationNode(const std::string &nodeName,
                             const std::map<std::string, std::string> &params,
                             const CreateInstanceRequest &req,
                             const std::string &instanceId,
-                            const std::set<std::string> &existingRTMPStreamKeys = {});
+                            const std::set<std::string> &existingRTMPStreamKeys,
+                            std::string &actualRtmpUrl);
 
   /**
    * @brief Create screen destination node

@@ -52,6 +52,9 @@ Depends: ,
          libgcc-s1,
          adduser,
          systemd
+Conflicts: cvedix-ai-runtime (<< 2026.0.1.49)
+Replaces: cvedix-ai-runtime (<< 2026.0.1.49)
+Provides: cvedix-ai-runtime (= 2026.0.1.49)
 Description: Edge AI API Server - ALL-IN-ONE Package
  Edge AI API Server provides a RESTful control plane for managing
  CVEDIX Edge AI SDK instances remotely. It allows backend services

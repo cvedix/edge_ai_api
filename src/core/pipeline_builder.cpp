@@ -1449,9 +1449,15 @@ PipelineBuilder::buildPipeline(const SolutionConfig &solution,
           std::cerr << "NOT FOUND" << std::endl;
         }
         
+        std::string actualRtmpUrl;
         auto rtmpNode =
-            PipelineBuilderDestinationNodes::createRTMPDestinationNode(rtmpNodeName, rtmpConfig.parameters, req, instanceId, existingRTMPStreamKeys);
+            PipelineBuilderDestinationNodes::createRTMPDestinationNode(rtmpNodeName, rtmpConfig.parameters, req, instanceId, existingRTMPStreamKeys, actualRtmpUrl);
         if (rtmpNode) {
+          // Store actual RTMP URL (may have been modified for conflict resolution)
+          if (!actualRtmpUrl.empty()) {
+            actual_rtmp_urls_[instanceId] = actualRtmpUrl;
+            std::cerr << "[PipelineBuilder] Stored actual RTMP URL for instance " << instanceId << ": '" << actualRtmpUrl << "'" << std::endl;
+          }
           std::cerr << "[PipelineBuilder] ✓ RTMP destination node created successfully: '"
                     << rtmpNodeName << "'" << std::endl;
           // Find the best node to attach to:
@@ -1907,7 +1913,14 @@ PipelineBuilder::createNode(const SolutionConfig::NodeConfig &nodeConfig,
     else if (nodeConfig.nodeType == "file_des") {
       return PipelineBuilderDestinationNodes::createFileDestinationNode(nodeName, params, instanceId);
     } else if (nodeConfig.nodeType == "rtmp_des") {
-      return PipelineBuilderDestinationNodes::createRTMPDestinationNode(nodeName, params, req, instanceId, existingRTMPStreamKeys);
+      std::string actualRtmpUrl;
+      auto node = PipelineBuilderDestinationNodes::createRTMPDestinationNode(nodeName, params, req, instanceId, existingRTMPStreamKeys, actualRtmpUrl);
+      // Store actual RTMP URL (may have been modified for conflict resolution)
+      if (!actualRtmpUrl.empty()) {
+        actual_rtmp_urls_[instanceId] = actualRtmpUrl;
+        std::cerr << "[PipelineBuilder] Stored actual RTMP URL for instance " << instanceId << ": '" << actualRtmpUrl << "'" << std::endl;
+      }
+      return node;
     } else if (nodeConfig.nodeType == "rtsp_des") {
       return PipelineBuilderDestinationNodes::createRTSPDestinationNode(nodeName, params, instanceId);
     } else if (nodeConfig.nodeType == "screen_des") {
@@ -4145,6 +4158,7 @@ public:
 // Static member definitions for SecuRT integration
 AreaManager *PipelineBuilder::area_manager_ = nullptr;
 SecuRTLineManager *PipelineBuilder::line_manager_ = nullptr;
+std::map<std::string, std::string> PipelineBuilder::actual_rtmp_urls_;
 
 void PipelineBuilder::setAreaManager(AreaManager *manager) {
   area_manager_ = manager;
@@ -4152,4 +4166,16 @@ void PipelineBuilder::setAreaManager(AreaManager *manager) {
 
 void PipelineBuilder::setLineManager(SecuRTLineManager *manager) {
   line_manager_ = manager;
+}
+
+std::string PipelineBuilder::getActualRTMPUrl(const std::string &instanceId) {
+  auto it = actual_rtmp_urls_.find(instanceId);
+  if (it != actual_rtmp_urls_.end()) {
+    return it->second;
+  }
+  return "";
+}
+
+void PipelineBuilder::clearActualRTMPUrl(const std::string &instanceId) {
+  actual_rtmp_urls_.erase(instanceId);
 }

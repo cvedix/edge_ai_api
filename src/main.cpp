@@ -2042,9 +2042,10 @@ int main(int argc, char *argv[]) {
     // SystemConfig)
     auto webServerConfig = systemConfig.getWebServerConfig();
     std::string host = webServerConfig.ipAddress;
-    uint16_t port = webServerConfig.port;
+    int port = static_cast<int>(webServerConfig.port); // Use int for port retry logic
+    int original_port = port; // Store original for comparison
 
-    PLOG_INFO << "Server will listen on: " << host << ":" << port;
+    PLOG_INFO << "Server will attempt to listen on: " << host << ":" << port;
     PLOG_INFO << "Available endpoints:";
     PLOG_INFO << "  GET /v1/core/health  - Health check";
     PLOG_INFO << "  GET /v1/core/version - Version information";
@@ -3728,8 +3729,12 @@ int main(int argc, char *argv[]) {
     // So we check port availability manually first
     // Note: When SO_REUSEPORT is enabled, multiple sockets can bind to the same
     // port So we need to handle both cases
+    // Improved: Check if port is actually available by trying to bind
+    // This works even when SO_REUSEPORT is enabled (we check without it first)
     auto isPortAvailable = [enable_reuse_port](const std::string &host,
                                                int port) -> bool {
+      // First, try without SO_REUSEPORT to check if port is truly available
+      // This catches cases where port is already bound by another process
       int sock = socket(AF_INET, SOCK_STREAM, 0);
       if (sock < 0)
         return false;
@@ -3738,14 +3743,9 @@ int main(int argc, char *argv[]) {
       int opt = 1;
       setsockopt(sock, SOL_SOCKET, SO_REUSEADDR, &opt, sizeof(opt));
 
-      // If SO_REUSEPORT is enabled, also set it for port availability check
-      // This allows checking if port is available when SO_REUSEPORT will be
-      // used
-      if (enable_reuse_port) {
-#ifdef SO_REUSEPORT
-        setsockopt(sock, SOL_SOCKET, SO_REUSEPORT, &opt, sizeof(opt));
-#endif
-      }
+      // Don't set SO_REUSEPORT for the check - we want to know if port is
+      // available for a new process
+      // Only if SO_REUSEPORT is enabled AND we can bind, then it's available
 
       struct sockaddr_in addr;
       memset(&addr, 0, sizeof(addr));
@@ -3760,25 +3760,58 @@ int main(int argc, char *argv[]) {
 
       int result = bind(sock, (struct sockaddr *)&addr, sizeof(addr));
       close(sock);
-      return result == 0;
+      
+      // If bind failed, port is in use
+      if (result != 0) {
+        return false;
+      }
+      
+      // If SO_REUSEPORT is enabled, we also need to check with SO_REUSEPORT
+      // because multiple processes can bind to the same port
+      if (enable_reuse_port) {
+#ifdef SO_REUSEPORT
+        int sock2 = socket(AF_INET, SOCK_STREAM, 0);
+        if (sock2 >= 0) {
+          setsockopt(sock2, SOL_SOCKET, SO_REUSEADDR, &opt, sizeof(opt));
+          setsockopt(sock2, SOL_SOCKET, SO_REUSEPORT, &opt, sizeof(opt));
+          
+          int result2 = bind(sock2, (struct sockaddr *)&addr, sizeof(addr));
+          close(sock2);
+          // If we can bind with SO_REUSEPORT, port is available
+          return result2 == 0;
+        }
+#endif
+      }
+      
+      return true;
     };
 
     int max_port_retries = 10;
-    int original_port = port;
+    bool port_changed = false;
 
+    // Try to find available port with retry mechanism
     for (int retry = 0; retry < max_port_retries; ++retry) {
       if (isPortAvailable(host, port)) {
         if (retry > 0) {
+          port_changed = true;
+          std::cerr << "[Server] ⚠️  Port " << original_port
+                    << " is already in use, automatically switched to port "
+                    << port << std::endl;
           PLOG_WARNING << "[Server] Original port " << original_port
                        << " was in use, using port " << port << " instead";
         }
         break;
       }
+      std::cerr << "[Server] ⚠️  Port " << port
+                << " is in use, trying port " << (port + 1) << "..." << std::endl;
       PLOG_WARNING << "[Server] Port " << port << " is in use, trying port "
                    << (port + 1);
       ++port;
 
       if (retry == max_port_retries - 1) {
+        std::cerr << "[Server] ❌ Error: Could not find available port after "
+                  << max_port_retries << " retries (tried ports " << original_port
+                  << "-" << port << ")" << std::endl;
         PLOG_ERROR << "[Error] Could not find available port after "
                    << max_port_retries << " retries (tried ports "
                    << original_port << "-" << port << ")";
@@ -3790,8 +3823,49 @@ int main(int argc, char *argv[]) {
     // Note: Drogon framework handles SO_REUSEPORT internally based on thread
     // pool We just need to call addListener once - Drogon will create multiple
     // listeners if needed for load balancing when using multiple threads
-    app.addListener(host, port, false, "", "");
+    // Wrap in try-catch to handle potential binding errors
+    bool listener_added = false;
+    for (int retry = 0; retry < max_port_retries; ++retry) {
+      try {
+        // Ensure port is within valid range and convert to uint16_t
+        if (port < 1 || port > 65535) {
+          throw std::runtime_error("Port out of valid range (1-65535)");
+        }
+        app.addListener(host, static_cast<uint16_t>(port), false, "", "");
+        listener_added = true;
+        break;
+      } catch (const std::exception &e) {
+        // If addListener fails, try next port
+        std::cerr << "[Server] ⚠️  Failed to bind to port " << port
+                  << ": " << e.what() << std::endl;
+        PLOG_WARNING << "[Server] Failed to bind to port " << port << ": "
+                    << e.what();
+        
+        if (retry < max_port_retries - 1) {
+          ++port;
+          port_changed = true;
+          std::cerr << "[Server] ⚠️  Trying port " << port << "..." << std::endl;
+          PLOG_WARNING << "[Server] Trying port " << port;
+        } else {
+          std::cerr << "[Server] ❌ Error: Could not bind to any port after "
+                    << max_port_retries << " attempts" << std::endl;
+          PLOG_ERROR << "[Error] Could not bind to any port after "
+                     << max_port_retries << " attempts";
+          throw;
+        }
+      }
+    }
 
+    if (!listener_added) {
+      throw std::runtime_error("Failed to add listener to any available port");
+    }
+
+    // Display final port information
+    if (port_changed) {
+      std::cerr << "[Server] ✅ Server will use port " << port
+                << " (original port " << original_port << " was in use)"
+                << std::endl;
+    }
     PLOG_INFO << "[Server] Starting HTTP server on " << host << ":" << port;
     PLOG_INFO << "[Server] Access http://" << host << ":" << port
               << "/v1/swagger to view all APIs";

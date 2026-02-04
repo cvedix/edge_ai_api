@@ -23,6 +23,8 @@ using namespace drogon;
  * - GET /v2/openapi.yaml - OpenAPI specification for v2
  * - GET /v1/openapi/{lang}/openapi.yaml - OpenAPI specification for v1 with language (en/vi)
  * - GET /v2/openapi/{lang}/openapi.yaml - OpenAPI specification for v2 with language (en/vi)
+ * - GET /v1/openapi/{lang}/openapi.json - OpenAPI specification for v1 with language (en/vi) in JSON format
+ * - GET /v2/openapi/{lang}/openapi.json - OpenAPI specification for v2 with language (en/vi) in JSON format
  */
 class SwaggerHandler : public drogon::HttpController<SwaggerHandler> {
 public:
@@ -35,6 +37,8 @@ public:
   ADD_METHOD_TO(SwaggerHandler::getOpenAPISpec, "/v2/openapi.yaml", Get);
   ADD_METHOD_TO(SwaggerHandler::getOpenAPISpecWithLang, "/v1/openapi/{lang}/openapi.yaml", Get);
   ADD_METHOD_TO(SwaggerHandler::getOpenAPISpecWithLang, "/v2/openapi/{lang}/openapi.yaml", Get);
+  ADD_METHOD_TO(SwaggerHandler::getOpenAPISpecWithLang, "/v1/openapi/{lang}/openapi.json", Get);
+  ADD_METHOD_TO(SwaggerHandler::getOpenAPISpecWithLang, "/v2/openapi/{lang}/openapi.json", Get);
   ADD_METHOD_TO(SwaggerHandler::getOpenAPISpec, "/api-docs", Get);
   ADD_METHOD_TO(SwaggerHandler::handleOptions, "/swagger", Options);
   ADD_METHOD_TO(SwaggerHandler::handleOptions, "/v1/swagger", Options);
@@ -44,6 +48,8 @@ public:
   ADD_METHOD_TO(SwaggerHandler::handleOptions, "/v2/openapi.yaml", Options);
   ADD_METHOD_TO(SwaggerHandler::handleOptions, "/v1/openapi/{lang}/openapi.yaml", Options);
   ADD_METHOD_TO(SwaggerHandler::handleOptions, "/v2/openapi/{lang}/openapi.yaml", Options);
+  ADD_METHOD_TO(SwaggerHandler::handleOptions, "/v1/openapi/{lang}/openapi.json", Options);
+  ADD_METHOD_TO(SwaggerHandler::handleOptions, "/v2/openapi/{lang}/openapi.json", Options);
   METHOD_LIST_END
 
   /**
@@ -155,6 +161,13 @@ private:
   std::string
   updateOpenAPIServerURLs(const std::string &yamlContent,
                           const std::string &requestHost = "") const;
+
+  /**
+   * @brief Convert YAML content to JSON format
+   * @param yamlContent YAML content to convert
+   * @return JSON content as string, or empty string on error
+   */
+  std::string yamlToJson(const std::string &yamlContent) const;
 
   // Cache for OpenAPI file content
   struct CacheEntry {

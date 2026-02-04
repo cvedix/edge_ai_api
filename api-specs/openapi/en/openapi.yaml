@@ -10645,7 +10645,7 @@ paths:
                     default: stream
                     affects: RTSP URL path
                   - name: resolution
-                    description: Output resolution (format: widthxheight or width,height)
+                    description: 'Output resolution (format: widthxheight or width,height)'
                     default: source resolution
                     affects: Stream resolution
                   - name: bitrate

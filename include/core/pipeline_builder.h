@@ -5,6 +5,7 @@
 #include "models/solution_config.h"
 #include "core/pipeline_builder_model_resolver.h"
 #include "core/pipeline_builder_request_utils.h"
+#include <map>
 #include <memory>
 #include <set>
 #include <string>
@@ -54,6 +55,25 @@ private:
   // Static pointers for SecuRT integration
   static AreaManager *area_manager_;
   static SecuRTLineManager *line_manager_;
+  
+  // Map to store actual RTMP URLs (may be modified for conflict resolution)
+  static std::map<std::string, std::string> actual_rtmp_urls_;
+  
+public:
+  /**
+   * @brief Get actual RTMP URL for an instance (may have been modified for conflict resolution)
+   * @param instanceId Instance ID
+   * @return Actual RTMP URL or empty string if not found
+   */
+  static std::string getActualRTMPUrl(const std::string &instanceId);
+  
+  /**
+   * @brief Clear actual RTMP URL for an instance
+   * @param instanceId Instance ID
+   */
+  static void clearActualRTMPUrl(const std::string &instanceId);
+
+private:
   
   /**
    * @brief Create a node from node configuration

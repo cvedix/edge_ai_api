@@ -207,7 +207,8 @@ PipelineBuilderDestinationNodes::createRTMPDestinationNode(
     const std::map<std::string, std::string> &params,
     const CreateInstanceRequest &req,
     const std::string &instanceId,
-    const std::set<std::string> &existingRTMPStreamKeys) {
+    const std::set<std::string> &existingRTMPStreamKeys,
+    std::string &actualRtmpUrl) {
 
   try {
     // Helper function to trim whitespace from string
@@ -242,6 +243,21 @@ PipelineBuilderDestinationNodes::createRTMPDestinationNode(
     if (!rtmpUrl.empty() && !instanceId.empty()) {
       // Extract stream key from RTMP URL
       std::string streamKey = extractRTMPStreamKey(rtmpUrl);
+      
+      // DEBUG: Log existing stream keys for debugging
+      if (!streamKey.empty()) {
+        std::cerr << "[PipelineBuilderDestinationNodes] DEBUG: Checking stream key: '"
+                  << streamKey << "' for instance: '" << instanceId << "'" << std::endl;
+        std::cerr << "[PipelineBuilderDestinationNodes] DEBUG: Existing RTMP stream keys count: "
+                  << existingRTMPStreamKeys.size() << std::endl;
+        if (!existingRTMPStreamKeys.empty()) {
+          std::cerr << "[PipelineBuilderDestinationNodes] DEBUG: Existing stream keys: ";
+          for (const auto &key : existingRTMPStreamKeys) {
+            std::cerr << "'" << key << "' ";
+          }
+          std::cerr << std::endl;
+        }
+      }
       
       // Check if this stream key conflicts with existing instances
       if (!streamKey.empty() && existingRTMPStreamKeys.find(streamKey) != existingRTMPStreamKeys.end()) {
@@ -300,6 +316,7 @@ PipelineBuilderDestinationNodes::createRTMPDestinationNode(
       std::cerr << "[PipelineBuilderDestinationNodes] RTMP URL is empty, skipping RTMP "
                    "destination node: "
                 << nodeName << std::endl;
+      actualRtmpUrl = "";  // Set empty URL
       return nullptr;
     }
 
@@ -355,6 +372,10 @@ PipelineBuilderDestinationNodes::createRTMPDestinationNode(
     std::cerr << "  2. RTMP server is running and accepting connections" << std::endl;
     std::cerr << "  3. Network connectivity to RTMP server" << std::endl;
     std::cerr << "  4. GStreamer pipeline logs for connection errors" << std::endl;
+    
+    // Set actual RTMP URL (may have been modified for conflict resolution)
+    actualRtmpUrl = rtmpUrl;
+    
     return node;
   } catch (const std::exception &e) {
     std::cerr << "[PipelineBuilderDestinationNodes] Exception in createRTMPDestinationNode: "
