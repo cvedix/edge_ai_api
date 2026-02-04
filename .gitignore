@@ -11,6 +11,9 @@ Makefile
 *.cmake
 !CMakeLists.txt
 
+# CTest generated files
+Testing/
+
 # Compiled binaries
 *.o
 *.a

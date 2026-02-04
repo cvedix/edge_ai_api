@@ -27,6 +27,10 @@ set(TEST_SOURCES
     Auto/Core_API/test_endpoints_handler.cpp
     Auto/Core_API/test_config_handler.cpp
     Auto/Core_API/test_system_info_handler.cpp
+    Auto/Core_API/test_system_handler.cpp
+    Auto/Core_API/test_system_config_manager.cpp
+    Auto/Core_API/test_preferences_manager.cpp
+    Auto/Core_API/test_decoder_detector.cpp
     Auto/Core_API/test_metrics_handler.cpp
     
     # Instance Management tests
@@ -93,6 +97,10 @@ target_sources(edge_ai_api_tests PRIVATE
     ${CMAKE_SOURCE_DIR}/src/api/recognition_handler.cpp
     ${CMAKE_SOURCE_DIR}/src/api/config_handler.cpp
     ${CMAKE_SOURCE_DIR}/src/api/system_info_handler.cpp
+    ${CMAKE_SOURCE_DIR}/src/api/system_handler.cpp
+    ${CMAKE_SOURCE_DIR}/src/core/system_config_manager.cpp
+    ${CMAKE_SOURCE_DIR}/src/core/preferences_manager.cpp
+    ${CMAKE_SOURCE_DIR}/src/core/decoder_detector.cpp
     ${CMAKE_SOURCE_DIR}/src/api/metrics_handler.cpp
     ${CMAKE_SOURCE_DIR}/src/api/node_handler.cpp
     ${CMAKE_SOURCE_DIR}/src/api/group_handler.cpp

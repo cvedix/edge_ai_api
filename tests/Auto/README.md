@@ -14,6 +14,10 @@ Auto/
 │   ├── test_endpoints_handler.cpp
 │   ├── test_config_handler.cpp
 │   ├── test_system_info_handler.cpp
+│   ├── test_system_handler.cpp
+│   ├── test_system_config_manager.cpp
+│   ├── test_preferences_manager.cpp
+│   ├── test_decoder_detector.cpp
 │   └── test_metrics_handler.cpp
 │
 ├── Instance_Management/   # Tests cho Instance Management
@@ -64,6 +68,10 @@ Auto/
 - **EndpointsHandler**: Tests cho endpoints statistics
 - **ConfigHandler**: Tests cho configuration management
 - **SystemInfoHandler**: Tests cho system information
+- **SystemHandler**: Tests cho system config, preferences, và decoders endpoints
+- **SystemConfigManager**: Tests cho system configuration manager
+- **PreferencesManager**: Tests cho preferences manager (rtconfig.json)
+- **DecoderDetector**: Tests cho hardware decoder detection
 - **MetricsHandler**: Tests cho Prometheus metrics
 
 ### Instance_Management Tests

@@ -26,6 +26,7 @@
 #include "api/securt_handler.h"
 #include "api/securt_line_handler.h"
 #include "api/area_handler.h"
+#include "api/system_handler.h"
 #include "core/exclusion_area_manager.h"
 #include "core/securt_feature_manager.h"
 #include "core/securt_instance_manager.h"
@@ -37,6 +38,9 @@
 #include "api/metrics_handler.h"
 #endif
 #include "config/system_config.h"
+#include "core/system_config_manager.h"
+#include "core/preferences_manager.h"
+#include "core/decoder_detector.h"
 #include "core/categorized_logger.h"
 #include "core/cors_filter.h"
 #include "core/env_config.h"
@@ -3138,6 +3142,19 @@ int main(int argc, char *argv[]) {
 
     // Create config handler instance to register endpoints
     static ConfigHandler configHandler;
+
+    // Initialize system managers
+    auto &systemConfigManager = SystemConfigManager::getInstance();
+    systemConfigManager.loadConfig();
+
+    auto &preferencesManager = PreferencesManager::getInstance();
+    preferencesManager.loadPreferences();
+
+    auto &decoderDetector = DecoderDetector::getInstance();
+    decoderDetector.detectDecoders();
+
+    // Register system handler
+    static SystemHandler systemHandler;
 
     PLOG_INFO << "[Main] Instance management initialized";
     PLOG_INFO << "  POST /v1/core/instance - Create new instance";
