@@ -307,6 +307,7 @@ set(SOURCES
     src/api/solution_handler.cpp
     src/api/group_handler.cpp
     src/api/config_handler.cpp
+    src/api/system_handler.cpp
     src/api/lines_handler.cpp
     src/api/jams_handler.cpp
     src/api/stops_handler.cpp
@@ -360,6 +361,9 @@ set(SOURCES
     src/core/node_storage.cpp
     src/core/node_template_registry.cpp
     src/config/system_config.cpp
+    src/core/system_config_manager.cpp
+    src/core/preferences_manager.cpp
+    src/core/decoder_detector.cpp
     src/core/uuid_generator.cpp
     src/core/platform_detector.cpp
     src/core/log_manager.cpp
