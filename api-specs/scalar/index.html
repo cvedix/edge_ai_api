@@ -137,6 +137,7 @@
         body {
             margin: 0;
             padding: 0;
+            background: #fafafa;
         }
         .language-selector {
             position: fixed;
@@ -162,7 +163,8 @@
             border-radius: 4px;
             font-size: 14px;
             cursor: pointer;
-            background: white;
+            background: #ffffff !important;
+            color: #333 !important;
         }
         .language-selector select:hover {
             border-color: #999;
@@ -192,6 +194,7 @@
             margin: 0;
             padding: 0;
             overflow-x: hidden;
+            background: #fafafa;
         }
         
         /* ============================================
@@ -438,6 +441,45 @@
                 padding-left: 16px;
             }
         }
+        
+        /* Override Scalar background colors */
+        html,
+        body,
+        #scalar-api-reference,
+        #scalar-api-reference > div,
+        .scalar-api-reference,
+        .scalar-api-reference > div {
+            background: #fafafa !important;
+        }
+        
+        /* Change background for select/dropdown elements */
+        select,
+        .language-selector select,
+        .scalar-api-reference select,
+        .scalar-api-reference [role="combobox"],
+        .scalar-api-reference [class*="select"],
+        .scalar-api-reference [class*="Select"] {
+            background: #ffffff !important;
+            color: #333 !important;
+            border: 1px solid #ddd !important;
+        }
+        
+        /* Change text color for better contrast */
+        .scalar-api-reference,
+        .scalar-api-reference * {
+            color: #333 !important;
+        }
+        
+        /* Override specific Scalar components */
+        .scalar-api-reference [class*="sidebar"],
+        .scalar-api-reference [class*="Sidebar"] {
+            background: #f5f5f5 !important;
+        }
+        
+        .scalar-api-reference [class*="content"],
+        .scalar-api-reference [class*="Content"] {
+            background: #fafafa !important;
+        }
     </style>
 </head>
 <body>
@@ -450,10 +492,11 @@
     </div>
     
     <!-- Container for Scalar API Reference -->
-    <div id="scalar-api-reference"></div>
-    
-    <!-- Script tag for Scalar auto-initialization (data-url will be replaced by server) -->
-    <script id="api-reference" type="application/json" data-url="{{INITIAL_SPEC_URL_ATTR}}" style="display:none;"></script>
+    <div id="scalar-api-reference">
+        <!-- Script tag for Scalar auto-initialization -->
+        <!-- Scalar will auto-detect script tags with id="api-reference" and data-url attribute -->
+        <script id="api-reference" type="application/json" data-url="{{INITIAL_SPEC_URL_ATTR}}"></script>
+    </div>
     
     <!-- Prevent Scalar from auto-detecting and auto-loading CSS -->
     <script>
@@ -508,8 +551,78 @@
         };
     </script>
     
-    <!-- Scalar script will be loaded dynamically by loadScalarScript() function -->
-    <!-- This prevents duplicate loading and ensures correct URL path -->
+    <!-- Load Scalar script from CDN (with fallback) -->
+    <script>
+        // Track script loading state
+        window.scalarScriptLoaded = false;
+        window.scalarScriptError = false;
+        
+        function loadScalarScript() {
+            const script = document.createElement('script');
+            script.src = 'https://cdn.jsdelivr.net/npm/@scalar/api-reference@1.24.0/dist/browser/standalone.js';
+            script.async = true;
+            script.crossOrigin = 'anonymous';
+            
+            script.onload = function() {
+                console.log('[Scalar] Script loaded from primary CDN');
+                window.scalarScriptLoaded = true;
+                // Check if Scalar is available after load
+                setTimeout(function() {
+                    console.log('[Scalar] After load - window.Scalar:', typeof window.Scalar);
+                    console.log('[Scalar] After load - Scalar:', typeof Scalar);
+                    // Try to find Scalar in window
+                    for (let key in window) {
+                        if (key.toLowerCase().includes('scalar') && 
+                            key !== 'scalarScriptLoaded' && 
+                            key !== 'scalarScriptError' &&
+                            key !== 'scalarLoadState' &&
+                            key !== 'scalarInstance') {
+                            const obj = window[key];
+                            console.log('[Scalar] Found in window:', key, typeof obj);
+                            if (obj && typeof obj === 'object') {
+                                console.log('[Scalar] Object keys:', Object.keys(obj));
+                                if (obj.createApiReference) {
+                                    console.log('[Scalar] ✅ Found createApiReference in:', key);
+                                }
+                            }
+                        }
+                    }
+                    // Check if data-configuration auto-initialized
+                    const container = document.getElementById('scalar-api-reference');
+                    if (container) {
+                        console.log('[Scalar] Container children:', container.children.length);
+                        console.log('[Scalar] Container innerHTML length:', container.innerHTML.length);
+                    }
+                }, 500); // Wait longer for Scalar to initialize
+            };
+            
+            script.onerror = function() {
+                console.error('[Scalar] Failed to load from primary CDN, trying fallback...');
+                const fallback = document.createElement('script');
+                fallback.src = 'https://unpkg.com/@scalar/api-reference@1.24.0/dist/browser/standalone.js';
+                fallback.async = true;
+                fallback.crossOrigin = 'anonymous';
+                fallback.onload = function() {
+                    console.log('[Scalar] Script loaded from fallback CDN');
+                    window.scalarScriptLoaded = true;
+                };
+                fallback.onerror = function() {
+                    console.error('[Scalar] Failed to load from fallback CDN');
+                    window.scalarScriptError = true;
+                };
+                document.head.appendChild(fallback);
+            };
+            
+            document.head.appendChild(script);
+        }
+        
+        // Load script when DOM is ready
+        if (document.readyState === 'loading') {
+            document.addEventListener('DOMContentLoaded', loadScalarScript);
+        } else {
+            loadScalarScript();
+        }
+    </script>
     
     <!-- Server will inject configuration here -->
     <!-- If placeholders are not replaced, the code will use fallback defaults -->
@@ -888,6 +1001,21 @@
                         // Custom CSS để cải thiện định dạng response body
                         // Note: JSON enhancement được xử lý bởi script riêng
                         customCss: `
+                            /* Thay đổi màu nền chính */
+                            html, body, #scalar-api-reference, .scalar-api-reference {
+                                background: #fafafa !important;
+                            }
+                            
+                            /* Thay đổi màu nền cho select/dropdown */
+                            .scalar-api-reference select,
+                            .scalar-api-reference [role="combobox"],
+                            .scalar-api-reference [class*="select"],
+                            .scalar-api-reference [class*="Select"] {
+                                background: #ffffff !important;
+                                color: #333 !important;
+                                border: 1px solid #ddd !important;
+                            }
+                            
                             /* Cải thiện hiển thị response section tổng thể */
                             .scalar-api-reference .response-section {
                                 padding: 20px !important;
@@ -984,7 +1112,8 @@
                                     defaultHttpClient: configuration.defaultHttpClient,
                                     withCredentials: configuration.withCredentials,
                                     proxy: configuration.proxy,
-                                    fetchOptions: configuration.fetchOptions
+                                    fetchOptions: configuration.fetchOptions,
+                                    customCss: configuration.customCss
                                 });
                                 
                                 window.scalarInstance = result;
@@ -1032,6 +1161,21 @@
                 
                 // Use provided config or create a default one
                 const defaultCustomCss = `
+                    /* Thay đổi màu nền chính */
+                    html, body, #scalar-api-reference, .scalar-api-reference {
+                        background: #fafafa !important;
+                    }
+                    
+                    /* Thay đổi màu nền cho select/dropdown */
+                    .scalar-api-reference select,
+                    .scalar-api-reference [role="combobox"],
+                    .scalar-api-reference [class*="select"],
+                    .scalar-api-reference [class*="Select"] {
+                        background: #ffffff !important;
+                        color: #333 !important;
+                        border: 1px solid #ddd !important;
+                    }
+                    
                     .scalar-api-reference .response-section {
                         padding: 20px !important;
                         background: #ffffff !important;
@@ -1149,45 +1293,170 @@
                 select.addEventListener('change', handleLanguageChange);
             }
             
-            // Set initial data-url immediately so Scalar can auto-initialize when it loads (new API format)
+            // Set initial data-url immediately so Scalar can auto-initialize when it loads
+            const container = document.getElementById('scalar-api-reference');
             const apiRef = document.getElementById('api-reference');
             console.log('[Scalar] init() - currentLang:', currentLang);
+            console.log('[Scalar] init() - container:', container);
             console.log('[Scalar] init() - apiRef:', apiRef);
-            if (apiRef) {
-                const existingUrl = apiRef.getAttribute('data-url');
-                console.log('[Scalar] init() - existing data-url:', existingUrl);
-                
+            
+            if (container) {
                 const baseUrl = window.location.origin;
                 const version = 'v1';
                 const specUrl = baseUrl + '/' + version + '/openapi/' + currentLang + '/openapi.yaml';
                 console.log('[Scalar] init() - computed specUrl:', specUrl);
                 
-                if (!existingUrl || existingUrl !== specUrl) {
-                    apiRef.setAttribute('data-url', specUrl);
-                    console.log('[Scalar] init() - Set data-url to:', specUrl);
-                } else {
-                    console.log('[Scalar] init() - data-url already correct');
+                // Find or create script tag with id="api-reference" and data-url
+                let scriptTag = apiRef || container.querySelector('script#api-reference');
+                if (!scriptTag) {
+                    scriptTag = document.createElement('script');
+                    scriptTag.id = 'api-reference';
+                    scriptTag.type = 'application/json';
+                    container.appendChild(scriptTag);
                 }
-                console.log('[Scalar] init() - Final data-url:', apiRef.getAttribute('data-url'));
+                scriptTag.setAttribute('data-url', specUrl);
+                console.log('[Scalar] init() - Set data-url to:', specUrl);
             }
             
-            // Also call initializeScalar to handle language switching
-            // Đợi window load xong (bao gồm cả external scripts)
-            if (document.readyState === 'complete') {
-                // Page already fully loaded
-                setTimeout(function() {
+            // Wait for Scalar script to load before initializing
+            let retryCount = 0;
+            const maxRetries = 200; // 20 seconds max
+            
+            function waitForScalarAndInit() {
+                retryCount++;
+                
+                // Check if script has loaded
+                if (!window.scalarScriptLoaded && !window.scalarScriptError && retryCount < 50) {
+                    // Still waiting for script to load
+                    if (retryCount % 10 === 0) {
+                        console.log('[Scalar] Waiting for script to load... (attempt ' + retryCount + ')');
+                    }
+                    setTimeout(waitForScalarAndInit, 100);
+                    return;
+                }
+                
+                // Check multiple ways Scalar might be exposed
+                let scalarAPI = null;
+                
+                // Method 1: window.Scalar
+                if (typeof window.Scalar !== 'undefined' && typeof window.Scalar.createApiReference === 'function') {
+                    scalarAPI = window.Scalar;
+                    console.log('[Scalar] Found via window.Scalar');
+                }
+                // Method 2: Scalar (global)
+                else if (typeof Scalar !== 'undefined' && typeof Scalar.createApiReference === 'function') {
+                    scalarAPI = Scalar;
+                    console.log('[Scalar] Found via global Scalar');
+                }
+                // Method 3: Check for any Scalar-related global
+                else {
+                    for (let key in window) {
+                        if (key.toLowerCase().includes('scalar') && key !== 'scalarScriptLoaded' && key !== 'scalarScriptError') {
+                            const obj = window[key];
+                            if (obj && typeof obj === 'object') {
+                                if (typeof obj.createApiReference === 'function') {
+                                    scalarAPI = obj;
+                                    console.log('[Scalar] Found Scalar API as:', key);
+                                    break;
+                                }
+                                // Also check if it's a default export
+                                if (obj.default && typeof obj.default.createApiReference === 'function') {
+                                    scalarAPI = obj.default;
+                                    console.log('[Scalar] Found Scalar API as:', key + '.default');
+                                    break;
+                                }
+                            }
+                        }
+                    }
+                }
+                
+                // Check if Scalar has auto-initialized via data-url method
+                const container = document.getElementById('scalar-api-reference');
+                const apiRef = document.getElementById('api-reference');
+                
+                if (container && apiRef) {
+                    // Check multiple ways to see if Scalar initialized
+                    const hasContent = container.children.length > 1 || // More than just the script tag
+                                     (container.innerHTML.trim().length > 200) ||
+                                     container.querySelector('[class*="scalar"]') ||
+                                     container.querySelector('[id*="scalar"]') ||
+                                     container.querySelector('iframe') ||
+                                     container.querySelector('[role="main"]') ||
+                                     container.querySelector('div[class*="theme"]') ||
+                                     container.querySelector('div[class*="layout"]');
+                    
+                    if (hasContent) {
+                        console.log('[Scalar] ✅ Scalar initialized via data-url auto-detection');
+                        console.log('[Scalar] Container has content:', container.children.length, 'children');
+                        console.log('[Scalar] Container innerHTML length:', container.innerHTML.length);
+                        return; // Already initialized
+                    } else if (retryCount < 100) {
+                        console.log('[Scalar] Container has script tag but no content yet, waiting for auto-initialization... (attempt ' + retryCount + ')');
+                        // Wait a bit more for auto-initialization
+                        setTimeout(waitForScalarAndInit, 200);
+                        return;
+                    }
+                }
+                
+                if (scalarAPI) {
+                    console.log('[Scalar] Scalar API found, initializing programmatically...');
                     initializeScalar(currentLang).catch(err => {
                         console.error('Failed to initialize Scalar:', err);
                     });
-                }, 500);
+                } else if (retryCount < maxRetries) {
+                    // Retry after a short delay
+                    if (retryCount % 10 === 0) {
+                        console.log('[Scalar] Waiting for Scalar API... (attempt ' + retryCount + '/' + maxRetries + ')');
+                        // Debug: log what's available
+                        console.log('[Scalar] Debug - window.Scalar:', typeof window.Scalar);
+                        console.log('[Scalar] Debug - Scalar:', typeof Scalar);
+                        console.log('[Scalar] Debug - script loaded:', window.scalarScriptLoaded);
+                        console.log('[Scalar] Debug - script error:', window.scalarScriptError);
+                    }
+                    setTimeout(waitForScalarAndInit, 100);
+                } else {
+                    console.error('[Scalar] Failed to find Scalar API after ' + maxRetries + ' attempts.');
+                    console.error('[Scalar] Script loaded:', window.scalarScriptLoaded);
+                    console.error('[Scalar] Script error:', window.scalarScriptError);
+                    console.error('[Scalar] Available globals with "scalar":', Object.keys(window).filter(k => k.toLowerCase().includes('scalar')));
+                    
+                    // Check one more time if container has content (Scalar might have auto-initialized)
+                    const container = document.getElementById('scalar-api-reference');
+                    if (container && (container.children.length > 0 || container.innerHTML.trim().length > 100)) {
+                        console.log('[Scalar] ✅ Container has content - Scalar may have auto-initialized via data-configuration');
+                        return; // Already initialized
+                    }
+                    
+                    // Last resort: try to manually trigger data-configuration initialization
+                    console.log('[Scalar] Trying to manually trigger data-configuration initialization...');
+                    const apiRef = document.getElementById('api-reference');
+                    if (apiRef && apiRef.hasAttribute('data-configuration')) {
+                        // Re-set the attribute to trigger Scalar's auto-detection
+                        const config = apiRef.getAttribute('data-configuration');
+                        apiRef.removeAttribute('data-configuration');
+                        setTimeout(() => {
+                            apiRef.setAttribute('data-configuration', config);
+                            console.log('[Scalar] Re-set data-configuration attribute');
+                        }, 100);
+                    }
+                    
+                    // Also try programmatic initialization as fallback
+                    console.log('[Scalar] Trying programmatic initialization as fallback...');
+                    initializeScalar(currentLang).catch(err => {
+                        console.error('Failed to initialize Scalar:', err);
+                    });
+                }
+            }
+            
+            // Start waiting for Scalar to load
+            // Đợi window load xong (bao gồm cả external scripts)
+            if (document.readyState === 'complete') {
+                // Page already fully loaded
+                setTimeout(waitForScalarAndInit, 100);
             } else {
                 // Wait for window load event (fires after all resources loaded)
                 window.addEventListener('load', function() {
-                    setTimeout(function() {
-                        initializeScalar(currentLang).catch(err => {
-                            console.error('Failed to initialize Scalar:', err);
-                        });
-                    }, 500);
+                    setTimeout(waitForScalarAndInit, 100);
                 });
             }
         }
@@ -1520,5 +1789,533 @@
             };
         })();
     </script>
+    
+    <!-- Path Parameters Sync Script -->
+    <script>
+        (function() {
+            'use strict';
+            
+            console.log('[Path Parameters Sync] Initializing path parameters synchronization...');
+            
+            /**
+             * Sync path parameters from Variables section to URL
+             * This fixes the issue where Scalar shows path parameters in Variables
+             * but doesn't update the URL when values change
+             */
+            function syncPathParametersToURL() {
+                // Wait for Scalar to fully load
+                const maxRetries = 50;
+                let retries = 0;
+                let elementsFound = false;
+                let syncPerformed = false;
+                
+                const checkAndSync = setInterval(function() {
+                    retries++;
+                    
+                    // Find all request URL inputs in Scalar
+                    const urlInputs = document.querySelectorAll('input[type="text"][placeholder*="URL"], input[type="text"][class*="url"], input[type="text"][id*="url"]');
+                    
+                    // Find Variables section
+                    const variablesSections = document.querySelectorAll('[class*="variable"], [class*="Variable"], [data-testid*="variable"]');
+                    
+                    if (urlInputs.length > 0 && variablesSections.length > 0) {
+                        elementsFound = true;
+                        
+                        // For each variable section, check if it contains path parameter names
+                        variablesSections.forEach(function(variableSection) {
+                            // Look for instanceId or other path parameters
+                            const instanceIdInput = variableSection.querySelector('input[value*="-"], input[placeholder*="instance"], input[name*="instanceId"]');
+                            
+                            if (instanceIdInput) {
+                                const instanceIdValue = instanceIdInput.value || instanceIdInput.getAttribute('value');
+                                
+                                if (instanceIdValue) {
+                                    // Find the corresponding URL input
+                                    urlInputs.forEach(function(urlInput) {
+                                        const currentUrl = urlInput.value || '';
+                                        
+                                        // Check if URL contains instanceId pattern
+                                        const instanceIdPattern = /\/instance\/([a-f0-9-]+)\//i;
+                                        const match = currentUrl.match(instanceIdPattern);
+                                        
+                                        if (match && match[1] !== instanceIdValue) {
+                                            console.log('[Path Parameters Sync] Syncing instanceId:', match[1], '->', instanceIdValue);
+                                            
+                                            // Update URL with new instanceId
+                                            const newUrl = currentUrl.replace(instanceIdPattern, '/instance/' + instanceIdValue + '/');
+                                            urlInput.value = newUrl;
+                                            
+                                            // Trigger input event to notify Scalar
+                                            const event = new Event('input', { bubbles: true });
+                                            urlInput.dispatchEvent(event);
+                                            
+                                            // Also trigger change event
+                                            const changeEvent = new Event('change', { bubbles: true });
+                                            urlInput.dispatchEvent(changeEvent);
+                                            
+                                            syncPerformed = true;
+                                        }
+                                    });
+                                }
+                            }
+                        });
+                        
+                        // If we found elements and checked them, we can stop early
+                        // Only continue if we haven't found elements yet (page still loading)
+                        if (elementsFound && retries >= 5) {
+                            clearInterval(checkAndSync);
+                            return;
+                        }
+                    }
+                    
+                    if (retries >= maxRetries) {
+                        clearInterval(checkAndSync);
+                        // Only log warning if we never found elements (likely an issue)
+                        if (!elementsFound) {
+                            console.warn('[Path Parameters Sync] Stopped checking after', maxRetries, 'retries - elements not found');
+                        }
+                    }
+                }, 1000); // Check every second
+            }
+            
+            /**
+             * Monitor changes in Variables section and sync to URL
+             */
+            function setupPathParameterSync() {
+                // Use MutationObserver to watch for changes in Variables section
+                const observer = new MutationObserver(function(mutations) {
+                    let shouldSync = false;
+                    
+                    mutations.forEach(function(mutation) {
+                        if (mutation.type === 'childList' || mutation.type === 'attributes' || mutation.type === 'characterData') {
+                            // Check if the change is in a variables section
+                            const target = mutation.target;
+                            if (target.closest && (
+                                target.closest('[class*="variable"]') ||
+                                target.closest('[class*="Variable"]') ||
+                                target.closest('[data-testid*="variable"]')
+                            )) {
+                                shouldSync = true;
+                            }
+                        }
+                    });
+                    
+                    if (shouldSync) {
+                        // Debounce: wait a bit for Scalar to finish updating
+                        setTimeout(function() {
+                            syncPathParametersToURL();
+                        }, 500);
+                    }
+                });
+                
+                // Start observing when DOM is ready
+                if (document.readyState === 'loading') {
+                    document.addEventListener('DOMContentLoaded', function() {
+                        observer.observe(document.body, {
+                            childList: true,
+                            subtree: true,
+                            attributes: true,
+                            attributeFilter: ['value', 'placeholder']
+                        });
+                        
+                        // Also run initial sync after a delay
+                        setTimeout(syncPathParametersToURL, 2000);
+                    });
+                } else {
+                    observer.observe(document.body, {
+                        childList: true,
+                        subtree: true,
+                        attributes: true,
+                        attributeFilter: ['value', 'placeholder']
+                    });
+                    
+                    // Run initial sync after a delay
+                    setTimeout(syncPathParametersToURL, 2000);
+                }
+            }
+            
+            // Initialize
+            setupPathParameterSync();
+            
+            // Also run sync when window loads (after Scalar initializes)
+            window.addEventListener('load', function() {
+                setTimeout(syncPathParametersToURL, 3000);
+            });
+            
+            // Expose function for manual sync
+            window.syncPathParameters = syncPathParametersToURL;
+            
+            console.log('[Path Parameters Sync] Setup complete. Use window.syncPathParameters() to manually sync.');
+        })();
+    </script>
+    
+    <!-- Example Copy Button Script -->
+    <script>
+        (function() {
+            'use strict';
+            
+            console.log('[Example Copy] Initializing example copy button...');
+            
+            // Cache for example values
+            const exampleCache = new Map();
+            let currentExampleValue = null;
+            let copyButton = null;
+            
+            /**
+             * Get example value from OpenAPI spec
+             */
+            async function getExampleValue(exampleKey) {
+                // Check cache
+                if (exampleCache.has(exampleKey)) {
+                    return exampleCache.get(exampleKey);
+                }
+                
+                // Try to fetch from OpenAPI spec as JSON
+                const specUrl = document.getElementById('api-reference')?.getAttribute('data-url') ||
+                              window.location.origin + '/v1/openapi.yaml';
+                
+                const jsonSpecUrl = specUrl.replace(/\.yaml$/, '.json');
+                try {
+                    const response = await fetch(jsonSpecUrl);
+                    if (response.ok) {
+                        const jsonSpec = await response.json();
+                        const operation = jsonSpec.paths?.['/v1/core/instance']?.post;
+                        if (operation?.requestBody?.content?.['application/json']?.examples?.[exampleKey]) {
+                            const example = operation.requestBody.content['application/json'].examples[exampleKey];
+                            const value = example.value || null;
+                            if (value) {
+                                exampleCache.set(exampleKey, value);
+                                return value;
+                            }
+                        }
+                    }
+                } catch (e) {
+                    console.log('[Example Copy] JSON spec not available');
+                }
+                
+                return null;
+            }
+            
+            /**
+             * Create copy button
+             */
+            function createCopyButton() {
+                if (copyButton) {
+                    return copyButton;
+                }
+                
+                const button = document.createElement('button');
+                button.innerHTML = '📋 Copy Body';
+                button.style.cssText = `
+                    margin-left: 8px;
+                    padding: 6px 12px;
+                    background: #3b82f6;
+                    color: white;
+                    border: none;
+                    border-radius: 4px;
+                    cursor: pointer;
+                    font-size: 13px;
+                    font-weight: 500;
+                    transition: background 0.2s;
+                `;
+                
+                button.addEventListener('mouseenter', () => {
+                    button.style.background = '#2563eb';
+                });
+                
+                button.addEventListener('mouseleave', () => {
+                    button.style.background = '#3b82f6';
+                });
+                
+                button.addEventListener('click', async () => {
+                    if (!currentExampleValue) {
+                        console.warn('[Example Copy] No example value to copy');
+                        return;
+                    }
+                    
+                    try {
+                        // Format JSON with proper indentation (2 spaces)
+                        const jsonString = JSON.stringify(currentExampleValue, null, 2);
+                        
+                        // Copy only the JSON body (not the curl command)
+                        await navigator.clipboard.writeText(jsonString);
+                        
+                        // Show feedback
+                        const originalText = button.innerHTML;
+                        button.innerHTML = '✓ Copied!';
+                        button.style.background = '#10b981';
+                        
+                        setTimeout(() => {
+                            button.innerHTML = originalText;
+                            button.style.background = '#3b82f6';
+                        }, 2000);
+                        
+                        console.log('[Example Copy] JSON body copied to clipboard');
+                        console.log('[Example Copy] Copied content (first 100 chars):', jsonString.substring(0, 100));
+                    } catch (err) {
+                        console.error('[Example Copy] Failed to copy:', err);
+                        button.innerHTML = '✗ Error';
+                        setTimeout(() => {
+                            button.innerHTML = '📋 Copy Body';
+                        }, 2000);
+                    }
+                });
+                
+                copyButton = button;
+                return button;
+            }
+            
+            /**
+             * Find and attach to example selector
+             */
+            function setupExampleCopyButton() {
+                const maxRetries = 100;
+                let retries = 0;
+                let lastProcessedCount = 0;
+                let stableCount = 0;
+                
+                const checkAndSetup = setInterval(() => {
+                    retries++;
+                    
+                    // Find example selector in request sections - try multiple approaches
+                    const requestSections = document.querySelectorAll('[class*="request"], [class*="Request"], [class*="operation"], [class*="Operation"]');
+                    
+                    let processedThisRound = 0;
+                    
+                    for (const section of requestSections) {
+                        // Skip response sections
+                        if (section.closest('[class*="response"], [class*="Response"]')) {
+                            continue;
+                        }
+                        
+                        // Find ALL select elements in request section (Scalar might use different structures)
+                        const selects = section.querySelectorAll('select');
+                        for (const select of selects) {
+                            // Check if already attached
+                            if (select.hasAttribute('data-copy-button-attached')) {
+                                continue;
+                            }
+                            
+                            // More lenient check - if it's a select in request area, it might be example selector
+                            const text = (select.textContent || '').toLowerCase();
+                            const ariaLabel = (select.getAttribute('aria-label') || '').toLowerCase();
+                            const className = (select.className || '').toLowerCase();
+                            const id = (select.id || '').toLowerCase();
+                            
+                            // Check options for example patterns
+                            let hasExampleOptions = false;
+                            let optionCount = 0;
+                            if (select.options && select.options.length > 0) {
+                                optionCount = select.options.length;
+                                for (let i = 0; i < select.options.length; i++) {
+                                    const optionText = select.options[i].text || '';
+                                    const optionValue = select.options[i].value || '';
+                                    // Example keys often contain "___" or are descriptive
+                                    if (optionValue.includes('___') || 
+                                        optionText.length > 20 ||
+                                        optionText.includes('Example') ||
+                                        optionText.includes(' - ')) {
+                                        hasExampleOptions = true;
+                                        break;
+                                    }
+                                }
+                            }
+                            
+                            // More lenient: if select has multiple options and is in request area, treat as example selector
+                            // But exclude client/shell selectors (they have ~36 options and specific values)
+                            const isClientSelector = select.value && (
+                                select.value.includes('"targetKey"') ||
+                                select.value.includes('"clientKey"') ||
+                                text.includes('client') ||
+                                text.includes('shell')
+                            );
+                            
+                            const isExampleSelector = !isClientSelector && (
+                                text.includes('example') || 
+                                ariaLabel.includes('example') || 
+                                className.includes('example') ||
+                                id.includes('example') ||
+                                (hasExampleOptions && optionCount > 1) ||
+                                (optionCount > 3 && optionCount < 50 && !text.includes('method') && !text.includes('http'))
+                            );
+                            
+                            if (isExampleSelector) {
+                                console.log('[Example Copy] Found example selector:', select, 'Options:', optionCount);
+                                select.setAttribute('data-copy-button-attached', 'true');
+                                processedThisRound++;
+                                
+                                // Create copy button for this select
+                                const btn = createCopyButton();
+                                
+                                // Find the best place to insert button
+                                // Try to find a container that holds the select and related elements
+                                let container = select.parentElement;
+                                
+                                // Look for a flex container or div that contains the select
+                                while (container && container !== section) {
+                                    const containerClass = (container.className || '').toLowerCase();
+                                    if (containerClass.includes('example') || 
+                                        containerClass.includes('select') ||
+                                        container.tagName === 'DIV') {
+                                        break;
+                                    }
+                                    container = container.parentElement;
+                                }
+                                
+                                if (!container) {
+                                    container = select.parentElement;
+                                }
+                                
+                                // Check if button already exists for this select
+                                const existingBtn = container.querySelector(`[data-example-copy-button="${select.id || 'default'}"]`);
+                                if (existingBtn) {
+                                    continue;
+                                }
+                                
+                                btn.setAttribute('data-example-copy-button', select.id || 'default');
+                                
+                                // Try multiple insertion strategies
+                                try {
+                                    // Strategy 1: Insert right after select
+                                    select.insertAdjacentElement('afterend', btn);
+                                } catch (e1) {
+                                    try {
+                                        // Strategy 2: Insert in parent container
+                                        container.appendChild(btn);
+                                    } catch (e2) {
+                                        // Strategy 3: Insert before select's next sibling
+                                        if (select.nextSibling) {
+                                            container.insertBefore(btn, select.nextSibling);
+                                        } else {
+                                            container.appendChild(btn);
+                                        }
+                                    }
+                                }
+                                
+                                // Show button initially if an example is already selected
+                                if (select.value && select.value.trim()) {
+                                    // Check if current selection is an example
+                                    const currentValue = select.value;
+                                    getExampleValue(currentValue).then(exampleValue => {
+                                        if (exampleValue) {
+                                            currentExampleValue = exampleValue;
+                                            btn.style.display = 'inline-block';
+                                        } else {
+                                            btn.style.display = 'none';
+                                        }
+                                    });
+                                } else {
+                                    btn.style.display = 'none';
+                                }
+                                
+                                // Listen for example selection
+                                select.addEventListener('change', async (e) => {
+                                    const selectedValue = e.target.value;
+                                    const selectedText = e.target.options[e.target.selectedIndex]?.text;
+                                    
+                                    if (!selectedValue || selectedValue.trim() === '') {
+                                        currentExampleValue = null;
+                                        btn.style.display = 'none';
+                                        return;
+                                    }
+                                    
+                                    // Get example value
+                                    const exampleValue = await getExampleValue(selectedValue);
+                                    
+                                    if (exampleValue) {
+                                        currentExampleValue = exampleValue;
+                                        // Show copy button
+                                        btn.style.display = 'inline-block';
+                                    } else {
+                                        currentExampleValue = null;
+                                        // Hide copy button
+                                        btn.style.display = 'none';
+                                    }
+                                });
+                            }
+                        }
+                    }
+                    
+                    // Check if we're stable (no new elements processed for a few rounds)
+                    if (processedThisRound === lastProcessedCount) {
+                        stableCount++;
+                    } else {
+                        stableCount = 0;
+                    }
+                    lastProcessedCount = processedThisRound;
+                    
+                    // Stop early if we've been stable for 3 rounds and found elements, or if we've processed elements and no new ones appear
+                    if ((stableCount >= 3 && retries >= 5) || (retries >= 10 && processedThisRound === 0 && lastProcessedCount > 0)) {
+                        clearInterval(checkAndSetup);
+                        return;
+                    }
+                    
+                    if (retries >= maxRetries) {
+                        clearInterval(checkAndSetup);
+                        // Only log warning if we never processed anything
+                        if (lastProcessedCount === 0) {
+                            console.warn('[Example Copy] Stopped checking after', maxRetries, 'retries - no example selectors found');
+                        }
+                    }
+                }, 1000);
+            }
+            
+            // Setup MutationObserver to watch for new elements
+            const observer = new MutationObserver((mutations) => {
+                let shouldCheck = false;
+                mutations.forEach((mutation) => {
+                    if (mutation.addedNodes.length > 0) {
+                        for (const node of mutation.addedNodes) {
+                            if (node.nodeType === 1) { // Element node
+                                // Check if it's a select or contains a select
+                                if (node.tagName === 'SELECT' || node.querySelector('select')) {
+                                    shouldCheck = true;
+                                    break;
+                                }
+                            }
+                        }
+                    }
+                });
+                
+                if (shouldCheck) {
+                    // Debounce
+                    setTimeout(setupExampleCopyButton, 500);
+                }
+            });
+            
+            // Initialize
+            if (document.readyState === 'loading') {
+                document.addEventListener('DOMContentLoaded', () => {
+                    setTimeout(setupExampleCopyButton, 2000);
+                    // Start observing
+                    observer.observe(document.body, {
+                        childList: true,
+                        subtree: true
+                    });
+                });
+            } else {
+                setTimeout(setupExampleCopyButton, 2000);
+                // Start observing
+                observer.observe(document.body, {
+                    childList: true,
+                    subtree: true
+                });
+            }
+            
+            // Also run when window loads
+            window.addEventListener('load', () => {
+                setTimeout(setupExampleCopyButton, 3000);
+            });
+            
+            // Periodic check as fallback
+            setInterval(() => {
+                setupExampleCopyButton();
+            }, 5000);
+            
+            console.log('[Example Copy] Setup complete');
+            console.log('[Example Copy] Looking for example selectors in request sections...');
+        })();
+    </script>
 </body>
 </html>
+

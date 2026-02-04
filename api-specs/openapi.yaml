@@ -2636,7 +2636,6 @@ paths:
           The endpoint will automatically detect the type of identifier.
 
           '
-        example: 6b135f5b-a365-4522-b1f1-4c9ac2dd0728
       responses:
         '200':
           description: Face subject(s) deleted successfully
@@ -4004,9 +4003,9 @@ paths:
                   additionalParams:
                     input:
                       FILE_PATH: /opt/edge_ai_api/videos/vehicle_count.mp4
-                      WEIGHTS_PATH: /opt/edge_ai_api/models/yolov3-tiny-2022-0721_best.weights
-                      CONFIG_PATH: /opt/edge_ai_api/models/yolov3-tiny-2022-0721.cfg
-                      LABELS_PATH: /opt/edge_ai_api/models/yolov3_tiny_5classes.txt
+                      WEIGHTS_PATH: /opt/edge_ai_api/models/det_cls/yolov3-tiny-2022-0721_best.weights
+                      CONFIG_PATH: /opt/edge_ai_api/models/det_cls/yolov3-tiny-2022-0721.cfg
+                      LABELS_PATH: /opt/edge_ai_api/models/det_cls/yolov3_tiny_5classes.txt
                       RESIZE_RATIO: '0.5'
                     output:
                       ENABLE_SCREEN_DES: 'false'
@@ -4028,9 +4027,9 @@ paths:
                   additionalParams:
                     input:
                       FILE_PATH: /home/cvedix/project/edge_ai_api/cvedix_data/test_video/vehicle_count.mp4
-                      WEIGHTS_PATH: /home/cvedix/project/edge_ai_api/cvedix_data/models/det_cls/yolov3-tiny-2022-0721_best.weights
-                      CONFIG_PATH: /home/cvedix/project/edge_ai_api/cvedix_data/models/det_cls/yolov3-tiny-2022-0721.cfg
-                      LABELS_PATH: /home/cvedix/project/edge_ai_api/cvedix_data/models/det_cls/yolov3_tiny_5classes.txt
+                      WEIGHTS_PATH: /opt/edge_ai_api/models/det_cls/yolov3-tiny-2022-0721_best.weights
+                      CONFIG_PATH: /opt/edge_ai_api/models/det_cls/yolov3-tiny-2022-0721.cfg
+                      LABELS_PATH: /opt/edge_ai_api/models/det_cls/yolov3_tiny_5classes.txt
                       RESIZE_RATIO: '1.0'
                     output:
                       ENABLE_SCREEN_DES: 'false'
@@ -4055,9 +4054,9 @@ paths:
                   additionalParams:
                     input:
                       FILE_PATH: /home/cvedix/project/edge_ai_api/cvedix_data/test_video/vehicle.mp4
-                      WEIGHTS_PATH: /home/cvedix/project/edge_ai_api/cvedix_data/models/det_cls/yolov3-tiny-2022-0721_best.weights
-                      CONFIG_PATH: /home/cvedix/project/edge_ai_api/cvedix_data/models/det_cls/yolov3-tiny-2022-0721.cfg
-                      LABELS_PATH: /home/cvedix/project/edge_ai_api/cvedix_data/models/det_cls/yolov3_tiny_5classes.txt
+                      WEIGHTS_PATH: /opt/edge_ai_api/models/det_cls/yolov3-tiny-2022-0721_best.weights
+                      CONFIG_PATH: /opt/edge_ai_api/models/det_cls/yolov3-tiny-2022-0721.cfg
+                      LABELS_PATH: /opt/edge_ai_api/models/det_cls/yolov3_tiny_5classes.txt
                     output:
                       RTMP_URL: rtmp://localhost:1935/live/camera_demo_1
                       RTMP_DES_URL: rtmp://localhost:1935/live/camera_demo_1
@@ -4072,9 +4071,9 @@ paths:
                   additionalParams:
                     input:
                       FILE_PATH: /home/cvedix/project/edge_ai_sdk/cvedix_data/test_video/vehicle_count.mp4
-                      WEIGHTS_PATH: /home/cvedix/project/edge_ai_sdk/cvedix_data/models/det_cls/yolov3-tiny-2022-0721_best.weights
-                      CONFIG_PATH: /home/cvedix/project/edge_ai_sdk/cvedix_data/models/det_cls/yolov3-tiny-2022-0721.cfg
-                      LABELS_PATH: /home/cvedix/project/edge_ai_sdk/cvedix_data/models/det_cls/yolov3_tiny_5classes.txt
+                      WEIGHTS_PATH: /opt/edge_ai_api/models/det_cls/yolov3-tiny-2022-0721_best.weights
+                      CONFIG_PATH: /opt/edge_ai_api/models/det_cls/yolov3-tiny-2022-0721.cfg
+                      LABELS_PATH: /opt/edge_ai_api/models/det_cls/yolov3_tiny_5classes.txt
                     output:
                       RTMP_URL: rtmp://localhost:1935/live/sang_camera_demo_1
                       RTMP_DES_URL: rtmp://localhost:1935/live/sang_camera_demo_1
@@ -4095,9 +4094,9 @@ paths:
                   additionalParams:
                     input:
                       FILE_PATH: /home/cvedix/project/edge_ai_api/cvedix_data/test_video/vehicle.mp4
-                      WEIGHTS_PATH: /home/cvedix/project/edge_ai_api/cvedix_data/models/det_cls/yolov3-tiny-2022-0721_best.weights
-                      CONFIG_PATH: /home/cvedix/project/edge_ai_api/cvedix_data/models/det_cls/yolov3-tiny-2022-0721.cfg
-                      LABELS_PATH: /home/cvedix/project/edge_ai_api/cvedix_data/models/det_cls/yolov3_tiny_5classes.txt
+                      WEIGHTS_PATH: /opt/edge_ai_api/models/det_cls/yolov3-tiny-2022-0721_best.weights
+                      CONFIG_PATH: /opt/edge_ai_api/models/det_cls/yolov3-tiny-2022-0721.cfg
+                      LABELS_PATH: /opt/edge_ai_api/models/det_cls/yolov3_tiny_5classes.txt
                     output:
                       RTMP_URL: rtmp://localhost:1935/live/camera_demo_1
                       RTMP_DES_URL: rtmp://localhost:1935/live/camera_demo_1
@@ -4115,9 +4114,9 @@ paths:
                   additionalParams:
                     input:
                       FILE_PATH: /opt/edge_ai_api/videos/vehicle_count.mp4
-                      WEIGHTS_PATH: /opt/edge_ai_api/models/yolov3-tiny-2022-0721_best.weights
-                      CONFIG_PATH: /opt/edge_ai_api/models/yolov3-tiny-2022-0721.cfg
-                      LABELS_PATH: /opt/edge_ai_api/models/yolov3_tiny_5classes.txt
+                      WEIGHTS_PATH: /opt/edge_ai_api/models/det_cls/yolov3-tiny-2022-0721_best.weights
+                      CONFIG_PATH: /opt/edge_ai_api/models/det_cls/yolov3-tiny-2022-0721.cfg
+                      LABELS_PATH: /opt/edge_ai_api/models/det_cls/yolov3_tiny_5classes.txt
                       RESIZE_RATIO: '0.5'
                     output:
                       ENABLE_SCREEN_DES: 'true'
@@ -4217,9 +4216,9 @@ paths:
                   additionalParams:
                     input:
                       RTSP_SRC_URL: rtsp://localhost:8554/mystream
-                      WEIGHTS_PATH: /home/cvedix/project/edge_ai_api/cvedix_data/models/det_cls/yolov3-tiny-2022-0721_best.weights
-                      CONFIG_PATH: /home/cvedix/project/edge_ai_api/cvedix_data/models/det_cls/yolov3-tiny-2022-0721.cfg
-                      LABELS_PATH: /home/cvedix/project/edge_ai_api/cvedix_data/models/det_cls/yolov3_tiny_5classes.txt
+                      WEIGHTS_PATH: /opt/edge_ai_api/models/det_cls/yolov3-tiny-2022-0721_best.weights
+                      CONFIG_PATH: /opt/edge_ai_api/models/det_cls/yolov3-tiny-2022-0721.cfg
+                      LABELS_PATH: /opt/edge_ai_api/models/det_cls/yolov3_tiny_5classes.txt
                       RESIZE_RATIO: '0.05'
                       RTSP_TRANSPORT: tcp
                       GST_DECODER_NAME: avdec_h264
@@ -4245,9 +4244,9 @@ paths:
                   additionalParams:
                     input:
                       RTSP_SRC_URL: rtsp://localhost:8554/mystream
-                      WEIGHTS_PATH: /home/cvedix/project/edge_ai_api/cvedix_data/models/det_cls/yolov3-tiny-2022-0721_best.weights
-                      CONFIG_PATH: /home/cvedix/project/edge_ai_api/cvedix_data/models/det_cls/yolov3-tiny-2022-0721.cfg
-                      LABELS_PATH: /home/cvedix/project/edge_ai_api/cvedix_data/models/det_cls/yolov3_tiny_5classes.txt
+                      WEIGHTS_PATH: /opt/edge_ai_api/models/det_cls/yolov3-tiny-2022-0721_best.weights
+                      CONFIG_PATH: /opt/edge_ai_api/models/det_cls/yolov3-tiny-2022-0721.cfg
+                      LABELS_PATH: /opt/edge_ai_api/models/det_cls/yolov3_tiny_5classes.txt
                       RESIZE_RATIO: '1.0'
                       RTSP_TRANSPORT: udp
                       GST_DECODER_NAME: avdec_h264
@@ -4266,9 +4265,9 @@ paths:
                   additionalParams:
                     input:
                       RTSP_SRC_URL: rtsp://localhost:8554/mystream
-                      WEIGHTS_PATH: /home/cvedix/project/edge_ai_api/cvedix_data/models/det_cls/yolov3-tiny-2022-0721_best.weights
-                      CONFIG_PATH: /home/cvedix/project/edge_ai_api/cvedix_data/models/det_cls/yolov3-tiny-2022-0721.cfg
-                      LABELS_PATH: /home/cvedix/project/edge_ai_api/cvedix_data/models/det_cls/yolov3_tiny_5classes.txt
+                      WEIGHTS_PATH: /opt/edge_ai_api/models/det_cls/yolov3-tiny-2022-0721_best.weights
+                      CONFIG_PATH: /opt/edge_ai_api/models/det_cls/yolov3-tiny-2022-0721.cfg
+                      LABELS_PATH: /opt/edge_ai_api/models/det_cls/yolov3_tiny_5classes.txt
                       RESIZE_RATIO: '1.0'
                       GST_DECODER_NAME: avdec_h264
                       SKIP_INTERVAL: '0'
@@ -4293,9 +4292,9 @@ paths:
                   additionalParams:
                     input:
                       RTSP_SRC_URL: rtsp://localhost:8554/mystream
-                      WEIGHTS_PATH: /home/cvedix/project/edge_ai_api/cvedix_data/models/det_cls/yolov3-tiny-2022-0721_best.weights
-                      CONFIG_PATH: /home/cvedix/project/edge_ai_api/cvedix_data/models/det_cls/yolov3-tiny-2022-0721.cfg
-                      LABELS_PATH: /home/cvedix/project/edge_ai_api/cvedix_data/models/det_cls/yolov3_tiny_5classes.txt
+                      WEIGHTS_PATH: /opt/edge_ai_api/models/det_cls/yolov3-tiny-2022-0721_best.weights
+                      CONFIG_PATH: /opt/edge_ai_api/models/det_cls/yolov3-tiny-2022-0721.cfg
+                      LABELS_PATH: /opt/edge_ai_api/models/det_cls/yolov3_tiny_5classes.txt
                       RESIZE_RATIO: '1.0'
                       RTSP_TRANSPORT: udp
                       GST_DECODER_NAME: avdec_h264
@@ -4316,9 +4315,9 @@ paths:
                   additionalParams:
                     input:
                       FILE_PATH: /home/cvedix/project/edge_ai_api/cvedix_data/test_video/vehicle_count.mp4
-                      WEIGHTS_PATH: /home/cvedix/project/edge_ai_api/cvedix_data/models/det_cls/yolov3-tiny-2022-0721_best.weights
-                      CONFIG_PATH: /home/cvedix/project/edge_ai_api/cvedix_data/models/det_cls/yolov3-tiny-2022-0721.cfg
-                      LABELS_PATH: /home/cvedix/project/edge_ai_api/cvedix_data/models/det_cls/yolov3_tiny_5classes.txt
+                      WEIGHTS_PATH: /opt/edge_ai_api/models/det_cls/yolov3-tiny-2022-0721_best.weights
+                      CONFIG_PATH: /opt/edge_ai_api/models/det_cls/yolov3-tiny-2022-0721.cfg
+                      LABELS_PATH: /opt/edge_ai_api/models/det_cls/yolov3_tiny_5classes.txt
                       RESIZE_RATIO: '0.4'
                     output:
                       ENABLE_SCREEN_DES: 'true'
@@ -4334,9 +4333,9 @@ paths:
                   additionalParams:
                     input:
                       FILE_PATH: /home/cvedix/project/edge_ai_api/cvedix_data/test_video/vehicle_count.mp4
-                      WEIGHTS_PATH: /home/cvedix/project/edge_ai_api/cvedix_data/models/det_cls/yolov3-tiny-2022-0721_best.weights
-                      CONFIG_PATH: /home/cvedix/project/edge_ai_api/cvedix_data/models/det_cls/yolov3-tiny-2022-0721.cfg
-                      LABELS_PATH: /home/cvedix/project/edge_ai_api/cvedix_data/models/det_cls/yolov3_tiny_5classes.txt
+                      WEIGHTS_PATH: /opt/edge_ai_api/models/det_cls/yolov3-tiny-2022-0721_best.weights
+                      CONFIG_PATH: /opt/edge_ai_api/models/det_cls/yolov3-tiny-2022-0721.cfg
+                      LABELS_PATH: /opt/edge_ai_api/models/det_cls/yolov3_tiny_5classes.txt
                       RESIZE_RATIO: '0.4'
                     output:
                       ENABLE_SCREEN_DES: 'true'
@@ -4357,9 +4356,9 @@ paths:
                   additionalParams:
                     input:
                       RTMP_SRC_URL: rtmp://localhost:1935/live/input_stream
-                      WEIGHTS_PATH: /home/cvedix/project/edge_ai_api/cvedix_data/models/det_cls/yolov3-tiny-2022-0721_best.weights
-                      CONFIG_PATH: /home/cvedix/project/edge_ai_api/cvedix_data/models/det_cls/yolov3-tiny-2022-0721.cfg
-                      LABELS_PATH: /home/cvedix/project/edge_ai_api/cvedix_data/models/det_cls/yolov3_tiny_5classes.txt
+                      WEIGHTS_PATH: /opt/edge_ai_api/models/det_cls/yolov3-tiny-2022-0721_best.weights
+                      CONFIG_PATH: /opt/edge_ai_api/models/det_cls/yolov3-tiny-2022-0721.cfg
+                      LABELS_PATH: /opt/edge_ai_api/models/det_cls/yolov3_tiny_5classes.txt
                       RESIZE_RATIO: '1.0'
                     output:
                       RTMP_URL: rtmp://localhost:1935/live/output_stream
@@ -4382,9 +4381,9 @@ paths:
                   additionalParams:
                     input:
                       RTSP_SRC_URL: rtsp://localhost:8554/mystream
-                      WEIGHTS_PATH: /opt/edge_ai_api/models/yolov3-tiny-2022-0721_best.weights
-                      CONFIG_PATH: /opt/edge_ai_api/models/yolov3-tiny-2022-0721.cfg
-                      LABELS_PATH: /opt/edge_ai_api/models/yolov3_tiny_5classes.txt
+                      WEIGHTS_PATH: /opt/edge_ai_api/models/det_cls/yolov3-tiny-2022-0721_best.weights
+                      CONFIG_PATH: /opt/edge_ai_api/models/det_cls/yolov3-tiny-2022-0721.cfg
+                      LABELS_PATH: /opt/edge_ai_api/models/det_cls/yolov3_tiny_5classes.txt
                       RESIZE_RATIO: '1.0'
                       GST_DECODER_NAME: avdec_h264
                     output:
@@ -4403,9 +4402,9 @@ paths:
                   additionalParams:
                     input:
                       FILE_PATH: /home/cvedix/project/edge_ai_api/cvedix_data/test_video/vehicle_count.mp4
-                      WEIGHTS_PATH: /home/cvedix/project/edge_ai_api/cvedix_data/models/det_cls/yolov3-tiny-2022-0721_best.weights
-                      CONFIG_PATH: /home/cvedix/project/edge_ai_api/cvedix_data/models/det_cls/yolov3-tiny-2022-0721.cfg
-                      LABELS_PATH: /home/cvedix/project/edge_ai_api/cvedix_data/models/det_cls/yolov3_tiny_5classes.txt
+                      WEIGHTS_PATH: /opt/edge_ai_api/models/det_cls/yolov3-tiny-2022-0721_best.weights
+                      CONFIG_PATH: /opt/edge_ai_api/models/det_cls/yolov3-tiny-2022-0721.cfg
+                      LABELS_PATH: /opt/edge_ai_api/models/det_cls/yolov3_tiny_5classes.txt
                       RESIZE_RATIO: '0.1'
                     output:
                       ENABLE_SCREEN_DES: 'false'
@@ -4429,9 +4428,9 @@ paths:
                   additionalParams:
                     input:
                       FILE_PATH: /home/cvedix/project/edge_ai_api/cvedix_data/test_video/vehicle_count.mp4
-                      WEIGHTS_PATH: /home/cvedix/project/edge_ai_api/cvedix_data/models/det_cls/yolov3-tiny-2022-0721_best.weights
-                      CONFIG_PATH: /home/cvedix/project/edge_ai_api/cvedix_data/models/det_cls/yolov3-tiny-2022-0721.cfg
-                      LABELS_PATH: /home/cvedix/project/edge_ai_api/cvedix_data/models/det_cls/yolov3_tiny_5classes.txt
+                      WEIGHTS_PATH: /opt/edge_ai_api/models/det_cls/yolov3-tiny-2022-0721_best.weights
+                      CONFIG_PATH: /opt/edge_ai_api/models/det_cls/yolov3-tiny-2022-0721.cfg
+                      LABELS_PATH: /opt/edge_ai_api/models/det_cls/yolov3_tiny_5classes.txt
                       CROSSLINE_START_X: '0'
                       CROSSLINE_START_Y: '250'
                       CROSSLINE_END_X: '700'
@@ -4453,9 +4452,9 @@ paths:
                   additionalParams:
                     input:
                       FILE_PATH: /home/cvedix/project/edge_ai_api/cvedix_data/test_video/vehicle_count.mp4
-                      WEIGHTS_PATH: /home/cvedix/project/edge_ai_api/cvedix_data/models/det_cls/yolov3-tiny-2022-0721_best.weights
-                      CONFIG_PATH: /home/cvedix/project/edge_ai_api/cvedix_data/models/det_cls/yolov3-tiny-2022-0721.cfg
-                      LABELS_PATH: /home/cvedix/project/edge_ai_api/cvedix_data/models/det_cls/yolov3_tiny_5classes.txt
+                      WEIGHTS_PATH: /opt/edge_ai_api/models/det_cls/yolov3-tiny-2022-0721_best.weights
+                      CONFIG_PATH: /opt/edge_ai_api/models/det_cls/yolov3-tiny-2022-0721.cfg
+                      LABELS_PATH: /opt/edge_ai_api/models/det_cls/yolov3_tiny_5classes.txt
                       CROSSLINE_START_X: '0'
                       CROSSLINE_START_Y: '250'
                       CROSSLINE_END_X: '700'
@@ -4483,9 +4482,9 @@ paths:
                   additionalParams:
                     input:
                       RTSP_SRC_URL: rtsp://localhost:8554/mystream
-                      WEIGHTS_PATH: /home/cvedix/project/edge_ai_api/cvedix_data/models/det_cls/yolov3-tiny-2022-0721_best.weights
-                      CONFIG_PATH: /home/cvedix/project/edge_ai_api/cvedix_data/models/det_cls/yolov3-tiny-2022-0721.cfg
-                      LABELS_PATH: /home/cvedix/project/edge_ai_api/cvedix_data/models/det_cls/yolov3_tiny_5classes.txt
+                      WEIGHTS_PATH: /opt/edge_ai_api/models/det_cls/yolov3-tiny-2022-0721_best.weights
+                      CONFIG_PATH: /opt/edge_ai_api/models/det_cls/yolov3-tiny-2022-0721.cfg
+                      LABELS_PATH: /opt/edge_ai_api/models/det_cls/yolov3_tiny_5classes.txt
                       CROSSLINE_START_X: '0'
                       CROSSLINE_START_Y: '250'
                       CROSSLINE_END_X: '700'
@@ -4510,9 +4509,9 @@ paths:
                   additionalParams:
                     input:
                       RTSP_SRC_URL: rtsp://localhost:8554/mystream
-                      WEIGHTS_PATH: /home/cvedix/project/edge_ai_api/cvedix_data/models/det_cls/yolov3-tiny-2022-0721_best.weights
-                      CONFIG_PATH: /home/cvedix/project/edge_ai_api/cvedix_data/models/det_cls/yolov3-tiny-2022-0721.cfg
-                      LABELS_PATH: /home/cvedix/project/edge_ai_api/cvedix_data/models/det_cls/yolov3_tiny_5classes.txt
+                      WEIGHTS_PATH: /opt/edge_ai_api/models/det_cls/yolov3-tiny-2022-0721_best.weights
+                      CONFIG_PATH: /opt/edge_ai_api/models/det_cls/yolov3-tiny-2022-0721.cfg
+                      LABELS_PATH: /opt/edge_ai_api/models/det_cls/yolov3_tiny_5classes.txt
                       CROSSLINE_START_X: '0'
                       CROSSLINE_START_Y: '250'
                       CROSSLINE_END_X: '700'
@@ -4544,9 +4543,9 @@ paths:
                   additionalParams:
                     input:
                       RTSP_SRC_URL: rtsp://localhost:8554/mystream
-                      WEIGHTS_PATH: /home/cvedix/project/edge_ai_api/cvedix_data/models/det_cls/yolov3-tiny-2022-0721_best.weights
-                      CONFIG_PATH: /home/cvedix/project/edge_ai_api/cvedix_data/models/det_cls/yolov3-tiny-2022-0721.cfg
-                      LABELS_PATH: /home/cvedix/project/edge_ai_api/cvedix_data/models/det_cls/yolov3_tiny_5classes.txt
+                      WEIGHTS_PATH: /opt/edge_ai_api/models/det_cls/yolov3-tiny-2022-0721_best.weights
+                      CONFIG_PATH: /opt/edge_ai_api/models/det_cls/yolov3-tiny-2022-0721.cfg
+                      LABELS_PATH: /opt/edge_ai_api/models/det_cls/yolov3_tiny_5classes.txt
                       CROSSLINE_START_X: '0'
                       CROSSLINE_START_Y: '250'
                       CROSSLINE_END_X: '700'
@@ -4574,9 +4573,9 @@ paths:
                   additionalParams:
                     input:
                       FILE_PATH: /home/cvedix/project/edge_ai_api/cvedix_data/test_video/vehicle.mp4
-                      WEIGHTS_PATH: /home/cvedix/project/edge_ai_api/cvedix_data/models/det_cls/yolov3-tiny-2022-0721_best.weights
-                      CONFIG_PATH: /home/cvedix/project/edge_ai_api/cvedix_data/models/det_cls/yolov3-tiny-2022-0721.cfg
-                      LABELS_PATH: /home/cvedix/project/edge_ai_api/cvedix_data/models/det_cls/yolov3_tiny_5classes.txt
+                      WEIGHTS_PATH: /opt/edge_ai_api/models/det_cls/yolov3-tiny-2022-0721_best.weights
+                      CONFIG_PATH: /opt/edge_ai_api/models/det_cls/yolov3-tiny-2022-0721.cfg
+                      LABELS_PATH: /opt/edge_ai_api/models/det_cls/yolov3_tiny_5classes.txt
                     output:
                       ENABLE_SCREEN_DES: 'false'
                       BROKE_FOR: NORMAL
@@ -4594,9 +4593,9 @@ paths:
                   additionalParams:
                     input:
                       RTSP_URLS: '["rtsp://camera1.example.com:8554/stream1", "rtsp://camera2.example.com:8554/stream2"]'
-                      WEIGHTS_PATH: /home/cvedix/project/edge_ai_api/cvedix_data/models/det_cls/yolov3-tiny-2022-0721_best.weights
-                      CONFIG_PATH: /home/cvedix/project/edge_ai_api/cvedix_data/models/det_cls/yolov3-tiny-2022-0721.cfg
-                      LABELS_PATH: /home/cvedix/project/edge_ai_api/cvedix_data/models/det_cls/yolov3_tiny_5classes.txt
+                      WEIGHTS_PATH: /opt/edge_ai_api/models/det_cls/yolov3-tiny-2022-0721_best.weights
+                      CONFIG_PATH: /opt/edge_ai_api/models/det_cls/yolov3-tiny-2022-0721.cfg
+                      LABELS_PATH: /opt/edge_ai_api/models/det_cls/yolov3_tiny_5classes.txt
                     output:
                       ENABLE_SCREEN_DES: 'false'
                     JamZones: '[{"id":"zone1","name":"Camera 1 Jam Zone","roi":[{"x":20,"y":360},{"x":400,"y":250},{"x":535,"y":250},{"x":555,"y":560},{"x":30,"y":550}],"check_interval_frames":20,"check_min_hit_frames":50,"check_max_distance":8,"check_min_stops":8,"check_notify_interval":10},{"id":"zone2","name":"Camera
@@ -4611,9 +4610,9 @@ paths:
                   additionalParams:
                     input:
                       RTSP_URLS: '[{"rtsp_url":"rtsp://camera1.example.com:8554/stream1","channel":0,"resize_ratio":0.6,"gst_decoder_name":"avdec_h264","codec_type":"h264"},{"rtsp_url":"rtsp://camera2.example.com:8554/stream2","channel":1,"resize_ratio":0.5,"gst_decoder_name":"avdec_h265","codec_type":"h265"}]'
-                      WEIGHTS_PATH: /home/cvedix/project/edge_ai_api/cvedix_data/models/det_cls/yolov3-tiny-2022-0721_best.weights
-                      CONFIG_PATH: /home/cvedix/project/edge_ai_api/cvedix_data/models/det_cls/yolov3-tiny-2022-0721.cfg
-                      LABELS_PATH: /home/cvedix/project/edge_ai_api/cvedix_data/models/det_cls/yolov3_tiny_5classes.txt
+                      WEIGHTS_PATH: /opt/edge_ai_api/models/det_cls/yolov3-tiny-2022-0721_best.weights
+                      CONFIG_PATH: /opt/edge_ai_api/models/det_cls/yolov3-tiny-2022-0721.cfg
+                      LABELS_PATH: /opt/edge_ai_api/models/det_cls/yolov3_tiny_5classes.txt
                     output:
                       ENABLE_SCREEN_DES: 'false'
                     JamZones: '[{"id":"zone1","name":"Camera 1 Jam Zone","roi":[{"x":20,"y":360},{"x":400,"y":250},{"x":535,"y":250},{"x":555,"y":560},{"x":30,"y":550}],"check_interval_frames":20,"check_min_hit_frames":50,"check_max_distance":8,"check_min_stops":8,"check_notify_interval":10},{"id":"zone2","name":"Camera
@@ -4628,9 +4627,9 @@ paths:
                   additionalParams:
                     input:
                       FILE_PATHS: '["/home/cvedix/project/edge_ai_api/cvedix_data/test_video/jam.mp4", "/home/cvedix/project/edge_ai_api/cvedix_data/test_video/jam2.mp4"]'
-                      WEIGHTS_PATH: /home/cvedix/project/edge_ai_api/cvedix_data/models/det_cls/yolov3-tiny-2022-0721_best.weights
-                      CONFIG_PATH: /home/cvedix/project/edge_ai_api/cvedix_data/models/det_cls/yolov3-tiny-2022-0721.cfg
-                      LABELS_PATH: /home/cvedix/project/edge_ai_api/cvedix_data/models/det_cls/yolov3_tiny_5classes.txt
+                      WEIGHTS_PATH: /opt/edge_ai_api/models/det_cls/yolov3-tiny-2022-0721_best.weights
+                      CONFIG_PATH: /opt/edge_ai_api/models/det_cls/yolov3-tiny-2022-0721.cfg
+                      LABELS_PATH: /opt/edge_ai_api/models/det_cls/yolov3_tiny_5classes.txt
                     output:
                       ENABLE_SCREEN_DES: 'false'
                     JamZones: '[{"id":"zone1","name":"Channel 0 Jam Zone","roi":[{"x":20,"y":360},{"x":400,"y":250},{"x":535,"y":250},{"x":555,"y":560},{"x":30,"y":550}],"check_interval_frames":20,"check_min_hit_frames":50,"check_max_distance":8,"check_min_stops":8,"check_notify_interval":10},{"id":"zone2","name":"Channel
@@ -4645,9 +4644,9 @@ paths:
                   additionalParams:
                     input:
                       FILE_PATHS: '[{"file_path":"/home/cvedix/project/edge_ai_api/cvedix_data/test_video/jam.mp4","channel":0,"resize_ratio":0.5},{"file_path":"/home/cvedix/project/edge_ai_api/cvedix_data/test_video/jam2.mp4","channel":1,"resize_ratio":0.6}]'
-                      WEIGHTS_PATH: /home/cvedix/project/edge_ai_api/cvedix_data/models/det_cls/yolov3-tiny-2022-0721_best.weights
-                      CONFIG_PATH: /home/cvedix/project/edge_ai_api/cvedix_data/models/det_cls/yolov3-tiny-2022-0721.cfg
-                      LABELS_PATH: /home/cvedix/project/edge_ai_api/cvedix_data/models/det_cls/yolov3_tiny_5classes.txt
+                      WEIGHTS_PATH: /opt/edge_ai_api/models/det_cls/yolov3-tiny-2022-0721_best.weights
+                      CONFIG_PATH: /opt/edge_ai_api/models/det_cls/yolov3-tiny-2022-0721.cfg
+                      LABELS_PATH: /opt/edge_ai_api/models/det_cls/yolov3_tiny_5classes.txt
                     output:
                       ENABLE_SCREEN_DES: 'false'
                     JamZones: '[{"id":"zone1","name":"Channel 0 Jam Zone","roi":[{"x":20,"y":360},{"x":400,"y":250},{"x":535,"y":250},{"x":555,"y":560},{"x":30,"y":550}],"check_interval_frames":20,"check_min_hit_frames":50,"check_max_distance":8,"check_min_stops":8,"check_notify_interval":10},{"id":"zone2","name":"Channel
@@ -4662,9 +4661,9 @@ paths:
                   additionalParams:
                     input:
                       FILE_PATHS: '["/home/cvedix/project/edge_ai_api/cvedix_data/test_video/jam.mp4", "/home/cvedix/project/edge_ai_api/cvedix_data/test_video/jam2.mp4"]'
-                      WEIGHTS_PATH: /home/cvedix/project/edge_ai_api/cvedix_data/models/det_cls/yolov3-tiny-2022-0721_best.weights
-                      CONFIG_PATH: /home/cvedix/project/edge_ai_api/cvedix_data/models/det_cls/yolov3-tiny-2022-0721.cfg
-                      LABELS_PATH: /home/cvedix/project/edge_ai_api/cvedix_data/models/det_cls/yolov3_tiny_5classes.txt
+                      WEIGHTS_PATH: /opt/edge_ai_api/models/det_cls/yolov3-tiny-2022-0721_best.weights
+                      CONFIG_PATH: /opt/edge_ai_api/models/det_cls/yolov3-tiny-2022-0721.cfg
+                      LABELS_PATH: /opt/edge_ai_api/models/det_cls/yolov3_tiny_5classes.txt
                     output:
                       RTMP_URL: rtmp://localhost:1935/live/ba_jam_multiple
                       RTMP_DES_URL: rtmp://localhost:1935/live/ba_jam_multiple
@@ -4681,9 +4680,9 @@ paths:
                   additionalParams:
                     input:
                       FILE_PATH: /home/cvedix/project/edge_ai_api/cvedix_data/test_video/vehicle.mp4
-                      WEIGHTS_PATH: /home/cvedix/project/edge_ai_api/cvedix_data/models/det_cls/yolov3-tiny-2022-0721_best.weights
-                      CONFIG_PATH: /home/cvedix/project/edge_ai_api/cvedix_data/models/det_cls/yolov3-tiny-2022-0721.cfg
-                      LABELS_PATH: /home/cvedix/project/edge_ai_api/cvedix_data/models/det_cls/yolov3_tiny_5classes.txt
+                      WEIGHTS_PATH: /opt/edge_ai_api/models/det_cls/yolov3-tiny-2022-0721_best.weights
+                      CONFIG_PATH: /opt/edge_ai_api/models/det_cls/yolov3-tiny-2022-0721.cfg
+                      LABELS_PATH: /opt/edge_ai_api/models/det_cls/yolov3_tiny_5classes.txt
                     output:
                       RTMP_URL: rtmp://localhost:1935/live/ba_jam_demo
                       RTMP_DES_URL: rtmp://localhost:1935/live/ba_jam_demo
@@ -4756,9 +4755,9 @@ paths:
                   additionalParams:
                     input:
                       FILE_PATH: /home/cvedix/project/edge_ai_api/cvedix_data/test_video/vehicle.mp4
-                      WEIGHTS_PATH: /home/cvedix/project/edge_ai_api/cvedix_data/models/det_cls/yolov3-tiny-2022-0721_best.weights
-                      CONFIG_PATH: /home/cvedix/project/edge_ai_api/cvedix_data/models/det_cls/yolov3-tiny-2022-0721.cfg
-                      LABELS_PATH: /home/cvedix/project/edge_ai_api/cvedix_data/models/det_cls/yolov3_tiny_5classes.txt
+                      WEIGHTS_PATH: /opt/edge_ai_api/models/det_cls/yolov3-tiny-2022-0721_best.weights
+                      CONFIG_PATH: /opt/edge_ai_api/models/det_cls/yolov3-tiny-2022-0721.cfg
+                      LABELS_PATH: /opt/edge_ai_api/models/det_cls/yolov3_tiny_5classes.txt
                     output:
                       ENABLE_SCREEN_DES: 'false'
                       BROKE_FOR: NORMAL
@@ -4776,9 +4775,9 @@ paths:
                   additionalParams:
                     input:
                       RTSP_URLS: '["rtsp://camera1.example.com:8554/stream1", "rtsp://camera2.example.com:8554/stream2"]'
-                      WEIGHTS_PATH: /home/cvedix/project/edge_ai_api/cvedix_data/models/det_cls/yolov3-tiny-2022-0721_best.weights
-                      CONFIG_PATH: /home/cvedix/project/edge_ai_api/cvedix_data/models/det_cls/yolov3-tiny-2022-0721.cfg
-                      LABELS_PATH: /home/cvedix/project/edge_ai_api/cvedix_data/models/det_cls/yolov3_tiny_5classes.txt
+                      WEIGHTS_PATH: /opt/edge_ai_api/models/det_cls/yolov3-tiny-2022-0721_best.weights
+                      CONFIG_PATH: /opt/edge_ai_api/models/det_cls/yolov3-tiny-2022-0721.cfg
+                      LABELS_PATH: /opt/edge_ai_api/models/det_cls/yolov3_tiny_5classes.txt
                     output:
                       ENABLE_SCREEN_DES: 'false'
                     StopZones: '[{"id":"zone1","name":"Camera 1 Stop Zone","roi":[{"x":20,"y":30},{"x":600,"y":40},{"x":600,"y":300},{"x":10,"y":300}],"min_stop_seconds":3,"check_interval_frames":20,"check_min_hit_frames":50,"check_max_distance":5},{"id":"zone2","name":"Camera
@@ -4793,9 +4792,9 @@ paths:
                   additionalParams:
                     input:
                       FILE_PATHS: '["/home/cvedix/project/edge_ai_api/cvedix_data/test_video/vehicle_stop.mp4", "/home/cvedix/project/edge_ai_api/cvedix_data/test_video/vehicle_stop.mp4"]'
-                      WEIGHTS_PATH: /home/cvedix/project/edge_ai_api/cvedix_data/models/det_cls/yolov3-tiny-2022-0721_best.weights
-                      CONFIG_PATH: /home/cvedix/project/edge_ai_api/cvedix_data/models/det_cls/yolov3-tiny-2022-0721.cfg
-                      LABELS_PATH: /home/cvedix/project/edge_ai_api/cvedix_data/models/det_cls/yolov3_tiny_5classes.txt
+                      WEIGHTS_PATH: /opt/edge_ai_api/models/det_cls/yolov3-tiny-2022-0721_best.weights
+                      CONFIG_PATH: /opt/edge_ai_api/models/det_cls/yolov3-tiny-2022-0721.cfg
+                      LABELS_PATH: /opt/edge_ai_api/models/det_cls/yolov3_tiny_5classes.txt
                     output:
                       ENABLE_SCREEN_DES: 'false'
                     StopZones: '[{"id":"zone1","name":"Channel 0 Stop Zone","roi":[{"x":20,"y":30},{"x":600,"y":40},{"x":600,"y":300},{"x":10,"y":300}],"min_stop_seconds":3,"check_interval_frames":20,"check_min_hit_frames":50,"check_max_distance":5},{"id":"zone2","name":"Channel
@@ -4810,9 +4809,9 @@ paths:
                   additionalParams:
                     input:
                       FILE_PATHS: '[{"file_path":"/home/cvedix/project/edge_ai_api/cvedix_data/test_video/vehicle_stop.mp4","channel":0,"resize_ratio":0.6},{"file_path":"/home/cvedix/project/edge_ai_api/cvedix_data/test_video/vehicle_stop.mp4","channel":1,"resize_ratio":0.6}]'
-                      WEIGHTS_PATH: /home/cvedix/project/edge_ai_api/cvedix_data/models/det_cls/yolov3-tiny-2022-0721_best.weights
-                      CONFIG_PATH: /home/cvedix/project/edge_ai_api/cvedix_data/models/det_cls/yolov3-tiny-2022-0721.cfg
-                      LABELS_PATH: /home/cvedix/project/edge_ai_api/cvedix_data/models/det_cls/yolov3_tiny_5classes.txt
+                      WEIGHTS_PATH: /opt/edge_ai_api/models/det_cls/yolov3-tiny-2022-0721_best.weights
+                      CONFIG_PATH: /opt/edge_ai_api/models/det_cls/yolov3-tiny-2022-0721.cfg
+                      LABELS_PATH: /opt/edge_ai_api/models/det_cls/yolov3_tiny_5classes.txt
                     output:
                       ENABLE_SCREEN_DES: 'false'
                     StopZones: '[{"id":"zone1","name":"Channel 0 Stop Zone","roi":[{"x":20,"y":30},{"x":600,"y":40},{"x":600,"y":300},{"x":10,"y":300}],"min_stop_seconds":3,"check_interval_frames":20,"check_min_hit_frames":50,"check_max_distance":5},{"id":"zone2","name":"Channel
@@ -4827,9 +4826,9 @@ paths:
                   additionalParams:
                     input:
                       FILE_PATH: /home/cvedix/project/edge_ai_api/cvedix_data/test_video/vehicle.mp4
-                      WEIGHTS_PATH: /home/cvedix/project/edge_ai_api/cvedix_data/models/det_cls/yolov3-tiny-2022-0721_best.weights
-                      CONFIG_PATH: /home/cvedix/project/edge_ai_api/cvedix_data/models/det_cls/yolov3-tiny-2022-0721.cfg
-                      LABELS_PATH: /home/cvedix/project/edge_ai_api/cvedix_data/models/det_cls/yolov3_tiny_5classes.txt
+                      WEIGHTS_PATH: /opt/edge_ai_api/models/det_cls/yolov3-tiny-2022-0721_best.weights
+                      CONFIG_PATH: /opt/edge_ai_api/models/det_cls/yolov3-tiny-2022-0721.cfg
+                      LABELS_PATH: /opt/edge_ai_api/models/det_cls/yolov3_tiny_5classes.txt
                     output:
                       RTMP_URL: rtmp://localhost:1935/live/ba_stop_demo
                       RTMP_DES_URL: rtmp://localhost:1935/live/ba_stop_demo
@@ -4865,9 +4864,9 @@ paths:
                   additionalParams:
                     input:
                       RTSP_SRC_URL: rtsp://localhost:8554/mystream
-                      WEIGHTS_PATH: /home/cvedix/project/edge_ai_api/cvedix_data/models/det_cls/yolov3-tiny-2022-0721_best.weights
-                      CONFIG_PATH: /home/cvedix/project/edge_ai_api/cvedix_data/models/det_cls/yolov3-tiny-2022-0721.cfg
-                      LABELS_PATH: /home/cvedix/project/edge_ai_api/cvedix_data/models/det_cls/yolov3_tiny_5classes.txt
+                      WEIGHTS_PATH: /opt/edge_ai_api/models/det_cls/yolov3-tiny-2022-0721_best.weights
+                      CONFIG_PATH: /opt/edge_ai_api/models/det_cls/yolov3-tiny-2022-0721.cfg
+                      LABELS_PATH: /opt/edge_ai_api/models/det_cls/yolov3_tiny_5classes.txt
                       RESIZE_RATIO: '1.0'
                       GST_DECODER_NAME: avdec_h264
                       SKIP_INTERVAL: '0'
@@ -4896,8 +4895,8 @@ paths:
                   additionalParams:
                     input:
                       FILE_PATH: /opt/edge_ai_api/videos/face.mp4
-                      MODEL_PATH: /opt/edge_ai_api/models/face_detection_yunet_2022mar.onnx
-                      SFACE_MODEL_PATH: /opt/edge_ai_api/models/face_recognition_sface_2021dec.onnx
+                      MODEL_PATH: /opt/edge_ai_api/models/face/face_detection_yunet_2022mar.onnx
+                      SFACE_MODEL_PATH: /opt/edge_ai_api/models/face/face_recognition_sface_2021dec.onnx
                       RESIZE_RATIO: '1.0'
                     output:
                       RTMP_URL: rtmp://localhost:1935/live/camera_demo_1
@@ -4970,8 +4969,8 @@ paths:
                   additionalParams:
                     input:
                       FILE_PATH: /home/cvedix/project/edge_ai_api/cvedix_data/test_video/face.mp4
-                      MODEL_PATH: /home/cvedix/project/edge_ai_api/cvedix_data/models/face/face_detection_yunet_2022mar.onnx
-                      SFACE_MODEL_PATH: /home/cvedix/project/edge_ai_api/cvedix_data/models/face/face_recognition_sface_2021dec.onnx
+                      MODEL_PATH: /opt/edge_ai_api/models/face/face_detection_yunet_2022mar.onnx
+                      SFACE_MODEL_PATH: /opt/edge_ai_api/models/face/face_recognition_sface_2021dec.onnx
                       RESIZE_RATIO: '1.0'
                     output:
                       ENABLE_SCREEN_DES: 'true'
@@ -4987,8 +4986,8 @@ paths:
                   additionalParams:
                     input:
                       FILE_PATH: /home/cvedix/project/edge_ai_api/cvedix_data/test_video/face.mp4
-                      MODEL_PATH: /home/cvedix/project/edge_ai_api/cvedix_data/models/face/face_detection_yunet_2022mar.onnx
-                      SFACE_MODEL_PATH: /home/cvedix/project/edge_ai_api/cvedix_data/models/face/face_recognition_sface_2021dec.onnx
+                      MODEL_PATH: /opt/edge_ai_api/models/face/face_detection_yunet_2022mar.onnx
+                      SFACE_MODEL_PATH: /opt/edge_ai_api/models/face/face_recognition_sface_2021dec.onnx
                       RESIZE_RATIO: '1.0'
                     output:
                       ENABLE_SCREEN_DES: 'true'
@@ -5011,8 +5010,8 @@ paths:
                   additionalParams:
                     input:
                       FILE_PATH: /home/cvedix/project/edge_ai_api/cvedix_data/test_video/face.mp4
-                      MODEL_PATH: /home/cvedix/project/edge_ai_api/cvedix_data/models/face/face_detection_yunet_2022mar.onnx
-                      SFACE_MODEL_PATH: /home/cvedix/project/edge_ai_api/cvedix_data/models/face/face_recognition_sface_2021dec.onnx
+                      MODEL_PATH: /opt/edge_ai_api/models/face/face_detection_yunet_2022mar.onnx
+                      SFACE_MODEL_PATH: /opt/edge_ai_api/models/face/face_recognition_sface_2021dec.onnx
                       RESIZE_RATIO: '1.0'
                     output:
                       RTMP_URL: rtmp://localhost:1935/live/face_stream
@@ -5030,8 +5029,8 @@ paths:
                   additionalParams:
                     input:
                       RTSP_SRC_URL: rtsp://localhost:8554/mystream
-                      MODEL_PATH: /home/cvedix/project/edge_ai_api/cvedix_data/models/face/face_detection_yunet_2022mar.onnx
-                      SFACE_MODEL_PATH: /home/cvedix/project/edge_ai_api/cvedix_data/models/face/face_recognition_sface_2021dec.onnx
+                      MODEL_PATH: /opt/edge_ai_api/models/face/face_detection_yunet_2022mar.onnx
+                      SFACE_MODEL_PATH: /opt/edge_ai_api/models/face/face_recognition_sface_2021dec.onnx
                       RESIZE_RATIO: '1.0'
                     output:
                       ENABLE_SCREEN_DES: 'true'
@@ -5063,7 +5062,7 @@ paths:
                   detectionSensitivity: Medium
                   additionalParams:
                     input:
-                      MODEL_PATH: ./cvedix_data/models/face/face_detection_yunet_2022mar.onnx
+                      MODEL_PATH: /opt/edge_ai_api/models/face/face_detection_yunet_2022mar.onnx
                       CHANNEL: '0'
               infer_nodes___other___ba_socket_broker:
                 summary: Infer Nodes - Other - Ba Socket Broker
@@ -5112,8 +5111,8 @@ paths:
                   additionalParams:
                     input:
                       FILE_PATH: ./cvedix_data/test_video/face.mp4
-                      MODEL_PATH: ./cvedix_data/models/face/face_detection_yunet_2022mar.onnx
-                      SFACE_MODEL_PATH: ./cvedix_data/models/face/face_recognition_sface_2021dec.onnx
+                      MODEL_PATH: /opt/edge_ai_api/models/face/face_detection_yunet_2022mar.onnx
+                      SFACE_MODEL_PATH: /opt/edge_ai_api/models/face/face_recognition_sface_2021dec.onnx
                       EMBEDDINGS_SOCKET_IP: 127.0.0.1
                       EMBEDDINGS_SOCKET_PORT: '8080'
                       CROPPED_DIR: cropped_images
@@ -5167,8 +5166,8 @@ paths:
                   additionalParams:
                     input:
                       FILE_PATH: ./cvedix_data/test_video/face.mp4
-                      MODEL_PATH: ./cvedix_data/models/face/face_detection_yunet_2022mar.onnx
-                      SFACE_MODEL_PATH: ./cvedix_data/models/face/face_recognition_sface_2021dec.onnx
+                      MODEL_PATH: /opt/edge_ai_api/models/face/face_detection_yunet_2022mar.onnx
+                      SFACE_MODEL_PATH: /opt/edge_ai_api/models/face/face_recognition_sface_2021dec.onnx
                     output:
                       BROKE_FOR: FACE
               infer_nodes___other___json_kafka_broker:
@@ -5183,8 +5182,8 @@ paths:
                   additionalParams:
                     input:
                       FILE_PATH: ./cvedix_data/test_video/face.mp4
-                      MODEL_PATH: ./cvedix_data/models/face/face_detection_yunet_2022mar.onnx
-                      SFACE_MODEL_PATH: ./cvedix_data/models/face/face_recognition_sface_2021dec.onnx
+                      MODEL_PATH: /opt/edge_ai_api/models/face/face_detection_yunet_2022mar.onnx
+                      SFACE_MODEL_PATH: /opt/edge_ai_api/models/face/face_recognition_sface_2021dec.onnx
                       KAFKA_SERVERS: 192.168.77.87:9092
                       KAFKA_TOPIC: videopipe_topic
                     output:
@@ -5201,8 +5200,8 @@ paths:
                   additionalParams:
                     input:
                       FILE_PATH: ./cvedix_data/test_video/face.mp4
-                      MODEL_PATH: ./cvedix_data/models/face/face_detection_yunet_2022mar.onnx
-                      SFACE_MODEL_PATH: ./cvedix_data/models/face/face_recognition_sface_2021dec.onnx
+                      MODEL_PATH: /opt/edge_ai_api/models/face/face_detection_yunet_2022mar.onnx
+                      SFACE_MODEL_PATH: /opt/edge_ai_api/models/face/face_recognition_sface_2021dec.onnx
                     output:
                       BROKE_FOR: FACE
                       MQTT_BROKER_URL: localhost
@@ -5235,7 +5234,7 @@ paths:
                   additionalParams:
                     input:
                       FILE_PATH: ./cvedix_data/test_video/face.mp4
-                      MODEL_PATH: ./cvedix_data/models/face/face_detection_yunet_2022mar.onnx
+                      MODEL_PATH: /opt/edge_ai_api/models/face/face_detection_yunet_2022mar.onnx
                     output:
                       BROKE_FOR: FACE
               infer_nodes___other___plate_socket_broker:
@@ -5287,7 +5286,7 @@ paths:
                     input:
                       RTMP_SRC_URL: rtmp://localhost:1935/live/stream
                       RESIZE_RATIO: '1.0'
-                      MODEL_PATH: ./cvedix_data/models/face/face_detection_yunet_2022mar.onnx
+                      MODEL_PATH: /opt/edge_ai_api/models/face/face_detection_yunet_2022mar.onnx
                       SKIP_INTERVAL: '0'
               infer_nodes___other___udp_src:
                 summary: Infer Nodes - Other - Udp Src
@@ -5301,7 +5300,7 @@ paths:
                   additionalParams:
                     input:
                       RESIZE_RATIO: '1.0'
-                      MODEL_PATH: ./cvedix_data/models/face/face_detection_yunet_2022mar.onnx
+                      MODEL_PATH: /opt/edge_ai_api/models/face/face_detection_yunet_2022mar.onnx
                       UDP_PORT: '6000'
                       SKIP_INTERVAL: '0'
               infer_nodes___other___xml_file_broker:
@@ -5316,8 +5315,8 @@ paths:
                   additionalParams:
                     input:
                       FILE_PATH: ./cvedix_data/test_video/face.mp4
-                      MODEL_PATH: ./cvedix_data/models/face/face_detection_yunet_2022mar.onnx
-                      SFACE_MODEL_PATH: ./cvedix_data/models/face/face_recognition_sface_2021dec.onnx
+                      MODEL_PATH: /opt/edge_ai_api/models/face/face_detection_yunet_2022mar.onnx
+                      SFACE_MODEL_PATH: /opt/edge_ai_api/models/face/face_recognition_sface_2021dec.onnx
                       XML_FILE_PATH: ./output/broker_output.xml
                     output:
                       BROKE_FOR: FACE
@@ -5333,8 +5332,8 @@ paths:
                   additionalParams:
                     input:
                       FILE_PATH: ./cvedix_data/test_video/face.mp4
-                      MODEL_PATH: ./cvedix_data/models/face/face_detection_yunet_2022mar.onnx
-                      SFACE_MODEL_PATH: ./cvedix_data/models/face/face_recognition_sface_2021dec.onnx
+                      MODEL_PATH: /opt/edge_ai_api/models/face/face_detection_yunet_2022mar.onnx
+                      SFACE_MODEL_PATH: /opt/edge_ai_api/models/face/face_recognition_sface_2021dec.onnx
                       XML_SOCKET_IP: 127.0.0.1
                       XML_SOCKET_PORT: '8080'
                     output:
@@ -5351,7 +5350,7 @@ paths:
                   additionalParams:
                     input:
                       FILE_PATH: ./cvedix_data/test_video/face_multis.mp4
-                      MODEL_PATH: ./cvedix_data/models/face/yolov8n_face_detection.rknn
+                      MODEL_PATH: /opt/edge_ai_api/models/face/yolov8n_face_detection.rknn
                       SCORE_THRESHOLD: '0.5'
                       INPUT_WIDTH: '640'
                       INPUT_HEIGHT: '640'
@@ -5595,7 +5594,7 @@ paths:
                       FILE_PATH: /home/cvedix/project/edge_ai_api/cvedix_data/test_video/mask_rcnn.mp4
                       MODEL_PATH: /home/cvedix/project/edge_ai_api/cvedix_data/models/mask_rcnn/frozen_inference_graph.pb
                       MODEL_CONFIG_PATH: /home/cvedix/project/edge_ai_api/cvedix_data/models/mask_rcnn/mask_rcnn_inception_v2_coco_2018_01_28.pbtxt
-                      LABELS_PATH: /home/cvedix/project/edge_ai_api/cvedix_data/models/coco_80classes.txt
+                      LABELS_PATH: /opt/edge_ai_api/models/coco_80classes.txt
                       INPUT_WIDTH: '416'
                       INPUT_HEIGHT: '416'
                       SCORE_THRESHOLD: '0.5'
@@ -5616,7 +5615,7 @@ paths:
                       FILE_PATH: /home/cvedix/project/edge_ai_api/cvedix_data/test_video/mask_rcnn.mp4
                       MODEL_PATH: /home/cvedix/project/edge_ai_api/cvedix_data/models/mask_rcnn/frozen_inference_graph.pb
                       MODEL_CONFIG_PATH: /home/cvedix/project/edge_ai_api/cvedix_data/models/mask_rcnn/mask_rcnn_inception_v2_coco_2018_01_28.pbtxt
-                      LABELS_PATH: /home/cvedix/project/edge_ai_api/cvedix_data/models/coco_80classes.txt
+                      LABELS_PATH: /opt/edge_ai_api/models/coco_80classes.txt
                       INPUT_WIDTH: '416'
                       INPUT_HEIGHT: '416'
                       SCORE_THRESHOLD: '0.5'
@@ -5637,11 +5636,11 @@ paths:
                   additionalParams:
                     input:
                       RTSP_URL: rtsp://localhost:8554/stream
-                      FACE_DETECTION_MODEL_PATH: /opt/cvedix/models/face/yunet.onnx
-                      BUFFALO_L_FACE_ENCODING_MODEL: /opt/cvedix/models/face/buffalo_l.onnx
-                      EMAP_FILE_FOR_EMBEDDINGS: /opt/cvedix/models/face/emap.onnx
-                      FACE_SWAP_MODEL_PATH: /opt/cvedix/models/face/face_swap.onnx
-                      SWAP_SOURCE_IMAGE: /opt/cvedix/models/face/source_face.jpg
+                      FACE_DETECTION_MODEL_PATH: /opt/edge_ai_api/models/face/yunet.onnx
+                      BUFFALO_L_FACE_ENCODING_MODEL: /opt/edge_ai_api/models/face/buffalo_l.onnx
+                      EMAP_FILE_FOR_EMBEDDINGS: /opt/edge_ai_api/models/face/emap.onnx
+                      FACE_SWAP_MODEL_PATH: /opt/edge_ai_api/models/face/face_swap.onnx
+                      SWAP_SOURCE_IMAGE: /opt/edge_ai_api/models/face/source_face.jpg
                     output:
                       RTMP_URL: rtmp://localhost:1935/live/face_swap_stream
                       RTMP_DES_URL: rtmp://localhost:1935/live/face_swap_stream
@@ -5657,8 +5656,8 @@ paths:
                   additionalParams:
                     input:
                       RTSP_URL: rtsp://localhost:8554/stream
-                      FACE_DETECTION_MODEL_PATH: /opt/cvedix/models/face/yunet.onnx
-                      FACE_RECOGNITION_MODEL_PATH: /opt/cvedix/models/face/insightface.onnx
+                      FACE_DETECTION_MODEL_PATH: /opt/edge_ai_api/models/face/yunet.onnx
+                      FACE_RECOGNITION_MODEL_PATH: /opt/edge_ai_api/models/face/insightface.onnx
                       SAVE_DIR: /tmp/output/insightface_recognition
               other_solutions___onnx___yolov11_detection:
                 summary: Other Solutions - Onnx - Yolov11 Detection
@@ -5672,7 +5671,7 @@ paths:
                   additionalParams:
                     input:
                       RTSP_URL: rtsp://localhost:8554/stream
-                      MODEL_PATH: /opt/cvedix/models/yolov11/yolov11n.onnx
+                      MODEL_PATH: /opt/edge_ai_api/models/yolov11/yolov11n.onnx
                       SAVE_DIR: /tmp/output/yolov11_detection
               other_solutions___other___mllm_analysis:
                 summary: Other Solutions - Other - Mllm Analysis
@@ -5702,7 +5701,7 @@ paths:
                   additionalParams:
                     input:
                       RTSP_URL: rtsp://localhost:8554/stream
-                      MODEL_PATH: /opt/cvedix/models/yolov11/yolov11n.rknn
+                      MODEL_PATH: /opt/edge_ai_api/models/yolov11/yolov11n.rknn
                       SAVE_DIR: /tmp/output/rknn_yolov11_detection
               other_solutions___tensorrt___full_config:
                 summary: Other Solutions - Tensorrt - Full Config
@@ -5746,8 +5745,8 @@ paths:
                   additionalParams:
                     input:
                       RTSP_URL: rtsp://localhost:8554/stream
-                      FACE_DETECTION_MODEL_PATH: /opt/cvedix/models/face/yunet.onnx
-                      FACE_RECOGNITION_MODEL_PATH: /opt/cvedix/models/face/insightface.trt
+                      FACE_DETECTION_MODEL_PATH: /opt/edge_ai_api/models/face/yunet.onnx
+                      FACE_RECOGNITION_MODEL_PATH: /opt/edge_ai_api/models/face/insightface.trt
                       SAVE_DIR: /tmp/output/trt_insightface_recognition
               tests___test_set_config_examples:
                 summary: 'Tests - Test: Set Config Examples'
@@ -5865,15 +5864,15 @@ paths:
                   additionalParams:
                     input:
                       RTSP_URL: rtsp://localhost:8554/stream
-                      MODEL_PATH: /opt/cvedix/models/face/yunet.onnx
+                      MODEL_PATH: /opt/edge_ai_api/models/face/yunet.onnx
                       SAVE_DIR: /tmp/output
               update___update_change_model_path:
                 summary: Update - Update Change Model Path
                 value:
                   additionalParams:
                     input:
-                      MODEL_PATH: /usr/share/cvedix/cvedix_data/models/face/face_detection_yunet_2022mar.onnx
-                      SFACE_MODEL_PATH: /usr/share/cvedix/cvedix_data/models/face/face_recognition_sface_2021dec.onnx
+                      MODEL_PATH: /opt/edge_ai_api/models/face/face_detection_yunet_2022mar.onnx
+                      SFACE_MODEL_PATH: /opt/edge_ai_api/models/face/face_recognition_sface_2021dec.onnx
               update___update_change_name_group:
                 summary: Update - Update Change Name Group
                 value:
@@ -6157,7 +6156,6 @@ paths:
         schema:
           type: string
         description: Instance ID (UUID)
-        example: 291a85b8-d4c0-5765-dcb2-48c9b51f48d0
       requestBody:
         required: true
         content:
@@ -7617,7 +7615,6 @@ paths:
         schema:
           type: string
         description: Unique identifier of the instance (UUID)
-        example: 291a85b8-d4c0-5765-dcb2-48c9b51f48d0
       responses:
         '200':
           description: Instance configuration
@@ -7695,7 +7692,6 @@ paths:
         schema:
           type: string
         description: Unique identifier of the instance (UUID)
-        example: 00000000-0000-0000-0000-000000000000
       requestBody:
         required: true
         content:
@@ -7781,7 +7777,6 @@ paths:
         schema:
           type: string
         description: Unique identifier of the instance (UUID)
-        example: 291a85b8-d4c0-5765-dcb2-48c9b51f48d0
       responses:
         '204':
           description: Instance loaded successfully
@@ -7856,7 +7851,6 @@ paths:
         schema:
           type: string
         description: Unique identifier of the instance (UUID)
-        example: 291a85b8-d4c0-5765-dcb2-48c9b51f48d0
       responses:
         '204':
           description: Instance unloaded successfully
@@ -7936,7 +7930,6 @@ paths:
         schema:
           type: string
         description: Unique identifier of the instance (UUID)
-        example: 291a85b8-d4c0-5765-dcb2-48c9b51f48d0
       responses:
         '200':
           description: Instance state retrieved successfully
@@ -8051,7 +8044,6 @@ paths:
         schema:
           type: string
         description: Unique identifier of the instance (UUID)
-        example: 291a85b8-d4c0-5765-dcb2-48c9b51f48d0
       requestBody:
         required: true
         content:
@@ -8165,7 +8157,6 @@ paths:
         schema:
           type: string
         description: Instance ID (UUID)
-        example: a5204fc9-9a59-f80f-fb9f-bf3b42214943
       responses:
         '200':
           description: Statistics retrieved successfully
@@ -8246,7 +8237,6 @@ paths:
         schema:
           type: string
         description: The unique identifier of the instance
-        example: a5204fc9-9a59-f80f-fb9f-bf3b42214943
       responses:
         '200':
           description: Stream output configuration
@@ -8333,7 +8323,6 @@ paths:
         schema:
           type: string
         description: The unique identifier of the instance
-        example: a5204fc9-9a59-f80f-fb9f-bf3b42214943
       requestBody:
         required: true
         content:
@@ -8407,7 +8396,6 @@ paths:
         schema:
           type: string
         description: The unique identifier of the instance
-        example: a5204fc9-9a59-f80f-fb9f-bf3b42214943
       responses:
         '200':
           description: List of crossing lines
@@ -8454,7 +8442,6 @@ paths:
         schema:
           type: string
         description: The unique identifier of the instance
-        example: a5204fc9-9a59-f80f-fb9f-bf3b42214943
       requestBody:
         required: true
         content:
@@ -8572,7 +8559,6 @@ paths:
         schema:
           type: string
         description: The unique identifier of the instance
-        example: a5204fc9-9a59-f80f-fb9f-bf3b42214943
       responses:
         '200':
           description: All lines deleted successfully
@@ -8620,14 +8606,12 @@ paths:
         schema:
           type: string
         description: The unique identifier of the instance
-        example: a5204fc9-9a59-f80f-fb9f-bf3b42214943
       - name: lineId
         in: path
         required: true
         schema:
           type: string
         description: The unique identifier of the line to retrieve
-        example: b1234567-89ab-cdef-0123-456789abcdef
       responses:
         '200':
           description: Line retrieved successfully
@@ -8667,14 +8651,12 @@ paths:
         schema:
           type: string
         description: The unique identifier of the instance
-        example: a5204fc9-9a59-f80f-fb9f-bf3b42214943
       - name: lineId
         in: path
         required: true
         schema:
           type: string
         description: The unique identifier of the line to update
-        example: b1234567-89ab-cdef-0123-456789abcdef
       requestBody:
         required: true
         content:
@@ -8743,14 +8725,12 @@ paths:
         schema:
           type: string
         description: The unique identifier of the instance
-        example: a5204fc9-9a59-f80f-fb9f-bf3b42214943
       - name: lineId
         in: path
         required: true
         schema:
           type: string
         description: The unique identifier of the line to delete
-        example: b1234567-89ab-cdef-0123-456789abcdef
       responses:
         '200':
           description: Line deleted successfully
@@ -8799,7 +8779,6 @@ paths:
         schema:
           type: string
         description: The unique identifier of the instance
-        example: a5204fc9-9a59-f80f-fb9f-bf3b42214943
       responses:
         '200':
           description: List of jam zones
@@ -8845,7 +8824,6 @@ paths:
         schema:
           type: string
         description: The unique identifier of the instance
-        example: a5204fc9-9a59-f80f-fb9f-bf3b42214943
       requestBody:
         required: true
         content:
@@ -8954,7 +8932,6 @@ paths:
         schema:
           type: string
         description: The unique identifier of the instance
-        example: a5204fc9-9a59-f80f-fb9f-bf3b42214943
       responses:
         '200':
           description: All zones deleted successfully
@@ -9002,14 +8979,12 @@ paths:
         schema:
           type: string
         description: The unique identifier of the instance
-        example: a5204fc9-9a59-f80f-fb9f-bf3b42214943
       - name: jamId
         in: path
         required: true
         schema:
           type: string
         description: The unique identifier of the jam zone to retrieve
-        example: b1234567-89ab-cdef-0123-456789abcdef
       responses:
         '200':
           description: Jam zone retrieved successfully
@@ -9044,14 +9019,12 @@ paths:
         schema:
           type: string
         description: The unique identifier of the instance
-        example: a5204fc9-9a59-f80f-fb9f-bf3b42214943
       - name: jamId
         in: path
         required: true
         schema:
           type: string
         description: The unique identifier of the jam zone to update
-        example: b1234567-89ab-cdef-0123-456789abcdef
       requestBody:
         required: true
         content:
@@ -9102,14 +9075,12 @@ paths:
         schema:
           type: string
         description: The unique identifier of the instance
-        example: a5204fc9-9a59-f80f-fb9f-bf3b42214943
       - name: jamId
         in: path
         required: true
         schema:
           type: string
         description: The unique identifier of the jam zone to delete
-        example: b1234567-89ab-cdef-0123-456789abcdef
       responses:
         '200':
           description: Jam zone deleted successfully
@@ -9151,7 +9122,6 @@ paths:
         schema:
           type: string
         description: The unique identifier of the instance
-        example: a5204fc9-9a59-f80f-fb9f-bf3b42214943
       responses:
         '200':
           description: List of stop zones
@@ -9196,7 +9166,6 @@ paths:
         schema:
           type: string
         description: The unique identifier of the instance
-        example: a5204fc9-9a59-f80f-fb9f-bf3b42214943
       requestBody:
         required: true
         content:
@@ -9307,7 +9276,6 @@ paths:
         schema:
           type: string
         description: The unique identifier of the instance
-        example: a5204fc9-9a59-f80f-fb9f-bf3b42214943
       responses:
         '200':
           description: All stops deleted successfully
@@ -9355,14 +9323,12 @@ paths:
         schema:
           type: string
         description: The unique identifier of the instance
-        example: a5204fc9-9a59-f80f-fb9f-bf3b42214943
       - name: stopId
         in: path
         required: true
         schema:
           type: string
         description: The unique identifier of the stop zone to retrieve
-        example: b1234567-89ab-cdef-0123-456789abcdef
       responses:
         '200':
           description: Stop zone retrieved successfully
@@ -9400,14 +9366,12 @@ paths:
         schema:
           type: string
         description: The unique identifier of the instance
-        example: a5204fc9-9a59-f80f-fb9f-bf3b42214943
       - name: stopId
         in: path
         required: true
         schema:
           type: string
         description: The unique identifier of the stop zone to update
-        example: b1234567-89ab-cdef-0123-456789abcdef
       requestBody:
         required: true
         content:
@@ -9432,14 +9396,12 @@ paths:
         schema:
           type: string
         description: The unique identifier of the instance
-        example: a5204fc9-9a59-f80f-fb9f-bf3b42214943
       - name: stopId
         in: path
         required: true
         schema:
           type: string
         description: The unique identifier of the stop zone to delete
-        example: b1234567-89ab-cdef-0123-456789abcdef
       responses:
         '200':
           description: Stop zone deleted successfully
@@ -10601,12 +10563,22 @@ paths:
                 inUse: false
                 parameters:
                   channel: '0'
-                  port: '8000'
+                  rtsp_port: '9000'
+                  rtsp_name: 'stream'
+                  stream_name: 'stream'
+                  bitrate: '512'
+                  osd: 'false'
+                  encoder: 'x264enc'
                 requiredParameters:
-                - port
+                - rtsp_port
                 optionalParameters:
                 - channel
+                - rtsp_name
                 - stream_name
+                - resolution
+                - bitrate
+                - osd
+                - encoder
                 templateDetailUrl: /v1/core/node/template/rtsp_des_template
                 input:
                 - type: video_frames
@@ -10619,17 +10591,37 @@ paths:
                 - type: rtsp_stream
                   description: RTSP video stream
                   protocol: RTSP
-                  accessInfo: 'Access via RTSP URL: rtsp://<host>:8000/stream (default: rtsp://localhost:8000/stream)'
-                  example: rtsp://localhost:8000/stream
+                  accessInfo: 'Access via RTSP URL: rtsp://<host>:9000/stream (default: rtsp://localhost:9000/stream)'
+                  example: rtsp://localhost:9000/stream
                   configurableParameters:
-                  - name: port
-                    description: RTSP server port
-                    default: '8000'
+                  - name: rtsp_port
+                    description: RTSP server port (1-65535)
+                    default: '9000'
                     affects: RTSP URL port
-                  - name: stream_name
-                    description: RTSP stream name/path
+                  - name: rtsp_name
+                    description: RTSP stream name/path (alternative to stream_name)
                     default: stream
                     affects: RTSP URL path
+                  - name: stream_name
+                    description: RTSP stream name/path (alternative to rtsp_name)
+                    default: stream
+                    affects: RTSP URL path
+                  - name: resolution
+                    description: 'Output resolution (format: widthxheight or width,height)'
+                    default: source resolution
+                    affects: Stream resolution
+                  - name: bitrate
+                    description: Video bitrate in kbps
+                    default: '512'
+                    affects: Stream quality and bandwidth
+                  - name: osd
+                    description: Enable on-screen display overlay (true/false)
+                    default: 'false'
+                    affects: Stream content (with/without overlays)
+                  - name: encoder
+                    description: GStreamer encoder name (x264enc, openh264enc, etc.)
+                    default: x264enc
+                    affects: Encoding method
                 createdAt: '2025-12-16T11:33:52Z'
         '404':
           description: Node not found
@@ -12889,7 +12881,7 @@ paths:
       description: Deletes all analytics lines (counting, crossing, and tailgating) for a SecuRT instance.
       operationId: deleteSecuRTAllLines
       tags:
-      - Lines
+      - Lines SecuRT
       parameters:
       - name: instanceId
         in: path
@@ -12932,7 +12924,7 @@ paths:
       description: Creates a new counting line for a SecuRT instance. Counting lines count objects crossing the line.
       operationId: createSecuRTCountingLine
       tags:
-      - Lines
+      - Lines SecuRT
       parameters:
       - name: instanceId
         in: path
@@ -12980,7 +12972,7 @@ paths:
       summary: CORS preflight for counting line
       operationId: createSecuRTCountingLineOptions
       tags:
-      - Lines
+      - Lines SecuRT
       responses:
         '200':
           description: CORS preflight response
@@ -12990,7 +12982,7 @@ paths:
       description: Creates a counting line with a specific ID for a SecuRT instance.
       operationId: createSecuRTCountingLineWithId
       tags:
-      - Lines
+      - Lines SecuRT
       parameters:
       - name: instanceId
         in: path
@@ -13050,7 +13042,7 @@ paths:
       summary: CORS preflight for counting line with ID
       operationId: createSecuRTCountingLineWithIdOptions
       tags:
-      - Lines
+      - Lines SecuRT
       responses:
         '200':
           description: CORS preflight response
@@ -13060,7 +13052,7 @@ paths:
       description: Creates a new crossing line for a SecuRT instance. Crossing lines detect objects crossing the line by direction.
       operationId: createSecuRTCrossingLine
       tags:
-      - Lines
+      - Lines SecuRT
       parameters:
       - name: instanceId
         in: path
@@ -13108,7 +13100,7 @@ paths:
       summary: CORS preflight for crossing line
       operationId: createSecuRTCrossingLineOptions
       tags:
-      - Lines
+      - Lines SecuRT
       responses:
         '200':
           description: CORS preflight response
@@ -13118,7 +13110,7 @@ paths:
       description: Creates a crossing line with a specific ID for a SecuRT instance.
       operationId: createSecuRTCrossingLineWithId
       tags:
-      - Lines
+      - Lines SecuRT
       parameters:
       - name: instanceId
         in: path
@@ -13178,7 +13170,7 @@ paths:
       summary: CORS preflight for crossing line with ID
       operationId: createSecuRTCrossingLineWithIdOptions
       tags:
-      - Lines
+      - Lines SecuRT
       responses:
         '200':
           description: CORS preflight response
@@ -13188,7 +13180,7 @@ paths:
       description: Creates a new tailgating line for a SecuRT instance. Tailgating lines detect multiple objects crossing simultaneously within a time window.
       operationId: createSecuRTTailgatingLine
       tags:
-      - Lines
+      - Lines SecuRT
       parameters:
       - name: instanceId
         in: path
@@ -13236,7 +13228,7 @@ paths:
       summary: CORS preflight for tailgating line
       operationId: createSecuRTTailgatingLineOptions
       tags:
-      - Lines
+      - Lines SecuRT
       responses:
         '200':
           description: CORS preflight response
@@ -13246,7 +13238,7 @@ paths:
       description: Creates a tailgating line with a specific ID for a SecuRT instance.
       operationId: createSecuRTTailgatingLineWithId
       tags:
-      - Lines
+      - Lines SecuRT
       parameters:
       - name: instanceId
         in: path
@@ -13306,7 +13298,7 @@ paths:
       summary: CORS preflight for tailgating line with ID
       operationId: createSecuRTTailgatingLineWithIdOptions
       tags:
-      - Lines
+      - Lines SecuRT
       responses:
         '200':
           description: CORS preflight response
@@ -13316,7 +13308,7 @@ paths:
       description: Deletes a specific analytics line by ID from a SecuRT instance.
       operationId: deleteSecuRTLine
       tags:
-      - Lines
+      - Lines SecuRT
       parameters:
       - name: instanceId
         in: path
@@ -13355,7 +13347,7 @@ paths:
       summary: CORS preflight for line deletion
       operationId: deleteSecuRTLineOptions
       tags:
-      - Lines
+      - Lines SecuRT
       responses:
         '200':
           description: CORS preflight response
@@ -13489,6 +13481,1029 @@ paths:
       operationId: securtGetAnalyticsEntitiesV1Options
       tags:
       - SecuRT Instance
+      responses:
+        '200':
+          description: CORS preflight response
+  /v1/securt/instance/{instanceId}/motion_area:
+    post:
+      summary: Set motion detection area
+      description: Sets the motion detection area for a SecuRT instance. Motion detection will be limited to this area.
+      operationId: setSecuRTMotionArea
+      tags:
+      - SecuRT Advanced
+      parameters:
+      - name: instanceId
+        in: path
+        required: true
+        schema:
+          type: string
+        description: Instance ID
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+              - coordinates
+              properties:
+                coordinates:
+                  type: array
+                  description: Array of coordinate points defining the motion area polygon
+                  items:
+                    type: object
+                    required:
+                    - x
+                    - y
+                    properties:
+                      x:
+                        type: number
+                        format: double
+                        description: X coordinate (0.0-1.0)
+                        example: 0.0
+                      y:
+                        type: number
+                        format: double
+                        description: Y coordinate (0.0-1.0)
+                        example: 0.0
+                  minItems: 3
+            example:
+              coordinates:
+              - x: 0.0
+                y: 0.0
+              - x: 1.0
+                y: 0.0
+              - x: 1.0
+                y: 1.0
+              - x: 0.0
+                y: 1.0
+      responses:
+        '204':
+          description: Motion area set successfully
+        '400':
+          description: Invalid request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: Instance not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+    options:
+      summary: CORS preflight for motion area
+      operationId: setSecuRTMotionAreaOptions
+      tags:
+      - SecuRT Advanced
+      responses:
+        '200':
+          description: CORS preflight response
+  /v1/securt/instance/{instanceId}/feature_extraction:
+    post:
+      summary: Set feature extraction types
+      description: Sets the feature extraction types for a SecuRT instance. Valid types are Face, Person, and Vehicle.
+      operationId: setSecuRTFeatureExtraction
+      tags:
+      - SecuRT Advanced
+      parameters:
+      - name: instanceId
+        in: path
+        required: true
+        schema:
+          type: string
+        description: Instance ID
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+              - types
+              properties:
+                types:
+                  type: array
+                  description: Array of feature extraction types
+                  items:
+                    type: string
+                    enum:
+                    - Face
+                    - Person
+                    - Vehicle
+                  minItems: 1
+            example:
+              types:
+              - Face
+              - Person
+              - Vehicle
+      responses:
+        '204':
+          description: Feature extraction types set successfully
+        '400':
+          description: Invalid request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: Instance not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+    get:
+      summary: Get feature extraction types
+      description: Gets the current feature extraction types for a SecuRT instance.
+      operationId: getSecuRTFeatureExtraction
+      tags:
+      - SecuRT Advanced
+      parameters:
+      - name: instanceId
+        in: path
+        required: true
+        schema:
+          type: string
+        description: Instance ID
+      responses:
+        '200':
+          description: Feature extraction types retrieved successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  types:
+                    type: array
+                    description: Array of feature extraction types
+                    items:
+                      type: string
+                      enum:
+                      - Face
+                      - Person
+                      - Vehicle
+              example:
+                types:
+                - Face
+                - Person
+        '404':
+          description: Instance not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+    options:
+      summary: CORS preflight for feature extraction
+      operationId: setSecuRTFeatureExtractionOptions
+      tags:
+      - SecuRT Advanced
+      responses:
+        '200':
+          description: CORS preflight response
+  /v1/securt/instance/{instanceId}/attributes_extraction:
+    post:
+      summary: Set attributes extraction mode
+      description: Sets the attributes extraction mode for a SecuRT instance. Valid modes are Off, Person, Vehicle, and Both.
+      operationId: setSecuRTAttributesExtraction
+      tags:
+      - SecuRT Advanced
+      parameters:
+      - name: instanceId
+        in: path
+        required: true
+        schema:
+          type: string
+        description: Instance ID
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+              - mode
+              properties:
+                mode:
+                  type: string
+                  enum:
+                  - Off
+                  - Person
+                  - Vehicle
+                  - Both
+                  description: Attributes extraction mode
+            example:
+              mode: Both
+      responses:
+        '204':
+          description: Attributes extraction mode set successfully
+        '400':
+          description: Invalid request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: Instance not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+    get:
+      summary: Get attributes extraction mode
+      description: Gets the current attributes extraction mode for a SecuRT instance.
+      operationId: getSecuRTAttributesExtraction
+      tags:
+      - SecuRT Advanced
+      parameters:
+      - name: instanceId
+        in: path
+        required: true
+        schema:
+          type: string
+        description: Instance ID
+      responses:
+        '200':
+          description: Attributes extraction mode retrieved successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  mode:
+                    type: string
+                    enum:
+                    - Off
+                    - Person
+                    - Vehicle
+                    - Both
+                    description: Attributes extraction mode
+              example:
+                mode: Both
+        '404':
+          description: Instance not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+    options:
+      summary: CORS preflight for attributes extraction
+      operationId: setSecuRTAttributesExtractionOptions
+      tags:
+      - SecuRT Advanced
+      responses:
+        '200':
+          description: CORS preflight response
+  /v1/securt/instance/{instanceId}/performance_profile:
+    post:
+      summary: Set performance profile
+      description: Sets the performance profile for a SecuRT instance. Valid profiles are Performance, Balanced, and Accurate.
+      operationId: setSecuRTPerformanceProfile
+      tags:
+      - SecuRT Advanced
+      parameters:
+      - name: instanceId
+        in: path
+        required: true
+        schema:
+          type: string
+        description: Instance ID
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+              - profile
+              properties:
+                profile:
+                  type: string
+                  enum:
+                  - Performance
+                  - Balanced
+                  - Accurate
+                  description: Performance profile
+            example:
+              profile: Balanced
+      responses:
+        '204':
+          description: Performance profile set successfully
+        '400':
+          description: Invalid request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: Instance not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+    get:
+      summary: Get performance profile
+      description: Gets the current performance profile for a SecuRT instance.
+      operationId: getSecuRTPerformanceProfile
+      tags:
+      - SecuRT Advanced
+      parameters:
+      - name: instanceId
+        in: path
+        required: true
+        schema:
+          type: string
+        description: Instance ID
+      responses:
+        '200':
+          description: Performance profile retrieved successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  profile:
+                    type: string
+                    enum:
+                    - Performance
+                    - Balanced
+                    - Accurate
+                    description: Performance profile
+              example:
+                profile: Balanced
+        '404':
+          description: Instance not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+    options:
+      summary: CORS preflight for performance profile
+      operationId: setSecuRTPerformanceProfileOptions
+      tags:
+      - SecuRT Advanced
+      responses:
+        '200':
+          description: CORS preflight response
+  /v1/securt/instance/{instanceId}/face_detection:
+    post:
+      summary: Enable or disable face detection
+      description: Enables or disables face detection for a SecuRT instance.
+      operationId: setSecuRTFaceDetection
+      tags:
+      - SecuRT Advanced
+      parameters:
+      - name: instanceId
+        in: path
+        required: true
+        schema:
+          type: string
+        description: Instance ID
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+              - enable
+              properties:
+                enable:
+                  type: boolean
+                  description: Enable face detection
+            example:
+              enable: true
+      responses:
+        '204':
+          description: Face detection setting updated successfully
+        '400':
+          description: Invalid request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: Instance not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+    options:
+      summary: CORS preflight for face detection
+      operationId: setSecuRTFaceDetectionOptions
+      tags:
+      - SecuRT Advanced
+      responses:
+        '200':
+          description: CORS preflight response
+  /v1/securt/instance/{instanceId}/lpr:
+    post:
+      summary: Enable or disable LPR (License Plate Recognition)
+      description: Enables or disables License Plate Recognition for a SecuRT instance.
+      operationId: setSecuRTLPR
+      tags:
+      - SecuRT Advanced
+      parameters:
+      - name: instanceId
+        in: path
+        required: true
+        schema:
+          type: string
+        description: Instance ID
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+              - enable
+              properties:
+                enable:
+                  type: boolean
+                  description: Enable LPR
+            example:
+              enable: true
+      responses:
+        '204':
+          description: LPR setting updated successfully
+        '400':
+          description: Invalid request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: Instance not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+    get:
+      summary: Get LPR enablement status
+      description: Gets the current LPR enablement status for a SecuRT instance.
+      operationId: getSecuRTLPR
+      tags:
+      - SecuRT Advanced
+      parameters:
+      - name: instanceId
+        in: path
+        required: true
+        schema:
+          type: string
+        description: Instance ID
+      responses:
+        '200':
+          description: LPR status retrieved successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  enabled:
+                    type: boolean
+                    description: LPR enabled status
+              example:
+                enabled: true
+        '404':
+          description: Instance not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+    options:
+      summary: CORS preflight for LPR
+      operationId: setSecuRTLPROptions
+      tags:
+      - SecuRT Advanced
+      responses:
+        '200':
+          description: CORS preflight response
+  /v1/securt/instance/{instanceId}/pip:
+    post:
+      summary: Enable or disable PIP (Picture-in-Picture)
+      description: Enables or disables Picture-in-Picture overlay (face and license plate overlay on track thumbnail) for a SecuRT instance.
+      operationId: setSecuRTPIP
+      tags:
+      - SecuRT Advanced
+      parameters:
+      - name: instanceId
+        in: path
+        required: true
+        schema:
+          type: string
+        description: Instance ID
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+              - enable
+              properties:
+                enable:
+                  type: boolean
+                  description: Enable PIP
+            example:
+              enable: true
+      responses:
+        '204':
+          description: PIP setting updated successfully
+        '400':
+          description: Invalid request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: Instance not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+    get:
+      summary: Get PIP enablement status
+      description: Gets the current PIP enablement status for a SecuRT instance.
+      operationId: getSecuRTPIP
+      tags:
+      - SecuRT Advanced
+      parameters:
+      - name: instanceId
+        in: path
+        required: true
+        schema:
+          type: string
+        description: Instance ID
+      responses:
+        '200':
+          description: PIP status retrieved successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  enabled:
+                    type: boolean
+                    description: PIP enabled status
+              example:
+                enabled: true
+        '404':
+          description: Instance not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+    options:
+      summary: CORS preflight for PIP
+      operationId: setSecuRTPIPOptions
+      tags:
+      - SecuRT Advanced
+      responses:
+        '200':
+          description: CORS preflight response
+  /v1/securt/experimental/instance/{instanceId}/surrender_detection:
+    post:
+      summary: Enable or disable surrender detection (Experimental)
+      description: Enables or disables surrender detection for a SecuRT instance. This is an experimental feature.
+      operationId: setSecuRTSurrenderDetection
+      tags:
+      - SecuRT Advanced
+      parameters:
+      - name: instanceId
+        in: path
+        required: true
+        schema:
+          type: string
+        description: Instance ID
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+              - enable
+              properties:
+                enable:
+                  type: boolean
+                  description: Enable surrender detection
+            example:
+              enable: true
+      responses:
+        '204':
+          description: Surrender detection setting updated successfully
+        '400':
+          description: Invalid request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: Instance not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+    get:
+      summary: Get surrender detection status (Experimental)
+      description: Gets the current surrender detection status for a SecuRT instance. This is an experimental feature.
+      operationId: getSecuRTSurrenderDetection
+      tags:
+      - SecuRT Advanced
+      parameters:
+      - name: instanceId
+        in: path
+        required: true
+        schema:
+          type: string
+        description: Instance ID
+      responses:
+        '200':
+          description: Surrender detection status retrieved successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  enabled:
+                    type: boolean
+                    description: Surrender detection enabled status
+              example:
+                enabled: false
+        '404':
+          description: Instance not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+    options:
+      summary: CORS preflight for surrender detection
+      operationId: setSecuRTSurrenderDetectionOptions
+      tags:
+      - SecuRT Advanced
+      responses:
+        '200':
+          description: CORS preflight response
+  /v1/securt/instance/{instanceId}/masking_areas:
+    post:
+      summary: Set masking areas
+      description: Sets masking areas for a SecuRT instance. These areas will be masked in processing.
+      operationId: setSecuRTMaskingAreas
+      tags:
+      - SecuRT Advanced
+      parameters:
+      - name: instanceId
+        in: path
+        required: true
+        schema:
+          type: string
+        description: Instance ID
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+              - areas
+              properties:
+                areas:
+                  type: array
+                  description: Array of masking areas, each area is an array of coordinates
+                  items:
+                    type: array
+                    items:
+                      type: object
+                      required:
+                      - x
+                      - y
+                      properties:
+                        x:
+                          type: number
+                          format: double
+                          description: X coordinate (0.0-1.0)
+                        y:
+                          type: number
+                          format: double
+                          description: Y coordinate (0.0-1.0)
+                    minItems: 3
+            example:
+              areas:
+              - - x: 0.0
+                  y: 0.0
+                - x: 1.0
+                  y: 0.0
+                - x: 1.0
+                  y: 1.0
+                - x: 0.0
+                  y: 1.0
+      responses:
+        '204':
+          description: Masking areas set successfully
+        '400':
+          description: Invalid request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: Instance not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+    options:
+      summary: CORS preflight for masking areas
+      operationId: setSecuRTMaskingAreasOptions
+      tags:
+      - SecuRT Advanced
+      responses:
+        '200':
+          description: CORS preflight response
+  /v1/securt/instance/{instanceId}/exclusion_areas:
+    post:
+      summary: Add exclusion area
+      description: Adds an exclusion area for a SecuRT instance. Objects in exclusion areas will be ignored based on the specified classes.
+      operationId: addSecuRTExclusionArea
+      tags:
+      - SecuRT Advanced
+      parameters:
+      - name: instanceId
+        in: path
+        required: true
+        schema:
+          type: string
+        description: Instance ID
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+              - coordinates
+              - classes
+              properties:
+                coordinates:
+                  type: array
+                  description: Array of coordinate points defining the exclusion area polygon
+                  items:
+                    type: object
+                    required:
+                    - x
+                    - y
+                    properties:
+                      x:
+                        type: number
+                        format: double
+                        description: X coordinate (0.0-1.0)
+                        example: 0.0
+                      y:
+                        type: number
+                        format: double
+                        description: Y coordinate (0.0-1.0)
+                        example: 0.0
+                  minItems: 3
+                classes:
+                  type: array
+                  description: Array of object classes to exclude in this area
+                  items:
+                    type: string
+                    enum:
+                    - Person
+                    - Vehicle
+                  minItems: 1
+            example:
+              coordinates:
+              - x: 0.0
+                y: 0.0
+              - x: 0.5
+                y: 0.0
+              - x: 0.5
+                y: 0.5
+              - x: 0.0
+                y: 0.5
+              classes:
+              - Person
+              - Vehicle
+      responses:
+        '204':
+          description: Exclusion area added successfully
+        '400':
+          description: Invalid request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: Instance not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+    get:
+      summary: Get all exclusion areas
+      description: Gets all exclusion areas configured for a SecuRT instance.
+      operationId: getSecuRTExclusionAreas
+      tags:
+      - SecuRT Advanced
+      parameters:
+      - name: instanceId
+        in: path
+        required: true
+        schema:
+          type: string
+        description: Instance ID
+      responses:
+        '200':
+          description: Exclusion areas retrieved successfully
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  type: object
+                  required:
+                  - coordinates
+                  - classes
+                  properties:
+                    coordinates:
+                      type: array
+                      description: Array of coordinate points
+                      items:
+                        type: object
+                        required:
+                        - x
+                        - y
+                        properties:
+                          x:
+                            type: number
+                            format: double
+                          y:
+                            type: number
+                            format: double
+                    classes:
+                      type: array
+                      description: Array of object classes
+                      items:
+                        type: string
+                        enum:
+                        - Person
+                        - Vehicle
+              example:
+              - coordinates:
+                - x: 0.0
+                  y: 0.0
+                - x: 0.5
+                  y: 0.0
+                - x: 0.5
+                  y: 0.5
+                - x: 0.0
+                  y: 0.5
+                classes:
+                - Person
+        '404':
+          description: Instance not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+    delete:
+      summary: Delete all exclusion areas
+      description: Deletes all exclusion areas for a SecuRT instance.
+      operationId: deleteSecuRTExclusionAreas
+      tags:
+      - SecuRT Advanced
+      parameters:
+      - name: instanceId
+        in: path
+        required: true
+        schema:
+          type: string
+        description: Instance ID
+      responses:
+        '204':
+          description: All exclusion areas deleted successfully
+        '404':
+          description: Instance not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+    options:
+      summary: CORS preflight for exclusion areas
+      operationId: addSecuRTExclusionAreaOptions
+      tags:
+      - SecuRT Advanced
       responses:
         '200':
           description: CORS preflight response
@@ -16222,22 +17237,6 @@ components:
           type: boolean
           description: Whether instance is running
           example: true
-    Coordinate:
-      type: object
-      required:
-      - x
-      - y
-      properties:
-        x:
-          type: number
-          format: double
-          description: X coordinate (normalized 0.0-1.0 or pixel)
-          example: 0.0
-        y:
-          type: number
-          format: double
-          description: Y coordinate (normalized 0.0-1.0 or pixel)
-          example: 0.0
     ColorRGBA:
       type: array
       items:
@@ -16249,84 +17248,6 @@ components:
       maxItems: 4
       description: Color in RGBA format [r, g, b, a] with values 0.0-1.0
       example: [0.0, 0.0, 0.0, 1.0]
-    LineWrite:
-      type: object
-      required:
-      - coordinates
-      - classes
-      properties:
-        name:
-          type: string
-          description: Line name
-          example: "Main Entry Line"
-        coordinates:
-          type: array
-          minItems: 2
-          maxItems: 2
-          description: Line coordinates (exactly 2 points: start and end)
-          items:
-            $ref: '#/components/schemas/Coordinate'
-          example:
-            - x: 0.0
-              y: 0.5
-            - x: 1.0
-              y: 0.5
-        classes:
-          type: array
-          minItems: 1
-          description: Object classes to detect
-          items:
-            type: string
-            enum:
-            - Person
-            - Animal
-            - Vehicle
-            - Face
-            - Unknown
-          example:
-            - Person
-            - Vehicle
-        direction:
-          type: string
-          enum:
-          - Up
-          - Down
-          - Both
-          description: Crossing direction
-          default: Both
-          example: Both
-        color:
-          type: array
-          minItems: 4
-          maxItems: 4
-          description: Line color in RGBA format (0.0-1.0 range)
-          items:
-            type: number
-            format: double
-            minimum: 0.0
-            maximum: 1.0
-          default:
-            - 0.0
-            - 0.0
-            - 0.0
-            - 1.0
-          example:
-            - 0.0
-            - 0.0
-            - 0.0
-            - 1.0
-    TailgatingLineWrite:
-      allOf:
-      - $ref: '#/components/schemas/LineWrite'
-      - type: object
-        required:
-        - seconds
-        properties:
-          seconds:
-            type: integer
-            minimum: 1
-            description: Time window in seconds for tailgating detection
-            example: 2
     AreaBaseWrite:
       type: object
       required:
@@ -16443,7 +17364,6 @@ components:
     LoiteringAreaWrite:
       allOf:
       - $ref: '#/components/schemas/AreaBaseWrite'
->>>>>>> origin/develop
       - type: object
         required:
         - seconds
@@ -16451,81 +17371,8 @@ components:
           seconds:
             type: integer
             minimum: 1
-            description: Time window in seconds for tailgating detection
-            example: 2
-    LineRead:
-      type: object
-      required:
-      - id
-      - coordinates
-      - classes
-      - direction
-      - color
-      properties:
-        id:
-          type: string
-          description: Line ID (UUID)
-          example: "550e8400-e29b-41d4-a716-446655440000"
-        name:
-          type: string
-          description: Line name
-          example: "Main Entry Line"
-        coordinates:
-          type: array
-          items:
-            $ref: '#/components/schemas/Coordinate'
-          example:
-            - x: 0.0
-              y: 0.5
-            - x: 1.0
-              y: 0.5
-        classes:
-          type: array
-          items:
-            type: string
-            enum:
-            - Person
-            - Animal
-            - Vehicle
-            - Face
-            - Unknown
-          example:
-            - Person
-            - Vehicle
-        direction:
-          type: string
-          enum:
-          - Up
-          - Down
-          - Both
-          example: Both
-        color:
-          type: array
-          items:
-            type: number
-            format: double
-          example:
-            - 0.0
-            - 0.0
-            - 0.0
-            - 1.0
-    CountingLineRead:
-      allOf:
-      - $ref: '#/components/schemas/LineRead'
-    CrossingLineRead:
-      allOf:
-      - $ref: '#/components/schemas/LineRead'
-    TailgatingLineRead:
-      allOf:
-      - $ref: '#/components/schemas/LineRead'
-      - type: object
-        required:
-        - seconds
-        properties:
-          seconds:
-            type: integer
-            description: Time window in seconds for tailgating detection
-            example: 2
+            description: Duration threshold in seconds
+            example: 5
     LoiteringAreaRead:
       allOf:
       - $ref: '#/components/schemas/AreaBaseRead'
@@ -16651,7 +17498,157 @@ components:
     FaceCoveredAreaRead:
       $ref: '#/components/schemas/AreaBaseRead'
       x-internal: true
->>>>>>> origin/develop
+    LineWrite:
+      type: object
+      required:
+      - coordinates
+      - classes
+      properties:
+        name:
+          type: string
+          description: Line name
+          example: "Main Entry Line"
+        coordinates:
+          type: array
+          minItems: 2
+          maxItems: 2
+          description: "Line coordinates (exactly 2 points: start and end)"
+          items:
+            $ref: '#/components/schemas/Coordinate'
+          example:
+            - x: 0.0
+              y: 0.5
+            - x: 1.0
+              y: 0.5
+        classes:
+          type: array
+          minItems: 1
+          description: Object classes to detect
+          items:
+            type: string
+            enum:
+            - Person
+            - Animal
+            - Vehicle
+            - Face
+            - Unknown
+          example:
+            - Person
+            - Vehicle
+        direction:
+          type: string
+          enum:
+          - Up
+          - Down
+          - Both
+          description: Crossing direction
+          default: Both
+          example: Both
+        color:
+          type: array
+          minItems: 4
+          maxItems: 4
+          description: Line color in RGBA format (0.0-1.0 range)
+          items:
+            type: number
+            format: double
+            minimum: 0.0
+            maximum: 1.0
+          default:
+            - 0.0
+            - 0.0
+            - 0.0
+            - 1.0
+          example:
+            - 0.0
+            - 0.0
+            - 0.0
+            - 1.0
+    TailgatingLineWrite:
+      allOf:
+      - $ref: '#/components/schemas/LineWrite'
+      - type: object
+        required:
+        - seconds
+        properties:
+          seconds:
+            type: integer
+            minimum: 1
+            description: Time window in seconds for tailgating detection
+            example: 2
+    LineRead:
+      type: object
+      required:
+      - id
+      - coordinates
+      - classes
+      - direction
+      - color
+      properties:
+        id:
+          type: string
+          description: Line ID (UUID)
+          example: "550e8400-e29b-41d4-a716-446655440000"
+        name:
+          type: string
+          description: Line name
+          example: "Main Entry Line"
+        coordinates:
+          type: array
+          items:
+            $ref: '#/components/schemas/Coordinate'
+          example:
+            - x: 0.0
+              y: 0.5
+            - x: 1.0
+              y: 0.5
+        classes:
+          type: array
+          items:
+            type: string
+            enum:
+            - Person
+            - Animal
+            - Vehicle
+            - Face
+            - Unknown
+          example:
+            - Person
+            - Vehicle
+        direction:
+          type: string
+          enum:
+          - Up
+          - Down
+          - Both
+          example: Both
+        color:
+          type: array
+          items:
+            type: number
+            format: double
+          example:
+            - 0.0
+            - 0.0
+            - 0.0
+            - 1.0
+    CountingLineRead:
+      allOf:
+      - $ref: '#/components/schemas/LineRead'
+    CrossingLineRead:
+      allOf:
+      - $ref: '#/components/schemas/LineRead'
+    TailgatingLineRead:
+      allOf:
+      - $ref: '#/components/schemas/LineRead'
+      - type: object
+        required:
+        - seconds
+        properties:
+          seconds:
+            type: integer
+            description: Time window in seconds for tailgating detection
+            example: 2
 x-tagGroups:
   - name: CORE API
     tags:

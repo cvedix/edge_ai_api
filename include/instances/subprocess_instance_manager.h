@@ -43,6 +43,14 @@ public:
   bool updateInstance(const std::string &instanceId,
                       const Json::Value &configJson) override;
 
+  /**
+   * @brief Update crossing lines runtime (without restart)
+   * @param instanceId Instance ID
+   * @param linesArray JSON array of line objects
+   * @return true if successful
+   */
+  bool updateLines(const std::string &instanceId, const Json::Value &linesArray);
+
   // ========== Instance Query ==========
 
   std::optional<InstanceInfo>

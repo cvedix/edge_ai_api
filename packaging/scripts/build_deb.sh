@@ -202,7 +202,11 @@ if [ -d "$BUILD_LIB_DIR" ]; then
 fi
 
 # Copy CVEDIX SDK libraries if available
-if [ -d "/opt/cvedix/lib" ]; then
+# Check both old and new SDK locations for compatibility
+if [ -d "/opt/cvedix-ai-runtime/lib/cvedix" ]; then
+    cp -L /opt/cvedix-ai-runtime/lib/cvedix/libcvedix*.so* "$LIB_TEMP_DIR/" 2>/dev/null || true
+    cp -L /opt/cvedix-ai-runtime/lib/cvedix/libtinyexpr.so* "$LIB_TEMP_DIR/" 2>/dev/null || true
+elif [ -d "/opt/cvedix/lib" ]; then
     cp -L /opt/cvedix/lib/libcvedix*.so* "$LIB_TEMP_DIR/" 2>/dev/null || true
     cp -L /opt/cvedix/lib/libtinyexpr.so* "$LIB_TEMP_DIR/" 2>/dev/null || true
 fi
@@ -358,8 +362,13 @@ bundle_libraries() {
     fi
 
     # Copy CVEDIX SDK libraries if available
-    if [ -d "/opt/cvedix/lib" ]; then
-        echo "  Copying CVEDIX SDK libraries..."
+    # Check both old and new SDK locations for compatibility
+    if [ -d "/opt/cvedix-ai-runtime/lib/cvedix" ]; then
+        echo "  Copying CVEDIX SDK libraries from /opt/cvedix-ai-runtime/lib/cvedix..."
+        cp -L /opt/cvedix-ai-runtime/lib/cvedix/libcvedix*.so* "$LIB_DIR/" 2>/dev/null || true
+        cp -L /opt/cvedix-ai-runtime/lib/cvedix/libtinyexpr.so* "$LIB_DIR/" 2>/dev/null || true
+    elif [ -d "/opt/cvedix/lib" ]; then
+        echo "  Copying CVEDIX SDK libraries from /opt/cvedix/lib..."
         cp -L /opt/cvedix/lib/libcvedix*.so* "$LIB_DIR/" 2>/dev/null || true
         cp -L /opt/cvedix/lib/libtinyexpr.so* "$LIB_DIR/" 2>/dev/null || true
     fi
@@ -656,6 +665,15 @@ echo ""
 # ============================================
 # Note: Library bundling is handled by debian/rules during install phase
 echo -e "${BLUE}[5/5]${NC} Building Debian package..."
+
+# Use TMPDIR on /home/cvedix/Data (larger partition) to avoid disk space issues
+# This ensures all build tools (strip, dh_strip, etc.) use the larger partition
+export TMPDIR="${TMPDIR:-/home/cvedix/Data/tmp}"
+export TEMP="$TMPDIR"
+export TMP="$TMPDIR"
+mkdir -p "$TMPDIR"
+echo "Using TMPDIR: $TMPDIR (available space: $(df -h "$TMPDIR" | tail -1 | awk '{print $4}'))"
+
 export DEB_BUILD_OPTIONS="parallel=$(nproc)"
 
 # Build package (dpkg-buildpackage expects to be run from project root)

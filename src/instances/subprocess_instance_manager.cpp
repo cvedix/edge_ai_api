@@ -144,8 +144,8 @@ SubprocessInstanceManager::createInstance(const CreateInstanceRequest &req) {
   
   // Generate RTSP URL from RTMP URL if RTSP URL is not already set
   // This allows RTSP stream to be available when RTMP output is configured
-  // Pattern: rtmp://host:1935/live/stream_key -> rtsp://host:8554/live/stream_key_0
-  // RTMP node automatically adds "_0" suffix to stream key
+  // RTSP URL will have the same stream key as RTMP URL (including instanceId if present)
+  // Pattern: rtmp://host:1935/live/stream_key -> rtsp://host:8554/live/stream_key
   if (info.rtspUrl.empty() && !info.rtmpUrl.empty()) {
     std::string rtmpUrl = info.rtmpUrl;
     
@@ -163,17 +163,11 @@ SubprocessInstanceManager::createInstance(const CreateInstanceRequest &req) {
         rtspUrl.replace(portPos, 5, ":8554");
       }
       
-      // Add "_0" suffix to stream key if not already present
-      // RTMP node automatically adds this suffix
-      size_t lastSlash = rtspUrl.find_last_of('/');
-      if (lastSlash != std::string::npos) {
-        std::string streamKey = rtspUrl.substr(lastSlash + 1);
-        if (streamKey.find("_0") == std::string::npos && !streamKey.empty()) {
-          rtspUrl += "_0";
-        }
-      }
-      
+      // Keep the same stream key as RTMP URL (no modification needed)
+      // RTMP URL already includes instanceId and "_0" suffix if applicable
       info.rtspUrl = rtspUrl;
+      std::cerr << "[SubprocessInstanceManager] Generated RTSP URL from RTMP URL (same stream key): '" 
+                << rtspUrl << "'" << std::endl;
     }
   }
   
@@ -646,10 +640,18 @@ bool SubprocessInstanceManager::updateInstance(const std::string &instanceId,
             it->second.additionalParams[key] = params[key].asString();
           }
           // Update URLs from AdditionalParams
-          if (it->second.additionalParams.count("RTSP_URL")) {
+          // Check RTSP_DES_URL first (for output), then RTSP_SRC_URL (for input), then RTSP_URL (backward compatibility)
+          if (it->second.additionalParams.count("RTSP_DES_URL")) {
+            it->second.rtspUrl = it->second.additionalParams.at("RTSP_DES_URL");
+          } else if (it->second.additionalParams.count("RTSP_SRC_URL")) {
+            it->second.rtspUrl = it->second.additionalParams.at("RTSP_SRC_URL");
+          } else if (it->second.additionalParams.count("RTSP_URL")) {
             it->second.rtspUrl = it->second.additionalParams.at("RTSP_URL");
           }
-          if (it->second.additionalParams.count("RTMP_URL")) {
+          // Check RTMP_DES_URL first (new format), then RTMP_URL (backward compatibility)
+          if (it->second.additionalParams.count("RTMP_DES_URL")) {
+            it->second.rtmpUrl = it->second.additionalParams.at("RTMP_DES_URL");
+          } else if (it->second.additionalParams.count("RTMP_URL")) {
             it->second.rtmpUrl = it->second.additionalParams.at("RTMP_URL");
           }
           if (it->second.additionalParams.count("FILE_PATH")) {
@@ -1336,6 +1338,52 @@ SubprocessInstanceManager::getLastFrame(const std::string &instanceId) const {
                "invalid response type"
             << std::endl;
   return "";
+}
+
+bool SubprocessInstanceManager::updateLines(const std::string &instanceId,
+                                            const Json::Value &linesArray) {
+  // Check worker state - accept both READY and BUSY states
+  auto workerState = supervisor_->getWorkerState(instanceId);
+  if (workerState != worker::WorkerState::READY &&
+      workerState != worker::WorkerState::BUSY) {
+    std::cerr << "[SubprocessInstanceManager] Worker not ready: " << instanceId
+              << " (state: " << static_cast<int>(workerState) << ")"
+              << std::endl;
+    return false;
+  }
+
+  // Send UPDATE_LINES command to worker
+  // Use configurable timeout for API calls (default: 5 seconds)
+  worker::IPCMessage msg;
+  msg.type = worker::MessageType::UPDATE_LINES;
+  msg.payload["instance_id"] = instanceId;
+  msg.payload["lines"] = linesArray;
+
+  std::cout << "[SubprocessInstanceManager] Sending UPDATE_LINES IPC message "
+               "to worker for instance: "
+            << instanceId << std::endl;
+
+  auto response = supervisor_->sendToWorker(
+      instanceId, msg, TimeoutConstants::getIpcApiTimeoutMs());
+
+  std::cout << "[SubprocessInstanceManager] Received response from worker for "
+               "instance: "
+            << instanceId
+            << ", response type: " << static_cast<int>(response.type)
+            << std::endl;
+
+  if (response.type == worker::MessageType::UPDATE_LINES_RESPONSE &&
+      response.payload.get("success", false).asBool()) {
+    std::cout << "[SubprocessInstanceManager] ✓ Lines updated successfully via "
+                 "hot reload (no restart needed)"
+              << std::endl;
+    return true;
+  }
+
+  std::cerr << "[SubprocessInstanceManager] Failed to update lines: "
+            << response.payload.get("error", "Unknown error").asString()
+            << std::endl;
+  return false;
 }
 
 Json::Value SubprocessInstanceManager::getInstanceConfig(

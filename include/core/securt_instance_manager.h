@@ -66,9 +66,15 @@ public:
   /**
    * @brief Check if instance exists
    * @param instanceId Instance ID
-   * @return true if exists
+   * @return true if exists (in SecuRT registry or in core with compatible solution)
    */
   bool hasInstance(const std::string &instanceId) const;
+
+  /**
+   * @brief Get core instance manager (for restart/runtime operations)
+   * @return Core instance manager pointer
+   */
+  IInstanceManager *getCoreInstanceManager() const { return instance_manager_; }
 
 private:
   IInstanceManager *instance_manager_;
@@ -89,5 +95,19 @@ private:
    */
   CreateInstanceRequest createCoreInstanceRequest(
       const std::string &instanceId, const SecuRTInstanceWrite &write) const;
+
+  /**
+   * @brief Check if solution is compatible with SecuRT APIs
+   * @param solutionId Solution ID
+   * @return true if compatible (securt, ba_crossline, ba_jam, ba_stop)
+   */
+  static bool isCompatibleSolution(const std::string &solutionId);
+
+  /**
+   * @brief Auto-register instance from core manager to SecuRT registry if compatible
+   * @param instanceId Instance ID
+   * @return true if registered or already exists
+   */
+  bool autoRegisterInstance(const std::string &instanceId);
 };
 

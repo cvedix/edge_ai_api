@@ -2362,6 +2362,9 @@ void InstanceHandler::getStreamOutput(
     std::string streamUri;
     if (!info.rtmpUrl.empty()) {
       streamUri = info.rtmpUrl;
+    } else if (info.additionalParams.find("RTMP_DES_URL") !=
+               info.additionalParams.end()) {
+      streamUri = info.additionalParams.at("RTMP_DES_URL");
     } else if (info.additionalParams.find("RTMP_URL") !=
                info.additionalParams.end()) {
       streamUri = info.additionalParams.at("RTMP_URL");
@@ -2728,6 +2731,9 @@ void InstanceHandler::configureStreamOutput(
         std::string streamUri;
         if (!info.rtmpUrl.empty()) {
           streamUri = info.rtmpUrl;
+        } else if (info.additionalParams.find("RTMP_DES_URL") !=
+                   info.additionalParams.end()) {
+          streamUri = info.additionalParams.at("RTMP_DES_URL");
         } else if (info.additionalParams.find("RTMP_URL") !=
                    info.additionalParams.end()) {
           streamUri = info.additionalParams.at("RTMP_URL");
@@ -2817,6 +2823,9 @@ void InstanceHandler::configureStreamOutput(
         std::string streamUri;
         if (!info.rtmpUrl.empty()) {
           streamUri = info.rtmpUrl;
+        } else if (info.additionalParams.find("RTMP_DES_URL") !=
+                   info.additionalParams.end()) {
+          streamUri = info.additionalParams.at("RTMP_DES_URL");
         } else if (info.additionalParams.find("RTMP_URL") !=
                    info.additionalParams.end()) {
           streamUri = info.additionalParams.at("RTMP_URL");
@@ -4258,6 +4267,10 @@ void InstanceHandler::getInstanceOutput(
     if (!info.filePath.empty()) {
       input["type"] = "FILE";
       input["path"] = info.filePath;
+    } else if (info.additionalParams.find("RTSP_SRC_URL") !=
+               info.additionalParams.end()) {
+      input["type"] = "RTSP";
+      input["url"] = info.additionalParams.at("RTSP_SRC_URL");
     } else if (info.additionalParams.find("RTSP_URL") !=
                info.additionalParams.end()) {
       input["type"] = "RTSP";
@@ -4288,6 +4301,13 @@ void InstanceHandler::getInstanceOutput(
       }
       if (!info.rtspUrl.empty()) {
         output["rtspUrl"] = info.rtspUrl;
+      } else if (info.additionalParams.find("RTSP_DES_URL") !=
+                 info.additionalParams.end()) {
+        output["rtspUrl"] = info.additionalParams.at("RTSP_DES_URL");
+      } else if (info.additionalParams.find("RTSP_URL") !=
+                 info.additionalParams.end()) {
+        // RTSP_URL can be used for output if RTSP_DES_URL is not provided
+        output["rtspUrl"] = info.additionalParams.at("RTSP_URL");
       }
     } else {
       output["type"] = "FILE";

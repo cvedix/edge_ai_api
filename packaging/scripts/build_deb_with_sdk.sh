@@ -139,7 +139,11 @@ if [ -d "$BUILD_LIB_DIR" ]; then
 fi
 
 # Copy CVEDIX SDK libraries if available (from extracted SDK)
-if [ -d "/opt/cvedix/lib" ]; then
+# Check both old and new SDK locations for compatibility
+if [ -d "/opt/cvedix-ai-runtime/lib/cvedix" ]; then
+    cp -L /opt/cvedix-ai-runtime/lib/cvedix/libcvedix*.so* "$LIB_TEMP_DIR/" 2>/dev/null || true
+    cp -L /opt/cvedix-ai-runtime/lib/cvedix/libtinyexpr.so* "$LIB_TEMP_DIR/" 2>/dev/null || true
+elif [ -d "/opt/cvedix/lib" ]; then
     cp -L /opt/cvedix/lib/libcvedix*.so* "$LIB_TEMP_DIR/" 2>/dev/null || true
     cp -L /opt/cvedix/lib/libtinyexpr.so* "$LIB_TEMP_DIR/" 2>/dev/null || true
 fi
@@ -864,7 +868,7 @@ if ! grep -q "SDK_EXTRACT_DIR = \$(CURDIR)/debian/sdk_extract" "$RULES_FILE"; th
 \
 # SDK configuration\
 SDK_EXTRACT_DIR = $(CURDIR)/debian/sdk_extract\
-CVEDIX_INSTALL_DIR = /opt/cvedix' "$RULES_FILE"
+CVEDIX_INSTALL_DIR = /opt/cvedix-ai-runtime' "$RULES_FILE"
 fi
 
 # Verify SDK bundling section exists
@@ -905,12 +909,13 @@ if ! grep -q "# Setup CVEDIX SDK library path" "$POSTINST_FILE"; then
 
 # Setup CVEDIX SDK library path (SDK is bundled in this package)
 echo "Setting up CVEDIX SDK library path..."
-if [ -d "/opt/cvedix/lib" ]; then
-    echo "/opt/cvedix/lib" > /etc/ld.so.conf.d/cvedix.conf
-    echo "  ✓ Added /opt/cvedix/lib to library search path"
+CVEDIX_LIB_DIR="/opt/cvedix-ai-runtime/lib/cvedix"
+if [ -d "$CVEDIX_LIB_DIR" ]; then
+    echo "$CVEDIX_LIB_DIR" > /etc/ld.so.conf.d/cvedix.conf
+    echo "  ✓ Added $CVEDIX_LIB_DIR to library search path"
     ldconfig 2>&1 | grep -v "is not a symbolic link" || true
 else
-    echo "  ⚠  Warning: /opt/cvedix/lib not found (SDK may not be properly installed)"
+    echo "  ⚠  Warning: $CVEDIX_LIB_DIR not found (SDK may not be properly installed)"
 fi
 
 # Check OpenCV installation (bundled or system)
@@ -1144,6 +1149,15 @@ echo ""
 # Step 10: Build Debian Package
 # ============================================
 echo -e "${BLUE}[10/10]${NC} Building Debian package..."
+
+# Use TMPDIR on /home/cvedix/Data (larger partition) to avoid disk space issues
+# This ensures all build tools (strip, dh_strip, etc.) use the larger partition
+export TMPDIR="${TMPDIR:-/home/cvedix/Data/tmp}"
+export TEMP="$TMPDIR"
+export TMP="$TMPDIR"
+mkdir -p "$TMPDIR"
+echo "Using TMPDIR: $TMPDIR (available space: $(df -h "$TMPDIR" | tail -1 | awk '{print $4}'))"
+
 export DEB_BUILD_OPTIONS="parallel=$(nproc)"
 
 # Build package

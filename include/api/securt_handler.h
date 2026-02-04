@@ -10,6 +10,8 @@ using namespace drogon;
 // Forward declarations
 class SecuRTInstanceManager;
 class AnalyticsEntitiesManager;
+class SecuRTFeatureManager;
+class ExclusionAreaManager;
 
 /**
  * @brief SecuRT Instance Handler
@@ -38,6 +40,64 @@ public:
                 "/v1/securt/instance/{instanceId}/stats", Get);
   ADD_METHOD_TO(SecuRTHandler::getAnalyticsEntities,
                 "/v1/securt/instance/{instanceId}/analytics_entities", Get);
+  // Advanced features endpoints
+  ADD_METHOD_TO(SecuRTHandler::setMotionArea,
+                "/v1/securt/instance/{instanceId}/motion_area", Post);
+  ADD_METHOD_TO(SecuRTHandler::setFeatureExtraction,
+                "/v1/securt/instance/{instanceId}/feature_extraction", Post);
+  ADD_METHOD_TO(SecuRTHandler::getFeatureExtraction,
+                "/v1/securt/instance/{instanceId}/feature_extraction", Get);
+  ADD_METHOD_TO(SecuRTHandler::setAttributesExtraction,
+                "/v1/securt/instance/{instanceId}/attributes_extraction", Post);
+  ADD_METHOD_TO(SecuRTHandler::getAttributesExtraction,
+                "/v1/securt/instance/{instanceId}/attributes_extraction", Get);
+  ADD_METHOD_TO(SecuRTHandler::setPerformanceProfile,
+                "/v1/securt/instance/{instanceId}/performance_profile", Post);
+  ADD_METHOD_TO(SecuRTHandler::getPerformanceProfile,
+                "/v1/securt/instance/{instanceId}/performance_profile", Get);
+  ADD_METHOD_TO(SecuRTHandler::setFaceDetection,
+                "/v1/securt/instance/{instanceId}/face_detection", Post);
+  ADD_METHOD_TO(SecuRTHandler::setLPR,
+                "/v1/securt/instance/{instanceId}/lpr", Post);
+  ADD_METHOD_TO(SecuRTHandler::getLPR,
+                "/v1/securt/instance/{instanceId}/lpr", Get);
+  ADD_METHOD_TO(SecuRTHandler::setPIP,
+                "/v1/securt/instance/{instanceId}/pip", Post);
+  ADD_METHOD_TO(SecuRTHandler::getPIP,
+                "/v1/securt/instance/{instanceId}/pip", Get);
+  ADD_METHOD_TO(SecuRTHandler::setSurrenderDetection,
+                "/v1/securt/experimental/instance/{instanceId}/surrender_detection", Post);
+  ADD_METHOD_TO(SecuRTHandler::getSurrenderDetection,
+                "/v1/securt/experimental/instance/{instanceId}/surrender_detection", Get);
+  ADD_METHOD_TO(SecuRTHandler::setMaskingAreas,
+                "/v1/securt/instance/{instanceId}/masking_areas", Post);
+  ADD_METHOD_TO(SecuRTHandler::addExclusionArea,
+                "/v1/securt/instance/{instanceId}/exclusion_areas", Post);
+  ADD_METHOD_TO(SecuRTHandler::getExclusionAreas,
+                "/v1/securt/instance/{instanceId}/exclusion_areas", Get);
+  ADD_METHOD_TO(SecuRTHandler::deleteExclusionAreas,
+                "/v1/securt/instance/{instanceId}/exclusion_areas", Delete);
+  // CORS options for new endpoints
+  ADD_METHOD_TO(SecuRTHandler::handleOptions,
+                "/v1/securt/instance/{instanceId}/motion_area", Options);
+  ADD_METHOD_TO(SecuRTHandler::handleOptions,
+                "/v1/securt/instance/{instanceId}/feature_extraction", Options);
+  ADD_METHOD_TO(SecuRTHandler::handleOptions,
+                "/v1/securt/instance/{instanceId}/attributes_extraction", Options);
+  ADD_METHOD_TO(SecuRTHandler::handleOptions,
+                "/v1/securt/instance/{instanceId}/performance_profile", Options);
+  ADD_METHOD_TO(SecuRTHandler::handleOptions,
+                "/v1/securt/instance/{instanceId}/face_detection", Options);
+  ADD_METHOD_TO(SecuRTHandler::handleOptions,
+                "/v1/securt/instance/{instanceId}/lpr", Options);
+  ADD_METHOD_TO(SecuRTHandler::handleOptions,
+                "/v1/securt/instance/{instanceId}/pip", Options);
+  ADD_METHOD_TO(SecuRTHandler::handleOptions,
+                "/v1/securt/experimental/instance/{instanceId}/surrender_detection", Options);
+  ADD_METHOD_TO(SecuRTHandler::handleOptions,
+                "/v1/securt/instance/{instanceId}/masking_areas", Options);
+  ADD_METHOD_TO(SecuRTHandler::handleOptions,
+                "/v1/securt/instance/{instanceId}/exclusion_areas", Options);
   ADD_METHOD_TO(SecuRTHandler::handleOptions, "/v1/securt/instance", Options);
   ADD_METHOD_TO(SecuRTHandler::handleOptions,
                 "/v1/securt/instance/{instanceId}", Options);
@@ -107,9 +167,72 @@ public:
    */
   static void setAnalyticsEntitiesManager(AnalyticsEntitiesManager *manager);
 
+  /**
+   * @brief Set feature manager (dependency injection)
+   */
+  static void setFeatureManager(SecuRTFeatureManager *manager);
+
+  /**
+   * @brief Set exclusion area manager (dependency injection)
+   */
+  static void setExclusionAreaManager(ExclusionAreaManager *manager);
+
+  // Advanced features handlers
+  void setMotionArea(const HttpRequestPtr &req,
+                     std::function<void(const HttpResponsePtr &)> &&callback);
+  void setFeatureExtraction(
+      const HttpRequestPtr &req,
+      std::function<void(const HttpResponsePtr &)> &&callback);
+  void getFeatureExtraction(
+      const HttpRequestPtr &req,
+      std::function<void(const HttpResponsePtr &)> &&callback);
+  void setAttributesExtraction(
+      const HttpRequestPtr &req,
+      std::function<void(const HttpResponsePtr &)> &&callback);
+  void getAttributesExtraction(
+      const HttpRequestPtr &req,
+      std::function<void(const HttpResponsePtr &)> &&callback);
+  void setPerformanceProfile(
+      const HttpRequestPtr &req,
+      std::function<void(const HttpResponsePtr &)> &&callback);
+  void getPerformanceProfile(
+      const HttpRequestPtr &req,
+      std::function<void(const HttpResponsePtr &)> &&callback);
+  void setFaceDetection(
+      const HttpRequestPtr &req,
+      std::function<void(const HttpResponsePtr &)> &&callback);
+  void setLPR(const HttpRequestPtr &req,
+              std::function<void(const HttpResponsePtr &)> &&callback);
+  void getLPR(const HttpRequestPtr &req,
+              std::function<void(const HttpResponsePtr &)> &&callback);
+  void setPIP(const HttpRequestPtr &req,
+              std::function<void(const HttpResponsePtr &)> &&callback);
+  void getPIP(const HttpRequestPtr &req,
+              std::function<void(const HttpResponsePtr &)> &&callback);
+  void setSurrenderDetection(
+      const HttpRequestPtr &req,
+      std::function<void(const HttpResponsePtr &)> &&callback);
+  void getSurrenderDetection(
+      const HttpRequestPtr &req,
+      std::function<void(const HttpResponsePtr &)> &&callback);
+  void setMaskingAreas(
+      const HttpRequestPtr &req,
+      std::function<void(const HttpResponsePtr &)> &&callback);
+  void addExclusionArea(
+      const HttpRequestPtr &req,
+      std::function<void(const HttpResponsePtr &)> &&callback);
+  void getExclusionAreas(
+      const HttpRequestPtr &req,
+      std::function<void(const HttpResponsePtr &)> &&callback);
+  void deleteExclusionAreas(
+      const HttpRequestPtr &req,
+      std::function<void(const HttpResponsePtr &)> &&callback);
+
 private:
   static SecuRTInstanceManager *instance_manager_;
   static AnalyticsEntitiesManager *analytics_entities_manager_;
+  static SecuRTFeatureManager *feature_manager_;
+  static ExclusionAreaManager *exclusion_area_manager_;
 
   /**
    * @brief Extract instance ID from request path

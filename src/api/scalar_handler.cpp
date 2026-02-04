@@ -7,9 +7,11 @@
 #include <drogon/HttpResponse.h>
 #include <filesystem>
 #include <fstream>
+#include <jsoncpp/json/json.h>
 #include <regex>
 #include <sstream>
 #include <stdexcept>
+#include <unistd.h>
 #include <vector>
 
 void ScalarHandler::getScalarDocument(
@@ -635,5 +637,320 @@ ScalarHandler::generateScalarDocumentHTML(const std::string &version,
 )";
 
   return fallbackHtml;
+}
+
+void ScalarHandler::listExampleBodies(
+    const HttpRequestPtr &req,
+    std::function<void(const HttpResponsePtr &)> &&callback) {
+  // Set handler start time for accurate metrics
+  MetricsInterceptor::setHandlerStartTime(req);
+
+  try {
+    std::string examplesDir = getExamplesInstancesDir();
+    std::filesystem::path dirPath(examplesDir);
+    std::filesystem::path basePath(examplesDir);
+
+    if (!std::filesystem::exists(dirPath) ||
+        !std::filesystem::is_directory(dirPath)) {
+      Json::Value response(Json::objectValue);
+      response["error"] = "Examples directory not found";
+      response["message"] = "Examples directory does not exist: " + examplesDir;
+      auto resp = HttpResponse::newHttpJsonResponse(response);
+      resp->setStatusCode(k404NotFound);
+      resp->addHeader("Access-Control-Allow-Origin", "*");
+      resp->addHeader("Access-Control-Allow-Methods", "GET, OPTIONS");
+      resp->addHeader("Access-Control-Allow-Headers", "Content-Type");
+      MetricsInterceptor::callWithMetrics(req, resp, std::move(callback));
+      return;
+    }
+
+    std::vector<std::string> files = listExampleFiles(dirPath, basePath);
+
+    Json::Value response(Json::objectValue);
+    Json::Value examples(Json::arrayValue);
+    for (const auto &file : files) {
+      examples.append(file);
+    }
+    response["examples"] = examples;
+    response["count"] = static_cast<int>(files.size());
+
+    auto resp = HttpResponse::newHttpJsonResponse(response);
+    resp->setStatusCode(k200OK);
+    resp->addHeader("Access-Control-Allow-Origin", "*");
+    resp->addHeader("Access-Control-Allow-Methods", "GET, OPTIONS");
+    resp->addHeader("Access-Control-Allow-Headers", "Content-Type");
+
+    MetricsInterceptor::callWithMetrics(req, resp, std::move(callback));
+  } catch (const std::exception &e) {
+    Json::Value response(Json::objectValue);
+    response["error"] = "Internal server error";
+    response["message"] = e.what();
+    auto resp = HttpResponse::newHttpJsonResponse(response);
+    resp->setStatusCode(k500InternalServerError);
+    resp->addHeader("Access-Control-Allow-Origin", "*");
+    resp->addHeader("Access-Control-Allow-Methods", "GET, OPTIONS");
+    resp->addHeader("Access-Control-Allow-Headers", "Content-Type");
+    MetricsInterceptor::callWithMetrics(req, resp, std::move(callback));
+  } catch (...) {
+    Json::Value response(Json::objectValue);
+    response["error"] = "Internal server error";
+    response["message"] = "Unknown error occurred";
+    auto resp = HttpResponse::newHttpJsonResponse(response);
+    resp->setStatusCode(k500InternalServerError);
+    resp->addHeader("Access-Control-Allow-Origin", "*");
+    resp->addHeader("Access-Control-Allow-Methods", "GET, OPTIONS");
+    resp->addHeader("Access-Control-Allow-Headers", "Content-Type");
+    MetricsInterceptor::callWithMetrics(req, resp, std::move(callback));
+  }
+}
+
+void ScalarHandler::getExampleBody(
+    const HttpRequestPtr &req,
+    std::function<void(const HttpResponsePtr &)> &&callback) {
+  // Set handler start time for accurate metrics
+  MetricsInterceptor::setHandlerStartTime(req);
+
+  try {
+    std::string filePath = req->getParameter("path");
+    if (filePath.empty()) {
+      Json::Value response(Json::objectValue);
+      response["error"] = "Bad request";
+      response["message"] = "File path parameter is required";
+      auto resp = HttpResponse::newHttpJsonResponse(response);
+      resp->setStatusCode(k400BadRequest);
+      resp->addHeader("Access-Control-Allow-Origin", "*");
+      resp->addHeader("Access-Control-Allow-Methods", "GET, OPTIONS");
+      resp->addHeader("Access-Control-Allow-Headers", "Content-Type");
+      MetricsInterceptor::callWithMetrics(req, resp, std::move(callback));
+      return;
+    }
+
+    // Sanitize path to prevent directory traversal
+    std::string sanitizedPath = sanitizePath(filePath);
+    if (sanitizedPath.empty()) {
+      Json::Value response(Json::objectValue);
+      response["error"] = "Bad request";
+      response["message"] = "Invalid file path";
+      auto resp = HttpResponse::newHttpJsonResponse(response);
+      resp->setStatusCode(k400BadRequest);
+      resp->addHeader("Access-Control-Allow-Origin", "*");
+      resp->addHeader("Access-Control-Allow-Methods", "GET, OPTIONS");
+      resp->addHeader("Access-Control-Allow-Headers", "Content-Type");
+      MetricsInterceptor::callWithMetrics(req, resp, std::move(callback));
+      return;
+    }
+
+    std::string examplesDir = getExamplesInstancesDir();
+    std::filesystem::path fullPath =
+        std::filesystem::path(examplesDir) / sanitizedPath;
+
+    // Ensure the path is within examples directory (prevent directory traversal)
+    std::filesystem::path canonicalExamplesDir =
+        std::filesystem::canonical(examplesDir);
+    std::filesystem::path canonicalFullPath =
+        std::filesystem::canonical(fullPath);
+
+    if (canonicalFullPath.string().find(canonicalExamplesDir.string()) != 0) {
+      Json::Value response(Json::objectValue);
+      response["error"] = "Forbidden";
+      response["message"] = "Access denied: path outside examples directory";
+      auto resp = HttpResponse::newHttpJsonResponse(response);
+      resp->setStatusCode(k403Forbidden);
+      resp->addHeader("Access-Control-Allow-Origin", "*");
+      resp->addHeader("Access-Control-Allow-Methods", "GET, OPTIONS");
+      resp->addHeader("Access-Control-Allow-Headers", "Content-Type");
+      MetricsInterceptor::callWithMetrics(req, resp, std::move(callback));
+      return;
+    }
+
+    if (!std::filesystem::exists(fullPath) ||
+        !std::filesystem::is_regular_file(fullPath)) {
+      Json::Value response(Json::objectValue);
+      response["error"] = "Not found";
+      response["message"] = "Example file not found: " + filePath;
+      auto resp = HttpResponse::newHttpJsonResponse(response);
+      resp->setStatusCode(k404NotFound);
+      resp->addHeader("Access-Control-Allow-Origin", "*");
+      resp->addHeader("Access-Control-Allow-Methods", "GET, OPTIONS");
+      resp->addHeader("Access-Control-Allow-Headers", "Content-Type");
+      MetricsInterceptor::callWithMetrics(req, resp, std::move(callback));
+      return;
+    }
+
+    // Read file content
+    std::ifstream file(fullPath);
+    if (!file.is_open()) {
+      Json::Value response(Json::objectValue);
+      response["error"] = "Internal server error";
+      response["message"] = "Cannot open file: " + filePath;
+      auto resp = HttpResponse::newHttpJsonResponse(response);
+      resp->setStatusCode(k500InternalServerError);
+      resp->addHeader("Access-Control-Allow-Origin", "*");
+      resp->addHeader("Access-Control-Allow-Methods", "GET, OPTIONS");
+      resp->addHeader("Access-Control-Allow-Headers", "Content-Type");
+      MetricsInterceptor::callWithMetrics(req, resp, std::move(callback));
+      return;
+    }
+
+    std::stringstream buffer;
+    buffer << file.rdbuf();
+    std::string content = buffer.str();
+    file.close();
+
+    // Parse JSON to validate it
+    Json::Value jsonContent;
+    Json::Reader reader;
+    if (!reader.parse(content, jsonContent)) {
+      Json::Value response(Json::objectValue);
+      response["error"] = "Invalid JSON";
+      response["message"] = "File does not contain valid JSON";
+      auto resp = HttpResponse::newHttpJsonResponse(response);
+      resp->setStatusCode(k400BadRequest);
+      resp->addHeader("Access-Control-Allow-Origin", "*");
+      resp->addHeader("Access-Control-Allow-Methods", "GET, OPTIONS");
+      resp->addHeader("Access-Control-Allow-Headers", "Content-Type");
+      MetricsInterceptor::callWithMetrics(req, resp, std::move(callback));
+      return;
+    }
+
+    // Return the JSON content
+    auto resp = HttpResponse::newHttpJsonResponse(jsonContent);
+    resp->setStatusCode(k200OK);
+    resp->addHeader("Access-Control-Allow-Origin", "*");
+    resp->addHeader("Access-Control-Allow-Methods", "GET, OPTIONS");
+    resp->addHeader("Access-Control-Allow-Headers", "Content-Type");
+
+    MetricsInterceptor::callWithMetrics(req, resp, std::move(callback));
+  } catch (const std::exception &e) {
+    Json::Value response(Json::objectValue);
+    response["error"] = "Internal server error";
+    response["message"] = e.what();
+    auto resp = HttpResponse::newHttpJsonResponse(response);
+    resp->setStatusCode(k500InternalServerError);
+    resp->addHeader("Access-Control-Allow-Origin", "*");
+    resp->addHeader("Access-Control-Allow-Methods", "GET, OPTIONS");
+    resp->addHeader("Access-Control-Allow-Headers", "Content-Type");
+    MetricsInterceptor::callWithMetrics(req, resp, std::move(callback));
+  } catch (...) {
+    Json::Value response(Json::objectValue);
+    response["error"] = "Internal server error";
+    response["message"] = "Unknown error occurred";
+    auto resp = HttpResponse::newHttpJsonResponse(response);
+    resp->setStatusCode(k500InternalServerError);
+    resp->addHeader("Access-Control-Allow-Origin", "*");
+    resp->addHeader("Access-Control-Allow-Methods", "GET, OPTIONS");
+    resp->addHeader("Access-Control-Allow-Headers", "Content-Type");
+    MetricsInterceptor::callWithMetrics(req, resp, std::move(callback));
+  }
+}
+
+std::string ScalarHandler::getExamplesInstancesDir() const {
+  // Try multiple paths to find examples/instances directory
+  std::vector<std::string> possiblePaths = {
+      "./examples/instances",
+      "../examples/instances",
+      "../../examples/instances",
+      "/opt/edge_ai_api/examples/instances",
+  };
+
+  // Also try relative to executable path
+  try {
+    char exePath[1024];
+    ssize_t len = readlink("/proc/self/exe", exePath, sizeof(exePath) - 1);
+    if (len != -1) {
+      exePath[len] = '\0';
+      std::filesystem::path exe(exePath);
+      std::filesystem::path exeDir = exe.parent_path();
+
+      // Try going up from bin/ or build/bin/
+      for (int i = 0; i < 5; i++) {
+        std::filesystem::path testPath = exeDir;
+        for (int j = 0; j < i; j++) {
+          testPath = testPath.parent_path();
+        }
+        std::filesystem::path examplesPath =
+            testPath / "examples" / "instances";
+        if (std::filesystem::exists(examplesPath) &&
+            std::filesystem::is_directory(examplesPath)) {
+          return examplesPath.string();
+        }
+      }
+    }
+  } catch (...) {
+    // Ignore errors, continue with other paths
+  }
+
+  // Try current directory and common paths
+  for (const auto &path : possiblePaths) {
+    if (std::filesystem::exists(path) && std::filesystem::is_directory(path)) {
+      return path;
+    }
+  }
+
+  // Default fallback
+  return "./examples/instances";
+}
+
+std::vector<std::string>
+ScalarHandler::listExampleFiles(const std::filesystem::path &dir,
+                                 const std::filesystem::path &basePath) const {
+  std::vector<std::string> files;
+
+  try {
+    if (!std::filesystem::exists(dir) || !std::filesystem::is_directory(dir)) {
+      return files;
+    }
+
+    for (const auto &entry :
+         std::filesystem::recursive_directory_iterator(dir)) {
+      if (entry.is_regular_file() && entry.path().extension() == ".json") {
+        // Get relative path from basePath
+        std::filesystem::path relativePath =
+            std::filesystem::relative(entry.path(), basePath);
+        std::string pathStr = relativePath.string();
+        // Convert backslashes to forward slashes for consistency
+        std::replace(pathStr.begin(), pathStr.end(), '\\', '/');
+        files.push_back(pathStr);
+      }
+    }
+  } catch (const std::exception &e) {
+    PLOG_ERROR << "[Scalar] Error listing example files: " << e.what();
+  } catch (...) {
+    PLOG_ERROR << "[Scalar] Unknown error listing example files";
+  }
+
+  // Sort files for consistent ordering
+  std::sort(files.begin(), files.end());
+
+  return files;
+}
+
+std::string ScalarHandler::sanitizePath(const std::string &path) const {
+  // Prevent path traversal attacks
+  // Only allow simple filenames without directory traversal
+  if (path.empty()) {
+    return "";
+  }
+
+  // Check for path traversal patterns
+  if (path.find("..") != std::string::npos ||
+      path.find("/") != std::string::npos ||
+      path.find("\\") != std::string::npos) {
+    // Allow forward slashes for subdirectories, but check for .. patterns
+    if (path.find("..") != std::string::npos) {
+      return "";
+    }
+    // Allow forward slashes for relative paths within examples directory
+  }
+
+  // Only allow alphanumeric, dash, underscore, dot, forward slash
+  for (char c : path) {
+    if (!std::isalnum(static_cast<unsigned char>(c)) && c != '-' && c != '_' &&
+        c != '.' && c != '/') {
+      return "";
+    }
+  }
+
+  return path;
 }
 

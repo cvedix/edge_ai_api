@@ -6,10 +6,13 @@
 #include "core/logging_flags.h"
 #include "core/timeout_constants.h"
 #include "core/uuid_generator.h"
+#include "core/pipeline_builder_destination_nodes.h"
 #include "models/update_instance_request.h"
 #include "utils/gstreamer_checker.h"
 #include "utils/mp4_directory_watcher.h"
 #include "utils/mp4_finalizer.h"
+#include <drogon/drogon.h>
+#include <drogon/HttpClient.h>
 #include <algorithm>
 #include <atomic>
 #include <chrono>
@@ -112,7 +115,7 @@ std::string InstanceRegistry::createInstance(const CreateInstanceRequest &req) {
         
         // Extract RTMP stream key if RTMP URL is configured
         if (!info.rtmpUrl.empty()) {
-          std::string streamKey = pipeline_builder_.extractRTMPStreamKey(info.rtmpUrl);
+          std::string streamKey = PipelineBuilderDestinationNodes::extractRTMPStreamKey(info.rtmpUrl);
           if (!streamKey.empty()) {
             existingRTMPStreamKeys.insert(streamKey);
           }
@@ -121,7 +124,7 @@ std::string InstanceRegistry::createInstance(const CreateInstanceRequest &req) {
         // Also check additionalParams for RTMP_URL
         auto rtmpIt = info.additionalParams.find("RTMP_URL");
         if (rtmpIt != info.additionalParams.end() && !rtmpIt->second.empty()) {
-          std::string streamKey = pipeline_builder_.extractRTMPStreamKey(rtmpIt->second);
+          std::string streamKey = PipelineBuilderDestinationNodes::extractRTMPStreamKey(rtmpIt->second);
           if (!streamKey.empty()) {
             existingRTMPStreamKeys.insert(streamKey);
           }
@@ -130,7 +133,7 @@ std::string InstanceRegistry::createInstance(const CreateInstanceRequest &req) {
         // Check RTMP_DES_URL as well
         auto rtmpDesIt = info.additionalParams.find("RTMP_DES_URL");
         if (rtmpDesIt != info.additionalParams.end() && !rtmpDesIt->second.empty()) {
-          std::string streamKey = pipeline_builder_.extractRTMPStreamKey(rtmpDesIt->second);
+          std::string streamKey = PipelineBuilderDestinationNodes::extractRTMPStreamKey(rtmpDesIt->second);
           if (!streamKey.empty()) {
             existingRTMPStreamKeys.insert(streamKey);
           }
@@ -220,6 +223,52 @@ std::string InstanceRegistry::createInstance(const CreateInstanceRequest &req) {
 
   // Create instance info (no lock needed)
   InstanceInfo info = createInstanceInfo(instanceId, req, solution);
+  
+  // Update RTMP URL with actual URL used (may have been modified for conflict resolution)
+  std::string actualRtmpUrl = PipelineBuilder::getActualRTMPUrl(instanceId);
+  if (!actualRtmpUrl.empty()) {
+    std::cerr << "[InstanceRegistry] Updating RTMP URL from '" << info.rtmpUrl 
+              << "' to actual URL: '" << actualRtmpUrl << "'" << std::endl;
+    
+    // RTMP node automatically adds suffix (_0, _1, _2, ...) to stream key
+    // We add "_0" as default suffix to match the actual stream path
+    // Note: If server assigns a different suffix (_1, _2, etc.), the actual path may differ
+    std::string finalRtmpUrl = actualRtmpUrl;
+    size_t lastSlash = finalRtmpUrl.find_last_of('/');
+    if (lastSlash != std::string::npos && lastSlash < finalRtmpUrl.length() - 1) {
+      std::string streamKey = finalRtmpUrl.substr(lastSlash + 1);
+      // Only add "_0" if not already present
+      if (streamKey.length() < 2 || streamKey.substr(streamKey.length() - 2) != "_0") {
+        finalRtmpUrl += "_0";
+        std::cerr << "[InstanceRegistry] Added '_0' suffix to RTMP URL (RTMP node automatically adds this): '" 
+                  << finalRtmpUrl << "'" << std::endl;
+        std::cerr << "[InstanceRegistry] NOTE: If server assigns a different suffix (_1, _2, etc.), check server logs or API to get actual path" << std::endl;
+      }
+    }
+    
+    info.rtmpUrl = finalRtmpUrl;
+    // Also update additionalParams
+    info.additionalParams["RTMP_URL"] = finalRtmpUrl;
+    
+    // Update RTSP URL to match RTMP URL (including instanceId in stream key)
+    // Always update to ensure RTSP URL has the same stream key as RTMP URL
+    std::string rtspUrl = finalRtmpUrl;
+    size_t protocolPos = rtspUrl.find("rtmp://");
+    if (protocolPos != std::string::npos) {
+      rtspUrl.replace(protocolPos, 7, "rtsp://");
+      // Replace port 1935 with 8554 (common RTSP port for conversion)
+      size_t portPos = rtspUrl.find(":1935");
+      if (portPos != std::string::npos) {
+        rtspUrl.replace(portPos, 5, ":8554");
+      }
+      info.rtspUrl = rtspUrl;
+      std::cerr << "[InstanceRegistry] Updated RTSP URL to match RTMP URL (with instanceId): '" 
+                << rtspUrl << "'" << std::endl;
+    }
+    
+    // Clear from map after use
+    PipelineBuilder::clearActualRTMPUrl(instanceId);
+  }
 
   // Store instance (need lock briefly)
   {
@@ -2290,10 +2339,21 @@ bool InstanceRegistry::updateInstance(const std::string &instanceId,
       }
       hasChanges = true;
 
-      // Update RTSP URL if changed
-      auto rtspIt = req.additionalParams.find("RTSP_URL");
-      if (rtspIt != req.additionalParams.end() && !rtspIt->second.empty()) {
-        info.rtspUrl = rtspIt->second;
+      // Update RTSP URL if changed - check RTSP_DES_URL first (for output), 
+      // then RTSP_SRC_URL (for input), then RTSP_URL (backward compatibility)
+      auto rtspDesIt = req.additionalParams.find("RTSP_DES_URL");
+      if (rtspDesIt != req.additionalParams.end() && !rtspDesIt->second.empty()) {
+        info.rtspUrl = rtspDesIt->second;
+      } else {
+        auto rtspSrcIt = req.additionalParams.find("RTSP_SRC_URL");
+        if (rtspSrcIt != req.additionalParams.end() && !rtspSrcIt->second.empty()) {
+          info.rtspUrl = rtspSrcIt->second;
+        } else {
+          auto rtspIt = req.additionalParams.find("RTSP_URL");
+          if (rtspIt != req.additionalParams.end() && !rtspIt->second.empty()) {
+            info.rtspUrl = rtspIt->second;
+          }
+        }
       }
 
       // Update RTMP URL if changed - check RTMP_DES_URL first, then RTMP_URL
@@ -2563,7 +2623,8 @@ InstanceRegistry::createInstanceInfo(const std::string &instanceId,
 
   InstanceInfo info;
   info.instanceId = instanceId;
-  info.displayName = req.name;
+  // Use default name if not provided
+  info.displayName = req.name.empty() ? ("Instance " + instanceId.substr(0, 8)) : req.name;
   info.group = req.group;
   info.persistent = req.persistent;
   info.frameRateLimit = req.frameRateLimit;
@@ -2665,12 +2726,12 @@ InstanceRegistry::createInstanceInfo(const std::string &instanceId,
 
   // Only generate RTSP URL from RTMP URL if RTSP URL is not already set
   // This prevents overriding user's RTSP_SRC_URL
+  // RTSP URL will have the same stream key as RTMP URL (including instanceId if present)
   if (info.rtspUrl.empty() && !info.rtmpUrl.empty()) {
 
     // Generate RTSP URL from RTMP URL
-    // Pattern: rtmp://host:1935/live/stream_key ->
-    // rtsp://host:8554/live/stream_key_0 RTMP node automatically adds "_0"
-    // suffix to stream key
+    // Keep the same stream key as RTMP URL (including instanceId and "_0" suffix if present)
+    // Pattern: rtmp://host:1935/live/stream_key -> rtsp://host:8554/live/stream_key
     std::string rtmpUrl = info.rtmpUrl;
 
     // Replace RTMP protocol and port with RTSP
@@ -2687,17 +2748,11 @@ InstanceRegistry::createInstanceInfo(const std::string &instanceId,
         rtspUrl.replace(portPos, 5, ":8554");
       }
 
-      // Add "_0" suffix to stream key if not already present
-      // RTMP node automatically adds this suffix
-      size_t lastSlash = rtspUrl.find_last_of('/');
-      if (lastSlash != std::string::npos) {
-        std::string streamKey = rtspUrl.substr(lastSlash + 1);
-        if (streamKey.find("_0") == std::string::npos && !streamKey.empty()) {
-          rtspUrl += "_0";
-        }
-      }
-
+      // Keep the same stream key as RTMP URL (no modification needed)
+      // RTMP URL already includes instanceId and "_0" suffix if applicable
       info.rtspUrl = rtspUrl;
+      std::cerr << "[InstanceRegistry] Generated RTSP URL from RTMP URL (same stream key): '" 
+                << rtspUrl << "'" << std::endl;
     }
   }
 
@@ -4151,10 +4206,12 @@ bool InstanceRegistry::rebuildPipelineFromInstanceInfo(
   req.additionalParams = info.additionalParams;
 
   // Also restore individual fields for backward compatibility
-  // Use originator.address as RTSP URL if available
+  // Use originator.address as RTSP URL if available (typically input source)
   if (!info.originator.address.empty() &&
+      req.additionalParams.find("RTSP_SRC_URL") == req.additionalParams.end() &&
+      req.additionalParams.find("RTSP_DES_URL") == req.additionalParams.end() &&
       req.additionalParams.find("RTSP_URL") == req.additionalParams.end()) {
-    req.additionalParams["RTSP_URL"] = info.originator.address;
+    req.additionalParams["RTSP_SRC_URL"] = info.originator.address;
   }
 
   // Restore RTMP URL if available (override if not in additionalParams)
@@ -4184,7 +4241,7 @@ bool InstanceRegistry::rebuildPipelineFromInstanceInfo(
         
         // Extract RTMP stream key if RTMP URL is configured
         if (!info.rtmpUrl.empty()) {
-          std::string streamKey = pipeline_builder_.extractRTMPStreamKey(info.rtmpUrl);
+          std::string streamKey = PipelineBuilderDestinationNodes::extractRTMPStreamKey(info.rtmpUrl);
           if (!streamKey.empty()) {
             existingRTMPStreamKeys.insert(streamKey);
           }
@@ -4193,7 +4250,7 @@ bool InstanceRegistry::rebuildPipelineFromInstanceInfo(
         // Also check additionalParams for RTMP_URL
         auto rtmpIt = info.additionalParams.find("RTMP_URL");
         if (rtmpIt != info.additionalParams.end() && !rtmpIt->second.empty()) {
-          std::string streamKey = pipeline_builder_.extractRTMPStreamKey(rtmpIt->second);
+          std::string streamKey = PipelineBuilderDestinationNodes::extractRTMPStreamKey(rtmpIt->second);
           if (!streamKey.empty()) {
             existingRTMPStreamKeys.insert(streamKey);
           }
@@ -4202,7 +4259,7 @@ bool InstanceRegistry::rebuildPipelineFromInstanceInfo(
         // Check RTMP_DES_URL as well
         auto rtmpDesIt = info.additionalParams.find("RTMP_DES_URL");
         if (rtmpDesIt != info.additionalParams.end() && !rtmpDesIt->second.empty()) {
-          std::string streamKey = pipeline_builder_.extractRTMPStreamKey(rtmpDesIt->second);
+          std::string streamKey = PipelineBuilderDestinationNodes::extractRTMPStreamKey(rtmpDesIt->second);
           if (!streamKey.empty()) {
             existingRTMPStreamKeys.insert(streamKey);
           }
@@ -7178,3 +7235,7 @@ bool InstanceRegistry::reconnectRTSPStream(
     return false;
   }
 }
+
+// Note: queryActualStreamPath() removed - API query may be blocked by server
+// We use default "_0" suffix instead. If server assigns different suffix (_1, _2, etc.),
+// the actual stream path may differ from the URL in response.

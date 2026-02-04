@@ -26,6 +26,121 @@
 
 ---
 
+## 🎯 Các Bài Toán & Tính Năng Được Hỗ Trợ
+
+API hỗ trợ các tính năng từ CVEDIX SDK với **43+ processing nodes**, bao gồm:
+
+### 👤 Nhận Diện & Phân Tích Khuôn Mặt
+
+- ✅ **Face Detection** - Phát hiện khuôn mặt (YuNet, YOLOv11, RKNN)
+- ✅ **Face Recognition** - Nhận diện khuôn mặt (InsightFace, TensorRT)
+- ✅ **Face Tracking** - Theo dõi khuôn mặt (SORT, ByteTrack, OCSort)
+- ✅ **Face Feature Encoding** - Trích xuất đặc trưng khuôn mặt (SFace)
+- ✅ **Face Swap** - Hoán đổi khuôn mặt
+- ✅ **Face Database Management** - Quản lý database khuôn mặt (MySQL/PostgreSQL)
+
+### 🚗 Phát Hiện & Phân Tích Phương Tiện
+
+- ✅ **Vehicle Detection** - Phát hiện phương tiện (TensorRT, YOLO)
+- ✅ **Vehicle Plate Detection** - Phát hiện biển số xe (YOLOv11, TensorRT)
+- ✅ **Vehicle Plate Recognition** - Nhận diện biển số xe
+- ✅ **Vehicle Tracking** - Theo dõi phương tiện
+- ✅ **Vehicle Feature Encoding** - Trích xuất đặc trưng xe (TensorRT)
+- ✅ **Vehicle Color Classification** - Phân loại màu xe (TensorRT)
+- ✅ **Vehicle Type Classification** - Phân loại loại xe (TensorRT)
+- ✅ **Vehicle Body Scan** - Quét thân xe
+- ✅ **Vehicle Clustering** - Phân nhóm xe dựa trên đặc trưng
+
+### 🎯 Phát Hiện Vật Thể & Phân Tích
+
+- ✅ **Object Detection** - Phát hiện vật thể (YOLO, YOLOv8, YOLOv11)
+- ✅ **Instance Segmentation** - Phân đoạn instance (Mask R-CNN, YOLOv8 Seg)
+- ✅ **Semantic Segmentation** - Phân đoạn ngữ nghĩa (ENet)
+- ✅ **Pose Estimation** - Ước lượng tư thế (OpenPose, YOLOv8 Pose)
+- ✅ **Image Classification** - Phân loại ảnh
+- ✅ **Text Detection** - Phát hiện văn bản (PaddleOCR)
+
+### 🚦 Phân Tích Hành Vi (Behavior Analysis)
+
+- ✅ **Crossline Detection** - Phát hiện vượt đường line (đếm đối tượng)
+- ✅ **Multi-line Crossline** - Nhiều đường crossline
+- ✅ **Traffic Jam Detection** - Phát hiện kẹt xe (BA Jam)
+- ✅ **Stop Detection** - Phát hiện dừng tại stop-line (BA Stop)
+- ✅ **Wrong Way Detection** - Phát hiện đi ngược chiều
+- ✅ **Obstacle Detection** - Phát hiện chướng ngại vật
+
+### 🔥 Phát Hiện An Toàn & Bất Thường
+
+- ✅ **Fire/Smoke Detection** - Phát hiện lửa/khói
+- ✅ **Video Restoration** - Khôi phục video chất lượng cao
+- ✅ **Lane Detection** - Phát hiện làn đường
+
+### 📹 Nguồn Video Đầu Vào (Source Nodes)
+
+- ✅ **RTSP Source** - Stream RTSP từ camera IP
+- ✅ **RTMP Source** - Stream RTMP
+- ✅ **File Source** - Video file (MP4, AVI, etc.)
+- ✅ **Image Source** - Ảnh đơn hoặc thư mục ảnh
+- ✅ **App Source** - Input từ ứng dụng
+- ✅ **UDP Source** - Stream UDP
+- ✅ **FFmpeg Source** - Nguồn đa dạng qua FFmpeg
+
+### 📤 Đầu Ra Video (Destination Nodes)
+
+- ✅ **RTSP Destination** - Stream RTSP output
+- ✅ **RTMP Destination** - Stream RTMP output
+- ✅ **File Destination** - Lưu video file
+- ✅ **Image Destination** - Lưu ảnh snapshot
+- ✅ **Screen Destination** - Hiển thị trên màn hình
+- ✅ **App Destination** - Output đến ứng dụng
+- ✅ **FFmpeg Destination** - Output đa dạng qua FFmpeg
+
+### 📡 Xuất Dữ Liệu (Broker Nodes)
+
+- ✅ **MQTT Broker** - Gửi events qua MQTT (JSON, XML)
+- ✅ **Kafka Broker** - Gửi events qua Apache Kafka
+- ✅ **Socket Broker** - Gửi qua TCP/UDP Socket (JSON, XML, BA, Plate, Embeddings)
+- ✅ **Console Broker** - In ra console (JSON)
+- ✅ **File Broker** - Lưu events vào file (XML)
+- ✅ **SSE Broker** - Server-Sent Events (real-time streaming)
+
+### 🔄 Xử Lý & Tối Ưu
+
+- ✅ **Object Tracking** - Theo dõi đối tượng (SORT, ByteTrack, OCSort)
+- ✅ **Frame Fusion** - Kết hợp frame từ nhiều nguồn
+- ✅ **Frame Synchronization** - Đồng bộ frame
+- ✅ **Frame Splitting** - Chia tách frame
+- ✅ **Frame Skipping** - Bỏ qua frame (tối ưu hiệu năng)
+- ✅ **Recording** - Ghi lại video/ảnh
+- ✅ **Clustering** - Phân nhóm đối tượng
+- ✅ **OSD (On-Screen Display)** - Vẽ overlay kết quả (Face, Plate, Pose, Segmentation, Lane, MLLM)
+
+### 🤖 AI Models & Hardware Support
+
+- ✅ **TensorRT** - NVIDIA GPU acceleration (YOLOv8, Vehicle, InsightFace)
+- ✅ **RKNN** - Rockchip NPU acceleration (YOLOv8, YOLOv11, Face)
+- ✅ **ONNX Runtime** - Cross-platform inference
+- ✅ **OpenCV DNN** - YOLO, Caffe, TensorFlow models
+- ✅ **PaddlePaddle** - OCR text detection
+
+### 🔧 Tính Năng Nâng Cao
+
+- ✅ **Multi-Channel Pipelines** - Xử lý nhiều nguồn đồng thời (1-1-1, 1-1-N, 1-N-1, N-N)
+- ✅ **Dynamic Pipeline** - Thay đổi pipeline trong runtime
+- ✅ **Multi-Detector** - Nhiều detector trong một pipeline
+- ✅ **Pipeline Interaction** - Tương tác với pipeline
+- ✅ **MLLM Analysis** - Phân tích đa phương thức với Large Language Model
+
+### 📊 Monitoring & Management
+
+- ✅ **Real-time Statistics** - Thống kê FPS, latency, throughput
+- ✅ **Health Monitoring** - Giám sát sức khỏe hệ thống
+- ✅ **Logging Management** - Quản lý log theo category
+- ✅ **Metrics Export** - Prometheus metrics
+- ✅ **Instance Persistence** - Tự động lưu và khôi phục instances
+
+---
+
 ## 🏗️ Kiến Trúc
 
 ![Architecture](asset/architecture.png)

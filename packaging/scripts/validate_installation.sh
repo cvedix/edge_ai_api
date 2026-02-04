@@ -119,7 +119,7 @@ echo "=========================================="
 echo "3. Verifying RPATH Configuration"
 echo "=========================================="
 
-EXPECTED_RPATH="/opt/edge_ai_api/lib:/opt/cvedix/lib"
+EXPECTED_RPATH="/opt/edge_ai_api/lib:/opt/cvedix-ai-runtime/lib/cvedix"
 RPATH_FIXED=false
 
 if [ -f "$EXECUTABLE" ]; then

@@ -16,7 +16,7 @@ NC='\033[0m'
 
 # Configuration
 BIN_DIR="/usr/local/bin"
-EXPECTED_RPATH="/opt/edge_ai_api/lib:/opt/cvedix/lib"
+EXPECTED_RPATH="/opt/edge_ai_api/lib:/opt/cvedix-ai-runtime/lib/cvedix"
 EXECUTABLES=(
     "$BIN_DIR/edge_ai_api"
     "$BIN_DIR/edge_ai_worker"

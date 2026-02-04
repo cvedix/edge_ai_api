@@ -11,6 +11,9 @@
 #include <cvedix/nodes/des/cvedix_app_des_node.h>
 #include <cvedix/nodes/des/cvedix_rtmp_des_node.h>
 #include <cvedix/nodes/osd/cvedix_ba_crossline_osd_node.h>
+#include <cvedix/nodes/ba/cvedix_ba_crossline_node.h>
+#include <cvedix/objects/shapes/cvedix_line.h>
+#include <cvedix/objects/shapes/cvedix_point.h>
 #include <cvedix/nodes/osd/cvedix_ba_jam_osd_node.h>
 #include <cvedix/nodes/osd/cvedix_ba_stop_osd_node.h>
 #include <cvedix/nodes/osd/cvedix_face_osd_node_v2.h>
@@ -259,6 +262,8 @@ IPCMessage WorkerHandler::handleMessage(const IPCMessage &msg) {
     return handleStopInstance(msg);
   case MessageType::UPDATE_INSTANCE:
     return handleUpdateInstance(msg);
+  case MessageType::UPDATE_LINES:
+    return handleUpdateLines(msg);
   case MessageType::GET_INSTANCE_STATUS:
     return handleGetStatus(msg);
   case MessageType::GET_STATISTICS:
@@ -590,6 +595,143 @@ IPCMessage WorkerHandler::handleUpdateInstance(const IPCMessage &msg) {
             << std::endl;
   response.payload =
       createResponse(ResponseStatus::OK, "Instance updated (runtime)");
+
+  return response;
+}
+
+IPCMessage WorkerHandler::handleUpdateLines(const IPCMessage &msg) {
+  IPCMessage response;
+  response.type = MessageType::UPDATE_LINES_RESPONSE;
+
+  if (!msg.payload.isMember("lines")) {
+    response.payload = createErrorResponse("No lines provided",
+                                           ResponseStatus::INVALID_REQUEST);
+    return response;
+  }
+
+  // Check if pipeline is running
+  if (!pipeline_running_.load() || pipeline_nodes_.empty()) {
+    std::cout << "[Worker:" << instance_id_
+              << "] Cannot update lines: pipeline not running" << std::endl;
+    response.payload = createErrorResponse("Pipeline not running",
+                                           ResponseStatus::ERROR);
+    return response;
+  }
+
+  // Find ba_crossline_node in pipeline
+  std::shared_ptr<cvedix_nodes::cvedix_ba_crossline_node> baCrosslineNode = nullptr;
+  for (const auto &node : pipeline_nodes_) {
+    if (!node)
+      continue;
+
+    auto crosslineNode =
+        std::dynamic_pointer_cast<cvedix_nodes::cvedix_ba_crossline_node>(node);
+    if (crosslineNode) {
+      baCrosslineNode = crosslineNode;
+      break;
+    }
+  }
+
+  if (!baCrosslineNode) {
+    std::cout << "[Worker:" << instance_id_
+              << "] ba_crossline_node not found in pipeline" << std::endl;
+    response.payload = createErrorResponse("ba_crossline_node not found",
+                                           ResponseStatus::NOT_FOUND);
+    return response;
+  }
+
+  // Parse lines from JSON
+  const Json::Value &linesArray = msg.payload["lines"];
+  if (!linesArray.isArray()) {
+    response.payload = createErrorResponse("Lines must be an array",
+                                           ResponseStatus::INVALID_REQUEST);
+    return response;
+  }
+
+  // Convert JSON lines to map<int, cvedix_line>
+  std::map<int, cvedix_objects::cvedix_line> lines;
+  for (Json::ArrayIndex i = 0; i < linesArray.size(); ++i) {
+    const Json::Value &lineObj = linesArray[i];
+
+    // Check if line has coordinates
+    if (!lineObj.isMember("coordinates") || !lineObj["coordinates"].isArray()) {
+      std::cout << "[Worker:" << instance_id_ << "] Line at index " << i
+                << " missing or invalid 'coordinates' field, skipping" << std::endl;
+      continue;
+    }
+
+    const Json::Value &coordinates = lineObj["coordinates"];
+    if (coordinates.size() < 2) {
+      std::cout << "[Worker:" << instance_id_ << "] Line at index " << i
+                << " has less than 2 coordinates, skipping" << std::endl;
+      continue;
+    }
+
+    // Get first and last coordinates
+    const Json::Value &startCoord = coordinates[0];
+    const Json::Value &endCoord = coordinates[coordinates.size() - 1];
+
+    if (!startCoord.isMember("x") || !startCoord.isMember("y") ||
+        !endCoord.isMember("x") || !endCoord.isMember("y")) {
+      std::cout << "[Worker:" << instance_id_ << "] Line at index " << i
+                << " has invalid coordinate format, skipping" << std::endl;
+      continue;
+    }
+
+    if (!startCoord["x"].isNumeric() || !startCoord["y"].isNumeric() ||
+        !endCoord["x"].isNumeric() || !endCoord["y"].isNumeric()) {
+      std::cout << "[Worker:" << instance_id_ << "] Line at index " << i
+                << " has non-numeric coordinates, skipping" << std::endl;
+      continue;
+    }
+
+    // Convert to cvedix_line
+    int start_x = startCoord["x"].asInt();
+    int start_y = startCoord["y"].asInt();
+    int end_x = endCoord["x"].asInt();
+    int end_y = endCoord["y"].asInt();
+
+    cvedix_objects::cvedix_point start(start_x, start_y);
+    cvedix_objects::cvedix_point end(end_x, end_y);
+
+    // Use array index as channel (0, 1, 2, ...)
+    int channel = static_cast<int>(i);
+    lines[channel] = cvedix_objects::cvedix_line(start, end);
+  }
+
+  // Update lines via SDK API
+  try {
+    std::cout << "[Worker:" << instance_id_ << "] Updating " << lines.size()
+              << " line(s) via SDK set_lines() API" << std::endl;
+
+    bool success = baCrosslineNode->set_lines(lines);
+    if (success) {
+      std::cout << "[Worker:" << instance_id_
+                << "] ✓ Successfully updated lines via hot reload (no restart needed)"
+                << std::endl;
+      response.payload = createResponse(ResponseStatus::OK,
+                                        "Lines updated successfully (runtime)");
+      Json::Value data;
+      data["lines_count"] = static_cast<int>(lines.size());
+      response.payload["data"] = data;
+    } else {
+      std::cout << "[Worker:" << instance_id_
+                << "] Failed to update lines via SDK API" << std::endl;
+      response.payload = createErrorResponse("Failed to update lines via SDK API",
+                                              ResponseStatus::INTERNAL_ERROR);
+    }
+  } catch (const std::exception &e) {
+    std::cerr << "[Worker:" << instance_id_
+              << "] Exception updating lines: " << e.what() << std::endl;
+    response.payload = createErrorResponse("Exception updating lines: " +
+                                               std::string(e.what()),
+                                           ResponseStatus::INTERNAL_ERROR);
+  } catch (...) {
+    std::cerr << "[Worker:" << instance_id_
+              << "] Unknown exception updating lines" << std::endl;
+    response.payload = createErrorResponse("Unknown exception updating lines",
+                                           ResponseStatus::INTERNAL_ERROR);
+  }
 
   return response;
 }

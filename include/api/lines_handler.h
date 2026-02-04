@@ -213,6 +213,14 @@ private:
   parseLinesFromJson(const Json::Value &linesArray) const;
 
   /**
+   * @brief Parse lines from JSON array to map<int, vector<crossline_config>>
+   * @param linesArray JSON array of line objects
+   * @return Map of channel to vector of crossline_config, empty map if parse fails
+   */
+  std::map<int, std::vector<cvedix_nodes::crossline_config>>
+  parseLinesFromJsonWithConfigs(const Json::Value &linesArray) const;
+
+  /**
    * @brief Update lines in running ba_crossline_node without restart
    * @param instanceId Instance ID
    * @param linesArray JSON array of line objects
