@@ -330,6 +330,10 @@ set(SOURCES
     src/core/request_middleware.cpp
     src/core/metrics_interceptor.cpp
     src/core/event_queue.cpp
+    src/core/frame_input_queue.cpp
+    src/core/codec_manager.cpp
+    src/core/frame_decoder.cpp
+    src/core/frame_processor.cpp
     src/core/cors_filter.cpp
     src/core/cors_helper.cpp
     src/core/ai_processor.cpp
