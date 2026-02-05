@@ -301,6 +301,7 @@ set(SOURCES
     src/api/endpoints_handler.cpp
     src/api/swagger_handler.cpp
     src/api/scalar_handler.cpp
+    src/api/hls_handler.cpp
     src/api/create_instance_handler.cpp
     src/api/quick_instance_handler.cpp
     src/api/instance_handler.cpp
@@ -328,6 +329,7 @@ set(SOURCES
     src/core/endpoint_monitor.cpp
     src/core/request_middleware.cpp
     src/core/metrics_interceptor.cpp
+    src/core/event_queue.cpp
     src/core/cors_filter.cpp
     src/core/cors_helper.cpp
     src/core/ai_processor.cpp

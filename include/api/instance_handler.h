@@ -104,6 +104,12 @@ public:
                 "/v1/core/instance/{instanceId}/state", Post);
   ADD_METHOD_TO(InstanceHandler::patchInstance,
                 "/v1/core/instance/{instanceId}", Patch);
+  ADD_METHOD_TO(InstanceHandler::consumeEvents,
+                "/v1/core/instance/{instanceId}/consume_events", Get);
+  ADD_METHOD_TO(InstanceHandler::configureHlsOutput,
+                "/v1/core/instance/{instanceId}/output/hls", Post);
+  ADD_METHOD_TO(InstanceHandler::configureRtspOutput,
+                "/v1/core/instance/{instanceId}/output/rtsp", Post);
   ADD_METHOD_TO(InstanceHandler::handleOptions, "/v1/core/instance", Options);
   ADD_METHOD_TO(InstanceHandler::handleOptions,
                 "/v1/core/instance/{instanceId}", Options);
@@ -135,6 +141,12 @@ public:
                 "/v1/core/instance/{instanceId}/unload", Options);
   ADD_METHOD_TO(InstanceHandler::handleOptions,
                 "/v1/core/instance/{instanceId}/state", Options);
+  ADD_METHOD_TO(InstanceHandler::handleOptions,
+                "/v1/core/instance/{instanceId}/consume_events", Options);
+  ADD_METHOD_TO(InstanceHandler::handleOptions,
+                "/v1/core/instance/{instanceId}/output/hls", Options);
+  ADD_METHOD_TO(InstanceHandler::handleOptions,
+                "/v1/core/instance/{instanceId}/output/rtsp", Options);
   ADD_METHOD_TO(InstanceHandler::handleOptions, "/v1/core/instance/batch/start",
                 Options);
   ADD_METHOD_TO(InstanceHandler::handleOptions, "/v1/core/instance/batch/stop",
@@ -345,6 +357,27 @@ public:
    */
   void patchInstance(const HttpRequestPtr &req,
                      std::function<void(const HttpResponsePtr &)> &&callback);
+
+  /**
+   * @brief Handle GET /v1/core/instance/{instanceId}/consume_events
+   * Consumes events from instance event queue
+   */
+  void consumeEvents(const HttpRequestPtr &req,
+                     std::function<void(const HttpResponsePtr &)> &&callback);
+
+  /**
+   * @brief Handle POST /v1/core/instance/{instanceId}/output/hls
+   * Configures HLS output for instance
+   */
+  void configureHlsOutput(const HttpRequestPtr &req,
+                          std::function<void(const HttpResponsePtr &)> &&callback);
+
+  /**
+   * @brief Handle POST /v1/core/instance/{instanceId}/output/rtsp
+   * Configures RTSP output for instance
+   */
+  void configureRtspOutput(const HttpRequestPtr &req,
+                           std::function<void(const HttpResponsePtr &)> &&callback);
 
   /**
    * @brief Handle OPTIONS request for CORS preflight
