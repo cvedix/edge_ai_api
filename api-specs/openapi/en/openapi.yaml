@@ -8585,6 +8585,235 @@ paths:
       responses:
         '200':
           description: CORS preflight response
+  /v1/core/instance/{instanceId}/consume_events:
+    get:
+      summary: Consume events from instance
+      description: 'Consumes events from the instance event queue. Events are published by the instance processing pipeline and can be consumed via this endpoint.
+
+        **Event Format:**
+        - Each event has a `dataType` (e.g., "detection", "tracking", "analytics") and a `jsonObject` (JSON serialized string)
+        - Events follow the schema at https://bin.cvedia.com/schema/
+
+        **Behavior:**
+        - Returns all available events from the queue
+        - Events are removed from the queue after consumption
+        - Returns 204 No Content if no events are available
+        - Returns 200 OK with array of events if events are available'
+      operationId: coreConsumeEventsV1
+      tags:
+      - Instances
+      parameters:
+      - name: instanceId
+        in: path
+        required: true
+        schema:
+          type: string
+        description: The unique identifier of the instance
+        example: "{instanceId}"
+      responses:
+        '200':
+          description: Events retrieved successfully
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  type: object
+                  properties:
+                    dataType:
+                      type: string
+                      description: Event data type (e.g., "detection", "tracking", "analytics")
+                    jsonObject:
+                      type: string
+                      description: JSON serialized string containing event data
+              example:
+                - dataType: detection
+                  jsonObject: '{"timestamp": "2024-01-01T00:00:00Z", "objects": []}'
+                - dataType: tracking
+                  jsonObject: '{"timestamp": "2024-01-01T00:00:01Z", "tracks": []}'
+        '204':
+          description: No events available
+        '404':
+          description: Instance not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+    options:
+      summary: CORS preflight for consume events endpoint
+      operationId: consumeEventsOptions
+      tags:
+      - Instances
+      responses:
+        '200':
+          description: CORS preflight response
+  /v1/core/instance/{instanceId}/output/hls:
+    post:
+      summary: Configure HLS output for instance
+      description: 'Enables or disables HLS (HTTP Live Streaming) output for an instance. When enabled, returns the URI of the HLS stream.
+
+        **HLS Output:**
+        - HLS stream is accessible via HTTP
+        - Playlist file (.m3u8) is generated automatically
+        - Video segments (.ts files) are generated automatically
+        - Stream can be played in VLC, web browsers, or other HLS-compatible players'
+      operationId: coreSetOutputHlsV1
+      tags:
+      - Instances
+      parameters:
+      - name: instanceId
+        in: path
+        required: true
+        schema:
+          type: string
+        description: The unique identifier of the instance
+        example: "{instanceId}"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - enabled
+              properties:
+                enabled:
+                  type: boolean
+                  description: Enable or disable HLS output
+            examples:
+              enableHls:
+                summary: Enable HLS output
+                value:
+                  enabled: true
+              disableHls:
+                summary: Disable HLS output
+                value:
+                  enabled: false
+      responses:
+        '200':
+          description: HLS output configured successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  uri:
+                    type: string
+                    description: HLS stream URI (e.g., http://localhost:8080/hls/{instanceId}/stream.m3u8)
+                    example: http://localhost:8080/hls/{instanceId}/stream.m3u8
+        '204':
+          description: HLS output disabled successfully
+        '404':
+          description: Instance not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '406':
+          description: Could not set HLS output
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+    options:
+      summary: CORS preflight for HLS output endpoint
+      operationId: hlsOutputOptions
+      tags:
+      - Instances
+      responses:
+        '200':
+          description: CORS preflight response
+  /v1/core/instance/{instanceId}/output/rtsp:
+    post:
+      summary: Configure RTSP output for instance
+      description: 'Enables or disables RTSP (Real-Time Streaming Protocol) output for an instance at the specified URI.
+
+        **RTSP Output:**
+        - RTSP stream can be accessed via RTSP clients (VLC, ffplay, etc.)
+        - URI can be provided in request body or default will be used
+        - Stream supports multiple RTSP clients simultaneously'
+      operationId: coreSetOutputRtspV1
+      tags:
+      - Instances
+      parameters:
+      - name: instanceId
+        in: path
+        required: true
+        schema:
+          type: string
+        description: The unique identifier of the instance
+        example: "{instanceId}"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - enabled
+              properties:
+                enabled:
+                  type: boolean
+                  description: Enable or disable RTSP output
+                uri:
+                  type: string
+                  description: RTSP URI (optional, default will be used if not provided)
+                  example: rtsp://localhost:8554/stream
+            examples:
+              enableRtsp:
+                summary: Enable RTSP output with custom URI
+                value:
+                  enabled: true
+                  uri: rtsp://localhost:8554/stream
+              enableRtspDefault:
+                summary: Enable RTSP output with default URI
+                value:
+                  enabled: true
+              disableRtsp:
+                summary: Disable RTSP output
+                value:
+                  enabled: false
+      responses:
+        '204':
+          description: RTSP output configured successfully
+        '400':
+          description: Bad request (parsing error or invalid arguments)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: Instance not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+    options:
+      summary: CORS preflight for RTSP output endpoint
+      operationId: rtspOutputOptions
+      tags:
+      - Instances
+      responses:
+        '200':
+          description: CORS preflight response
   /v1/core/instance/{instanceId}/lines:
     get:
       summary: Get all crossing lines
