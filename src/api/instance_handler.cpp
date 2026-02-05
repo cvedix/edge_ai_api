@@ -1,6 +1,10 @@
 #include "api/instance_handler.h"
 #include "core/env_config.h"
 #include "core/event_queue.h"
+#include "core/frame_input_queue.h"
+#include "core/codec_manager.h"
+#include "core/frame_decoder.h"
+#include "core/frame_processor.h"
 #include "core/logger.h"
 #include "core/logging_flags.h"
 #include "core/metrics_interceptor.h"
@@ -8,6 +12,7 @@
 #include "instances/instance_info.h"
 #include "instances/instance_manager.h"
 #include "models/update_instance_request.h"
+#include <opencv2/opencv.hpp>
 #include <algorithm>
 #include <atomic>
 #include <chrono>
@@ -747,6 +752,10 @@ void InstanceHandler::startInstance(
         return;
       }
 
+      // Start frame processor for this instance
+      auto& frameProcessor = FrameProcessor::getInstance();
+      frameProcessor.startProcessing(instanceId, instance_manager_);
+      
       if (isApiLoggingEnabled()) {
         PLOG_INFO << "[API] POST /v1/core/instance/" << instanceId
                   << "/start - Success (verified running) - "
@@ -830,6 +839,10 @@ void InstanceHandler::stopInstance(
       return;
     }
 
+    // Stop frame processor for this instance
+    auto& frameProcessor = FrameProcessor::getInstance();
+    frameProcessor.stopProcessing(instanceId);
+    
     // OPTIMIZED: Run stopInstance() in detached thread to avoid blocking API
     // thread and other instances This allows multiple instances to stop
     // concurrently without blocking each other The instance will stop in
@@ -5757,6 +5770,585 @@ void InstanceHandler::configureRtspOutput(
   } catch (...) {
     if (isApiLoggingEnabled()) {
       PLOG_ERROR << "[API] POST /v1/core/instance/{instanceId}/output/rtsp - "
+                    "Unknown exception";
+    }
+    auto resp = createErrorResponse(500, "Internal server error",
+                                   "Unknown error occurred");
+    MetricsInterceptor::callWithMetrics(req, resp, std::move(callback));
+  }
+}
+
+void InstanceHandler::pushEncodedFrame(
+    const HttpRequestPtr &req,
+    std::function<void(const HttpResponsePtr &)> &&callback) {
+  MetricsInterceptor::setHandlerStartTime(req);
+  auto start_time = std::chrono::steady_clock::now();
+
+  if (isApiLoggingEnabled()) {
+    PLOG_INFO << "[API] POST /v1/core/instance/{instanceId}/push/encoded/{codecId} - Push encoded frame";
+    PLOG_DEBUG << "[API] Request from: " << req->getPeerAddr().toIpPort();
+  }
+
+  try {
+    // Check if registry is set
+    if (!instance_manager_) {
+      if (isApiLoggingEnabled()) {
+        PLOG_ERROR << "[API] POST /v1/core/instance/{instanceId}/push/encoded/{codecId} - "
+                      "Error: Instance registry not initialized";
+      }
+      callback(createErrorResponse(500, "Internal server error",
+                                   "Instance registry not initialized"));
+      return;
+    }
+
+    // Get instance ID and codec ID from path parameters
+    std::string instanceId = extractInstanceId(req);
+    std::string codecId = req->getParameter("codecId");
+
+    if (instanceId.empty()) {
+      if (isApiLoggingEnabled()) {
+        PLOG_WARNING << "[API] POST /v1/core/instance/{instanceId}/push/encoded/{codecId} - "
+                        "Error: Instance ID is empty";
+      }
+      callback(createErrorResponse(400, "Bad request", "Instance ID is required"));
+      return;
+    }
+
+    if (codecId.empty()) {
+      if (isApiLoggingEnabled()) {
+        PLOG_WARNING << "[API] POST /v1/core/instance/" << instanceId
+                     << "/push/encoded/{codecId} - Error: Codec ID is empty";
+      }
+      callback(createErrorResponse(400, "Bad request", "Codec ID is required"));
+      return;
+    }
+
+    // Validate codec
+    auto& codecManager = CodecManager::getInstance();
+    std::string normalizedCodec = codecManager.normalizeCodecId(codecId);
+    if (!codecManager.isCodecSupported(normalizedCodec)) {
+      if (isApiLoggingEnabled()) {
+        PLOG_WARNING << "[API] POST /v1/core/instance/" << instanceId
+                     << "/push/encoded/" << codecId << " - Unsupported codec";
+      }
+      callback(createErrorResponse(400, "Unsupported Codec",
+                                   "Codec '" + codecId + "' is not supported. Supported codecs: h264, h265"));
+      return;
+    }
+
+    // Check if instance exists
+    auto optInfo = instance_manager_->getInstance(instanceId);
+    if (!optInfo.has_value()) {
+      if (isApiLoggingEnabled()) {
+        PLOG_WARNING << "[API] POST /v1/core/instance/" << instanceId
+                     << "/push/encoded/" << codecId << " - Instance not found";
+      }
+      callback(createErrorResponse(404, "Instance not found",
+                                   "Instance not found: " + instanceId));
+      return;
+    }
+
+    const InstanceInfo& info = optInfo.value();
+
+    // Check if instance is running
+    if (!info.running) {
+      if (isApiLoggingEnabled()) {
+        PLOG_WARNING << "[API] POST /v1/core/instance/" << instanceId
+                     << "/push/encoded/" << codecId << " - Instance is not running";
+      }
+      callback(createErrorResponse(409, "Instance is not currently running",
+                                   "Instance must be running to push frames"));
+      return;
+    }
+
+    // Parse multipart/form-data
+    std::string contentType = req->getHeader("Content-Type");
+    if (contentType.find("multipart/form-data") == std::string::npos) {
+      if (isApiLoggingEnabled()) {
+        PLOG_WARNING << "[API] POST /v1/core/instance/" << instanceId
+                     << "/push/encoded/" << codecId << " - Invalid content type";
+      }
+      callback(createErrorResponse(400, "Bad request",
+                                   "Content-Type must be multipart/form-data"));
+      return;
+    }
+
+    // Extract boundary
+    std::string boundary;
+    size_t boundaryPos = contentType.find("boundary=");
+    if (boundaryPos != std::string::npos) {
+      boundaryPos += 9;
+      size_t endPos = contentType.find_first_of("; \r\n", boundaryPos);
+      if (endPos != std::string::npos) {
+        boundary = contentType.substr(boundaryPos, endPos - boundaryPos);
+      } else {
+        boundary = contentType.substr(boundaryPos);
+      }
+      if (!boundary.empty() && boundary.front() == '"' && boundary.back() == '"') {
+        boundary = boundary.substr(1, boundary.length() - 2);
+      }
+    }
+
+    if (boundary.empty()) {
+      callback(createErrorResponse(400, "Bad request",
+                                   "Could not find boundary in Content-Type"));
+      return;
+    }
+
+    // Parse multipart body
+    auto body = req->getBody();
+    if (body.empty()) {
+      callback(createErrorResponse(400, "Bad request", "Request body is empty"));
+      return;
+    }
+
+    std::string bodyStr(reinterpret_cast<const char*>(body.data()), body.size());
+    std::string boundaryMarker = "--" + boundary;
+
+    // Extract frame data and timestamp
+    std::vector<uint8_t> frameData;
+    int64_t timestamp = 0;
+
+    // Find frame field
+    size_t partStart = bodyStr.find(boundaryMarker);
+    while (partStart != std::string::npos) {
+      size_t contentDispositionPos = bodyStr.find("Content-Disposition:", partStart);
+      if (contentDispositionPos == std::string::npos || contentDispositionPos > partStart + 1024) {
+        partStart = bodyStr.find(boundaryMarker, partStart + 1);
+        continue;
+      }
+
+      // Check if this is the "frame" field
+      size_t frameFieldPos = bodyStr.find("name=\"frame\"", contentDispositionPos);
+      if (frameFieldPos == std::string::npos) {
+        frameFieldPos = bodyStr.find("name='frame'", contentDispositionPos);
+      }
+      if (frameFieldPos == std::string::npos) {
+        frameFieldPos = bodyStr.find("name=frame", contentDispositionPos);
+      }
+
+      if (frameFieldPos != std::string::npos && frameFieldPos < contentDispositionPos + 512) {
+        // Found frame field, extract data
+        size_t contentStart = bodyStr.find("\r\n\r\n", contentDispositionPos);
+        if (contentStart == std::string::npos) {
+          contentStart = bodyStr.find("\n\n", contentDispositionPos);
+        }
+        if (contentStart != std::string::npos) {
+          contentStart += 2;
+          if (contentStart < bodyStr.length() && (bodyStr[contentStart] == '\r' || bodyStr[contentStart] == '\n')) {
+            contentStart++;
+          }
+          while (contentStart < bodyStr.length() && 
+                 (bodyStr[contentStart] == '\r' || bodyStr[contentStart] == '\n' || 
+                  bodyStr[contentStart] == ' ' || bodyStr[contentStart] == '\t')) {
+            contentStart++;
+          }
+          size_t nextBoundary = bodyStr.find(boundaryMarker, contentStart);
+          size_t contentEnd = (nextBoundary != std::string::npos) ? nextBoundary : bodyStr.length();
+          while (contentEnd > contentStart && 
+                 (bodyStr[contentEnd - 1] == '\r' || bodyStr[contentEnd - 1] == '\n')) {
+            contentEnd--;
+          }
+          if (contentEnd > contentStart) {
+            frameData.assign(body.begin() + contentStart, body.begin() + contentEnd);
+          }
+        }
+        break;
+      }
+
+      // Check if this is the "timestamp" field
+      size_t timestampFieldPos = bodyStr.find("name=\"timestamp\"", contentDispositionPos);
+      if (timestampFieldPos == std::string::npos) {
+        timestampFieldPos = bodyStr.find("name='timestamp'", contentDispositionPos);
+      }
+      if (timestampFieldPos == std::string::npos) {
+        timestampFieldPos = bodyStr.find("name=timestamp", contentDispositionPos);
+      }
+
+      if (timestampFieldPos != std::string::npos && timestampFieldPos < contentDispositionPos + 512) {
+        // Found timestamp field, extract value
+        size_t contentStart = bodyStr.find("\r\n\r\n", contentDispositionPos);
+        if (contentStart == std::string::npos) {
+          contentStart = bodyStr.find("\n\n", contentDispositionPos);
+        }
+        if (contentStart != std::string::npos) {
+          contentStart += 2;
+          while (contentStart < bodyStr.length() && 
+                 (bodyStr[contentStart] == '\r' || bodyStr[contentStart] == '\n' || 
+                  bodyStr[contentStart] == ' ' || bodyStr[contentStart] == '\t')) {
+            contentStart++;
+          }
+          size_t nextBoundary = bodyStr.find(boundaryMarker, contentStart);
+          size_t contentEnd = (nextBoundary != std::string::npos) ? nextBoundary : bodyStr.length();
+          while (contentEnd > contentStart && 
+                 (bodyStr[contentEnd - 1] == '\r' || bodyStr[contentEnd - 1] == '\n')) {
+            contentEnd--;
+          }
+          if (contentEnd > contentStart) {
+            std::string timestampStr = bodyStr.substr(contentStart, contentEnd - contentStart);
+            try {
+              timestamp = std::stoll(timestampStr);
+            } catch (...) {
+              // Use current timestamp if parsing fails
+              timestamp = std::chrono::duration_cast<std::chrono::milliseconds>(
+                  std::chrono::system_clock::now().time_since_epoch()).count();
+            }
+          }
+        }
+      }
+
+      partStart = bodyStr.find(boundaryMarker, partStart + 1);
+    }
+
+    if (frameData.empty()) {
+      callback(createErrorResponse(400, "Bad request",
+                                   "Frame data is required in multipart field 'frame'"));
+      return;
+    }
+
+    // Use current timestamp if not provided
+    if (timestamp == 0) {
+      timestamp = std::chrono::duration_cast<std::chrono::milliseconds>(
+          std::chrono::system_clock::now().time_since_epoch()).count();
+    }
+
+    // Decode frame
+    FrameDecoder decoder;
+    cv::Mat decodedFrame;
+    if (!decoder.decodeEncodedFrame(frameData, normalizedCodec, decodedFrame)) {
+      if (isApiLoggingEnabled()) {
+        PLOG_ERROR << "[API] POST /v1/core/instance/" << instanceId
+                   << "/push/encoded/" << codecId << " - Failed to decode frame";
+      }
+      callback(createErrorResponse(500, "Internal Server Error",
+                                   "Failed to decode encoded frame"));
+      return;
+    }
+
+    // Push frame to queue
+    auto& queueManager = FrameInputQueueManager::getInstance();
+    auto& queue = queueManager.getQueue(instanceId);
+    
+    FrameData frameDataObj(FrameType::ENCODED, normalizedCodec, frameData, timestamp);
+    if (!queue.push(frameDataObj)) {
+      if (isApiLoggingEnabled()) {
+        PLOG_WARNING << "[API] POST /v1/core/instance/" << instanceId
+                     << "/push/encoded/" << codecId << " - Queue is full";
+      }
+      callback(createErrorResponse(500, "Internal Server Error",
+                                   "Frame queue is full"));
+      return;
+    }
+
+    // TODO: Inject decoded frame into instance pipeline
+    // For now, we push to queue. Integration with instance pipeline
+    // (e.g., app_src node) needs to be implemented separately.
+
+    auto end_time = std::chrono::steady_clock::now();
+    auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(
+        end_time - start_time);
+
+    if (isApiLoggingEnabled()) {
+      PLOG_INFO << "[API] POST /v1/core/instance/" << instanceId
+                << "/push/encoded/" << codecId << " - Success - " 
+                << duration.count() << "ms";
+    }
+
+    auto resp = HttpResponse::newHttpResponse();
+    resp->setStatusCode(k204NoContent);
+    resp->addHeader("Access-Control-Allow-Origin", "*");
+    resp->addHeader("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS");
+    resp->addHeader("Access-Control-Allow-Headers", "Content-Type, Authorization");
+    MetricsInterceptor::callWithMetrics(req, resp, std::move(callback));
+
+  } catch (const std::exception& e) {
+    if (isApiLoggingEnabled()) {
+      PLOG_ERROR << "[API] POST /v1/core/instance/{instanceId}/push/encoded/{codecId} - "
+                    "Exception: " << e.what();
+    }
+    auto resp = createErrorResponse(500, "Internal server error", e.what());
+    MetricsInterceptor::callWithMetrics(req, resp, std::move(callback));
+  } catch (...) {
+    if (isApiLoggingEnabled()) {
+      PLOG_ERROR << "[API] POST /v1/core/instance/{instanceId}/push/encoded/{codecId} - "
+                    "Unknown exception";
+    }
+    auto resp = createErrorResponse(500, "Internal server error",
+                                   "Unknown error occurred");
+    MetricsInterceptor::callWithMetrics(req, resp, std::move(callback));
+  }
+}
+
+void InstanceHandler::pushCompressedFrame(
+    const HttpRequestPtr &req,
+    std::function<void(const HttpResponsePtr &)> &&callback) {
+  MetricsInterceptor::setHandlerStartTime(req);
+  auto start_time = std::chrono::steady_clock::now();
+
+  if (isApiLoggingEnabled()) {
+    PLOG_INFO << "[API] POST /v1/core/instance/{instanceId}/push/compressed - Push compressed frame";
+    PLOG_DEBUG << "[API] Request from: " << req->getPeerAddr().toIpPort();
+  }
+
+  try {
+    // Check if registry is set
+    if (!instance_manager_) {
+      if (isApiLoggingEnabled()) {
+        PLOG_ERROR << "[API] POST /v1/core/instance/{instanceId}/push/compressed - "
+                      "Error: Instance registry not initialized";
+      }
+      callback(createErrorResponse(500, "Internal server error",
+                                   "Instance registry not initialized"));
+      return;
+    }
+
+    // Get instance ID from path parameter
+    std::string instanceId = extractInstanceId(req);
+
+    if (instanceId.empty()) {
+      if (isApiLoggingEnabled()) {
+        PLOG_WARNING << "[API] POST /v1/core/instance/{instanceId}/push/compressed - "
+                        "Error: Instance ID is empty";
+      }
+      callback(createErrorResponse(400, "Bad request", "Instance ID is required"));
+      return;
+    }
+
+    // Check if instance exists
+    auto optInfo = instance_manager_->getInstance(instanceId);
+    if (!optInfo.has_value()) {
+      if (isApiLoggingEnabled()) {
+        PLOG_WARNING << "[API] POST /v1/core/instance/" << instanceId
+                     << "/push/compressed - Instance not found";
+      }
+      callback(createErrorResponse(404, "Instance not found",
+                                   "Instance not found: " + instanceId));
+      return;
+    }
+
+    const InstanceInfo& info = optInfo.value();
+
+    // Check if instance is running
+    if (!info.running) {
+      if (isApiLoggingEnabled()) {
+        PLOG_WARNING << "[API] POST /v1/core/instance/" << instanceId
+                     << "/push/compressed - Instance is not running";
+      }
+      callback(createErrorResponse(409, "Instance is not currently running",
+                                   "Instance must be running to push frames"));
+      return;
+    }
+
+    // Parse multipart/form-data
+    std::string contentType = req->getHeader("Content-Type");
+    if (contentType.find("multipart/form-data") == std::string::npos) {
+      if (isApiLoggingEnabled()) {
+        PLOG_WARNING << "[API] POST /v1/core/instance/" << instanceId
+                     << "/push/compressed - Invalid content type";
+      }
+      callback(createErrorResponse(400, "Bad request",
+                                   "Content-Type must be multipart/form-data"));
+      return;
+    }
+
+    // Extract boundary
+    std::string boundary;
+    size_t boundaryPos = contentType.find("boundary=");
+    if (boundaryPos != std::string::npos) {
+      boundaryPos += 9;
+      size_t endPos = contentType.find_first_of("; \r\n", boundaryPos);
+      if (endPos != std::string::npos) {
+        boundary = contentType.substr(boundaryPos, endPos - boundaryPos);
+      } else {
+        boundary = contentType.substr(boundaryPos);
+      }
+      if (!boundary.empty() && boundary.front() == '"' && boundary.back() == '"') {
+        boundary = boundary.substr(1, boundary.length() - 2);
+      }
+    }
+
+    if (boundary.empty()) {
+      callback(createErrorResponse(400, "Bad request",
+                                   "Could not find boundary in Content-Type"));
+      return;
+    }
+
+    // Parse multipart body
+    auto body = req->getBody();
+    if (body.empty()) {
+      callback(createErrorResponse(400, "Bad request", "Request body is empty"));
+      return;
+    }
+
+    std::string bodyStr(reinterpret_cast<const char*>(body.data()), body.size());
+    std::string boundaryMarker = "--" + boundary;
+
+    // Extract frame data and timestamp
+    std::vector<uint8_t> frameData;
+    int64_t timestamp = 0;
+
+    // Find frame field
+    size_t partStart = bodyStr.find(boundaryMarker);
+    while (partStart != std::string::npos) {
+      size_t contentDispositionPos = bodyStr.find("Content-Disposition:", partStart);
+      if (contentDispositionPos == std::string::npos || contentDispositionPos > partStart + 1024) {
+        partStart = bodyStr.find(boundaryMarker, partStart + 1);
+        continue;
+      }
+
+      // Check if this is the "frame" field
+      size_t frameFieldPos = bodyStr.find("name=\"frame\"", contentDispositionPos);
+      if (frameFieldPos == std::string::npos) {
+        frameFieldPos = bodyStr.find("name='frame'", contentDispositionPos);
+      }
+      if (frameFieldPos == std::string::npos) {
+        frameFieldPos = bodyStr.find("name=frame", contentDispositionPos);
+      }
+
+      if (frameFieldPos != std::string::npos && frameFieldPos < contentDispositionPos + 512) {
+        // Found frame field, extract data
+        size_t contentStart = bodyStr.find("\r\n\r\n", contentDispositionPos);
+        if (contentStart == std::string::npos) {
+          contentStart = bodyStr.find("\n\n", contentDispositionPos);
+        }
+        if (contentStart != std::string::npos) {
+          contentStart += 2;
+          if (contentStart < bodyStr.length() && (bodyStr[contentStart] == '\r' || bodyStr[contentStart] == '\n')) {
+            contentStart++;
+          }
+          while (contentStart < bodyStr.length() && 
+                 (bodyStr[contentStart] == '\r' || bodyStr[contentStart] == '\n' || 
+                  bodyStr[contentStart] == ' ' || bodyStr[contentStart] == '\t')) {
+            contentStart++;
+          }
+          size_t nextBoundary = bodyStr.find(boundaryMarker, contentStart);
+          size_t contentEnd = (nextBoundary != std::string::npos) ? nextBoundary : bodyStr.length();
+          while (contentEnd > contentStart && 
+                 (bodyStr[contentEnd - 1] == '\r' || bodyStr[contentEnd - 1] == '\n')) {
+            contentEnd--;
+          }
+          if (contentEnd > contentStart) {
+            frameData.assign(body.begin() + contentStart, body.begin() + contentEnd);
+          }
+        }
+        break;
+      }
+
+      // Check if this is the "timestamp" field
+      size_t timestampFieldPos = bodyStr.find("name=\"timestamp\"", contentDispositionPos);
+      if (timestampFieldPos == std::string::npos) {
+        timestampFieldPos = bodyStr.find("name='timestamp'", contentDispositionPos);
+      }
+      if (timestampFieldPos == std::string::npos) {
+        timestampFieldPos = bodyStr.find("name=timestamp", contentDispositionPos);
+      }
+
+      if (timestampFieldPos != std::string::npos && timestampFieldPos < contentDispositionPos + 512) {
+        // Found timestamp field, extract value
+        size_t contentStart = bodyStr.find("\r\n\r\n", contentDispositionPos);
+        if (contentStart == std::string::npos) {
+          contentStart = bodyStr.find("\n\n", contentDispositionPos);
+        }
+        if (contentStart != std::string::npos) {
+          contentStart += 2;
+          while (contentStart < bodyStr.length() && 
+                 (bodyStr[contentStart] == '\r' || bodyStr[contentStart] == '\n' || 
+                  bodyStr[contentStart] == ' ' || bodyStr[contentStart] == '\t')) {
+            contentStart++;
+          }
+          size_t nextBoundary = bodyStr.find(boundaryMarker, contentStart);
+          size_t contentEnd = (nextBoundary != std::string::npos) ? nextBoundary : bodyStr.length();
+          while (contentEnd > contentStart && 
+                 (bodyStr[contentEnd - 1] == '\r' || bodyStr[contentEnd - 1] == '\n')) {
+            contentEnd--;
+          }
+          if (contentEnd > contentStart) {
+            std::string timestampStr = bodyStr.substr(contentStart, contentEnd - contentStart);
+            try {
+              timestamp = std::stoll(timestampStr);
+            } catch (...) {
+              // Use current timestamp if parsing fails
+              timestamp = std::chrono::duration_cast<std::chrono::milliseconds>(
+                  std::chrono::system_clock::now().time_since_epoch()).count();
+            }
+          }
+        }
+      }
+
+      partStart = bodyStr.find(boundaryMarker, partStart + 1);
+    }
+
+    if (frameData.empty()) {
+      callback(createErrorResponse(400, "Bad request",
+                                   "Frame data is required in multipart field 'frame'"));
+      return;
+    }
+
+    // Use current timestamp if not provided
+    if (timestamp == 0) {
+      timestamp = std::chrono::duration_cast<std::chrono::milliseconds>(
+          std::chrono::system_clock::now().time_since_epoch()).count();
+    }
+
+    // Decode frame
+    FrameDecoder decoder;
+    cv::Mat decodedFrame;
+    if (!decoder.decodeCompressedFrame(frameData, decodedFrame)) {
+      if (isApiLoggingEnabled()) {
+        PLOG_ERROR << "[API] POST /v1/core/instance/" << instanceId
+                   << "/push/compressed - Failed to decode frame";
+      }
+      callback(createErrorResponse(500, "Internal Server Error",
+                                   "Failed to decode compressed frame"));
+      return;
+    }
+
+    // Push frame to queue
+    auto& queueManager = FrameInputQueueManager::getInstance();
+    auto& queue = queueManager.getQueue(instanceId);
+    
+    FrameData frameDataObj(FrameType::COMPRESSED, "", frameData, timestamp);
+    if (!queue.push(frameDataObj)) {
+      if (isApiLoggingEnabled()) {
+        PLOG_WARNING << "[API] POST /v1/core/instance/" << instanceId
+                     << "/push/compressed - Queue is full";
+      }
+      callback(createErrorResponse(500, "Internal Server Error",
+                                   "Frame queue is full"));
+      return;
+    }
+
+    // TODO: Inject decoded frame into instance pipeline
+    // For now, we push to queue. Integration with instance pipeline
+    // (e.g., app_src node) needs to be implemented separately.
+
+    auto end_time = std::chrono::steady_clock::now();
+    auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(
+        end_time - start_time);
+
+    if (isApiLoggingEnabled()) {
+      PLOG_INFO << "[API] POST /v1/core/instance/" << instanceId
+                << "/push/compressed - Success - " 
+                << duration.count() << "ms";
+    }
+
+    auto resp = HttpResponse::newHttpResponse();
+    resp->setStatusCode(k204NoContent);
+    resp->addHeader("Access-Control-Allow-Origin", "*");
+    resp->addHeader("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS");
+    resp->addHeader("Access-Control-Allow-Headers", "Content-Type, Authorization");
+    MetricsInterceptor::callWithMetrics(req, resp, std::move(callback));
+
+  } catch (const std::exception& e) {
+    if (isApiLoggingEnabled()) {
+      PLOG_ERROR << "[API] POST /v1/core/instance/{instanceId}/push/compressed - "
+                    "Exception: " << e.what();
+    }
+    auto resp = createErrorResponse(500, "Internal server error", e.what());
+    MetricsInterceptor::callWithMetrics(req, resp, std::move(callback));
+  } catch (...) {
+    if (isApiLoggingEnabled()) {
+      PLOG_ERROR << "[API] POST /v1/core/instance/{instanceId}/push/compressed - "
                     "Unknown exception";
     }
     auto resp = createErrorResponse(500, "Internal server error",
