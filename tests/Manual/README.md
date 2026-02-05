@@ -18,7 +18,8 @@ Manual/
 │
 ├── Core_API/           # Manual tests cho Core API
 │   ├── SYSTEM_CONFIG_MANUAL_TEST.md
-│   └── SYSTEM_CONFIG_QUICK_TEST.md
+│   ├── SYSTEM_CONFIG_QUICK_TEST.md
+│   └── EVENTS_OUTPUT_MANUAL_TEST.md
 │
 ├── Solutions/          # Manual tests cho Solutions
 │
@@ -69,6 +70,13 @@ Manual tests được thiết kế để:
   - Get Registry Key Value
   - System Shutdown
 - **SYSTEM_CONFIG_QUICK_TEST.md**: Các lệnh nhanh để test System Config API
+
+### Core API - Events & Output
+- **EVENTS_OUTPUT_MANUAL_TEST.md**: Hướng dẫn test chi tiết Events & Output Configuration API, bao gồm:
+  - Consume Events từ instance event queue
+  - Configure HLS (HTTP Live Streaming) output
+  - Configure RTSP (Real-Time Streaming Protocol) output
+  - Integration tests với multiple output formats
 
 ## Thêm Manual Test Mới
 
