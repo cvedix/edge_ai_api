@@ -117,6 +117,10 @@ target_sources(edge_ai_api_tests PRIVATE
     ${CMAKE_SOURCE_DIR}/src/core/request_middleware.cpp
     ${CMAKE_SOURCE_DIR}/src/core/metrics_interceptor.cpp
     ${CMAKE_SOURCE_DIR}/src/core/event_queue.cpp
+    ${CMAKE_SOURCE_DIR}/src/core/frame_input_queue.cpp
+    ${CMAKE_SOURCE_DIR}/src/core/codec_manager.cpp
+    ${CMAKE_SOURCE_DIR}/src/core/frame_decoder.cpp
+    ${CMAKE_SOURCE_DIR}/src/core/frame_processor.cpp
     ${CMAKE_SOURCE_DIR}/src/instances/instance_storage.cpp
     ${CMAKE_SOURCE_DIR}/src/instances/instance_registry.cpp
     ${CMAKE_SOURCE_DIR}/src/instances/instance_state_manager.cpp
