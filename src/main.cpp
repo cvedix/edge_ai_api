@@ -4,6 +4,7 @@
 #include "api/quick_instance_handler.h"
 #include "api/swagger_handler.h"
 #include "api/scalar_handler.h"
+#include "api/hls_handler.h"
 #include "api/version_handler.h"
 #include "api/watchdog_handler.h"
 #include <drogon/drogon.h>
@@ -2091,6 +2092,7 @@ int main(int argc, char *argv[]) {
     static WatchdogHandler watchdogHandler;
     static SwaggerHandler swaggerHandler;
     static ScalarHandler scalarHandler;
+    static HlsHandler hlsHandler;
     static EndpointsHandler endpointsHandler;
     static LogHandler logHandler;
 #ifdef ENABLE_SYSTEM_INFO_HANDLER
