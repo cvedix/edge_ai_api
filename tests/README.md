@@ -6,7 +6,7 @@ Thư mục này chứa tất cả các tests cho Edge AI API, được tổ ch�
 
 ```
 tests/
-├── Manual/          # Tài liệu và hướng dẫn test thủ công
+├── manual/          # Tài liệu và hướng dẫn test thủ công
 │   ├── ONVIF/       # Manual tests cho tính năng ONVIF
 │   ├── Recognition/ # Manual tests cho tính năng Recognition
 │   ├── Instance_Management/
@@ -17,7 +17,7 @@ tests/
 │   ├── Analytics/
 │   └── Config/
 │
-├── Auto/            # Unit tests tự động (Google Test)
+├── unit/            # Unit tests tự động (Google Test)
 │   ├── ONVIF/       # Unit tests cho tính năng ONVIF
 │   ├── Recognition/ # Unit tests cho tính năng Recognition
 │   ├── Instance_Management/
@@ -35,15 +35,15 @@ tests/
 
 ## Manual Tests
 
-Thư mục `Manual/` chứa các tài liệu hướng dẫn test thủ công cho từng tính năng lớn. Mỗi tính năng có thư mục riêng với các file markdown mô tả cách test.
+Thư mục `manual/` chứa các tài liệu hướng dẫn test thủ công cho từng tính năng lớn. Mỗi tính năng có thư mục riêng với các file markdown mô tả cách test.
 
-Xem chi tiết tại: [Manual/README.md](Manual/README.md)
+Xem chi tiết tại: [manual/README.md](manual/README.md)
 
-## Auto Tests (Unit Tests)
+## Unit Tests
 
-Thư mục `Auto/` chứa các unit tests tự động sử dụng Google Test framework. Tests được tổ chức theo từng tính năng lớn để dễ quản lý và maintain.
+Thư mục `unit/` chứa các unit tests tự động sử dụng Google Test framework. Tests được tổ chức theo từng tính năng lớn để dễ quản lý và maintain.
 
-Xem chi tiết tại: [Auto/README.md](Auto/README.md)
+Xem chi tiết tại: [unit/README.md](unit/README.md)
 
 ## Build và Chạy Tests
 
@@ -137,7 +137,7 @@ ctest
 Khi thêm API handler mới:
 
 1. Xác định tính năng lớn mà handler thuộc về
-2. Tạo file `test_<handler_name>.cpp` trong thư mục `Auto/<Feature>/`
+2. Tạo file `test_<handler_name>.cpp` trong thư mục `unit/<Feature>/`
 3. Thêm file vào `CMakeLists.txt` trong `TEST_SOURCES` với đường dẫn đầy đủ
 4. Viết tests cho:
    - Valid requests
