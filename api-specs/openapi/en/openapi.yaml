@@ -11842,6 +11842,197 @@ paths:
       responses:
         '200':
           description: CORS preflight response
+  /v1/securt/instance/{instanceId}/input:
+    post:
+      summary: Set input source for SecuRT instance
+      description: 'Sets the input source configuration for a SecuRT instance. Supports multiple input types including File, RTSP, RTMP, and HLS streams.
+
+        **Input Types:**
+
+        - **File**: Video file from local path or URL
+
+        - **RTSP**: RTSP stream URL (uses `rtsp_src` node)
+
+        - **RTMP**: RTMP stream URL (uses `rtmp_src` node)
+
+        - **HLS**: HLS stream URL (.m3u8) (uses `hls_src` node)
+
+        **Additional Parameters:**
+
+        For RTSP input, you can specify:
+        - `RTSP_TRANSPORT`: Transport protocol ("tcp" or "udp")
+        - `GST_DECODER_NAME`: GStreamer decoder name (e.g., "avdec_h264", "decodebin")
+        - `USE_URISOURCEBIN`: Use urisourcebin format for auto-detection ("true" or "false")
+
+        The instance must exist. If the instance is currently running, it will be automatically restarted to apply the changes.
+
+        '
+      operationId: setSecuRTInstanceInput
+      tags:
+      - SecuRT Instance
+      parameters:
+      - name: instanceId
+        in: path
+        required: true
+        schema:
+          type: string
+        description: Instance ID
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SecuRTInputRequest'
+            examples:
+              rtspInput:
+                summary: RTSP input from camera
+                value:
+                  type: RTSP
+                  uri: rtsp://192.168.1.100:554/stream1
+                  additionalParams:
+                    RTSP_TRANSPORT: tcp
+                    GST_DECODER_NAME: avdec_h264
+              fileInput:
+                summary: Video file input
+                value:
+                  type: File
+                  uri: ./test_video.mp4
+              rtmpInput:
+                summary: RTMP stream input
+                value:
+                  type: RTMP
+                  uri: rtmp://live.example.com/live/stream
+              hlsInput:
+                summary: HLS stream input
+                value:
+                  type: HLS
+                  uri: http://example.com/stream.m3u8
+      responses:
+        '204':
+          description: Input settings updated successfully
+        '400':
+          description: Invalid request (invalid input type or missing required fields)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: Instance not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+    options:
+      summary: CORS preflight for input
+      operationId: setSecuRTInstanceInputOptions
+      tags:
+      - SecuRT Instance
+      responses:
+        '200':
+          description: CORS preflight response
+  /v1/securt/instance/{instanceId}/output:
+    post:
+      summary: Set output destination for SecuRT instance
+      description: 'Configures output destination for a SecuRT instance. Supports multiple output types including MQTT, RTMP, RTSP, and HLS.
+
+        **Output Types:**
+
+        - **MQTT**: Publish analytics results to MQTT broker
+          - Required: `broker` (MQTT broker address)
+          - Optional: `port` (default: 1883), `topic` (default: securt/{instanceId}), `username`, `password`
+
+        - **RTMP**: Stream video to RTMP server
+          - Required: `uri` (must start with rtmp://)
+
+        - **RTSP**: Stream video to RTSP server
+          - Required: `uri` (must start with rtsp://)
+
+        - **HLS**: Stream video via HLS
+          - Required: `uri` (must start with hls://, http://, or https://)
+
+        **Behavior:**
+
+        - If the instance is currently running, it will be automatically restarted to apply the changes
+
+        - Multiple outputs can be configured by calling this endpoint multiple times
+
+        - Output configuration is stored in instance AdditionalParams
+
+        '
+      operationId: setSecuRTInstanceOutput
+      tags:
+      - SecuRT Instance
+      parameters:
+      - name: instanceId
+        in: path
+        required: true
+        schema:
+          type: string
+        description: Instance ID
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SecuRTOutputRequest'
+            examples:
+              mqttOutput:
+                summary: MQTT output
+                value:
+                  type: MQTT
+                  broker: localhost
+                  port: "1883"
+                  topic: securt/detections
+              rtmpOutput:
+                summary: RTMP output
+                value:
+                  type: RTMP
+                  uri: rtmp://live.example.com/live/stream_key
+              rtspOutput:
+                summary: RTSP output
+                value:
+                  type: RTSP
+                  uri: rtsp://localhost:8554/stream
+              hlsOutput:
+                summary: HLS output
+                value:
+                  type: HLS
+                  uri: hls://localhost:8080/hls/stream
+      responses:
+        '204':
+          description: Output settings updated successfully
+        '400':
+          description: Invalid request (invalid output type or missing required fields)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: Instance not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+    options:
+      summary: CORS preflight for output
+      operationId: setSecuRTInstanceOutputOptions
+      tags:
+      - SecuRT Instance
+      responses:
+        '200':
+          description: CORS preflight response
   /v1/securt/instance/{instanceId}/areas:
     get:
       summary: Get analytics areas for SecuRT instance
@@ -13477,9 +13668,449 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
+    delete:
+      summary: Delete all lines for SecuRT instance
+      description: Deletes all analytics lines for a SecuRT instance
+      operationId: deleteAllSecuRTLines
+      tags:
+      - Lines SecuRT
+      parameters:
+      - name: instanceId
+        in: path
+        required: true
+        schema:
+          type: string
+        description: Instance ID
+      responses:
+        '204':
+          description: All lines deleted successfully
+        '400':
+          description: Invalid request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: Instance not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
     options:
       summary: CORS preflight for lines
       operationId: getSecuRTLinesOptions
+      tags:
+      - Lines SecuRT
+      responses:
+        '200':
+          description: CORS preflight response
+  /v1/securt/instance/{instanceId}/line/counting:
+    post:
+      summary: Create counting line
+      description: Creates a new counting line for a SecuRT instance
+      operationId: createCountingLine
+      tags:
+      - Lines SecuRT
+      parameters:
+      - name: instanceId
+        in: path
+        required: true
+        schema:
+          type: string
+        description: Instance ID
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CountingLineWrite'
+      responses:
+        '201':
+          description: Counting line created successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  lineId:
+                    type: string
+                    description: Created line ID
+                    example: "{lineId}"
+        '400':
+          description: Invalid request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: Instance not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+    options:
+      summary: CORS preflight for counting line
+      operationId: createCountingLineOptions
+      tags:
+      - Lines SecuRT
+      responses:
+        '200':
+          description: CORS preflight response
+  /v1/securt/instance/{instanceId}/line/counting/{lineId}:
+    put:
+      summary: Create counting line with ID
+      description: Creates a counting line with a specific ID for a SecuRT instance
+      operationId: createCountingLineWithId
+      tags:
+      - Lines SecuRT
+      parameters:
+      - name: instanceId
+        in: path
+        required: true
+        schema:
+          type: string
+        description: Instance ID
+      - name: lineId
+        in: path
+        required: true
+        schema:
+          type: string
+        description: Line ID
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CountingLineWrite'
+      responses:
+        '201':
+          description: Counting line created successfully
+        '400':
+          description: Invalid request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '409':
+          description: Line already exists
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: Instance not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+    options:
+      summary: CORS preflight for counting line with ID
+      operationId: createCountingLineWithIdOptions
+      tags:
+      - Lines SecuRT
+      responses:
+        '200':
+          description: CORS preflight response
+  /v1/securt/instance/{instanceId}/line/crossing:
+    post:
+      summary: Create crossing line
+      description: Creates a new crossing line for a SecuRT instance
+      operationId: createCrossingLine
+      tags:
+      - Lines SecuRT
+      parameters:
+      - name: instanceId
+        in: path
+        required: true
+        schema:
+          type: string
+        description: Instance ID
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CrossingLineWrite'
+      responses:
+        '201':
+          description: Crossing line created successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  lineId:
+                    type: string
+                    description: Created line ID
+                    example: "{lineId}"
+        '400':
+          description: Invalid request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: Instance not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+    options:
+      summary: CORS preflight for crossing line
+      operationId: createCrossingLineOptions
+      tags:
+      - Lines SecuRT
+      responses:
+        '200':
+          description: CORS preflight response
+  /v1/securt/instance/{instanceId}/line/crossing/{lineId}:
+    put:
+      summary: Create crossing line with ID
+      description: Creates a crossing line with a specific ID for a SecuRT instance
+      operationId: createCrossingLineWithId
+      tags:
+      - Lines SecuRT
+      parameters:
+      - name: instanceId
+        in: path
+        required: true
+        schema:
+          type: string
+        description: Instance ID
+      - name: lineId
+        in: path
+        required: true
+        schema:
+          type: string
+        description: Line ID
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CrossingLineWrite'
+      responses:
+        '201':
+          description: Crossing line created successfully
+        '400':
+          description: Invalid request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '409':
+          description: Line already exists
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: Instance not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+    options:
+      summary: CORS preflight for crossing line with ID
+      operationId: createCrossingLineWithIdOptions
+      tags:
+      - Lines SecuRT
+      responses:
+        '200':
+          description: CORS preflight response
+  /v1/securt/instance/{instanceId}/line/tailgating:
+    post:
+      summary: Create tailgating line
+      description: Creates a new tailgating line for a SecuRT instance
+      operationId: createTailgatingLine
+      tags:
+      - Lines SecuRT
+      parameters:
+      - name: instanceId
+        in: path
+        required: true
+        schema:
+          type: string
+        description: Instance ID
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TailgatingLineWrite'
+      responses:
+        '201':
+          description: Tailgating line created successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  lineId:
+                    type: string
+                    description: Created line ID
+                    example: "{lineId}"
+        '400':
+          description: Invalid request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: Instance not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+    options:
+      summary: CORS preflight for tailgating line
+      operationId: createTailgatingLineOptions
+      tags:
+      - Lines SecuRT
+      responses:
+        '200':
+          description: CORS preflight response
+  /v1/securt/instance/{instanceId}/line/tailgating/{lineId}:
+    put:
+      summary: Create tailgating line with ID
+      description: Creates a tailgating line with a specific ID for a SecuRT instance
+      operationId: createTailgatingLineWithId
+      tags:
+      - Lines SecuRT
+      parameters:
+      - name: instanceId
+        in: path
+        required: true
+        schema:
+          type: string
+        description: Instance ID
+      - name: lineId
+        in: path
+        required: true
+        schema:
+          type: string
+        description: Line ID
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TailgatingLineWrite'
+      responses:
+        '201':
+          description: Tailgating line created successfully
+        '400':
+          description: Invalid request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '409':
+          description: Line already exists
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: Instance not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+    options:
+      summary: CORS preflight for tailgating line with ID
+      operationId: createTailgatingLineWithIdOptions
+      tags:
+      - Lines SecuRT
+      responses:
+        '200':
+          description: CORS preflight response
+  /v1/securt/instance/{instanceId}/line/{lineId}:
+    delete:
+      summary: Delete line by ID
+      description: Deletes a specific line by its ID
+      operationId: deleteLine
+      tags:
+      - Lines SecuRT
+      parameters:
+      - name: instanceId
+        in: path
+        required: true
+        schema:
+          type: string
+        description: Instance ID
+      - name: lineId
+        in: path
+        required: true
+        schema:
+          type: string
+        description: Line ID
+      responses:
+        '204':
+          description: Line deleted successfully
+        '400':
+          description: Invalid request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: Instance or line not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+    options:
+      summary: CORS preflight for line by ID
+      operationId: deleteLineOptions
       tags:
       - Lines SecuRT
       responses:
@@ -16699,6 +17330,89 @@ components:
           type: boolean
           description: Whether instance is running
           example: true
+    SecuRTInputRequest:
+      type: object
+      required:
+      - type
+      - uri
+      properties:
+        type:
+          type: string
+          description: Type of input source
+          enum:
+          - File
+          - RTSP
+          - RTMP
+          - HLS
+          example: RTSP
+        uri:
+          type: string
+          description: URI of the input source
+          example: rtsp://192.168.1.100:554/stream1
+        additionalParams:
+          type: object
+          description: Additional parameters for input configuration
+          properties:
+            RTSP_TRANSPORT:
+              type: string
+              enum:
+              - tcp
+              - udp
+              description: RTSP transport protocol (for RTSP input only)
+              example: tcp
+            GST_DECODER_NAME:
+              type: string
+              description: GStreamer decoder name (e.g., "avdec_h264", "decodebin")
+              example: avdec_h264
+            USE_URISOURCEBIN:
+              type: string
+              enum:
+              - "true"
+              - "false"
+              - "1"
+              - "0"
+              description: Use urisourcebin format for auto-detection (for RTSP input only)
+              example: "false"
+          additionalProperties: true
+    SecuRTOutputRequest:
+      type: object
+      required:
+      - type
+      properties:
+        type:
+          type: string
+          description: Type of output destination
+          enum:
+          - MQTT
+          - RTMP
+          - RTSP
+          - HLS
+          example: MQTT
+        broker:
+          type: string
+          description: MQTT broker address (required for MQTT output)
+          example: localhost
+        port:
+          type: string
+          description: 'MQTT broker port (optional, default: 1883)'
+          example: "1883"
+        topic:
+          type: string
+          description: 'MQTT topic (optional, default: securt/{instanceId})'
+          example: securt/detections
+        username:
+          type: string
+          description: MQTT username (optional)
+          example: ""
+        password:
+          type: string
+          description: MQTT password (optional)
+          example: ""
+        uri:
+          type: string
+          format: uri
+          description: Output URI (required for RTMP/RTSP/HLS output)
+          example: rtmp://live.example.com/live/stream
     ColorRGBA:
       type: array
       items:
@@ -16960,6 +17674,121 @@ components:
     FaceCoveredAreaRead:
       $ref: '#/components/schemas/AreaBaseRead'
       x-internal: true
+    LineBaseWrite:
+      type: object
+      required:
+      - name
+      - coordinates
+      properties:
+        name:
+          type: string
+          description: Line name
+          example: Main Counting Line
+        coordinates:
+          type: array
+          minItems: 2
+          maxItems: 2
+          description: Array of exactly 2 coordinates defining the line
+          items:
+            $ref: '#/components/schemas/Coordinate'
+          example:
+          - x: 0.0
+            y: 250.0
+          - x: 700.0
+            y: 220.0
+        classes:
+          type: array
+          minItems: 1
+          description: Object classes to detect on this line
+          items:
+            type: string
+            enum:
+            - Person
+            - Animal
+            - Vehicle
+            - Face
+            - Unknown
+          example:
+          - Person
+          - Vehicle
+        direction:
+          type: string
+          enum:
+          - Up
+          - Down
+          - Both
+          description: Line crossing direction
+          default: Both
+          example: Both
+        color:
+          $ref: '#/components/schemas/ColorRGBA'
+    LineBaseRead:
+      type: object
+      required:
+      - id
+      - name
+      - coordinates
+      - classes
+      properties:
+        id:
+          type: string
+          description: Line ID (UUID)
+          example: 550e8400-e29b-41d4-a716-446655440000
+        name:
+          type: string
+          description: Line name
+          example: Main Counting Line
+        coordinates:
+          type: array
+          items:
+            $ref: '#/components/schemas/Coordinate'
+        classes:
+          type: array
+          items:
+            type: string
+            enum:
+            - Person
+            - Animal
+            - Vehicle
+            - Face
+            - Unknown
+        direction:
+          type: string
+          enum:
+          - Up
+          - Down
+          - Both
+          example: Both
+        color:
+          $ref: '#/components/schemas/ColorRGBA'
+    CountingLineWrite:
+      $ref: '#/components/schemas/LineBaseWrite'
+    CountingLineRead:
+      $ref: '#/components/schemas/LineBaseRead'
+    CrossingLineWrite:
+      $ref: '#/components/schemas/LineBaseWrite'
+    CrossingLineRead:
+      $ref: '#/components/schemas/LineBaseRead'
+    TailgatingLineWrite:
+      allOf:
+      - $ref: '#/components/schemas/LineBaseWrite'
+      - type: object
+        required:
+        - seconds
+        properties:
+          seconds:
+            type: integer
+            minimum: 1
+            description: Time window in seconds for tailgating detection
+            example: 1
+    TailgatingLineRead:
+      allOf:
+      - $ref: '#/components/schemas/LineBaseRead'
+      - type: object
+        properties:
+          seconds:
+            type: integer
+            example: 1
     ONVIFCamera:
       type: object
       description: ONVIF camera information

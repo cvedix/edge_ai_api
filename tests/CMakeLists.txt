@@ -17,55 +17,55 @@ FetchContent_MakeAvailable(googletest)
 # Include directories
 include_directories(${CMAKE_SOURCE_DIR}/include ${CMAKE_SOURCE_DIR}/src)
 
-# Test sources - organized by feature in Auto/ subdirectories
+# Test sources - organized by feature in unit/ subdirectories
 set(TEST_SOURCES
     # Core API tests
-    Auto/Core_API/test_health_handler.cpp
-    Auto/Core_API/test_version_handler.cpp
-    Auto/Core_API/test_swagger_handler.cpp
-    Auto/Core_API/test_watchdog_handler.cpp
-    Auto/Core_API/test_endpoints_handler.cpp
-    Auto/Core_API/test_config_handler.cpp
-    Auto/Core_API/test_system_info_handler.cpp
-    Auto/Core_API/test_system_handler.cpp
-    Auto/Core_API/test_system_config_manager.cpp
-    Auto/Core_API/test_preferences_manager.cpp
-    Auto/Core_API/test_decoder_detector.cpp
-    Auto/Core_API/test_metrics_handler.cpp
+    unit/Core_API/test_health_handler.cpp
+    unit/Core_API/test_version_handler.cpp
+    unit/Core_API/test_swagger_handler.cpp
+    unit/Core_API/test_watchdog_handler.cpp
+    unit/Core_API/test_endpoints_handler.cpp
+    unit/Core_API/test_config_handler.cpp
+    unit/Core_API/test_system_info_handler.cpp
+    unit/Core_API/test_system_handler.cpp
+    unit/Core_API/test_system_config_manager.cpp
+    unit/Core_API/test_preferences_manager.cpp
+    unit/Core_API/test_decoder_detector.cpp
+    unit/Core_API/test_metrics_handler.cpp
     
     # Instance Management tests
-    Auto/Instance_Management/test_instance_storage.cpp
-    Auto/Instance_Management/test_instance_update.cpp
-    Auto/Instance_Management/test_instance_status_summary.cpp
-    Auto/Instance_Management/test_instance_get_config.cpp
-    Auto/Instance_Management/test_instance_configure_stream.cpp
-    Auto/Instance_Management/test_create_instance_handler.cpp
+    unit/Instance_Management/test_instance_storage.cpp
+    unit/Instance_Management/test_instance_update.cpp
+    unit/Instance_Management/test_instance_status_summary.cpp
+    unit/Instance_Management/test_instance_get_config.cpp
+    unit/Instance_Management/test_instance_configure_stream.cpp
+    unit/Instance_Management/test_create_instance_handler.cpp
     
     # Recognition tests
-    Auto/Recognition/test_recognition_handler.cpp
+    unit/Recognition/test_recognition_handler.cpp
     
     # Solutions tests
-    Auto/Solutions/test_solution_handler.cpp
+    unit/Solutions/test_solution_handler.cpp
     
     # Groups tests
-    Auto/Groups/test_group_handler.cpp
+    unit/Groups/test_group_handler.cpp
     
     # Nodes tests
-    Auto/Nodes/test_node_handler.cpp
-    # Auto/Nodes/test_node_pool_handler.cpp  # Commented out: node_pool_handler.cpp implementation missing
+    unit/Nodes/test_node_handler.cpp
+    # unit/Nodes/test_node_pool_handler.cpp  # Commented out: node_pool_handler.cpp implementation missing
     
     # Analytics tests
-    Auto/Analytics/test_lines_handler.cpp
-    Auto/Analytics/test_jams_handler.cpp
-    Auto/Analytics/test_stops_handler.cpp
-    Auto/Analytics/test_ba_jam_detection_params.cpp
-    Auto/Analytics/test_ba_jam_pipeline.cpp
-    Auto/Analytics/test_securt_handler.cpp
-    Auto/Analytics/test_area_handler.cpp
-    # Auto/Analytics/test_ai_handler.cpp  # Commented out: requires C++20 for counting_semaphore, but project uses C++17
+    unit/Analytics/test_lines_handler.cpp
+    unit/Analytics/test_jams_handler.cpp
+    unit/Analytics/test_stops_handler.cpp
+    unit/Analytics/test_ba_jam_detection_params.cpp
+    unit/Analytics/test_ba_jam_pipeline.cpp
+    unit/Analytics/test_securt_handler.cpp
+    unit/Analytics/test_area_handler.cpp
+    # unit/Analytics/test_ai_handler.cpp  # Commented out: requires C++20 for counting_semaphore, but project uses C++17
     
     # Main test entry point
-    Auto/test_main.cpp
+    unit/test_main.cpp
 )
 
 # Create test executable

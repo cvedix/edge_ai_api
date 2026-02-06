@@ -5,7 +5,7 @@ Thư mục này chứa các tài liệu hướng dẫn test thủ công cho từ
 ## Cấu Trúc
 
 ```
-Manual/
+manual/
 ├── ONVIF/              # Manual tests cho tính năng ONVIF
 │   ├── ONVIF_MANUAL_TEST_GUIDE.md
 │   ├── ONVIF_QUICK_TEST.md
@@ -28,6 +28,7 @@ Manual/
 ├── Nodes/              # Manual tests cho Nodes
 │
 ├── Analytics/          # Manual tests cho Analytics (Lines, Jams, Stops, Area, SecuRT)
+│   └── SECURT_INSTANCE_WORKFLOW_TEST.md
 │
 └── Config/             # Manual tests cho Config
 ```
@@ -77,6 +78,15 @@ Manual tests được thiết kế để:
   - Configure HLS (HTTP Live Streaming) output
   - Configure RTSP (Real-Time Streaming Protocol) output
   - Integration tests với multiple output formats
+
+### Analytics - SecuRT Instance
+- **SECURT_INSTANCE_WORKFLOW_TEST.md**: Hướng dẫn test chi tiết SecuRT Instance Workflow, bao gồm:
+  - Tạo SecuRT instance
+  - Cấu hình input (File, RTSP, RTMP, HLS)
+  - Cấu hình output (MQTT, RTMP, RTSP, HLS)
+  - Thêm bài toán analytics (Lines, Areas)
+  - Start instance và xử lý video
+  - End-to-end workflow test
 
 ## Thêm Manual Test Mới
 

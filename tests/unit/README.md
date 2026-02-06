@@ -1,11 +1,11 @@
-# Auto Tests (Unit Tests) - Edge AI API
+# Unit Tests - Edge AI API
 
 Thư mục này chứa các unit tests tự động sử dụng Google Test framework, được tổ chức theo từng tính năng lớn.
 
 ## Cấu Trúc
 
 ```
-Auto/
+unit/
 ├── Core_API/              # Tests cho Core API handlers
 │   ├── test_health_handler.cpp
 │   ├── test_version_handler.cpp
@@ -153,7 +153,7 @@ Mỗi test suite bao gồm:
 Khi thêm test mới:
 
 1. **Xác định tính năng**: Xác định tính năng lớn mà handler thuộc về
-2. **Tạo file test**: Tạo `test_<handler_name>.cpp` trong thư mục `Auto/<Feature>/`
+2. **Tạo file test**: Tạo `test_<handler_name>.cpp` trong thư mục `unit/<Feature>/`
 3. **Cập nhật CMakeLists.txt**: Thêm file vào `TEST_SOURCES` trong `tests/CMakeLists.txt`
 4. **Viết tests**: Viết tests cho:
    - Valid requests
@@ -165,7 +165,7 @@ Khi thêm test mới:
 ### Ví dụ: Thêm test mới
 
 ```cpp
-// Auto/Core_API/test_new_handler.cpp
+// unit/Core_API/test_new_handler.cpp
 #include <gtest/gtest.h>
 #include "api/new_handler.h"
 
@@ -191,7 +191,7 @@ TEST_F(NewHandlerTest, InvalidRequest) {
 
 Sau đó thêm vào `tests/CMakeLists.txt`:
 ```cmake
-Auto/Core_API/test_new_handler.cpp
+unit/Core_API/test_new_handler.cpp
 ```
 
 ## Best Practices

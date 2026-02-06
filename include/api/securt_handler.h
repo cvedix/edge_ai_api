@@ -12,6 +12,7 @@ class SecuRTInstanceManager;
 class AnalyticsEntitiesManager;
 class SecuRTFeatureManager;
 class ExclusionAreaManager;
+class IInstanceManager;
 
 /**
  * @brief SecuRT Instance Handler
@@ -40,6 +41,11 @@ public:
                 "/v1/securt/instance/{instanceId}/stats", Get);
   ADD_METHOD_TO(SecuRTHandler::getAnalyticsEntities,
                 "/v1/securt/instance/{instanceId}/analytics_entities", Get);
+  // Input/Output endpoints
+  ADD_METHOD_TO(SecuRTHandler::setInput,
+                "/v1/securt/instance/{instanceId}/input", Post);
+  ADD_METHOD_TO(SecuRTHandler::setOutput,
+                "/v1/securt/instance/{instanceId}/output", Post);
   // Advanced features endpoints
   ADD_METHOD_TO(SecuRTHandler::setMotionArea,
                 "/v1/securt/instance/{instanceId}/motion_area", Post);
@@ -105,6 +111,10 @@ public:
                 "/v1/securt/instance/{instanceId}/stats", Options);
   ADD_METHOD_TO(SecuRTHandler::handleOptions,
                 "/v1/securt/instance/{instanceId}/analytics_entities", Options);
+  ADD_METHOD_TO(SecuRTHandler::handleOptions,
+                "/v1/securt/instance/{instanceId}/input", Options);
+  ADD_METHOD_TO(SecuRTHandler::handleOptions,
+                "/v1/securt/instance/{instanceId}/output", Options);
   METHOD_LIST_END
 
   /**
@@ -177,6 +187,11 @@ public:
    */
   static void setExclusionAreaManager(ExclusionAreaManager *manager);
 
+  /**
+   * @brief Set core instance manager (dependency injection)
+   */
+  static void setCoreInstanceManager(IInstanceManager *manager);
+
   // Advanced features handlers
   void setMotionArea(const HttpRequestPtr &req,
                      std::function<void(const HttpResponsePtr &)> &&callback);
@@ -228,11 +243,18 @@ public:
       const HttpRequestPtr &req,
       std::function<void(const HttpResponsePtr &)> &&callback);
 
+  // Input/Output handlers
+  void setInput(const HttpRequestPtr &req,
+                std::function<void(const HttpResponsePtr &)> &&callback);
+  void setOutput(const HttpRequestPtr &req,
+                 std::function<void(const HttpResponsePtr &)> &&callback);
+
 private:
   static SecuRTInstanceManager *instance_manager_;
   static AnalyticsEntitiesManager *analytics_entities_manager_;
   static SecuRTFeatureManager *feature_manager_;
   static ExclusionAreaManager *exclusion_area_manager_;
+  static IInstanceManager *core_instance_manager_;
 
   /**
    * @brief Extract instance ID from request path
