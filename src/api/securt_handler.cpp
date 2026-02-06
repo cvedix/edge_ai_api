@@ -8,14 +8,20 @@
 #include "core/securt_feature_manager.h"
 #include "core/securt_instance.h"
 #include "core/securt_instance_manager.h"
+#include "instances/instance_info.h"
+#include "instances/instance_manager.h"
+#include <algorithm>
 #include <chrono>
 #include <drogon/HttpResponse.h>
 #include <iostream>
+#include <filesystem>
+namespace fs = std::filesystem;
 
 SecuRTInstanceManager *SecuRTHandler::instance_manager_ = nullptr;
 AnalyticsEntitiesManager *SecuRTHandler::analytics_entities_manager_ = nullptr;
 SecuRTFeatureManager *SecuRTHandler::feature_manager_ = nullptr;
 ExclusionAreaManager *SecuRTHandler::exclusion_area_manager_ = nullptr;
+IInstanceManager *SecuRTHandler::core_instance_manager_ = nullptr;
 
 void SecuRTHandler::setInstanceManager(SecuRTInstanceManager *manager) {
   instance_manager_ = manager;
@@ -32,6 +38,10 @@ void SecuRTHandler::setFeatureManager(SecuRTFeatureManager *manager) {
 
 void SecuRTHandler::setExclusionAreaManager(ExclusionAreaManager *manager) {
   exclusion_area_manager_ = manager;
+}
+
+void SecuRTHandler::setCoreInstanceManager(IInstanceManager *manager) {
+  core_instance_manager_ = manager;
 }
 
 void SecuRTHandler::createInstance(
@@ -1586,6 +1596,356 @@ void SecuRTHandler::deleteExclusionAreas(
     resp->setStatusCode(k204NoContent);
     resp->addHeader("Access-Control-Allow-Origin", "*");
     MetricsInterceptor::callWithMetrics(req, resp, std::move(callback));
+
+  } catch (const std::exception &e) {
+    callback(createErrorResponse(500, "Internal server error", e.what()));
+  }
+}
+
+void SecuRTHandler::setInput(
+    const HttpRequestPtr &req,
+    std::function<void(const HttpResponsePtr &)> &&callback) {
+  auto start_time = std::chrono::steady_clock::now();
+  std::string instanceId = extractInstanceId(req);
+
+  if (isApiLoggingEnabled()) {
+    PLOG_INFO << "[API] POST /v1/securt/instance/" << instanceId
+              << "/input - Set input source";
+  }
+
+  try {
+    if (!instance_manager_ || !instance_manager_->hasInstance(instanceId)) {
+      callback(createErrorResponse(404, "Not Found", "Instance does not exist"));
+      return;
+    }
+
+    if (!core_instance_manager_) {
+      callback(createErrorResponse(500, "Internal server error",
+                                   "Core instance manager not initialized"));
+      return;
+    }
+
+    auto json = req->getJsonObject();
+    if (!json) {
+      callback(createErrorResponse(400, "Invalid request",
+                                   "Request body must be valid JSON"));
+      return;
+    }
+
+    // Validate required fields
+    if (!json->isMember("type") || !(*json)["type"].isString()) {
+      callback(createErrorResponse(400, "Invalid request",
+                                    "Field 'type' is required and must be a string"));
+      return;
+    }
+
+    if (!json->isMember("uri") || !(*json)["uri"].isString()) {
+      callback(createErrorResponse(400, "Invalid request",
+                                   "Field 'uri' is required and must be a string"));
+      return;
+    }
+
+    std::string type = (*json)["type"].asString();
+    std::string uri = (*json)["uri"].asString();
+
+    // Validate type
+    if (type != "File" && type != "RTSP" && type != "RTMP" && type != "HLS") {
+      callback(createErrorResponse(
+          400, "Invalid request",
+          "Field 'type' must be one of: File, RTSP, RTMP, HLS"));
+      return;
+    }
+
+    // Validate uri is not empty
+    if (uri.empty()) {
+      callback(createErrorResponse(400, "Invalid request",
+                                   "Field 'uri' cannot be empty"));
+      return;
+    }
+
+    // Check if instance exists in core manager
+    auto optInfo = core_instance_manager_->getInstance(instanceId);
+    if (!optInfo.has_value()) {
+      callback(createErrorResponse(404, "Not Found",
+                                   "Instance not found in core manager"));
+      return;
+    }
+
+    // Build Input configuration JSON
+    Json::Value inputConfig(Json::objectValue);
+    Json::Value input(Json::objectValue);
+
+    // Set media_format (required field)
+    Json::Value mediaFormat(Json::objectValue);
+    mediaFormat["color_format"] = 0;
+    mediaFormat["default_format"] = true;
+    mediaFormat["height"] = 0;
+    mediaFormat["is_software"] = false;
+    mediaFormat["name"] = "Same as Source";
+    input["media_format"] = mediaFormat;
+
+    // Set media_type and uri based on type
+    if (type == "File") {
+      input["media_type"] = "File";
+      input["uri"] = uri;
+    } else if (type == "RTSP") {
+      input["media_type"] = "IP Camera";
+      
+      // Get decoder name and transport from additionalParams if provided
+      std::string decoderName = "avdec_h264";
+      std::string rtspTransport = "";
+      bool useUrisourcebin = false;
+
+      if (json->isMember("additionalParams") &&
+          (*json)["additionalParams"].isObject()) {
+        const Json::Value &additionalParams = (*json)["additionalParams"];
+        if (additionalParams.isMember("GST_DECODER_NAME") &&
+            additionalParams["GST_DECODER_NAME"].isString()) {
+          decoderName = additionalParams["GST_DECODER_NAME"].asString();
+          if (decoderName == "decodebin") {
+            useUrisourcebin = true;
+          }
+        }
+        if (additionalParams.isMember("RTSP_TRANSPORT") &&
+            additionalParams["RTSP_TRANSPORT"].isString()) {
+          rtspTransport = additionalParams["RTSP_TRANSPORT"].asString();
+        }
+        if (additionalParams.isMember("USE_URISOURCEBIN") &&
+            additionalParams["USE_URISOURCEBIN"].isString()) {
+          useUrisourcebin = (additionalParams["USE_URISOURCEBIN"].asString() == "true" ||
+                            additionalParams["USE_URISOURCEBIN"].asString() == "1");
+        }
+      }
+
+      if (useUrisourcebin) {
+        input["uri"] = "gstreamer:///urisourcebin uri=" + uri +
+                       " ! decodebin ! videoconvert ! video/x-raw, format=NV12 "
+                       "! appsink drop=true name=cvdsink";
+      } else {
+        std::string protocolsParam = "";
+        if (!rtspTransport.empty()) {
+          std::transform(rtspTransport.begin(), rtspTransport.end(),
+                         rtspTransport.begin(), ::tolower);
+          if (rtspTransport == "tcp" || rtspTransport == "udp") {
+            protocolsParam = " protocols=" + rtspTransport;
+          }
+        }
+        input["uri"] =
+            "rtspsrc location=" + uri + protocolsParam +
+            " ! application/x-rtp,media=video ! rtph264depay ! h264parse ! " +
+            decoderName +
+            " ! videoconvert ! video/x-raw,format=NV12 ! appsink drop=true "
+            "name=cvdsink";
+      }
+    } else if (type == "RTMP") {
+      input["media_type"] = "IP Camera";
+      // For RTMP, use the URI directly (rtmp_src node will handle it)
+      input["uri"] = uri;
+    } else if (type == "HLS") {
+      input["media_type"] = "IP Camera";
+      // For HLS, use the URI directly (hls_src node will handle it)
+      input["uri"] = uri;
+    }
+
+    inputConfig["Input"] = input;
+
+    // Also set AdditionalParams for pipeline builder
+    Json::Value additionalParams(Json::objectValue);
+    if (type == "File") {
+      additionalParams["FILE_PATH"] = uri;
+    } else if (type == "RTSP") {
+      additionalParams["RTSP_SRC_URL"] = uri;
+    } else if (type == "RTMP") {
+      additionalParams["RTMP_SRC_URL"] = uri;
+    } else if (type == "HLS") {
+      additionalParams["HLS_URL"] = uri;
+    }
+
+    // Copy additionalParams from request if provided
+    if (json->isMember("additionalParams") &&
+        (*json)["additionalParams"].isObject()) {
+      const Json::Value &reqAdditionalParams = (*json)["additionalParams"];
+      for (const auto &key : reqAdditionalParams.getMemberNames()) {
+        additionalParams[key] = reqAdditionalParams[key];
+      }
+    }
+
+    inputConfig["AdditionalParams"] = additionalParams;
+
+    // Update instance using updateInstanceFromConfig
+    if (core_instance_manager_->updateInstanceFromConfig(instanceId, inputConfig)) {
+      auto end_time = std::chrono::steady_clock::now();
+      auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(
+          end_time - start_time);
+      if (isApiLoggingEnabled()) {
+        PLOG_INFO << "[API] POST /v1/securt/instance/" << instanceId
+                  << "/input - Success - " << duration.count() << "ms";
+      }
+
+      auto resp = HttpResponse::newHttpResponse();
+      resp->setStatusCode(k204NoContent);
+      resp->addHeader("Access-Control-Allow-Origin", "*");
+      MetricsInterceptor::callWithMetrics(req, resp, std::move(callback));
+    } else {
+      callback(createErrorResponse(500, "Internal server error",
+                                   "Failed to update input settings"));
+    }
+
+  } catch (const std::exception &e) {
+    callback(createErrorResponse(500, "Internal server error", e.what()));
+  }
+}
+
+void SecuRTHandler::setOutput(
+    const HttpRequestPtr &req,
+    std::function<void(const HttpResponsePtr &)> &&callback) {
+  auto start_time = std::chrono::steady_clock::now();
+  std::string instanceId = extractInstanceId(req);
+
+  if (isApiLoggingEnabled()) {
+    PLOG_INFO << "[API] POST /v1/securt/instance/" << instanceId
+              << "/output - Set output destination";
+  }
+
+  try {
+    if (!instance_manager_ || !instance_manager_->hasInstance(instanceId)) {
+      callback(createErrorResponse(404, "Not Found", "Instance does not exist"));
+      return;
+    }
+
+    if (!core_instance_manager_) {
+      callback(createErrorResponse(500, "Internal server error",
+                                   "Core instance manager not initialized"));
+      return;
+    }
+
+    auto json = req->getJsonObject();
+    if (!json) {
+      callback(createErrorResponse(400, "Invalid request",
+                                   "Request body must be valid JSON"));
+      return;
+    }
+
+    // Validate required fields
+    if (!json->isMember("type") || !(*json)["type"].isString()) {
+      callback(createErrorResponse(400, "Invalid request",
+                                   "Field 'type' is required and must be a string"));
+      return;
+    }
+
+    std::string type = (*json)["type"].asString();
+
+    // Validate type
+    if (type != "MQTT" && type != "RTMP" && type != "RTSP" && type != "HLS") {
+      callback(createErrorResponse(
+          400, "Invalid request",
+          "Field 'type' must be one of: MQTT, RTMP, RTSP, HLS"));
+      return;
+    }
+
+    // Check if instance exists in core manager
+    auto optInfo = core_instance_manager_->getInstance(instanceId);
+    if (!optInfo.has_value()) {
+      callback(createErrorResponse(404, "Not Found",
+                                   "Instance not found in core manager"));
+      return;
+    }
+
+    // Build output configuration
+    Json::Value outputConfig(Json::objectValue);
+    Json::Value additionalParams(Json::objectValue);
+
+    if (type == "MQTT") {
+      // Validate MQTT required fields
+      if (!json->isMember("broker") || !(*json)["broker"].isString()) {
+        callback(createErrorResponse(400, "Invalid request",
+                                     "Field 'broker' is required for MQTT output"));
+        return;
+      }
+
+      std::string broker = (*json)["broker"].asString();
+      std::string topic = json->isMember("topic") && (*json)["topic"].isString()
+                             ? (*json)["topic"].asString()
+                             : "securt/" + instanceId;
+      std::string port = json->isMember("port") && (*json)["port"].isString()
+                            ? (*json)["port"].asString()
+                            : "1883";
+      std::string username =
+          json->isMember("username") && (*json)["username"].isString()
+              ? (*json)["username"].asString()
+              : "";
+      std::string password =
+          json->isMember("password") && (*json)["password"].isString()
+              ? (*json)["password"].asString()
+              : "";
+
+      additionalParams["MQTT_BROKER_URL"] = broker;
+      additionalParams["MQTT_PORT"] = port;
+      additionalParams["MQTT_TOPIC"] = topic;
+      if (!username.empty()) {
+        additionalParams["MQTT_USERNAME"] = username;
+      }
+      if (!password.empty()) {
+        additionalParams["MQTT_PASSWORD"] = password;
+      }
+
+    } else if (type == "RTMP" || type == "RTSP" || type == "HLS") {
+      // Validate URI field
+      if (!json->isMember("uri") || !(*json)["uri"].isString()) {
+        callback(createErrorResponse(400, "Invalid request",
+                                     "Field 'uri' is required for " + type +
+                                         " output"));
+        return;
+      }
+
+      std::string uri = (*json)["uri"].asString();
+
+      // Validate URI format
+      if (type == "RTMP" && uri.find("rtmp://") != 0) {
+        callback(createErrorResponse(400, "Invalid request",
+                                     "RTMP URI must start with rtmp://"));
+        return;
+      } else if (type == "RTSP" && uri.find("rtsp://") != 0) {
+        callback(createErrorResponse(400, "Invalid request",
+                                     "RTSP URI must start with rtsp://"));
+        return;
+      } else if (type == "HLS" && uri.find("hls://") != 0 &&
+                 uri.find("http://") != 0 && uri.find("https://") != 0) {
+        callback(createErrorResponse(
+            400, "Invalid request",
+            "HLS URI must start with hls://, http://, or https://"));
+        return;
+      }
+
+      additionalParams["RTMP_URL"] = uri;
+      if (type == "RTSP") {
+        additionalParams["RTSP_URI"] = uri;
+      } else if (type == "HLS") {
+        additionalParams["HLS_URI"] = uri;
+      }
+    }
+
+    outputConfig["AdditionalParams"] = additionalParams;
+
+    // Update instance using updateInstanceFromConfig
+    if (core_instance_manager_->updateInstanceFromConfig(instanceId,
+                                                         outputConfig)) {
+      auto end_time = std::chrono::steady_clock::now();
+      auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(
+          end_time - start_time);
+      if (isApiLoggingEnabled()) {
+        PLOG_INFO << "[API] POST /v1/securt/instance/" << instanceId
+                  << "/output - Success - " << duration.count() << "ms";
+      }
+
+      auto resp = HttpResponse::newHttpResponse();
+      resp->setStatusCode(k204NoContent);
+      resp->addHeader("Access-Control-Allow-Origin", "*");
+      MetricsInterceptor::callWithMetrics(req, resp, std::move(callback));
+    } else {
+      callback(createErrorResponse(500, "Internal server error",
+                                   "Failed to update output settings"));
+    }
 
   } catch (const std::exception &e) {
     callback(createErrorResponse(500, "Internal server error", e.what()));
