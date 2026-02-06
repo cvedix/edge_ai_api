@@ -247,6 +247,82 @@ else()
 endif()
 
 # ============================================
+# gSOAP (for ONVIF SOAP support)
+# ============================================
+# gSOAP is licensed under GPL v2, which is compatible with this project's dual license
+message(STATUS "Checking for gSOAP library...")
+
+# Try to find gSOAP using pkg-config first
+find_package(PkgConfig QUIET)
+if(PkgConfig_FOUND)
+    pkg_check_modules(GSOAP QUIET gsoap++)
+    if(GSOAP_FOUND)
+        message(STATUS "✓ Found gSOAP via pkg-config")
+        message(STATUS "  Version: ${GSOAP_VERSION}")
+        message(STATUS "  Include dirs: ${GSOAP_INCLUDE_DIRS}")
+        message(STATUS "  Libraries: ${GSOAP_LIBRARIES}")
+        set(GSOAP_FOUND TRUE)
+    endif()
+endif()
+
+# If not found via pkg-config, try to find manually
+if(NOT GSOAP_FOUND)
+    # Look for gSOAP libraries
+    find_library(GSOAP_LIBRARY
+        NAMES gsoap++ gsoap
+        PATHS
+            /usr/lib
+            /usr/lib/x86_64-linux-gnu
+            /usr/local/lib
+            /opt/gsoap/lib
+    )
+    
+    find_library(GSOAPPP_LIBRARY
+        NAMES gsoap++ gsoap
+        PATHS
+            /usr/lib
+            /usr/lib/x86_64-linux-gnu
+            /usr/local/lib
+            /opt/gsoap/lib
+    )
+    
+    # Look for gSOAP headers
+    find_path(GSOAP_INCLUDE_DIR
+        NAMES gsoap/soapH.h gsoap/soapStub.h
+        PATHS
+            /usr/include
+            /usr/local/include
+            /opt/gsoap/include
+    )
+    
+    if(GSOAP_LIBRARY AND GSOAP_INCLUDE_DIR)
+        set(GSOAP_FOUND TRUE)
+        set(GSOAP_LIBRARIES ${GSOAP_LIBRARY})
+        if(GSOAPPP_LIBRARY AND NOT GSOAPPP_LIBRARY STREQUAL GSOAP_LIBRARY)
+            list(APPEND GSOAP_LIBRARIES ${GSOAPPP_LIBRARY})
+        endif()
+        set(GSOAP_INCLUDE_DIRS ${GSOAP_INCLUDE_DIR})
+        message(STATUS "✓ Found gSOAP manually")
+        message(STATUS "  Include dir: ${GSOAP_INCLUDE_DIRS}")
+        message(STATUS "  Libraries: ${GSOAP_LIBRARIES}")
+    endif()
+endif()
+
+# If still not found, provide installation instructions
+if(NOT GSOAP_FOUND)
+    message(WARNING "")
+    message(WARNING "⚠ gSOAP not found. ONVIF features using gSOAP will not be available.")
+    message(WARNING "  To install gSOAP:")
+    message(WARNING "    sudo apt-get install libgsoap++-dev")
+    message(WARNING "  Or download from: https://www.genivia.com/downloads.html")
+    message(WARNING "")
+    set(USE_GSOAP OFF)
+else()
+    set(USE_GSOAP ON)
+    message(STATUS "✓ gSOAP found, will be linked after target creation")
+endif()
+
+# ============================================
 # Plog Logging Library (header-only)
 # ============================================
 if(AUTO_DOWNLOAD_DEPENDENCIES)
@@ -385,6 +461,7 @@ set(SOURCES
     src/core/onvif_camera_handler_factory.cpp
     src/core/onvif_camera_handlers/onvif_generic_handler.cpp
     src/core/onvif_camera_handlers/onvif_tapo_handler.cpp
+    src/core/onvif_gsoap_wrapper.cpp
     src/models/create_instance_request.cpp
     src/models/update_instance_request.cpp
     src/models/solution_config.cpp
@@ -1064,6 +1141,18 @@ endif()
 # OpenSSL::Crypto is required for ai_cache SHA256 hashing
 if(OpenSSL_FOUND)
     target_link_libraries(edge_ai_api PRIVATE OpenSSL::Crypto)
+endif()
+
+# Link gSOAP if found
+if(USE_GSOAP AND GSOAP_FOUND)
+    target_compile_definitions(edge_ai_api PRIVATE USE_GSOAP)
+    if(GSOAP_INCLUDE_DIRS)
+        target_include_directories(edge_ai_api PRIVATE ${GSOAP_INCLUDE_DIRS})
+    endif()
+    if(GSOAP_LIBRARIES)
+        target_link_libraries(edge_ai_api PRIVATE ${GSOAP_LIBRARIES})
+        message(STATUS "✓ gSOAP support enabled and linked to edge_ai_api")
+    endif()
 endif()
 
 # ============================================

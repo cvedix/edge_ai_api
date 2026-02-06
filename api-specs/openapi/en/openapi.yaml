@@ -10999,7 +10999,7 @@ paths:
                           pattern: ^(rtsp|rtmp|http|https|file|udp)://.+
                           patternDescription: Must be a valid URL (rtsp://, rtmp://, http://, https://, file://, or udp://)
                         examples:
-                        - rtsp://192.168.1.100:8554/stream1
+                        - rtsp://{camera_ip}:8554/stream1
                         - rtsp://admin:password@camera-ip:554/stream
                         category: connection
                         usedInNodes:
@@ -11017,7 +11017,7 @@ paths:
                           placeholder: localhost
                         examples:
                         - localhost
-                        - 192.168.1.100
+                        - "{camera_ip}"
                         - mqtt.example.com
                         category: output
                   flexibleInputOutput:
@@ -13692,7 +13692,7 @@ paths:
                 items:
                   $ref: '#/components/schemas/ONVIFCamera'
               example:
-                - ip: 192.168.1.100
+                - ip: "{camera_ip}"
                   uuid: 00000000-0000-0000-0000-000000000000
                   manufacturer: Hikvision
                   model: DS-2CD2347G1-LU
@@ -13722,7 +13722,7 @@ paths:
       description: 'Retrieve available video streams for a specific ONVIF camera.
 
         **Camera ID:**
-        - Can be either the camera IP address (e.g., "192.168.1.100") or UUID
+        - Can be either the camera IP address (e.g., "{camera_ip}") or UUID
         - IP address format: 0-255.0-255.0-255.0-255
 
         **Stream Information:**
@@ -13746,7 +13746,7 @@ paths:
         schema:
           type: string
         description: Camera identifier (IP address or UUID)
-        example: 192.168.1.100
+        example: "{camera_ip}"
       responses:
         '200':
           description: List of available streams for the camera
@@ -13761,12 +13761,12 @@ paths:
                   width: 1920
                   height: 1080
                   fps: 30
-                  uri: rtsp://192.168.1.100:554/Streaming/Channels/101
+                  uri: rtsp://{camera_ip}:554/Streaming/Channels/101
                 - token: Profile_2
                   width: 640
                   height: 480
                   fps: 15
-                  uri: rtsp://192.168.1.100:554/Streaming/Channels/102
+                  uri: rtsp://{camera_ip}:554/Streaming/Channels/102
         '400':
           description: Bad request (missing or invalid camera ID)
           content:
@@ -13799,7 +13799,7 @@ paths:
       description: 'Set authentication credentials for a specific ONVIF camera.
 
         **Camera ID:**
-        - Can be either the camera IP address (e.g., "192.168.1.100") or UUID
+        - Can be either the camera IP address (e.g., "{camera_ip}") or UUID
         - IP address format: 0-255.0-255.0-255.0-255
 
         **Credentials:**
@@ -13823,7 +13823,7 @@ paths:
         schema:
           type: string
         description: Camera identifier (IP address or UUID)
-        example: 192.168.1.100
+        example: "{camera_ip}"
       requestBody:
         required: true
         content:
@@ -15821,7 +15821,7 @@ components:
                 pattern: ^(rtsp|rtmp|http|https|file|udp)://.+
                 patternDescription: Must be a valid URL (rtsp://, rtmp://, http://, https://, file://, or udp://)
               examples:
-              - rtsp://192.168.1.100:8554/stream1
+              - rtsp://{camera_ip}:8554/stream1
               - rtsp://admin:password@camera-ip:554/stream
             channel:
               name: channel

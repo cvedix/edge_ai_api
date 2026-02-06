@@ -2227,7 +2227,7 @@ paths:
                 items:
                   $ref: '#/components/schemas/ONVIFCamera'
               example:
-                - ip: 192.168.1.100
+                - ip: "{camera_ip}"
                   uuid: 00000000-0000-0000-0000-000000000000
                   manufacturer: Hikvision
                   model: DS-2CD2347G1-LU
@@ -2257,7 +2257,7 @@ paths:
       description: 'Lấy các video streams có sẵn cho một camera ONVIF cụ thể.
 
         **Camera ID:**
-        - Có thể là địa chỉ IP của camera (ví dụ: "192.168.1.100") hoặc UUID
+        - Có thể là địa chỉ IP của camera (ví dụ: "{camera_ip}") hoặc UUID
         - Định dạng địa chỉ IP: 0-255.0-255.0-255.0-255
 
         **Thông tin Stream:**
@@ -2281,7 +2281,7 @@ paths:
         schema:
           type: string
         description: Định danh camera (địa chỉ IP hoặc UUID)
-        example: 192.168.1.100
+        example: "{camera_ip}"
       responses:
         '200':
           description: Danh sách streams có sẵn cho camera
@@ -2296,12 +2296,12 @@ paths:
                   width: 1920
                   height: 1080
                   fps: 30
-                  uri: rtsp://192.168.1.100:554/Streaming/Channels/101
+                  uri: rtsp://{camera_ip}:554/Streaming/Channels/101
                 - token: Profile_2
                   width: 640
                   height: 480
                   fps: 15
-                  uri: rtsp://192.168.1.100:554/Streaming/Channels/102
+                  uri: rtsp://{camera_ip}:554/Streaming/Channels/102
         '400':
           description: Yêu cầu không hợp lệ (thiếu hoặc không hợp lệ camera ID)
           content:
@@ -2334,7 +2334,7 @@ paths:
       description: 'Thiết lập thông tin xác thực cho một camera ONVIF cụ thể.
 
         **Camera ID:**
-        - Có thể là địa chỉ IP của camera (ví dụ: "192.168.1.100") hoặc UUID
+        - Có thể là địa chỉ IP của camera (ví dụ: "{camera_ip}") hoặc UUID
         - Định dạng địa chỉ IP: 0-255.0-255.0-255.0-255
 
         **Credentials:**
@@ -2358,7 +2358,7 @@ paths:
         schema:
           type: string
         description: Định danh camera (địa chỉ IP hoặc UUID)
-        example: 192.168.1.100
+        example: "{camera_ip}"
       requestBody:
         required: true
         content:

@@ -317,6 +317,8 @@ Lần đầu build mất ~5-10 phút để download Drogon. Các lần sau nhanh
 | [docs/ENVIRONMENT_VARIABLES.md](docs/ENVIRONMENT_VARIABLES.md) | Env vars |
 | [docs/LOGGING.md](docs/LOGGING.md) | Logging guide |
 | [docs/DEFAULT_SOLUTIONS_REFERENCE.md](docs/DEFAULT_SOLUTIONS_REFERENCE.md) | Default solutions |
+| [docs/GSOAP_INTEGRATION.md](docs/GSOAP_INTEGRATION.md) | gSOAP integration guide (ONVIF) |
+| [docs/GSOAP_LICENSE_ANALYSIS.md](docs/GSOAP_LICENSE_ANALYSIS.md) | gSOAP license analysis |
 | [deploy/README.md](deploy/README.md) | Production deployment guide |
 | [packaging/docs/BUILD_DEB.md](packaging/docs/BUILD_DEB.md) | Build Debian package guide |
 | [packaging/docs/BUILD_ALL_IN_ONE.md](packaging/docs/BUILD_ALL_IN_ONE.md) | Build ALL-IN-ONE package guide |
@@ -339,4 +341,22 @@ Lần đầu build mất ~5-10 phút để download Drogon. Các lần sau nhanh
 
 ## 📝 License
 
-Proprietary - CVEDIX
+This project is **dual-licensed**:
+
+- **Apache License 2.0** - For parts not using gSOAP
+- **GNU General Public License v2 (GPL v2)** - When using gSOAP (for ONVIF support)
+
+See [LICENSE.md](LICENSE.md) and [LICENSE_GPLv2.md](LICENSE_GPLv2.md) for details.
+
+### gSOAP Integration
+
+This project integrates with **gSOAP** (GPL v2) for ONVIF operations. gSOAP provides official and robust support for ONVIF SOAP services.
+
+**Installation:**
+```bash
+sudo apt-get install libgsoap++-dev
+```
+
+**Note:** When gSOAP is used, the project must be distributed under GPL v2. See [docs/GSOAP_INTEGRATION.md](docs/GSOAP_INTEGRATION.md) for integration details.
+
+If gSOAP is not available, the project automatically falls back to manual SOAP implementation (Apache 2.0 compatible).

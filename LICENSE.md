@@ -1,3 +1,16 @@
+This project is dual-licensed under both Apache License 2.0 and GNU General Public License v2.
+
+You may choose to use this software under either license:
+- Apache License 2.0 (see LICENSE_APACHE2.md or below)
+- GNU General Public License v2 (see LICENSE_GPLv2.md)
+
+This dual licensing is provided to allow compatibility with both permissive (Apache 2.0) 
+and copyleft (GPL v2) dependencies, including gSOAP which is licensed under GPL v2.
+
+================================================================================
+APACHE LICENSE 2.0
+================================================================================
+
 TERMS AND CONDITIONS FOR USE, REPRODUCTION, AND DISTRIBUTION
 
 

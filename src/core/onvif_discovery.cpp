@@ -228,7 +228,8 @@ ONVIFCamera ONVIFDiscovery::parseProbeMatch(const std::string &xmlResponse) {
 }
 
 std::string ONVIFDiscovery::extractIPFromXAddrs(const std::string &xaddrs) {
-  // XAddrs format: http://192.168.1.100/onvif/device_service
+  // XAddrs format: http://<IP_ADDRESS>/onvif/device_service
+  // Example: http://192.168.1.100/onvif/device_service
   std::regex ipRegex(R"(http://([0-9]+\.[0-9]+\.[0-9]+\.[0-9]+))");
   std::smatch match;
   if (std::regex_search(xaddrs, match, ipRegex)) {
