@@ -99,7 +99,7 @@ api/
 │   └── ...
 │
 ├── tests/               # Tests directory
-│   ├── Auto/           # Unit tests (Google Test)
+│   ├── unit/           # Unit tests (Google Test)
 │   │   ├── Core_API/
 │   │   ├── Instance_Management/
 │   │   ├── Recognition/
@@ -109,7 +109,7 @@ api/
 │   │   ├── Analytics/
 │   │   └── test_main.cpp
 │   │
-│   ├── Manual/         # Manual test guides
+│   ├── manual/         # Manual test guides
 │   │   ├── ONVIF/
 │   │   ├── Recognition/
 │   │   ├── Instance_Management/
@@ -146,7 +146,7 @@ api/
 3. **API Handlers**: Mỗi handler có 2 files:
    - `include/api/xxx_handler.h` - Header
    - `src/api/xxx_handler.cpp` - Implementation
-4. **Tests**: Tổ chức theo tính năng trong `tests/Auto/<Feature>/`
+4. **Tests**: Tổ chức theo tính năng trong `tests/unit/<Feature>/`
 
 ---
 
@@ -427,7 +427,7 @@ Project sử dụng 2 loại tests: **Auto Tests** (Unit tests) và **Manual Tes
 
 ```
 tests/
-├── Auto/                    # Unit tests tự động (Google Test)
+├── unit/                    # Unit tests tự động (Google Test)
 │   ├── Core_API/           # Tests cho Core API
 │   ├── Instance_Management/ # Tests cho Instance Management
 │   ├── Recognition/        # Tests cho Recognition
@@ -437,7 +437,7 @@ tests/
 │   ├── Analytics/          # Tests cho Analytics
 │   └── test_main.cpp       # Entry point
 │
-├── Manual/                  # Manual test guides
+├── manual/                  # Manual test guides
 │   ├── ONVIF/              # ONVIF test guides
 │   ├── Recognition/        # Recognition test guides
 │   └── ...                 # Các tính năng khác
@@ -445,17 +445,17 @@ tests/
 └── CMakeLists.txt          # Test build configuration
 ```
 
-### Auto Tests (Unit Tests)
+### Unit Tests
 
 #### Tổ Chức
 
-- Mỗi tính năng có thư mục riêng trong `tests/Auto/<Feature>/`
+- Mỗi tính năng có thư mục riêng trong `tests/unit/<Feature>/`
 - Mỗi handler có file test riêng: `test_<handler_name>.cpp`
-- Entry point: `tests/Auto/test_main.cpp`
+- Entry point: `tests/unit/test_main.cpp`
 
 #### Viết Unit Test Mới
 
-Tạo `tests/Auto/Core_API/test_my_handler.cpp`:
+Tạo `tests/unit/Core_API/test_my_handler.cpp`:
 
 ```cpp
 #include <gtest/gtest.h>
@@ -533,7 +533,7 @@ Thêm vào `tests/CMakeLists.txt` trong phần `TEST_SOURCES`:
 ```cmake
 set(TEST_SOURCES
     # ... existing tests ...
-    Auto/Core_API/test_my_handler.cpp
+    unit/Core_API/test_my_handler.cpp
 )
 ```
 
@@ -565,12 +565,12 @@ Manual tests là các tài liệu hướng dẫn test thủ công cho từng tí
 
 #### Tổ Chức
 
-- Mỗi tính năng có thư mục riêng trong `tests/Manual/<Feature>/`
+- Mỗi tính năng có thư mục riêng trong `tests/manual/<Feature>/`
 - Mỗi file markdown mô tả cách test tính năng đó
 
 #### Ví dụ: Tạo Manual Test Guide
 
-Tạo `tests/Manual/Core_API/MY_FEATURE_TEST_GUIDE.md`:
+Tạo `tests/manual/Core_API/MY_FEATURE_TEST_GUIDE.md`:
 
 ```markdown
 # My Feature Manual Test Guide
