@@ -246,6 +246,22 @@ CreateInstanceRequest SecuRTInstanceManager::createCoreInstanceRequest(
   req.movementSensitivity = write.movementSensitivity;
   req.sensorModality = write.sensorModality;
   
+  // Set default model paths for SecuRT solution (YOLO detector)
+  // These defaults ensure the instance can start without requiring explicit model paths
+  // Users can override these by providing values in additionalParams when configuring input
+  if (req.additionalParams.find("WEIGHTS_PATH") == req.additionalParams.end()) {
+    req.additionalParams["WEIGHTS_PATH"] = 
+        "/opt/edge_ai_api/models/det_cls/yolov3-tiny-2022-0721_best.weights";
+  }
+  if (req.additionalParams.find("CONFIG_PATH") == req.additionalParams.end()) {
+    req.additionalParams["CONFIG_PATH"] = 
+        "/opt/edge_ai_api/models/det_cls/yolov3-tiny-2022-0721.cfg";
+  }
+  if (req.additionalParams.find("LABELS_PATH") == req.additionalParams.end()) {
+    req.additionalParams["LABELS_PATH"] = 
+        "/opt/edge_ai_api/models/det_cls/yolov3_tiny_5classes.txt";
+  }
+  
   // Set instance ID in additional params if needed
   // Note: The core instance manager will use the instanceId from the request
   // if it's set in a specific way, but typically it generates its own.

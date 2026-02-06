@@ -2629,6 +2629,7 @@ int main(int argc, char *argv[]) {
     SecuRTHandler::setAnalyticsEntitiesManager(&analyticsEntitiesManager);
     SecuRTHandler::setFeatureManager(&securtFeatureManager);
     SecuRTHandler::setExclusionAreaManager(&exclusionAreaManager);
+    SecuRTHandler::setCoreInstanceManager(instanceManager.get());
     SecuRTLineHandler::setInstanceManager(&securtInstanceManager);
     SecuRTLineHandler::setLineManager(&securtLineManager);
     analyticsEntitiesManager.setLineManager(&securtLineManager);
