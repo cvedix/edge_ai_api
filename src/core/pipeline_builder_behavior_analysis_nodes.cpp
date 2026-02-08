@@ -4,15 +4,21 @@
 #include "core/securt_line_manager.h"
 #include <iostream>
 #include <stdexcept>
+#include <climits>
 #include <opencv2/core.hpp>
 #include <json/reader.h>
 #include <json/value.h>
 #include <cvedix/nodes/ba/cvedix_ba_crossline_node.h>
 #include <cvedix/nodes/ba/cvedix_ba_jam_node.h>
 #include <cvedix/nodes/ba/cvedix_ba_stop_node.h>
+#include <cvedix/nodes/ba/cvedix_ba_loitering_node.h>
+#include <cvedix/nodes/ba/cvedix_ba_area_enter_exit_node.h>
+#include <cvedix/nodes/ba/cvedix_ba_line_counting.h>
 #include <cvedix/nodes/osd/cvedix_ba_crossline_osd_node.h>
 #include <cvedix/nodes/osd/cvedix_ba_jam_osd_node.h>
 #include <cvedix/nodes/osd/cvedix_ba_stop_osd_node.h>
+#include <cvedix/nodes/osd/cvedix_ba_area_enter_exit_osd_node.h>
+#include <cvedix/objects/shapes/cvedix_rect.h>
 
 
 
@@ -867,6 +873,500 @@ std::shared_ptr<cvedix_nodes::cvedix_node> PipelineBuilderBehaviorAnalysisNodes:
     return node;
   } catch (const std::exception &e) {
     std::cerr << "[PipelineBuilderBehaviorAnalysisNodes] Exception in createBAStopOSDNode: "
+              << e.what() << std::endl;
+    throw;
+  }
+}
+
+std::shared_ptr<cvedix_nodes::cvedix_node> PipelineBuilderBehaviorAnalysisNodes::createBALoiteringNode(
+    const std::string &nodeName,
+    const std::map<std::string, std::string> &params,
+    const CreateInstanceRequest &req) {
+
+  try {
+    if (nodeName.empty()) {
+      throw std::invalid_argument("Node name cannot be empty");
+    }
+
+    std::map<int, cvedix_objects::cvedix_rect> regions;
+    std::map<int, double> alarm_seconds;
+    bool regionsParsed = false;
+
+    // Priority 1: Check LoiteringAreas from params (substituted from ${LOITERING_AREAS_JSON})
+    std::string loiteringAreasJson;
+    if (params.count("LoiteringAreas") && !params.at("LoiteringAreas").empty()) {
+      loiteringAreasJson = params.at("LoiteringAreas");
+      std::cerr << "[PipelineBuilderBehaviorAnalysisNodes] Found LoiteringAreas in params (substituted from placeholder)"
+                << std::endl;
+    }
+    // Priority 2: Check LoiteringAreas from additionalParams (direct API call)
+    else {
+      auto loiteringAreasIt = req.additionalParams.find("LoiteringAreas");
+      if (loiteringAreasIt != req.additionalParams.end() && !loiteringAreasIt->second.empty()) {
+        loiteringAreasJson = loiteringAreasIt->second;
+        std::cerr << "[PipelineBuilderBehaviorAnalysisNodes] Found LoiteringAreas in additionalParams (direct API call)"
+                  << std::endl;
+      }
+    }
+
+    // Parse LoiteringAreas JSON if found
+    if (!loiteringAreasJson.empty()) {
+      try {
+        // Parse JSON string to JSON array
+        Json::Reader reader;
+        Json::Value parsedAreas;
+        if (reader.parse(loiteringAreasJson, parsedAreas) && parsedAreas.isArray()) {
+          // Iterate through loitering areas array
+          for (Json::ArrayIndex i = 0; i < parsedAreas.size(); ++i) {
+            const Json::Value &areaObj = parsedAreas[i];
+            
+            // Check if area has coordinates
+            if (!areaObj.isMember("coordinates") || !areaObj["coordinates"].isArray() ||
+                areaObj["coordinates"].size() < 3) {
+              std::cerr << "[PipelineBuilderBehaviorAnalysisNodes] WARNING: Loitering area at index " << i
+                        << " missing or invalid 'coordinates' field, skipping"
+                        << std::endl;
+              continue;
+            }
+
+            // Get alarm seconds (default to 5 if not specified)
+            double seconds = 5.0;
+            if (areaObj.isMember("seconds") && areaObj["seconds"].isNumeric()) {
+              seconds = areaObj["seconds"].asDouble();
+            }
+
+            // Convert polygon coordinates to bounding rectangle
+            const Json::Value &coords = areaObj["coordinates"];
+            int min_x = INT_MAX, min_y = INT_MAX;
+            int max_x = INT_MIN, max_y = INT_MIN;
+
+            for (const auto &coord : coords) {
+              if (!coord.isObject() || !coord.isMember("x") || !coord.isMember("y") ||
+                  !coord["x"].isNumeric() || !coord["y"].isNumeric()) {
+                continue;
+              }
+              
+              double x = coord["x"].asDouble();
+              double y = coord["y"].asDouble();
+              
+              // Handle normalized coordinates (0.0-1.0)
+              if (x <= 1.0 && y <= 1.0 && x >= 0.0 && y >= 0.0) {
+                // Normalized - convert to pixels (assume 1920x1080 default)
+                x = x * 1920;
+                y = y * 1080;
+              }
+              
+              int px = static_cast<int>(x);
+              int py = static_cast<int>(y);
+              
+              min_x = std::min(min_x, px);
+              min_y = std::min(min_y, py);
+              max_x = std::max(max_x, px);
+              max_y = std::max(max_y, py);
+            }
+
+            if (min_x != INT_MAX && min_y != INT_MAX && max_x != INT_MIN && max_y != INT_MIN) {
+              // Create rectangle from bounding box
+              int width = max_x - min_x;
+              int height = max_y - min_y;
+              
+              // Determine channel (default to 0)
+              int channel = 0;
+              if (areaObj.isMember("channel") && areaObj["channel"].isNumeric()) {
+                channel = areaObj["channel"].asInt();
+              } else {
+                // Use index as channel if not specified
+                channel = static_cast<int>(i);
+              }
+              
+              cvedix_objects::cvedix_rect rect(min_x, min_y, width, height);
+              regions[channel] = rect;
+              alarm_seconds[channel] = seconds;
+              regionsParsed = true;
+            }
+          }
+
+          if (regionsParsed) {
+            std::cerr << "[PipelineBuilderBehaviorAnalysisNodes] ✓ Parsed " << regions.size()
+                      << " loitering area(s) from LoiteringAreas API" << std::endl;
+          }
+        } else {
+          std::cerr << "[PipelineBuilderBehaviorAnalysisNodes] WARNING: Failed to parse LoiteringAreas "
+                       "JSON or not an array, falling back to solution config"
+                    << std::endl;
+        }
+      } catch (const std::exception &e) {
+        std::cerr << "[PipelineBuilderBehaviorAnalysisNodes] WARNING: Exception parsing LoiteringAreas "
+                     "JSON: "
+                  << e.what() << ", falling back to solution config"
+                  << std::endl;
+      }
+    }
+
+    // Priority 3: Fallback to solution config parameters if no areas from API/params
+    if (!regionsParsed) {
+      // Check if we have loitering parameters from solution config
+      bool hasValidParams = params.count("loitering_channel") && 
+                           params.count("loitering_x") &&
+                           params.count("loitering_y") &&
+                           params.count("loitering_width") &&
+                           params.count("loitering_height");
+      
+      // Also check for alarm_seconds parameter (can be from ${ALARM_SECONDS} or direct)
+      std::string alarmSecondsStr;
+      if (params.count("alarm_seconds") && !params.at("alarm_seconds").empty()) {
+        alarmSecondsStr = params.at("alarm_seconds");
+      } else {
+        auto alarmSecondsIt = req.additionalParams.find("ALARM_SECONDS");
+        if (alarmSecondsIt != req.additionalParams.end() && !alarmSecondsIt->second.empty()) {
+          alarmSecondsStr = alarmSecondsIt->second;
+        }
+      }
+
+      if (hasValidParams) {
+        try {
+          int channel = std::stoi(params.at("loitering_channel"));
+          int x = std::stoi(params.at("loitering_x"));
+          int y = std::stoi(params.at("loitering_y"));
+          int width = std::stoi(params.at("loitering_width"));
+          int height = std::stoi(params.at("loitering_height"));
+          double seconds = 5.0;
+          
+          // Try to get alarm_seconds from multiple sources
+          if (!alarmSecondsStr.empty()) {
+            try {
+              seconds = std::stod(alarmSecondsStr);
+            } catch (const std::exception &e) {
+              std::cerr << "[PipelineBuilderBehaviorAnalysisNodes] Warning: Failed to parse alarm_seconds: "
+                        << e.what() << ", using default 5.0" << std::endl;
+            }
+          } else if (params.count("loitering_seconds")) {
+            seconds = std::stod(params.at("loitering_seconds"));
+          }
+
+          cvedix_objects::cvedix_rect rect(x, y, width, height);
+          regions[channel] = rect;
+          alarm_seconds[channel] = seconds;
+          std::cerr << "[PipelineBuilderBehaviorAnalysisNodes] Using loitering configuration from solution "
+                       "config (channel "
+                    << channel << ": rect(" << x << "," << y << "," << width << "," << height 
+                    << "), seconds=" << seconds << ")" << std::endl;
+        } catch (const std::exception &e) {
+          std::cerr << "[PipelineBuilderBehaviorAnalysisNodes] Warning: Failed to parse loitering "
+                       "parameters from solution config: "
+                    << e.what() << std::endl;
+          hasValidParams = false;
+        }
+      }
+
+      if (!hasValidParams) {
+        std::cerr << "[PipelineBuilderBehaviorAnalysisNodes] No valid loitering configuration found. "
+                     "BA loitering node will be created without regions. "
+                     "Regions can be added later via API."
+                  << std::endl;
+      }
+    }
+
+    std::cerr << "[PipelineBuilderBehaviorAnalysisNodes] Creating BA loitering node:" << std::endl;
+    std::cerr << "  Name: '" << nodeName << "'" << std::endl;
+    std::cerr << "  Regions configured for " << regions.size() << " channel(s)"
+              << std::endl;
+
+    // Create loitering node with regions, alarm_seconds, and frame rate (30 fps default)
+    auto node = std::make_shared<cvedix_nodes::cvedix_ba_loitering_node>(
+        nodeName, regions, alarm_seconds, 30);
+    
+    std::cerr << "[PipelineBuilderBehaviorAnalysisNodes] ✓ BA loitering node created successfully"
+              << std::endl;
+    std::cerr << "[PipelineBuilderBehaviorAnalysisNodes]   Regions will be passed to OSD node via "
+                 "pipeline metadata"
+              << std::endl;
+    std::cerr
+        << "[PipelineBuilderBehaviorAnalysisNodes]   OSD node will draw these regions on video frames"
+        << std::endl;
+    return node;
+  } catch (const std::exception &e) {
+    std::cerr << "[PipelineBuilderBehaviorAnalysisNodes] Exception in createBALoiteringNode: " << e.what()
+              << std::endl;
+    throw;
+  }
+}
+
+std::shared_ptr<cvedix_nodes::cvedix_node> PipelineBuilderBehaviorAnalysisNodes::createBALoiteringOSDNode(
+    const std::string &nodeName,
+    const std::map<std::string, std::string> &params) {
+
+  try {
+    if (nodeName.empty()) {
+      throw std::invalid_argument("Node name cannot be empty");
+    }
+
+    std::cerr << "[PipelineBuilderBehaviorAnalysisNodes] Creating BA loitering OSD node:"
+              << std::endl;
+    std::cerr << "  Name: '" << nodeName << "'" << std::endl;
+    std::cerr << "  Note: OSD node will automatically get regions from "
+                 "ba_loitering_node via pipeline metadata"
+              << std::endl;
+
+    // Use ba_stop_osd_node for loitering visualization (they share the same OSD node)
+    auto node =
+        std::make_shared<cvedix_nodes::cvedix_ba_stop_osd_node>(nodeName);
+    std::cerr << "[PipelineBuilderBehaviorAnalysisNodes] ✓ BA loitering OSD node created successfully"
+              << std::endl;
+    std::cerr << "[PipelineBuilderBehaviorAnalysisNodes]   OSD node will draw regions on video frames "
+                 "from ba_loitering_node"
+              << std::endl;
+    return node;
+  } catch (const std::exception &e) {
+    std::cerr << "[PipelineBuilderBehaviorAnalysisNodes] Exception in createBALoiteringOSDNode: "
+              << e.what() << std::endl;
+    throw;
+  }
+}
+
+std::shared_ptr<cvedix_nodes::cvedix_node> PipelineBuilderBehaviorAnalysisNodes::createBAAreaEnterExitNode(
+    const std::string &nodeName,
+    const std::map<std::string, std::string> &params,
+    const CreateInstanceRequest &req) {
+  try {
+    if (nodeName.empty()) {
+      throw std::invalid_argument("Node name cannot be empty");
+    }
+
+    std::map<int, std::vector<cvedix_objects::cvedix_rect>> areas;
+    std::map<int, std::vector<cvedix_nodes::area_alert_config>> configs;
+
+    // Parse Areas from additionalParams
+    auto areasIt = req.additionalParams.find("Areas");
+    bool areasParsed = false;
+    if (areasIt != req.additionalParams.end() && !areasIt->second.empty()) {
+      try {
+        Json::Reader reader;
+        Json::Value areasJson;
+        if (reader.parse(areasIt->second, areasJson) && areasJson.isArray()) {
+          for (const auto &areaObj : areasJson) {
+            if (!areaObj.isMember("channel") || !areaObj.isMember("roi") ||
+                !areaObj["roi"].isArray() || areaObj["roi"].size() < 3) {
+              continue;
+            }
+            int channel = areaObj["channel"].asInt();
+            const Json::Value &roi = areaObj["roi"];
+            
+            // Convert polygon to bounding rect (simplified - use first 3 points)
+            if (roi.size() >= 3) {
+              int min_x = INT_MAX, min_y = INT_MAX;
+              int max_x = INT_MIN, max_y = INT_MIN;
+              for (const auto &point : roi) {
+                if (point.isMember("x") && point.isMember("y")) {
+                  int x = point["x"].asInt();
+                  int y = point["y"].asInt();
+                  min_x = std::min(min_x, x);
+                  min_y = std::min(min_y, y);
+                  max_x = std::max(max_x, x);
+                  max_y = std::max(max_y, y);
+                }
+              }
+              if (min_x < max_x && min_y < max_y) {
+                cvedix_objects::cvedix_rect rect(min_x, min_y, max_x - min_x, max_y - min_y);
+                areas[channel].push_back(rect);
+              }
+            }
+          }
+          areasParsed = !areas.empty();
+        }
+      } catch (const std::exception &e) {
+        std::cerr << "[PipelineBuilderBehaviorAnalysisNodes] WARNING: Failed to parse Areas JSON: "
+                  << e.what() << std::endl;
+      }
+    }
+
+    // Parse AreaConfigs if available
+    auto configsIt = req.additionalParams.find("AreaConfigs");
+    if (configsIt != req.additionalParams.end() && !configsIt->second.empty()) {
+      try {
+        Json::Reader reader;
+        Json::Value configsJson;
+        if (reader.parse(configsIt->second, configsJson) && configsJson.isArray()) {
+          for (const auto &configObj : configsJson) {
+            if (!configObj.isMember("channel") || !configObj.isMember("index")) {
+              continue;
+            }
+            int channel = configObj["channel"].asInt();
+            int index = configObj["index"].asInt();
+            
+            bool alert_enter = configObj.get("alert_enter", true).asBool();
+            bool alert_exit = configObj.get("alert_exit", true).asBool();
+            std::string name = configObj.get("name", "").asString();
+            
+            cv::Scalar color(0, 220, 0); // Default green
+            if (configObj.isMember("color") && configObj["color"].isArray() &&
+                configObj["color"].size() >= 3) {
+              int r = configObj["color"][0].asInt();
+              int g = configObj["color"][1].asInt();
+              int b = configObj["color"][2].asInt();
+              color = cv::Scalar(b, g, r); // BGR format
+            }
+            
+            if (configs[channel].size() <= static_cast<size_t>(index)) {
+              configs[channel].resize(index + 1);
+            }
+            configs[channel][index] = cvedix_nodes::area_alert_config(
+                alert_enter, alert_exit, name, color);
+          }
+        }
+      } catch (const std::exception &e) {
+        std::cerr << "[PipelineBuilderBehaviorAnalysisNodes] WARNING: Failed to parse AreaConfigs JSON: "
+                  << e.what() << std::endl;
+      }
+    }
+
+    if (!areasParsed) {
+      std::cerr << "[PipelineBuilderBehaviorAnalysisNodes] No valid area configuration found. "
+                   "BA area enter/exit node will be created without areas. "
+                   "Areas can be added later via API."
+                << std::endl;
+    }
+
+    std::cerr << "[PipelineBuilderBehaviorAnalysisNodes] Creating BA area enter/exit node:"
+              << std::endl;
+    std::cerr << "  Name: '" << nodeName << "'" << std::endl;
+    std::cerr << "  Areas configured for " << areas.size() << " channel(s)"
+              << std::endl;
+
+    // Create node with areas and configs (image_recording=false, video_recording=false)
+    auto node = std::make_shared<cvedix_nodes::cvedix_ba_area_enter_exit_node>(
+        nodeName, areas, configs, false, false);
+    
+    std::cerr << "[PipelineBuilderBehaviorAnalysisNodes] ✓ BA area enter/exit node created successfully"
+              << std::endl;
+    return node;
+  } catch (const std::exception &e) {
+    std::cerr << "[PipelineBuilderBehaviorAnalysisNodes] Exception in createBAAreaEnterExitNode: "
+              << e.what() << std::endl;
+    throw;
+  }
+}
+
+std::shared_ptr<cvedix_nodes::cvedix_node> PipelineBuilderBehaviorAnalysisNodes::createBALineCountingNode(
+    const std::string &nodeName,
+    const std::map<std::string, std::string> &params,
+    const CreateInstanceRequest &req) {
+  try {
+    if (nodeName.empty()) {
+      throw std::invalid_argument("Node name cannot be empty");
+    }
+
+    std::map<int, std::vector<cvedix_nodes::cvedix_ba_line_couting_setting>> lineSettings;
+
+    // Parse LineSettings from additionalParams
+    auto lineSettingsIt = req.additionalParams.find("LineSettings");
+    bool lineSettingsParsed = false;
+    if (lineSettingsIt != req.additionalParams.end() && !lineSettingsIt->second.empty()) {
+      try {
+        Json::Reader reader;
+        Json::Value lineSettingsJson;
+        if (reader.parse(lineSettingsIt->second, lineSettingsJson) && lineSettingsJson.isObject()) {
+          for (const auto &channelStr : lineSettingsJson.getMemberNames()) {
+            int channel = std::stoi(channelStr);
+            const Json::Value &linesArray = lineSettingsJson[channelStr];
+            
+            if (linesArray.isArray()) {
+              for (const auto &lineObj : linesArray) {
+                cvedix_nodes::cvedix_ba_line_couting_setting setting;
+                
+                // Parse setting name
+                if (lineObj.isMember("setting_name") && lineObj["setting_name"].isString()) {
+                  setting.setting_name = lineObj["setting_name"].asString();
+                }
+                
+                // Parse line coordinates
+                if (lineObj.isMember("line") && lineObj["line"].isObject()) {
+                  const Json::Value &line = lineObj["line"];
+                  if (line.isMember("start") && line.isMember("end")) {
+                    int start_x = line["start"]["x"].asInt();
+                    int start_y = line["start"]["y"].asInt();
+                    int end_x = line["end"]["x"].asInt();
+                    int end_y = line["end"]["y"].asInt();
+                    setting.line = cvedix_objects::cvedix_line(
+                        cvedix_objects::cvedix_point(start_x, start_y),
+                        cvedix_objects::cvedix_point(end_x, end_y));
+                  }
+                }
+                
+                // Parse direction
+                if (lineObj.isMember("direction") && lineObj["direction"].isString()) {
+                  std::string dir = lineObj["direction"].asString();
+                  if (dir == "IN" || dir == "Up") {
+                    setting.direction = cvedix_objects::cvedix_ba_direct_type::IN;
+                  } else if (dir == "OUT" || dir == "Down") {
+                    setting.direction = cvedix_objects::cvedix_ba_direct_type::OUT;
+                  } else {
+                    setting.direction = cvedix_objects::cvedix_ba_direct_type::BOTH;
+                  }
+                } else {
+                  setting.direction = cvedix_objects::cvedix_ba_direct_type::BOTH;
+                }
+                
+                lineSettings[channel].push_back(setting);
+              }
+            }
+          }
+          lineSettingsParsed = !lineSettings.empty();
+        }
+      } catch (const std::exception &e) {
+        std::cerr << "[PipelineBuilderBehaviorAnalysisNodes] WARNING: Failed to parse LineSettings JSON: "
+                  << e.what() << std::endl;
+      }
+    }
+
+    if (!lineSettingsParsed) {
+      std::cerr << "[PipelineBuilderBehaviorAnalysisNodes] No valid line settings found. "
+                   "BA line counting node will be created without lines. "
+                   "Lines can be added later via API."
+                << std::endl;
+    }
+
+    std::cerr << "[PipelineBuilderBehaviorAnalysisNodes] Creating BA line counting node:"
+              << std::endl;
+    std::cerr << "  Name: '" << nodeName << "'" << std::endl;
+    std::cerr << "  Line settings configured for " << lineSettings.size() << " channel(s)"
+              << std::endl;
+
+    // Create node with line settings
+    auto node = std::make_shared<cvedix_nodes::cvedix_ba_line_counting>(
+        nodeName, lineSettings);
+    
+    std::cerr << "[PipelineBuilderBehaviorAnalysisNodes] ✓ BA line counting node created successfully"
+              << std::endl;
+    return node;
+  } catch (const std::exception &e) {
+    std::cerr << "[PipelineBuilderBehaviorAnalysisNodes] Exception in createBALineCountingNode: "
+              << e.what() << std::endl;
+    throw;
+  }
+}
+
+std::shared_ptr<cvedix_nodes::cvedix_node> PipelineBuilderBehaviorAnalysisNodes::createBAAreaEnterExitOSDNode(
+    const std::string &nodeName,
+    const std::map<std::string, std::string> &params) {
+  try {
+    if (nodeName.empty()) {
+      throw std::invalid_argument("Node name cannot be empty");
+    }
+
+    std::cerr << "[PipelineBuilderBehaviorAnalysisNodes] Creating BA area enter/exit OSD node:"
+              << std::endl;
+    std::cerr << "  Name: '" << nodeName << "'" << std::endl;
+    std::cerr << "  Note: OSD node will automatically get areas from "
+                 "ba_area_enter_exit_node via pipeline metadata"
+              << std::endl;
+
+    auto node = std::make_shared<cvedix_nodes::cvedix_ba_area_enter_exit_osd_node>(nodeName);
+    std::cerr << "[PipelineBuilderBehaviorAnalysisNodes] ✓ BA area enter/exit OSD node created successfully"
+              << std::endl;
+    return node;
+  } catch (const std::exception &e) {
+    std::cerr << "[PipelineBuilderBehaviorAnalysisNodes] Exception in createBAAreaEnterExitOSDNode: "
               << e.what() << std::endl;
     throw;
   }
