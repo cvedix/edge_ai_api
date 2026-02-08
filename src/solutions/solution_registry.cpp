@@ -1757,11 +1757,8 @@ void SolutionRegistry::registerBALoiteringSolution() {
   baLoiteringOSD.nodeName = "osd_{instanceId}";
   config.pipeline.push_back(baLoiteringOSD);
 
-  // JSON MQTT Broker Node (optional)
-  SolutionConfig::NodeConfig jsonMqtt;
-  jsonMqtt.nodeType = "json_mqtt_broker";
-  jsonMqtt.nodeName = "json_mqtt_broker_{instanceId}";
-  config.pipeline.push_back(jsonMqtt);
+  // NOTE: json_mqtt_broker node removed - it's disabled due to crash issues
+  // MQTT events are handled by instance_registry instead
 
   // Screen Destination Node
   SolutionConfig::NodeConfig screenDes;

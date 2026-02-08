@@ -123,6 +123,7 @@ target_sources(edge_ai_api_tests PRIVATE
     ${CMAKE_SOURCE_DIR}/src/core/frame_processor.cpp
     ${CMAKE_SOURCE_DIR}/src/instances/instance_storage.cpp
     ${CMAKE_SOURCE_DIR}/src/instances/instance_registry.cpp
+    ${CMAKE_SOURCE_DIR}/src/instances/instance_registry_rtmp_monitor.cpp
     ${CMAKE_SOURCE_DIR}/src/instances/instance_state_manager.cpp
     ${CMAKE_SOURCE_DIR}/src/instances/inprocess_instance_manager.cpp
     ${CMAKE_SOURCE_DIR}/src/instances/subprocess_instance_manager.cpp

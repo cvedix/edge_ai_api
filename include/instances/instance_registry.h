@@ -224,6 +224,32 @@ private:
   mutable std::mutex
       rtsp_monitor_mutex_; // Separate mutex for RTSP monitor thread management
 
+  // Thread management for RTMP source connection monitoring and auto-reconnect
+  std::unordered_map<std::string, std::shared_ptr<std::atomic<bool>>>
+      rtmp_src_monitor_stop_flags_;
+  std::unordered_map<std::string, std::thread> rtmp_src_monitor_threads_;
+  mutable std::unordered_map<std::string, std::chrono::steady_clock::time_point>
+      rtmp_src_last_activity_; // Track last frame received time
+  std::unordered_map<std::string, std::atomic<int>>
+      rtmp_src_reconnect_attempts_; // Track reconnect attempts
+  std::unordered_map<std::string, std::atomic<bool>>
+      rtmp_src_has_connected_; // Track if RTMP source has ever successfully connected
+  mutable std::mutex
+      rtmp_src_monitor_mutex_; // Separate mutex for RTMP source monitor thread management
+
+  // Thread management for RTMP destination connection monitoring and auto-reconnect
+  std::unordered_map<std::string, std::shared_ptr<std::atomic<bool>>>
+      rtmp_des_monitor_stop_flags_;
+  std::unordered_map<std::string, std::thread> rtmp_des_monitor_threads_;
+  mutable std::unordered_map<std::string, std::chrono::steady_clock::time_point>
+      rtmp_des_last_activity_; // Track last frame sent time
+  std::unordered_map<std::string, std::atomic<int>>
+      rtmp_des_reconnect_attempts_; // Track reconnect attempts
+  std::unordered_map<std::string, std::atomic<bool>>
+      rtmp_des_has_connected_; // Track if RTMP destination has ever successfully connected
+  mutable std::mutex
+      rtmp_des_monitor_mutex_; // Separate mutex for RTMP destination monitor thread management
+
   // MP4 directory watchers for auto-converting recordings
   std::unordered_map<std::string,
                      std::unique_ptr<class MP4Finalizer::MP4DirectoryWatcher>>
@@ -428,4 +454,60 @@ private:
   bool
   reconnectRTSPStream(const std::string &instanceId,
                       std::shared_ptr<std::atomic<bool>> stopFlag = nullptr);
+
+  /**
+   * @brief Start RTMP source monitoring thread for an instance
+   * Monitors RTMP source connection status and auto-reconnects if stream is lost
+   * @param instanceId Instance ID
+   */
+  void startRTMPSourceMonitorThread(const std::string &instanceId);
+
+  /**
+   * @brief Stop RTMP source monitoring thread for an instance
+   * @param instanceId Instance ID
+   */
+  void stopRTMPSourceMonitorThread(const std::string &instanceId);
+
+  /**
+   * @brief Update RTMP source activity timestamp (called from frame capture hook)
+   * @param instanceId Instance ID
+   */
+  void updateRTMPSourceActivity(const std::string &instanceId);
+
+  /**
+   * @brief Reconnect RTMP source stream
+   * @param instanceId Instance ID
+   * @param stopFlag Stop flag to abort early if instance is being stopped
+   * @return true if reconnection was successful
+   */
+  bool reconnectRTMPSourceStream(const std::string &instanceId,
+                                  std::shared_ptr<std::atomic<bool>> stopFlag = nullptr);
+
+  /**
+   * @brief Start RTMP destination monitoring thread for an instance
+   * Monitors RTMP destination connection status and auto-reconnects if stream is lost
+   * @param instanceId Instance ID
+   */
+  void startRTMPDestinationMonitorThread(const std::string &instanceId);
+
+  /**
+   * @brief Stop RTMP destination monitoring thread for an instance
+   * @param instanceId Instance ID
+   */
+  void stopRTMPDestinationMonitorThread(const std::string &instanceId);
+
+  /**
+   * @brief Update RTMP destination activity timestamp (called from frame capture hook)
+   * @param instanceId Instance ID
+   */
+  void updateRTMPDestinationActivity(const std::string &instanceId);
+
+  /**
+   * @brief Reconnect RTMP destination stream
+   * @param instanceId Instance ID
+   * @param stopFlag Stop flag to abort early if instance is being stopped
+   * @return true if reconnection was successful
+   */
+  bool reconnectRTMPDestinationStream(const std::string &instanceId,
+                                       std::shared_ptr<std::atomic<bool>> stopFlag = nullptr);
 };
