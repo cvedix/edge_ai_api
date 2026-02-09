@@ -3014,6 +3014,37 @@ void PipelineBuilder::loadSecuRTData(const SolutionConfig &solution,
     if (!loiteringAreasJson.empty()) {
       // Store LoiteringAreas in additionalParams for ba_loitering node
       req.additionalParams["LoiteringAreas"] = loiteringAreasJson;
+      
+      // Also set LOITERING_AREAS_JSON for ba_loitering solution placeholder substitution
+      // This is needed when using ba_loitering solution with ${LOITERING_AREAS_JSON} placeholder
+      req.additionalParams["LOITERING_AREAS_JSON"] = loiteringAreasJson;
+      
+      // Extract ALARM_SECONDS from loitering areas (use max seconds value from all areas)
+      // This is needed for ba_loitering solution with ${ALARM_SECONDS} placeholder
+      try {
+        Json::Reader reader;
+        Json::Value parsedAreas;
+        if (reader.parse(loiteringAreasJson, parsedAreas) && parsedAreas.isArray() && parsedAreas.size() > 0) {
+          double maxSeconds = 5.0; // Default
+          for (Json::ArrayIndex i = 0; i < parsedAreas.size(); ++i) {
+            if (parsedAreas[i].isMember("seconds") && parsedAreas[i]["seconds"].isNumeric()) {
+              double seconds = parsedAreas[i]["seconds"].asDouble();
+              if (seconds > maxSeconds) {
+                maxSeconds = seconds;
+              }
+            }
+          }
+          req.additionalParams["ALARM_SECONDS"] = std::to_string(static_cast<int>(maxSeconds));
+          std::cerr << "[PipelineBuilder] ✓ Set ALARM_SECONDS to " << static_cast<int>(maxSeconds)
+                    << " (from loitering areas)" << std::endl;
+        }
+      } catch (const std::exception &e) {
+        std::cerr << "[PipelineBuilder] WARNING: Failed to parse loitering areas for ALARM_SECONDS: "
+                  << e.what() << std::endl;
+        // Set default ALARM_SECONDS if parsing fails
+        req.additionalParams["ALARM_SECONDS"] = "5";
+      }
+      
       std::cerr << "[PipelineBuilder] ✓ Loaded " << loiteringAreasJson.length()
                 << " bytes of loitering areas data from SecuRT Area Manager (converted to LoiteringAreas format)"
                 << std::endl;
