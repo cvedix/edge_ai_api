@@ -52,14 +52,29 @@ struct ColorRGBA {
 
   /**
    * @brief Create from JSON array [r, g, b, a]
+   * Supports both 0-255 integer format and 0.0-1.0 float format
+   * Automatically converts 0-255 to 0.0-1.0 range
    */
   static ColorRGBA fromJson(const Json::Value &json) {
     ColorRGBA color;
     if (json.isArray() && json.size() >= 4) {
-      if (json[0].isNumeric()) color.r = json[0].asDouble();
-      if (json[1].isNumeric()) color.g = json[1].asDouble();
-      if (json[2].isNumeric()) color.b = json[2].asDouble();
-      if (json[3].isNumeric()) color.a = json[3].asDouble();
+      if (json[0].isNumeric()) {
+        double r = json[0].asDouble();
+        // If value > 1.0, assume it's 0-255 format and convert to 0.0-1.0
+        color.r = (r > 1.0) ? (r / 255.0) : r;
+      }
+      if (json[1].isNumeric()) {
+        double g = json[1].asDouble();
+        color.g = (g > 1.0) ? (g / 255.0) : g;
+      }
+      if (json[2].isNumeric()) {
+        double b = json[2].asDouble();
+        color.b = (b > 1.0) ? (b / 255.0) : b;
+      }
+      if (json[3].isNumeric()) {
+        double a = json[3].asDouble();
+        color.a = (a > 1.0) ? (a / 255.0) : a;
+      }
     }
     return color;
   }

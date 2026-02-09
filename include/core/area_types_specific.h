@@ -624,3 +624,64 @@ struct FaceCoveredAreaWrite : public AreaBaseWrite {
   }
 };
 
+/**
+ * @brief Object Enter/Exit Area
+ * Detects objects entering/exiting area (for BA Area Enter/Exit solution)
+ */
+struct ObjectEnterExitArea : public AreaBase {
+  bool alertOnEnter = true;
+  bool alertOnExit = true;
+
+  Json::Value toJson() const {
+    Json::Value json = AreaBase::toJson();
+    json["alertOnEnter"] = alertOnEnter;
+    json["alertOnExit"] = alertOnExit;
+    return json;
+  }
+
+  static ObjectEnterExitArea fromJson(const Json::Value &json) {
+    ObjectEnterExitArea area;
+    AreaBase base = AreaBase::fromJson(json);
+    area.id = base.id;
+    area.name = base.name;
+    area.coordinates = base.coordinates;
+    area.classes = base.classes;
+    area.color = base.color;
+
+    if (json.isMember("alertOnEnter") && json["alertOnEnter"].isBool()) {
+      area.alertOnEnter = json["alertOnEnter"].asBool();
+    }
+    if (json.isMember("alertOnExit") && json["alertOnExit"].isBool()) {
+      area.alertOnExit = json["alertOnExit"].asBool();
+    }
+
+    return area;
+  }
+};
+
+/**
+ * @brief Object Enter/Exit Area Write Schema
+ */
+struct ObjectEnterExitAreaWrite : public AreaBaseWrite {
+  bool alertOnEnter = true;
+  bool alertOnExit = true;
+
+  static ObjectEnterExitAreaWrite fromJson(const Json::Value &json) {
+    ObjectEnterExitAreaWrite write;
+    AreaBaseWrite base = AreaBaseWrite::fromJson(json);
+    write.name = base.name;
+    write.coordinates = base.coordinates;
+    write.classes = base.classes;
+    write.color = base.color;
+
+    if (json.isMember("alertOnEnter") && json["alertOnEnter"].isBool()) {
+      write.alertOnEnter = json["alertOnEnter"].asBool();
+    }
+    if (json.isMember("alertOnExit") && json["alertOnExit"].isBool()) {
+      write.alertOnExit = json["alertOnExit"].asBool();
+    }
+
+    return write;
+  }
+};
+

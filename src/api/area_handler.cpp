@@ -662,6 +662,127 @@ void AreaHandler::createFallenPersonArea(
   }
 }
 
+void AreaHandler::createObjectEnterExitArea(
+    const HttpRequestPtr &req,
+    std::function<void(const HttpResponsePtr &)> &&callback) {
+  auto start_time = std::chrono::steady_clock::now();
+
+  if (isApiLoggingEnabled()) {
+    PLOG_INFO << "[API] POST /v1/securt/instance/{instanceId}/area/objectEnterExit - Create object enter/exit area";
+    PLOG_DEBUG << "[API] Request from: " << req->getPeerAddr().toIpPort();
+    PLOG_DEBUG << "[API] Request path: " << req->getPath();
+  }
+
+  try {
+    if (!area_manager_) {
+      if (isApiLoggingEnabled()) {
+        PLOG_ERROR << "[API] POST /v1/securt/instance/{instanceId}/area/objectEnterExit - Error: Area manager not initialized";
+      }
+      callback(createErrorResponse(500, "Internal server error",
+                                   "Area manager not initialized"));
+      return;
+    }
+
+    std::string instanceId = extractInstanceId(req);
+    if (instanceId.empty()) {
+      if (isApiLoggingEnabled()) {
+        PLOG_WARNING << "[API] POST /v1/securt/instance/{instanceId}/area/objectEnterExit - Error: Instance ID is required";
+      }
+      callback(createErrorResponse(400, "Invalid request",
+                                   "Instance ID is required"));
+      return;
+    }
+
+    if (isApiLoggingEnabled()) {
+      PLOG_DEBUG << "[API] POST /v1/securt/instance/" << instanceId << "/area/objectEnterExit - Instance ID: " << instanceId;
+    }
+
+    auto json = req->getJsonObject();
+    if (!json) {
+      if (isApiLoggingEnabled()) {
+        PLOG_WARNING << "[API] POST /v1/securt/instance/" << instanceId << "/area/objectEnterExit - Error: Invalid JSON body";
+        PLOG_DEBUG << "[API] Request body: " << req->getBody();
+      }
+      callback(createErrorResponse(400, "Invalid request",
+                                   "Request body must be valid JSON"));
+      return;
+    }
+
+    if (isApiLoggingEnabled()) {
+      Json::StreamWriterBuilder builder;
+      builder["indentation"] = "";
+      std::string jsonStr = Json::writeString(builder, *json);
+      PLOG_DEBUG << "[API] POST /v1/securt/instance/" << instanceId << "/area/objectEnterExit - Request body: " << jsonStr;
+    }
+
+    ObjectEnterExitAreaWrite write = ObjectEnterExitAreaWrite::fromJson(*json);
+    if (isApiLoggingEnabled()) {
+      PLOG_DEBUG << "[API] POST /v1/securt/instance/" << instanceId << "/area/objectEnterExit - Parsed area data - name: " << write.name
+                 << ", coordinates count: " << write.coordinates.size()
+                 << ", alertOnEnter: " << write.alertOnEnter
+                 << ", alertOnExit: " << write.alertOnExit;
+    }
+
+    if (isApiLoggingEnabled()) {
+      PLOG_DEBUG << "[API] POST /v1/securt/instance/" << instanceId << "/area/objectEnterExit - Calling area_manager_->createObjectEnterExitArea()";
+    }
+    std::string areaId = area_manager_->createObjectEnterExitArea(instanceId, write);
+
+    if (areaId.empty()) {
+      auto end_time = std::chrono::steady_clock::now();
+      auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(
+          end_time - start_time);
+      if (isApiLoggingEnabled()) {
+        PLOG_WARNING << "[API] POST /v1/securt/instance/" << instanceId << "/area/objectEnterExit - Failed to create area - " << duration.count() << "ms";
+      }
+      callback(createErrorResponse(400, "Invalid request",
+                                   "Failed to create area. Check validation errors."));
+      return;
+    }
+
+    Json::Value response;
+    response["areaId"] = areaId;
+
+    auto end_time = std::chrono::steady_clock::now();
+    auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(
+        end_time - start_time);
+
+    if (isApiLoggingEnabled()) {
+      PLOG_INFO << "[API] POST /v1/securt/instance/" << instanceId << "/area/objectEnterExit - Success: Created area " << areaId << " - " << duration.count() << "ms";
+      Json::StreamWriterBuilder builder;
+      builder["indentation"] = "";
+      std::string responseStr = Json::writeString(builder, response);
+      PLOG_DEBUG << "[API] POST /v1/securt/instance/" << instanceId << "/area/objectEnterExit - Response: " << responseStr;
+    }
+
+    auto resp = HttpResponse::newHttpJsonResponse(response);
+    resp->setStatusCode(k201Created);
+    resp->addHeader("Access-Control-Allow-Origin", "*");
+    resp->addHeader("Access-Control-Allow-Methods", "POST, OPTIONS");
+    resp->addHeader("Access-Control-Allow-Headers", "Content-Type");
+
+    MetricsInterceptor::callWithMetrics(req, resp, std::move(callback));
+
+  } catch (const std::exception &e) {
+    auto end_time = std::chrono::steady_clock::now();
+    auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(
+        end_time - start_time);
+    if (isApiLoggingEnabled()) {
+      PLOG_ERROR << "[API] POST /v1/securt/instance/{instanceId}/area/objectEnterExit - Exception: " << e.what() << " - " << duration.count() << "ms";
+    }
+    callback(createErrorResponse(500, "Internal server error", e.what()));
+  } catch (...) {
+    auto end_time = std::chrono::steady_clock::now();
+    auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(
+        end_time - start_time);
+    if (isApiLoggingEnabled()) {
+      PLOG_ERROR << "[API] POST /v1/securt/instance/{instanceId}/area/objectEnterExit - Unknown exception - " << duration.count() << "ms";
+    }
+    callback(createErrorResponse(500, "Internal server error",
+                                 "Unknown error occurred"));
+  }
+}
+
 // ========================================================================
 // Standard Areas - PUT handlers (create with ID)
 // ========================================================================
@@ -1166,6 +1287,113 @@ void AreaHandler::createFallenPersonAreaWithId(
   } catch (const std::exception &e) {
     callback(createErrorResponse(500, "Internal server error", e.what()));
   } catch (...) {
+    callback(createErrorResponse(500, "Internal server error",
+                                 "Unknown error occurred"));
+  }
+}
+
+void AreaHandler::createObjectEnterExitAreaWithId(
+    const HttpRequestPtr &req,
+    std::function<void(const HttpResponsePtr &)> &&callback) {
+  auto start_time = std::chrono::steady_clock::now();
+
+  if (isApiLoggingEnabled()) {
+    PLOG_INFO << "[API] PUT /v1/securt/instance/{instanceId}/area/objectEnterExit/{areaId} - Create object enter/exit area with ID";
+  }
+
+  try {
+    if (!area_manager_) {
+      if (isApiLoggingEnabled()) {
+        PLOG_ERROR << "[API] PUT /v1/securt/instance/{instanceId}/area/objectEnterExit/{areaId} - Error: Area manager not initialized";
+      }
+      callback(createErrorResponse(500, "Internal server error",
+                                   "Area manager not initialized"));
+      return;
+    }
+
+    std::string instanceId = extractInstanceId(req);
+    std::string areaId = extractAreaId(req);
+
+    if (instanceId.empty() || areaId.empty()) {
+      if (isApiLoggingEnabled()) {
+        PLOG_WARNING << "[API] PUT /v1/securt/instance/{instanceId}/area/objectEnterExit/{areaId} - Error: Instance ID and Area ID are required";
+      }
+      callback(createErrorResponse(400, "Invalid request",
+                                   "Instance ID and Area ID are required"));
+      return;
+    }
+
+    if (isApiLoggingEnabled()) {
+      PLOG_DEBUG << "[API] PUT /v1/securt/instance/" << instanceId << "/area/objectEnterExit/" << areaId;
+    }
+
+    auto json = req->getJsonObject();
+    if (!json) {
+      if (isApiLoggingEnabled()) {
+        PLOG_WARNING << "[API] PUT /v1/securt/instance/" << instanceId << "/area/objectEnterExit/" << areaId << " - Error: Invalid JSON body";
+      }
+      callback(createErrorResponse(400, "Invalid request",
+                                   "Request body must be valid JSON"));
+      return;
+    }
+
+    if (isApiLoggingEnabled()) {
+      Json::StreamWriterBuilder builder;
+      builder["indentation"] = "";
+      std::string jsonStr = Json::writeString(builder, *json);
+      PLOG_DEBUG << "[API] PUT /v1/securt/instance/" << instanceId << "/area/objectEnterExit/" << areaId << " - Request body: " << jsonStr;
+    }
+
+    ObjectEnterExitAreaWrite write = ObjectEnterExitAreaWrite::fromJson(*json);
+    std::string createdId =
+        area_manager_->createObjectEnterExitAreaWithId(instanceId, areaId, write);
+
+    if (createdId.empty()) {
+      auto end_time = std::chrono::steady_clock::now();
+      auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(
+          end_time - start_time);
+      if (isApiLoggingEnabled()) {
+        PLOG_WARNING << "[API] PUT /v1/securt/instance/" << instanceId << "/area/objectEnterExit/" << areaId << " - Failed to create area - " << duration.count() << "ms";
+      }
+      callback(createErrorResponse(409, "Conflict",
+                                   "Area already exists or creation failed"));
+      return;
+    }
+
+    Json::Value response;
+    response["areaId"] = createdId;
+
+    auto end_time = std::chrono::steady_clock::now();
+    auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(
+        end_time - start_time);
+
+    if (isApiLoggingEnabled()) {
+      PLOG_INFO << "[API] PUT /v1/securt/instance/" << instanceId << "/area/objectEnterExit/" << areaId << " - Success: Created area " << createdId << " - " << duration.count() << "ms";
+    }
+
+    auto resp = HttpResponse::newHttpJsonResponse(response);
+    resp->setStatusCode(k201Created);
+    resp->addHeader("Access-Control-Allow-Origin", "*");
+    resp->addHeader("Access-Control-Allow-Methods", "PUT, OPTIONS");
+    resp->addHeader("Access-Control-Allow-Headers", "Content-Type");
+
+    MetricsInterceptor::callWithMetrics(req, resp, std::move(callback));
+
+  } catch (const std::exception &e) {
+    auto end_time = std::chrono::steady_clock::now();
+    auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(
+        end_time - start_time);
+    if (isApiLoggingEnabled()) {
+      PLOG_ERROR << "[API] PUT /v1/securt/instance/{instanceId}/area/objectEnterExit/{areaId} - Exception: " << e.what() << " - " << duration.count() << "ms";
+    }
+    callback(createErrorResponse(500, "Internal server error", e.what()));
+  } catch (...) {
+    auto end_time = std::chrono::steady_clock::now();
+    auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(
+        end_time - start_time);
+    if (isApiLoggingEnabled()) {
+      PLOG_ERROR << "[API] PUT /v1/securt/instance/{instanceId}/area/objectEnterExit/{areaId} - Unknown exception - " << duration.count() << "ms";
+    }
     callback(createErrorResponse(500, "Internal server error",
                                  "Unknown error occurred"));
   }

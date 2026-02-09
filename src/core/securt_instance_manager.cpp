@@ -274,14 +274,16 @@ bool SecuRTInstanceManager::isCompatibleSolution(const std::string &solutionId) 
   // Solutions compatible with SecuRT APIs
   // These solutions support lines/areas management
   if (solutionId == "securt" || solutionId == "ba_crossline" || 
-      solutionId == "ba_jam" || solutionId == "ba_stop") {
+      solutionId == "ba_jam" || solutionId == "ba_stop" ||
+      solutionId == "ba_area_enter_exit") {
     return true;
   }
   
   // Also check for default solution variants
   if (solutionId.find("ba_crossline") != std::string::npos ||
       solutionId.find("ba_jam") != std::string::npos ||
-      solutionId.find("ba_stop") != std::string::npos) {
+      solutionId.find("ba_stop") != std::string::npos ||
+      solutionId.find("ba_area_enter_exit") != std::string::npos) {
     return true;
   }
   

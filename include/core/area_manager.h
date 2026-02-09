@@ -58,6 +58,8 @@ public:
                                      const VehicleGuardAreaWrite &write);
   std::string createFaceCoveredArea(const std::string &instanceId,
                                      const FaceCoveredAreaWrite &write);
+  std::string createObjectEnterExitArea(const std::string &instanceId,
+                                         const ObjectEnterExitAreaWrite &write);
 
   // ========================================================================
   // Create Area with ID Methods (PUT)
@@ -110,6 +112,9 @@ public:
   std::string createFaceCoveredAreaWithId(const std::string &instanceId,
                                             const std::string &areaId,
                                             const FaceCoveredAreaWrite &write);
+  std::string createObjectEnterExitAreaWithId(const std::string &instanceId,
+                                               const std::string &areaId,
+                                               const ObjectEnterExitAreaWrite &write);
 
   // ========================================================================
   // Get Methods
