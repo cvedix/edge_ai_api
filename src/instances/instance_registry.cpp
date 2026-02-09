@@ -1729,17 +1729,22 @@ bool InstanceRegistry::stopInstance(const std::string &instanceId) {
               << ", was running: " << (wasRunning ? "true" : "false") << ")";
   }
 
-  // CRITICAL: Stop RTSP monitor thread FIRST (before any other cleanup)
-  // This prevents race condition where RTSP monitor thread tries to reconnect
-  // while pipeline is being destroyed
-  // IMPORTANT: stopRTSPMonitorThread() uses instanceId to identify and stop
-  // ONLY this instance's thread
-  std::cerr << "[InstanceRegistry] Stopping RTSP monitor thread for instance "
+  // CRITICAL: Stop monitoring threads FIRST (before any other cleanup)
+  // This prevents race condition where monitor threads try to reconnect while pipeline is being destroyed
+  std::cerr << "[InstanceRegistry] Stopping monitoring threads for instance "
             << instanceId << "..." << std::endl;
-  std::cerr << "[InstanceRegistry] NOTE: Only stopping RTSP monitor thread for "
+  std::cerr << "[InstanceRegistry] NOTE: Only stopping monitoring threads for "
                "this specific instance"
             << std::endl;
+  
+  // Stop RTSP monitor thread
   stopRTSPMonitorThread(instanceId);
+  
+  // Stop RTMP source monitor thread
+  stopRTMPSourceMonitorThread(instanceId);
+  
+  // Stop RTMP destination monitor thread
+  stopRTMPDestinationMonitorThread(instanceId);
 
   // CRITICAL: Now remove pipeline from map after threads are stopped
   // This ensures threads can't access pipeline through getInstanceNodes()
@@ -3566,6 +3571,24 @@ bool InstanceRegistry::startPipeline(
           << std::endl;
       std::cerr << "[InstanceRegistry] ========================================"
                 << std::endl;
+
+      // Start RTMP source monitoring thread for error detection and auto-reconnect
+      startRTMPSourceMonitorThread(instanceId);
+      
+      // Check if instance also has RTMP destination and start monitoring thread
+      {
+        std::shared_lock<std::shared_timed_mutex> lock(mutex_);
+        auto instanceIt = instances_.find(instanceId);
+        if (instanceIt != instances_.end()) {
+          auto rtmpDesIt = instanceIt->second.additionalParams.find("RTMP_DES_URL");
+          if (rtmpDesIt != instanceIt->second.additionalParams.end() && 
+              !rtmpDesIt->second.empty()) {
+            // Start RTMP destination monitoring thread
+            startRTMPDestinationMonitorThread(instanceId);
+          }
+        }
+      }
+      
       return true;
     }
 
@@ -6156,13 +6179,40 @@ void InstanceRegistry::setupFrameCaptureHook(
           if (frameToCache && !frameToCache->empty()) {
             updateFrameCache(instanceId, *frameToCache);
 
-            // CRITICAL: Update RTSP activity when we receive frames
-            // This is the only reliable way to know RTSP is actually
-            // working OPTIMIZATION: Use cached RTSP flag (read lock-free
-            // above) No need to check again - flag is set during instance
-            // initialization
+            // CRITICAL: Update RTSP/RTMP activity when we receive frames
+            // This is the only reliable way to know streams are actually working
+            // OPTIMIZATION: Use cached RTSP flag (read lock-free above)
             if (isRTSPInstance) {
               updateRTSPActivity(instanceId);
+            }
+            
+            // Update RTMP source activity (check if instance uses RTMP source)
+            // We check by looking at the first node type
+            {
+              std::shared_lock<std::shared_timed_mutex> lock(mutex_);
+              auto instanceIt = instances_.find(instanceId);
+              if (instanceIt != instances_.end()) {
+                // Check if instance has RTMP source URL in additionalParams
+                auto rtmpSrcIt = instanceIt->second.additionalParams.find("RTMP_SRC_URL");
+                if (rtmpSrcIt != instanceIt->second.additionalParams.end() && 
+                    !rtmpSrcIt->second.empty()) {
+                  updateRTMPSourceActivity(instanceId);
+                }
+              }
+            }
+            
+            // Update RTMP destination activity (frames are being sent to RTMP destination)
+            // Check if instance has RTMP destination
+            {
+              std::shared_lock<std::shared_timed_mutex> lock(mutex_);
+              auto instanceIt = instances_.find(instanceId);
+              if (instanceIt != instances_.end()) {
+                auto rtmpDesIt = instanceIt->second.additionalParams.find("RTMP_DES_URL");
+                if (rtmpDesIt != instanceIt->second.additionalParams.end() && 
+                    !rtmpDesIt->second.empty()) {
+                  updateRTMPDestinationActivity(instanceId);
+                }
+              }
             }
           }
         }

@@ -214,6 +214,21 @@ private:
   void registerBAStopMQTTDefaultSolution();
 
   /**
+   * @brief Register ba_loitering solution
+   */
+  void registerBALoiteringSolution();
+
+  /**
+   * @brief Register ba_area_enter_exit solution
+   */
+  void registerBAAreaEnterExitSolution();
+
+  /**
+   * @brief Register ba_line_counting solution
+   */
+  void registerBALineCountingSolution();
+
+  /**
    * @brief Register securt solution
    */
   void registerSecuRTSolution();

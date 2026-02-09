@@ -125,6 +125,9 @@ void SolutionRegistry::initializeDefaultSolutions() {
   registerBAJamMQTTDefaultSolution();           // ba_jam_mqtt_default
   registerBAStopDefaultSolution();              // ba_stop_default
   registerBAStopMQTTDefaultSolution();          // ba_stop_mqtt_default
+  registerBALoiteringSolution();                // ba_loitering
+  registerBAAreaEnterExitSolution();            // ba_area_enter_exit
+  registerBALineCountingSolution();            // ba_line_counting
   registerSecuRTSolution();                     // securt
 
   // Register specialized detection solutions
@@ -1704,6 +1707,221 @@ void SolutionRegistry::registerBAStopMQTTDefaultSolution() {
   config.pipeline.push_back(baStopOSD2);
 
   config.defaults["MIN_STOP_SECONDS"] = "3";
+
+  registerSolution(config);
+}
+
+void SolutionRegistry::registerBALoiteringSolution() {
+  SolutionConfig config;
+  config.solutionId = "ba_loitering";
+  config.solutionName = "Behavior Analysis - Loitering Detection";
+  config.solutionType = "behavior_analysis";
+  config.isDefault = true;
+
+  // File Source Node
+  SolutionConfig::NodeConfig fileSrc;
+  fileSrc.nodeType = "file_src";
+  fileSrc.nodeName = "file_src_{instanceId}";
+  fileSrc.parameters["file_path"] = "${FILE_PATH}";
+  fileSrc.parameters["channel"] = "0";
+  fileSrc.parameters["resize_ratio"] = "${RESIZE_RATIO}";
+  config.pipeline.push_back(fileSrc);
+
+  // YOLO Detector Node
+  SolutionConfig::NodeConfig yoloDetector;
+  yoloDetector.nodeType = "yolo_detector";
+  yoloDetector.nodeName = "yolo_detector_{instanceId}";
+  yoloDetector.parameters["weights_path"] = "${WEIGHTS_PATH}";
+  yoloDetector.parameters["config_path"] = "${CONFIG_PATH}";
+  yoloDetector.parameters["labels_path"] = "${LABELS_PATH}";
+  config.pipeline.push_back(yoloDetector);
+
+  // SORT Tracker Node
+  SolutionConfig::NodeConfig sortTrack;
+  sortTrack.nodeType = "sort_track";
+  sortTrack.nodeName = "sort_tracker_{instanceId}";
+  config.pipeline.push_back(sortTrack);
+
+  // BA Loitering Node
+  SolutionConfig::NodeConfig baLoitering;
+  baLoitering.nodeType = "ba_loitering";
+  baLoitering.nodeName = "ba_loitering_{instanceId}";
+  baLoitering.parameters["LoiteringAreas"] = "${LOITERING_AREAS_JSON}";
+  baLoitering.parameters["alarm_seconds"] = "${ALARM_SECONDS}";
+  baLoitering.parameters["check_interval"] = "${CHECK_INTERVAL}";
+  config.pipeline.push_back(baLoitering);
+
+  // BA Stop OSD Node (ba_loitering uses ba_stop_osd_node)
+  SolutionConfig::NodeConfig baLoiteringOSD;
+  baLoiteringOSD.nodeType = "ba_loitering_osd";
+  baLoiteringOSD.nodeName = "osd_{instanceId}";
+  config.pipeline.push_back(baLoiteringOSD);
+
+  // NOTE: json_mqtt_broker node removed - it's disabled due to crash issues
+  // MQTT events are handled by instance_registry instead
+
+  // Screen Destination Node
+  SolutionConfig::NodeConfig screenDes;
+  screenDes.nodeType = "screen_des";
+  screenDes.nodeName = "screen_des_{instanceId}";
+  screenDes.parameters["channel"] = "0";
+  screenDes.parameters["enabled"] = "${ENABLE_SCREEN_DES}";
+  config.pipeline.push_back(screenDes);
+
+  // File Destination Node
+  SolutionConfig::NodeConfig fileDes;
+  fileDes.nodeType = "file_des";
+  fileDes.nodeName = "file_des_{instanceId}";
+  fileDes.parameters["save_dir"] = "./output/{instanceId}";
+  fileDes.parameters["name_prefix"] = "ba_loitering";
+  fileDes.parameters["osd"] = "true";
+  config.pipeline.push_back(fileDes);
+
+  // Default configurations
+  config.defaults["detectorMode"] = "SmartDetection";
+  config.defaults["detectionSensitivity"] = "0.7";
+  config.defaults["sensorModality"] = "RGB";
+  config.defaults["RESIZE_RATIO"] = "0.6";
+  config.defaults["CHECK_INTERVAL"] = "30";
+
+  registerSolution(config);
+}
+
+void SolutionRegistry::registerBAAreaEnterExitSolution() {
+  SolutionConfig config;
+  config.solutionId = "ba_area_enter_exit";
+  config.solutionName = "Behavior Analysis - Area Enter/Exit Detection";
+  config.solutionType = "behavior_analysis";
+  config.isDefault = true;
+
+  // File Source Node
+  SolutionConfig::NodeConfig fileSrc;
+  fileSrc.nodeType = "file_src";
+  fileSrc.nodeName = "file_src_{instanceId}";
+  fileSrc.parameters["file_path"] = "${FILE_PATH}";
+  fileSrc.parameters["channel"] = "0";
+  fileSrc.parameters["resize_ratio"] = "${RESIZE_RATIO}";
+  config.pipeline.push_back(fileSrc);
+
+  // YOLO Detector Node
+  SolutionConfig::NodeConfig yoloDetector;
+  yoloDetector.nodeType = "yolo_detector";
+  yoloDetector.nodeName = "yolo_detector_{instanceId}";
+  yoloDetector.parameters["weights_path"] = "${WEIGHTS_PATH}";
+  yoloDetector.parameters["config_path"] = "${CONFIG_PATH}";
+  yoloDetector.parameters["labels_path"] = "${LABELS_PATH}";
+  config.pipeline.push_back(yoloDetector);
+
+  // ByteTrack Tracker Node
+  SolutionConfig::NodeConfig byteTrack;
+  byteTrack.nodeType = "bytetrack";
+  byteTrack.nodeName = "bytetrack_{instanceId}";
+  config.pipeline.push_back(byteTrack);
+
+  // BA Area Enter/Exit Node
+  SolutionConfig::NodeConfig baAreaEnterExit;
+  baAreaEnterExit.nodeType = "ba_area_enter_exit";
+  baAreaEnterExit.nodeName = "ba_area_enter_exit_{instanceId}";
+  baAreaEnterExit.parameters["Areas"] = "${AREAS_JSON}";
+  baAreaEnterExit.parameters["AreaConfigs"] = "${AREA_CONFIGS_JSON}";
+  config.pipeline.push_back(baAreaEnterExit);
+
+  // BA Area Enter/Exit OSD Node
+  SolutionConfig::NodeConfig baAreaOSD;
+  baAreaOSD.nodeType = "ba_area_enter_exit_osd";
+  baAreaOSD.nodeName = "osd_{instanceId}";
+  config.pipeline.push_back(baAreaOSD);
+
+  // Screen Destination Node
+  SolutionConfig::NodeConfig screenDes;
+  screenDes.nodeType = "screen_des";
+  screenDes.nodeName = "screen_des_{instanceId}";
+  screenDes.parameters["channel"] = "0";
+  screenDes.parameters["enabled"] = "${ENABLE_SCREEN_DES}";
+  config.pipeline.push_back(screenDes);
+
+  // RTMP Destination Node (optional)
+  SolutionConfig::NodeConfig rtmpDes;
+  rtmpDes.nodeType = "rtmp_des";
+  rtmpDes.nodeName = "rtmp_des_{instanceId}";
+  rtmpDes.parameters["rtmp_url"] = "${RTMP_DES_URL}";
+  rtmpDes.parameters["channel"] = "0";
+  config.pipeline.push_back(rtmpDes);
+
+  // Default configurations
+  config.defaults["detectorMode"] = "SmartDetection";
+  config.defaults["detectionSensitivity"] = "0.7";
+  config.defaults["sensorModality"] = "RGB";
+  config.defaults["RESIZE_RATIO"] = "0.6";
+
+  registerSolution(config);
+}
+
+void SolutionRegistry::registerBALineCountingSolution() {
+  SolutionConfig config;
+  config.solutionId = "ba_line_counting";
+  config.solutionName = "Behavior Analysis - Multiple Line Counting";
+  config.solutionType = "behavior_analysis";
+  config.isDefault = true;
+
+  // File Source Node
+  SolutionConfig::NodeConfig fileSrc;
+  fileSrc.nodeType = "file_src";
+  fileSrc.nodeName = "file_src_{instanceId}";
+  fileSrc.parameters["file_path"] = "${FILE_PATH}";
+  fileSrc.parameters["channel"] = "0";
+  fileSrc.parameters["resize_ratio"] = "${RESIZE_RATIO}";
+  config.pipeline.push_back(fileSrc);
+
+  // YOLO Detector Node
+  SolutionConfig::NodeConfig yoloDetector;
+  yoloDetector.nodeType = "yolo_detector";
+  yoloDetector.nodeName = "yolo_detector_{instanceId}";
+  yoloDetector.parameters["weights_path"] = "${WEIGHTS_PATH}";
+  yoloDetector.parameters["config_path"] = "${CONFIG_PATH}";
+  yoloDetector.parameters["labels_path"] = "${LABELS_PATH}";
+  config.pipeline.push_back(yoloDetector);
+
+  // ByteTrack Tracker Node
+  SolutionConfig::NodeConfig byteTrack;
+  byteTrack.nodeType = "bytetrack";
+  byteTrack.nodeName = "bytetrack_{instanceId}";
+  config.pipeline.push_back(byteTrack);
+
+  // BA Line Counting Node (multiple lines with direction)
+  SolutionConfig::NodeConfig baLineCounting;
+  baLineCounting.nodeType = "ba_line_counting";
+  baLineCounting.nodeName = "ba_line_counting_{instanceId}";
+  baLineCounting.parameters["LineSettings"] = "${LINE_SETTINGS_JSON}";
+  config.pipeline.push_back(baLineCounting);
+
+  // BA Crossline OSD Node (reuse for visualization)
+  SolutionConfig::NodeConfig baCrosslineOSD;
+  baCrosslineOSD.nodeType = "ba_crossline_osd";
+  baCrosslineOSD.nodeName = "osd_{instanceId}";
+  config.pipeline.push_back(baCrosslineOSD);
+
+  // Screen Destination Node
+  SolutionConfig::NodeConfig screenDes;
+  screenDes.nodeType = "screen_des";
+  screenDes.nodeName = "screen_des_{instanceId}";
+  screenDes.parameters["channel"] = "0";
+  screenDes.parameters["enabled"] = "${ENABLE_SCREEN_DES}";
+  config.pipeline.push_back(screenDes);
+
+  // RTMP Destination Node (optional)
+  SolutionConfig::NodeConfig rtmpDes;
+  rtmpDes.nodeType = "rtmp_des";
+  rtmpDes.nodeName = "rtmp_des_{instanceId}";
+  rtmpDes.parameters["rtmp_url"] = "${RTMP_DES_URL}";
+  rtmpDes.parameters["channel"] = "0";
+  config.pipeline.push_back(rtmpDes);
+
+  // Default configurations
+  config.defaults["detectorMode"] = "SmartDetection";
+  config.defaults["detectionSensitivity"] = "0.7";
+  config.defaults["sensorModality"] = "RGB";
+  config.defaults["RESIZE_RATIO"] = "0.4";
 
   registerSolution(config);
 }

@@ -19,6 +19,7 @@
 #include <cvedix/nodes/ba/cvedix_ba_crossline_node.h>
 #include <cvedix/nodes/ba/cvedix_ba_jam_node.h>
 #include <cvedix/nodes/ba/cvedix_ba_stop_node.h>
+#include <cvedix/nodes/ba/cvedix_ba_loitering_node.h>
 #include <cvedix/nodes/des/cvedix_app_des_node.h>
 #include <cvedix/nodes/des/cvedix_file_des_node.h>
 #include <cvedix/nodes/des/cvedix_rtmp_des_node.h>
@@ -31,6 +32,7 @@
 #include <cvedix/nodes/osd/cvedix_ba_crossline_osd_node.h>
 #include <cvedix/nodes/osd/cvedix_ba_jam_osd_node.h>
 #include <cvedix/nodes/osd/cvedix_ba_stop_osd_node.h>
+#include <cvedix/nodes/osd/cvedix_ba_area_enter_exit_osd_node.h>
 #include <cvedix/nodes/osd/cvedix_face_osd_node_v2.h>
 #include <cvedix/nodes/osd/cvedix_osd_node_v3.h>
 #include <cvedix/nodes/src/cvedix_app_src_node.h>
@@ -488,6 +490,16 @@ PipelineBuilder::buildPipeline(const SolutionConfig &solution,
   std::vector<std::shared_ptr<cvedix_nodes::cvedix_node>> nodes;
   std::vector<std::string> nodeTypes; // Track node types for connection logic
 
+  // Helper function to check if a node type already exists in pipeline
+  auto hasNodeType = [&nodeTypes](const std::string &nodeType) -> bool {
+    for (const auto &type : nodeTypes) {
+      if (type == nodeType) {
+        return true;
+      }
+    }
+    return false;
+  };
+
   // Check for multiple video sources (FILE_PATHS or RTSP_URLS array)
   auto [hasMultipleSources, hasCustomSourceNodes, multipleSourceType, multipleSourceNodes] =
       handleMultipleSources(mutableReq, instanceId, nodes, nodeTypes);
@@ -499,7 +511,9 @@ PipelineBuilder::buildPipeline(const SolutionConfig &solution,
         nodeConfig.nodeType == "osd_v3" ||
         nodeConfig.nodeType == "ba_crossline_osd" ||
         nodeConfig.nodeType == "ba_jam_osd" ||
-        nodeConfig.nodeType == "ba_stop_osd") {
+        nodeConfig.nodeType == "ba_stop_osd" ||
+        nodeConfig.nodeType == "ba_loitering_osd" ||
+        nodeConfig.nodeType == "ba_area_enter_exit_osd") {
       hasOSDNode = true;
       break;
     }
@@ -531,6 +545,21 @@ PipelineBuilder::buildPipeline(const SolutionConfig &solution,
         std::cerr << "[PipelineBuilder] Skipping " << nodeConfig.nodeType << " node from solution config (using " 
                   << (multipleSourceType == "file_src" ? "FILE_PATHS" : "RTSP_URLS") << " array instead)" << std::endl;
         continue;
+      }
+      
+      // Skip ba_crossline and ba_crossline_osd nodes if no CrossingLines are provided
+      // This allows running only ba_loitering without ba_crossline
+      if (nodeConfig.nodeType == "ba_crossline" || nodeConfig.nodeType == "ba_crossline_osd") {
+        auto crossingLinesIt = mutableReq.additionalParams.find("CrossingLines");
+        bool hasCrossingLines = (crossingLinesIt != mutableReq.additionalParams.end() &&
+                                !crossingLinesIt->second.empty());
+        
+        if (!hasCrossingLines) {
+          std::cerr << "[PipelineBuilder] Skipping " << nodeConfig.nodeType 
+                    << " node (no CrossingLines provided - running ba_loitering only)"
+                    << std::endl;
+          continue;
+        }
       }
       
       // Use mutableReq for SecuRT integration (has areas/lines loaded)
@@ -570,7 +599,9 @@ PipelineBuilder::buildPipeline(const SolutionConfig &solution,
           std::shared_ptr<cvedix_nodes::cvedix_node> attachTarget = nullptr;
           if (nodeConfig.nodeType == "ba_crossline_osd" ||
               nodeConfig.nodeType == "ba_jam_osd" ||
-              nodeConfig.nodeType == "ba_stop_osd") {
+              nodeConfig.nodeType == "ba_stop_osd" ||
+              nodeConfig.nodeType == "ba_loitering_osd" ||
+              nodeConfig.nodeType == "ba_area_enter_exit_osd") {
             // Determine which BA node type to look for
             std::string targetBAType = "";
             if (nodeConfig.nodeType == "ba_crossline_osd")
@@ -579,6 +610,10 @@ PipelineBuilder::buildPipeline(const SolutionConfig &solution,
               targetBAType = "ba_jam";
             else if (nodeConfig.nodeType == "ba_stop_osd")
               targetBAType = "ba_stop";
+            else if (nodeConfig.nodeType == "ba_loitering_osd")
+              targetBAType = "ba_loitering";
+            else if (nodeConfig.nodeType == "ba_area_enter_exit_osd")
+              targetBAType = "ba_area_enter_exit";
 
             // Find corresponding BA node to attach to
             for (int i = static_cast<int>(nodes.size()) - 1; i >= 0; --i) {
@@ -602,6 +637,74 @@ PipelineBuilder::buildPipeline(const SolutionConfig &solution,
             }
           }
 
+          // Special handling for file_des nodes: if pipeline has multiple OSD nodes
+          // (ba_crossline_osd and ba_loitering_osd), attach to the appropriate OSD node
+          // This ensures each pipeline branch (ba_crossline and ba_loitering) has its own file_des
+          if (!attachTarget && nodeConfig.nodeType == "file_des") {
+            // Check if we have both ba_crossline_osd and ba_loitering_osd
+            bool hasBACrosslineOSD = hasNodeType("ba_crossline_osd");
+            bool hasBALoiteringOSD = hasNodeType("ba_loitering_osd");
+            
+            if (hasBACrosslineOSD && hasBALoiteringOSD) {
+              // We have both OSD nodes - need to determine which one to attach to
+              // Strategy: If this is the first file_des, attach to ba_crossline_osd
+              // If there's already a file_des, attach to ba_loitering_osd
+              bool hasExistingFileDes = false;
+              for (size_t i = 0; i < nodeTypes.size(); ++i) {
+                if (nodeTypes[i] == "file_des") {
+                  hasExistingFileDes = true;
+                  break;
+                }
+              }
+              
+              if (hasExistingFileDes) {
+                // Second file_des - attach to ba_loitering_osd
+                for (int i = static_cast<int>(nodes.size()) - 1; i >= 0; --i) {
+                  if (nodeTypes[i] == "ba_loitering_osd") {
+                    attachTarget = nodes[i];
+                    std::cerr << "[PipelineBuilder] Attaching file_des node to ba_loitering_osd "
+                                 "node (separate pipeline branch for loitering detection)"
+                              << std::endl;
+                    break;
+                  }
+                }
+              } else {
+                // First file_des - attach to ba_crossline_osd
+                for (int i = static_cast<int>(nodes.size()) - 1; i >= 0; --i) {
+                  if (nodeTypes[i] == "ba_crossline_osd") {
+                    attachTarget = nodes[i];
+                    std::cerr << "[PipelineBuilder] Attaching file_des node to ba_crossline_osd "
+                                 "node (separate pipeline branch for crossline detection)"
+                              << std::endl;
+                    break;
+                  }
+                }
+              }
+            } else if (hasBACrosslineOSD) {
+              // Only ba_crossline_osd - attach to it
+              for (int i = static_cast<int>(nodes.size()) - 1; i >= 0; --i) {
+                if (nodeTypes[i] == "ba_crossline_osd") {
+                  attachTarget = nodes[i];
+                  std::cerr << "[PipelineBuilder] Attaching file_des node to ba_crossline_osd "
+                               "node"
+                            << std::endl;
+                  break;
+                }
+              }
+            } else if (hasBALoiteringOSD) {
+              // Only ba_loitering_osd - attach to it
+              for (int i = static_cast<int>(nodes.size()) - 1; i >= 0; --i) {
+                if (nodeTypes[i] == "ba_loitering_osd") {
+                  attachTarget = nodes[i];
+                  std::cerr << "[PipelineBuilder] Attaching file_des node to ba_loitering_osd "
+                               "node"
+                            << std::endl;
+                  break;
+                }
+              }
+            }
+          }
+
           // For RTMP nodes: if pipeline has OSD node, attach to OSD node (to
           // get frames with overlay)
           if (!attachTarget && nodeConfig.nodeType == "rtmp_des" &&
@@ -619,7 +722,11 @@ PipelineBuilder::buildPipeline(const SolutionConfig &solution,
                   std::dynamic_pointer_cast<
                       cvedix_nodes::cvedix_ba_jam_osd_node>(checkNode) ||
                   std::dynamic_pointer_cast<
-                      cvedix_nodes::cvedix_ba_stop_osd_node>(checkNode);
+                      cvedix_nodes::cvedix_ba_stop_osd_node>(checkNode) ||
+                  std::dynamic_pointer_cast<
+                      cvedix_nodes::cvedix_ba_stop_osd_node>(checkNode) || // ba_loitering_osd uses ba_stop_osd_node
+                  std::dynamic_pointer_cast<
+                      cvedix_nodes::cvedix_ba_area_enter_exit_osd_node>(checkNode);
               if (isOSDNode) {
                 attachTarget = checkNode;
                 std::cerr << "[PipelineBuilder] Attaching RTMP node to OSD "
@@ -927,6 +1034,209 @@ PipelineBuilder::buildPipeline(const SolutionConfig &solution,
     }
   }
 
+  // Auto-add ba_loitering node if LoiteringAreas are present (for SecuRT loitering areas)
+  // Check if LoiteringAreas exist and ba_loitering node is not already in pipeline
+  auto loiteringAreasIt = mutableReq.additionalParams.find("LoiteringAreas");
+  bool hasLoiteringAreas = (loiteringAreasIt != mutableReq.additionalParams.end() &&
+                            !loiteringAreasIt->second.empty());
+  bool hasBALoiteringNode = false;
+  for (const auto &type : nodeTypes) {
+    if (type == "ba_loitering") {
+      hasBALoiteringNode = true;
+      break;
+    }
+  }
+
+  if (hasLoiteringAreas && !hasBALoiteringNode && solution.solutionId == "securt") {
+    std::cerr << "[PipelineBuilder] LoiteringAreas detected for SecuRT areas - "
+                 "auto-adding ba_loitering node..."
+              << std::endl;
+
+    try {
+      // Create ba_loitering node config
+      SolutionConfig::NodeConfig baLoiteringConfig;
+      baLoiteringConfig.nodeType = "ba_loitering";
+      baLoiteringConfig.nodeName = "ba_loitering_{instanceId}";
+      baLoiteringConfig.parameters.clear(); // Parameters will come from LoiteringAreas in additionalParams
+
+      // Substitute {instanceId} in node name
+      std::string baLoiteringNodeName = baLoiteringConfig.nodeName;
+      size_t pos = baLoiteringNodeName.find("{instanceId}");
+      while (pos != std::string::npos) {
+        baLoiteringNodeName.replace(pos, 12, instanceId);
+        pos = baLoiteringNodeName.find("{instanceId}", pos + instanceId.length());
+      }
+
+      // Create ba_loitering node (it will read LoiteringAreas from mutableReq.additionalParams)
+      auto baLoiteringNode = PipelineBuilderBehaviorAnalysisNodes::createBALoiteringNode(
+          baLoiteringNodeName, baLoiteringConfig.parameters, mutableReq);
+
+      if (baLoiteringNode && !nodes.empty()) {
+        // Find sort_track node to attach to (ba_loitering needs tracked objects)
+        std::shared_ptr<cvedix_nodes::cvedix_node> attachTarget = nullptr;
+        for (int i = static_cast<int>(nodes.size()) - 1; i >= 0; --i) {
+          if (nodeTypes[i] == "sort_track" || nodeTypes[i] == "sort_tracker") {
+            attachTarget = nodes[i];
+            break;
+          }
+        }
+
+        // Fallback to last non-destination node
+        if (!attachTarget) {
+          for (int i = static_cast<int>(nodes.size()) - 1; i >= 0; --i) {
+            bool isDestNode = (nodeTypes[i] == "file_des" ||
+                               nodeTypes[i] == "rtmp_des" ||
+                               nodeTypes[i] == "rtsp_des" ||
+                               nodeTypes[i] == "screen_des" ||
+                               nodeTypes[i] == "app_des");
+            if (!isDestNode) {
+              attachTarget = nodes[i];
+              break;
+            }
+          }
+          // Final fallback to last node if no non-destination node found
+          if (!attachTarget && !nodes.empty()) {
+            attachTarget = nodes.back();
+          }
+        }
+
+        if (attachTarget) {
+          baLoiteringNode->attach_to({attachTarget});
+          nodes.push_back(baLoiteringNode);
+          nodeTypes.push_back("ba_loitering");
+          std::cerr << "[PipelineBuilder] ✓ Auto-added ba_loitering node for loitering "
+                       "detection"
+                    << std::endl;
+
+          // Also auto-add ba_loitering_osd node for visualization
+          std::cerr << "[PipelineBuilder] Auto-adding ba_loitering_osd node for loitering "
+                       "visualization..."
+                    << std::endl;
+
+          SolutionConfig::NodeConfig baLoiteringOSDConfig;
+          baLoiteringOSDConfig.nodeType = "ba_loitering_osd";
+          baLoiteringOSDConfig.nodeName = "ba_loitering_osd_{instanceId}";
+          baLoiteringOSDConfig.parameters.clear();
+
+          std::string baLoiteringOSDNodeName = baLoiteringOSDConfig.nodeName;
+          pos = baLoiteringOSDNodeName.find("{instanceId}");
+          while (pos != std::string::npos) {
+            baLoiteringOSDNodeName.replace(pos, 12, instanceId);
+            pos = baLoiteringOSDNodeName.find("{instanceId}", pos + instanceId.length());
+          }
+
+          auto baLoiteringOSDNode =
+              PipelineBuilderBehaviorAnalysisNodes::createBALoiteringOSDNode(
+                  baLoiteringOSDNodeName, baLoiteringOSDConfig.parameters);
+
+          if (baLoiteringOSDNode) {
+            // Attach OSD node to ba_loitering node
+            baLoiteringOSDNode->attach_to({baLoiteringNode});
+            nodes.push_back(baLoiteringOSDNode);
+            nodeTypes.push_back("ba_loitering_osd");
+            hasOSDNode = true; // Update hasOSDNode flag
+            std::cerr << "[PipelineBuilder] ✓ Auto-added ba_loitering_osd node for "
+                         "loitering visualization"
+                      << std::endl;
+
+            // CRITICAL: If we have both ba_crossline_osd and ba_loitering_osd,
+            // auto-add a separate file_des for ba_loitering_osd
+            // This ensures each pipeline branch (ba_crossline and ba_loitering) 
+            // has its own file_des, avoiding bottleneck
+            bool hasBACrosslineOSD = false;
+            for (const auto &type : nodeTypes) {
+              if (type == "ba_crossline_osd") {
+                hasBACrosslineOSD = true;
+                break;
+              }
+            }
+            if (hasBACrosslineOSD) {
+              std::cerr << "[PipelineBuilder] Detected both ba_crossline_osd and ba_loitering_osd - "
+                           "auto-adding separate file_des for ba_loitering_osd to avoid bottleneck"
+                        << std::endl;
+              
+              try {
+                // Find existing file_des to get its configuration
+                std::string baseSaveDir = "./output/" + instanceId;
+                std::string namePrefix = "securt";
+                int maxDuration = 2; // minutes
+                int bitrate = 1024;
+                bool osd = true;
+                
+                // Look for existing file_des to inherit config
+                for (size_t i = 0; i < nodes.size(); ++i) {
+                  if (nodeTypes[i] == "file_des") {
+                    // Try to get config from existing file_des if possible
+                    // For now, use defaults with separate directory
+                    break;
+                  }
+                }
+                
+                // Create separate file_des for loitering branch
+                SolutionConfig::NodeConfig loiteringFileDesConfig;
+                loiteringFileDesConfig.nodeType = "file_des";
+                loiteringFileDesConfig.nodeName = "file_des_loitering_{instanceId}";
+                loiteringFileDesConfig.parameters["save_dir"] = "./output/" + instanceId + "/loitering";
+                loiteringFileDesConfig.parameters["name_prefix"] = "loitering";
+                loiteringFileDesConfig.parameters["max_duration"] = std::to_string(maxDuration);
+                loiteringFileDesConfig.parameters["bitrate"] = std::to_string(bitrate);
+                loiteringFileDesConfig.parameters["osd"] = osd ? "true" : "false";
+                
+                std::string loiteringFileDesNodeName = loiteringFileDesConfig.nodeName;
+                pos = loiteringFileDesNodeName.find("{instanceId}");
+                while (pos != std::string::npos) {
+                  loiteringFileDesNodeName.replace(pos, 12, instanceId);
+                  pos = loiteringFileDesNodeName.find("{instanceId}", pos + instanceId.length());
+                }
+                
+                auto loiteringFileDesNode = PipelineBuilderDestinationNodes::createFileDestinationNode(
+                    loiteringFileDesNodeName, loiteringFileDesConfig.parameters, instanceId);
+                
+                if (loiteringFileDesNode) {
+                  // Attach to ba_loitering_osd node
+                  loiteringFileDesNode->attach_to({baLoiteringOSDNode});
+                  nodes.push_back(loiteringFileDesNode);
+                  nodeTypes.push_back("file_des");
+                  std::cerr << "[PipelineBuilder] ✓ Auto-added separate file_des for ba_loitering_osd "
+                               "(save_dir: ./output/" << instanceId << "/loitering)"
+                            << std::endl;
+                  std::cerr << "[PipelineBuilder] NOTE: ba_crossline and ba_loitering now have "
+                               "separate file_des nodes - each pipeline branch is independent"
+                            << std::endl;
+                } else {
+                  std::cerr << "[PipelineBuilder] ⚠ Failed to create separate file_des for ba_loitering_osd"
+                            << std::endl;
+                }
+              } catch (const std::exception &e) {
+                std::cerr << "[PipelineBuilder] ⚠ Exception auto-adding file_des for ba_loitering_osd: "
+                          << e.what() << std::endl;
+                std::cerr << "[PipelineBuilder] ⚠ Pipeline will continue, but ba_loitering may share "
+                             "file_des with ba_crossline (potential bottleneck)"
+                          << std::endl;
+              }
+            }
+          } else {
+            std::cerr << "[PipelineBuilder] ⚠ Failed to create ba_loitering_osd node"
+                      << std::endl;
+          }
+        } else {
+          std::cerr << "[PipelineBuilder] ⚠ Failed to find node to attach ba_loitering "
+                       "node to"
+                    << std::endl;
+        }
+      } else {
+        std::cerr << "[PipelineBuilder] ⚠ Failed to create ba_loitering node"
+                  << std::endl;
+      }
+    } catch (const std::exception &e) {
+      std::cerr << "[PipelineBuilder] ⚠ Exception auto-adding ba_loitering node: "
+                << e.what() << std::endl;
+      std::cerr << "[PipelineBuilder] ⚠ Loitering detection will not be available, "
+                   "but pipeline will continue"
+                << std::endl;
+    }
+  }
+
   // Check if pipeline has app_des_node for frame capture
   bool hasAppDesNode = false;
   for (const auto &node : nodes) {
@@ -987,7 +1297,9 @@ PipelineBuilder::buildPipeline(const SolutionConfig &solution,
               std::dynamic_pointer_cast<
                   cvedix_nodes::cvedix_ba_jam_osd_node>(node) != nullptr ||
               std::dynamic_pointer_cast<
-                  cvedix_nodes::cvedix_ba_stop_osd_node>(node) != nullptr;
+                  cvedix_nodes::cvedix_ba_stop_osd_node>(node) != nullptr || // ba_loitering_osd uses ba_stop_osd_node
+              std::dynamic_pointer_cast<
+                  cvedix_nodes::cvedix_ba_area_enter_exit_osd_node>(node) != nullptr;
 
           if (isOSDNode) {
             attachTarget = node;
@@ -1196,16 +1508,6 @@ PipelineBuilder::buildPipeline(const SolutionConfig &solution,
       }
     }
     return nodes.empty() ? nullptr : nodes[0];
-  };
-
-  // Helper function to check if a node type already exists in pipeline
-  auto hasNodeType = [&nodeTypes](const std::string &nodeType) -> bool {
-    for (const auto &type : nodeTypes) {
-      if (type == nodeType) {
-        return true;
-      }
-    }
-    return false;
   };
 
 // 1. Auto-add MQTT broker nodes if MQTT config is provided but not in pipeline
@@ -1505,7 +1807,8 @@ PipelineBuilder::buildPipeline(const SolutionConfig &solution,
         bool hasOSDNode = hasNodeType("face_osd_v2") || hasNodeType("osd_v3") ||
                           hasNodeType("ba_crossline_osd") ||
                           hasNodeType("ba_jam_osd") ||
-                          hasNodeType("ba_stop_osd");
+                          hasNodeType("ba_stop_osd") ||
+                          hasNodeType("ba_loitering_osd");
 
         // If no OSD node, auto-add face_osd_v2 node for face detection
         // solutions Check if this is a face detection solution by looking for
@@ -1632,7 +1935,9 @@ PipelineBuilder::buildPipeline(const SolutionConfig &solution,
                   std::dynamic_pointer_cast<
                       cvedix_nodes::cvedix_ba_jam_osd_node>(node) ||
                   std::dynamic_pointer_cast<
-                      cvedix_nodes::cvedix_ba_stop_osd_node>(node);
+                      cvedix_nodes::cvedix_ba_stop_osd_node>(node) || // ba_loitering_osd uses ba_stop_osd_node
+                  std::dynamic_pointer_cast<
+                      cvedix_nodes::cvedix_ba_area_enter_exit_osd_node>(node);
               if (isOSDNode) {
                 attachTarget = node;
                 std::cerr << "[PipelineBuilder] Attaching RTMP node to OSD "
@@ -1943,6 +2248,12 @@ PipelineBuilder::createNode(const SolutionConfig::NodeConfig &nodeConfig,
       return PipelineBuilderBehaviorAnalysisNodes::createBAJamNode(nodeName, params, req);
     } else if (nodeConfig.nodeType == "ba_stop") {
       return PipelineBuilderBehaviorAnalysisNodes::createBAStopNode(nodeName, params, req);
+    } else if (nodeConfig.nodeType == "ba_loitering") {
+      return PipelineBuilderBehaviorAnalysisNodes::createBALoiteringNode(nodeName, params, req);
+    } else if (nodeConfig.nodeType == "ba_area_enter_exit") {
+      return PipelineBuilderBehaviorAnalysisNodes::createBAAreaEnterExitNode(nodeName, params, req);
+    } else if (nodeConfig.nodeType == "ba_line_counting") {
+      return PipelineBuilderBehaviorAnalysisNodes::createBALineCountingNode(nodeName, params, req);
     }
     // OSD nodes
     else if (nodeConfig.nodeType == "face_osd_v2") {
@@ -1955,6 +2266,10 @@ PipelineBuilder::createNode(const SolutionConfig::NodeConfig &nodeConfig,
       return PipelineBuilderBehaviorAnalysisNodes::createBAJamOSDNode(nodeName, params);
     } else if (nodeConfig.nodeType == "ba_stop_osd") {
       return PipelineBuilderBehaviorAnalysisNodes::createBAStopOSDNode(nodeName, params);
+    } else if (nodeConfig.nodeType == "ba_loitering_osd") {
+      return PipelineBuilderBehaviorAnalysisNodes::createBALoiteringOSDNode(nodeName, params);
+    } else if (nodeConfig.nodeType == "ba_area_enter_exit_osd") {
+      return PipelineBuilderBehaviorAnalysisNodes::createBAAreaEnterExitOSDNode(nodeName, params);
     }
     // Broker nodes
     else if (nodeConfig.nodeType == "json_console_broker") {
@@ -2689,6 +3004,54 @@ void PipelineBuilder::loadSecuRTData(const SolutionConfig &solution,
                 << std::endl;
     } else {
       std::cerr << "[PipelineBuilder] No areas found in SecuRT Area Manager"
+                << std::endl;
+    }
+
+    // Convert loitering areas to LoiteringAreas format for ba_loitering node
+    std::string loiteringAreasJson =
+        SecuRTPipelineIntegration::convertAreasToLoiteringFormat(area_manager_,
+                                                                 instanceId);
+    if (!loiteringAreasJson.empty()) {
+      // Store LoiteringAreas in additionalParams for ba_loitering node
+      req.additionalParams["LoiteringAreas"] = loiteringAreasJson;
+      
+      // Also set LOITERING_AREAS_JSON for ba_loitering solution placeholder substitution
+      // This is needed when using ba_loitering solution with ${LOITERING_AREAS_JSON} placeholder
+      req.additionalParams["LOITERING_AREAS_JSON"] = loiteringAreasJson;
+      
+      // Extract ALARM_SECONDS from loitering areas (use max seconds value from all areas)
+      // This is needed for ba_loitering solution with ${ALARM_SECONDS} placeholder
+      try {
+        Json::Reader reader;
+        Json::Value parsedAreas;
+        if (reader.parse(loiteringAreasJson, parsedAreas) && parsedAreas.isArray() && parsedAreas.size() > 0) {
+          double maxSeconds = 5.0; // Default
+          for (Json::ArrayIndex i = 0; i < parsedAreas.size(); ++i) {
+            if (parsedAreas[i].isMember("seconds") && parsedAreas[i]["seconds"].isNumeric()) {
+              double seconds = parsedAreas[i]["seconds"].asDouble();
+              if (seconds > maxSeconds) {
+                maxSeconds = seconds;
+              }
+            }
+          }
+          req.additionalParams["ALARM_SECONDS"] = std::to_string(static_cast<int>(maxSeconds));
+          std::cerr << "[PipelineBuilder] ✓ Set ALARM_SECONDS to " << static_cast<int>(maxSeconds)
+                    << " (from loitering areas)" << std::endl;
+        }
+      } catch (const std::exception &e) {
+        std::cerr << "[PipelineBuilder] WARNING: Failed to parse loitering areas for ALARM_SECONDS: "
+                  << e.what() << std::endl;
+        // Set default ALARM_SECONDS if parsing fails
+        req.additionalParams["ALARM_SECONDS"] = "5";
+      }
+      
+      std::cerr << "[PipelineBuilder] ✓ Loaded " << loiteringAreasJson.length()
+                << " bytes of loitering areas data from SecuRT Area Manager (converted to LoiteringAreas format)"
+                << std::endl;
+      std::cerr << "[PipelineBuilder] Loitering areas will be processed by ba_loitering node in pipeline"
+                << std::endl;
+    } else {
+      std::cerr << "[PipelineBuilder] No loitering areas found in SecuRT Area Manager"
                 << std::endl;
     }
 

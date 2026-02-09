@@ -40,6 +40,15 @@ public:
       const AreaManager *areaManager, const std::string &instanceId);
 
   /**
+   * @brief Convert SecuRT loitering areas to LoiteringAreas format for ba_loitering node
+   * @param areaManager Area manager instance
+   * @param instanceId Instance ID
+   * @return JSON string in LoiteringAreas format, empty if no loitering areas
+   */
+  static std::string convertAreasToLoiteringFormat(
+      const AreaManager *areaManager, const std::string &instanceId);
+
+  /**
    * @brief Get all lines as JSON array for API response
    * @param lineManager Line manager instance
    * @param instanceId Instance ID

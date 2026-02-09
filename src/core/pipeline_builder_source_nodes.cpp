@@ -16,7 +16,61 @@
 
 namespace fs = std::filesystem;
 
-// Helper function to select decoder from priority list
+// Helper function to check if GStreamer plugin/decoder is available
+static bool isGStreamerDecoderAvailable(const std::string &decoderName) {
+  // Use gst-inspect-1.0 to check if decoder plugin exists
+  std::string command = "gst-inspect-1.0 " + decoderName + " >/dev/null 2>&1";
+  int status = std::system(command.c_str());
+  return (status == 0);
+}
+
+// Helper function to select decoder with automatic fallback
+// Priority: NVIDIA GPU (nvh264dec) -> Intel VAAPI (vaapih264dec) -> Software (avdec_h264)
+static std::string selectDecoderWithFallback(const std::string &userSpecifiedDecoder = "") {
+  // If user explicitly specified a decoder, use it (but still validate)
+  if (!userSpecifiedDecoder.empty()) {
+    if (isGStreamerDecoderAvailable(userSpecifiedDecoder)) {
+      std::cerr << "[PipelineBuilderSourceNodes] Using user-specified decoder: '"
+                << userSpecifiedDecoder << "'" << std::endl;
+      return userSpecifiedDecoder;
+    } else {
+      std::cerr << "[PipelineBuilderSourceNodes] ⚠ WARNING: User-specified decoder '"
+                << userSpecifiedDecoder << "' not available, falling back to auto-detection"
+                << std::endl;
+    }
+  }
+
+  // Auto-detect with fallback priority:
+  // 1. NVIDIA GPU decoder (nvh264dec) - fastest, hardware accelerated
+  // 2. Intel VAAPI decoder (vaapih264dec) - Intel GPU hardware acceleration
+  // 3. Intel QuickSync decoder (qsvh264dec) - Intel QuickSync hardware acceleration
+  // 4. Software decoder (avdec_h264) - always available, CPU-based
+
+  std::vector<std::pair<std::string, std::string>> decoderCandidates = {
+      {"nvh264dec", "NVIDIA GPU hardware decoder (NVENC/NVDEC)"},
+      {"vaapih264dec", "Intel VAAPI hardware decoder (Intel GPU)"},
+      {"qsvh264dec", "Intel QuickSync hardware decoder"},
+      {"avdec_h264", "Software decoder (FFmpeg, CPU-based)"}
+  };
+
+  for (const auto &candidate : decoderCandidates) {
+    if (isGStreamerDecoderAvailable(candidate.first)) {
+      std::cerr << "[PipelineBuilderSourceNodes] ✓ Selected decoder: '"
+                << candidate.first << "' (" << candidate.second << ")" << std::endl;
+      return candidate.first;
+    } else {
+      std::cerr << "[PipelineBuilderSourceNodes] ✗ Decoder '"
+                << candidate.first << "' not available" << std::endl;
+    }
+  }
+
+  // Fallback to default (should never reach here if avdec_h264 is available)
+  std::cerr << "[PipelineBuilderSourceNodes] ⚠ WARNING: No suitable decoder found, using default 'avdec_h264'"
+            << std::endl;
+  return "avdec_h264";
+}
+
+// Helper function to select decoder from priority list (legacy, for backward compatibility)
 static std::string
 selectDecoderFromPriority(const std::string &defaultDecoder) {
   try {
@@ -24,7 +78,8 @@ selectDecoderFromPriority(const std::string &defaultDecoder) {
     auto decoderList = systemConfig.getDecoderPriorityList();
 
     if (decoderList.empty()) {
-      return defaultDecoder;
+      // If no priority list, use auto-detection with fallback
+      return selectDecoderWithFallback();
     }
 
     // Map decoder priority names to GStreamer decoder names
@@ -37,23 +92,32 @@ selectDecoderFromPriority(const std::string &defaultDecoder) {
         {"software", "avdec_h264"}   // Software decoder
     };
 
-    // Try decoders in priority order
+    // Try decoders in priority order with availability check
     for (const auto &priorityDecoder : decoderList) {
       auto it = decoderMap.find(priorityDecoder);
       if (it != decoderMap.end()) {
-        // Check if decoder is available (simple check - could be enhanced)
-        // For now, return first available in priority order
-        std::cerr << "[PipelineBuilderSourceNodes] Selected decoder from priority: "
-                  << priorityDecoder << " -> " << it->second << std::endl;
-        return it->second;
+        // Check if decoder is available
+        if (isGStreamerDecoderAvailable(it->second)) {
+          std::cerr << "[PipelineBuilderSourceNodes] Selected decoder from priority: "
+                    << priorityDecoder << " -> " << it->second << std::endl;
+          return it->second;
+        } else {
+          std::cerr << "[PipelineBuilderSourceNodes] Decoder from priority '"
+                    << priorityDecoder << "' (" << it->second
+                    << ") not available, trying next..." << std::endl;
+        }
       }
     }
 
-    // If no match, return default
-    return defaultDecoder;
+    // If no decoder from priority list is available, use auto-detection with fallback
+    std::cerr << "[PipelineBuilderSourceNodes] No decoder from priority list available, using auto-detection"
+              << std::endl;
+    return selectDecoderWithFallback();
   } catch (...) {
-    // On error, return default
-    return defaultDecoder;
+    // On error, use auto-detection with fallback
+    std::cerr << "[PipelineBuilderSourceNodes] Exception in selectDecoderFromPriority, using auto-detection"
+              << std::endl;
+    return selectDecoderWithFallback();
   }
 }
 
@@ -799,12 +863,33 @@ PipelineBuilderSourceNodes::createRTMPSourceNode(
         }
       }
     }
-    // Get decoder from config priority list if not specified
-    std::string defaultDecoder = "avdec_h264";
-    std::string gstDecoderName =
-        params.count("gst_decoder_name")
-            ? params.at("gst_decoder_name")
-            : selectDecoderFromPriority(defaultDecoder);
+    // Get decoder with automatic fallback
+    // Priority: additionalParams GST_DECODER_NAME > params gst_decoder_name > auto-detection with fallback
+    std::string gstDecoderName;
+    
+    // Check additionalParams first (highest priority)
+    auto decoderIt = req.additionalParams.find("GST_DECODER_NAME");
+    if (decoderIt != req.additionalParams.end() && !decoderIt->second.empty()) {
+      gstDecoderName = decoderIt->second;
+      std::cerr << "[PipelineBuilderSourceNodes] Using GST_DECODER_NAME from additionalParams: '"
+                << gstDecoderName << "'" << std::endl;
+    } else if (params.count("gst_decoder_name") && !params.at("gst_decoder_name").empty()) {
+      gstDecoderName = params.at("gst_decoder_name");
+      std::cerr << "[PipelineBuilderSourceNodes] Using gst_decoder_name from params: '"
+                << gstDecoderName << "'" << std::endl;
+    } else {
+      // Auto-detect with fallback: nvh264dec -> vaapih264dec -> qsvh264dec -> avdec_h264
+      gstDecoderName = selectDecoderWithFallback();
+    }
+    
+    // Validate decoder availability and fallback if needed
+    if (!isGStreamerDecoderAvailable(gstDecoderName)) {
+      std::cerr << "[PipelineBuilderSourceNodes] ⚠ WARNING: Specified decoder '"
+                << gstDecoderName << "' not available, falling back to auto-detection"
+                << std::endl;
+      gstDecoderName = selectDecoderWithFallback();
+    }
+    
     int skipInterval = params.count("skip_interval")
                            ? std::stoi(params.at("skip_interval"))
                            : 0;
@@ -841,6 +926,7 @@ PipelineBuilderSourceNodes::createRTMPSourceNode(
     std::cerr << "  Name: '" << nodeName << "'" << std::endl;
     std::cerr << "  Channel index: " << channelIndex << std::endl;
     std::cerr << "  RTMP URL: '" << rtmpUrl << "'" << std::endl;
+    std::cerr << "  Decoder: '" << gstDecoderName << "'" << std::endl;
     std::cerr << "  Resize ratio: " << resizeRatio << std::endl;
     std::cerr << "  Skip interval: " << skipInterval << std::endl;
 

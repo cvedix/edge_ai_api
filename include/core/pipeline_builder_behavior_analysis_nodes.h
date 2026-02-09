@@ -43,6 +43,30 @@ public:
                    const std::map<std::string, std::string> &params,
                    const CreateInstanceRequest &req);
 
+  /**
+   * @brief Create BA loitering node
+   */
+  static std::shared_ptr<cvedix_nodes::cvedix_node>
+  createBALoiteringNode(const std::string &nodeName,
+                        const std::map<std::string, std::string> &params,
+                        const CreateInstanceRequest &req);
+
+  /**
+   * @brief Create BA area enter/exit node
+   */
+  static std::shared_ptr<cvedix_nodes::cvedix_node>
+  createBAAreaEnterExitNode(const std::string &nodeName,
+                            const std::map<std::string, std::string> &params,
+                            const CreateInstanceRequest &req);
+
+  /**
+   * @brief Create BA line counting node
+   */
+  static std::shared_ptr<cvedix_nodes::cvedix_node>
+  createBALineCountingNode(const std::string &nodeName,
+                           const std::map<std::string, std::string> &params,
+                           const CreateInstanceRequest &req);
+
   // ========== Behavior Analysis OSD Nodes ==========
 
   /**
@@ -65,6 +89,20 @@ public:
    */
   static std::shared_ptr<cvedix_nodes::cvedix_node>
   createBAStopOSDNode(const std::string &nodeName,
-                      const std::map<std::string, std::string> &params);
+                     const std::map<std::string, std::string> &params);
+
+  /**
+   * @brief Create BA loitering OSD node
+   */
+  static std::shared_ptr<cvedix_nodes::cvedix_node>
+  createBALoiteringOSDNode(const std::string &nodeName,
+                          const std::map<std::string, std::string> &params);
+
+  /**
+   * @brief Create BA area enter/exit OSD node
+   */
+  static std::shared_ptr<cvedix_nodes::cvedix_node>
+  createBAAreaEnterExitOSDNode(const std::string &nodeName,
+                               const std::map<std::string, std::string> &params);
 };
 

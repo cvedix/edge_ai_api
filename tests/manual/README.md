@@ -27,8 +27,10 @@ manual/
 │
 ├── Nodes/              # Manual tests cho Nodes
 │
-├── Analytics/          # Manual tests cho Analytics (Lines, Jams, Stops, Area, SecuRT)
-│   └── SECURT_INSTANCE_WORKFLOW_TEST.md
+├── Analytics/          # Manual tests cho Analytics (Lines, Jams, Stops, Area, SecuRT, Loitering)
+│   ├── SECURT_INSTANCE_WORKFLOW_TEST.md
+│   ├── LOITERING_CORE_API_TEST.md
+│   └── LOITERING_SECURT_API_TEST.md
 │
 └── Config/             # Manual tests cho Config
 ```
@@ -87,6 +89,22 @@ Manual tests được thiết kế để:
   - Thêm bài toán analytics (Lines, Areas)
   - Start instance và xử lý video
   - End-to-end workflow test
+
+### Analytics - Loitering Detection
+- **LOITERING_CORE_API_TEST.md**: Hướng dẫn test chi tiết Loitering Detection qua Core API, bao gồm:
+  - Tạo instance với loitering areas qua POST /v1/core/instance
+  - Định nghĩa loitering areas trong request body
+  - Multiple loitering areas với các threshold khác nhau
+  - Workflow hoàn chỉnh từ tạo instance đến xử lý video
+  - Troubleshooting và best practices
+
+- **LOITERING_SECURT_API_TEST.md**: Hướng dẫn test chi tiết Loitering Detection qua SecuRT Area API, bao gồm:
+  - Tạo SecuRT instance
+  - Thêm loitering areas qua POST /v1/securt/instance/{instanceId}/area/loitering
+  - Quản lý loitering areas (thêm, xóa, lấy danh sách)
+  - Auto-restart khi thêm areas
+  - Workflow hoàn chỉnh với SecuRT API
+  - Troubleshooting và best practices
 
 ## Thêm Manual Test Mới
 

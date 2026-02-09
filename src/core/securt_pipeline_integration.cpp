@@ -265,3 +265,69 @@ std::string SecuRTPipelineIntegration::convertAreasToStopZonesFormat(
   return Json::writeString(builder, stopZonesArray);
 }
 
+std::string SecuRTPipelineIntegration::convertAreasToLoiteringFormat(
+    const AreaManager *areaManager, const std::string &instanceId) {
+  if (!areaManager) {
+    return "";
+  }
+
+  // Get all areas grouped by type
+  auto areasMap = areaManager->getAllAreas(instanceId);
+  if (areasMap.empty()) {
+    return "";
+  }
+
+  Json::Value loiteringAreasArray(Json::arrayValue);
+
+  // Find loitering areas and convert to LoiteringAreas format
+  auto loiteringIt = areasMap.find("loitering");
+  if (loiteringIt != areasMap.end()) {
+    for (const auto &area : loiteringIt->second) {
+      if (!area.isObject() || !area.isMember("coordinates") ||
+          !area["coordinates"].isArray() || area["coordinates"].size() < 3) {
+        continue; // Skip invalid areas
+      }
+
+      Json::Value loiteringArea(Json::objectValue);
+
+      // Copy id if exists
+      if (area.isMember("id") && area["id"].isString()) {
+        loiteringArea["id"] = area["id"];
+      }
+
+      // Copy name if exists
+      if (area.isMember("name") && area["name"].isString()) {
+        loiteringArea["name"] = area["name"];
+      } else {
+        loiteringArea["name"] = "Loitering Area";
+      }
+
+      // Copy coordinates
+      loiteringArea["coordinates"] = area["coordinates"];
+
+      // Copy seconds (alarm threshold)
+      if (area.isMember("seconds") && area["seconds"].isNumeric()) {
+        loiteringArea["seconds"] = area["seconds"];
+      } else {
+        loiteringArea["seconds"] = 5; // Default
+      }
+
+      // Copy channel if exists
+      if (area.isMember("channel") && area["channel"].isNumeric()) {
+        loiteringArea["channel"] = area["channel"];
+      }
+
+      loiteringAreasArray.append(loiteringArea);
+    }
+  }
+
+  if (loiteringAreasArray.empty()) {
+    return "";
+  }
+
+  // Convert to JSON string
+  Json::StreamWriterBuilder builder;
+  builder["indentation"] = "";
+  return Json::writeString(builder, loiteringAreasArray);
+}
+
