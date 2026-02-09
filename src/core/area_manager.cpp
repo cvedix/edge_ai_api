@@ -1,4 +1,5 @@
 #include "core/area_manager.h"
+#include "core/logger.h"
 #include <algorithm>
 #include <cmath>
 
@@ -168,6 +169,20 @@ std::string AreaManager::createFaceCoveredArea(
     return "";
   }
   return storage_->createFaceCoveredArea(instanceId, "", write);
+}
+
+std::string AreaManager::createObjectEnterExitArea(
+    const std::string &instanceId, const ObjectEnterExitAreaWrite &write) {
+  if (!validateInstance(instanceId)) {
+    PLOG_WARNING << "[AreaManager] createObjectEnterExitArea - Instance not found: " << instanceId;
+    return "";
+  }
+  std::string error = validateAreaBase(write);
+  if (!error.empty()) {
+    PLOG_WARNING << "[AreaManager] createObjectEnterExitArea - Validation error: " << error;
+    return "";
+  }
+  return storage_->createObjectEnterExitArea(instanceId, "", write);
 }
 
 // ========================================================================
@@ -343,6 +358,19 @@ std::string AreaManager::createFaceCoveredAreaWithId(
   return storage_->createFaceCoveredArea(instanceId, areaId, write);
 }
 
+std::string AreaManager::createObjectEnterExitAreaWithId(
+    const std::string &instanceId, const std::string &areaId,
+    const ObjectEnterExitAreaWrite &write) {
+  if (!validateInstance(instanceId)) {
+    return "";
+  }
+  std::string error = validateAreaBase(write);
+  if (!error.empty()) {
+    return "";
+  }
+  return storage_->createObjectEnterExitArea(instanceId, areaId, write);
+}
+
 // ========================================================================
 // Get Methods
 // ========================================================================
@@ -389,24 +417,30 @@ bool AreaManager::deleteAllAreas(const std::string &instanceId) {
 std::string AreaManager::validateAreaBase(const AreaBaseWrite &write) const {
   // Validate name
   if (write.name.empty()) {
+    PLOG_DEBUG << "[AreaManager::validateAreaBase] Name is empty";
     return "Field 'name' is required";
   }
 
   // Validate coordinates
   std::string coordError = validateCoordinates(write.coordinates);
   if (!coordError.empty()) {
+    PLOG_DEBUG << "[AreaManager::validateAreaBase] Coordinate validation failed: " << coordError;
     return coordError;
   }
 
   // Validate classes
   std::string classError = validateClasses(write.classes);
   if (!classError.empty()) {
+    PLOG_DEBUG << "[AreaManager::validateAreaBase] Class validation failed: " << classError;
     return classError;
   }
 
   // Validate color
   std::string colorError = validateColor(write.color);
   if (!colorError.empty()) {
+    PLOG_DEBUG << "[AreaManager::validateAreaBase] Color validation failed: " << colorError
+               << " (r=" << write.color.r << ", g=" << write.color.g 
+               << ", b=" << write.color.b << ", a=" << write.color.a << ")";
     return colorError;
   }
 

@@ -405,6 +405,38 @@ std::string AreaStorage::createFaceCoveredArea(
   return finalAreaId;
 }
 
+std::string AreaStorage::createObjectEnterExitArea(
+    const std::string &instanceId, const std::string &areaId,
+    const ObjectEnterExitAreaWrite &write) {
+  std::unique_lock<std::shared_mutex> lock(mutex_);
+
+  std::string finalAreaId =
+      areaId.empty() ? UUIDGenerator::generateUUID() : areaId;
+
+  auto [type, index] = findAreaIndex(instanceId, finalAreaId);
+  if (index != SIZE_MAX) {
+    return "";
+  }
+
+  ObjectEnterExitArea area;
+  area.id = finalAreaId;
+  area.name = write.name;
+  area.coordinates = write.coordinates;
+  area.classes = write.classes;
+  area.color = write.color;
+  area.alertOnEnter = write.alertOnEnter;
+  area.alertOnExit = write.alertOnExit;
+
+  storage_[instanceId][AreaType::ObjectEnterExit].push_back(
+      std::make_shared<ObjectEnterExitArea>(area));
+
+  std::cerr << "[AreaStorage::createObjectEnterExitArea] DEBUG: Stored area ID: " << finalAreaId 
+            << ", Name: " << area.name 
+            << ", Type: ObjectEnterExit (enum: " << static_cast<int>(AreaType::ObjectEnterExit) << ")" << std::endl;
+
+  return finalAreaId;
+}
+
 std::unordered_map<std::string, std::vector<Json::Value>>
 AreaStorage::getAllAreas(const std::string &instanceId) const {
   std::shared_lock<std::shared_mutex> lock(mutex_);
@@ -627,6 +659,10 @@ Json::Value AreaStorage::areaToJson(AreaType type,
   case AreaType::FaceCovered: {
     auto *faceCoveredArea = static_cast<FaceCoveredArea *>(area.get());
     return faceCoveredArea->toJson();
+  }
+  case AreaType::ObjectEnterExit: {
+    auto *objectEnterExitArea = static_cast<ObjectEnterExitArea *>(area.get());
+    return objectEnterExitArea->toJson();
   }
   default:
     return Json::Value();

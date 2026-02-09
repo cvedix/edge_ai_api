@@ -25,7 +25,8 @@ enum class AreaType {
   ObjectRemoved,
   FallenPerson,
   VehicleGuard,  // Experimental
-  FaceCovered   // Experimental
+  FaceCovered,   // Experimental
+  ObjectEnterExit // BA Area Enter/Exit
 };
 
 /**
@@ -59,6 +60,8 @@ inline std::string areaTypeToString(AreaType type) {
     return "vehicleGuard";
   case AreaType::FaceCovered:
     return "faceCovered";
+  case AreaType::ObjectEnterExit:
+    return "objectEnterExit";
   default:
     return "unknown";
   }
@@ -94,6 +97,8 @@ inline AreaType stringToAreaType(const std::string &str) {
     return AreaType::VehicleGuard;
   if (str == "faceCovered")
     return AreaType::FaceCovered;
+  if (str == "objectEnterExit")
+    return AreaType::ObjectEnterExit;
   return AreaType::Crossing; // Default
 }
 
@@ -205,6 +210,13 @@ public:
   std::string createFaceCoveredArea(const std::string &instanceId,
                                      const std::string &areaId,
                                      const FaceCoveredAreaWrite &write);
+
+  /**
+   * @brief Create an object enter/exit area (for BA Area Enter/Exit solution)
+   */
+  std::string createObjectEnterExitArea(const std::string &instanceId,
+                                         const std::string &areaId,
+                                         const ObjectEnterExitAreaWrite &write);
 
   /**
    * @brief Get all areas for an instance, grouped by type

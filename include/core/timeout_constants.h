@@ -95,6 +95,24 @@ inline int getRtmpPrepareTimeoutDeletionMs() {
   return EnvConfig::getInt("RTMP_PREPARE_TIMEOUT_DELETION_MS", 50, 20, 500);
 }
 
+// RTMP source node stop timeout during reconnect
+// Longer timeout to avoid using detach_recursively() which can affect destination
+inline int getRtmpSourceStopTimeoutMs() {
+  return EnvConfig::getInt("RTMP_SOURCE_STOP_TIMEOUT_MS", 2000, 500, 10000);
+}
+
+// RTMP source reconnect stabilization wait time (after stop, before restart)
+// Allows GStreamer pipeline to fully release resources and destination to stabilize
+inline int getRtmpSourceReconnectStabilizationMs() {
+  return EnvConfig::getInt("RTMP_SOURCE_RECONNECT_STABILIZATION_MS", 3000, 1000, 10000);
+}
+
+// RTMP source reconnect initialization wait time (after restart)
+// Allows GStreamer pipeline to initialize before processing frames
+inline int getRtmpSourceReconnectInitializationMs() {
+  return EnvConfig::getInt("RTMP_SOURCE_RECONNECT_INITIALIZATION_MS", 1000, 500, 5000);
+}
+
 // Helper functions for std::chrono::milliseconds
 inline std::chrono::milliseconds getRegistryMutexTimeout() {
   return std::chrono::milliseconds(getRegistryMutexTimeoutMs());
@@ -150,6 +168,18 @@ inline std::chrono::milliseconds getRtmpPrepareTimeout() {
 
 inline std::chrono::milliseconds getRtmpPrepareTimeoutDeletion() {
   return std::chrono::milliseconds(getRtmpPrepareTimeoutDeletionMs());
+}
+
+inline std::chrono::milliseconds getRtmpSourceStopTimeout() {
+  return std::chrono::milliseconds(getRtmpSourceStopTimeoutMs());
+}
+
+inline std::chrono::milliseconds getRtmpSourceReconnectStabilization() {
+  return std::chrono::milliseconds(getRtmpSourceReconnectStabilizationMs());
+}
+
+inline std::chrono::milliseconds getRtmpSourceReconnectInitialization() {
+  return std::chrono::milliseconds(getRtmpSourceReconnectInitializationMs());
 }
 
 } // namespace TimeoutConstants

@@ -48,6 +48,8 @@ public:
                 "/v1/securt/instance/{instanceId}/area/objectRemoved", Post);
   ADD_METHOD_TO(AreaHandler::createFallenPersonArea,
                 "/v1/securt/instance/{instanceId}/area/fallenPerson", Post);
+  ADD_METHOD_TO(AreaHandler::createObjectEnterExitArea,
+                "/v1/securt/instance/{instanceId}/area/objectEnterExit", Post);
 
   // Standard Areas - PUT (create with ID)
   ADD_METHOD_TO(AreaHandler::createCrossingAreaWithId,
@@ -72,6 +74,8 @@ public:
                 "/v1/securt/instance/{instanceId}/area/objectRemoved/{areaId}", Put);
   ADD_METHOD_TO(AreaHandler::createFallenPersonAreaWithId,
                 "/v1/securt/instance/{instanceId}/area/fallenPerson/{areaId}", Put);
+  ADD_METHOD_TO(AreaHandler::createObjectEnterExitAreaWithId,
+                "/v1/securt/instance/{instanceId}/area/objectEnterExit/{areaId}", Put);
 
   // Experimental Areas - POST
   ADD_METHOD_TO(AreaHandler::createVehicleGuardArea,
@@ -121,6 +125,8 @@ public:
   ADD_METHOD_TO(AreaHandler::handleOptions,
                 "/v1/securt/instance/{instanceId}/area/faceCovered", Options);
   ADD_METHOD_TO(AreaHandler::handleOptions,
+                "/v1/securt/instance/{instanceId}/area/objectEnterExit/{areaId}", Options);
+  ADD_METHOD_TO(AreaHandler::handleOptions,
                 "/v1/securt/instance/{instanceId}/areas", Options);
   ADD_METHOD_TO(AreaHandler::handleOptions,
                 "/v1/securt/instance/{instanceId}/area/{areaId}", Options);
@@ -149,6 +155,8 @@ public:
                                std::function<void(const HttpResponsePtr &)> &&callback);
   void createFallenPersonArea(const HttpRequestPtr &req,
                              std::function<void(const HttpResponsePtr &)> &&callback);
+  void createObjectEnterExitArea(const HttpRequestPtr &req,
+                                 std::function<void(const HttpResponsePtr &)> &&callback);
 
   // Standard Areas - PUT handlers
   void createCrossingAreaWithId(const HttpRequestPtr &req,
@@ -173,6 +181,8 @@ public:
                                      std::function<void(const HttpResponsePtr &)> &&callback);
   void createFallenPersonAreaWithId(const HttpRequestPtr &req,
                                     std::function<void(const HttpResponsePtr &)> &&callback);
+  void createObjectEnterExitAreaWithId(const HttpRequestPtr &req,
+                                       std::function<void(const HttpResponsePtr &)> &&callback);
 
   // Experimental Areas
   void createVehicleGuardArea(const HttpRequestPtr &req,

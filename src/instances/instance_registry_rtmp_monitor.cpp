@@ -2,6 +2,7 @@
 // This file contains the implementation of RTMP monitoring threads and reconnect logic
 
 #include "instances/instance_registry.h"
+#include "core/timeout_constants.h"
 #include <cvedix/nodes/src/cvedix_rtmp_src_node.h>
 #include <cvedix/nodes/des/cvedix_rtmp_des_node.h>
 #include <cvedix/nodes/osd/cvedix_face_osd_node_v2.h>
@@ -496,7 +497,9 @@ bool InstanceRegistry::reconnectRTMPSourceStream(
     std::cerr << "[InstanceRegistry] [RTMP Source Reconnect] Stopping RTMP source node..."
               << std::endl;
 
-    // Stop RTMP source node gracefully with timeout
+    // CRITICAL FIX: Stop RTMP source node gracefully with longer timeout
+    // Avoid using detach_recursively() as it can affect the entire pipeline
+    // including RTMP destination nodes. Use longer timeout to allow stop() to complete.
     try {
       auto stopFuture = std::async(std::launch::async, [rtmpNode, stopFlag]() {
         try {
@@ -510,22 +513,29 @@ bool InstanceRegistry::reconnectRTMPSourceStream(
         }
       });
 
-      auto stopStatus = stopFuture.wait_for(std::chrono::milliseconds(500));
+      // CRITICAL: Use configurable timeout to avoid detach_recursively()
+      // detach_recursively() can disconnect RTMP destination stream
+      auto stopTimeout = TimeoutConstants::getRtmpSourceStopTimeout();
+      auto stopStatus = stopFuture.wait_for(stopTimeout);
       if (stopStatus == std::future_status::timeout) {
         if (stopFlag && stopFlag->load()) {
           std::cerr << "[InstanceRegistry] [RTMP Source Reconnect] ✗ Aborted: stop flag set during stop timeout"
                     << std::endl;
           return false;
         }
-        std::cerr << "[InstanceRegistry] [RTMP Source Reconnect] ⚠ Stop timeout, using detach..."
+        std::cerr << "[InstanceRegistry] [RTMP Source Reconnect] ⚠ Stop timeout after " 
+                  << stopTimeout.count() << "ms"
                   << std::endl;
-        try {
-          rtmpNode->detach_recursively();
-        } catch (...) {
-          // Ignore errors
-        }
+        std::cerr << "[InstanceRegistry] [RTMP Source Reconnect] ⚠ WARNING: Not using detach_recursively() to avoid affecting RTMP destination"
+                  << std::endl;
+        std::cerr << "[InstanceRegistry] [RTMP Source Reconnect] ⚠ Proceeding with restart - destination may be affected"
+                  << std::endl;
+        // CRITICAL: Don't use detach_recursively() as it can disconnect destination
+        // Instead, proceed with restart and let GStreamer handle cleanup
       } else if (stopStatus == std::future_status::ready) {
         stopFuture.get();
+        std::cerr << "[InstanceRegistry] [RTMP Source Reconnect] ✓ RTMP source node stopped successfully"
+                  << std::endl;
       }
     } catch (const std::exception &e) {
       if (stopFlag && stopFlag->load()) {
@@ -535,11 +545,10 @@ bool InstanceRegistry::reconnectRTMPSourceStream(
       }
       std::cerr << "[InstanceRegistry] [RTMP Source Reconnect] ⚠ Exception stopping RTMP source node: "
                 << e.what() << std::endl;
-      try {
-        rtmpNode->detach_recursively();
-      } catch (...) {
-        // Ignore errors
-      }
+      std::cerr << "[InstanceRegistry] [RTMP Source Reconnect] ⚠ WARNING: Not using detach_recursively() to avoid affecting RTMP destination"
+                << std::endl;
+      // CRITICAL: Don't use detach_recursively() as it can disconnect destination
+      // Proceed with restart attempt
     }
 
     // CRITICAL: Check stop flag after stopping node
@@ -549,12 +558,17 @@ bool InstanceRegistry::reconnectRTMPSourceStream(
       return false;
     }
 
-    // CRITICAL FIX: Wait longer before restarting to allow GStreamer pipeline to fully release resources
+    // CRITICAL FIX: Wait before restarting to allow GStreamer pipeline to fully release resources
     // This prevents "gst_sample_get_caps: assertion 'GST_IS_SAMPLE (sample)' failed" errors
     // after reconnect by ensuring GStreamer has time to clean up old pipeline state
-    std::cerr << "[InstanceRegistry] [RTMP Source Reconnect] Waiting for GStreamer pipeline to stabilize (2 seconds)..."
+    // Also allows RTMP destination to stabilize if it was affected
+    auto stabilizationTimeout = TimeoutConstants::getRtmpSourceReconnectStabilization();
+    int stabilizationMs = stabilizationTimeout.count();
+    int sleepIterations = (stabilizationMs + 99) / 100; // Round up to nearest 100ms
+    std::cerr << "[InstanceRegistry] [RTMP Source Reconnect] Waiting for GStreamer pipeline to stabilize (" 
+              << (stabilizationMs / 1000.0) << " seconds)..."
               << std::endl;
-    for (int i = 0; i < 20; ++i) {
+    for (int i = 0; i < sleepIterations; ++i) {
       if (stopFlag && stopFlag->load()) {
         std::cerr << "[InstanceRegistry] [RTMP Source Reconnect] ✗ Aborted: instance is being stopped (during wait)"
                   << std::endl;
@@ -657,9 +671,13 @@ bool InstanceRegistry::reconnectRTMPSourceStream(
 
       // CRITICAL FIX: Wait additional time after start() to allow GStreamer to initialize
       // This prevents invalid sample errors immediately after reconnect
-      std::cerr << "[InstanceRegistry] [RTMP Source Reconnect] Waiting for GStreamer pipeline to initialize (1 second)..."
+      auto initializationTimeout = TimeoutConstants::getRtmpSourceReconnectInitialization();
+      int initializationMs = initializationTimeout.count();
+      int initSleepIterations = (initializationMs + 99) / 100; // Round up to nearest 100ms
+      std::cerr << "[InstanceRegistry] [RTMP Source Reconnect] Waiting for GStreamer pipeline to initialize (" 
+                << (initializationMs / 1000.0) << " seconds)..."
                 << std::endl;
-      for (int i = 0; i < 10; ++i) {
+      for (int i = 0; i < initSleepIterations; ++i) {
         if (stopFlag && stopFlag->load()) {
           std::cerr << "[InstanceRegistry] [RTMP Source Reconnect] ⚠ Stop flag set during initialization wait"
                     << std::endl;
@@ -768,7 +786,8 @@ void InstanceRegistry::startRTMPDestinationMonitorThread(const std::string &inst
     //   but detects write failures faster to prevent queue backup
     const auto initial_connection_timeout =
         std::chrono::seconds(30); // Allow 30 seconds for initial RTMP destination connection
-    const auto disconnection_timeout =
+    // Base disconnection timeout - will be reduced adaptively if errors detected
+    auto disconnection_timeout =
         std::chrono::seconds(20); // Consider disconnected if no activity for 20 seconds (faster detection of write failures)
 
     const auto reconnect_cooldown =
@@ -870,8 +889,18 @@ void InstanceRegistry::startRTMPDestinationMonitorThread(const std::string &inst
       }
 
       // CRITICAL: Use different timeout based on connection state
+      // Adaptive timeout: reduce if activity stopped after being connected (likely errors)
       int timeout_seconds = has_connected ? disconnection_timeout.count()
                                           : initial_connection_timeout.count();
+      
+      // CRITICAL FIX: If activity stopped after being connected, likely GStreamer errors accumulating
+      // Reduce timeout to detect and recover faster from "Error pushing buffer" issues
+      // This helps when errors accumulate over time (frame 7000+)
+      if (has_connected && has_activity && time_since_activity > 5) {
+        // Activity stopped after connection - likely errors accumulating
+        // Reduce timeout to 15s for faster detection (from 20s)
+        timeout_seconds = 15;
+      }
 
       // CRITICAL: During initial connection phase, don't trigger reconnect
       bool is_initial_connection_phase =
@@ -879,11 +908,20 @@ void InstanceRegistry::startRTMPDestinationMonitorThread(const std::string &inst
           (time_since_start < initial_connection_timeout.count());
 
       // CRITICAL FIX: Early detection and queue clearing
-      // If destination has no activity for > 15 seconds, detach destination node immediately
+      // If destination has no activity for > threshold, detach destination node immediately
       // to clear queue and prevent backup. This prevents "queue full, dropping meta!" warnings
       // and allows faster recovery.
-      // Increased from 10s to 15s to avoid false positives, especially after reconnect
-      const int early_detection_threshold = 15; // Detach after 15s of no activity (increased from 10s)
+      // Use adaptive threshold: shorter for consecutive errors (when activity stops suddenly)
+      // This helps detect GStreamer "Error pushing buffer" issues that accumulate over time
+      int early_detection_threshold = 15; // Default: 15s
+      
+      // CRITICAL: If we had activity before but now stopped, likely errors accumulating
+      // Use shorter threshold to detect GStreamer buffer errors faster
+      if (has_connected && has_activity && time_since_activity > 5) {
+        // Activity stopped after being connected - likely errors
+        // Use shorter threshold (10s) to detect and recover faster
+        early_detection_threshold = 10;
+      }
       
       // Check if we're in grace period after successful reconnect
       auto time_since_successful_reconnect = std::chrono::duration_cast<std::chrono::seconds>(
